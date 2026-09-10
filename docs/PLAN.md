@@ -56,8 +56,10 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 Flashcards, whiteboards, kanban boards, graph view, real-time cursors/co-editing, multi-user
 permissions (one user, many devices; the design leaves room for graph membership later),
 end-to-end encryption (transport TLS + tokens; E2EE would block server-side embeddings and
-MCP), PDF annotation, Logseq advanced queries (`{{query}}`), org-mode, LOGBOOK/time tracking,
-templates (later as a plugin or slash command). Logseq's org-style `SCHEDULED: <...>` lines are
+MCP), PDF annotation, Logseq's `{{query}}`/Datalog blocks, org-mode, LOGBOOK/time tracking
+(superseded by the op log, ADR 011), templates (later as a plugin or slash command). A single
+query-fence syntax (```` ```query ````, one filter language shared with search and the Tasks
+view, ADR 011) is specified but not shipped in v1. Logseq's org-style `SCHEDULED: <...>` lines are
 an import target only; the feature itself (scheduled and deadline dates with repeaters) is in core.
 
 ### What the user's own graph told us
@@ -225,13 +227,15 @@ Tasks:
   word at the start. Cycling order: none → TODO → DOING → DONE → none; WAITING and CANCELED are
   reachable from the menu. Clicking the checkbox toggles DONE.
 - Scheduled and deadline (kept from Logseq, see https://docs.logseq.com/#/page/tasks): any block
-  can carry `scheduled::` and `deadline::` typed date values (`2026-09-12`, optional time,
-  optional repeater such as `.+1w`, `+1m`, `++1d` with Logseq semantics). Slash commands
-  `/scheduled` and `/deadline` open a date picker; the journal page for a day shows a "Scheduled
-  and deadline" section listing blocks scheduled for or due on that day plus overdue ones; the
-  Tasks view sorts by these dates. Marking a repeating task DONE advances the date and resets the
-  marker. Logseq's `SCHEDULED: <2026-09-12 Sat .+1w>` lines are parsed on import into these
-  properties and written back in our property syntax.
+  can carry `scheduled::` and `deadline::` typed date values (`2026-09-12`, optional time) and a
+  `repeat::` value (ADR 011: `1w` shifting from the date, or `1w from done` shifting from
+  completion — no org repeater dialects). Slash commands `/scheduled` and `/deadline` open a date
+  picker; the journal page for a day shows a "Scheduled and deadline" section listing blocks
+  scheduled for or due on that day plus overdue ones; the Tasks view sorts by these dates.
+  Marking a repeating task DONE advances the date, resets the marker, and stamps `done::` with
+  the completion time. Logseq's `SCHEDULED: <2026-09-12 Sat .+1w>` / `DEADLINE:` lines and
+  `:LOGBOOK:` drawers are parsed on import into these properties and the sync op log
+  respectively; the mirror never writes org syntax back.
 - The Tasks view lists open tasks grouped by page with filters (state, tag, scheduled/deadline
   window, page/namespace) and the same list is available as an API/MCP query.
 
@@ -392,7 +396,9 @@ Czech and English; M4 has three built-in plugins running through the public API 
 4. **Mirror default**: markdown mirror on by default in the server data directory. Confirmed.
 5. **Embedding models**: bge-m3 is the default; qwen3-embedding:8b is the other first-class
    profile. Both selectable at runtime.
-6. **Cut features**: templates, LOGBOOK, PDF highlights, query blocks, and tweet/video macros stay
-   out of core. Confirmed. Scheduled/deadline was later restored to core at the user's request
-   (the org-style syntax stays import-only).
+6. **Cut features**: templates, LOGBOOK (superseded by the op log), PDF highlights, `{{query}}`/
+   Datalog blocks, and tweet/video macros stay out of core. Confirmed. Scheduled/deadline was
+   later restored to core at the user's request, using typed properties and a `repeat::` value
+   instead of org syntax, with history read from the op log instead of a LOGBOOK drawer (ADR
+   011); the org-style syntax stays import-only.
 7. **Multi-graph**: one graph per server in v1. Confirmed.
