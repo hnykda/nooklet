@@ -1,0 +1,153 @@
+/**
+ * The fixed app shell + single inner scroll container (research/08-mobile.md §3.1): this is what
+ * stops iOS from ever scrolling the *document*, which is what keeps `visualViewport.offsetTop`
+ * at 0 and therefore keeps `--kb`-positioned fixed elements (the keyboard toolbar the editor
+ * agent will add) from floating mid-screen when the keyboard opens. Do not add `overflow: auto`
+ * anywhere above `.page-scroll` in the tree.
+ */
+
+:root {
+  --kb: 0px;
+  --toolbar-h: 44px;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #111114;
+  --muted: #6b6b73;
+  --hairline: #e4e4e8;
+  --accent: #3358e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0b0f;
+    --fg: #e8e8ec;
+    --muted: #9a9aa3;
+    --hairline: #232329;
+    --accent: #7c93ff;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0b0f;
+  --fg: #e8e8ec;
+  --muted: #9a9aa3;
+  --hairline: #232329;
+  --accent: #7c93ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body,
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+.bullet,
+.row-handle {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+textarea,
+input {
+  font-size: 16px; /* below 16px triggers iOS auto-zoom on focus */
+}
+
+/* The shell: fixed to the viewport, one flex column, top bar + the ONE scrollable region. */
+.app-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--sat);
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+}
+
+.app-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.app-topbar nav {
+  display: flex;
+  gap: 4px;
+}
+
+.app-topbar a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.app-topbar a.active {
+  color: var(--fg);
+  background: var(--hairline);
+}
+
+.app-sync-indicator {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* This is the ONLY scroll container in the app (research/08 §3.1's central rule). */
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(var(--kb) + var(--sab));
+  scroll-padding-bottom: var(--kb);
+}
+
+.page-scroll-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.kb-open .app-topbar {
+  /* keyboard covers the home indicator: no extra bottom chrome needed while it's up */
+}
+
+.placeholder-view {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.placeholder-view code {
+  background: var(--hairline);
+  padding: 1px 5px;
+  border-radius: 4px;
+}

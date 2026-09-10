@@ -1,0 +1,247 @@
+/**
+ * `WorkerDb`: every bit of the DB worker's logic that talks only to a `SqlDriver` and is
+ * therefore testable with `@nooklet/core`'s Node driver, with NO sqlite-wasm/OPFS/Comlink/worker
+ * dependency at all (see `worker-core.test.ts`). `db.worker.ts` is the thin, browser-only shell
+ * around this class: it builds the real `SqlDriver` (`./sqlite-wasm-driver.ts`) and the real
+ * `SyncTransport` (`../sync/http-transport.ts`), constructs a `WorkerDb`, and `Comlink.expose`s a
+ * `WorkerApi` (`./worker-api.ts`) that mostly just forwards to this class's methods.
+ *
+ * This split is the answer to the "SqlDriver is sync, the worker boundary is async" tension the
+ * task called out: `@nooklet/core`'s `applyOps`/`rebuild` run in here, synchronously, against
+ * whatever `SqlDriver` was handed in (real OPFS db in production, in-memory Node db in tests) —
+ * core's sync contract is honored because it never crosses a `postMessage` boundary. Only this
+ * class's own methods (all synchronous, since queries are synchronous the moment the driver is)
+ * get wrapped as `async` by `db.worker.ts`'s Comlink-exposed object, which is the one place the
+ * sync/async boundary is actually crossed.
+ */
+import {
+  type ApplyOpsResult,
+  type BlockRow,
+  getBlock,
+  getPage,
+  initSchema,
+  listChildren,
+  type Op,
+  type PageRow,
+  type SqlDriver,
+} from "@nooklet/core";
+import { buildBlockTree } from "../data/tree.js";
+import type { JournalDayEntry, JournalStreamOptions, PageTreeResult } from "../data/types.js";
+import { SyncClient } from "../sync/sync-client.js";
+import type { SyncStatus, SyncTransport } from "../sync/types.js";
+import { initClientSchema } from "./schema-client.js";
+import type { ChangedTable, ChangeEvent, LifecycleKind } from "./worker-api.js";
+
+/** Apply `@nooklet/core`'s schema plus this app's client-only tables, but only on a genuinely
+ * empty database — `initSchema`'s plain `CREATE TABLE` (no `IF NOT EXISTS`) would otherwise throw
+ * on every subsequent worker start against the same OPFS file. */
+function ensureSchema(driver: SqlDriver): void {
+  const exists = driver.get<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'page'",
+  );
+  if (exists) return;
+  initSchema(driver);
+  initClientSchema(driver);
+}
+
+/** Every block of a page, depth-first, reusing `@nooklet/core`'s exported `listChildren` so this
+ * file never duplicates its row-mapping logic. One round trip per tree level, not per graph —
+ * fine for the local, synchronous, in-worker SQLite this always runs against. */
+function collectPageBlocks(
+  driver: SqlDriver,
+  pageId: string,
+  parentId: string | null = null,
+): BlockRow[] {
+  const children = listChildren(driver, pageId, parentId);
+  const all: BlockRow[] = [];
+  for (const child of children) {
+    all.push(child);
+    all.push(...collectPageBlocks(driver, pageId, child.id));
+  }
+  return all;
+}
+
+function findPageByJournalDay(driver: SqlDriver, day: number): PageRow | null {
+  const row = driver.get<{ id: string }>(
+    "SELECT id FROM page WHERE journal_day = ? AND deleted_at IS NULL",
+    [day],
+  );
+  return row ? (getPage(driver, row.id) ?? null) : null;
+}
+
+const ALL_TABLES: ChangedTable[] = ["page", "block", "block_prop", "page_prop"];
+
+export interface WorkerDbOptions {
+  driver: SqlDriver;
+  transport: SyncTransport;
+  onChange?: (e: ChangeEvent) => void;
+  onSyncStatus?: (s: SyncStatus) => void;
+}
+
+export class WorkerDb {
+  readonly driver: SqlDriver;
+  readonly sync: SyncClient;
+  private onChangeCb: ((e: ChangeEvent) => void) | undefined;
+
+  constructor(opts: WorkerDbOptions) {
+    this.driver = opts.driver;
+    ensureSchema(this.driver);
+    this.onChangeCb = opts.onChange;
+    this.sync = new SyncClient({
+      driver: this.driver,
+      transport: opts.transport,
+      onStatus: opts.onSyncStatus,
+      onAppliedOps: (ops) => this.notifyFromOps(ops),
+      onBootstrap: () => this.notify(ALL_TABLES, []),
+    });
+    this.sync.init();
+  }
+
+  /** Bootstrap-if-needed, then start the live poke and an initial pull. Call once at startup;
+   * safe to call even offline (bootstrap/pull failures just leave the client in "offline"
+   * status — see `SyncClient`). */
+  async start(): Promise<void> {
+    if (!this.sync.isBootstrapped()) {
+      try {
+        await this.sync.bootstrap();
+      } catch {
+        // No network yet / first run offline: proceed with an empty local replica. The editor
+        // can still create pages/blocks locally; they queue in pending_op like anything else and
+        // push once online. A real "am I usable yet" gate is a views-agent UI concern.
+      }
+    }
+    this.sync.connectLive();
+    void this.sync.pull();
+  }
+
+  onChange(cb: (e: ChangeEvent) => void): void {
+    this.onChangeCb = cb;
+  }
+
+  getDeviceId(): string {
+    return this.sync.getDeviceId();
+  }
+
+  getSyncStatus(): SyncStatus {
+    return this.sync.getStatus();
+  }
+
+  notifyLifecycle(kind: LifecycleKind): void {
+    switch (kind) {
+      case "online":
+      case "resume":
+      case "visible":
+        this.sync.schedulePush(0);
+        void this.sync.pull();
+        return;
+      case "offline":
+      case "pause":
+      case "hidden":
+        // Nothing to do proactively; the next local edit still queues durably, and the next
+        // online/resume/visible event (or the debounce timer already in flight) flushes it.
+        return;
+      default: {
+        const exhaustive: never = kind;
+        throw new Error(`unknown lifecycle kind: ${exhaustive as string}`);
+      }
+    }
+  }
+
+  async forceSync(): Promise<void> {
+    await this.sync.flush();
+    await this.sync.pull();
+  }
+
+  applyLocalOps(ops: readonly Op[]): ApplyOpsResult {
+    return this.sync.applyLocal(ops);
+  }
+
+  getPageTree(pageId: string): PageTreeResult | undefined {
+    const page = getPage(this.driver, pageId);
+    if (!page) return undefined;
+    return { page, blocks: buildBlockTree(collectPageBlocks(this.driver, pageId)) };
+  }
+
+  getJournalStream(opts: JournalStreamOptions): JournalDayEntry[] {
+    const entries: JournalDayEntry[] = [];
+
+    const todayPage = findPageByJournalDay(this.driver, opts.today);
+    entries.push({
+      day: opts.today,
+      page: todayPage,
+      blocks: todayPage ? buildBlockTree(collectPageBlocks(this.driver, todayPage.id)) : [],
+    });
+
+    const earlier = this.driver.all<{ id: string; journal_day: number }>(
+      `SELECT id, journal_day FROM page
+       WHERE journal_day IS NOT NULL AND journal_day < ? AND deleted_at IS NULL
+       ORDER BY journal_day DESC LIMIT ?`,
+      [opts.today, Math.max(0, opts.maxDays)],
+    );
+    for (const row of earlier) {
+      const page = getPage(this.driver, row.id);
+      if (!page) continue;
+      entries.push({
+        day: row.journal_day,
+        page,
+        blocks: buildBlockTree(collectPageBlocks(this.driver, page.id)),
+      });
+    }
+    return entries;
+  }
+
+  query<T = Record<string, unknown>>(sql: string, params: readonly unknown[] = []): T[] {
+    return this.driver.all<T>(sql, params);
+  }
+
+  private notify(tables: ChangedTable[], pageIds: readonly string[]): void {
+    this.onChangeCb?.({ tables, pageIds: [...new Set(pageIds)] });
+  }
+
+  /** Compute which tables/pages a batch of just-applied ops could have changed. Used for local
+   * writes, pulled ops, and server corrections alike — see `SyncClient`'s `onAppliedOps`. */
+  private notifyFromOps(ops: readonly Op[]): void {
+    const tables = new Set<ChangedTable>();
+    const pageIds = new Set<string>();
+    for (const op of ops) {
+      switch (op.payload.kind) {
+        case "page.create":
+        case "page.rename":
+        case "page.delete":
+          tables.add("page");
+          pageIds.add(op.entity);
+          break;
+        case "page.prop":
+          tables.add("page_prop");
+          pageIds.add(op.entity);
+          break;
+        case "block.create":
+          tables.add("block");
+          pageIds.add(op.payload.place.pageId);
+          break;
+        case "block.place":
+          tables.add("block");
+          pageIds.add(op.payload.place.pageId);
+          break;
+        case "block.text":
+        case "block.delete": {
+          tables.add("block");
+          const row = getBlock(this.driver, op.entity);
+          if (row) pageIds.add(row.pageId);
+          break;
+        }
+        case "block.prop": {
+          tables.add("block_prop");
+          const row = getBlock(this.driver, op.entity);
+          if (row) pageIds.add(row.pageId);
+          break;
+        }
+        default: {
+          const exhaustive: never = op.payload;
+          void exhaustive;
+        }
+      }
+    }
+    this.notify([...tables], [...pageIds]);
+  }
+}
