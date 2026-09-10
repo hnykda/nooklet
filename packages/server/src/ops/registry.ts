@@ -25,6 +25,7 @@ import type { AppliedOpResult } from "@vrite/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import type { DataApi } from "../data-api.js";
 import { createDataApi } from "../data-api.js";
+import { cloneServerContext } from "./clone-db.js";
 
 // -------------------------------------------------------------------------------------------
 // 1.1 Shared primitives
@@ -203,6 +204,15 @@ export interface OpContext {
    * HLC and `SERVER_DEVICE_ID` (../apply-ops.ts) — the same authorship every `ctx.data` write uses.
    */
   mintOp(entity: string, payload: OpPayload): Op;
+  /**
+   * ALSO not one of the spec's named fields. Returns a fresh `OpContext` wired to an independent,
+   * in-memory copy of the whole graph (`./clone-db.ts`) with the same auth/config/transport as
+   * this one. `dry_run` (`./dry-run.ts`) and `batch` (`./batch.ts`) use this to run real op
+   * handlers for real (full validation, real id/order-key allocation, real conflict checks) with
+   * zero risk to the actual database — see `clone-db.ts`'s header comment for why this exists
+   * instead of a nested SQL transaction/SAVEPOINT.
+   */
+  forkForTrial(): OpContext;
   origin: Origin;
   actor: Actor;
   scopes: Scope[];
@@ -243,6 +253,9 @@ export function buildOpContext(
     },
     mintOp(entity, payload) {
       return makeOp(serverCtx.hlc.next(), SERVER_DEVICE_ID, entity, payload);
+    },
+    forkForTrial() {
+      return buildOpContext(cloneServerContext(serverCtx), config, auth, transportMeta);
     },
     origin: auth.origin,
     actor: auth.actor,

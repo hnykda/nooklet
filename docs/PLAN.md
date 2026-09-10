@@ -376,6 +376,7 @@ Effort assumes one developer directing coding agents; the editor and mobile work
 |---|---|---|---|
 | M0 | Foundations (in progress) | `core`: model, parser/serializer, refs, journals, ids, HLC, ops (done); short ids; inline tokenizer; `applyOps` on a driver interface with property tests | 1–2 weeks |
 | M1 | Server | SQLite store, sync endpoints, importer for both Logseq formats, mirror export, FTS5, op registry, HTTP API + OpenAPI, MCP server + stdio bridge, tokens, CLI, audit/changes | 3 weeks |
+| M1.5 | AI-parity follow-up | `batch_undo`, `asset_upload` (ADR 013) — does not block M2's start; slotted in whenever convenient after M1's core lands | 2–3 days |
 | M2 | Web client | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell, live-UI-control channel (ADR 013) | 6 weeks |
 | M3 | Embeddings | Provider interface, Ollama + OpenAI-compatible, worker queue, hybrid search, related, MCP search tools | 1.5 weeks |
 | M4 | Plugins | Manifest, loader for both halves, extension points, built-ins as plugins, `plugin-api` package and docs | 2 weeks |

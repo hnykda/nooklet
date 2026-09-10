@@ -30,7 +30,7 @@ export const blockInsert = defineOp({
   scopes: ["write"],
   render: (out) => out.outline || `(no blocks created near ^${out.page})`,
   handler: async (input, ctx) => {
-    return runWithDryRun(ctx, input.dry_run, async () => {
+    return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       const refRow = getBlockRow(ctx.db, input.ref);
       if (!refRow) throw new OpError("not_found", `no block with id ${input.ref}`);
       checkIfVersion(refRow.updated_at, input.if_version);

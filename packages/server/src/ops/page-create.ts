@@ -30,7 +30,7 @@ export const pageCreate = defineOp({
   scopes: ["write"],
   render: (out) => (out.existed ? `${out.page} already existed` : `created ${out.page}`),
   handler: async (input, ctx) => {
-    return runWithDryRun(ctx, input.dry_run, async () => {
+    return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       if (journalDayFromWire(input.name) !== null) {
         throw new OpError("invalid", "page.create cannot target a journal day", "use page_append to create/append a journal day");
       }

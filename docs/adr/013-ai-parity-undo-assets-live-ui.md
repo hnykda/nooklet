@@ -61,3 +61,10 @@ being recorded now even though it isn't scheduled until M2.
 - The live-UI-control design must work whether the client is a plain browser tab, a Capacitor
   app, or a desktop shell (Tauri, or Electron if ever used) — the point of hanging it off the
   existing sync connection is that packaging is irrelevant to it.
+
+## Amendment (2026-09-10, same day): re-sequenced as M1.5, not gating M1/M2
+
+Still MVP-scope, but no longer required for M1 to be considered done or for M2 (the web client,
+now the priority) to start. `batch_undo`/`asset_upload` become milestone M1.5 in `docs/PLAN.md`'s
+table: implemented once M1's core (already in flight) lands, whenever convenient, without
+blocking the move to the web client the user wants to reach quickly.

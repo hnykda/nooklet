@@ -25,7 +25,7 @@ export const pageDelete = defineOp({
   expose: { mcp: { requiresUserInteraction: true } },
   render: (out) => `deleted ${out.page} (${out.deleted_blocks} blocks, ${out.backlinks_affected} backlinks affected)`,
   handler: async (input, ctx) => {
-    return runWithDryRun(ctx, input.dry_run, async () => {
+    return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       const page = await requirePage(ctx, input.page);
       if (page.journalDay !== null) {
         throw new OpError(

@@ -29,7 +29,7 @@ export const pageUpdate = defineOp({
   scopes: ["write"],
   render: (out) => `${out.page.name} updated (${out.refs_rewritten} ref(s) rewritten)`,
   handler: async (input, ctx) => {
-    return runWithDryRun(ctx, input.dry_run, async () => {
+    return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       const page = await requirePage(ctx, input.page);
       if (page.journalDay !== null) {
         throw new OpError("invalid", "cannot rename a journal day", "journal pages are addressed by date, not renamed");

@@ -23,7 +23,7 @@ export const blockDelete = defineOp({
   scopes: ["write"],
   render: (out) => `deleted ${out.deleted_count} block(s)`,
   handler: async (input, ctx) => {
-    return runWithDryRun(ctx, input.dry_run, async () => {
+    return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       const row = getBlockRow(ctx.db, input.id);
       if (!row) throw new OpError("not_found", `no block with id ${input.id}`);
       checkIfVersion(row.updated_at, input.if_version);

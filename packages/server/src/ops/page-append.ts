@@ -34,7 +34,7 @@ export const pageAppend = defineOp({
   expose: { mcp: { alwaysLoad: true } },
   render: (out) => out.outline || `(no blocks created on ${out.page})`,
   handler: async (input, ctx) => {
-    return runWithDryRun(ctx, input.dry_run, async () => {
+    return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       const page = await resolvePageRef(ctx, input.page, { create: input.create_page });
       if (!page) {
         throw new OpError(
