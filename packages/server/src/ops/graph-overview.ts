@@ -78,43 +78,39 @@ export const graphOverview = defineOp({
       };
     });
 
-    const changeRows = driver.all<{
-      entity_type: string;
-      entity_id: string;
-      origin: string;
-      actor: string;
-      created_at: number;
-    }>(
-      "SELECT entity_type, entity_id, origin, actor, created_at FROM changes ORDER BY seq DESC LIMIT 500",
+    // Recent non-journal pages come from `page.updated_at` directly, NOT from replaying the
+    // `changes` log. Deriving them from the log meant a bounded window (the last N change rows)
+    // could contain only one kind of entity — after importing a graph that is mostly journals,
+    // every recent row was a journal block, all of which this list skips, so a 127-page graph
+    // reported zero recent pages. `graph_overview` is the always-loaded tool an agent orients
+    // itself with, so an empty list there is actively misleading. Attribution is looked back up
+    // per page (at most `limit` cheap indexed lookups) and is simply absent for a page whose
+    // last touch predates the retained audit rows.
+    const pageRows = driver.all<{ id: string; name: string; updated_at: number }>(
+      `SELECT id, name, updated_at FROM page
+       WHERE journal_day IS NULL AND deleted_at IS NULL
+       ORDER BY updated_at DESC LIMIT 20`,
     );
-    const seenPages = new Set<string>();
     const recentPages: Array<{
       name: string;
       updated_at: string;
-      updated_by: { origin: OriginKind; actor: string };
-    }> = [];
-    for (const r of changeRows) {
-      if (recentPages.length >= 20) break;
-      let pageId: string | null = null;
-      if (r.entity_type === "page") pageId = r.entity_id;
-      else if (r.entity_type === "block") {
-        pageId =
-          driver.get<{ page_id: string }>("SELECT page_id FROM block WHERE id = ?", [r.entity_id])
-            ?.page_id ?? null;
-      }
-      if (!pageId || seenPages.has(pageId)) continue;
-      const p = driver.get<{ name: string; journal_day: number | null }>(
-        "SELECT name, journal_day FROM page WHERE id = ? AND deleted_at IS NULL",
-        [pageId],
+      updated_by?: { origin: OriginKind; actor: string };
+    }> = pageRows.map((p) => {
+      const attribution = driver.get<{ origin: string; actor: string }>(
+        `SELECT origin, actor FROM changes
+         WHERE (entity_type = 'page' AND entity_id = ?)
+            OR (entity_type = 'block' AND entity_id IN (SELECT id FROM block WHERE page_id = ?))
+         ORDER BY seq DESC LIMIT 1`,
+        [p.id, p.id],
       );
-      if (!p || p.journal_day !== null) continue; // journals are covered by recent_journals
-      seenPages.add(pageId);
-      recentPages.push({
+      return {
         name: p.name,
-        updated_at: new Date(r.created_at).toISOString(),
-        updated_by: { origin: r.origin as OriginKind, actor: r.actor },
-      });
-    }
+        updated_at: new Date(p.updated_at).toISOString(),
+        ...(attribution
+          ? { updated_by: { origin: attribution.origin as OriginKind, actor: attribution.actor } }
+          : {}),
+      };
+    });
 
     const nameRows = driver.all<{ name: string }>(
       "SELECT name FROM page WHERE deleted_at IS NULL AND journal_day IS NULL",
