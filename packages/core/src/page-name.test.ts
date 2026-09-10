@@ -23,6 +23,9 @@ describe("page names", () => {
     expect(pageNameToFileName("a/b/c")).toBe("a___b___c");
     expect(pageNameToFileName('what? "q": 100%')).toBe("what%3F %22q%22%3A 100%25");
     expect(pageNameToFileName(".hidden")).toBe("%2Ehidden");
+    expect(pageNameToFileName("my_/x")).toBe("my%5F___x");
+    expect(pageNameToFileName("my_var/x")).toBe("my_var___x");
+    expect(pageNameToFileName("a___b")).toBe("a%5F%5F%5Fb");
     for (const name of [
       "a/b/c",
       'what? "q": 100%',
@@ -30,6 +33,10 @@ describe("page names", () => {
       "tea ☕️",
       ".hidden",
       "C# notes",
+      "my_var/x",
+      "my_/x",
+      "a___b",
+      "x/_y",
     ]) {
       expect(fileNameToPageName(pageNameToFileName(name))).toBe(name);
     }

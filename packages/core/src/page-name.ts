@@ -40,11 +40,13 @@ const UNSAFE_FILE_CHARS = /[<>:"\\|?*#%]/g;
 
 /** Page name -> file base name (without extension), Logseq :triple-lowbar compatible. */
 export function pageNameToFileName(name: string): string {
-  let s = name.replace(/\//g, "___");
-  s = s.replace(
+  let s = name.replace(
     UNSAFE_FILE_CHARS,
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
   );
+  // disambiguate underscores next to "/" and literal "___" before "/" becomes "___"
+  s = s.replace(/___/g, "%5F%5F%5F").replace(/_\//g, "%5F/").replace(/\/_/g, "/%5F");
+  s = s.replace(/\//g, "___");
   if (s.startsWith(".")) s = `%2E${s.slice(1)}`;
   return s;
 }
