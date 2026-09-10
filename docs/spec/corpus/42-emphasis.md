@@ -1,0 +1,1 @@
+- **bold** and *em* and _em2_ but my_var_name stays plain, ~~gone~~ and ==hl== and `code`

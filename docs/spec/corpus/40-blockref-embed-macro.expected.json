@@ -1,0 +1,67 @@
+{
+  "description": "Block ref, page embed, block embed, and a generic macro (INL blockref/embed/macro).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "See ((1k7f3q9xz2hav8)) and {{embed [[Some Page]]}} and {{embed ((1k7f3q9xz2hav9))}} and {{video https://example.com/clip}}",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 4
+    },
+    {
+      "kind": "blockRef",
+      "start": 4,
+      "end": 22,
+      "id": "1k7f3q9xz2hav8"
+    },
+    {
+      "kind": "text",
+      "start": 22,
+      "end": 27
+    },
+    {
+      "kind": "embed",
+      "start": 27,
+      "end": 50,
+      "target": {
+        "kind": "page",
+        "name": "Some Page"
+      }
+    },
+    {
+      "kind": "text",
+      "start": 50,
+      "end": 55
+    },
+    {
+      "kind": "embed",
+      "start": 55,
+      "end": 83,
+      "target": {
+        "kind": "block",
+        "id": "1k7f3q9xz2hav9"
+      }
+    },
+    {
+      "kind": "text",
+      "start": 83,
+      "end": 88
+    },
+    {
+      "kind": "macro",
+      "start": 88,
+      "end": 122,
+      "name": "video",
+      "args": "https://example.com/clip"
+    }
+  ]
+}

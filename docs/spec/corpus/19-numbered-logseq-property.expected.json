@@ -1,0 +1,25 @@
+{
+  "description": "Import tolerance: Logseq's logseq.order-list-type:: number maps to list:: number (OUT-19).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Numbered",
+      "marker": null,
+      "priority": null,
+      "properties": {
+        "list": "number"
+      },
+      "collapsed": false,
+      "children": [
+        {
+          "content": "child",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": []
+        }
+      ]
+    }
+  ]
+}

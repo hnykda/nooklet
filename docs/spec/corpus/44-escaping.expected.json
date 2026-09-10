@@ -1,0 +1,54 @@
+{
+  "description": "Escaped brackets, hash, and backslash; an unmatched [[foo stays plain text (escaping).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Escaped \\[[ and \\# and \\\\ and unmatched [[foo",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 8
+    },
+    {
+      "kind": "escape",
+      "start": 8,
+      "end": 10,
+      "char": "["
+    },
+    {
+      "kind": "text",
+      "start": 10,
+      "end": 16
+    },
+    {
+      "kind": "escape",
+      "start": 16,
+      "end": 18,
+      "char": "#"
+    },
+    {
+      "kind": "text",
+      "start": 18,
+      "end": 23
+    },
+    {
+      "kind": "escape",
+      "start": 23,
+      "end": 25,
+      "char": "\\"
+    },
+    {
+      "kind": "text",
+      "start": 25,
+      "end": 45
+    }
+  ]
+}

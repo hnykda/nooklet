@@ -1,0 +1,34 @@
+{
+  "description": "Canonical numbered block: a `- ` bullet plus list:: number (OUT-17).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "First",
+      "marker": null,
+      "priority": null,
+      "properties": {
+        "list": "number"
+      },
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "Second",
+      "marker": null,
+      "priority": null,
+      "properties": {
+        "list": "number"
+      },
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "Not numbered",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

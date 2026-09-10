@@ -1,0 +1,48 @@
+{
+  "description": "Tab-indented nested bullets (OUT-4/5): three levels deep, tab is the indent unit.",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "a",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": [
+        {
+          "content": "b",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": [
+            {
+              "content": "c",
+              "marker": null,
+              "priority": null,
+              "properties": {},
+              "collapsed": false,
+              "children": []
+            }
+          ]
+        },
+        {
+          "content": "d",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "content": "e",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

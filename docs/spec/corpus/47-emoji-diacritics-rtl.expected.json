@@ -1,0 +1,45 @@
+{
+  "description": "Emoji tag offsets (surrogate pairs), Czech diacritics in text, and an RTL (Hebrew) line with a tag.",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Emoji tag #🎉party and text 😀 after, Czech: Příliš žluťoučký kůň, RTL: שלום #tag בעברית",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 10
+    },
+    {
+      "kind": "tag",
+      "start": 10,
+      "end": 18,
+      "name": "🎉party",
+      "multiWord": false
+    },
+    {
+      "kind": "text",
+      "start": 18,
+      "end": 77
+    },
+    {
+      "kind": "tag",
+      "start": 77,
+      "end": 81,
+      "name": "tag",
+      "multiWord": false
+    },
+    {
+      "kind": "text",
+      "start": 81,
+      "end": 88
+    }
+  ]
+}

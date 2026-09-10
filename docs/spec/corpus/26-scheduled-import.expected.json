@@ -1,0 +1,17 @@
+{
+  "description": "Import: org SCHEDULED line with a repeater maps to scheduled:: and repeat:: (OUT-23).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Send proposal",
+      "marker": "TODO",
+      "priority": null,
+      "properties": {
+        "scheduled": "2026-09-12",
+        "repeat": "1w"
+      },
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "description": "Import: heading:: N with no leading # synthesizes the # prefix into content and the property is dropped (OUT-25).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "## Status update",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

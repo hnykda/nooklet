@@ -1,0 +1,41 @@
+{
+  "description": "Every newline inside a paragraph block is a hard break token (INL-1).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "first line\nsecond line\nthird line",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 10
+    },
+    {
+      "kind": "br",
+      "start": 10,
+      "end": 11
+    },
+    {
+      "kind": "text",
+      "start": 11,
+      "end": 22
+    },
+    {
+      "kind": "br",
+      "start": 22,
+      "end": 23
+    },
+    {
+      "kind": "text",
+      "start": 23,
+      "end": 33
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "description": "Block property lines after line 1: collapsed and a custom property (OUT-18/20).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "text",
+      "marker": null,
+      "priority": null,
+      "properties": {
+        "type": "book"
+      },
+      "collapsed": true,
+      "children": [
+        {
+          "content": "child",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": []
+        }
+      ]
+    }
+  ]
+}

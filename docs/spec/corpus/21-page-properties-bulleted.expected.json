@@ -1,0 +1,17 @@
+{
+  "description": "Bulleted page properties pre-block, import tolerance (OUT-2b).",
+  "properties": {
+    "title": "My Page",
+    "alias": "mp"
+  },
+  "blocks": [
+    {
+      "content": "first",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

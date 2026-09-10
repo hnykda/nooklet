@@ -1,0 +1,15 @@
+{
+  "description": "When the first content line would open a fence, the id sits alone on its own first line (OUT-14).",
+  "properties": {},
+  "blocks": [
+    {
+      "id": "1k7f3q9xz2hav5",
+      "content": "```js\nconst x = 1;\n```",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

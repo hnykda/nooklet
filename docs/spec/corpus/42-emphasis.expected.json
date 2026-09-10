@@ -1,0 +1,107 @@
+{
+  "description": "Bold, italic (* and _ with the intraword guard), strikethrough, highlight, inline code (INL emphasis family).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "**bold** and *em* and _em2_ but my_var_name stays plain, ~~gone~~ and ==hl== and `code`",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "strong",
+      "start": 0,
+      "end": 8,
+      "children": [
+        {
+          "kind": "text",
+          "start": 2,
+          "end": 6
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 8,
+      "end": 13
+    },
+    {
+      "kind": "em",
+      "start": 13,
+      "end": 17,
+      "children": [
+        {
+          "kind": "text",
+          "start": 14,
+          "end": 16
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 17,
+      "end": 22
+    },
+    {
+      "kind": "em",
+      "start": 22,
+      "end": 27,
+      "children": [
+        {
+          "kind": "text",
+          "start": 23,
+          "end": 26
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 27,
+      "end": 57
+    },
+    {
+      "kind": "strike",
+      "start": 57,
+      "end": 65,
+      "children": [
+        {
+          "kind": "text",
+          "start": 59,
+          "end": 63
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 65,
+      "end": 70
+    },
+    {
+      "kind": "highlight",
+      "start": 70,
+      "end": 76,
+      "children": [
+        {
+          "kind": "text",
+          "start": 72,
+          "end": 74
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 76,
+      "end": 81
+    },
+    {
+      "kind": "code",
+      "start": 81,
+      "end": 87,
+      "code": "code"
+    }
+  ]
+}

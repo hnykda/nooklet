@@ -1,0 +1,16 @@
+{
+  "description": "DB-mirror page-level id:: line at the top of the file (import tolerance, OUT-15).",
+  "properties": {
+    "id": "66e0a1c2-1b2e-4f3a-9c5d-0123456789ab"
+  },
+  "blocks": [
+    {
+      "content": "a",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

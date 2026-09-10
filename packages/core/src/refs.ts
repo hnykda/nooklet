@@ -145,7 +145,7 @@ function scanLine(line: string, acc: RefSet): void {
           i = end + 2;
           continue;
         }
-      } else if (next !== undefined && next !== "#" && !TAG_STOP.has(next)) {
+      } else if (next !== undefined && next !== "#" && next !== "+" && !TAG_STOP.has(next)) {
         let j = i + 1;
         while (j < n && !TAG_STOP.has(line[j] as string)) j++;
         const tag = line.slice(i + 1, j).replace(TAG_TRAILING, "");

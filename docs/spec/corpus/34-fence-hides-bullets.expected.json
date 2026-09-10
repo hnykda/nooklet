@@ -1,0 +1,22 @@
+{
+  "description": "A `- ` line inside a fenced code block is fence content, not a new block (existing behavior).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "code:\n```md\n- not a block\n```",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "after",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

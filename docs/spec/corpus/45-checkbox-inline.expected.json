@@ -1,0 +1,61 @@
+{
+  "description": "Inline GFM checkboxes vs. link precedence: [x](url) is a link, not a checkbox (INL checkbox).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Buy milk [ ] not done and [x] done, but [x](url) is a link",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 9
+    },
+    {
+      "kind": "checkbox",
+      "start": 9,
+      "end": 12,
+      "checked": false
+    },
+    {
+      "kind": "text",
+      "start": 12,
+      "end": 26
+    },
+    {
+      "kind": "checkbox",
+      "start": 26,
+      "end": 29,
+      "checked": true
+    },
+    {
+      "kind": "text",
+      "start": 29,
+      "end": 40
+    },
+    {
+      "kind": "link",
+      "start": 40,
+      "end": 48,
+      "href": "url",
+      "label": [
+        {
+          "kind": "text",
+          "start": 41,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 48,
+      "end": 58
+    }
+  ]
+}

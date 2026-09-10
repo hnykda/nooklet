@@ -1,0 +1,32 @@
+{
+  "description": "CRLF line endings normalize to LF before parsing (OUT-8).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "a",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": [
+        {
+          "content": "b",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": [
+            {
+              "content": "c",
+              "marker": null,
+              "priority": null,
+              "properties": {},
+              "collapsed": false,
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

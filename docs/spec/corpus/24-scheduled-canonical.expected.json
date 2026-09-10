@@ -1,0 +1,17 @@
+{
+  "description": "Canonical scheduled:: and repeat:: typed properties (ADR 011, OUT-22).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Water the plants",
+      "marker": "TODO",
+      "priority": null,
+      "properties": {
+        "scheduled": "2026-09-12",
+        "repeat": "1w"
+      },
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

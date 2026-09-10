@@ -1,0 +1,1 @@
+- Emoji tag #🎉party and text 😀 after, Czech: Příliš žluťoučký kůň, RTL: שלום #tag בעברית

@@ -1,0 +1,31 @@
+{
+  "description": "Over-indented child and irregular dedent attach to the nearest open ancestor (OUT-5).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "a",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": [
+        {
+          "content": "b",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": []
+        },
+        {
+          "content": "c",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": []
+        }
+      ]
+    }
+  ]
+}

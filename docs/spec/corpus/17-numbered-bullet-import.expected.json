@@ -1,0 +1,43 @@
+{
+  "description": "Import tolerance: a literal `1. ` bullet is a block with list:: number; the digit itself is discarded (OUT-4/17).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "a",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": [
+        {
+          "content": "first",
+          "marker": null,
+          "priority": null,
+          "properties": {
+            "list": "number"
+          },
+          "collapsed": false,
+          "children": []
+        },
+        {
+          "content": "second",
+          "marker": null,
+          "priority": null,
+          "properties": {
+            "list": "number"
+          },
+          "collapsed": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "content": "b",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

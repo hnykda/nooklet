@@ -1,0 +1,14 @@
+{
+  "description": "Import: content already has a # prefix; a conflicting heading:: N is dropped and the literal # count wins (OUT-25).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "### Status update",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

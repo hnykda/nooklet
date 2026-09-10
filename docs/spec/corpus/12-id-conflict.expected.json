@@ -1,0 +1,15 @@
+{
+  "description": "When both a `^id` suffix and an `id::` property line are present, the suffix wins and the property line is dropped entirely (OUT-15).",
+  "properties": {},
+  "blocks": [
+    {
+      "id": "1k7f3q9xz2hav7",
+      "content": "Both forms",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

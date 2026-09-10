@@ -1,0 +1,48 @@
+{
+  "description": "Import tolerance: 4-space indentation nests the same as tabs (OUT-6).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "a",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": [
+        {
+          "content": "b",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": [
+            {
+              "content": "c",
+              "marker": null,
+              "priority": null,
+              "properties": {},
+              "collapsed": false,
+              "children": []
+            }
+          ]
+        },
+        {
+          "content": "d",
+          "marker": null,
+          "priority": null,
+          "properties": {},
+          "collapsed": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "content": "e",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

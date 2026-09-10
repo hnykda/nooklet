@@ -1,0 +1,100 @@
+{
+  "description": "linkToPage, linkToBlock, markdown link, autolink, and images incl. ../assets/ (INL link/image).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "[Client X]([[Client X]]) and [Ref](((1k7f3q9xz2havb))) and [site](https://example.com/x) and bare https://example.com/a?b=1, see ![diagram](assets/1k7f3q9xz2havc.png) and ![old](../assets/legacy.png)",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "linkToPage",
+      "start": 0,
+      "end": 24,
+      "target": "Client X",
+      "label": [
+        {
+          "kind": "text",
+          "start": 1,
+          "end": 9
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 24,
+      "end": 29
+    },
+    {
+      "kind": "linkToBlock",
+      "start": 29,
+      "end": 54,
+      "id": "1k7f3q9xz2havb",
+      "label": [
+        {
+          "kind": "text",
+          "start": 30,
+          "end": 33
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 54,
+      "end": 59
+    },
+    {
+      "kind": "link",
+      "start": 59,
+      "end": 88,
+      "href": "https://example.com/x",
+      "label": [
+        {
+          "kind": "text",
+          "start": 60,
+          "end": 64
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "start": 88,
+      "end": 98
+    },
+    {
+      "kind": "autolink",
+      "start": 98,
+      "end": 123,
+      "href": "https://example.com/a?b=1"
+    },
+    {
+      "kind": "text",
+      "start": 123,
+      "end": 129
+    },
+    {
+      "kind": "image",
+      "start": 129,
+      "end": 166,
+      "alt": "diagram",
+      "src": "assets/1k7f3q9xz2havc.png"
+    },
+    {
+      "kind": "text",
+      "start": 166,
+      "end": 171
+    },
+    {
+      "kind": "image",
+      "start": 171,
+      "end": 199,
+      "alt": "old",
+      "src": "../assets/legacy.png"
+    }
+  ]
+}

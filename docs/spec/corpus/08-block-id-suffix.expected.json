@@ -1,0 +1,15 @@
+{
+  "description": "Canonical ` ^id` suffix on the first line is parsed as the block id and removed from content (OUT-11/12).",
+  "properties": {},
+  "blocks": [
+    {
+      "id": "1k7f3q9xz2hav4",
+      "content": "Buy milk",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

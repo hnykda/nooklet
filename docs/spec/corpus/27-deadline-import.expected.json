@@ -1,0 +1,17 @@
+{
+  "description": "Import: org DEADLINE line with a time and repeater maps to deadline:: and repeat:: (OUT-23).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Ship release",
+      "marker": "LATER",
+      "priority": null,
+      "properties": {
+        "deadline": "2026-09-14 14:00",
+        "repeat": "1d"
+      },
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

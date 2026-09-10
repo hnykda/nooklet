@@ -1,0 +1,14 @@
+{
+  "description": "A `key:: value`-shaped line inside a fence is fence content, not a property.",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "```yaml\nkey:: value\n```",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

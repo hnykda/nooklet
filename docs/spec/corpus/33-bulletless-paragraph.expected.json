@@ -1,0 +1,22 @@
+{
+  "description": "A non-bulleted paragraph becomes its own block (OUT-9).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Just a paragraph\nwith two lines",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "a bullet",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

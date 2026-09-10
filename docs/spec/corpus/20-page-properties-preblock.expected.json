@@ -1,0 +1,17 @@
+{
+  "description": "Bullet-less page properties pre-block (OUT-2a).",
+  "properties": {
+    "title": "My Page",
+    "tags": "a, b"
+  },
+  "blocks": [
+    {
+      "content": "first",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

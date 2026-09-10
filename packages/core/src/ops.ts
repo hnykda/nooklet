@@ -61,7 +61,25 @@ export interface LoggedOp extends Op {
   status: "applied" | "noop" | "rejected";
 }
 
-export const RESERVED_BLOCK_PROPS = new Set(["marker", "priority", "collapsed", "id"]);
+/**
+ * Property keys that never live in the generic `properties` bag because they get a
+ * dedicated, independently-mergeable field (ADR 004) or a dedicated typed SQL column
+ * (`docs/spec/sql-schema.md`) instead: `marker`/`priority`/`collapsed`/`id` come from
+ * `model.ts`'s `Block` fields; `scheduled`/`deadline`/`repeat`/`done` are ADR 011's typed
+ * task-scheduling properties. A plain rendering hint like `list:: number` (numbered blocks,
+ * `docs/spec/markdown-grammar.md`) is deliberately NOT reserved: it needs no indexed
+ * cross-graph query, so it stays an ordinary property.
+ */
+export const RESERVED_BLOCK_PROPS = new Set([
+  "marker",
+  "priority",
+  "collapsed",
+  "id",
+  "scheduled",
+  "deadline",
+  "repeat",
+  "done",
+]);
 
 export function isOp(x: unknown): x is Op {
   if (typeof x !== "object" || x === null) return false;

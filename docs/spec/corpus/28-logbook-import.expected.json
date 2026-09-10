@@ -1,0 +1,14 @@
+{
+  "description": "Import: a :LOGBOOK: ... :END: drawer is dropped entirely, keeping only the surrounding content (OUT-23).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Book room",
+      "marker": "DONE",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

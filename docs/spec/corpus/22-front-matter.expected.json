@@ -1,0 +1,17 @@
+{
+  "description": "YAML front matter is parsed as page properties (OUT-3).",
+  "properties": {
+    "title": "Front",
+    "tags": "x"
+  },
+  "blocks": [
+    {
+      "content": "a",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

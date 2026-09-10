@@ -1,0 +1,17 @@
+{
+  "description": "Canonical deadline:: with a time, and done:: after completion (ADR 011, OUT-22).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "File taxes",
+      "marker": "DONE",
+      "priority": null,
+      "properties": {
+        "deadline": "2026-09-14 14:00",
+        "done": "2026-09-10T14:32:00Z"
+      },
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

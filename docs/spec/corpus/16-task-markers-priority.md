@@ -1,0 +1,10 @@
+- TODO buy milk
+- DOING [#A] work
+- DONE
+- LATER x
+- NOW y
+- WAITING z
+- CANCELLED q
+- WAIT r
+- IN-PROGRESS s
+- TODOS is not a marker

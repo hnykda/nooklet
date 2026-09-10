@@ -1,0 +1,35 @@
+{
+  "description": "Wikilink with an Obsidian-style alias: [[Target|Alias Text]] (INL wikilink).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "See [[Target Page|Alias Text]] for details",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 4
+    },
+    {
+      "kind": "wikilink",
+      "start": 4,
+      "end": 30,
+      "target": "Target Page",
+      "targetStart": 6,
+      "targetEnd": 28,
+      "alias": "Alias Text"
+    },
+    {
+      "kind": "text",
+      "start": 30,
+      "end": 42
+    }
+  ]
+}

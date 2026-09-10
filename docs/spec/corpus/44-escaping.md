@@ -1,0 +1,1 @@
+- Escaped \[[ and \# and \\ and unmatched [[foo

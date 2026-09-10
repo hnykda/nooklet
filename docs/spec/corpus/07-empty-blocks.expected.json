@@ -1,0 +1,30 @@
+{
+  "description": "Bare `-` bullets are empty blocks (OUT-1).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "x",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

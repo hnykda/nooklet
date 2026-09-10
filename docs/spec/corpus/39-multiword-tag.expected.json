@@ -1,0 +1,33 @@
+{
+  "description": "Multi-word tag #[[multi word tag]] (tag grammar).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Discussed in #[[multi word tag]] today",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 13
+    },
+    {
+      "kind": "tag",
+      "start": 13,
+      "end": 32,
+      "name": "multi word tag",
+      "multiWord": true
+    },
+    {
+      "kind": "text",
+      "start": 32,
+      "end": 38
+    }
+  ]
+}

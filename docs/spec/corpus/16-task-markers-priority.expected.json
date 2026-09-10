@@ -1,0 +1,86 @@
+{
+  "description": "All task markers, their Logseq aliases, and [#A]/[#B]/[#C] priority (OUT-16).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "buy milk",
+      "marker": "TODO",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "work",
+      "marker": "DOING",
+      "priority": "A",
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "",
+      "marker": "DONE",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "x",
+      "marker": "LATER",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "y",
+      "marker": "NOW",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "z",
+      "marker": "WAITING",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "q",
+      "marker": "CANCELED",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "r",
+      "marker": "WAITING",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "s",
+      "marker": "DOING",
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "TODOS is not a marker",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

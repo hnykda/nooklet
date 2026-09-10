@@ -1,0 +1,15 @@
+{
+  "description": "Import tolerance: a Logseq `id:: <uuid>` property line still sets the block id (OUT-15).",
+  "properties": {},
+  "blocks": [
+    {
+      "id": "66e0a1c2-1b2e-4f3a-9c5d-0123456789ab",
+      "content": "Legacy block",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

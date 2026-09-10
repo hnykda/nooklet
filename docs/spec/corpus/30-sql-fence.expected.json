@@ -1,0 +1,14 @@
+{
+  "description": "A ```sql fenced code block parses as an ordinary verbatim fence in v1 (OUT-27).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "```sql\nselect * from block where marker = 'TODO'\n```",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

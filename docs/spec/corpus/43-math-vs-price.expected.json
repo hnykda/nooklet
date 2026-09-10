@@ -1,0 +1,32 @@
+{
+  "description": "Pandoc dollar-math heuristic: $5 and $10 stay plain text, $E=mc^2$ is math (INL math).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Price is $5 and $10 more, but $E=mc^2$ is a formula",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 30
+    },
+    {
+      "kind": "math",
+      "start": 30,
+      "end": 38,
+      "tex": "E=mc^2"
+    },
+    {
+      "kind": "text",
+      "start": 38,
+      "end": 51
+    }
+  ]
+}

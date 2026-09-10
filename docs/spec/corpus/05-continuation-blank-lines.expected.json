@@ -1,0 +1,22 @@
+{
+  "description": "Continuation lines and a blank line preserved inside one block's content (OUT-7).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "first line\nsecond line\n\nfourth line",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "next block",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

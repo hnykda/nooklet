@@ -1,0 +1,14 @@
+{
+  "description": "A backslash before the caret (`\\^`) prevents id extraction; the text stays literal (OUT-13).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "Footnote marker \\^1k7f3q9xz2hav6",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

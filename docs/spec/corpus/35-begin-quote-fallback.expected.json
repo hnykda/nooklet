@@ -1,0 +1,41 @@
+{
+  "description": "Open issue OUT-24: #+BEGIN_QUOTE/#+END_QUOTE org blocks are not specially parsed; they round-trip as plain text. Also exercises the tag rule's `#+` exclusion (TAG-1a): '#+BEGIN_QUOTE' must not tokenize as a tag named '+BEGIN_QUOTE'.",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "#+BEGIN_QUOTE\nA quoted line.\n#+END_QUOTE",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 13
+    },
+    {
+      "kind": "br",
+      "start": 13,
+      "end": 14
+    },
+    {
+      "kind": "text",
+      "start": 14,
+      "end": 28
+    },
+    {
+      "kind": "br",
+      "start": 28,
+      "end": 29
+    },
+    {
+      "kind": "text",
+      "start": 29,
+      "end": 40
+    }
+  ]
+}

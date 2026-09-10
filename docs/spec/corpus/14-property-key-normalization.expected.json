@@ -1,0 +1,17 @@
+{
+  "description": "Property key normalization: custom_id -> id, underscores -> hyphens (OUT-19).",
+  "properties": {},
+  "blocks": [
+    {
+      "id": "123",
+      "content": "text",
+      "marker": null,
+      "priority": null,
+      "properties": {
+        "my-custom-key": "value"
+      },
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

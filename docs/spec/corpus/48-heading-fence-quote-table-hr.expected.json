@@ -1,0 +1,124 @@
+{
+  "description": "Block content classification (CLS-H/F/Q/T/R, §2.7): heading, fence, quote, table, and hr, one per block. `blockContent[i]` is the classification of `blocks[i].content`.",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "## Project Status",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "```ts\nconst x = 1;\n```",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "> First quoted line\n> Second quoted line",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "| Name | Age |\n| --- | --- |\n| Ada | 32 |",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "---",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "blockContent": [
+    {
+      "kind": "heading",
+      "level": 2,
+      "title": [
+        {
+          "kind": "text",
+          "start": 3,
+          "end": 17
+        }
+      ]
+    },
+    {
+      "kind": "fence",
+      "lang": "ts",
+      "code": "const x = 1;"
+    },
+    {
+      "kind": "quote",
+      "lines": [
+        [
+          {
+            "kind": "text",
+            "start": 2,
+            "end": 19
+          }
+        ],
+        [
+          {
+            "kind": "text",
+            "start": 22,
+            "end": 40
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "table",
+      "align": [null, null],
+      "header": [
+        [
+          {
+            "kind": "text",
+            "start": 0,
+            "end": 4
+          }
+        ],
+        [
+          {
+            "kind": "text",
+            "start": 0,
+            "end": 3
+          }
+        ]
+      ],
+      "rows": [
+        [
+          [
+            {
+              "kind": "text",
+              "start": 0,
+              "end": 3
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "start": 0,
+              "end": 2
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "kind": "hr"
+    }
+  ]
+}

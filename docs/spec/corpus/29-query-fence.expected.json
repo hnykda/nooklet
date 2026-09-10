@@ -1,0 +1,14 @@
+{
+  "description": "A ```query fenced code block parses as an ordinary verbatim fence in v1 (OUT-27).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "```query\nmarker:TODO tag:work scheduled:<=today sort:deadline\n```",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ]
+}

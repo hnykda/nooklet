@@ -1,0 +1,34 @@
+{
+  "description": "Nested wikilink: the outer target is the raw bracketed text; the inner [[inner]] is also a ref (INL wikilink).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "outer [[inner]] text",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "text",
+      "start": 0,
+      "end": 6
+    },
+    {
+      "kind": "wikilink",
+      "start": 6,
+      "end": 15,
+      "target": "inner",
+      "targetStart": 8,
+      "targetEnd": 13
+    },
+    {
+      "kind": "text",
+      "start": 15,
+      "end": 20
+    }
+  ]
+}
