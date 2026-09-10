@@ -1,0 +1,30 @@
+{
+  "name": "@vrite/server",
+  "version": "0.0.1",
+  "description": "vrite server: SQLite store, sync, HTTP API, MCP server, Logseq importer, markdown mirror",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "vrite": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts serve",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vrite/core": "workspace:*",
+    "hono": "^4.13.7",
+    "zod": "^4.6.1",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/hono": "^2.0.0",
+    "chokidar": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13"
+  }
+}
