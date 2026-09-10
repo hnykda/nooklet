@@ -4,7 +4,8 @@
   "description": "vrite core: block/page model, Logseq-compatible outline parser & serializer, reference extraction, journal dates",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node-sqlite": "./src/sync/node-sqlite-driver.ts"
   },
   "scripts": {
     "test": "vitest run",
@@ -14,5 +15,9 @@
   "dependencies": {
     "date-fns": "^4.4.0",
     "fractional-indexing": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "fast-check": "^4.9.0"
   }
 }

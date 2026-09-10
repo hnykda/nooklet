@@ -8,3 +8,13 @@ export * from "./order.js";
 export * from "./outline.js";
 export * from "./page-name.js";
 export * from "./refs.js";
+// Sync core (page/block/block_prop/page_prop/op state machine). Driver-agnostic only — the
+// Node-only `node:sqlite` adapter lives at the separate "@vrite/core/node-sqlite" subpath
+// (packages/core/src/sync/node-sqlite-driver.ts) and is deliberately NOT re-exported here, so a
+// browser bundle importing this main entry point never sees a `node:sqlite` import (ADR 001).
+export * from "./sync/apply-ops.js";
+export * from "./sync/driver.js";
+export * from "./sync/queries.js";
+export * from "./sync/schema.js";
+export * from "./sync/types.js";
+export * from "./tokens.js";
