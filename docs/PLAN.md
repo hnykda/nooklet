@@ -370,18 +370,20 @@ graph.
 
 ## 15. Milestones
 
-Effort assumes one developer directing coding agents; the editor and mobile work dominate.
 
-| # | Milestone | Contents | Estimate |
+
+Status is tracked in the first column. Effort assumed one developer directing coding agents.
+
+| # | Milestone | Status | Contents |
 |---|---|---|---|
-| M0 | Foundations (in progress) | `core`: model, parser/serializer, refs, journals, ids, HLC, ops (done); short ids; inline tokenizer; `applyOps` on a driver interface with property tests | 1–2 weeks |
-| M1 | Server | SQLite store, sync endpoints, importer for both Logseq formats, mirror export, FTS5, op registry, HTTP API + OpenAPI, MCP server + stdio bridge, tokens, CLI, audit/changes | 3 weeks |
-| M1.5 | AI-parity follow-up | `batch_undo`, `asset_upload` (ADR 013) — does not block M2's start; slotted in whenever convenient after M1's core lands | 2–3 days |
-| M2 | Web client | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell, live-UI-control channel (ADR 013) | 6 weeks |
-| M3 | Embeddings | Provider interface, Ollama + OpenAI-compatible, worker queue, hybrid search, related, MCP search tools | 1.5 weeks |
-| M4 | Plugins | Manifest, loader for both halves, extension points, built-ins as plugins, `plugin-api` package and docs | 2 weeks |
-| M5 | Mobile polish | Keyboard toolbar, gestures, quick capture route, Capacitor shell and store builds | 3 weeks |
-| M6 | Hardening | Multi-device simulation tests, rebuild parity, 3-way text merge, op GC, backups/restore, docs | 2 weeks |
+| M0 | Foundations | **done** | `core`: model, parser/serializer, refs, journals, short ids, HLC, ops, inline tokenizer, `applyOps`/`rebuild` on a driver interface with property-based multi-device convergence tests |
+| M1 | Server | **done** | SQLite store, sync endpoints (push/pull/snapshot/WS poke), Logseq file-graph importer (ADR 012), mirror export, FTS5, op registry, HTTP API + OpenAPI, MCP server + stdio bridge, tokens, CLI, audit/changes. Verified end to end against the real 952-page graph |
+| M1.5 | AI parity | **done** | `batch_undo`, `asset_upload` (ADR 013) |
+| M2 | Web client | in progress | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell, live-UI-control channel (ADR 015) |
+| M3 | Embeddings | in progress | Provider interface, Ollama + OpenAI-compatible, worker queue, hybrid search, related |
+| M4 | Plugins | foundation done | `@nooklet/plugin-api` package and docs (done); loader for both halves, extension points, built-ins as plugins |
+| M5 | Mobile polish | pending | Keyboard toolbar, gestures, quick capture route, Capacitor shell |
+| M6 | Hardening | pending | Multi-device simulation tests, rebuild parity, 3-way text merge, op GC, backups/restore, docs |
 
 Milestone exit criteria: M1 imports the user's real graph and answers MCP queries from Claude
 Code; M2 replaces Logseq for daily journaling on desktop and phone; M3 finds notes by meaning in
