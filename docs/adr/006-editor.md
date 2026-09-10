@@ -37,3 +37,7 @@ Date: 2026-09-10. Status: accepted.
 - No WYSIWYG for bold/italic while editing a block; the rendered view shows formatting, the
   editing view shows markdown with syntax highlighting and live-preview decorations for links.
 - The grammar we accept must be written down; unknown syntax stays plain text.
+
+## Confirmation
+
+User confirmed SolidJS on 2026-09-10.

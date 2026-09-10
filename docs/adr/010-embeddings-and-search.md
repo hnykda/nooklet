@@ -34,3 +34,7 @@ Date: 2026-09-10. Status: accepted.
   cast for vec0 columns, never partition vec0 by page (chunk pre-allocation exploded to 8 GB),
   and pass `Float32Array.buffer` to `node:sqlite`.
 - bge-m3 is capped at 2,048 tokens per input on Ollama; units are sized accordingly.
+
+## Confirmation
+
+User confirmed on 2026-09-10: bge-m3 default, qwen3-embedding:8b as the second first-class profile.

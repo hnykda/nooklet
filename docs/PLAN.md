@@ -374,19 +374,16 @@ Czech and English; M4 has three built-in plugins running through the public API 
 | Tokenizer grammar drift vs pasted Logseq/Obsidian text | Written grammar, spec corpus from both real graphs, unknown syntax stays text |
 | TypeScript 7 / Biome 2 / Solid 2.0 churn | Pin majors; bounded migrations |
 
-## 17. Open decisions for the user
+## 17. Decisions confirmed by the user (2026-09-10)
 
-1. **UI framework**: SolidJS 1.9 (chosen: fine-grained reactivity, JSX, first-party TanStack
-   adapters; Solid 2.0 migration later) versus Svelte 5. Either works; say if you prefer Svelte.
-2. **Plugin trust in v1**: plugins run with full server and page access from the plugins
-   directory. Acceptable for a self-hosted single-user tool? The sandbox path is designed in.
-3. **Ids**: short 14-char ids instead of UUIDs for token efficiency and Obsidian-style `^id`;
-   Logseq ids are mapped on import. Confirm.
-4. **Mirror default**: markdown mirror on by default in the server data directory. Confirm and
-   say if it should point at an existing folder (for example a git repo).
-5. **Default embedding model**: bge-m3 (multilingual, 1024 dims, already installed) versus
-   qwen3-embedding:8b (stronger, 4096 dims, slower). Both selectable at runtime.
-6. **Cut features**: templates, SCHEDULED/DEADLINE syntax, LOGBOOK, PDF highlights, queries, and
-   the tweet/video macros are out of core (plugins or later). Say if any must be in v1.
-7. **Multi-graph**: one graph per server in v1; the schema keeps a graph id so multiple graphs
-   and later multi-user can be added without migration.
+1. **UI framework**: SolidJS 1.9. Confirmed.
+2. **Plugin trust in v1**: trusted plugins from the plugins directory. Confirmed.
+3. **Ids**: the user is indifferent between UUIDs and short ids; we keep the short 14-character
+   ids of ADR 004 for token efficiency and Obsidian `^id` compatibility, mapping Logseq UUIDs on
+   import.
+4. **Mirror default**: markdown mirror on by default in the server data directory. Confirmed.
+5. **Embedding models**: bge-m3 is the default; qwen3-embedding:8b is the other first-class
+   profile. Both selectable at runtime.
+6. **Cut features**: templates, SCHEDULED/DEADLINE syntax, LOGBOOK, PDF highlights, query blocks,
+   and tweet/video macros stay out of core. Confirmed.
+7. **Multi-graph**: one graph per server in v1. Confirmed.

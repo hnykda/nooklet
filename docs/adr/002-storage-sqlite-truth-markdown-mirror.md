@@ -31,3 +31,7 @@ Date: 2026-09-10. Status: accepted.
 - Editing a mirrored file and the same block on a phone at the same time is last-writer-wins;
   this is documented, not "fixed".
 - Empty journal pages are never materialized: a journal page exists only once it has a block.
+
+## Confirmation
+
+User confirmed on 2026-09-10 that the mirror is on by default in the server data directory.

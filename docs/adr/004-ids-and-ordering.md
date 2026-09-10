@@ -36,3 +36,8 @@ Date: 2026-09-10 (revised the same day after the API/MCP research). Status: acce
   recognizing Logseq ids during import.
 - Exported files are no longer byte-compatible with Logseq's `id::` convention; they remain
   fully readable, and Obsidian block links work.
+
+## Confirmation
+
+User was indifferent between UUIDs and short ids on 2026-09-10; short ids kept for token
+efficiency and Obsidian compatibility.

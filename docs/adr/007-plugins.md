@@ -37,3 +37,7 @@ Date: 2026-09-10. Status: accepted.
   development and solved by the worker host later.
 - MCP is reached through `ctx.mcp`, never by importing the SDK directly, so SDK upgrades stay
   the host's problem.
+
+## Confirmation
+
+User confirmed trusted plugins for v1 on 2026-09-10.
