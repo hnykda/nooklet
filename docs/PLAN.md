@@ -321,7 +321,7 @@ Namespaces:
   what's selected" and "run this command" (reusing the ADR 009 command registry), over the
   same live connection the sync protocol already keeps open between server and client. This
   is a distinct, forward-looking capability (most competitors' AI integrations are headless);
-  see ADR 013 and `docs/research/09-live-ui-control.md` for the design exploration.
+  see ADR 015 (decision) and `docs/research/09-live-ui-control.md` (survey) for the design.
 - Clients: Claude Code and Cursor connect to the local HTTP endpoint with a bearer token; Claude
   Desktop uses the `vrite mcp --stdio` bridge.
 
