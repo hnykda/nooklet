@@ -7,6 +7,8 @@
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
  *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] | list | revoke <id>
+ *   nooklet embed   status | run | model <name> [--provider ollama|openai-compat] [--host <url>]
+ *                   M3/ADR 010 embeddings: index status, drain the queue now, or switch models.
  *
  * `--data` defaults to $NOOKLET_DATA, then ~/.nooklet/default. The database lives at
  * <data>/graph.sqlite and the mirror at <data>/{pages,journals}/ (00-conventions.md, Storage).
@@ -15,9 +17,23 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { serve } from "@hono/node-server";
+import { WebSocketServer } from "ws";
 import { createServerContext, type ServerContext } from "./apply-ops.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
 import { openDb } from "./db.js";
+import {
+  activateModel,
+  buildProviderForModel,
+  buildProviderFromSettings,
+  EmbeddingIndexer,
+  enqueueBackfill,
+  getActiveModel,
+  getEmbeddingSettings,
+  getVecStatus,
+  pendingCountForModel,
+  registerModel,
+  setEmbeddingSettings,
+} from "./embeddings/index.js";
 import { createApp } from "./http/app.js";
 import { importLogseqGraph } from "./importer/logseq.js";
 import { startStdioBridge } from "./mcp/stdio.js";
@@ -88,6 +104,9 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet token create --label <label> [--scope read|write|admin] [--sync]
   nooklet token list
   nooklet token revoke <token-id>
+  nooklet embed status
+  nooklet embed run
+  nooklet embed model <name> [--provider ollama|openai-compat] [--host <url>]
 `;
 
 async function main(): Promise<void> {
@@ -98,12 +117,32 @@ async function main(): Promise<void> {
     case "serve": {
       const { ctx, config } = open(args);
       const app = createApp({ serverCtx: ctx, registry: buildRegistry(), config });
-      serve({ fetch: app.fetch, port: config.port }, (info) => {
+      // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
+      // adapter's `serve()` call — `upgradeWebSocket` (used by that route) only handles the Hono
+      // side of the handshake; `@hono/node-server` needs a `{ noServer: true }` WebSocketServer
+      // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs.
+      const wss = new WebSocketServer({ noServer: true });
+      // M3/ADR 010: drain embed_dirty on an interval, in-process. Network calls (the only slow
+      // part) are awaited, so this never blocks the event loop's handling of concurrent requests.
+      const indexer = new EmbeddingIndexer({
+        driver: ctx.driver,
+        providerFor: (model) => buildProviderForModel(ctx.driver, model),
+        log: (message) => process.stderr.write(`nooklet: embedding indexer: ${message}\n`),
+      });
+      indexer.start();
+      const shutdown = (): void => {
+        indexer.stop();
+        process.exit(0);
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+      serve({ fetch: app.fetch, port: config.port, websocket: { server: wss } }, (info) => {
         process.stdout.write(
           `nooklet serving ${config.dataDir}\n` +
             `  http  http://127.0.0.1:${info.port}/api/v1\n` +
             `  mcp   http://127.0.0.1:${info.port}/mcp\n` +
-            `  spec  http://127.0.0.1:${info.port}/openapi.json\n`,
+            `  spec  http://127.0.0.1:${info.port}/openapi.json\n` +
+            `  sync  ws://127.0.0.1:${info.port}/sync/live\n`,
         );
       });
       return;
@@ -186,6 +225,129 @@ async function main(): Promise<void> {
         return;
       }
       die(`unknown token subcommand "${sub ?? ""}" (expected create, list, or revoke)`);
+      return;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // M3/ADR 010: embeddings — status, drain the queue on demand, switch models (rule 19).
+    // ---------------------------------------------------------------------------------------
+    case "embed": {
+      const sub = args._[1];
+      const { ctx } = open(args);
+      const driver = ctx.driver;
+
+      if (sub === "status") {
+        const vec = getVecStatus(driver);
+        const settings = getEmbeddingSettings(driver);
+        process.stdout.write(
+          vec.loaded
+            ? `sqlite-vec: loaded (${vec.version ?? "?"})\n`
+            : `sqlite-vec: NOT loaded (${vec.error ?? "unknown reason"}) — search/related degrade to keyword-only\n`,
+        );
+        process.stdout.write(
+          `configured: provider=${settings.provider} model=${settings.model} host=${settings.host}\n`,
+        );
+        const active = getActiveModel(driver);
+        if (active) {
+          const pending = pendingCountForModel(driver, active.id);
+          const done =
+            driver.get<{ n: number }>(
+              "SELECT count(*) AS n FROM embedding WHERE model_id = ? AND status = 'done'",
+              [active.id],
+            )?.n ?? 0;
+          const errors =
+            driver.get<{ n: number }>(
+              "SELECT count(*) AS n FROM embedding WHERE model_id = ? AND status = 'error'",
+              [active.id],
+            )?.n ?? 0;
+          process.stdout.write(
+            `active model: ${active.provider}:${active.model} (id ${active.id}, dims ${active.dims})\n` +
+              `indexed: ${done}  pending: ${pending}  errors: ${errors}\n`,
+          );
+        } else {
+          process.stdout.write("active model: none (run: nooklet embed model <name>)\n");
+        }
+        const dirty = driver.get<{ n: number }>("SELECT count(*) AS n FROM embed_dirty")?.n ?? 0;
+        process.stdout.write(`embed_dirty queue: ${dirty}\n`);
+        return;
+      }
+
+      if (sub === "run") {
+        if (!getActiveModel(driver))
+          die("no active embedding model; run: nooklet embed model <name>");
+        const indexer = new EmbeddingIndexer({
+          driver,
+          providerFor: (model) => buildProviderForModel(driver, model),
+          log: (message) => process.stderr.write(`${message}\n`),
+        });
+        const total = await indexer.drainUntilEmpty({
+          onProgress: (s) => {
+            if (s.processedUnits > 0) {
+              process.stdout.write(
+                `processed ${s.processedUnits}  embedded ${s.embeddedPairs}  deleted ${s.deletedUnits}  errors ${s.errors}\n`,
+              );
+            }
+          },
+        });
+        process.stdout.write(
+          `done. total processed ${total.processedUnits}  embedded ${total.embeddedPairs}  ` +
+            `deleted ${total.deletedUnits}  errors ${total.errors}\n`,
+        );
+        return;
+      }
+
+      if (sub === "model") {
+        const name = args._[2];
+        if (!name) die("embed model needs a model name, e.g. nooklet embed model bge-m3");
+        const providerFlag = args.flags.get("provider");
+        const hostFlag = args.flags.get("host");
+        const current = getEmbeddingSettings(driver);
+        const provider = typeof providerFlag === "string" ? providerFlag : current.provider;
+        if (provider !== "ollama" && provider !== "openai-compat") {
+          die(`unknown provider "${provider}" (expected ollama or openai-compat)`);
+        }
+        const host = typeof hostFlag === "string" ? hostFlag : current.host;
+        setEmbeddingSettings(driver, { provider, model: name, host });
+
+        process.stdout.write(`probing dims for ${provider}:${name} at ${host}...\n`);
+        const dims = await buildProviderFromSettings(driver).dims();
+        const row = registerModel(driver, { provider, model: name, dims });
+        process.stdout.write(
+          `registered ${row.provider}:${row.model} (id ${row.id}, dims ${row.dims})\n`,
+        );
+        const count = enqueueBackfill(driver);
+        process.stdout.write(`enqueued ${count} unit(s) for backfill; draining...\n`);
+
+        const indexer = new EmbeddingIndexer({
+          driver,
+          providerFor: (model) => buildProviderForModel(driver, model),
+          log: (message) => process.stderr.write(`${message}\n`),
+        });
+        await indexer.drainUntilEmpty({
+          onProgress: (s) => {
+            if (s.processedUnits > 0) {
+              process.stdout.write(
+                `  processed ${s.processedUnits}  embedded ${s.embeddedPairs}\n`,
+              );
+            }
+          },
+        });
+
+        const pending = pendingCountForModel(driver, row.id);
+        if (pending > 0) {
+          process.stdout.write(
+            `warning: ${pending} unit(s) still pending — not activated. Run 'nooklet embed run' again, then retry.\n`,
+          );
+          return;
+        }
+        activateModel(driver, row.id);
+        process.stdout.write(
+          `activated ${row.provider}:${row.model} as the active embedding model.\n`,
+        );
+        return;
+      }
+
+      die(`unknown embed subcommand "${sub ?? ""}" (expected status, run, or model)`);
       return;
     }
 

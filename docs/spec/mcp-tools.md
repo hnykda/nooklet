@@ -7,9 +7,10 @@ tool list, does not redesign it). Ids, block/page shapes and property semantics 
 
 ## 1. Purpose
 
-Define, tool by tool, the complete v1 operation registry that nooklet exposes as HTTP endpoints
-under `/api/v1` and as MCP tools under `/mcp` (plus a stdio bridge): every op's name, LLM-facing
-description, Zod input/output schema, HTTP mapping, example, and error cases, so that
+Define, tool by tool, the complete v1 operation registry (18 ops: the original 16, plus
+`batch.undo`/`asset.upload` from ADR 013) that nooklet exposes as HTTP endpoints under `/api/v1`
+and as MCP tools under `/mcp` (plus a stdio bridge): every op's name, LLM-facing description, Zod
+input/output schema, HTTP mapping, example, and error cases, so that
 `packages/server`'s operation registry, HTTP mounting and MCP registration (ADR 008) can be
 implemented from this document without further design decisions. It also specifies the shared
 outline-Markdown-with-ids serialization, the `changes.since` cursor, `batch` semantics, rate
@@ -19,8 +20,9 @@ limiting/audit wiring, and how MCP clients connect.
 
 Adds to `00-conventions.md`'s glossary (not yet appended there — see Open issues §9.1):
 
-- **Op registry entry**: one `defineOp({...})` value (ADR 008); this spec fixes the 16 v1 entries
-  that are exposed to MCP. HTTP may later expose more (admin/sync ops) that are never MCP tools.
+- **Op registry entry**: one `defineOp({...})` value (ADR 008); this spec fixes the 18 v1 entries
+  that are exposed to MCP (the original 16, plus `batch.undo`/`asset.upload` added by ADR 013's
+  M1.5 scope). HTTP may later expose more (admin/sync ops) that are never MCP tools.
 - **Version** (of a page or block, for `if_version`): the entity's `updated_at` timestamp
   (ISO-8601, millisecond precision), returned by every read and write. It is not a separate
   counter; see §9.2.
@@ -44,7 +46,7 @@ Adds to `00-conventions.md`'s glossary (not yet appended there — see Open issu
    exceptions kept from ADR 008/PLAN §11's explicit v1 list: `search` and `batch` are bare
    single-word op names (there is no second noun to dot; see §9.4). MCP tool name = op name with
    `.` replaced by `_`; for `search` and `batch` this is a no-op, giving exactly the 16 MCP tool
-   names required by PLAN §11.
+   names required by PLAN §11, plus `batch_undo`/`asset_upload` (ADR 013, M1.5), for 18 total.
 2. HTTP mounts every op at `POST /api/v1/<op-name>` (e.g. `/api/v1/page.read`, `/api/v1/search`,
    `/api/v1/batch`) with a JSON body and the error envelope of `00-conventions.md`. Every
    `readOnlyHint: true` op additionally accepts `GET /api/v1/<op-name>?input=<urlencoded JSON>`.
@@ -424,11 +426,14 @@ export class OpError extends Error {
 | 14 | `page.update` / `page_update` | D I | write | deferred | Rename a page / set page properties |
 | 15 | `batch` / `batch` | D | write | deferred | Apply several writes atomically |
 | 16 | `page.delete` / `page_delete` | D I | write | requiresUserInteraction | Soft-delete a page |
+| 17 | `batch.undo` / `batch_undo` | D | write | deferred | Undo every entity change from a previous batch_id |
+| 18 | `asset.upload` / `asset_upload` | A I | write | deferred | Upload a file, get back an embeddable markdown link |
 
 R = readOnlyHint, A = additive (destructiveHint:false), D = destructiveHint:true, I =
-idempotentHint:true. `openWorldHint:false` on every tool (omitted from the column). Admin/sync
-ops (`admin.tokens.*`, `admin.embeddings.reindex`, `sync.*`, `trash.*`) exist in the registry with
-`expose.mcp: false`; out of scope for this document.
+idempotentHint:true. `openWorldHint:false` on every tool (omitted from the column). Rows 17-18
+(`batch.undo`/`asset.upload`) are ADR 013's M1.5 additions, same rigor and registration path as
+the original 16. Admin/sync ops (`admin.tokens.*`, `admin.embeddings.reindex`, `sync.*`,
+`trash.*`) exist in the registry with `expose.mcp: false`; out of scope for this document.
 
 ### 4.3 Full definitions
 
@@ -1312,6 +1317,136 @@ export const pageDelete = defineOp({
 (journals are cleared automatically when emptied, per PLAN §8, not deleted through this op);
 `conflict` — stale `if_version`; `forbidden` — token lacks `write` scope (this op is never listed
 to a `read`-only token at all, so this case is HTTP-only).
+
+---
+
+#### 4.3.17 `batch.undo` / `batch_undo`
+
+**Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: false }`. **Loading** deferred.
+
+**Description**: "Reverses every page/block change recorded under `batch_id` (a value returned by
+any write, or by `changes_since`'s `items[].batch_id`), restoring each entity to its state
+immediately before that batch, or deleting it (soft-delete, restorable) if the batch created it.
+Works from the before/after snapshot every write already records for audit purposes (ADR 013) — it
+never re-parses Markdown or guesses at the reverse edit. This call is itself a brand-new,
+separately-audited batch: to undo the undo, call `batch_undo` again with THIS call's
+`undo_batch_id` (there is no separate redo concept). It does NOT check whether the entity changed
+again after the original batch — it applies the restore unconditionally, and since every field is
+last-writer-wins by a fresh timestamp (ADR 003), the undo always wins over anything in between.
+Cannot undo `asset_upload` (assets are not in the op log); such a `batch_id` fails with an
+`invalid` error. Use `dry_run` to preview what would be restored/deleted without writing anything."
+
+```ts
+export const batchUndo = defineOp({
+  name: 'batch.undo', summary: 'Undo every page/block change from a previous batch_id',
+  input: z.object({
+    batch_id: z.string().min(1).max(64).describe('A batch_id from a previous write\'s response or a changes_since item\'s batch_id field'),
+    dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
+  }).strict(),
+  output: WriteResult.extend({
+    undo_batch_id: z.string().describe('The id of this undo itself, as a fresh batch_id; pass it to batch_undo again to undo the undo'),
+  }),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, scopes: ['write'],
+  render: renderBatchUndo, handler: (i, ctx) => ctx.graph.undoBatch(i, ctx),
+});
+```
+
+Reversal per entity, driven by `changes.before_json`/`changes.after_json` (sql-schema.md rule 21,
+extended by ADR 013 to actually populate those two columns): a page/block whose `before_json` is
+`null` (created by the batch being undone) is soft-deleted; otherwise every field `before_json`
+carries (name/properties/`deleted_at` for a page; place/content/marker/priority/collapsed/
+properties/`deleted_at` for a block) is written back via ordinary `page.*`/`block.*` ops through
+`ctx.applyOps` — never raw SQL — so the undo is itself a normal, fully-audited write. When one
+`batch_id` touched the same entity more than once, the entity's original pre-batch state is taken
+from its *first* (lowest-`seq`) `changes` row under that `batch_id`, not any later one.
+
+**HTTP**: `POST /api/v1/batch.undo`.
+
+**Example** — undoing the `batch` example from §4.3.15 (`batch_id: "1k7f3qh0j2wxz9"`, which created
+page `Projects/Comet`, two blocks under it, and one block on today's journal, all in one batch):
+
+```json
+// request
+{ "batch_id": "1k7f3qh0j2wxz9" }
+```
+```json
+// response
+{
+  "page": "2026-09-10, Projects/Comet", "created": [], "updated": [],
+  "deleted": ["1k7f3qh1m6xzr3", "1k7f3qh2p9nzk4", "1k7f3qh3t3xgv7", "1k7f3qh4w6ktp2"],
+  "outline": "deleted page \"Projects/Comet\" (created by the undone batch)\ndeleted block ^1k7f3qh2p9nzk4 (created by the undone batch)\ndeleted block ^1k7f3qh3t3xgv7 (created by the undone batch)\ndeleted block ^1k7f3qh4w6ktp2 (created by the undone batch)",
+  "seq": 48223, "dry_run": false, "undo_batch_id": "1k7f3qi1n4wxr5"
+}
+```
+
+Note `page` and `outline` here are a plain-text summary across every touched page/entity, not
+outline Markdown of one subtree — `batch_undo` routinely spans more than one page, which the
+single-page `outline`/`page` convention the other 17 tools use cannot represent; `created`/
+`updated`/`deleted` may mix page ids and block ids (both are 14-char ids in this system).
+
+**Errors**: `not_found` — no `changes` row exists for `batch_id`; `invalid` — `batch_id` touched an
+entity type outside the op log (currently only `asset`, from `asset_upload`), which cannot be
+reconstructed through `applyOps` (`hint`: "only page/block changes recorded via the op log can be
+undone; asset uploads are not reversible this way").
+
+---
+
+#### 4.3.18 `asset.upload` / `asset_upload`
+
+**Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: false, idempotentHint: true }`. **Loading** deferred.
+
+**Description**: "Uploads file bytes (base64-encoded) and returns an id plus a ready-to-paste
+markdown field (e.g. `![alt](assets/1k7f3q9xz2hav4.png)`) you can drop straight into the content
+of the very next `block_update`/`page_append`/`block_insert` call to embed it. Assets are
+content-addressed by SHA-256: uploading the exact same bytes again, even under a different
+filename, returns the existing asset (`deduped: true`) instead of creating a duplicate. 25 MB
+decoded size limit. Assets are not part of the op log (ADR 003) so `batch_undo` cannot reverse an
+upload, but the upload is still recorded in the audit trail visible via `changes_since`. Fetch the
+raw bytes later with `GET <url>`."
+
+```ts
+export const assetUpload = defineOp({
+  name: 'asset.upload', summary: 'Upload a file (image, PDF, etc.) as a graph asset',
+  input: z.object({
+    filename: z.string().min(1).max(255).describe('Original filename; used only to guess the file extension when mime_type doesn\'t map to one'),
+    mime_type: z.string().min(1).max(255).describe('IANA media type, e.g. image/png'),
+    data_base64: z.string().min(1).describe('File bytes, standard base64 (padding optional). 25 MB decoded size limit.'),
+    alt: z.string().max(1000).optional().describe('Alt text for the returned markdown image link'),
+  }).strict(),
+  output: z.object({
+    id: z.string().describe('14-char asset id'),
+    url: z.string().describe('Server path to fetch the raw bytes, e.g. /assets/1k7f3q9xz2hav4.png'),
+    markdown: z.string().describe('Ready-to-paste markdown image/link - paste this directly into a block_update/page_append/block_insert content field'),
+    mime_type: z.string(), byte_size: z.number().int(),
+    deduped: z.boolean().describe('true when identical bytes were already uploaded; this returned that existing asset'),
+  }),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, scopes: ['write'],
+  render: renderAssetUpload, handler: (i, ctx) => ctx.graph.uploadAsset(i, ctx),
+});
+```
+
+**HTTP**: `POST /api/v1/asset.upload`. Also mounts `GET /assets/:id` — outside `/api/v1`,
+unauthenticated (nooklet binds `127.0.0.1` only, §3.9; an `<img src>` tag has no way to attach a
+bearer token anyway), serving the raw bytes with the `asset` row's recorded `mime_type`. Not an op
+in its own right — listed here because `asset_upload.url` points at it.
+
+**Example**
+
+```json
+// request
+{ "filename": "diagram.png", "mime_type": "image/png", "data_base64": "iVBORw0KGgoAAAANS...", "alt": "architecture diagram" }
+```
+```json
+// response
+{
+  "id": "1k7f3qj2p8xzr6", "url": "/assets/1k7f3qj2p8xzr6.png",
+  "markdown": "![architecture diagram](assets/1k7f3qj2p8xzr6.png)",
+  "mime_type": "image/png", "byte_size": 8422, "deduped": false
+}
+```
+
+**Errors**: `invalid` — `data_base64` is not valid base64, or decodes to zero bytes; `too_large` —
+decoded bytes exceed the 25 MB limit (`hint`: "compress or resize the file before uploading").
 
 ## 5. Example agent session
 

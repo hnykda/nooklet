@@ -1,6 +1,14 @@
+import type { SqlDriver } from "@nooklet/core";
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { isoFromJournalDay } from "../data-api.js";
+import {
+  checkSemanticAvailability,
+  distanceToScore,
+  embedQueryVector,
+  rrfFuse,
+  semanticCandidates,
+} from "../embeddings/index.js";
 import { defineOp, OpError } from "./registry.js";
 import { resolvePageIds } from "./resolve.js";
 import { Cursor, Limit, PageRef, PropertyKey } from "./schemas.js";
@@ -17,10 +25,7 @@ interface Candidate {
   updatedAt: number;
 }
 
-function breadcrumbForBlock(
-  driver: import("@nooklet/core").SqlDriver,
-  parentId: string | null,
-): string[] {
+function breadcrumbForBlock(driver: SqlDriver, parentId: string | null): string[] {
   const chain: string[] = [];
   let cur = parentId;
   let guard = 0;
@@ -34,6 +39,30 @@ function breadcrumbForBlock(
     cur = row.parent_id;
   }
   return chain.reverse();
+}
+
+/** A snippet for a hit that has no FTS `snippet()` match to reuse (a vector-only hit in semantic
+ * mode has no FTS row at all). */
+function naiveSnippet(content: string, maxChars: number): string {
+  return content.length > maxChars ? `${content.slice(0, maxChars)}…` : content;
+}
+
+/** Re-check an id set (already ranked by KNN distance) against the same relational filters the
+ * keyword path applies in SQL, preserving the input order. Used for semantic/hybrid candidates,
+ * since vec0 KNN itself can't express tag/property/namespace filters. */
+function filterIdsBySql(
+  driver: SqlDriver,
+  table: "block" | "page",
+  alias: "b" | "p",
+  ids: readonly string[],
+  conditions: readonly string[],
+  params: readonly unknown[],
+): Set<string> {
+  if (ids.length === 0) return new Set();
+  const placeholders = ids.map(() => "?").join(",");
+  const sql = `SELECT ${alias}.id AS id FROM ${table} ${alias} WHERE ${alias}.id IN (${placeholders}) AND ${conditions.join(" AND ")}`;
+  const rows = driver.all<{ id: string }>(sql, [...ids, ...params]);
+  return new Set(rows.map((r) => r.id));
 }
 
 export const search = defineOp({
@@ -111,13 +140,20 @@ export const search = defineOp({
     const snippetTokens = Math.max(4, Math.round(input.snippet_chars / 8));
     const candidates: Candidate[] = [];
 
+    // Soft-fail per ADR 010: hybrid/semantic degrade to keyword whenever sqlite-vec isn't loaded,
+    // no active embedding model exists, or embedding the query itself fails (network/Ollama down).
+    const availability =
+      input.mode !== "keyword" ? checkSemanticAvailability(driver) : { available: false as const };
+    const queryVec =
+      availability.available && availability.model
+        ? await embedQueryVector(driver, availability.model, input.query, ctx.signal)
+        : undefined;
+    const modeUsed: "hybrid" | "keyword" | "semantic" =
+      input.mode === "keyword" || !queryVec ? "keyword" : input.mode;
+
     if (input.scope === "blocks" || input.scope === "all") {
       const conditions = ["b.deleted_at IS NULL"];
-      const params: unknown[] = [input.query];
-      let sql = `SELECT b.id AS id, b.page_id AS page_id, b.updated_at AS updated_at, b.parent_id AS parent_id,
-                        bm25(block_fts) AS rank, snippet(block_fts, 0, '**', '**', '...', ${snippetTokens}) AS snip
-                 FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
-                 WHERE block_fts MATCH ?`;
+      const params: unknown[] = [];
       if (input.namespace) {
         conditions.push(
           "EXISTS (SELECT 1 FROM page p WHERE p.id = b.page_id AND (p.key = ? OR p.key LIKE ?))",
@@ -152,63 +188,162 @@ export const search = defineOp({
         );
         params.push(k, v);
       }
-      sql += ` AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
-      const rows = driver.all<{
-        id: string;
-        page_id: string;
-        updated_at: number;
-        parent_id: string | null;
-        rank: number;
-        snip: string;
-      }>(sql, params);
-      for (const r of rows) {
+
+      const ftsRanked: string[] = [];
+      const ftsMeta = new Map<string, { snip: string; rank: number }>();
+      if (modeUsed !== "semantic") {
+        const sql = `SELECT b.id AS id, bm25(block_fts) AS rank, snippet(block_fts, 0, '**', '**', '...', ${snippetTokens}) AS snip
+                     FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
+                     WHERE block_fts MATCH ? AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
+        const rows = driver.all<{ id: string; rank: number; snip: string }>(sql, [
+          input.query,
+          ...params,
+        ]);
+        for (const r of rows) {
+          ftsRanked.push(r.id);
+          ftsMeta.set(r.id, { snip: r.snip, rank: r.rank });
+        }
+      }
+
+      const vecRanked: string[] = [];
+      const vecDistance = new Map<string, number>();
+      if (modeUsed !== "keyword" && queryVec && availability.model) {
+        const semHits = semanticCandidates(driver, availability.model, queryVec, "block", 50);
+        const allowed = filterIdsBySql(
+          driver,
+          "block",
+          "b",
+          semHits.map((h) => h.unitId),
+          conditions,
+          params,
+        );
+        for (const h of semHits) {
+          if (!allowed.has(h.unitId)) continue;
+          vecRanked.push(h.unitId);
+          vecDistance.set(h.unitId, h.distance);
+        }
+      }
+
+      let scored: Array<{ id: string; score: number }>;
+      if (modeUsed === "hybrid") {
+        scored = rrfFuse(ftsRanked, vecRanked).map((f) => ({ id: f.id, score: f.score }));
+      } else if (modeUsed === "semantic") {
+        scored = vecRanked.map((id) => ({
+          id,
+          score: distanceToScore(vecDistance.get(id) ?? Infinity),
+        }));
+      } else {
+        scored = ftsRanked.map((id) => ({
+          id,
+          score: 1 / (1 + Math.max(0, ftsMeta.get(id)?.rank ?? 0)),
+        }));
+      }
+
+      for (const { id, score } of scored) {
+        const b = driver.get<{
+          id: string;
+          page_id: string;
+          content: string;
+          updated_at: number;
+          parent_id: string | null;
+        }>("SELECT id, page_id, content, updated_at, parent_id FROM block WHERE id = ?", [id]);
+        if (!b) continue;
         const page = driver.get<{ name: string; journal_day: number | null }>(
           "SELECT name, journal_day FROM page WHERE id = ? AND deleted_at IS NULL",
-          [r.page_id],
+          [b.page_id],
         );
         if (!page) continue;
         candidates.push({
           kind: "block",
-          id: r.id,
-          pageId: r.page_id,
+          id: b.id,
+          pageId: b.page_id,
           pageName: page.journal_day !== null ? isoFromJournalDay(page.journal_day) : page.name,
           journalDate: page.journal_day !== null ? isoFromJournalDay(page.journal_day) : undefined,
-          snippet: r.snip,
-          breadcrumb: breadcrumbForBlock(driver, r.parent_id),
-          score: 1 / (1 + Math.max(0, r.rank)),
-          updatedAt: r.updated_at,
+          snippet: ftsMeta.get(id)?.snip ?? naiveSnippet(b.content, input.snippet_chars),
+          breadcrumb: breadcrumbForBlock(driver, b.parent_id),
+          score,
+          updatedAt: b.updated_at,
         });
       }
     }
 
     if (input.scope === "pages" || input.scope === "all") {
       const conditions = ["p.deleted_at IS NULL"];
-      const params: unknown[] = [input.query];
+      const params: unknown[] = [];
       if (input.journals_only) conditions.push("p.journal_day IS NOT NULL");
-      if (pageIds && pageIds.length > 0)
+      if (pageIds && pageIds.length > 0) {
         conditions.push(`p.id IN (${pageIds.map(() => "?").join(",")})`);
-      if (pageIds && pageIds.length > 0) params.push(...pageIds);
-      const sql = `SELECT p.id AS id, p.name AS name, p.journal_day AS journal_day, p.updated_at AS updated_at, bm25(page_fts) AS rank
-                   FROM page_fts JOIN page p ON p.rowid = page_fts.rowid
-                   WHERE page_fts MATCH ? AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
-      const rows = driver.all<{
-        id: string;
-        name: string;
-        journal_day: number | null;
-        updated_at: number;
-        rank: number;
-      }>(sql, params);
-      for (const r of rows) {
+        params.push(...pageIds);
+      }
+
+      const ftsRanked: string[] = [];
+      const ftsMeta = new Map<string, number>();
+      if (modeUsed !== "semantic") {
+        const sql = `SELECT p.id AS id, bm25(page_fts) AS rank
+                     FROM page_fts JOIN page p ON p.rowid = page_fts.rowid
+                     WHERE page_fts MATCH ? AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
+        const rows = driver.all<{ id: string; rank: number }>(sql, [input.query, ...params]);
+        for (const r of rows) {
+          ftsRanked.push(r.id);
+          ftsMeta.set(r.id, r.rank);
+        }
+      }
+
+      const vecRanked: string[] = [];
+      const vecDistance = new Map<string, number>();
+      if (modeUsed !== "keyword" && queryVec && availability.model) {
+        const semHits = semanticCandidates(driver, availability.model, queryVec, "page", 50);
+        const allowed = filterIdsBySql(
+          driver,
+          "page",
+          "p",
+          semHits.map((h) => h.unitId),
+          conditions,
+          params,
+        );
+        for (const h of semHits) {
+          if (!allowed.has(h.unitId)) continue;
+          vecRanked.push(h.unitId);
+          vecDistance.set(h.unitId, h.distance);
+        }
+      }
+
+      let scored: Array<{ id: string; score: number }>;
+      if (modeUsed === "hybrid") {
+        scored = rrfFuse(ftsRanked, vecRanked).map((f) => ({ id: f.id, score: f.score }));
+      } else if (modeUsed === "semantic") {
+        scored = vecRanked.map((id) => ({
+          id,
+          score: distanceToScore(vecDistance.get(id) ?? Infinity),
+        }));
+      } else {
+        scored = ftsRanked.map((id) => ({
+          id,
+          score: 1 / (1 + Math.max(0, ftsMeta.get(id) ?? 0)),
+        }));
+      }
+
+      for (const { id, score } of scored) {
+        const p = driver.get<{
+          id: string;
+          name: string;
+          journal_day: number | null;
+          updated_at: number;
+        }>(
+          "SELECT id, name, journal_day, updated_at FROM page WHERE id = ? AND deleted_at IS NULL",
+          [id],
+        );
+        if (!p) continue;
         candidates.push({
           kind: "page",
-          id: r.id,
-          pageId: r.id,
-          pageName: r.journal_day !== null ? isoFromJournalDay(r.journal_day) : r.name,
-          journalDate: r.journal_day !== null ? isoFromJournalDay(r.journal_day) : undefined,
-          snippet: r.name,
+          id: p.id,
+          pageId: p.id,
+          pageName: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : p.name,
+          journalDate: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : undefined,
+          snippet: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : p.name,
           breadcrumb: [],
-          score: 1 / (1 + Math.max(0, r.rank)),
-          updatedAt: r.updated_at,
+          score,
+          updatedAt: p.updated_at,
         });
       }
     }
@@ -232,9 +367,7 @@ export const search = defineOp({
         updated_at: new Date(c.updatedAt).toISOString(),
       })),
       cursor: hasMore ? Buffer.from(String(offset + input.limit)).toString("base64") : undefined,
-      // Soft-fail (rule/§9.14): hybrid/semantic degrade to keyword since no embedding index exists
-      // in M1 (ADR 010); this is never surfaced as an error.
-      mode_used: "keyword" as const,
+      mode_used: modeUsed,
     };
   },
 });

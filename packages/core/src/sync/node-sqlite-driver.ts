@@ -114,9 +114,22 @@ export function createNodeSqliteDriver(db: DatabaseSync): SqlDriver {
   };
 }
 
+export interface OpenNodeSqliteOptions {
+  /**
+   * Opt-in: allow loading native extensions (`db.loadExtension()`/`enableLoadExtension()`) on the
+   * returned connection, per `research/06-embeddings.md` §2.1's verified `node:sqlite` +
+   * `sqlite-vec` recipe. Off by default so every existing caller (including `packages/core`'s own
+   * tests) is byte-for-byte unaffected; `packages/server/src/db.ts` is the one caller that turns
+   * this on, immediately loads `sqlite-vec`, then calls `enableLoadExtension(false)` again.
+   */
+  allowExtension?: boolean;
+}
+
 /** Open an in-memory or file-backed `DatabaseSync` with nooklet's server PRAGMAs (rule 29) applied. */
-export function openNodeSqlite(path = ":memory:"): DatabaseSync {
-  const db = new DatabaseSync(path);
+export function openNodeSqlite(path = ":memory:", opts: OpenNodeSqliteOptions = {}): DatabaseSync {
+  const db = opts.allowExtension
+    ? new DatabaseSync(path, { allowExtension: true })
+    : new DatabaseSync(path);
   db.exec("PRAGMA foreign_keys = ON");
   if (path !== ":memory:") db.exec("PRAGMA journal_mode = WAL");
   return db;

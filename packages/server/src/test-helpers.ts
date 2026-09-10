@@ -1,5 +1,8 @@
 /** Shared test scaffolding (not itself a `*.test.ts` file, so vitest ignores it). */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Hono } from "hono";
 import { createServerContext, type ServerContext } from "./apply-ops.js";
 import { createToken } from "./auth/tokens.js";
@@ -22,7 +25,9 @@ export function makeTestServer(): TestServer {
   const serverCtx = createServerContext(openDb({ path: ":memory:" }));
   const registry = buildRegistry();
   const config: ServerConfig = {
-    dataDir: ":memory:",
+    // A real (temp) directory, not the ":memory:" sentinel the SQL driver uses -- asset.upload
+    // (ADR 013) writes files under <dataDir>/assets/, and mirror export (disabled below) would too.
+    dataDir: mkdtempSync(join(tmpdir(), "nooklet-test-")),
     graphId: "default",
     timezone: "UTC",
     port: 0,

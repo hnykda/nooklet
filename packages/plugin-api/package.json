@@ -1,0 +1,22 @@
+{
+  "name": "@nooklet/plugin-api",
+  "version": "0.0.1",
+  "description": "nooklet plugin API: manifest, DataApi, server/client PluginContext types plugin authors and the (future) plugin host both compile against",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nooklet/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "hono": "^4.13.7",
+    "zod": "^4.6.1"
+  }
+}

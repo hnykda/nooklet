@@ -39,7 +39,7 @@ async function rpc(
 }
 
 describe("MCP tools/list", () => {
-  it("lists all 16 core ops as tools, with correct annotations, for a write-scoped token", async () => {
+  it("lists every core op as a tool, with correct annotations, for a write-scoped token", async () => {
     const { status, body } = await rpc(s.app, s.writeToken, "tools/list", {});
     expect(status).toBe(200);
     const tools = body.result.tools as Array<{
@@ -47,10 +47,10 @@ describe("MCP tools/list", () => {
       annotations: Record<string, unknown>;
     }>;
     expect(tools).toHaveLength(CORE_OPS.length);
-    expect(tools).toHaveLength(16);
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
+        // The original 16 (docs/spec/mcp-tools.md).
         "batch",
         "block_delete",
         "block_insert",
@@ -67,6 +67,11 @@ describe("MCP tools/list", () => {
         "page_read",
         "page_update",
         "search",
+        // ADR 013 (M1.5).
+        "batch_undo",
+        "asset_upload",
+        // M3/ADR 010 embeddings.
+        "related_find",
       ].sort(),
     );
     const graphOverview = tools.find((t) => t.name === "graph_overview");

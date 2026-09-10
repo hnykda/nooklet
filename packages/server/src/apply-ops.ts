@@ -22,6 +22,7 @@ import {
   newId,
   tokenizeContent,
 } from "@nooklet/core";
+import { notifyCommit } from "./sync/realtime.js";
 
 /** Reserved device id for ops the server itself authors (corrective moves). Never a real device. */
 export const SERVER_DEVICE_ID = "00000000";
@@ -44,6 +45,12 @@ export interface ServerApplyOptions {
   actor: string;
   /** Shared by every `changes` row from one call, so a UI/undo can group them. */
   batchId?: string;
+  /**
+   * The device that authored this write, when the caller knows it (a sync push does). Used only
+   * to skip poking that device about its own commit — it already has these ops. Server-authored
+   * writes (API, MCP, importer, mirror) leave it unset, so every connection is poked.
+   */
+  deviceId?: string;
 }
 
 export interface ServerApplyResult extends ApplyOpsResult {
@@ -72,6 +79,13 @@ export function serverApplyOps(
   for (const op of ops) ctx.hlc.receive(op.hlc);
 
   const result = driver.transaction(() => {
+    // `batch.undo` (ADR 013) needs a full pre-image of every entity this call is about to touch,
+    // so it can generate compensating ops later without re-deriving state from op payloads (which
+    // are per-field deltas, not full snapshots). Snapshot BEFORE applying — `corrections` (below)
+    // never introduce a new entity beyond what `ops` already touches, so `ops`'s own entity set is
+    // complete for this purpose.
+    const beforeSnapshots = snapshotEntities(driver, ops);
+
     const r = coreApplyOps(driver, ops);
 
     // Rule 24: a rejected block.place gets a corrective op restoring the block's prior place,
@@ -94,8 +108,10 @@ export function serverApplyOps(
       for (const cone of cr.results) r.results.push(cone);
     }
 
-    reindexTouchedEntities(driver, ops.concat(corrections));
-    recordChanges(driver, ops.concat(corrections), r.results, opts, batchId);
+    const allOps = ops.concat(corrections);
+    reindexTouchedEntities(driver, allOps);
+    const afterSnapshots = snapshotEntities(driver, allOps);
+    recordChanges(driver, allOps, r.results, opts, batchId, beforeSnapshots, afterSnapshots);
 
     let applied = 0;
     let noop = 0;
@@ -107,6 +123,20 @@ export function serverApplyOps(
     }
     return { results: r.results, applied, noop, rejected };
   });
+
+  // Announce the commit so any transport that cares can react — today that is `./sync/live.ts`
+  // poking connected clients so an open window reflects the write immediately (the live
+  // collaboration ADR 015 is built on). This lives here, at the single chokepoint EVERY write
+  // path goes through (sync push, the op registry, `data-api.ts`, the importer, the mirror),
+  // rather than in any one caller: an earlier attempt to wire it into the op registry alone
+  // missed every handler that writes via `data-api.ts`, which is most of them.
+  // `./sync/realtime.ts` is an event bus, not transport, so this keeps `serverApplyOps` free of
+  // any HTTP/WebSocket knowledge; `live.ts` is what actually subscribes and broadcasts.
+  if (result.applied > 0) {
+    const head =
+      driver.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes")?.n ?? 0;
+    notifyCommit(ctx, head, opts.deviceId);
+  }
 
   return { ...result, batchId, corrections };
 }
@@ -251,13 +281,21 @@ function rebuildPathRef(driver: SqlDriver, blockId: string): void {
   }
 }
 
-/** One `changes` row per entity touched by `ops`, sharing `batchId` (sql-schema.md rule 21). */
+/**
+ * One `changes` row per entity touched by `ops`, sharing `batchId` (sql-schema.md rule 21),
+ * now also carrying a full pre/post snapshot in `before_json`/`after_json` (ADR 013): `batch_undo`
+ * reconstructs compensating ops from these rather than from the ops' own per-field payloads. A page
+ * or block absent from `before`/`after` (should not happen — every touched entity was snapshotted
+ * on both sides of `coreApplyOps` above) falls back to `null`, matching "entity did not exist".
+ */
 function recordChanges(
   driver: SqlDriver,
   ops: readonly Op[],
   results: readonly AppliedOpResult[],
   opts: ServerApplyOptions,
   batchId: string,
+  before: ReadonlyMap<string, PageChangeSnapshot | BlockChangeSnapshot | null>,
+  after: ReadonlyMap<string, PageChangeSnapshot | BlockChangeSnapshot | null>,
 ): void {
   const byEntity = new Map<string, { opIds: string[]; kind: string }>();
   for (const op of ops) {
@@ -270,12 +308,148 @@ function recordChanges(
   const now = Date.now();
   for (const [entityId, { opIds, kind }] of byEntity) {
     const entityType = kind.startsWith("page.") ? "page" : "block";
+    const beforeSnap = before.get(entityId) ?? null;
+    const afterSnap = after.get(entityId) ?? null;
     driver.run(
-      `INSERT INTO changes(graph_id, batch_id, origin, actor, entity_type, entity_id, op_ids_json, created_at)
-       VALUES ('default', ?, ?, ?, ?, ?, ?, ?)`,
-      [batchId, opts.origin, opts.actor, entityType, entityId, JSON.stringify(opIds), now],
+      `INSERT INTO changes(graph_id, batch_id, origin, actor, entity_type, entity_id, op_ids_json, before_json, after_json, created_at)
+       VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        batchId,
+        opts.origin,
+        opts.actor,
+        entityType,
+        entityId,
+        JSON.stringify(opIds),
+        beforeSnap === null ? null : JSON.stringify(beforeSnap),
+        afterSnap === null ? null : JSON.stringify(afterSnap),
+        now,
+      ],
     );
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Change-audit snapshots (ADR 013): a full pre/post image per touched page/block, cheap (one row
+// query + one small property-rows query per entity), used only by `recordChanges` above and by
+// `batch.undo` (`./ops/batch-undo.ts`) to reconstruct compensating ops. Kept local to this file
+// (small duplication of `data-api.ts`'s `formatDayTime`/`formatDoneIso`/property-flattening logic)
+// rather than imported, since `data-api.ts` itself imports from this file — importing back would
+// be circular.
+// ---------------------------------------------------------------------------------------------
+
+export interface PageChangeSnapshot {
+  name: string;
+  journal_day: number | null;
+  properties: Record<string, string>;
+  deleted_at: number | null;
+}
+
+export interface BlockChangeSnapshot {
+  place: { pageId: string; parentId: string | null; order: string };
+  content: string;
+  marker: string | null;
+  priority: string | null;
+  collapsed: boolean;
+  properties: Record<string, string>;
+  deleted_at: number | null;
+}
+
+/** `YYYYMMDD` + optional `HH:MM` -> `YYYY-MM-DD` / `YYYY-MM-DD HH:MM` (ADR 011 wire format) —
+ *  duplicated from `data-api.ts`'s `formatDayTime` to avoid a circular import (see header above). */
+function snapshotFormatDayTime(day: number, time: string | null): string {
+  const s = String(day);
+  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  return time ? `${iso} ${time}` : iso;
+}
+
+/** Epoch ms -> `YYYY-MM-DDTHH:MM:SSZ`, duplicated from `data-api.ts`'s `formatDoneIso` (same
+ *  circular-import reason as `snapshotFormatDayTime` above). */
+function snapshotFormatDoneIso(epochMs: number): string {
+  return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+export function snapshotPage(driver: SqlDriver, id: string): PageChangeSnapshot | null {
+  const row = driver.get<{ name: string; journal_day: number | null; deleted_at: number | null }>(
+    "SELECT name, journal_day, deleted_at FROM page WHERE id = ?",
+    [id],
+  );
+  if (!row) return null;
+  const propRows = driver.all<{ key: string; value: string | null }>(
+    "SELECT key, value FROM page_prop WHERE page_id = ? AND value IS NOT NULL",
+    [id],
+  );
+  const properties: Record<string, string> = {};
+  for (const p of propRows) if (p.value !== null) properties[p.key] = p.value;
+  return { name: row.name, journal_day: row.journal_day, properties, deleted_at: row.deleted_at };
+}
+
+export function snapshotBlock(driver: SqlDriver, id: string): BlockChangeSnapshot | null {
+  const row = driver.get<{
+    page_id: string;
+    parent_id: string | null;
+    order_key: string;
+    content: string;
+    marker: string | null;
+    priority: string | null;
+    collapsed: number;
+    scheduled_day: number | null;
+    scheduled_time: string | null;
+    deadline_day: number | null;
+    deadline_time: string | null;
+    repeat: string | null;
+    done_at: number | null;
+    deleted_at: number | null;
+  }>(
+    `SELECT page_id, parent_id, order_key, content, marker, priority, collapsed,
+            scheduled_day, scheduled_time, deadline_day, deadline_time, repeat, done_at, deleted_at
+     FROM block WHERE id = ?`,
+    [id],
+  );
+  if (!row) return null;
+  const propRows = driver.all<{ key: string; value: string | null }>(
+    "SELECT key, value FROM block_prop WHERE block_id = ? AND value IS NOT NULL",
+    [id],
+  );
+  const properties: Record<string, string> = {};
+  for (const p of propRows) if (p.value !== null) properties[p.key] = p.value;
+  if (row.scheduled_day !== null) {
+    properties.scheduled = snapshotFormatDayTime(row.scheduled_day, row.scheduled_time);
+  }
+  if (row.deadline_day !== null) {
+    properties.deadline = snapshotFormatDayTime(row.deadline_day, row.deadline_time);
+  }
+  if (row.repeat !== null) properties.repeat = row.repeat;
+  if (row.done_at !== null) properties.done = snapshotFormatDoneIso(row.done_at);
+  return {
+    place: { pageId: row.page_id, parentId: row.parent_id, order: row.order_key },
+    content: row.content,
+    marker: row.marker,
+    priority: row.priority,
+    collapsed: row.collapsed !== 0,
+    properties,
+    deleted_at: row.deleted_at,
+  };
+}
+
+/** Snapshot every entity `ops` targets (page.* -> page id, block.* -> block id), deduped. Called
+ *  once before and once after `coreApplyOps` runs (see `serverApplyOps` above). */
+function snapshotEntities(
+  driver: SqlDriver,
+  ops: readonly Op[],
+): Map<string, PageChangeSnapshot | BlockChangeSnapshot | null> {
+  const kinds = new Map<string, "page" | "block">();
+  for (const op of ops) {
+    if (op.payload.kind.startsWith("page.")) kinds.set(op.entity, "page");
+    else if (op.payload.kind.startsWith("block.")) kinds.set(op.entity, "block");
+  }
+  const snapshots = new Map<string, PageChangeSnapshot | BlockChangeSnapshot | null>();
+  for (const [entityId, kind] of kinds) {
+    snapshots.set(
+      entityId,
+      kind === "page" ? snapshotPage(driver, entityId) : snapshotBlock(driver, entityId),
+    );
+  }
+  return snapshots;
 }
 
 export type { OpPayload };

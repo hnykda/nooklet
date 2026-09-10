@@ -9,9 +9,10 @@ interface ChangeRow {
   origin: string;
   actor: string;
   batch_id: string;
-  entity_type: "page" | "block";
+  entity_type: string;
   entity_id: string;
   op_ids_json: string;
+  after_json: string | null;
 }
 
 interface OpRow {
@@ -38,7 +39,25 @@ function opsForRow(driver: import("@nooklet/core").SqlDriver, opIdsJson: string)
   );
 }
 
-function classify(entityType: "page" | "block", ops: OpRow[]): { kind: string; summary: string } {
+function classify(
+  entityType: string,
+  ops: OpRow[],
+  afterJson: string | null,
+): { kind: string; summary: string } {
+  // asset.upload (ADR 013) never produces `op` rows (ADR 003: "assets are not in the op log"), so
+  // there is nothing in `ops` to classify from; its `changes` row's own after_json carries what we
+  // need instead.
+  if (entityType === "asset") {
+    let fileName = "file";
+    if (afterJson) {
+      try {
+        fileName = (JSON.parse(afterJson) as { file_name?: string }).file_name ?? fileName;
+      } catch {
+        // malformed JSON should never happen (we wrote it ourselves); fall back to the default.
+      }
+    }
+    return { kind: "asset.uploaded", summary: `uploaded "${fileName}"` };
+  }
   const byKind = new Map(ops.map((o) => [o.kind, o]));
   if (entityType === "block") {
     const create = byKind.get("block.create");
@@ -109,6 +128,7 @@ export const changesSince = defineOp({
           "page.updated",
           "page.deleted",
           "page.restored",
+          "asset.uploaded",
         ]),
         page: z.string(),
         block_id: z.string().optional(),
@@ -156,7 +176,7 @@ export const changesSince = defineOp({
       params.push(page.id, page.id);
     }
     const rows = driver.all<ChangeRow>(
-      `SELECT seq, created_at, origin, actor, batch_id, entity_type, entity_id, op_ids_json FROM changes WHERE ${conditions.join(" AND ")} ORDER BY seq ASC LIMIT ?`,
+      `SELECT seq, created_at, origin, actor, batch_id, entity_type, entity_id, op_ids_json, after_json FROM changes WHERE ${conditions.join(" AND ")} ORDER BY seq ASC LIMIT ?`,
       [...params, input.limit + 1],
     );
     const hasMore = rows.length > input.limit;
@@ -164,10 +184,12 @@ export const changesSince = defineOp({
 
     const items = page.map((r) => {
       const ops = opsForRow(driver, r.op_ids_json);
-      const { kind, summary } = classify(r.entity_type, ops);
+      const { kind, summary } = classify(r.entity_type, ops, r.after_json);
       let pageWire: string;
       let blockId: string | undefined;
-      if (r.entity_type === "page") {
+      if (r.entity_type === "asset") {
+        pageWire = ""; // assets aren't attached to a page
+      } else if (r.entity_type === "page") {
         const p = driver.get<{ name: string; journal_day: number | null }>(
           "SELECT name, journal_day FROM page WHERE id = ?",
           [r.entity_id],
@@ -222,7 +244,8 @@ export const changesSince = defineOp({
           | "page.renamed"
           | "page.updated"
           | "page.deleted"
-          | "page.restored",
+          | "page.restored"
+          | "asset.uploaded",
         page: pageWire,
         block_id: blockId,
         summary,

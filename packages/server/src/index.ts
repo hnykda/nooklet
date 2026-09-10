@@ -29,3 +29,10 @@ export {
   type ServerConfig,
 } from "./ops/registry.js";
 export { initFullSchema, SCHEMA_VERSION } from "./schema.js";
+export {
+  type CommitEvent,
+  type CommitListener,
+  mountSync,
+  notifyCommit,
+  onCommit,
+} from "./sync/index.js";

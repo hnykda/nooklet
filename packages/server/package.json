@@ -22,10 +22,13 @@
     "@nooklet/core": "workspace:*",
     "chokidar": "^5.0.0",
     "hono": "^4.13.7",
+    "sqlite-vec": "^0.1.9",
+    "ws": "^8.21.3",
     "zod": "^4.6.1"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.23.13"
   }
 }
