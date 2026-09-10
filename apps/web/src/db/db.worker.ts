@@ -87,6 +87,16 @@ const api: WorkerApi = {
     return { deviceId: db.getDeviceId() };
   },
 
+  async nextHlc() {
+    const db = await requireDb();
+    return db.nextHlc();
+  },
+
+  async getDeviceId() {
+    const db = await requireDb();
+    return db.getDeviceId();
+  },
+
   async applyLocalOps(ops: Op[]) {
     const db = await requireDb();
     return db.applyLocalOps(ops);

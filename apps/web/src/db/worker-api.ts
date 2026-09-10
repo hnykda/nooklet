@@ -42,6 +42,17 @@ export interface WorkerApi {
    * and enqueues them for push, atomically. */
   applyLocalOps(ops: Op[]): Promise<ApplyOpsResult>;
 
+  /**
+   * Mint the next HLC for a local op, from the worker's single `SyncClient` clock. Main-thread
+   * code MUST use this rather than constructing its own `Hlc`: an op's id is its HLC, so two
+   * clock instances sharing this device's id (one per tab, say) can mint the same id twice, and
+   * `applyOps` treats an already-known id as applied — silently dropping the second write.
+   */
+  nextHlc(): Promise<string>;
+
+  /** This replica's device id, to pair with `nextHlc()` when building ops. */
+  getDeviceId(): Promise<string>;
+
   /** "Give me this page's block tree" (task item 6). `undefined` if the page does not exist. */
   getPageTree(pageId: string): Promise<PageTreeResult | undefined>;
 

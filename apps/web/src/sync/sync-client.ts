@@ -127,7 +127,14 @@ export class SyncClient {
   /** The HLC for a new local op. Editor/UI code builds ops with
    * `makeOp(syncClient.nextHlc(), syncClient.getDeviceId(), entity, payload)`. */
   nextHlc(): string {
-    return this.hlc.next();
+    const next = this.hlc.next();
+    // Persist on every mint. `init()` seeds from `hlc_last`, so without this a tab that minted
+    // ops and reloaded before any push/pull would restart its clock from the wall clock and
+    // could re-mint an HLC it had already used — and since an op's id IS its HLC, and applyOps
+    // treats a known id as already-applied, that op would be silently dropped. One indexed row
+    // update per op is cheap next to the write it accompanies.
+    this.persistHlc();
+    return next;
   }
 
   getStatus(): SyncStatus {

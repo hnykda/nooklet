@@ -1,12 +1,11 @@
 /**
- * TODO(views): placeholder for fuzzy page switcher / full-text / semantic search (PLAN.md §9) and
- * the command palette (§12) — both explicitly out of this milestone's scope. `../db/client.ts`'s
- * `query()` escape hatch is available once FTS tables exist (M3); nothing to wire up yet.
+ * Search (BUILD item 4; PLAN.md §9) — see `../views/SearchView.tsx`. The command palette is a
+ * separate, still-unbuilt surface owned by another agent (ADR 009); this route is full-text/
+ * semantic/hybrid search with a persistent results panel (docs/spec/commands-and-keymap.md R44).
  */
-export function SearchRoute() {
-  return (
-    <div class="placeholder-view">
-      <p>TODO(views): fuzzy page switcher, full-text/semantic search, and the command palette.</p>
-    </div>
-  );
+import type { JSX } from "solid-js";
+import { SearchView } from "../views/SearchView.js";
+
+export function SearchRoute(): JSX.Element {
+  return <SearchView />;
 }

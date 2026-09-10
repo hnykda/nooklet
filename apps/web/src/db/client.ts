@@ -41,6 +41,16 @@ export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
   return getWorker().applyLocalOps(ops);
 }
 
+/** Mint an HLC from the worker's single clock (see `worker-api.ts#nextHlc`). */
+export function nextHlc(): Promise<string> {
+  return getWorker().nextHlc();
+}
+
+/** This replica's device id, to pair with `nextHlc()`. */
+export function getDeviceId(): Promise<string> {
+  return getWorker().getDeviceId();
+}
+
 export function query(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
   return getWorker().query(sql, params);
 }

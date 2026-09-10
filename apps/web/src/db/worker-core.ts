@@ -122,6 +122,12 @@ export class WorkerDb {
     return this.sync.getDeviceId();
   }
 
+  /** The device's one authoritative clock (see `WorkerApi.nextHlc`'s note on why there must
+   * only ever be one). */
+  nextHlc(): string {
+    return this.sync.nextHlc();
+  }
+
   getSyncStatus(): SyncStatus {
     return this.sync.getStatus();
   }
