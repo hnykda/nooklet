@@ -141,20 +141,23 @@ export const batch = defineOp({
   scopes: ["write"],
   render: (out) => `batch ${out.batch_id}: ${out.results.length} op(s), applied=${out.applied}`,
   handler: async (input, ctx) => {
-    const batchId = newId();
-    const results: Array<{ index: number; ok: true; result: unknown }> = [];
-    const bindings: StepBinding[] = [];
-
-    const stepCtx: OpContext = {
-      ...ctx,
-      async applyOps(ops, meta) {
-        return ctx.applyOps(ops, { batchId, ...meta });
-      },
-    };
-
-    const savepoint = `vrite_batch_${batchId}`;
-    ctx.db.exec(`SAVEPOINT ${savepoint}`);
-    try {
+    /**
+     * Runs every entry in `input.ops` against `runCtx`, in order, sharing one `batchId` (every
+     * `changes` row from this call groups under it, per 00-conventions.md's audit rule). Throws
+     * (with `details.index`) on the first failure — `input.ops[i]`'s own placeholder resolution,
+     * schema validation, or handler error all surface the same way (mcp-tools.md §4.3.15) — and
+     * per §3.5.1 v1 has no partial-apply mode, so `runAllSteps` itself never returns a "some ok,
+     * some failed" result; the caller (below) decides what "rolled back" means for the two phases.
+     */
+    async function runAllSteps(runCtx: OpContext, batchId: string) {
+      const results: Array<{ index: number; ok: true; result: unknown }> = [];
+      const bindings: StepBinding[] = [];
+      const stepCtx: OpContext = {
+        ...runCtx,
+        async applyOps(ops, meta) {
+          return runCtx.applyOps(ops, { batchId, ...meta });
+        },
+      };
       for (let i = 0; i < input.ops.length; i++) {
         // biome-ignore lint/style/noNonNullAssertion: loop bound by input.ops.length
         const entry = input.ops[i]! as Record<string, unknown> & { op: BatchOpName };
@@ -178,21 +181,27 @@ export const batch = defineOp({
         results.push({ index: i, ok: true, result });
         bindings.push(bindingFor(entry.op, result));
       }
-    } catch (e) {
-      ctx.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
-      ctx.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
-      throw e;
+      return results;
     }
+
+    // Phase 1 (ALWAYS, dry_run or not): run for real against a throwaway clone of the whole graph
+    // (`ctx.forkForTrial()`, `./clone-db.ts`) — never the actual database. A failure anywhere
+    // throws here, before the real `ctx` has been touched at all: this is what gives `batch` its
+    // atomicity (mcp-tools.md §3.5.1) and `dry_run` its "as if the batch had run" semantics
+    // (§3.5.3), without needing a nested SQL transaction (see `./clone-db.ts`'s header comment for
+    // why that path does not work here).
+    const trialBatchId = newId();
+    const trialResults = await runAllSteps(ctx.forkForTrial(), trialBatchId);
 
     if (input.dry_run) {
-      ctx.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+      return { results: trialResults, applied: false, seq: undefined, batch_id: trialBatchId, dry_run: true };
     }
-    ctx.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
 
-    const seq = input.dry_run
-      ? undefined
-      : (ctx.db.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes WHERE batch_id = ?", [batchId])?.n ?? 0);
-
-    return { results, applied: !input.dry_run, seq, batch_id: batchId, dry_run: input.dry_run };
+    // Phase 2: the trial proved every step succeeds, so replay the same sequence for real. Fresh
+    // ids/batchId (this is a completely independent, second pass — the trial's clone is discarded).
+    const realBatchId = newId();
+    const realResults = await runAllSteps(ctx, realBatchId);
+    const seq = ctx.db.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes WHERE batch_id = ?", [realBatchId])?.n ?? 0;
+    return { results: realResults, applied: true, seq, batch_id: realBatchId, dry_run: false };
   },
 });

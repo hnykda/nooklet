@@ -1,0 +1,99 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { makeTestServer, type TestServer } from "../test-helpers.js";
+import { CORE_OPS } from "../ops/index.js";
+
+let s: TestServer;
+
+beforeEach(() => {
+  s = makeTestServer();
+});
+
+async function rpc(app: TestServer["app"], token: string, method: string, params: unknown, id = 1): Promise<any> {
+  const res = await app.request("/mcp", {
+    method: "POST",
+    headers: {
+      host: "localhost",
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+  });
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    const text = await res.text();
+    const dataLine = text
+      .split("\n")
+      .find((l) => l.startsWith("data:"));
+    return { status: res.status, body: dataLine ? JSON.parse(dataLine.slice("data:".length).trim()) : undefined };
+  }
+  const body = await res.json().catch(() => undefined);
+  return { status: res.status, body };
+}
+
+describe("MCP tools/list", () => {
+  it("lists all 16 core ops as tools, with correct annotations, for a write-scoped token", async () => {
+    const { status, body } = await rpc(s.app, s.writeToken, "tools/list", {});
+    expect(status).toBe(200);
+    const tools = body.result.tools as Array<{ name: string; annotations: Record<string, unknown> }>;
+    expect(tools).toHaveLength(CORE_OPS.length);
+    expect(tools).toHaveLength(16);
+    const names = tools.map((t) => t.name).sort();
+    expect(names).toEqual(
+      [
+        "batch",
+        "block_delete",
+        "block_insert",
+        "block_move",
+        "block_read",
+        "block_update",
+        "changes_since",
+        "graph_overview",
+        "page_append",
+        "page_backlinks",
+        "page_create",
+        "page_delete",
+        "page_list",
+        "page_read",
+        "page_update",
+        "search",
+      ].sort(),
+    );
+    const graphOverview = tools.find((t) => t.name === "graph_overview");
+    expect(graphOverview?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, openWorldHint: false });
+    const pageDelete = tools.find((t) => t.name === "page_delete");
+    expect(pageDelete?.annotations).toMatchObject({ destructiveHint: true, readOnlyHint: false });
+  });
+
+  it("hides write tools from a read-scoped token (rule 10: never listed, not just denied)", async () => {
+    const { body } = await rpc(s.app, s.readToken, "tools/list", {});
+    const names = body.result.tools.map((t: { name: string }) => t.name);
+    expect(names).not.toContain("page_create");
+    expect(names).not.toContain("block_delete");
+    expect(names).toContain("graph_overview");
+  });
+});
+
+describe("MCP tools/call", () => {
+  it("calls page_create end-to-end and returns text + structuredContent", async () => {
+    const initId = 1;
+    void initId;
+    const { status, body } = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_create",
+      arguments: { name: "Via MCP" },
+    });
+    expect(status).toBe(200);
+    expect(body.result.isError).toBeFalsy();
+    expect(body.result.structuredContent.page).toBe("Via MCP");
+    expect(body.result.content[0].text).toContain("created");
+  });
+
+  it("returns isError for a not_found case", async () => {
+    const { body } = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_read",
+      arguments: { page: "Never Existed Ever" },
+    });
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("not_found");
+  });
+});
