@@ -11,10 +11,10 @@ Date: 2026-09-10. Status: accepted.
   Logseq-readable outline format, with `id::` on every block so the round trip is lossless.
   Import parses files into per-block ops; export renders pages on change (debounced, atomic
   write, echo suppression by content hash). Files are never the sync medium.
-- Import is faithful to Logseq (tabs or spaces, continuation lines, fences, properties,
-  pre-block page properties, front matter, triple-lowbar and legacy file names, journals,
-  markers, priorities). Export uses our own clean, documented format that Logseq and Obsidian
-  can still open. We do not chase byte-for-byte fidelity with Logseq's writer.
+- Import is faithful to the Logseq file graph specifically (ADR 012; tabs or spaces, continuation
+  lines, fences, properties, pre-block page properties, front matter, triple-lowbar and legacy
+  file names, journals, markers, priorities). Export uses our own clean, documented format that
+  Logseq and Obsidian can still open. We do not chase byte-for-byte fidelity with Logseq's writer.
 
 ## Why
 

@@ -47,7 +47,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 | API and MCP | One operation registry that mounts as HTTP endpoints (with OpenAPI), MCP tools (Streamable HTTP + a stdio bridge), and a typed client; scoped tokens; audit trail of agent writes |
 | Embeddings | Any Ollama embedding model (bge-m3 default: multilingual, covers Czech); server-side index kept fresh incrementally; model switch re-indexes |
 | Plugins | One package format with an optional server half and client half; commands, slash commands, hooks, block renderers, panels, routes, MCP tools, providers |
-| Import/export | Import from Logseq file graphs (all formats and name encodings) and from Logseq DB markdown mirrors; continuous markdown mirror export; one-shot export |
+| Import/export | Import from Logseq file graphs, the classic markdown-native format (ADR 012; all name encodings); continuous markdown mirror export; one-shot export |
 | Mobile | Installable PWA that behaves natively (keyboard toolbar, gestures, quick capture); Capacitor shell for app stores in v1.x |
 | Media | Images and files pasted/uploaded/captured on mobile are stored by the server under `assets/` and referenced as normal markdown images |
 
@@ -169,11 +169,13 @@ id syntax; if the first line opens a code fence, the id sits alone on the first 
 fence starts on the next). Every block carries its id, so a file edit becomes a per-block diff
 and never a page replace. Echo suppression by content hash prevents ping-pong with the watcher.
 
-Import handles the full Logseq zoo: tabs or spaces, `id::`/`collapsed::`, pre-block page
-properties, YAML front matter, triple-lowbar and legacy file names, `title::` override,
-journals by file name, `NOW/LATER` mapped to `TODO/DOING`, numbered blocks, dangling block refs
-repaired, duplicate ids repaired, and the DB mirror's page-level `id::` line. The current
-parser already round-trips both of the user's graphs to identical trees.
+Import targets the Logseq file graph specifically (ADR 012), not the newer Logseq DB version's
+one-way markdown export: tabs or spaces, `id::`/`collapsed::`, pre-block page properties, YAML
+front matter, triple-lowbar and legacy file names, `title::` override, journals by file name,
+`config.edn`, `NOW/LATER` mapped to `TODO/DOING`, numbered blocks, dangling block refs repaired,
+duplicate ids repaired. The parser is generically liberal enough that it also happens to round-trip
+the DB mirror's export format losslessly, but the importer's directory/config handling, tests, and
+maintenance commitment are scoped to the file graph only.
 
 ## 6. Sync (ADR 003)
 
