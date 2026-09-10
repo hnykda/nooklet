@@ -36,6 +36,11 @@ import type { EditorView } from "@codemirror/view";
 import { makeOp, type Op } from "@nooklet/core";
 import "./editor.css";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEditorHost,
+  setActiveContextSnapshot,
+  setActiveEditorHost,
+} from "../app/editor-host.js";
 import { applyOps, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
 import { BlockRowView } from "./BlockRowView.js";
@@ -56,6 +61,7 @@ import {
 } from "./commands.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
+import { linkAtCaret } from "./linkAtCaret.js";
 import { deriveNumbering } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
@@ -498,6 +504,64 @@ export function BlockTree(props: {
 
   const surface: Surface = createSurface({ onTextChange, dispatchKey, onPaste });
   onCleanup(() => surface.detach());
+
+  // Publish this tree as the command system's `EditorHost` while it owns the shared surface, so
+  // the palette, slash menu and `[[`/`#`/`((` popups act on whatever the user is actually editing
+  // (`../app/editor-host.ts` explains why this is a live registration and not a singleton).
+  const editorHost = createEditorHost({
+    currentId: () => surface.currentId(),
+    content: () => surface.content(),
+    head: () => surface.head(),
+    anchor: () => surface.anchor(),
+    setText: (id, text, caret) => {
+      onTextChange(id as BlockId, text);
+      surface.setCaret(typeof caret === "number" ? { offset: caret } : { offset: caret.head });
+    },
+    runStructural: (id, commandId, _ctx) => {
+      const view = surface.view();
+      if (view) runCommand(commandId as ReturnType<typeof resolveCommand>, id as BlockId, view);
+    },
+    linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
+  });
+  createEffect(() => {
+    if (surface.currentId() !== null) {
+      setActiveEditorHost(editorHost);
+      // The command context is recomputed on every read (before each keydown dispatch and each
+      // palette/menu render), never cached — the spec's Definitions section requires exactly that.
+      setActiveContextSnapshot(() => {
+        const id = surface.currentId();
+        const sel = selection();
+        const block = id ? editorTree().byId.get(id) : undefined;
+        const content = surface.content();
+        const head = surface.head();
+        const geom = surface.geometry();
+        return {
+          editorFocused: id !== null,
+          blockSelected: sel !== null,
+          hasSelection: sel !== null || surface.anchor() !== head,
+          selectionCount: sel?.ids.length ?? 0,
+          isTask: block?.marker != null,
+          isCollapsed: block?.collapsed ?? false,
+          hasChildren: id ? childrenIds(editorTree(), id).length > 0 : false,
+          atLineStart: geom.atStart,
+          atLineEnd: geom.atEnd,
+          onFirstVisualLine: geom.onFirstLine,
+          onLastVisualLine: geom.onLastLine,
+          caretInLink: linkAtCaret(content, head) !== null,
+          popupOpen: false,
+          composing: surface.isComposing(),
+          zoomed: effectiveRoot() !== undefined,
+          focusedBlockId: id,
+          selectedBlockIds: sel?.ids ?? [],
+          surface,
+        };
+      });
+    }
+  });
+  onCleanup(() => {
+    setActiveEditorHost(null);
+    setActiveContextSnapshot(null);
+  });
 
   function runSelectionCommand(cmd: ReturnType<typeof resolveCommand>, sel: SelectionState): void {
     const clock = clockSig();

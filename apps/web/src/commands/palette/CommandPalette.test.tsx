@@ -78,7 +78,7 @@ describe("<CommandPalette>", () => {
   it("filters by typed query", async () => {
     render(() => <Harness />);
     fireEvent.click(screen.getByTestId("opener"));
-    const input = await screen.findByRole("textbox");
+    const input = await screen.findByRole("combobox");
     fireEvent.input(input, { target: { value: "sidebar" } });
     expect(await screen.findByText("Toggle sidebar")).toBeTruthy();
     expect(screen.queryByText("Open settings")).toBeNull();
@@ -87,7 +87,7 @@ describe("<CommandPalette>", () => {
   it("Escape closes the palette", async () => {
     render(() => <Harness />);
     fireEvent.click(screen.getByTestId("opener"));
-    const input = await screen.findByRole("textbox");
+    const input = await screen.findByRole("combobox");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("listbox")).toBeNull();
   });
@@ -108,7 +108,7 @@ describe("<CommandPalette>", () => {
     }
     render(() => <HarnessWithSpy />);
     fireEvent.click(screen.getByTestId("opener"));
-    const input = await screen.findByRole("textbox");
+    const input = await screen.findByRole("combobox");
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(run).toHaveBeenCalledOnce());
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
@@ -117,7 +117,7 @@ describe("<CommandPalette>", () => {
   it("typing > switches to commands-only mode", async () => {
     render(() => <Harness />);
     fireEvent.click(screen.getByTestId("opener"));
-    const input = (await screen.findByRole("textbox")) as HTMLInputElement;
+    const input = (await screen.findByRole("combobox")) as HTMLInputElement;
     fireEvent.input(input, { target: { value: ">" } });
     // Mode switch clears the query back to empty.
     expect(input.value).toBe("");

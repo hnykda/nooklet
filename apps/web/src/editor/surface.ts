@@ -45,6 +45,9 @@ export interface Surface {
   setCaret(spec: CaretSpec): void;
   currentId(): string | null;
   focus(): void;
+  /** The live CM6 view, for callers that must dispatch through the real editor (the command
+   * system's `EditorHost` bridge). `null` when nothing is attached. */
+  view(): EditorView | null;
 }
 
 export interface SurfaceDeps {
@@ -187,6 +190,7 @@ export function createSurface(deps: SurfaceDeps): Surface {
     },
     setCaret: setCaretInternal,
     currentId: () => current,
+    view: () => (current === null ? null : view),
     focus: () => view.focus(),
   };
 }

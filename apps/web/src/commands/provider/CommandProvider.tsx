@@ -64,6 +64,10 @@ export interface CommandProviderProps {
   hasHardwareKeyboard?: boolean;
   /** Storage backing the MRU list (R71) — defaults to `localStorage` when available. */
   mruStorage?: MruStorageAdapter;
+  /** Share an externally-created palette controller. The host needs one *before* the provider
+   * exists, because `createCoreCommands` takes it as a dependency (so `palette.open()` from a
+   * command and the Cmd+K binding drive the same instance). Omit and one is created here. */
+  palette?: PaletteController;
   children?: JSX.Element;
 }
 
@@ -72,7 +76,7 @@ export function CommandProvider(props: CommandProviderProps): JSX.Element {
   for (const command of props.commands) registry.register(command);
 
   const mru = createMruStore(props.mruStorage);
-  const palette = createPaletteController();
+  const palette = props.palette ?? createPaletteController();
 
   const [keybindings, setKeybindings] = createSignal<KeybindingsFile>(props.keybindings ?? []);
   const platform = props.platform ?? detectPlatformFromEnvironment().platform;

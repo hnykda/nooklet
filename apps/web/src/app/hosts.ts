@@ -1,0 +1,245 @@
+/**
+ * The real implementations of the seams `src/commands/` declares but deliberately does not fill:
+ * `Store`, `PageSource`, `BlockSource`, `NavigationHost` and `AppHost`. The command package ships
+ * fakes for its own tests; this is where those seams meet the actual data layer and router, and
+ * it is the one place that knows about both.
+ *
+ * `EditorHost` is NOT here — it is inherently owned by whatever editor surface is currently
+ * focused, so `src/app/editor-host.ts` keeps a live registration the focused `BlockTree` fills in.
+ */
+
+import { makeOp, normalizePageName, type Op, type OpPayload } from "@nooklet/core";
+import type { LinkAtCaret } from "../commands/hosts/editor-host.js";
+import type { AppHost, NavigationHost } from "../commands/hosts/nav-host.js";
+import type {
+  BlockSource,
+  BlockSummary,
+  PageSource,
+  PageSummary,
+} from "../commands/hosts/page-source.js";
+import type { BlockTaskSnapshot, Store } from "../commands/types.js";
+import { applyOp, applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
+import { forceSync, queryAs } from "../db/client.js";
+
+// ---------------------------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------------------------
+
+interface BlockPropRow {
+  marker: string | null;
+  priority: string | null;
+  collapsed: number;
+  scheduled: string | null;
+  deadline: string | null;
+  repeat: string | null;
+}
+
+export function createStore(): Store {
+  return {
+    async getBlockTaskState(blockId: string): Promise<BlockTaskSnapshot | undefined> {
+      // The reserved scheduling keys live in dedicated columns (ADR 011/sql-schema.md rule 10),
+      // reconstituted here into the property-shaped snapshot the task commands expect.
+      const rows = await queryAs<BlockPropRow>(
+        `SELECT marker, priority, collapsed,
+                CASE WHEN scheduled_day IS NULL THEN NULL
+                     ELSE substr(scheduled_day, 1, 4) || '-' || substr(scheduled_day, 5, 2) || '-' || substr(scheduled_day, 7, 2)
+                          || COALESCE(' ' || scheduled_time, '') END AS scheduled,
+                CASE WHEN deadline_day IS NULL THEN NULL
+                     ELSE substr(deadline_day, 1, 4) || '-' || substr(deadline_day, 5, 2) || '-' || substr(deadline_day, 7, 2)
+                          || COALESCE(' ' || deadline_time, '') END AS deadline,
+                repeat
+         FROM block WHERE id = ? AND deleted_at IS NULL`,
+        [blockId],
+      );
+      const row = rows[0];
+      if (!row) return undefined;
+      return {
+        marker: row.marker ?? undefined,
+        priority: row.priority ?? undefined,
+        scheduled: row.scheduled ?? undefined,
+        deadline: row.deadline ?? undefined,
+        repeat: row.repeat ?? undefined,
+      } as BlockTaskSnapshot;
+    },
+
+    async setBlockProp(blockId, key, value) {
+      await applyOp(blockId, { kind: "block.prop", key, value } as OpPayload);
+    },
+
+    async setBlockProps(blockId, props) {
+      // One atomic batch: R35's "stamp done AND reset marker" must not be observable half-applied.
+      const clock = await getOpClock(Math.max(8, Object.keys(props).length));
+      const ops: Op[] = Object.entries(props).map(([key, value]) =>
+        makeOp(clock.next(), clock.device, blockId, {
+          kind: "block.prop",
+          key,
+          value,
+        } as OpPayload),
+      );
+      await applyOps(ops);
+    },
+
+    async applyOps(ops) {
+      return applyOps(ops);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// PageSource / BlockSource
+// ---------------------------------------------------------------------------------------------
+
+export function createPageSource(): PageSource {
+  return {
+    async listPages(): Promise<PageSummary[]> {
+      const rows = await queryAs<{ id: string; name: string; updated_at: number }>(
+        "SELECT id, name, updated_at FROM page WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+      );
+      const aliasRows = await queryAs<{ page_id: string; value: string }>(
+        "SELECT page_id, value FROM page_prop WHERE key = 'alias' AND value IS NOT NULL",
+      );
+      const aliasesByPage = new Map<string, string[]>();
+      for (const a of aliasRows) {
+        aliasesByPage.set(
+          a.page_id,
+          a.value
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        );
+      }
+      return rows.map((r) => ({
+        id: r.id,
+        title: r.name,
+        aliases: aliasesByPage.get(r.id) ?? [],
+        updatedAt: r.updated_at,
+      }));
+    },
+
+    async createPage(title: string): Promise<PageSummary> {
+      const clock = await getOpClock(2);
+      const id = crypto.randomUUID().replace(/-/g, "").slice(0, 14);
+      await applyOps([
+        makeOp(clock.next(), clock.device, id, {
+          kind: "page.create",
+          name: title,
+          journalDay: null,
+          createdAt: Date.now(),
+        } as OpPayload),
+      ]);
+      return { id, title, aliases: [], updatedAt: Date.now() };
+    },
+  };
+}
+
+export function createBlockSource(): BlockSource {
+  return {
+    async searchBlocks(query: string, limit = 20): Promise<BlockSummary[]> {
+      // The client replica has no FTS tables (those are server-only derived tables,
+      // sql-schema.md rule 1), so `((` autocomplete uses a bounded LIKE over local content —
+      // adequate for "find the block I just wrote", and it keeps this working offline, which a
+      // server round trip would not.
+      const rows = await queryAs<{ id: string; content: string; name: string }>(
+        `SELECT b.id, b.content, p.name
+         FROM block b JOIN page p ON p.id = b.page_id
+         WHERE b.deleted_at IS NULL AND p.deleted_at IS NULL AND b.content LIKE ?
+         ORDER BY b.updated_at DESC LIMIT ?`,
+        [`%${query}%`, limit],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        snippet: r.content.split("\n")[0]?.slice(0, 120) ?? "",
+        pageTitle: r.name,
+      }));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// NavigationHost / AppHost
+// ---------------------------------------------------------------------------------------------
+
+export interface NavDeps {
+  navigate: (path: string) => void;
+  /** Page name for an id, so `openPage(id)` can route by name (routes are name-addressed). */
+  pageNameForId: (id: string) => Promise<string | undefined>;
+}
+
+export function createNavigationHost(deps: NavDeps): NavigationHost {
+  return {
+    openPage(pageId) {
+      void deps.pageNameForId(pageId).then((name) => {
+        if (name) deps.navigate(`/page/${name.split("/").map(encodeURIComponent).join("/")}`);
+      });
+    },
+    openTodayJournal() {
+      deps.navigate("/journals");
+    },
+    openJournals() {
+      deps.navigate("/journals");
+    },
+    back() {
+      history.back();
+    },
+    forward() {
+      history.forward();
+    },
+    openSearch() {
+      deps.navigate("/search");
+    },
+    followLink(link: LinkAtCaret) {
+      if (link.type === "url" && link.href) {
+        window.open(link.href, "_blank", "noopener");
+        return;
+      }
+      if ((link.type === "page" || link.type === "tag") && link.name) {
+        const name = normalizePageName(link.name);
+        deps.navigate(`/page/${name.split("/").map(encodeURIComponent).join("/")}`);
+        return;
+      }
+      if (link.type === "block" && link.id) {
+        void deps.pageNameForId(link.id).then((pageName) => {
+          if (pageName) {
+            const path = pageName.split("/").map(encodeURIComponent).join("/");
+            deps.navigate(`/page/${path}?block=${link.id}`);
+          }
+        });
+      }
+    },
+  };
+}
+
+export interface AppDeps {
+  toggleSidebar: () => void;
+  undo: () => void;
+  redo: () => void;
+  setTheme: (t: "light" | "dark" | "system") => void;
+  getTheme: () => "light" | "dark" | "system";
+  navigate: (path: string) => void;
+}
+
+const THEME_CYCLE = { light: "dark", dark: "system", system: "light" } as const;
+
+export function createAppHost(deps: AppDeps): AppHost {
+  return {
+    toggleSidebar: deps.toggleSidebar,
+    openSettings() {
+      deps.navigate("/settings");
+    },
+    openPluginManager() {
+      deps.navigate("/settings/plugins");
+    },
+    toggleTheme() {
+      deps.setTheme(THEME_CYCLE[deps.getTheme()]);
+    },
+    hideKeyboard() {
+      // Blurring the focused editable is the only way a web page can dismiss the soft keyboard.
+      (document.activeElement as HTMLElement | null)?.blur();
+    },
+    syncNow() {
+      return forceSync();
+    },
+    undo: deps.undo,
+    redo: deps.redo,
+  };
+}
