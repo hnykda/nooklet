@@ -369,6 +369,110 @@ describe("SyncClient.pull (cursor advancement, corrections)", () => {
   });
 });
 
+describe("SyncClient three-way text merge (ADR 003 v1.1)", () => {
+  let driver: SqlDriver;
+  let transport: FakeTransport;
+  let client: SyncClient;
+
+  beforeEach(() => {
+    driver = memoryDriver();
+    transport = new FakeTransport();
+    client = new SyncClient({
+      driver,
+      transport,
+      now: () => Date.parse("2026-01-01T00:00:00.000Z"),
+    });
+    client.init();
+  });
+
+  /** A page with one block whose text is `base`, already "confirmed" (nothing pending). */
+  function seedBlock(base: string): string {
+    const pageId = "pgMergeTest01";
+    const blockId = "blkMergeTest1";
+    client.applyLocal([
+      makeOp(client.nextHlc(), client.getDeviceId(), pageId, {
+        kind: "page.create",
+        name: "Merge Test",
+        journalDay: null,
+        createdAt: 0,
+      }),
+      makeOp(client.nextHlc(), client.getDeviceId(), blockId, {
+        kind: "block.create",
+        place: { pageId, parentId: null, order: "a0" },
+        content: base,
+        createdAt: 0,
+      }),
+    ]);
+    driver.run("DELETE FROM pending_op", []);
+    return blockId;
+  }
+
+  it("merges concurrent edits to different parts of a block instead of losing one", async () => {
+    const blockId = seedBlock("the quick brown fox jumps over the lazy dog");
+
+    // Our unpushed local edit: brown -> red.
+    client.applyLocal([
+      makeOp(client.nextHlc(), client.getDeviceId(), blockId, {
+        kind: "block.text",
+        content: "the quick red fox jumps over the lazy dog",
+      }),
+    ]);
+
+    // Concurrently, another device edited a different word: jumps -> leaps.
+    transport.nextPull = {
+      ops: [
+        makeOp("2026-01-01T00:00:00.010Z-0000-deadbeef", "deadbeef", blockId, {
+          kind: "block.text",
+          content: "the quick brown fox leaps over the lazy dog",
+        }),
+      ],
+      cursor: 9,
+      has_more: false,
+    };
+
+    await client.pull();
+
+    const row = driver.get<{ content: string }>("SELECT content FROM block WHERE id = ?", [
+      blockId,
+    ]);
+    expect(row?.content).toBe("the quick red fox leaps over the lazy dog");
+    // The merge result is queued for push so other devices converge on it too.
+    const pending = driver.all<{ kind: string }>("SELECT kind FROM pending_op");
+    expect(pending.some((p) => p.kind === "block.text")).toBe(true);
+  });
+
+  it("keeps the losing text as conflict_copy when both sides edited the same words", async () => {
+    const blockId = seedBlock("the quick brown fox");
+
+    client.applyLocal([
+      makeOp(client.nextHlc(), client.getDeviceId(), blockId, {
+        kind: "block.text",
+        content: "the SLOW brown fox",
+      }),
+    ]);
+    transport.nextPull = {
+      ops: [
+        makeOp("2026-01-01T00:00:00.010Z-0000-deadbeef", "deadbeef", blockId, {
+          kind: "block.text",
+          content: "the FAST brown fox",
+        }),
+      ],
+      cursor: 9,
+      has_more: false,
+    };
+
+    await client.pull();
+
+    // Whichever side lost, its text survives as a property rather than vanishing.
+    const prop = driver.get<{ value: string }>(
+      "SELECT value FROM block_prop WHERE block_id = ? AND key = 'conflict_copy'",
+      [blockId],
+    );
+    expect(prop?.value).toBeDefined();
+    expect(["the SLOW brown fox", "the FAST brown fox"]).toContain(prop?.value);
+  });
+});
+
 describe("SyncClient.bootstrap (fresh replica from snapshot)", () => {
   it("inserts snapshot rows directly and marks the replica bootstrapped", async () => {
     const driver = memoryDriver();

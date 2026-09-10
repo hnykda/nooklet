@@ -15,7 +15,16 @@ export const CLIENT_SCHEMA_STATEMENTS: readonly string[] = [
     hlc     TEXT NOT NULL,
     kind    TEXT NOT NULL,
     entity  TEXT NOT NULL,
-    payload TEXT NOT NULL
+    payload TEXT NOT NULL,
+    /**
+     * For an unpushed \`block.text\` op: the block's content as of the last server-confirmed
+     * version, i.e. the common ancestor of this pending edit and whatever another device may
+     * have written concurrently. \`@nooklet/core\`'s \`resolvePendingTextConflict\` needs it as
+     * the \`base\` of a three-way merge (ADR 003's v1.1 upgrade); without it a collision falls
+     * back to last-writer-wins and one side's edit is silently lost. NULL for every other op
+     * kind, and for a text op on a block that had no confirmed content yet.
+     */
+    base    TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS pending_op_hlc ON pending_op(hlc)`,
   `CREATE TABLE IF NOT EXISTS sync_state (

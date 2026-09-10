@@ -31,6 +31,7 @@ import {
   Hlc,
   newDeviceId,
   type Op,
+  resolvePendingTextConflict,
   type SqlDriver,
 } from "@nooklet/core";
 import type { PushResponse, SyncStatus, SyncTransport } from "./types.js";
@@ -146,11 +147,34 @@ export class SyncClient {
   applyLocal(ops: readonly Op[]): ApplyOpsResult {
     if (ops.length === 0) return { results: [], applied: 0, noop: 0, rejected: 0 };
     const result = this.driver.transaction(() => {
+      // Capture the pre-edit content of every block a `block.text` op is about to overwrite,
+      // BEFORE applying — that content is the common ancestor a three-way merge needs if another
+      // device turns out to have edited the same block concurrently (see `pull()`'s conflict
+      // handling and `../db/schema-client.ts`'s note on `pending_op.base`). Read once per entity
+      // so a batch touching one block repeatedly still records the original ancestor, not an
+      // intermediate value.
+      const bases = new Map<string, string | null>();
+      for (const op of ops) {
+        if (op.payload.kind !== "block.text" || bases.has(op.entity)) continue;
+        const existing = this.driver.get<{ content: string }>(
+          "SELECT content FROM block WHERE id = ?",
+          [op.entity],
+        );
+        bases.set(op.entity, existing?.content ?? null);
+      }
+
       const r = coreApplyOps(this.driver, ops);
       for (const op of ops) {
         this.driver.run(
-          "INSERT OR IGNORE INTO pending_op(id, hlc, kind, entity, payload) VALUES (?, ?, ?, ?, ?)",
-          [op.id, op.hlc, op.payload.kind, op.entity, JSON.stringify(op.payload)],
+          "INSERT OR IGNORE INTO pending_op(id, hlc, kind, entity, payload, base) VALUES (?, ?, ?, ?, ?, ?)",
+          [
+            op.id,
+            op.hlc,
+            op.payload.kind,
+            op.entity,
+            JSON.stringify(op.payload),
+            op.payload.kind === "block.text" ? (bases.get(op.entity) ?? null) : null,
+          ],
         );
       }
       return r;
@@ -253,13 +277,20 @@ export class SyncClient {
           // 003) so a drifted batch is rejected cleanly instead of applied with a clock that
           // can't represent it — see the identical ordering rationale in `applyPushResponse`.
           for (const op of res.ops) this.hlc.receive(op.hlc);
+          const extraOps = this.resolveTextConflicts(res.ops);
+          for (const op of extraOps) this.hlc.receive(op.hlc);
           this.driver.transaction(() => {
-            coreApplyOps(this.driver, res.ops);
+            // Merge ops go in the SAME batch as the pulled ops they resolve: they carry newer
+            // HLCs, so applying them together means the merged text wins deterministically here
+            // and, once pushed, on every other device too.
+            coreApplyOps(this.driver, [...res.ops, ...extraOps]);
             for (const op of res.ops) {
               this.driver.run("DELETE FROM pending_op WHERE id = ?", [op.id]);
             }
             this.setState(SYNC_STATE_SERVER_CURSOR, String(res.cursor));
           });
+          // A merge op is a local edit like any other: queue it so it reaches the server.
+          if (extraOps.length > 0) this.enqueueForPush(extraOps);
           this.persistHlc();
           this.refreshPendingCount();
           this.onAppliedOpsCb?.(res.ops);
@@ -407,6 +438,57 @@ export class SyncClient {
       entity: row.entity,
       payload: JSON.parse(row.payload),
     };
+  }
+
+  /**
+   * ADR 003's v1.1 upgrade, wired: when a pulled `block.text` op targets a block that still has
+   * an unpushed local `block.text` of our own, plain last-writer-wins would silently discard one
+   * person's edit. Instead we three-way merge against the pre-edit content captured in
+   * `pending_op.base` (see `applyLocal`). A clean merge yields a fresh `block.text` op carrying
+   * the combined text; a genuine overlapping edit falls back to LWW but preserves the losing
+   * text as a `conflict_copy` property, so nothing is ever lost quietly. Either way the returned
+   * ops carry newer HLCs than both sides, so every device converges on the same result.
+   */
+  private resolveTextConflicts(incoming: readonly Op[]): Op[] {
+    const extra: Op[] = [];
+    for (const op of incoming) {
+      if (op.payload.kind !== "block.text") continue;
+      const pending = this.driver.get<{ payload: string; hlc: string; base: string | null }>(
+        "SELECT payload, hlc, base FROM pending_op WHERE entity = ? AND kind = 'block.text' ORDER BY hlc DESC LIMIT 1",
+        [op.entity],
+      );
+      if (!pending || pending.base === null) continue;
+      const minePayload = JSON.parse(pending.payload) as { kind: string; content?: string };
+      if (typeof minePayload.content !== "string") continue;
+
+      const outcome = resolvePendingTextConflict({
+        entity: op.entity,
+        device: this.deviceId,
+        base: pending.base,
+        mine: minePayload.content,
+        mineHlc: pending.hlc,
+        theirs: op.payload.content,
+        theirsHlc: op.hlc,
+        nextHlc: () => this.hlc.next(),
+      });
+      extra.push(...outcome.extraOps);
+    }
+    return extra;
+  }
+
+  /** Queue already-applied ops for push (used for merge ops, which are applied inline). */
+  private enqueueForPush(ops: readonly Op[]): void {
+    this.driver.transaction(() => {
+      for (const op of ops) {
+        this.driver.run(
+          "INSERT OR IGNORE INTO pending_op(id, hlc, kind, entity, payload, base) VALUES (?, ?, ?, ?, ?, NULL)",
+          [op.id, op.hlc, op.payload.kind, op.entity, JSON.stringify(op.payload)],
+        );
+      }
+    });
+    this.persistHlc();
+    this.refreshPendingCount();
+    this.schedulePush();
   }
 
   private getState(key: string): string | undefined {
