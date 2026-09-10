@@ -2,7 +2,14 @@ import type { SqlDriver } from "@nooklet/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "../db.js";
 import { makeTestServer, post, type TestServer } from "../test-helpers.js";
-import { createToken, getToken, revokeToken, scopesFor, verifyToken } from "./tokens.js";
+import {
+  allScopesFor,
+  createToken,
+  getToken,
+  revokeToken,
+  scopesFor,
+  verifyToken,
+} from "./tokens.js";
 
 describe("createToken / verifyToken / revokeToken", () => {
   let driver: SqlDriver;
@@ -24,7 +31,7 @@ describe("createToken / verifyToken / revokeToken", () => {
     const before = getToken(driver, id)?.last_used_at;
     expect(before).toBeNull();
     const verified = verifyToken(driver, token);
-    expect(verified).toEqual({ id, scope: "read", label: "cli", canSync: false });
+    expect(verified).toEqual({ id, scope: "read", label: "cli", canSync: false, uiControl: false });
     expect(getToken(driver, id)?.last_used_at).not.toBeNull();
   });
 
@@ -43,6 +50,25 @@ describe("createToken / verifyToken / revokeToken", () => {
     expect(scopesFor("read")).toEqual(["read"]);
     expect(scopesFor("write")).toEqual(["read", "write"]);
     expect(scopesFor("admin")).toEqual(["read", "write", "admin"]);
+  });
+
+  it("ADR 015: ui_control is off by default and orthogonal to scope tier", () => {
+    const { token } = createToken(driver, { label: "cli", scope: "admin" });
+    const verified = verifyToken(driver, token);
+    expect(verified?.uiControl).toBe(false);
+    expect(allScopesFor(verified as NonNullable<typeof verified>)).toEqual([
+      "read",
+      "write",
+      "admin",
+    ]);
+  });
+
+  it("ADR 015: --ui-control adds ui:control without changing the scope tier", () => {
+    const { token } = createToken(driver, { label: "agent", scope: "read", uiControl: true });
+    const verified = verifyToken(driver, token);
+    expect(verified?.scope).toBe("read");
+    expect(verified?.uiControl).toBe(true);
+    expect(allScopesFor(verified as NonNullable<typeof verified>)).toEqual(["read", "ui:control"]);
   });
 });
 

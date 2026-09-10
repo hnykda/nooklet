@@ -6,9 +6,10 @@
  * `../sync/http-transport.ts`'s own "thin, untested wiring around tested logic" split.
  */
 
+import { activityLog, describeCommandActivity } from "./activity-log.js";
 import type { CommandRunResult } from "./command-runner.js";
-import type { HelloMessage } from "./types.js";
 import type { UiWindowStateWire } from "./state-snapshot.js";
+import type { HelloMessage } from "./types.js";
 
 export interface MessageHandlerDeps {
   /** Read the CURRENT window state fresh on every `state.get` — never cached, since the whole
@@ -24,7 +25,10 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 /** Parse one raw frame from the server and produce the raw frame to reply with (or `null` to send
  * nothing — an unrecognized `type`, or a frame with no usable `request_id`). Never throws: a
  * malformed frame is ignored, matching `../sync/live.ts`'s server-side tolerance. */
-export async function handleIncomingFrame(raw: string, deps: MessageHandlerDeps): Promise<string | null> {
+export async function handleIncomingFrame(
+  raw: string,
+  deps: MessageHandlerDeps,
+): Promise<string | null> {
   let msg: unknown;
   try {
     msg = JSON.parse(raw);
@@ -35,12 +39,18 @@ export async function handleIncomingFrame(raw: string, deps: MessageHandlerDeps)
   const requestId = msg.request_id;
 
   if (msg.type === "state.get") {
-    return JSON.stringify({ type: "state.result", request_id: requestId, state: deps.buildState() });
+    activityLog.record("Claude looked at this window");
+    return JSON.stringify({
+      type: "state.result",
+      request_id: requestId,
+      state: deps.buildState(),
+    });
   }
 
   if (msg.type === "command.run") {
     const commandId = typeof msg.command_id === "string" ? msg.command_id : "";
     const result = await deps.runCommand(commandId, msg.args);
+    activityLog.record(describeCommandActivity(commandId, result.when_result));
     return JSON.stringify({ type: "command.result", request_id: requestId, ...result });
   }
 

@@ -10,6 +10,8 @@
 import { A } from "@solidjs/router";
 import { type JSX, onCleanup, onMount } from "solid-js";
 import { useSyncStatus } from "../data/store.js";
+// ADR 015 §2.6: the persistent live-UI-control consent badge — see ../live/ConsentBadge.tsx.
+import { ConsentBadge } from "../live/index.js";
 import { platform } from "../platform/index.js";
 import "../styles/shell.css";
 
@@ -45,6 +47,7 @@ export function AppShell(props: { children?: JSX.Element }) {
           <A href="/search">Search</A>
         </nav>
         <SyncIndicator />
+        <ConsentBadge />
       </div>
       <div class="page-scroll">
         <div class="page-scroll-inner">{props.children}</div>

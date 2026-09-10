@@ -1,9 +1,13 @@
 /**
- * The v1 operation registry: 19 core ops from `docs/spec/mcp-tools.md` §4, registered once
- * (16 from the original v1 list, `batch.undo`/`asset.upload` added by ADR 013's M1.5 scope, and
- * `related.find` added by M3/ADR 010's embeddings work).
+ * The v1 operation registry: 24 core ops from `docs/spec/mcp-tools.md` §4, registered once
+ * (16 from the original v1 list, `batch.undo`/`asset.upload` added by ADR 013's M1.5 scope,
+ * `related.find` added by M3/ADR 010's embeddings work, and the five `ui.*` ops added by ADR 015's
+ * live-UI-control channel).
  */
 
+// ADR 015: live-UI-control ops, kept in `../live/` (tightly coupled to the window registry/RPC
+// there) and registered into CORE_OPS here, same as every other op.
+import { uiHighlight, uiNavigate, uiRun, uiState, uiWindows } from "../live/index.js";
 import { assetUpload } from "./asset-upload.js";
 import { batch } from "./batch.js";
 import { batchUndo } from "./batch-undo.js";
@@ -45,6 +49,11 @@ export const CORE_OPS = [
   pageDelete,
   batchUndo,
   assetUpload,
+  uiWindows,
+  uiState,
+  uiRun,
+  uiNavigate,
+  uiHighlight,
 ];
 
 export function buildRegistry(): OpRegistry {
@@ -74,4 +83,9 @@ export {
   pageUpdate,
   relatedFind,
   search,
+  uiHighlight,
+  uiNavigate,
+  uiRun,
+  uiState,
+  uiWindows,
 };

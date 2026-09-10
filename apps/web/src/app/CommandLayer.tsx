@@ -19,8 +19,16 @@
  * reimplementing anything.
  */
 
-import { useNavigate } from "@solidjs/router";
-import { createMemo, createSignal, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { useLocation, useNavigate } from "@solidjs/router";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import {
   type AutocompleteMatch,
   AutocompletePopup,
@@ -31,6 +39,7 @@ import {
   createFakeDatePickerHost,
   createPaletteController,
   detectPlatformFromEnvironment,
+  type EditorHost,
   MobileKeyboardToolbar,
   matchBlockRefTrigger,
   matchPageRefTrigger,
@@ -41,7 +50,18 @@ import {
   useCommands,
 } from "../commands/index.js";
 import { resolveBlockPageName } from "../data/store.js";
-import { activeEditorHost, buildContextBase } from "./editor-host.js";
+import { forceSync, initDb } from "../db/client.js";
+import {
+  buildUiWindowState,
+  connectLiveSocket,
+  getOrCreateWindowId,
+  type LiveSocketHandle,
+  liveConsent,
+  RemoteFlashOverlay,
+  runRemoteCommand,
+  setLiveConnected,
+} from "../live/index.js";
+import { activeContextSnapshot, activeEditorHost, buildContextBase } from "./editor-host.js";
 import {
   createAppHost,
   createBlockSource,
@@ -66,6 +86,91 @@ function KeyboardDispatch(props: { getContext: () => ContextBase }): null {
     document.addEventListener("keydown", onKeyDown, true);
     onCleanup(() => document.removeEventListener("keydown", onKeyDown, true));
   });
+  return null;
+}
+
+/**
+ * ADR 015 §2.1/§2.6: connects `/ui/live` only while "let agents view this window" is on, and
+ * answers `state.get`/`command.run` through the SAME registry/context this provider already built
+ * for keyboard/palette/toolbar dispatch (`./live/command-runner.ts` — never a parallel path). A
+ * sibling of `KeyboardDispatch` for the same reason: `useCommands()` only resolves inside
+ * `<CommandProvider>`.
+ */
+function LiveConnection(props: { getContext: () => ContextBase; editor: EditorHost }): null {
+  const { registry, buildContext } = useCommands();
+  const location = useLocation();
+  const [deviceId, setDeviceId] = createSignal<string | undefined>();
+  const [viewEnabled, setViewEnabled] = createSignal(liveConsent.get().viewEnabled);
+  const windowId = getOrCreateWindowId(
+    typeof sessionStorage === "undefined" ? undefined : sessionStorage,
+  );
+
+  onMount(() => {
+    void initDb().then(({ deviceId: id }) => setDeviceId(id));
+    const unsubscribe = liveConsent.subscribe((s) => setViewEnabled(s.viewEnabled));
+    onCleanup(unsubscribe);
+  });
+
+  let handle: LiveSocketHandle | undefined;
+  createEffect(() => {
+    const id = deviceId();
+    if (!viewEnabled() || !id) {
+      handle?.stop();
+      handle = undefined;
+      setLiveConnected(false);
+      return;
+    }
+    if (handle) return; // already connected/connecting for this (viewEnabled, deviceId) pair
+    handle = connectLiveSocket({
+      baseUrl: import.meta.env.VITE_SYNC_BASE_URL,
+      deviceId: id,
+      windowId,
+      client: "nooklet-web",
+      // Dev-only stand-in until device pairing (PLAN.md §6) ships a real per-device token — same
+      // as `../data/api-client.ts`'s own `getToken`. `/ui/live` authenticates like `/sync/live`
+      // (ADR 015 §2.1): a `can_sync` device token, not a separate MCP credential.
+      getToken: () => import.meta.env.VITE_NOOKLET_TOKEN,
+      getControlEnabled: () => liveConsent.get().controlEnabled,
+      // TODO(views): resolve the current route to a real {id, name} once a cheap local lookup
+      // exists here; ui_state's own state.get round trip already reports the page accurately, so
+      // this only affects ui_windows' listing, not correctness of what an agent sees when it asks.
+      getPage: () => null,
+      getFocused: () => document.hasFocus(),
+      onConnectedChange: setLiveConnected,
+      buildState: () => {
+        const selection = props.editor.getSelection();
+        return buildUiWindowState({
+          windowId,
+          deviceId: id,
+          focused: document.hasFocus(),
+          editor: activeContextSnapshot(),
+          cursor: selection ? { anchor: selection.start, head: selection.end } : null,
+          page: null,
+          zoomRootBlockId: new URLSearchParams(location.search).get("block"),
+          panels: {
+            sidebarOpen: document.body.classList.contains("sidebar-open"),
+            activeView: location.pathname.split("/")[1] || "journals",
+            dialogOpen: null,
+          },
+        });
+      },
+      runCommand: (commandId, args) =>
+        runRemoteCommand(
+          {
+            registry,
+            buildContext,
+            contextBase: props.getContext,
+            isControlEnabled: () => liveConsent.get().controlEnabled,
+            forceSync,
+          },
+          commandId,
+          args,
+        ),
+    });
+  });
+
+  onCleanup(() => handle?.stop());
+
   return null;
 }
 
@@ -160,6 +265,8 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
   return (
     <CommandProvider commands={commands} platform={platform} palette={palette}>
       <KeyboardDispatch getContext={getContext} />
+      <LiveConnection getContext={getContext} editor={editor} />
+      <RemoteFlashOverlay />
       {props.children}
       <CommandPalette
         pages={pages}

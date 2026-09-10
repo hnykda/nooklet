@@ -8,8 +8,13 @@
  * itself is deliberately `when`-blind, since every other caller already checked before calling it).
  */
 
-import type { CommandContext, CommandRegistry } from "../commands/index.js";
-import { matchesWhen } from "../commands/index.js";
+// Narrow, non-barrel imports (`../commands/types.js`/`registry.js`/`when/index.js`, not
+// `../commands/index.js`): the barrel re-exports Solid *.tsx components (palette/slash-menu/
+// autocomplete popups) whose module-scope side effects need a DOM, which would drag a browser
+// environment requirement into every test importing this module transitively.
+import type { CommandRegistry } from "../commands/registry.js";
+import type { CommandContext } from "../commands/types.js";
+import { matchesWhen } from "../commands/when/index.js";
 import { flashRemoteTouch } from "./flash-bus.js";
 
 export type WhenResult = "ran" | "skipped_when_false" | "unknown_command" | "not_permitted";
@@ -26,6 +31,15 @@ export interface CommandRunDeps {
    * effect, not a stale snapshot. */
   contextBase: () => Omit<CommandContext, "exec" | "args">;
   buildContext: (base: Omit<CommandContext, "exec" | "args">) => CommandContext;
+  /**
+   * Defense in depth: the server already refuses to send `command.run` at all when this window's
+   * `control_enabled` is off (`packages/server/src/live/run-remote-command.ts`), but this client
+   * checks its OWN current toggle too before running anything — e.g. a command in flight when the
+   * human flips control off mid-call, or simply never trusting a single enforcement point for
+   * something this consequential. Defaults to `true` (checked) so a caller cannot forget this by
+   * omission; pass it explicitly.
+   */
+  isControlEnabled: () => boolean;
   /** Best-effort: force an immediate sync push rather than waiting out the normal debounce (ADR
    * 015 §2.4 — "the whole reason a caller uses the live-UI channel instead of the headless tools
    * is speed"). Failures are swallowed; the command already ran regardless of whether this push
@@ -34,19 +48,22 @@ export interface CommandRunDeps {
 }
 
 /**
- * Runs `commandId` with `args` exactly as a keybinding would: unknown id -> `unknown_command`
- * (not an error — the caller checks `when_result`); `remoteInvocable: false` -> `not_permitted`;
- * `when` false against the CURRENT, real focus state -> `skipped_when_false` (an expected outcome,
- * e.g. `task.setPriorityA` on a block that isn't a task, not a fault); otherwise runs it via the
- * same `ctx.exec` every other trigger uses, flashes whatever ended up focused/selected afterward
- * (the v1 heuristic for "attribute whatever this command touched" — see `./flash-bus.ts`), and
- * best-effort forces an immediate sync push.
+ * Runs `commandId` with `args` exactly as a keybinding would: the local control toggle being off
+ * -> `not_permitted` (checked first, before even looking up the command — see `isControlEnabled`'s
+ * doc comment); unknown id -> `unknown_command` (not an error — the caller checks `when_result`);
+ * `remoteInvocable: false` -> `not_permitted`; `when` false against the CURRENT, real focus state
+ * -> `skipped_when_false` (an expected outcome, e.g. `task.setPriorityA` on a block that isn't a
+ * task, not a fault); otherwise runs it via the same `ctx.exec` every other trigger uses, flashes
+ * whatever ended up focused/selected afterward (the v1 heuristic for "attribute whatever this
+ * command touched" — see `./flash-bus.ts`), and best-effort forces an immediate sync push.
  */
 export async function runRemoteCommand(
   deps: CommandRunDeps,
   commandId: string,
   args: unknown,
 ): Promise<CommandRunResult> {
+  if (!deps.isControlEnabled()) return { when_result: "not_permitted" };
+
   const command = deps.registry.get(commandId);
   if (!command) return { when_result: "unknown_command" };
   if (command.remoteInvocable === false) return { when_result: "not_permitted" };

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { createToken } from "../auth/tokens.js";
 import { CORE_OPS } from "../ops/index.js";
 import { type JsonAny, makeTestServer, type TestServer } from "../test-helpers.js";
 
@@ -38,6 +39,33 @@ async function rpc(
   return { status: res.status, body };
 }
 
+const ORIGINAL_19_TOOL_NAMES = [
+  // The original 16 (docs/spec/mcp-tools.md).
+  "batch",
+  "block_delete",
+  "block_insert",
+  "block_move",
+  "block_read",
+  "block_update",
+  "changes_since",
+  "graph_overview",
+  "page_append",
+  "page_backlinks",
+  "page_create",
+  "page_delete",
+  "page_list",
+  "page_read",
+  "page_update",
+  "search",
+  // ADR 013 (M1.5).
+  "batch_undo",
+  "asset_upload",
+  // M3/ADR 010 embeddings.
+  "related_find",
+].sort();
+
+const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();
+
 describe("MCP tools/list", () => {
   it("lists every core op as a tool, with correct annotations, for a write-scoped token", async () => {
     const { status, body } = await rpc(s.app, s.writeToken, "tools/list", {});
@@ -46,34 +74,12 @@ describe("MCP tools/list", () => {
       name: string;
       annotations: Record<string, unknown>;
     }>;
-    expect(tools).toHaveLength(CORE_OPS.length);
+    // A plain write-scoped token has no ui:control (ADR 015 §7), so it must not see the 5 ui_*
+    // tools at all (rule 10: "not even listed for this token") — CORE_OPS.length (24) minus those
+    // 5 is the original 19.
+    expect(tools).toHaveLength(CORE_OPS.length - UI_TOOL_NAMES.length);
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(
-      [
-        // The original 16 (docs/spec/mcp-tools.md).
-        "batch",
-        "block_delete",
-        "block_insert",
-        "block_move",
-        "block_read",
-        "block_update",
-        "changes_since",
-        "graph_overview",
-        "page_append",
-        "page_backlinks",
-        "page_create",
-        "page_delete",
-        "page_list",
-        "page_read",
-        "page_update",
-        "search",
-        // ADR 013 (M1.5).
-        "batch_undo",
-        "asset_upload",
-        // M3/ADR 010 embeddings.
-        "related_find",
-      ].sort(),
-    );
+    expect(names).toEqual(ORIGINAL_19_TOOL_NAMES);
     const graphOverview = tools.find((t) => t.name === "graph_overview");
     expect(graphOverview?.annotations).toMatchObject({
       readOnlyHint: true,
@@ -90,6 +96,27 @@ describe("MCP tools/list", () => {
     expect(names).not.toContain("page_create");
     expect(names).not.toContain("block_delete");
     expect(names).toContain("graph_overview");
+  });
+
+  it("ADR 015: adds the 5 ui_* tools only for a token with the ui:control capability", async () => {
+    const uiToken = createToken(s.serverCtx.driver, {
+      label: "agent-ui",
+      scope: "read",
+      uiControl: true,
+    }).token;
+    const { body } = await rpc(s.app, uiToken, "tools/list", {});
+    const names = body.result.tools.map((t: { name: string }) => t.name).sort();
+    for (const uiName of UI_TOOL_NAMES) expect(names).toContain(uiName);
+    // Read-only ops the plain "read" scope already grants stay visible too.
+    expect(names).toContain("graph_overview");
+    // Write ops still require "write", which this ui:control token was not given.
+    expect(names).not.toContain("page_create");
+  });
+
+  it("ADR 015: ui_run requires ui:control even for an admin (write+read) token", async () => {
+    const { body } = await rpc(s.app, s.adminToken, "tools/list", {});
+    const names = body.result.tools.map((t: { name: string }) => t.name);
+    for (const uiName of UI_TOOL_NAMES) expect(names).not.toContain(uiName);
   });
 });
 

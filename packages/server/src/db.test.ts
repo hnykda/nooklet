@@ -80,7 +80,11 @@ describe("openDb", () => {
     const migrations = driver.all<{ version: number }>(
       "SELECT version FROM schema_migration ORDER BY version",
     );
-    expect(migrations.map((m) => m.version)).toEqual([1, 2]);
+    // [1, 2, 3, ...]: every migration from the fabricated v1 database up to the current
+    // SCHEMA_VERSION (3 added ADR 015's token.ui_control column) should have run in order.
+    expect(migrations.map((m) => m.version)).toEqual(
+      Array.from({ length: SCHEMA_VERSION }, (_, i) => i + 1),
+    );
   });
 
   it("refuses a database from a newer, unsupported schema version", () => {

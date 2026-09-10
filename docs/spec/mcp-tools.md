@@ -7,8 +7,10 @@ tool list, does not redesign it). Ids, block/page shapes and property semantics 
 
 ## 1. Purpose
 
-Define, tool by tool, the complete v1 operation registry (18 ops: the original 16, plus
-`batch.undo`/`asset.upload` from ADR 013) that nooklet exposes as HTTP endpoints under `/api/v1`
+Define, tool by tool, the complete v1 operation registry (24 ops: the original 16, plus
+`batch.undo`/`asset.upload` from ADR 013, `related.find` from M3/ADR 010's embeddings work, and
+`ui.windows`/`ui.state`/`ui.run`/`ui.navigate`/`ui.highlight` from ADR 015's live-UI-control
+channel) that nooklet exposes as HTTP endpoints under `/api/v1`
 and as MCP tools under `/mcp` (plus a stdio bridge): every op's name, LLM-facing description, Zod
 input/output schema, HTTP mapping, example, and error cases, so that
 `packages/server`'s operation registry, HTTP mounting and MCP registration (ADR 008) can be
@@ -20,9 +22,10 @@ limiting/audit wiring, and how MCP clients connect.
 
 Adds to `00-conventions.md`'s glossary (not yet appended there — see Open issues §9.1):
 
-- **Op registry entry**: one `defineOp({...})` value (ADR 008); this spec fixes the 18 v1 entries
+- **Op registry entry**: one `defineOp({...})` value (ADR 008); this spec fixes the 24 v1 entries
   that are exposed to MCP (the original 16, plus `batch.undo`/`asset.upload` added by ADR 013's
-  M1.5 scope). HTTP may later expose more (admin/sync ops) that are never MCP tools.
+  M1.5 scope, `related.find` added by M3/ADR 010, and the five `ui.*` ops added by ADR 015). HTTP
+  may later expose more (admin/sync ops) that are never MCP tools.
 - **Version** (of a page or block, for `if_version`): the entity's `updated_at` timestamp
   (ISO-8601, millisecond precision), returned by every read and write. It is not a separate
   counter; see §9.2.
@@ -46,7 +49,13 @@ Adds to `00-conventions.md`'s glossary (not yet appended there — see Open issu
    exceptions kept from ADR 008/PLAN §11's explicit v1 list: `search` and `batch` are bare
    single-word op names (there is no second noun to dot; see §9.4). MCP tool name = op name with
    `.` replaced by `_`; for `search` and `batch` this is a no-op, giving exactly the 16 MCP tool
-   names required by PLAN §11, plus `batch_undo`/`asset_upload` (ADR 013, M1.5), for 18 total.
+   names required by PLAN §11, plus `batch_undo`/`asset_upload` (ADR 013, M1.5), `related_find`
+   (M3/ADR 010), and `ui_windows`/`ui_state`/`ui_run`/`ui_navigate`/`ui_highlight` (ADR 015's
+   live-UI-control channel), for 24 total. This mechanical `.`→`_` derivation is why every op name
+   segment is restricted to `[a-z][a-z0-9]*` (no underscores) — an op name with an underscore in a
+   segment would make two different op names collide on one MCP tool name (e.g. a hypothetical
+   `ui.list_windows` and `ui.list.windows` would both become `ui_list_windows`); ADR 015's ops use
+   single-word verbs (`ui.windows`, `ui.state`, `ui.run`) for exactly this reason.
 2. HTTP mounts every op at `POST /api/v1/<op-name>` (e.g. `/api/v1/page.read`, `/api/v1/search`,
    `/api/v1/batch`) with a JSON body and the error envelope of `00-conventions.md`. Every
    `readOnlyHint: true` op additionally accepts `GET /api/v1/<op-name>?input=<urlencoded JSON>`.
@@ -428,12 +437,29 @@ export class OpError extends Error {
 | 16 | `page.delete` / `page_delete` | D I | write | requiresUserInteraction | Soft-delete a page |
 | 17 | `batch.undo` / `batch_undo` | D | write | deferred | Undo every entity change from a previous batch_id |
 | 18 | `asset.upload` / `asset_upload` | A I | write | deferred | Upload a file, get back an embeddable markdown link |
+| 19 | `related.find` / `related_find` | R I | read | deferred | Nearest neighbours of a page or block by meaning |
+| 20 | `ui.windows` / `ui_windows` | R I | read, ui:control | deferred | List currently live nooklet windows across all devices |
+| 21 | `ui.state` / `ui_state` | R I | read, ui:control | deferred | What is on screen right now in one (or the most-recently-active) window |
+| 22 | `ui.run` / `ui_run` | D | ui:control | deferred | Invoke any core/plugin command by id, exactly as a keybinding would |
+| 23 | `ui.navigate` / `ui_navigate` | A I | read, ui:control | deferred | Open a page (and optionally zoom to a block) in a live window |
+| 24 | `ui.highlight` / `ui_highlight` | A I | read, ui:control | deferred | Scroll to and flash a block in a live window, without changing focus/navigation |
 
 R = readOnlyHint, A = additive (destructiveHint:false), D = destructiveHint:true, I =
 idempotentHint:true. `openWorldHint:false` on every tool (omitted from the column). Rows 17-18
-(`batch.undo`/`asset.upload`) are ADR 013's M1.5 additions, same rigor and registration path as
-the original 16. Admin/sync ops (`admin.tokens.*`, `admin.embeddings.reindex`, `sync.*`,
-`trash.*`) exist in the registry with `expose.mcp: false`; out of scope for this document.
+(`batch.undo`/`asset.upload`) are ADR 013's M1.5 additions, row 19 (`related.find`) is M3/ADR 010's
+embeddings addition, and rows 20-24 (`ui.*`) are ADR 015's live-UI-control channel — all four
+batches follow the same rigor and registration path as the original 16. `ui.run`'s annotation is
+deliberately the conservative `D` (destructiveHint:true) despite most invocations being harmless
+navigation: `command_id` is caller-chosen and dynamic, so the tool cannot know in advance whether a
+given call is `block.delete` or `nav.switchPage` (per Anthropic's "an unannotated write tool is
+presumed destructive" guidance). The `ui:control` scope is a capability flag orthogonal to
+`read`/`write`/`admin` (§3.1 rule 5's `Permission` type, `packages/server/src/ops/registry.ts`) —
+a token needs it, in addition to whatever `read`/`write` scope a tool's other work requires, to
+reach any `ui.*` tool at all; `ui.run` needs only `ui:control` at the op level, since the server has
+no manifest of what a given `command_id` does — the invoked command's own `when` clause and
+`Command.remoteInvocable` flag are enforced client-side instead (ADR 015 §2.4). Admin/sync ops
+(`admin.tokens.*`, `admin.embeddings.reindex`, `sync.*`, `trash.*`) exist in the registry with
+`expose.mcp: false`; out of scope for this document.
 
 ### 4.3 Full definitions
 
@@ -1447,6 +1473,233 @@ in its own right — listed here because `asset_upload.url` points at it.
 
 **Errors**: `invalid` — `data_base64` is not valid base64, or decodes to zero bytes; `too_large` —
 decoded bytes exceed the 25 MB limit (`hint`: "compress or resize the file before uploading").
+
+---
+
+#### 4.3.19 `ui.windows` / `ui_windows`
+
+**Scope** `read`, `ui:control`. **Annotations** `{ readOnlyHint: true, destructiveHint: false,
+idempotentHint: true, openWorldHint: false }`. **Loading** deferred.
+
+**Description**: "Lists the nooklet windows currently connected and visible to a human right now,
+across all of this graph's devices. Returns an empty list if nobody has nooklet open; that is a
+normal result, not an error. Use this before `ui_run`/`ui_navigate` if you are unsure whether more
+than one window is open."
+
+```ts
+export const uiWindows = defineOp({
+  name: 'ui.windows', summary: 'List live nooklet windows',
+  input: z.object({}).strict(),
+  output: z.object({
+    live: z.boolean().describe('false if no window is currently open anywhere'),
+    windows: z.array(z.object({
+      window_id: z.string(), device_id: z.string(), device_label: z.string().optional(),
+      focused: z.boolean().describe('This window is the frontmost one on its device, if knowable'),
+      page: z.object({ id: z.string(), name: z.string() }).nullable(),
+      control_enabled: z.boolean().describe('The human has allowed command execution against this window; false means only ui_state will work'),
+      connected_at: z.string(), last_active_at: z.string(),
+    })),
+  }),
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  scopes: ['read', 'ui:control'],
+  render: (out) => out.live ? `${out.windows.length} live nooklet window(s)` : 'no nooklet window is currently open anywhere',
+  handler: (_, ctx) => ctx.ui.windows(),
+});
+```
+
+**HTTP**: `POST /api/v1/ui.windows`.
+
+**Example**
+
+```json
+// response when nobody has nooklet open
+{ "live": false, "windows": [] }
+```
+```json
+// response with one window open
+{
+  "live": true,
+  "windows": [{
+    "window_id": "9f2k3xzr7htv1", "device_id": "1k7f3q9pv2hzk8", "device_label": "dan's laptop",
+    "focused": true, "page": { "id": "1k7f3q9xz2hav4", "name": "Projects/Aurora" },
+    "control_enabled": true,
+    "connected_at": "2026-09-11T08:00:00.000Z", "last_active_at": "2026-09-11T08:14:02.000Z"
+  }]
+}
+```
+
+**Errors**: none specific — this call cannot fail except `internal`.
+
+---
+
+#### 4.3.20 `ui.state` / `ui_state`
+
+**Scope** `read`, `ui:control`. **Annotations** `{ readOnlyHint: true, destructiveHint: false,
+idempotentHint: true, openWorldHint: false }`. **Loading** deferred.
+
+**Description**: "Reads what a human is currently looking at in a live nooklet window: which page,
+which block is focused or selected, cursor position, scroll position, open panels/dialogs. Omit
+`window_id` if you expect exactly one window open; if several are open the response is resolved to
+the most-recently-active one and lists the others in `other_windows` so you can target a specific
+one next time. If no window is open anywhere, this returns `live: false` — not an error; the data
+tools (`search`, `page_read`, …) work the same whether or not anyone has nooklet open."
+
+```ts
+export const uiState = defineOp({
+  name: 'ui.state', summary: 'What is on screen right now',
+  input: z.object({ window_id: z.string().optional().describe('From ui_windows; omit to auto-resolve') }).strict(),
+  output: z.object({
+    live: z.boolean(),
+    window_id: z.string().optional(), resolved_by: z.enum(['only_window', 'most_recently_active', 'requested']).optional(),
+    reachable: z.boolean().optional().describe('false if the window did not answer within ~2s; not an error'),
+    state: UiWindowState.optional().describe('Absent when live is false or the window is unreachable'),
+    other_windows: z.array(z.object({ window_id: z.string(), page: z.string().nullable() })).optional()
+      .describe('Present when more than one window was live and window_id was auto-resolved'),
+  }),
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  scopes: ['read', 'ui:control'],
+  render: renderUiState, handler: (i, ctx) => ctx.ui.state(i),
+});
+```
+
+Where `UiWindowState` mirrors the client's own `WhenContext`/`CommandContext` (ADR 015 §2.3;
+`apps/web/src/live/state-snapshot.ts` is the client-side builder): `page`, `zoom_root_block_id`,
+`focus` (`mode`/`block_id`/`selected_block_ids`/`cursor`), `viewport`, `panels`, `updated_at`.
+
+**HTTP**: `POST /api/v1/ui.state`.
+
+**Example**
+
+```json
+// request
+{}
+```
+```json
+// response, one window live
+{
+  "live": true, "window_id": "9f2k3xzr7htv1", "resolved_by": "only_window", "reachable": true,
+  "state": {
+    "window_id": "9f2k3xzr7htv1", "device_id": "1k7f3q9pv2hzk8", "focused": true,
+    "page": { "id": "1k7f3q9xz2hav4", "name": "Projects/Aurora", "kind": "page" },
+    "zoom_root_block_id": null,
+    "focus": { "mode": "editing", "block_id": "1k7f3qa2m9xzr7", "selected_block_ids": [], "cursor": { "anchor": 12, "head": 12 } },
+    "viewport": { "first_visible_block_id": "1k7f3q9xz2hav4", "last_visible_block_id": "1k7f3qb1h7mtv3", "scroll_top": 240 },
+    "panels": { "sidebar_open": true, "active_view": "page", "dialog_open": null },
+    "updated_at": "2026-09-11T08:14:02.000Z"
+  }
+}
+```
+
+**Errors**: `not_found` — the given `window_id` is not currently connected (it may have just
+closed; call `ui_windows` again). A window that is live but does not answer within ~2s is `reachable:
+false`, not an error — see ADR 015 §2.
+
+---
+
+#### 4.3.21 `ui.run` / `ui_run`
+
+**Scope** `ui:control` (the handler does not additionally require `read`/`write` at the op level —
+see the tool-catalog note above). **Annotations** `{ readOnlyHint: false, destructiveHint: true,
+idempotentHint: false, openWorldHint: false }`. **Loading** deferred.
+
+**Description**: "Runs a nooklet command in a live window — the same command ids the palette,
+slash menu, and keybindings use (see the command reference). This is how an agent drives the
+actual UI a human has open, as opposed to editing the graph headlessly. `args` shape depends on
+`command_id`. A command whose `when` clause does not hold for the window's current state is
+skipped, not an error — check `when_result`. Prefer `ui_navigate`/`ui_highlight` for the two most
+common cases (open a page; point at a block) instead of calling this directly with
+`nav.openPage`/`nav.revealBlock`."
+
+```ts
+export const uiRun = defineOp({
+  name: 'ui.run', summary: 'Run a command in a live window',
+  input: z.object({
+    command_id: z.string().regex(/^[a-z][a-zA-Z0-9]*\.[a-zA-Z][a-zA-Z0-9]*$/)
+      .describe('e.g. "task.setMarkerDone", "block.zoomIn", "nav.openPage"'),
+    args: z.unknown().optional(),
+    window_id: z.string().optional(),
+  }).strict(),
+  output: z.object({
+    window_id: z.string(),
+    when_result: z.enum(['ran', 'skipped_when_false', 'unknown_command', 'not_permitted']),
+    result: z.unknown().optional(),
+    changed: z.object({ created: z.array(BlockId), updated: z.array(BlockId), deleted: z.array(BlockId), seq: z.number().int() }).optional()
+      .describe('Present when the command produced graph mutations; seq is safe to pass to changes_since/batch_undo'),
+  }),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  scopes: ['ui:control'],
+  render: renderUiRun, handler: (i, ctx) => ctx.ui.run(i),
+});
+```
+
+**HTTP**: `POST /api/v1/ui.run`.
+
+**Example**
+
+```json
+// request
+{ "command_id": "task.setMarkerDone", "args": { "blockId": "1k7f3qa2m9xzr7" }, "window_id": "9f2k3xzr7htv1" }
+```
+```json
+// response
+{ "window_id": "9f2k3xzr7htv1", "when_result": "ran", "result": { "ok": true },
+  "changed": { "created": [], "updated": ["1k7f3qa2m9xzr7"], "deleted": [], "seq": 48230 } }
+```
+
+**Errors**: `not_found` — `window_id` given but not connected, with `details.reason: "not_found"`;
+also `not_found` with `details.reason: "no_live_window"` when `window_id` is omitted and zero
+windows are live (`hint`: "use page_append/block_update instead"); `conflict` with
+`details.reason: "ambiguous_window"` and `details.windows` listing candidates when `window_id` is
+omitted and more than one window is live; `forbidden` — the target window has `control_enabled:
+false` (`hint` names the "let agents control this window" toggle); `internal` — the window did not
+respond within ~2s (rare: a busy or navigating tab; retry). Note: `docs/spec/mcp-tools.md` §3.8's
+fixed `OpErrorCode` enum has no `ambiguous`/`no_live_window` members (research/09's own sketch used
+those as illustrative names); this implementation carries the same information in `details.reason`
+instead of inventing new top-level codes, consistent with §3.8's closed list.
+
+---
+
+#### 4.3.22 `ui.navigate` / `ui_navigate`
+
+**Scope** `read`, `ui:control`. **Annotations** `{ readOnlyHint: false, destructiveHint: false,
+idempotentHint: true, openWorldHint: false }`. **Loading** deferred. A thin wrapper over
+`ui_run('nav.openPage', { page, blockId })`.
+
+```ts
+export const uiNavigate = defineOp({
+  name: 'ui.navigate', summary: 'Open a page in a live window',
+  input: z.object({ page: PageRef, block_id: BlockId.optional().describe('Also zoom to this block'), window_id: z.string().optional() }).strict(),
+  output: z.object({ window_id: z.string(), page: z.string() }),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  scopes: ['read', 'ui:control'],
+  render: renderUiNavigate, handler: (i, ctx) => ctx.ui.navigate(i),
+});
+```
+
+**HTTP**: `POST /api/v1/ui.navigate`. **Errors**: shares `ui_run`'s `not_found`/`conflict`/
+`forbidden`/`internal` cases (see §4.3.21).
+
+---
+
+#### 4.3.23 `ui.highlight` / `ui_highlight`
+
+**Scope** `read`, `ui:control`. **Annotations** `{ readOnlyHint: false, destructiveHint: false,
+idempotentHint: true, openWorldHint: false }`. **Loading** deferred. A thin wrapper over
+`ui_run('nav.revealBlock', { blockId })` — scrolls to and flashes a block without navigating away
+or changing zoom/editing focus.
+
+```ts
+export const uiHighlight = defineOp({
+  name: 'ui.highlight', summary: 'Point at a block in a live window without navigating away',
+  input: z.object({ block_id: BlockId, window_id: z.string().optional() }).strict(),
+  output: z.object({ window_id: z.string() }),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  scopes: ['read', 'ui:control'],
+  render: renderUiHighlight, handler: (i, ctx) => ctx.ui.highlight(i),
+});
+```
+
+**HTTP**: `POST /api/v1/ui.highlight`. **Errors**: shares `ui_run`'s error cases (see §4.3.21).
 
 ## 5. Example agent session
 

@@ -92,5 +92,30 @@ export function createNavCommands(deps: {
         navigation.openSearch();
       },
     },
+    // ADR 015 §2.4: no default keybinding, no picker — "jump straight to a known page/block."
+    // Reachable from the palette/a future plugin like any other command, but exists primarily as
+    // the primitive `ui_navigate`/`ui_highlight` (the live-UI-control MCP tools) wrap.
+    {
+      id: "nav.openPage",
+      title: "Open page",
+      category: "Navigation",
+      defaultKeys: {},
+      when: "true",
+      run(ctx) {
+        const args = ctx.args as { page?: string; blockId?: string } | undefined;
+        if (args?.page) navigation.openPageByRef(args.page, args.blockId);
+      },
+    },
+    {
+      id: "nav.revealBlock",
+      title: "Reveal block",
+      category: "Navigation",
+      defaultKeys: {},
+      when: "true",
+      run(ctx) {
+        const args = ctx.args as { blockId?: string } | undefined;
+        if (args?.blockId) navigation.revealBlock(args.blockId);
+      },
+    },
   ];
 }

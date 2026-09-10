@@ -18,6 +18,21 @@ export interface NavigationHost {
   openSearch(): void;
   /** Navigate to a link resolved by `EditorHost.getLinkAtCaret()` (R43). */
   followLink(link: LinkAtCaret): void;
+  /**
+   * ADR 015 §2.4's `nav.openPage`: jump straight to a known page by name/id/journal-date/
+   * "today"|"yesterday"|"tomorrow", with no picker — the one thing no existing `nav.*` command
+   * does (`nav.switchPage` opens an interactive picker; `nav.todayJournal`/`nav.journals` have a
+   * fixed destination). `blockId`, if given, additionally zooms into that block. Equally useful to
+   * a future plugin wanting to navigate programmatically, not just to remote agents.
+   */
+  openPageByRef(ref: string, blockId?: string): void;
+  /**
+   * ADR 015 §2.4's `nav.revealBlock`: scroll a known block into view and flash it, WITHOUT
+   * changing the current zoom root or editing focus — the "point at Y without navigating away"
+   * primitive `ui_highlight` wraps. Navigates to the block's own page first only if it isn't
+   * already the one showing.
+   */
+  revealBlock(blockId: string): void;
 }
 
 export interface AppHost {
@@ -58,6 +73,12 @@ export function createFakeNavigationHost(): NavigationHost & {
     },
     followLink(link) {
       calls.push({ method: "followLink", arg: link });
+    },
+    openPageByRef(ref, blockId) {
+      calls.push({ method: "openPageByRef", arg: { ref, blockId } });
+    },
+    revealBlock(blockId) {
+      calls.push({ method: "revealBlock", arg: blockId });
     },
   };
 }

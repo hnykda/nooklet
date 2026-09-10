@@ -34,6 +34,16 @@ import type { Json } from "./json.js";
 
 export type Scope = "read" | "write" | "admin";
 
+/**
+ * `Scope` plus `"ui:control"` (ADR 015 §7): the live-UI-control capability
+ * `packages/server/src/ops/registry.ts` added, orthogonal to the read/write/admin tier a token is
+ * created with. Mirrored here (not left as a server-internal concept) because the real `OpDef`/
+ * `OpContext` this package's assignability test (`./assignability.test.ts`) checks against now
+ * type their `scopes` field this way; no v1 core or plugin op actually lists `"ui:control"` in its
+ * own `scopes` array today, but the TYPE must still admit it for that assignability check to hold.
+ */
+export type Permission = Scope | "ui:control";
+
 export interface OpAnnotations {
   /** No side effects at all. */
   readOnlyHint: boolean;
@@ -84,8 +94,8 @@ export interface OpDef<I extends z.ZodType = z.ZodType, O extends z.ZodType = z.
   input: I;
   output: O;
   annotations: OpAnnotations;
-  /** Minimum token scopes required to call this op. */
-  scopes: Scope[];
+  /** Minimum token permissions required to call this op (see `Permission`). */
+  scopes: Permission[];
   /** Defaults: `http` true always; `mcp` true for core ops, false for plugin ops — a plugin op
    * must opt in explicitly to appear as an MCP tool. */
   expose?: Partial<OpExpose>;
@@ -224,7 +234,7 @@ export interface OpContext {
   mintOp(entity: string, payload: OpPayload): Op;
   origin: Origin;
   actor: Actor;
-  scopes: Scope[];
+  scopes: Permission[];
   config: ServerConfig;
   log: Logger;
   transport: "http" | "mcp" | "internal";

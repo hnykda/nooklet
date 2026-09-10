@@ -20,6 +20,9 @@ import type {
 import type { BlockTaskSnapshot, Store } from "../commands/types.js";
 import { applyOp, applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
 import { forceSync, queryAs } from "../db/client.js";
+import { flashRemoteTouch } from "../live/flash-bus.js";
+import type { PageRefQuery } from "../live/resolve-page-ref.js";
+import { resolvePageRef } from "../live/resolve-page-ref.js";
 
 // ---------------------------------------------------------------------------------------------
 // Store
@@ -165,6 +168,50 @@ export interface NavDeps {
   pageNameForId: (id: string) => Promise<string | undefined>;
 }
 
+interface PageRefRow {
+  id: string;
+  name: string;
+  journal_day: number | null;
+}
+
+function pageRefRowToResolved(
+  r: PageRefRow | undefined,
+): { id: string; name: string; journalDay: number | null } | null {
+  return r ? { id: r.id, name: r.name, journalDay: r.journal_day } : null;
+}
+
+/** `../live/resolve-page-ref.ts#resolvePageRef`'s local-replica queries — `nav.openPage`'s (ADR
+ * 015 §2.4) only real seam beyond what `NavigationHost` already has. */
+function pageRefQuery(): PageRefQuery {
+  return {
+    async byId(id) {
+      const rows = await queryAs<PageRefRow>(
+        "SELECT id, name, journal_day FROM page WHERE id = ? AND deleted_at IS NULL",
+        [id],
+      );
+      return pageRefRowToResolved(rows[0]);
+    },
+    async byName(name) {
+      const rows = await queryAs<PageRefRow>(
+        "SELECT id, name, journal_day FROM page WHERE key = ? AND deleted_at IS NULL",
+        [normalizePageName(name)],
+      );
+      return pageRefRowToResolved(rows[0]);
+    },
+    async byJournalDay(day) {
+      const rows = await queryAs<PageRefRow>(
+        "SELECT id, name, journal_day FROM page WHERE journal_day = ? AND deleted_at IS NULL",
+        [day],
+      );
+      return pageRefRowToResolved(rows[0]);
+    },
+  };
+}
+
+function pagePath(name: string): string {
+  return `/page/${name.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 export function createNavigationHost(deps: NavDeps): NavigationHost {
   return {
     openPage(pageId) {
@@ -199,12 +246,31 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
       }
       if (link.type === "block" && link.id) {
         void deps.pageNameForId(link.id).then((pageName) => {
-          if (pageName) {
-            const path = pageName.split("/").map(encodeURIComponent).join("/");
-            deps.navigate(`/page/${path}?block=${link.id}`);
-          }
+          if (pageName) deps.navigate(`${pagePath(pageName)}?block=${link.id}`);
         });
       }
+    },
+    openPageByRef(ref, blockId) {
+      void resolvePageRef(ref, pageRefQuery()).then((resolved) => {
+        if (!resolved) return;
+        const path = blockId
+          ? `${pagePath(resolved.name)}?block=${blockId}`
+          : pagePath(resolved.name);
+        deps.navigate(path);
+      });
+    },
+    revealBlock(blockId) {
+      void resolveBlockPageName(blockId).then((pageName) => {
+        if (!pageName) return;
+        // "Without changing focus/navigation" (ADR 015 §2.5's ui_highlight): only navigate if the
+        // block's page isn't already the one on screen, and never add `?block=` here — that param
+        // means ZOOM (`../routes/PageRoute.tsx`), a bigger change than "point at this block."
+        const target = pagePath(pageName);
+        if (decodeURIComponent(window.location.pathname) !== decodeURIComponent(target)) {
+          deps.navigate(target);
+        }
+        flashRemoteTouch(blockId);
+      });
     },
   };
 }

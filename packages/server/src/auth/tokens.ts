@@ -9,13 +9,16 @@ import { createHash, randomBytes } from "node:crypto";
 import type { SqlDriver } from "@nooklet/core";
 import { newId } from "@nooklet/core";
 import type { MiddlewareHandler } from "hono";
-import type { Scope } from "../ops/registry.js";
+import type { Permission, Scope } from "../ops/registry.js";
 
 export interface TokenRow {
   id: string;
   label: string;
   scope: Scope;
   can_sync: number;
+  /** ADR 015 §7: the `ui:control` capability, additive to `scope`'s read/write/admin tier — see
+   * `../ops/registry.ts`'s `Permission` doc comment. `schema.ts` MIGRATIONS version 3. */
+  ui_control: number;
   token_hash: string;
   created_at: number;
   last_used_at: number | null;
@@ -26,6 +29,10 @@ export interface CreateTokenOptions {
   label: string;
   scope: Scope;
   canSync?: boolean;
+  /** Grants the `ui:control` capability (ADR 015 §7): required by every `ui_*` op in addition to
+   * whatever `read`/`write`/`admin` scope it also needs. Defaults to `false` — a token created
+   * without `--ui-control` can never see or drive a live window, regardless of its scope tier. */
+  uiControl?: boolean;
 }
 
 export interface CreatedToken {
@@ -39,6 +46,7 @@ export interface VerifiedToken {
   scope: Scope;
   label: string;
   canSync: boolean;
+  uiControl: boolean;
 }
 
 function sha256Hex(s: string): string {
@@ -57,8 +65,16 @@ export function createToken(driver: SqlDriver, opts: CreateTokenOptions): Create
   const id = newId();
   const raw = `vrt_${randomBytes(24).toString("hex")}`;
   driver.run(
-    `INSERT INTO token(id, label, scope, can_sync, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, opts.label, opts.scope, opts.canSync ? 1 : 0, sha256Hex(raw), Date.now()],
+    `INSERT INTO token(id, label, scope, can_sync, ui_control, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      opts.label,
+      opts.scope,
+      opts.canSync ? 1 : 0,
+      opts.uiControl ? 1 : 0,
+      sha256Hex(raw),
+      Date.now(),
+    ],
   );
   return { id, token: raw };
 }
@@ -68,7 +84,25 @@ export function verifyToken(driver: SqlDriver, rawToken: string): VerifiedToken 
   const row = driver.get<TokenRow>("SELECT * FROM token WHERE token_hash = ?", [hash]);
   if (!row || row.revoked_at !== null) return null;
   driver.run("UPDATE token SET last_used_at = ? WHERE id = ?", [Date.now(), row.id]);
-  return { id: row.id, scope: row.scope, label: row.label, canSync: row.can_sync !== 0 };
+  return {
+    id: row.id,
+    scope: row.scope,
+    label: row.label,
+    canSync: row.can_sync !== 0,
+    uiControl: row.ui_control !== 0,
+  };
+}
+
+/** A verified token's full `Permission` set: its read/write/admin tier's implied scopes
+ * (`scopesFor`), plus `"ui:control"` when the token was created with `--ui-control` (ADR 015 §7).
+ * `ui:control` is never implied by `admin` or any other tier — it is a separate, explicit grant.
+ * The one place both halves are combined; every caller that builds an `OpContext`/MCP `AuthInfo`
+ * (`../http/app.ts`'s `bearerAuth`, `../mcp/server.ts`'s `verifyAccessToken`) should use this
+ * instead of `scopesFor(verified.scope)` alone. */
+export function allScopesFor(verified: VerifiedToken): Permission[] {
+  return verified.uiControl
+    ? [...scopesFor(verified.scope), "ui:control"]
+    : scopesFor(verified.scope);
 }
 
 export function revokeToken(driver: SqlDriver, id: string): boolean {
@@ -85,7 +119,7 @@ export function getToken(driver: SqlDriver, id: string): TokenRow | undefined {
 
 declare module "hono" {
   interface ContextVariableMap {
-    authScopes: Scope[];
+    authScopes: Permission[];
     authActorLabel: string;
     authTokenId: string;
   }
@@ -114,7 +148,7 @@ export function bearerAuth(driver: SqlDriver): MiddlewareHandler {
         401,
       );
     }
-    c.set("authScopes", scopesFor(verified.scope));
+    c.set("authScopes", allScopesFor(verified));
     c.set("authActorLabel", verified.label);
     c.set("authTokenId", verified.id);
     await next();

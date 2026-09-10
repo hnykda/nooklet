@@ -68,6 +68,7 @@ export type {
   OpExpose,
   Origin,
   OriginKind,
+  Permission,
   Scope,
   ServerConfig,
 } from "./op-def.js";

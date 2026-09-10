@@ -151,6 +151,7 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
     label        TEXT NOT NULL,
     scope        TEXT NOT NULL CHECK (scope IN ('read','write','admin')),
     can_sync     INTEGER NOT NULL DEFAULT 0,
+    ui_control   INTEGER NOT NULL DEFAULT 0,
     token_hash   TEXT NOT NULL UNIQUE,
     created_at   INTEGER NOT NULL,
     last_used_at INTEGER,
@@ -270,9 +271,24 @@ export const MIGRATIONS: readonly Migration[] = [
       ) WITHOUT ROWID`);
     },
   },
+  {
+    version: 3,
+    description: "add token.ui_control (ADR 015: live-UI-control capability)",
+    up: (driver) => {
+      // SQLite has no "ADD COLUMN IF NOT EXISTS"; guard defensively anyway (matches this file's
+      // own `CREATE TABLE IF NOT EXISTS` guard on the migration above) in case a database was
+      // somehow rebuilt from a schema.ts already carrying the column.
+      const hasColumn = driver
+        .all<{ name: string }>("PRAGMA table_info(token)")
+        .some((c) => c.name === "ui_control");
+      if (!hasColumn) {
+        driver.exec("ALTER TABLE token ADD COLUMN ui_control INTEGER NOT NULL DEFAULT 0");
+      }
+    },
+  },
 ];
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {

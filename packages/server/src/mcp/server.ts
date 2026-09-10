@@ -35,11 +35,12 @@ import {
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { ServerContext } from "../apply-ops.js";
-import { scopesFor, verifyToken } from "../auth/tokens.js";
+import { allScopesFor, verifyToken } from "../auth/tokens.js";
 import {
   buildOpContext,
   mcpExpose,
   type OpRegistry,
+  type Permission,
   runOpHandler,
   type ServerConfig,
   toErrorBody,
@@ -96,7 +97,7 @@ export interface McpActor {
 }
 
 export interface McpAuth {
-  scopes: import("../ops/registry.js").Scope[];
+  scopes: Permission[];
   actor: McpActor;
 }
 
@@ -241,7 +242,7 @@ export function buildMcp(
   return createMcpHandler(
     (requestCtx) => {
       const authInfo = requestCtx.authInfo;
-      const scopes = (authInfo?.scopes as import("../ops/registry.js").Scope[] | undefined) ?? [];
+      const scopes = (authInfo?.scopes as Permission[] | undefined) ?? [];
       const actor = (authInfo?.extra?.actor as McpActor | undefined) ?? { label: "unknown" };
       return buildMcpServerInstance(reg, serverCtx, config, { scopes, actor }, version);
     },
@@ -268,7 +269,7 @@ export function mountMcp(
         return {
           token,
           clientId: verified.id,
-          scopes: scopesFor(verified.scope),
+          scopes: allScopesFor(verified),
           expiresAt: NEVER_EXPIRES,
           extra: { actor: { label: verified.label, tokenId: verified.id } satisfies McpActor },
         };

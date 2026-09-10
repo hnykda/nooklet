@@ -34,6 +34,23 @@ export type Json = null | boolean | number | string | Json[] | { [k: string]: Js
 
 export type Scope = "read" | "write" | "admin";
 
+/**
+ * `Scope` plus `"ui:control"` (ADR 015 §7): the live-UI-control capability, orthogonal to the
+ * read/write/admin tier a token is created with — a broad `write` token for headless data cleanup
+ * should not thereby be able to drive someone's screen, and a `read` + `ui:control` token is a
+ * coherent "can watch and point at things, cannot edit" grant. Modeled as a fourth `Permission`
+ * value rather than a parallel "capabilities" system so every existing scope-enforcement path
+ * (`mountHttp`'s per-op check below, the MCP mount's `tools/list` filter and per-call check in
+ * `../mcp/server.ts`) covers it for free: `OpDef.scopes`/`OpContext.scopes` are typed `Permission[]`
+ * instead of `Scope[]`, `ui.*` ops simply list `"ui:control"` among their `scopes`, and
+ * `../auth/tokens.ts#allScopesFor` is the one place that decides whether a verified token's
+ * `Permission[]` includes it (from the token's own `ui_control` column, never implied by
+ * `read`/`write`/`admin`). The token table's single `scope` column (its read/write/admin *tier*)
+ * is untouched — `Scope` keeps meaning exactly that tier everywhere it already appears
+ * (`CreateTokenOptions.scope`, `TokenRow.scope`, `scopesFor`).
+ */
+export type Permission = Scope | "ui:control";
+
 export interface OpAnnotations {
   /** No side effects at all. */
   readOnlyHint: boolean;
@@ -78,8 +95,9 @@ export interface OpDef<I extends z.ZodType = z.ZodType, O extends z.ZodType = z.
   input: I;
   output: O;
   annotations: OpAnnotations;
-  /** Minimum token scopes required to call this op. */
-  scopes: Scope[];
+  /** Minimum token permissions required to call this op (the read/write/admin scopes, plus the
+   * orthogonal `"ui:control"` capability — see `Permission`). */
+  scopes: Permission[];
   /** Defaults: http true always; mcp true for core ops, false for plugin ops. */
   expose?: Partial<OpExpose>;
   /** Text for MCP `content[0].text`. Required iff expose.mcp !== false. */
@@ -200,7 +218,15 @@ export const consoleLogger: Logger = {
 };
 
 export interface OpContext {
-  /** Raw driver access for the rare cross-table query `DataApi` does not expose (search, backlinks). */
+  /**
+   * Raw driver access for the rare cross-table query `DataApi` does not expose (search,
+   * backlinks) — and, since a `SqlDriver` is as stable a per-server identity as `ServerContext`
+   * itself, also what `../live/*` (ADR 015) keys its `WeakMap`-based live-window registry by
+   * (`../live/registry.ts`), rather than adding a second, server-internal-only field here that
+   * `@nooklet/plugin-api`'s public `OpContext` (which never imports anything server-internal)
+   * would then also need to declare just to keep `packages/plugin-api/src/assignability.test.ts`
+   * passing.
+   */
   db: ServerContext["driver"];
   /** The isomorphic read/write facade (`../data-api.ts`); the common path for handlers. */
   data: DataApi;
@@ -216,7 +242,7 @@ export interface OpContext {
   mintOp(entity: string, payload: OpPayload): Op;
   origin: Origin;
   actor: Actor;
-  scopes: Scope[];
+  scopes: Permission[];
   config: ServerConfig;
   log: Logger;
   transport: "http" | "mcp" | "internal";
@@ -229,7 +255,7 @@ export interface OpContext {
 export function buildOpContext(
   serverCtx: ServerContext,
   config: ServerConfig,
-  auth: { scopes: Scope[]; actor: Actor; origin: Origin },
+  auth: { scopes: Permission[]; actor: Actor; origin: Origin },
   transportMeta: {
     transport: OpContext["transport"];
     requestId: string;

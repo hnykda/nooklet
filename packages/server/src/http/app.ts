@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { bearerAuth } from "../auth/tokens.js";
+import { mountUiLive } from "../live/index.js";
 import { mountMcp } from "../mcp/server.js";
 import {
   buildOpContext,
@@ -80,6 +81,12 @@ export function createApp(opts: CreateAppOptions): Hono {
   // every path on this app, not only `/mcp` — registering `/sync/*` first means Hono matches
   // these static routes before that catch-all ever runs.
   mountSync(app, serverCtx);
+
+  // `/ui/live` (ADR 015): a second, dedicated WebSocket, deliberately separate from `/sync/*`
+  // above — see `../live/live.ts`'s header. Mounted here, before `mountMcp`, for the same reason
+  // `mountSync` is: `mountMcp`'s sub-app matches `"/"` for every path, so a route registered after
+  // it risks being shadowed.
+  mountUiLive(app, serverCtx);
 
   mountMcp(app, registry, serverCtx, config, opts.version);
 

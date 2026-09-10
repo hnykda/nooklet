@@ -6,9 +6,18 @@
  *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
- *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] | list | revoke <id>
+ *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] [--ui-control] |
+ *                   list | revoke <id>  (--ui-control grants ADR 015's live-UI-control capability)
  *   nooklet embed   status | run | model <name> [--provider ollama|openai-compat] [--host <url>]
  *                   M3/ADR 010 embeddings: index status, drain the queue now, or switch models.
+ *   nooklet backup  [--out <path>] [--data <dir>]    consistent VACUUM INTO snapshot + assets/,
+ *                   as a single .tar.gz archive (M6, docs/OPERATIONS.md)
+ *   nooklet restore <archive> [--data <dir>] [--force]  restore a backup (refuses to clobber an
+ *                   existing database unless --force; refuses an archive newer than this build)
+ *   nooklet gc      [--dry-run] [--no-backup] [--data <dir>]  op-log GC down to
+ *                   min(device.acked_seq) across live devices (M6, ./gc.ts)
+ *   nooklet verify  [--data <dir>]  rebuild()-vs-live-state parity check (ADR 003, ./verify.ts);
+ *                   also runs automatically at "nooklet serve" startup when NODE_ENV != production
  *
  * `--data` defaults to $NOOKLET_DATA, then ~/.nooklet/default. The database lives at
  * <data>/graph.sqlite and the mirror at <data>/{pages,journals}/ (00-conventions.md, Storage).
@@ -21,6 +30,7 @@ import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import { createServerContext, type ServerContext } from "./apply-ops.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
+import { createBackup, restoreBackup } from "./backup/index.js";
 import { openDb } from "./db.js";
 import {
   activateModel,
@@ -35,6 +45,7 @@ import {
   registerModel,
   setEmbeddingSettings,
 } from "./embeddings/index.js";
+import { runGc } from "./gc.js";
 import { importLogseqGraph } from "./importer/logseq.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
@@ -43,6 +54,7 @@ import type { ServerConfig } from "./ops/registry.js";
 import { createAppWithPlugins } from "./plugins/bootstrap.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
+import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
 
 interface Args {
   _: string[];
@@ -123,7 +135,7 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
-  nooklet token create --label <label> [--scope read|write|admin] [--sync]
+  nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
   nooklet token list
   nooklet token revoke <token-id>
   nooklet embed status
@@ -133,6 +145,10 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet plugin enable <plugin-id>
   nooklet plugin disable <plugin-id>
   nooklet plugin reload <plugin-id>
+  nooklet backup [--out <path>] [--data <dir>]
+  nooklet restore <archive> [--data <dir>] [--force]
+  nooklet gc [--dry-run] [--no-backup] [--data <dir>]
+  nooklet verify [--data <dir>]
 `;
 
 async function main(): Promise<void> {
@@ -142,6 +158,17 @@ async function main(): Promise<void> {
   switch (cmd) {
     case "serve": {
       const { ctx, config } = open(args);
+
+      // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a scratch
+      // database on every start and diff it against the live state tables." Dev-only (the replay
+      // + diff cost is fine at hobby-graph scale but not something to pay on every production
+      // boot) and never fatal — a divergence is exactly the regression this exists to surface, not
+      // a reason to refuse to serve.
+      if (process.env.NODE_ENV !== "production") {
+        const report = verifyRebuildParity(ctx.driver);
+        process.stderr.write(`${formatVerifyReport(report)}\n`);
+      }
+
       const registry = buildRegistry();
       const { app } = await createAppWithPlugins({
         serverCtx: ctx,
@@ -174,7 +201,8 @@ async function main(): Promise<void> {
             `  http  http://127.0.0.1:${info.port}/api/v1\n` +
             `  mcp   http://127.0.0.1:${info.port}/mcp\n` +
             `  spec  http://127.0.0.1:${info.port}/openapi.json\n` +
-            `  sync  ws://127.0.0.1:${info.port}/sync/live\n`,
+            `  sync  ws://127.0.0.1:${info.port}/sync/live\n` +
+            `  live  ws://127.0.0.1:${info.port}/ui/live\n`,
         );
       });
       return;
@@ -220,13 +248,17 @@ async function main(): Promise<void> {
         if (scope !== "read" && scope !== "write" && scope !== "admin") {
           die(`unknown scope "${scope}" (expected read, write, or admin)`);
         }
+        // ADR 015 §7: `--ui-control` grants the orthogonal live-UI-control capability
+        // (`../ops/registry.ts`'s `Permission`), independent of --scope/--sync.
+        const uiControl = args.flags.get("ui-control") === true;
         const created = createToken(ctx.driver, {
           label,
           scope,
           canSync: args.flags.get("sync") === true,
+          uiControl,
         });
         process.stdout.write(
-          `${created.token}\n\nSaved as "${label}" (${scope}). This is the only time it is shown.\n`,
+          `${created.token}\n\nSaved as "${label}" (${scope}${uiControl ? ", ui:control" : ""}). This is the only time it is shown.\n`,
         );
         return;
       }
@@ -236,15 +268,19 @@ async function main(): Promise<void> {
           label: string;
           scope: string;
           can_sync: number;
+          ui_control: number;
           created_at: number;
           last_used_at: number | null;
           revoked_at: number | null;
-        }>("SELECT id, label, scope, can_sync, created_at, last_used_at, revoked_at FROM token");
+        }>(
+          "SELECT id, label, scope, can_sync, ui_control, created_at, last_used_at, revoked_at FROM token",
+        );
         for (const r of rows) {
           const state = r.revoked_at ? "revoked" : "active";
           const used = r.last_used_at ? new Date(r.last_used_at).toISOString() : "never";
+          const uiControl = r.ui_control ? " +ui:control" : "";
           process.stdout.write(
-            `${r.id}  ${r.scope.padEnd(5)}  ${state.padEnd(7)}  last used ${used}  ${r.label}\n`,
+            `${r.id}  ${r.scope.padEnd(5)}${uiControl}  ${state.padEnd(7)}  last used ${used}  ${r.label}\n`,
           );
         }
         return;
@@ -439,6 +475,77 @@ async function main(): Promise<void> {
       }
 
       die(`unknown plugin subcommand "${sub ?? ""}" (expected list, enable, disable, or reload)`);
+      return;
+    }
+
+    // =========================================================================================
+    // M6/hardening (PLAN.md §15): backup/restore, op-log GC, rebuild()-parity verify.
+    // =========================================================================================
+    case "backup": {
+      const { ctx, config } = open(args);
+      const outFlag = args.flags.get("out");
+      const result = createBackup(ctx.driver, {
+        dataDir: config.dataDir,
+        ...(typeof outFlag === "string" ? { outPath: resolve(outFlag) } : {}),
+      });
+      process.stdout.write(
+        `backed up ${config.dataDir} -> ${result.path}\n` +
+          `  schema version ${result.manifest.schemaVersion}, ${result.fileCount} file(s), ${result.archiveBytes} bytes\n`,
+      );
+      return;
+    }
+
+    case "restore": {
+      const archivePath = args._[1];
+      if (!archivePath) die("restore needs a path to a backup archive (see: nooklet backup)");
+      // Deliberately does NOT call open(args): that would create/initialize a fresh database at
+      // the target data dir before restoreBackup ever gets to run its own refuse-to-clobber check.
+      const dir = dataDir(args);
+      const result = restoreBackup(resolve(archivePath), {
+        dataDir: dir,
+        force: args.flags.get("force") === true,
+      });
+      process.stdout.write(
+        `restored ${result.filesRestored} file(s) into ${dir} ` +
+          `(archive schema version ${result.manifest.schemaVersion})\n` +
+          `restart "nooklet serve" to use the restored data.\n`,
+      );
+      return;
+    }
+
+    case "gc": {
+      const { ctx, config } = open(args);
+      const report = runGc(ctx, {
+        dataDir: config.dataDir,
+        dryRun: args.flags.get("dry-run") === true,
+        noBackup: args.flags.get("no-backup") === true,
+      });
+      if (report.refused) {
+        process.stdout.write(`gc: refused to run - ${report.reason}\n`);
+        for (const d of report.blockingDevices) {
+          process.stdout.write(
+            `  blocked by device "${d.name}" (${d.id}), acked_seq=${d.ackedSeq}\n`,
+          );
+        }
+        return;
+      }
+      const verb = report.dryRun ? "would drop" : "dropped";
+      process.stdout.write(
+        `gc: floor=${report.floor} (op.seq < floor) - ${verb} ${report.dropCount} op(s), ` +
+          `retaining ${report.retainCount}\n`,
+      );
+      if (report.backupPath) process.stdout.write(`  backup taken first: ${report.backupPath}\n`);
+      if (report.reclaimedBytes !== undefined) {
+        process.stdout.write(`  reclaimed ${report.reclaimedBytes} byte(s) on disk\n`);
+      }
+      return;
+    }
+
+    case "verify": {
+      const { ctx } = open(args);
+      const report = verifyRebuildParity(ctx.driver);
+      process.stdout.write(`${formatVerifyReport(report)}\n`);
+      if (!report.ok) process.exit(1);
       return;
     }
 

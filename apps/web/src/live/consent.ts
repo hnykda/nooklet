@@ -97,3 +97,22 @@ export function createConsentStore(storage?: ConsentStorageAdapter): ConsentStor
     },
   };
 }
+
+function safeLocalStorageAdapter(): ConsentStorageAdapter | undefined {
+  try {
+    // Accessing `localStorage` itself can throw (private mode in some browsers); probing here
+    // once, rather than in every read/write, keeps the hot paths above exception-free.
+    const probe = "nooklet.live.__probe__";
+    localStorage.setItem(probe, "1");
+    localStorage.removeItem(probe);
+    return localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The app-wide consent store (`../shell/AppShell.tsx`'s `<ConsentBadge>` and
+ * `../app/CommandLayer.tsx`'s socket wiring both read this SAME instance, so a toggle flipped from
+ * the badge is reflected immediately without any prop-drilling — same module-singleton idiom
+ * `../app/theme.ts#useTheme` and `../data/api-client.ts#apiClient` already use). */
+export const liveConsent: ConsentStore = createConsentStore(safeLocalStorageAdapter());

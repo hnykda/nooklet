@@ -1,0 +1,232 @@
+/**
+ * ADR 015's live-UI-control channel: the consent badge (`./ConsentBadge.tsx`) and the remote-flash
+ * highlight (`./RemoteFlashOverlay.tsx`). Same custom-property convention `../styles/shell.css`
+ * establishes (`--bg`/`--fg`/`--muted`/`--hairline`/`--accent`, light-first with a dark override
+ * block) — this file adds its own on top, never redefining the shell's.
+ */
+
+:root {
+  /* A colour distinct from the human's own --accent (ADR 015 §2.6), so a remote touch never reads
+   * as "my own UI flickering." */
+  --agent-accent: #a855f7;
+  --agent-accent-soft: color-mix(in srgb, var(--agent-accent) 22%, transparent);
+  --live-off: var(--muted);
+  --live-observed: #2ea043;
+  --live-controlled: var(--agent-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --agent-accent: #c084fc;
+    --live-observed: #3fb950;
+  }
+}
+
+:root[data-theme="dark"] {
+  --agent-accent: #c084fc;
+  --live-observed: #3fb950;
+}
+
+/* ── Remote flash: a block a remote command just touched ──────────────────────────────────── */
+
+@keyframes vr-remote-flash-pulse {
+  0% {
+    background-color: var(--agent-accent-soft);
+    box-shadow: 0 0 0 2px var(--agent-accent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.vr-remote-flash {
+  border-radius: 6px;
+  animation: vr-remote-flash-pulse 1.6s ease-out;
+}
+
+/* A small "Agent" tag, shown only while the flash animation is running, via the same class. */
+.vr-remote-flash::before {
+  content: "Agent";
+  position: relative;
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: white;
+  background: var(--agent-accent);
+  vertical-align: middle;
+  animation: vr-remote-flash-pulse 1.6s ease-out;
+}
+
+/* ── Consent badge ──────────────────────────────────────────────────────────────────────────── */
+
+.vr-live-badge-wrap {
+  position: relative;
+  margin-left: 8px;
+}
+
+.vr-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 4px 10px 4px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.vr-live-badge:hover {
+  background: var(--hairline);
+}
+
+.vr-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live-dot-color, var(--live-off));
+  flex: 0 0 auto;
+}
+
+.vr-live-badge[data-state="off"] {
+  --live-dot-color: var(--live-off);
+}
+.vr-live-badge[data-state="observed"] {
+  --live-dot-color: var(--live-observed);
+}
+.vr-live-badge[data-state="controlled"] {
+  --live-dot-color: var(--live-controlled);
+}
+.vr-live-badge[data-state="controlled"] {
+  border-color: color-mix(in srgb, var(--agent-accent) 45%, var(--hairline));
+}
+
+.vr-live-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  padding: 12px;
+  z-index: 50;
+}
+
+.vr-live-popover h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vr-live-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.vr-live-toggle-row:last-of-type {
+  border-bottom: none;
+}
+
+.vr-live-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vr-live-toggle-title {
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.vr-live-toggle-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* A small, deliberate switch — no external component needed for two booleans. */
+.vr-live-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  border: none;
+  background: var(--hairline);
+  cursor: pointer;
+  padding: 0;
+}
+
+.vr-live-switch[aria-checked="true"] {
+  background: var(--live-observed);
+}
+
+.vr-live-switch[data-variant="control"][aria-checked="true"] {
+  background: var(--agent-accent);
+}
+
+.vr-live-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 120ms ease;
+}
+
+.vr-live-switch[aria-checked="true"]::after {
+  transform: translateX(14px);
+}
+
+.vr-live-activity {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.vr-live-activity h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vr-live-activity ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.vr-live-activity li {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vr-live-activity-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
