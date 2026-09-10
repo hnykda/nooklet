@@ -1,6 +1,6 @@
 # nooklet — plan and design
 
-Date: 2026-09-10. Status: design phase. Decisions are recorded in `adr/`; the reasoning behind
+Date: 2026-09-10 (status updated 2026-09-11). Status: all milestones implemented. Decisions are recorded in `adr/`; the reasoning behind
 them is in `research/` (eight reports, ~350 KB, produced by parallel research agents on this
 date). This document is the readable synthesis: what we build, how, and in what order.
 
@@ -379,11 +379,11 @@ Status is tracked in the first column. Effort assumed one developer directing co
 | M0 | Foundations | **done** | `core`: model, parser/serializer, refs, journals, short ids, HLC, ops, inline tokenizer, `applyOps`/`rebuild` on a driver interface with property-based multi-device convergence tests |
 | M1 | Server | **done** | SQLite store, sync endpoints (push/pull/snapshot/WS poke), Logseq file-graph importer (ADR 012), mirror export, FTS5, op registry, HTTP API + OpenAPI, MCP server + stdio bridge, tokens, CLI, audit/changes. Verified end to end against the real 952-page graph |
 | M1.5 | AI parity | **done** | `batch_undo`, `asset_upload` (ADR 013) |
-| M2 | Web client | in progress | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell, live-UI-control channel (ADR 015) |
-| M3 | Embeddings | in progress | Provider interface, Ollama + OpenAI-compatible, worker queue, hybrid search, related |
-| M4 | Plugins | foundation done | `@nooklet/plugin-api` package and docs (done); loader for both halves, extension points, built-ins as plugins |
-| M5 | Mobile polish | pending | Keyboard toolbar, gestures, quick capture route, Capacitor shell |
-| M6 | Hardening | pending | Multi-device simulation tests, rebuild parity, 3-way text merge, op GC, backups/restore, docs |
+| M2 | Web client | **done** | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell, live-UI-control channel (ADR 015) |
+| M3 | Embeddings | **done** | Provider interface, Ollama + OpenAI-compatible, worker queue, hybrid search, related |
+| M4 | Plugins | **done** | `@nooklet/plugin-api` package and docs (done); loader for both halves, extension points, built-ins as plugins |
+| M5 | Mobile polish | **done** | Keyboard toolbar, gestures, quick capture route, Capacitor shell |
+| M6 | Hardening | **done** | Multi-device simulation tests, rebuild parity, 3-way text merge, op GC, backups/restore, docs |
 
 Milestone exit criteria: M1 imports the user's real graph and answers MCP queries from Claude
 Code; M2 replaces Logseq for daily journaling on desktop and phone; M3 finds notes by meaning in
