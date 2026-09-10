@@ -24,7 +24,7 @@ import { z } from "zod";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import type { DataApi } from "../data-api.js";
 import { createDataApi } from "../data-api.js";
-import { cloneServerContext } from "./clone-db.js";
+import { writeLock } from "./trial-lock.js";
 
 // -------------------------------------------------------------------------------------------
 // 1.1 Shared primitives
@@ -214,15 +214,6 @@ export interface OpContext {
    * HLC and `SERVER_DEVICE_ID` (../apply-ops.ts) — the same authorship every `ctx.data` write uses.
    */
   mintOp(entity: string, payload: OpPayload): Op;
-  /**
-   * ALSO not one of the spec's named fields. Returns a fresh `OpContext` wired to an independent,
-   * in-memory copy of the whole graph (`./clone-db.ts`) with the same auth/config/transport as
-   * this one. `dry_run` (`./dry-run.ts`) and `batch` (`./batch.ts`) use this to run real op
-   * handlers for real (full validation, real id/order-key allocation, real conflict checks) with
-   * zero risk to the actual database — see `clone-db.ts`'s header comment for why this exists
-   * instead of a nested SQL transaction/SAVEPOINT.
-   */
-  forkForTrial(): OpContext;
   origin: Origin;
   actor: Actor;
   scopes: Scope[];
@@ -270,9 +261,6 @@ export function buildOpContext(
     mintOp(entity, payload) {
       return makeOp(serverCtx.hlc.next(), SERVER_DEVICE_ID, entity, payload);
     },
-    forkForTrial() {
-      return buildOpContext(cloneServerContext(serverCtx), config, auth, transportMeta);
-    },
     origin: auth.origin,
     actor: auth.actor,
     scopes: auth.scopes,
@@ -317,6 +305,24 @@ export class OpRegistry {
   get(name: string): (OpDef & { owner: string }) | undefined {
     return this.ops.get(name);
   }
+}
+
+/**
+ * Runs one op's handler, serializing WRITE ops (readOnlyHint false) behind `writeLock`
+ * (`./trial-lock.ts`) so a `dry_run`/`batch` trial's open `Savepoint` — which now spans several
+ * `await`s on the shared connection — can never interleave with another write. The lock wraps the
+ * handler's ENTIRE execution (acquired once, here, per request) rather than each individual
+ * `ctx.applyOps` call, so a handler that calls `applyOps` more than once (or `batch`, which runs
+ * every step of a trial) never re-enters the lock it is already holding. Both mounts (HTTP below,
+ * MCP in `../mcp/server.ts`) call this instead of `op.handler` directly.
+ */
+export async function runOpHandler(
+  op: Pick<OpDef, "annotations" | "handler">,
+  input: unknown,
+  ctx: OpContext,
+): Promise<unknown> {
+  if (op.annotations.readOnlyHint) return op.handler(input, ctx);
+  return writeLock.run(() => op.handler(input, ctx));
 }
 
 export function httpExpose(op: OpDef): Required<OpExpose>["http"] {
@@ -382,7 +388,7 @@ export function mountHttp(app: Hono, reg: OpRegistry, buildOpCtx: BuildOpCtx): v
         );
       }
       try {
-        const out = await op.handler(parsed.data, ctx);
+        const out = await runOpHandler(op, parsed.data, ctx);
         return c.json(out as Record<string, unknown>);
       } catch (e) {
         const body = toErrorBody(e);

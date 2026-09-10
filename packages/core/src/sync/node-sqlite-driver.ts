@@ -14,7 +14,7 @@
 
 import type { SQLInputValue, StatementSync } from "node:sqlite";
 import { DatabaseSync } from "node:sqlite";
-import type { RunResult, SqlDriver } from "./driver.js";
+import type { RunResult, Savepoint, SqlDriver } from "./driver.js";
 
 /**
  * `applyOps`/`rebuild` only ever bind `null`/`number`/`string` (and here, `bigint` for a
@@ -37,7 +37,13 @@ export function createNodeSqliteDriver(db: DatabaseSync): SqlDriver {
     return stmt;
   };
 
+  // Shared between `transaction()` and `savepoint()` below: whichever of the two is outermost on
+  // this connection owns depth 0 -> 1, and everything nested — whether more `transaction()` calls
+  // or more `savepoint()` calls — just increments/decrements past that, never issuing its own
+  // `BEGIN` while depth > 0. This is exactly what lets `serverApplyOps` (which always calls
+  // `transaction()`) run, unmodified, inside a trial's open `Savepoint`.
   let depth = 0;
+  let savepointSeq = 0;
 
   return {
     exec(sql: string): void {
@@ -72,6 +78,38 @@ export function createNodeSqliteDriver(db: DatabaseSync): SqlDriver {
         }
         throw err;
       }
+    },
+    savepoint(): Savepoint {
+      // Unlike `transaction()`, this unconditionally issues `SAVEPOINT` (never `BEGIN`) — SQLite
+      // itself treats a `SAVEPOINT` opened with no transaction already in progress as implicitly
+      // starting one, and `RELEASE`ing that outermost savepoint later commits it, exactly like
+      // `COMMIT` would (https://sqlite.org/lang_savepoint.html). So depth 0 needs no special case
+      // here: it "just works" for the same reason `transaction()` needs the special case (it uses
+      // the different `BEGIN`/`COMMIT` statements, which SQLite does NOT let nest).
+      const name = `sp${++savepointSeq}`;
+      db.exec(`SAVEPOINT ${name}`);
+      depth++;
+      let settled = false;
+      return {
+        release(): void {
+          if (settled) return;
+          settled = true;
+          depth--;
+          db.exec(`RELEASE ${name}`);
+        },
+        rollback(): void {
+          if (settled) return;
+          settled = true;
+          depth--;
+          try {
+            db.exec(`ROLLBACK TO ${name}`);
+            db.exec(`RELEASE ${name}`);
+          } catch {
+            // best-effort, mirroring transaction()'s ROLLBACK above: if the connection is already
+            // broken, nothing more to do.
+          }
+        },
+      };
     },
   };
 }

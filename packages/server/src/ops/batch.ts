@@ -224,34 +224,36 @@ export const batch = defineOp({
       return results;
     }
 
-    // Phase 1 (ALWAYS, dry_run or not): run for real against a throwaway clone of the whole graph
-    // (`ctx.forkForTrial()`, `./clone-db.ts`) — never the actual database. A failure anywhere
-    // throws here, before the real `ctx` has been touched at all: this is what gives `batch` its
-    // atomicity (mcp-tools.md §3.5.1) and `dry_run` its "as if the batch had run" semantics
-    // (§3.5.3), without needing a nested SQL transaction (see `./clone-db.ts`'s header comment for
-    // why that path does not work here).
-    const trialBatchId = newId();
-    const trialResults = await runAllSteps(ctx.forkForTrial(), trialBatchId);
-
-    if (input.dry_run) {
-      return {
-        results: trialResults,
-        applied: false,
-        seq: undefined,
-        batch_id: trialBatchId,
-        dry_run: true,
-      };
+    // Run every step for real, exactly ONCE, against the real `ctx` — inside a `Savepoint`
+    // (`@vrite/core`'s `SqlDriver.savepoint()`; see `driver.ts`'s doc for why this exists instead
+    // of a nested SQL transaction `serverApplyOps`'s own `transaction()` call could conflict
+    // with). A failure anywhere throws inside `runAllSteps`; the catch below rolls back
+    // everything already applied by earlier steps in this same batch before rethrowing — this is
+    // what gives `batch` its atomicity (mcp-tools.md §3.5.1) without a clone-and-replay. `dry_run`
+    // reuses the exact same run, then unconditionally rolls back too (§3.5.3's "as if the batch
+    // had run" semantics). The caller (`registry.ts`'s `runOpHandler`) already holds `writeLock`
+    // for this whole handler call, so no concurrent write can land inside this savepoint's scope.
+    const batchId = newId();
+    const sp = ctx.db.savepoint();
+    let results: Array<{ index: number; ok: true; result: unknown }>;
+    try {
+      results = await runAllSteps(ctx, batchId);
+    } catch (e) {
+      sp.rollback();
+      throw e;
     }
 
-    // Phase 2: the trial proved every step succeeds, so replay the same sequence for real. Fresh
-    // ids/batchId (this is a completely independent, second pass — the trial's clone is discarded).
-    const realBatchId = newId();
-    const realResults = await runAllSteps(ctx, realBatchId);
+    if (input.dry_run) {
+      sp.rollback();
+      return { results, applied: false, seq: undefined, batch_id: batchId, dry_run: true };
+    }
+
+    sp.release();
     const seq =
       ctx.db.get<{ n: number }>(
         "SELECT COALESCE(MAX(seq), 0) AS n FROM changes WHERE batch_id = ?",
-        [realBatchId],
+        [batchId],
       )?.n ?? 0;
-    return { results: realResults, applied: true, seq, batch_id: realBatchId, dry_run: false };
+    return { results, applied: true, seq, batch_id: batchId, dry_run: false };
   },
 });

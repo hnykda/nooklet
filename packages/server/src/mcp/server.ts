@@ -37,6 +37,7 @@ import {
   buildOpContext,
   mcpExpose,
   type OpRegistry,
+  runOpHandler,
   type ServerConfig,
   toErrorBody,
 } from "../ops/registry.js";
@@ -122,7 +123,7 @@ export function buildMcpServerInstance(
               signal: toolCtx.mcpReq.signal,
             },
           );
-          const out = await op.handler(input, opCtx);
+          const out = await runOpHandler(op, input, opCtx);
           return {
             content: [
               { type: "text" as const, text: op.render ? op.render(out) : JSON.stringify(out) },

@@ -7,6 +7,32 @@ beforeEach(() => {
   s = makeTestServer();
 });
 
+interface RowCounts {
+  page: number;
+  block: number;
+  block_prop: number;
+  op: number;
+  changes: number;
+  ref: number;
+  path_ref: number;
+}
+
+/** Row counts across every table a write can touch, for atomicity/no-op assertions below: a
+ * dry_run or a rolled-back batch step must leave every single one of these exactly unchanged. */
+function rowCounts(server: TestServer): RowCounts {
+  const count = (table: string): number =>
+    server.serverCtx.driver.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
+  return {
+    page: count("page"),
+    block: count("block"),
+    block_prop: count("block_prop"),
+    op: count("op"),
+    changes: count("changes"),
+    ref: count("ref"),
+    path_ref: count("path_ref"),
+  };
+}
+
 describe("graph.overview", () => {
   it("returns counts and a seq (success)", async () => {
     const { status, json } = await post(s.app, "/api/v1/graph.overview", s.writeToken, {});
@@ -46,6 +72,28 @@ describe("page.create", () => {
     expect(status).toBe(409);
     expect(json.error.code).toBe("conflict");
     expect(json.error.details.page_id).toBeDefined();
+  });
+
+  it("dry_run on a new page with markdown calls applyOps twice inside one trial, and mutates nothing", async () => {
+    // Creating a brand-new page with markdown does TWO separate writes -- ctx.data.pages.create,
+    // then ctx.applyOps(res.ops) for the parsed blocks -- both inside the ONE savepoint dry_run
+    // opens. This is exactly the case the old clone-per-trial approach existed to work around: a
+    // naive raw SAVEPOINT whose scope transaction() doesn't know about breaks the moment a second
+    // nested transaction() (here, the second write) tries to BEGIN again.
+    const before = rowCounts(s);
+    const { status, json } = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "NeverSaved",
+      markdown: "- a\n  - b",
+      dry_run: true,
+    });
+    expect(status).toBe(200);
+    expect(json.existed).toBe(false);
+    expect(json.created).toHaveLength(2);
+    expect(json.dry_run).toBe(true);
+
+    const check = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "NeverSaved" });
+    expect(check.status).toBe(404); // never actually written
+    expect(rowCounts(s)).toEqual(before);
   });
 });
 
@@ -430,5 +478,103 @@ describe("batch", () => {
     expect(json.error.details.index).toBe(1);
     const check = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "AtomicX" });
     expect(check.status).toBe(404); // page.create from the failed batch did not survive
+  });
+});
+
+// The `batch`/`dry_run` tests above (and the old clone-based implementation they were written
+// against) only ever ran against an EMPTY block table -- easy to pass by accident even with a
+// broken savepoint/transaction interaction, since there is nothing pre-existing to corrupt. These
+// run every case against a graph that already has real pages/blocks in it, and check exact row
+// counts and block content, not just HTTP status codes.
+describe("batch/dry_run against a non-empty graph", () => {
+  async function seed(): Promise<{ text: string }> {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Existing",
+      markdown: "- alpha\n  - beta",
+    });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Existing" });
+    return { text: read.json.text as string };
+  }
+
+  it("dry_run: true on batch mutates nothing -- same row counts and same pre-existing content", async () => {
+    const seeded = await seed();
+    const before = rowCounts(s);
+
+    const { status, json } = await post(s.app, "/api/v1/batch", s.writeToken, {
+      dry_run: true,
+      ops: [
+        { op: "page.create", name: "NeverCommitted" },
+        { op: "page.append", page: "$1", markdown: "- gamma" },
+      ],
+    });
+    expect(status).toBe(200);
+    expect(json.applied).toBe(false);
+    expect(json.dry_run).toBe(true);
+    expect(json.results).toHaveLength(2); // the trial itself did run, and did report results
+
+    expect(rowCounts(s)).toEqual(before);
+    const existingAfter = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Existing",
+    });
+    expect(existingAfter.json.text).toBe(seeded.text);
+    const neverCommitted = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "NeverCommitted",
+    });
+    expect(neverCommitted.status).toBe(404);
+  });
+
+  it("a failing batch step leaves pre-existing pages/blocks completely untouched", async () => {
+    const seeded = await seed();
+    const before = rowCounts(s);
+
+    const { status, json } = await post(s.app, "/api/v1/batch", s.writeToken, {
+      ops: [
+        { op: "page.append", page: "Existing", markdown: "- gamma" }, // would succeed alone
+        { op: "page.append", page: "$9", markdown: "- boom" }, // bad placeholder -> fails
+      ],
+    });
+    expect(status).toBe(400);
+    expect(json.error.details.index).toBe(1);
+
+    expect(rowCounts(s)).toEqual(before); // step 0's write did not survive step 1's failure
+    const existingAfter = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Existing",
+    });
+    expect(existingAfter.json.text).toBe(seeded.text);
+    expect(existingAfter.json.text).not.toContain("gamma");
+  });
+
+  it("a successful batch applies exactly once: no duplicated blocks, one changes/op row set", async () => {
+    await seed();
+    const before = rowCounts(s);
+
+    const { status, json } = await post(s.app, "/api/v1/batch", s.writeToken, {
+      ops: [
+        { op: "page.create", name: "OnceOnly" },
+        { op: "page.append", page: "$1", markdown: "- one\n- two" },
+      ],
+    });
+    expect(status).toBe(200);
+    expect(json.applied).toBe(true);
+
+    const after = rowCounts(s);
+    // Exactly one new page and two new blocks -- NOT double that, which is what a bug re-running
+    // the trial's own steps for real (instead of committing the trial itself) would produce.
+    expect(after.page - before.page).toBe(1);
+    expect(after.block - before.block).toBe(2);
+
+    const blockContents = s.serverCtx.driver
+      .all<{ content: string }>(
+        "SELECT content FROM block WHERE page_id = (SELECT id FROM page WHERE key = ?) ORDER BY content",
+        ["onceonly"],
+      )
+      .map((r) => r.content);
+    expect(blockContents).toEqual(["one", "two"]); // each exactly once, not duplicated
+
+    // Exactly 3 new op rows (1 page.create + 2 block.create) and 3 new changes rows (one per
+    // touched entity, sql-schema.md rule 21) -- not double, which is what re-running the trial's
+    // own already-applied steps for real (instead of committing the trial itself) would produce.
+    expect(after.op - before.op).toBe(3);
+    expect(after.changes - before.changes).toBe(3);
   });
 });
