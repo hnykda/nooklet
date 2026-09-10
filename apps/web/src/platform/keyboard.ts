@@ -24,12 +24,16 @@ export function computeKeyboardInset(
   return inset < DEAD_BAND_PX ? 0 : Math.round(inset);
 }
 
-interface KeyboardStyleTarget {
+export interface KeyboardStyleTarget {
   style: { setProperty(name: string, value: string): void };
   classList: { toggle(name: string, force: boolean): void };
 }
 
-function applyInset(root: KeyboardStyleTarget, px: number): void {
+/** Write `--kb` (and toggle `.kb-open`) on `root`. Exported so `../platform/capacitor.ts` can
+ * drive the exact same CSS contract from `@capacitor/keyboard`'s real height events instead of
+ * this file's `visualViewport` heuristics — the app's CSS (`../styles/shell.css`,
+ * `../commands/styles.css`) never needs to know which adapter is live. */
+export function applyInset(root: KeyboardStyleTarget, px: number): void {
   root.style.setProperty("--kb", `${px}px`);
   root.classList.toggle("kb-open", px > 0);
 }

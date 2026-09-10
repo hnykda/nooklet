@@ -1,10 +1,12 @@
 /**
- * The bullet + collapse/expand arrow + child count (BUILD item 1). Drag-to-reorder (research
- * 04-editor.md §3.8) is explicitly a "nice-to-have" there and is not implemented in this
- * milestone — move-by-keyboard (`Alt+Up/Down`) and the toolbar/gesture equivalents (§Mobile,
- * owned by whichever agent builds the mobile keyboard toolbar) cover reordering instead.
+ * The bullet + collapse/expand arrow + child count (BUILD item 1), plus long-press-to-drag
+ * reorder (research/08-mobile.md §3.6, M5 BUILD item 2): holding the bullet for 300ms starts a
+ * drag whose vertical movement is converted, one sibling row at a time, into `onDragStep` calls —
+ * `BlockTree.tsx` runs those through the exact same `moveBlock`/`block.moveUp`/`block.moveDown`
+ * path `Alt+Up/Down` already uses, per `../../editor/gestures/longPressDrag.ts`'s doc comment.
  */
-import { Show } from "solid-js";
+import { onCleanup, onMount, Show } from "solid-js";
+import { attachLongPressDrag } from "./gestures/longPressDragAttach.js";
 
 export function Bullet(props: {
   hasChildren: boolean;
@@ -12,9 +14,22 @@ export function Bullet(props: {
   childCount: number;
   onToggleCollapse: () => void;
   onZoomIn: () => void;
+  onDragStep?: (direction: "up" | "down") => void;
 }) {
+  let wrapEl: HTMLSpanElement | undefined;
+
+  onMount(() => {
+    if (!wrapEl || !props.onDragStep) return;
+    const detach = attachLongPressDrag(
+      wrapEl,
+      { moveStep: (direction) => props.onDragStep?.(direction) },
+      () => wrapEl?.closest<HTMLElement>(".vr-row")?.getBoundingClientRect().height ?? 32,
+    );
+    onCleanup(detach);
+  });
+
   return (
-    <span class="vr-bullet-wrap">
+    <span class="vr-bullet-wrap" ref={wrapEl}>
       <Show when={props.hasChildren}>
         <button
           type="button"

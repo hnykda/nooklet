@@ -130,6 +130,13 @@ export interface Command {
   defaultKeys: { mac?: string; other?: string };
   /** Icon-set key, palette/menu/toolbar glyph. */
   icon?: string;
+  /** ADR 015 §2.4: whether `ui_run` (the live-UI-control MCP tool) may invoke this command at all,
+   * independent of the calling token's own scopes and this command's own `when` clause (both are
+   * still checked). Default-allow (`true` when absent) rather than a hand-maintained allowlist
+   * that has to be kept in sync with every future command — core sets it `false` only for commands
+   * that act outside the document model entirely (a hypothetical future `app.quit`, a
+   * factory-reset), of which there are none in the v1 registry today. */
+  remoteInvocable?: boolean;
   run: (ctx: CommandContext) => void | Promise<void>;
 }
 

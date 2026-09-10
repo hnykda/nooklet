@@ -57,7 +57,10 @@ body {
 
 body,
 button,
-a {
+a,
+input,
+[role="link"],
+[role="button"] {
   -webkit-tap-highlight-color: transparent;
 }
 

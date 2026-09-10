@@ -7,9 +7,10 @@
  * logic" rule.
  */
 import { classifyBlockContent } from "@nooklet/core";
-import { createMemo, Show } from "solid-js";
+import { createEffect, createMemo, onCleanup, Show } from "solid-js";
 import { Bullet } from "./Bullet.js";
 import { resolveClickOffset } from "./caret.js";
+import { attachSwipeRow } from "./gestures/swipeAttach.js";
 import { BlockContentView, type Navigate } from "./render/tokens.js";
 import type { EditableBlock } from "./types.js";
 
@@ -30,8 +31,28 @@ export function BlockRowView(props: {
   onToggleMarker: () => void;
   onSelectClick: (e: MouseEvent) => void;
   onNavigate?: Navigate;
+  /** Swipe-right/left-to-indent/outdent (research/08-mobile.md §3.5). Pure presentation still
+   * holds: this component only forwards intent, `BlockTree.tsx` runs the actual op. */
+  onSwipeIndent?: () => void;
+  onSwipeOutdent?: () => void;
+  /** Long-press-the-bullet-to-drag-reorder (research/08-mobile.md §3.6), one call per row
+   * crossed — see `Bullet.tsx`. */
+  onDragStep?: (direction: "up" | "down") => void;
 }) {
   const content = createMemo(() => classifyBlockContent(props.block.content));
+  let rowEl: HTMLDivElement | undefined;
+
+  // Skip the swipe gesture while this row is the one being edited: the CM6 surface owns touch
+  // there (cursor placement, text selection), and re-attaching whenever `editing` flips keeps the
+  // listener installed the rest of the time.
+  createEffect(() => {
+    if (!rowEl || props.editing || !(props.onSwipeIndent || props.onSwipeOutdent)) return;
+    const detach = attachSwipeRow(rowEl, {
+      indent: () => props.onSwipeIndent?.(),
+      outdent: () => props.onSwipeOutdent?.(),
+    });
+    onCleanup(detach);
+  });
 
   function handleContentClick(e: MouseEvent): void {
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
@@ -49,6 +70,7 @@ export function BlockRowView(props: {
       classList={{ "vr-row-editing": props.editing, "vr-row-selected": props.selected }}
       style={{ "--depth": props.depth }}
       data-block-id={props.id}
+      ref={rowEl}
     >
       <Bullet
         hasChildren={props.hasChildren}
@@ -56,6 +78,7 @@ export function BlockRowView(props: {
         childCount={props.childCount}
         onToggleCollapse={props.onToggleCollapse}
         onZoomIn={props.onZoomIn}
+        onDragStep={props.onDragStep}
       />
       <div class="vr-row-main">
         <Show when={props.block.marker !== null}>

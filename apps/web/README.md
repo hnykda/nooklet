@@ -114,15 +114,65 @@ design and **not unit tested** — see manual verification below.
 
 ## `platform` adapter (ADR 005)
 
-`src/platform/`: one `Platform` interface (`types.ts`), one implementation today (`web.ts`,
-exported as the `platform` singleton from `index.ts`). Every caller imports the interface + the
-singleton, never `web.ts` directly — dropping in `capacitor.ts` later (native SQLite, exact
-keyboard events, share-sheet receiving, `nooklet://` deep links) means implementing that file and
-branching in `index.ts`, with zero changes anywhere else.
+`src/platform/`: one `Platform` interface (`types.ts`), two implementations (`web.ts`, `capacitor.ts`
+— M5), selected once by `index.ts` and exported as the `platform` singleton. Every caller imports
+the interface + the singleton, never `web.ts`/`capacitor.ts` directly, so adding a target is
+"implement the interface, branch in `index.ts`", with zero changes anywhere else — see `index.ts`'s
+doc comment for how `capacitor.ts` stays statically imported (so `platform` can remain a
+synchronous singleton, not a Promise) while still never pulling any `@capacitor/*` package into a
+plain web build's bundle (every plugin it uses is a lazy, cached `import()` inside its own
+functions, only ever called once `isCapacitorNative()` is true).
 
 `keyboard.ts` splits the `--kb` inset math into a pure, unit-tested function
 (`computeKeyboardInset`, see `keyboard.test.ts` for the 80px dead-band / iOS-26-residue /
-offsetTop/rounding cases) and a DOM-wiring function that needs a real browser.
+offsetTop/rounding cases) and a DOM-wiring function (`createWebKeyboardWatcher`) that needs a real
+browser. `capacitor.ts`'s keyboard watcher reuses the same `applyInset`/`--kb`/`.kb-open` CSS
+contract but drives it from `@capacitor/keyboard`'s exact `keyboardWillShow`/`keyboardWillHide`
+height events instead of a `visualViewport` measurement — no dead-band or re-measure heuristics
+are needed there, because Capacitor reports the real number directly.
+
+### Capacitor (M5 BUILD items 5–6): what's implemented, and what a human must run
+
+`capacitor.config.ts` (repo root of this package, not a separate `apps/mobile/` — see its own doc
+comment for why) configures the same `dist/` build every target uses: `appId`/`appName`/`webDir`,
+`Keyboard.resize = "none"` (Logseq's own configuration, research/08-mobile.md §2.1/§3.2). `src/
+platform/capacitor.ts` implements the full `Platform` interface for real: `@capacitor/keyboard`
+(exact heights), `@capacitor/haptics` (impact/selection/notification), `@capacitor/share`
+(outbound), `@capacitor/app` (`appUrlOpen`/`getLaunchUrl`, deduped, for `nooklet://` deep links;
+`pause`/`resume` lifecycle). None of this can be exercised without a real device or simulator —
+see the manual-verification list below.
+
+**Not implemented: native SQLite in place of OPFS.** `capacitor.ts`'s trailing doc comment explains
+why in full; in short, `@nooklet/core`'s `SqlDriver` is deliberately synchronous (mirrors
+`node:sqlite`) so `WorkerDb` can call it directly inside the dedicated Worker, but every
+`@capacitor-community/sqlite` call is an async native-bridge call reachable only from `window` —
+which a dedicated Worker's global scope does not have. Wiring real native SQLite needs either an
+async-capable `SqlDriver` shared with the server (`packages/core`), or moving `WorkerDb` onto the
+main thread for Capacitor builds — both cross-cutting changes out of this milestone's scope. Until
+then, a Capacitor build keeps using the existing `db/sqlite-wasm-driver.ts` (`opfs-sahpool`), which
+research/08 §2.1 confirms already runs inside a Capacitor WKWebView.
+
+**What a human must run** (no Xcode/Android Studio/CocoaPods/JDK exist in this environment, so
+none of the following was run or verified here):
+
+1. `cd apps/web && pnpm build` to produce `dist/`.
+2. `npx cap add ios` and/or `npx cap add android` — generates the native Xcode/Gradle projects
+   (`ios/`, `android/`) from `capacitor.config.ts`. These are real, editable native projects
+   Capacitor's own convention says to commit once generated; they do not exist in this repo yet.
+3. Deep links (`nooklet://...`, research/08 §4) need manual native-file edits `capacitor.config.ts`
+   cannot express: iOS — add a `CFBundleURLTypes` entry with scheme `nooklet` to `ios/App/App/
+   Info.plist`; Android — add `<intent-filter><action android:name="android.intent.action.VIEW"/>
+   <category android:name="android.intent.category.DEFAULT"/><category android:name=
+   "android.intent.category.BROWSABLE"/><data android:scheme="nooklet"/></intent-filter>` to the
+   main activity in `android/app/src/main/AndroidManifest.xml`.
+4. Share-sheet *receiving* (Android `ACTION_SEND`, iOS Share Extension + App Group) needs either
+   the `send-intent` plugin wired into the generated native projects or hand-written native code —
+   research/08 §4; not attempted here (it is native-project work, not `platform/` code).
+5. `npx cap sync` after any web build or config change, then open/build in Xcode / Android Studio
+   (`npx cap open ios` / `npx cap open android`) to actually run on a simulator/device or submit to
+   a store.
+6. App icons/launch screens, signing, and the privacy manifest Capacitor ships by default (research
+   §2.1: "budget 1–2 days the first time").
 
 ## What's stubbed for other agents
 
@@ -167,6 +217,27 @@ Nothing here can be unit-tested in Node; each is structured so the surrounding l
    verified by hand per browser.
 7. Real PNG icons: `public/icon.svg` is a placeholder; the manifest references only an SVG "any"
    icon today. A design pass should add proper 192/512/maskable PNGs.
+8. **M5 gestures** (`editor/gestures/{swipe,longPressDrag}.ts`): the decision logic (thresholds,
+   direction lock, cancellation on vertical scroll, long-press timing, row-crossing math) is fully
+   unit-tested with synthetic pointer events. What is NOT and cannot be tested here: real touch
+   hardware's pointer event ordering/coalescing, whether `touch-action: pan-y`/`none` actually
+   suppress the expected native gestures on iOS Safari and Android Chrome/WebView, `setPointerCapture`
+   behavior across a real finger lift, and the haptics calls it triggers (`platform.haptics` — no-op
+   on this machine's browser automation). Needs a real phone or at minimum a touch-emulating
+   browser devtools session.
+9. **M5 quick capture** (`/capture`, `capture/quickCapture*.ts`, `views/CaptureView.tsx`): the
+   op-building and the async service are unit-tested against a fake data seam
+   (`quickCaptureService.test.ts`), and the UI against a fake `submit` prop
+   (`views/CaptureView.test.tsx`). NOT verified here: the PWA manifest's `share_target`/`shortcuts`
+   actually appearing in Android's share sheet / long-press app icon menu (Chrome/WebAPK only,
+   research/08 §1.4 — Safari ignores both, harmlessly), and offline behavior end-to-end through a
+   real service worker.
+10. **M5 Capacitor** (`capacitor.config.ts`, `platform/capacitor.ts`): none of it can run without
+    Xcode/Android Studio, which do not exist in this environment — see the dedicated "what a human
+    must run" section above for the full list (native project generation, deep-link manifest/plist
+    edits, share extension, `npx cap sync`/`open`, store submission). The adapter code itself
+    typechecks against the real `@capacitor/*` type packages (installed as real dependencies, not
+    stubbed) but every plugin call inside it is exercised for the first time on a real device.
 
 ## Scripts
 

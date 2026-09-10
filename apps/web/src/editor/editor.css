@@ -25,6 +25,16 @@
   border-radius: 4px;
   content-visibility: auto;
   contain-intrinsic-size: auto 1.6rem;
+  /* research/08-mobile.md §3.5: pan_y keeps vertical scrolling native; the swipe gesture
+     (`gestures/swipeAttach.ts`) reads horizontal moves out of the same touch sequence. */
+  touch-action: pan-y;
+  transition: transform 150ms ease-out;
+}
+
+/* While a swipe is live, no spring-back transition fights the finger's own movement — restored
+   the instant the gesture ends (`gestures/swipeAttach.ts`'s "resetTransform" action). */
+.vr-row-swiping {
+  transition: none;
 }
 
 .vr-row-selected {
@@ -41,6 +51,16 @@
   flex: none;
   height: 1.6rem;
   position: relative;
+  /* research/08-mobile.md §3.6: the drag handle disables the browser's own touch handling
+     entirely so a long-press-then-drag never turns into a page scroll (`gestures/
+     longPressDragAttach.ts`). */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.vr-bullet-dragging {
+  opacity: 0.5;
 }
 
 .vr-collapse-arrow {

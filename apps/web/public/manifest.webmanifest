@@ -9,5 +9,13 @@
   "background_color": "#0b0b0f",
   "theme_color": "#0b0b0f",
   "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
-  "shortcuts": [{ "name": "Today's journal", "url": "/journal/today" }]
+  "shortcuts": [
+    { "name": "Quick capture", "url": "/capture?source=shortcut" },
+    { "name": "Today's journal", "url": "/journal/today" }
+  ],
+  "share_target": {
+    "action": "/capture",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
 }

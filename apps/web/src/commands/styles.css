@@ -84,7 +84,10 @@
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
 }
 
-/* Mobile keyboard toolbar (R60-R61): one fixed row, positioned by --kb, never `bottom: 0`. */
+/* Mobile keyboard toolbar (R60-R61): one fixed row, positioned by --kb, never `bottom: 0`.
+   research/08-mobile.md §3.3 pitfall 6: pad for the home-indicator safe area while the keyboard
+   is closed (--kb: 0px, e.g. mid-animation), and drop that padding once the keyboard is open and
+   already covers it (--kb > 0 sets `kb-open` on the root — `../../platform/keyboard.ts`). */
 .cmd-toolbar {
   position: fixed;
   left: 0;
@@ -94,7 +97,13 @@
   overflow-x: auto;
   background: var(--cmd-bg, #fff);
   border-top: 1px solid var(--cmd-border, #e2e2e2);
+  padding-bottom: var(--sab, 0px);
+  box-sizing: content-box;
   z-index: 900;
+}
+
+.kb-open .cmd-toolbar {
+  padding-bottom: 0;
 }
 
 .cmd-toolbar-button {

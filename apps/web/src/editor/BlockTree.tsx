@@ -252,6 +252,35 @@ export function BlockTree(props: {
     surface.attach(el, forId, block?.content ?? "", pendingCaret);
   }
 
+  // Shared by the keyboard dispatch below AND the mobile gestures (swipe-to-indent/outdent,
+  // long-press-drag reorder, research/08-mobile.md §3.5/§3.6): exactly the ops
+  // `indentBlock`/`outdentBlock`/`moveBlock` (`commands.js`) would build for the Tab/Shift-Tab/
+  // Alt+Up/Alt+Down keys, run through the same `runStructural` commit path. A gesture must never
+  // be a parallel implementation of these ops.
+  function doIndent(id: BlockId): void {
+    if (props.readOnly) return;
+    const clock = clockSig();
+    if (!clock) return;
+    const r = indentBlock(editorTree(), id, clock);
+    if (r) runStructural({ ops: r.ops });
+  }
+
+  function doOutdent(id: BlockId): void {
+    if (props.readOnly) return;
+    const clock = clockSig();
+    if (!clock) return;
+    const r = outdentBlock(editorTree(), id, clock, { zoomRootId: effectiveRoot() ?? null });
+    if (r) runStructural({ ops: r.ops });
+  }
+
+  function doMoveStep(id: BlockId, direction: "up" | "down"): void {
+    if (props.readOnly) return;
+    const clock = clockSig();
+    if (!clock) return;
+    const r = moveBlock(editorTree(), id, direction, clock);
+    if (r) runStructural({ ops: r.ops });
+  }
+
   function runStructural(res: { ops: Op[]; focus?: FocusChange } | null): void {
     flushPendingEdit();
     history.stopCapturing();
@@ -338,16 +367,12 @@ export function BlockTree(props: {
         return true;
       case "block.newline":
         return false; // R17: plain "\n" insertion, left to CM6 itself.
-      case "block.indent": {
-        const r = indentBlock(tree, id, clock);
-        if (r) runStructural({ ops: r.ops });
+      case "block.indent":
+        doIndent(id);
         return true;
-      }
-      case "block.outdent": {
-        const r = outdentBlock(tree, id, clock, { zoomRootId: effectiveRoot() ?? null });
-        if (r) runStructural({ ops: r.ops });
+      case "block.outdent":
+        doOutdent(id);
         return true;
-      }
       case "block.mergeWithPrevious": {
         const r = mergeWithPrevious(tree, visibleIds(), id, clock);
         if (r) runStructural(r);
@@ -358,16 +383,12 @@ export function BlockTree(props: {
         if (r) runStructural({ ops: r.ops });
         return true;
       }
-      case "block.moveUp": {
-        const r = moveBlock(tree, id, "up", clock);
-        if (r) runStructural({ ops: r.ops });
+      case "block.moveUp":
+        doMoveStep(id, "up");
         return true;
-      }
-      case "block.moveDown": {
-        const r = moveBlock(tree, id, "down", clock);
-        if (r) runStructural({ ops: r.ops });
+      case "block.moveDown":
+        doMoveStep(id, "down");
         return true;
-      }
       case "block.focusPreviousLine":
       case "block.focusNextLine": {
         const ids = visibleIds();
@@ -740,6 +761,9 @@ export function BlockTree(props: {
                   onToggleMarker={() => onToggleMarker(row.id)}
                   onSelectClick={() => onSelectClick(row.id)}
                   onNavigate={props.onNavigate}
+                  onSwipeIndent={() => doIndent(row.id)}
+                  onSwipeOutdent={() => doOutdent(row.id)}
+                  onDragStep={(direction) => doMoveStep(row.id, direction)}
                 />
               )}
             </Show>
