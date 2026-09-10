@@ -1,0 +1,13 @@
+{
+  "name": "nooklet-plugin-word-count",
+  "version": "0.1.0",
+  "type": "module",
+  "nooklet": {
+    "id": "word-count",
+    "name": "Word count",
+    "api": "1",
+    "server": "./src/server.ts",
+    "client": "./src/client.ts",
+    "permissions": []
+  }
+}

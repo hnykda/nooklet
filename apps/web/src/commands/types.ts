@@ -7,7 +7,7 @@
  * storage/sync spec's `Store`). Those are declared here as narrow placeholders documented at the
  * point of use; see `hosts/` for the seams this package actually depends on at runtime.
  */
-import type { ApplyOpsResult, Op } from "@nooklet/core";
+import type { ApplyOpsResult, Op, TaskMarker } from "@nooklet/core";
 
 // ── `Surface` placeholder ──────────────────────────────────────────────────────────────────────
 // research/04-editor.md §3.3 / ADR 006 own the real `Surface` type (a mounted CodeMirror view
@@ -90,7 +90,19 @@ export const DEFAULT_WHEN_CONTEXT: WhenContext = {
  * seam and a fake used by this package's own tests. The integrator supplies a real implementation
  * that wraps `data/store.ts#applyOps` with correctly-clocked ops (HLC/device id) — commands/ never
  * constructs an `Op` id itself. */
+export interface BlockTaskSnapshot {
+  marker: TaskMarker | null;
+  scheduled?: string;
+  deadline?: string;
+  repeat?: string;
+}
+
 export interface Store {
+  /** The current task-relevant properties of one block, or `undefined` if it doesn't exist.
+   * `task.cycle`/`task.toggleDone`/`task.setMarkerDone` need this to apply R35's repeat-aware
+   * completion rule, which depends on the block's *current* `repeat`/`scheduled`/`deadline`, not
+   * just the `isTask`/`isCollapsed`-style booleans `WhenContext` carries. */
+  getBlockTaskState(blockId: string): Promise<BlockTaskSnapshot | undefined>;
   /** Set one reserved block property (`marker`, `priority`, `scheduled`, `deadline`, `repeat`,
    * `done`) or an arbitrary property key, as one atomic write. `null` clears the property. */
   setBlockProp(blockId: string, key: string, value: string | null): Promise<void>;

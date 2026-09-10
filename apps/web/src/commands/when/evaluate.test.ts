@@ -65,8 +65,12 @@ describe("evaluateWhen — precedence and negation", () => {
   });
 
   it("parentheses override precedence", () => {
-    expect(run("!(editorFocused && hasSelection)", { editorFocused: true, hasSelection: true })).toBe(false);
-    expect(run("!(editorFocused && hasSelection)", { editorFocused: true, hasSelection: false })).toBe(true);
+    expect(
+      run("!(editorFocused && hasSelection)", { editorFocused: true, hasSelection: true }),
+    ).toBe(false);
+    expect(
+      run("!(editorFocused && hasSelection)", { editorFocused: true, hasSelection: false }),
+    ).toBe(true);
   });
 
   it("double negation", () => {
@@ -75,7 +79,9 @@ describe("evaluateWhen — precedence and negation", () => {
   });
 
   it("whitespace is insignificant", () => {
-    expect(run("  editorFocused   &&  ! hasSelection ", { editorFocused: true, hasSelection: false })).toBe(true);
+    expect(
+      run("  editorFocused   &&  ! hasSelection ", { editorFocused: true, hasSelection: false }),
+    ).toBe(true);
   });
 });
 
@@ -107,7 +113,9 @@ describe("evaluateWhen — literal semantics (R9)", () => {
 
 describe("evaluateWhen — totality (never throws)", () => {
   it("handles a hand-built AST with no matching context fields without throwing", () => {
-    expect(() => evaluateWhen({ t: "ident", name: "nonexistentField" }, DEFAULT_WHEN_CONTEXT)).not.toThrow();
+    expect(() =>
+      evaluateWhen({ t: "ident", name: "nonexistentField" }, DEFAULT_WHEN_CONTEXT),
+    ).not.toThrow();
   });
 });
 

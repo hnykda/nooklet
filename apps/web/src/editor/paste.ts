@@ -16,8 +16,8 @@ import {
   makeOp,
   newId,
   type Op,
-  ordersBetween,
   type OutlineNode,
+  ordersBetween,
   parseOutline,
 } from "@nooklet/core";
 import { getBlock, nextSiblingOrder } from "./tree.js";
@@ -67,7 +67,9 @@ export function pasteMarkdownAsTree(
       }),
     );
     const childOrders = ordersBetween(null, null, node.children.length);
-    node.children.forEach((c, i) => walk(c, nid, childOrders[i] as string));
+    node.children.forEach((c, i) => {
+      walk(c, nid, childOrders[i] as string);
+    });
     return nid;
   };
 
@@ -80,13 +82,19 @@ export function pasteMarkdownAsTree(
   });
 
   if (targetIsEmpty) {
-    ops.push(makeOp(clock.next(), clock.device, targetId, { kind: "block.delete", deletedAt: now }));
+    ops.push(
+      makeOp(clock.next(), clock.device, targetId, { kind: "block.delete", deletedAt: now }),
+    );
   }
 
   return { ops, focus: { id: lastTopId, caret: { offset: lastTopContentLength } } };
 }
 
-function previousSiblingOrder(tree: EditorTree, parentId: BlockId | null, id: BlockId): string | null {
+function previousSiblingOrder(
+  tree: EditorTree,
+  parentId: BlockId | null,
+  id: BlockId,
+): string | null {
   const siblings = tree.childrenOf.get(parentId) ?? [];
   const idx = siblings.indexOf(id);
   const prev = siblings[idx - 1];
@@ -109,10 +117,7 @@ export interface AssetUploadResponse {
 /** Uploads one clipboard image file via `POST /api/v1/asset.upload` (`docs/spec/mcp-tools.md`
  * §4.3.18) and returns the ready-to-paste markdown. Throws on any non-2xx response; the caller
  * (per R33) must not apply the paste and must surface an error notification instead. */
-export async function uploadImageAsset(
-  file: File,
-  apiBase = "",
-): Promise<AssetUploadResponse> {
+export async function uploadImageAsset(file: File, apiBase = ""): Promise<AssetUploadResponse> {
   const dataBase64 = await fileToBase64(file);
   const res = await fetch(`${apiBase}/api/v1/asset.upload`, {
     method: "POST",

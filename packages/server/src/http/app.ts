@@ -24,10 +24,27 @@ export interface CreateAppOptions {
   config: ServerConfig;
   /** nooklet package version, surfaced in the MCP server's `Implementation.version`. */
   version?: string;
+  /**
+   * M4/plugins: pass an already-constructed `Hono` app when a `PluginHost` (`../plugins/host.ts`)
+   * has already mounted `ctx.registerRoute`/`rpc.expose` routes and the two plugin-discovery
+   * routes (`../plugins/http.ts`) onto it. MUST happen before this function's own `mountMcp` call
+   * below — that mount merges in a sub-app at `"/"` that matches every path on this app, so
+   * anything registered after it risks being shadowed (see that call's own comment). Omitted, this
+   * creates a fresh app exactly as before M4 — every existing caller is unaffected.
+   */
+  app?: Hono;
+  /**
+   * M4/plugins: called (if given) right after `mountHttp` below — i.e. AFTER the `/api/v1/*`
+   * bearer-auth gate exists, so a route mounted here (`../plugins/http.ts`'s
+   * `mountPluginListRoute`, `GET /api/v1/plugins`) is authenticated by it — and BEFORE `mountSync`/
+   * `mountMcp`, so it isn't shadowed by `mountMcp`'s `"/"` catch-all. This is the one spot a route
+   * needing BOTH of those things can be added without `../plugins/` reaching back into this file.
+   */
+  mountBeforeMcp?: (app: Hono) => void;
 }
 
 export function createApp(opts: CreateAppOptions): Hono {
-  const app = new Hono();
+  const app = opts.app ?? new Hono();
   const { serverCtx, registry, config } = opts;
 
   app.get("/", (c) => c.json({ name: "nooklet", status: "ok" }));
@@ -52,6 +69,8 @@ export function createApp(opts: CreateAppOptions): Hono {
       },
     );
   });
+
+  opts.mountBeforeMcp?.(app);
 
   // `/sync/push`, `/sync/pull`, `/sync/snapshot`, `/sync/live` (ADR 003): its own bearer-token
   // gate (`../sync/auth.ts`), not `bearerAuth` above, since sync additionally requires

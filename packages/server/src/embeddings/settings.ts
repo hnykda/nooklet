@@ -13,7 +13,11 @@
 
 import type { SqlDriver } from "@nooklet/core";
 
-export type EmbeddingProviderKind = "ollama" | "openai-compat" | "fake";
+// "plugin" added for M4/ADR 007: a plugin's `ctx.registerEmbeddingProvider` (see
+// `../plugins/provider-registries.ts` and this file's one consumer, `./factory.ts`'s
+// `provider === "plugin"` branch). When set, `model` holds the plugin provider's own `id`, not a
+// model name.
+export type EmbeddingProviderKind = "ollama" | "openai-compat" | "fake" | "plugin";
 
 export interface EmbeddingSettings {
   provider: EmbeddingProviderKind;

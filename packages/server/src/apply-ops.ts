@@ -22,6 +22,7 @@ import {
   newId,
   tokenizeContent,
 } from "@nooklet/core";
+import { runBeforeWrite } from "./plugins/before-write.js";
 import { notifyCommit } from "./sync/realtime.js";
 
 /** Reserved device id for ops the server itself authors (corrective moves). Never a real device. */
@@ -65,12 +66,20 @@ export interface ServerApplyResult extends ApplyOpsResult {
  */
 export function serverApplyOps(
   ctx: ServerContext,
-  ops: readonly Op[],
+  inputOps: readonly Op[],
   opts: ServerApplyOptions,
 ): ServerApplyResult {
   const { driver } = ctx;
   const batchId = opts.batchId ?? newId();
   const corrections: Op[] = [];
+
+  // PLUGIN HOOK (ADR 007, api-and-plugin-types.md rule 13): a plugin's `ctx.beforeWrite` handler
+  // may transform the pending ops in place, or veto the whole write by throwing — BEFORE anything
+  // below observes them (HLC absorption, the transaction, `changes` rows). Skipped entirely for
+  // "sync" origin so an incoming write from another device always converges, never forked by a
+  // plugin's opinion. `./plugins/before-write.ts` owns all the registration/handler bookkeeping;
+  // this is the single call site plugins get into the write path.
+  const ops = runBeforeWrite(ctx, batchId, opts.origin, opts.deviceId, [...inputOps]);
 
   // Absorb every incoming op's HLC before minting any server-authored timestamp (a corrective
   // op below, or a future server-originated op), so `ctx.hlc.next()` is always strictly greater

@@ -45,7 +45,8 @@ export default defineConfig({
     environment: "node",
     // Component tests (views/*.test.tsx) need a DOM; everything else (the vast majority: pure
     // logic, worker-core, sync-client) stays on the fast "node" environment above.
-    environmentMatchGlobs: [["src/**/*.test.tsx", "jsdom"]],
+    // `environmentMatchGlobs` was removed in Vitest 5 — each *.test.tsx file instead opens with a
+    // `// @vitest-environment jsdom` docblock (still supported, see vitest.dev/guide/environment).
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 });

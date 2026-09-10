@@ -359,9 +359,22 @@ export function mountHttp(app: Hono, reg: OpRegistry, buildOpCtx: BuildOpCtx): v
   for (const op of reg.list()) {
     const http = httpExpose(op);
     if (http === false) continue;
+    const opName = op.name;
 
     const run = async (c: Context, raw: unknown) => {
-      const parsed = op.input.safeParse(raw);
+      // Live lookup by name, NOT the `op` closed over above: a PLUGIN op can be unregistered
+      // after this route is mounted (M4 plugins — `ctx.ops.register`'s `Disposable` calls
+      // `reg.unregister(name)` on deactivate/reload, `../plugins/ops-bridge.ts`), and that must
+      // make every route for it 404 from then on. A no-op extra `Map.get()` for core ops, which
+      // never unregister.
+      const current = reg.get(opName);
+      if (!current) {
+        return c.json(
+          { error: { code: "not_found", message: `op "${opName}" is no longer registered` } },
+          404,
+        );
+      }
+      const parsed = current.input.safeParse(raw);
       if (!parsed.success) {
         return c.json(
           {
@@ -374,21 +387,26 @@ export function mountHttp(app: Hono, reg: OpRegistry, buildOpCtx: BuildOpCtx): v
           400,
         );
       }
-      const ctx = await buildOpCtx(c, op);
+      const ctx = await buildOpCtx(c, current);
       if (!ctx) {
         return c.json(
           { error: { code: "unauthorized", message: "missing or invalid bearer token" } },
           401,
         );
       }
-      if (!op.scopes.every((s) => ctx.scopes.includes(s))) {
+      if (!current.scopes.every((s) => ctx.scopes.includes(s))) {
         return c.json(
-          { error: { code: "forbidden", message: `requires scope(s): ${op.scopes.join(", ")}` } },
+          {
+            error: {
+              code: "forbidden",
+              message: `requires scope(s): ${current.scopes.join(", ")}`,
+            },
+          },
           403,
         );
       }
       try {
-        const out = await runOpHandler(op, parsed.data, ctx);
+        const out = await runOpHandler(current, parsed.data, ctx);
         return c.json(out as Record<string, unknown>);
       } catch (e) {
         const body = toErrorBody(e);

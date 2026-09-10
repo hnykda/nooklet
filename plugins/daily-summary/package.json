@@ -1,0 +1,22 @@
+{
+  "name": "nooklet-plugin-daily-summary",
+  "version": "0.1.0",
+  "type": "module",
+  "nooklet": {
+    "id": "daily-summary",
+    "name": "Daily summary",
+    "api": "1",
+    "server": "./src/server.ts",
+    "permissions": [],
+    "settings": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Append a short block-count summary to today's journal once a day. Off by default."
+        }
+      }
+    }
+  }
+}

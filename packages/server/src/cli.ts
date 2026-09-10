@@ -15,7 +15,8 @@
  */
 
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import { createServerContext, type ServerContext } from "./apply-ops.js";
@@ -34,12 +35,14 @@ import {
   registerModel,
   setEmbeddingSettings,
 } from "./embeddings/index.js";
-import { createApp } from "./http/app.js";
 import { importLogseqGraph } from "./importer/logseq.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
 import { buildRegistry } from "./ops/index.js";
 import type { ServerConfig } from "./ops/registry.js";
+import { createAppWithPlugins } from "./plugins/bootstrap.js";
+import { discoverPlugins } from "./plugins/manifest.js";
+import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
 
 interface Args {
   _: string[];
@@ -90,6 +93,25 @@ function open(args: Args): { ctx: ServerContext; config: ServerConfig } {
   };
 }
 
+/**
+ * Plugin discovery roots, in order: `<dataDir>/plugins` (where a real install's plugins live —
+ * created lazily, so it needn't exist yet), then, in dev, the repo root's own `plugins/` (the 3
+ * built-ins, M4/PLAN §13). The dev root is found relative to THIS file rather than `cwd()`, so
+ * `nooklet serve` works the same from any directory; an installed build simply won't have a
+ * `plugins/` three levels above `dist/cli.js`, so `discoverPlugins` (which skips missing
+ * directories) silently finds none there.
+ */
+function pluginDirsFor(config: ServerConfig): string[] {
+  const repoRootPlugins = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "..",
+    "plugins",
+  );
+  return [join(config.dataDir, "plugins"), repoRootPlugins];
+}
+
 function die(message: string): never {
   process.stderr.write(`nooklet: ${message}\n`);
   process.exit(1);
@@ -107,6 +129,10 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet embed status
   nooklet embed run
   nooklet embed model <name> [--provider ollama|openai-compat] [--host <url>]
+  nooklet plugin list
+  nooklet plugin enable <plugin-id>
+  nooklet plugin disable <plugin-id>
+  nooklet plugin reload <plugin-id>
 `;
 
 async function main(): Promise<void> {
@@ -116,7 +142,13 @@ async function main(): Promise<void> {
   switch (cmd) {
     case "serve": {
       const { ctx, config } = open(args);
-      const app = createApp({ serverCtx: ctx, registry: buildRegistry(), config });
+      const registry = buildRegistry();
+      const { app } = await createAppWithPlugins({
+        serverCtx: ctx,
+        registry,
+        config,
+        pluginDirs: pluginDirsFor(config),
+      });
       // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
       // adapter's `serve()` call — `upgradeWebSocket` (used by that route) only handles the Hono
       // side of the handshake; `@hono/node-server` needs a `{ noServer: true }` WebSocketServer
@@ -348,6 +380,65 @@ async function main(): Promise<void> {
       }
 
       die(`unknown embed subcommand "${sub ?? ""}" (expected status, run, or model)`);
+      return;
+    }
+
+    // =========================================================================================
+    // M4/plugins (ADR 007, PLAN §13): `plugin list|enable|disable|reload`. Kept as one clearly
+    // separated block, per task instructions — other agents have touched the rest of this file.
+    // One-shot DB operations against the same discovery `../plugins/manifest.ts` uses; no running
+    // `nooklet serve` process is contacted. `enable`/`disable` flip the `plugin.enabled` column a
+    // future `PluginHost.loadAll()` reads; `reload` re-reads the manifest from disk and refreshes
+    // its recorded version — v1 has no live-reload channel into an already-running server, so
+    // actually re-bundling/re-activating happens the next time that server (re)starts.
+    // =========================================================================================
+    case "plugin": {
+      const sub = args._[1];
+      const { ctx, config } = open(args);
+      const { found, errors } = discoverPlugins(pluginDirsFor(config));
+      for (const d of found) ensurePluginRow(ctx.driver, d.id, d.version, ctx.hlc.next());
+
+      if (sub === "list") {
+        for (const d of found) {
+          const enabled = isPluginEnabled(ctx.driver, d.id);
+          const halves = [d.serverEntry && "server", d.clientEntry && "client"]
+            .filter(Boolean)
+            .join("+");
+          process.stdout.write(
+            `${d.id.padEnd(20)} v${d.version.padEnd(9)} ${(enabled ? "enabled" : "disabled").padEnd(9)} ${halves.padEnd(13)} ${d.dir}\n`,
+          );
+        }
+        for (const e of errors) {
+          process.stdout.write(
+            `${(e.id ?? "?").padEnd(20)} ERROR      ${e.message}  (${e.source})\n`,
+          );
+        }
+        return;
+      }
+
+      const id = args._[2];
+      if (!id) die(`plugin ${sub ?? ""} needs a plugin id (see: nooklet plugin list)`);
+      const descriptor = found.find((d) => d.id === id);
+
+      if (sub === "enable" || sub === "disable") {
+        if (!descriptor) die(`no such plugin "${id}" (see: nooklet plugin list)`);
+        setPluginEnabled(ctx, id, sub === "enable");
+        process.stdout.write(
+          `${sub === "enable" ? "enabled" : "disabled"} "${id}". Restart "nooklet serve" for this to take effect.\n`,
+        );
+        return;
+      }
+
+      if (sub === "reload") {
+        if (!descriptor) die(`no such plugin "${id}" (see: nooklet plugin list)`);
+        ensurePluginRow(ctx.driver, descriptor.id, descriptor.version, ctx.hlc.next());
+        process.stdout.write(
+          `refreshed "${id}" from disk (v${descriptor.version}). Restart "nooklet serve" to reload it.\n`,
+        );
+        return;
+      }
+
+      die(`unknown plugin subcommand "${sub ?? ""}" (expected list, enable, disable, or reload)`);
       return;
     }
 

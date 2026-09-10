@@ -1,6 +1,6 @@
 /**
  * Search (BUILD item 4; PLAN.md §9): a query box with a keyword/semantic/hybrid mode toggle, a
- * result list (page, breadcrumb, highlighted snippet via `InlineContent`), and filters for tag,
+ * result list (page, breadcrumb, highlighted snippet via `SearchSnippet`), and filters for tag,
  * namespace, and date range. Results navigate straight to the hit's block (or page, for a
  * page-kind hit) — the server already tells us the page name, so this skips the local
  * block-id-to-page lookup `goToTarget` would otherwise need (`useLinkedReferences`' block links do
@@ -10,8 +10,8 @@ import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { SearchHit, SearchInput } from "../data/api-client.js";
 import { useSearchResults } from "../data/store.js";
-import { InlineContent } from "../editor/InlineContent.js";
 import { goToTarget, pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
+import { SearchSnippet } from "./SearchSnippet.js";
 import { ViewNav } from "./ViewNav.js";
 
 const MODES = ["hybrid", "keyword", "semantic"] as const;
@@ -139,10 +139,7 @@ export function SearchView(): JSX.Element {
                         </Show>
                       </div>
                       <div class="search-result-snippet">
-                        <InlineContent
-                          content={hit.snippet}
-                          onNavigate={(t) => void goToTarget(navigate, t)}
-                        />
+                        <SearchSnippet snippet={hit.snippet} />
                       </div>
                     </button>
                   </li>

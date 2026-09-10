@@ -1,0 +1,115 @@
+/* Shared, minimal styles for the command system's popups (palette, slash menu, autocomplete,
+   mobile toolbar). Deliberately unopinionated about theming/colors — the app shell owns the
+   design system; this only fixes the structural/interaction requirements the spec calls out
+   (fixed positioning that escapes clipping, >=44px touch targets, a visible active row). */
+
+.cmd-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 1000;
+}
+
+.cmd-palette {
+  width: min(560px, calc(100vw - 32px));
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cmd-bg, #fff);
+  color: var(--cmd-fg, #111);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.cmd-input {
+  border: none;
+  outline: none;
+  font-size: 16px;
+  padding: 14px 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--cmd-border, #e2e2e2);
+  background: transparent;
+  color: inherit;
+}
+
+.cmd-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.cmd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cmd-row--active {
+  background: var(--cmd-active-bg, #e8effe);
+}
+
+.cmd-row-subtitle {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.cmd-empty {
+  padding: 12px 16px;
+  opacity: 0.6;
+}
+
+/* Slash menu / autocomplete popups: positioned by the caller (inline style `top`/`left`), fixed
+   so they escape row/overflow clipping (R59). */
+.cmd-popup {
+  position: fixed;
+  z-index: 1000;
+  min-width: 220px;
+  max-width: 360px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--cmd-bg, #fff);
+  color: var(--cmd-fg, #111);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* Mobile keyboard toolbar (R60-R61): one fixed row, positioned by --kb, never `bottom: 0`. */
+.cmd-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--kb, 0px);
+  display: flex;
+  overflow-x: auto;
+  background: var(--cmd-bg, #fff);
+  border-top: 1px solid var(--cmd-border, #e2e2e2);
+  z-index: 900;
+}
+
+.cmd-toolbar-button {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: inherit;
+}
+
+.cmd-toolbar-button[disabled] {
+  opacity: 0.35;
+}

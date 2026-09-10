@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
+
+import { todayJournalDay } from "@nooklet/core";
 import { Route, Router } from "@solidjs/router";
 import { cleanup, render, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JournalDayEntry } from "../data/types.js";
 
-const today = 20260910;
+// Derived, never hardcoded: the virtual-today row is by definition whatever day it is *now*, so a
+// literal here silently rots at the next midnight (it did — this test broke when the date rolled
+// over mid-development).
+const today = todayJournalDay();
 
 let streamValue: JournalDayEntry[] | undefined;
 const usePinnedJournalDay = vi.fn((..._args: unknown[]) =>

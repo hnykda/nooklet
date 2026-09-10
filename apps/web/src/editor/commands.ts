@@ -117,9 +117,19 @@ export interface OutdentOptions {
   /** No-op when `id` is the current zoom root (R19.1's "or the zoom root"); the tree itself has
    * no notion of a zoom root, so the caller supplies it. */
   zoomRootId?: BlockId | null;
-  /** R31: siblings that are themselves selected are excluded from the "younger siblings" step —
-   * each moves via its own row of a multi-block outdent batch, never twice. */
+  /** R31: when outdenting a *contiguous* multi-selection, a non-selected trailing sibling must
+   * attach to the LAST block of the selected run, not the first — e.g. selecting siblings B and
+   * C (in that order) and outdenting both must not split D (the sibling right after C) onto B
+   * just because D is technically "younger than B" too. So the "younger siblings" taken by this
+   * call are only the run of siblings *immediately* following `id` that are NOT in this set;
+   * hitting another selected sibling stops the run (it will collect its own younger-siblings on
+   * its own turn instead). */
   excludeFromYounger?: ReadonlySet<BlockId>;
+  /** Batch-only: shared, mutated across calls that share the same original parent `P`, so a
+   * second block outdented from the same `P` in one batch lands right after the first one's NEW
+   * position (not wedged back between `P` and it) while still respecting the original upper
+   * bound (whatever genuinely followed `P` before the batch started). Keyed by `P`'s id. */
+  insertionCursor?: Map<BlockId, { lower: string | null; upper: string | null }>;
 }
 
 /** `block.outdent` (Shift+Tab), R19's "logical outdenting": `B`'s later siblings under its old
@@ -144,11 +154,26 @@ export function outdentBlock(
   const siblingsUnderP = childrenIds(tree, parentId);
   const idxInP = siblingsUnderP.indexOf(id);
   const youngerAll = siblingsUnderP.slice(idxInP + 1);
-  const younger = opts.excludeFromYounger
-    ? youngerAll.filter((y) => !opts.excludeFromYounger?.has(y))
-    : youngerAll;
+  let younger: BlockId[];
+  if (opts.excludeFromYounger) {
+    // Take the run of immediately-following, non-selected siblings; stop at the next selected
+    // one (it will claim the remainder as ITS younger-siblings step, see `OutdentOptions` doc).
+    younger = [];
+    for (const y of youngerAll) {
+      if (opts.excludeFromYounger.has(y)) break;
+      younger.push(y);
+    }
+  } else {
+    younger = youngerAll;
+  }
 
-  const newOrderForB = orderBetween(P.order, nextSiblingOrder(tree, G, parentId));
+  const cursor = opts.insertionCursor;
+  const cached = cursor?.get(parentId);
+  const lowerBound = cached ? cached.lower : P.order;
+  const upperBound = cached ? cached.upper : nextSiblingOrder(tree, G, parentId);
+  const newOrderForB = orderBetween(lowerBound, upperBound);
+  cursor?.set(parentId, { lower: newOrderForB, upper: upperBound });
+
   const ops: Op[] = [
     op(clock, id, { kind: "block.place", place: place(tree.pageId, G, newOrderForB) }),
   ];
@@ -340,7 +365,9 @@ export function duplicateBlock(
     }
     const kids = childrenIds(tree, srcId);
     const orders = ordersBetween(null, null, kids.length);
-    kids.forEach((k, i) => walk(k, nid, orders[i] as string));
+    kids.forEach((k, i) => {
+      walk(k, nid, orders[i] as string);
+    });
   };
   walk(id, root.parentId, rootOrder);
 
@@ -412,9 +439,10 @@ export function outdentSelectedBlocks(
 ): OpsResult {
   const selected = new Set(ids);
   const work = cloneTree(tree);
+  const insertionCursor = new Map<BlockId, { lower: string | null; upper: string | null }>();
   const ops: Op[] = [];
   for (const id of ids) {
-    const r = outdentBlock(work, id, clock, { excludeFromYounger: selected });
+    const r = outdentBlock(work, id, clock, { excludeFromYounger: selected, insertionCursor });
     if (!r) continue;
     ops.push(...r.ops);
     for (const o of r.ops)

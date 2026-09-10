@@ -227,9 +227,52 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
     enqueued_at INTEGER NOT NULL,
     PRIMARY KEY (unit_kind, unit_id)
   ) WITHOUT ROWID`,
+
+  // -------------------------------------------------------------- M4/ADR 007: plugin kv store
+  // `ctx.kv` (api-and-plugin-types.md §4): a tiny per-plugin key-value table, namespaced by
+  // `plugin_id` so one plugin can never read/write another's keys. Added in SCHEMA_VERSION 2 —
+  // see MIGRATIONS below for how an existing (v1) database picks this up without a full rebuild.
+  `CREATE TABLE plugin_kv (
+    plugin_id  TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (plugin_id, key)
+  ) WITHOUT ROWID`,
 ];
 
-export const SCHEMA_VERSION = 1;
+/**
+ * One additive migration per schema bump, applied in order to bring an EXISTING database from
+ * `version` up to `version + 1` (`db.ts`'s `openDbWithStatus`). Kept separate from
+ * `SERVER_SCHEMA_STATEMENTS` (which is only ever run once, on a brand-new database via
+ * `initFullSchema`) so the two never drift: a fresh database gets `plugin_kv` from
+ * `SERVER_SCHEMA_STATEMENTS` directly, an upgraded one gets the identical table from the matching
+ * migration entry below. `CREATE TABLE IF NOT EXISTS` makes re-running a migration (should never
+ * happen in practice — `db.ts` tracks `schema_migration` — but costs nothing) harmless.
+ */
+export interface Migration {
+  version: number;
+  description: string;
+  up: (driver: SqlDriver) => void;
+}
+
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    version: 2,
+    description: "add plugin_kv (M4 plugins: ctx.kv)",
+    up: (driver) => {
+      driver.exec(`CREATE TABLE IF NOT EXISTS plugin_kv (
+        plugin_id  TEXT NOT NULL,
+        key        TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (plugin_id, key)
+      ) WITHOUT ROWID`);
+    },
+  },
+];
+
+export const SCHEMA_VERSION = 2;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {

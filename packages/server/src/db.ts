@@ -8,7 +8,7 @@ import { dirname } from "node:path";
 import type { SqlDriver } from "@nooklet/core";
 import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 import { loadSqliteVec, setVecStatus, type VecStatus } from "./embeddings/vec-loader.js";
-import { initFullSchema, SCHEMA_VERSION } from "./schema.js";
+import { initFullSchema, MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 
 export interface OpenDbOptions {
   /** File path, or ":memory:" for tests. Parent directory is created if missing. */
@@ -39,13 +39,45 @@ export function openDbWithStatus(opts: OpenDbOptions): OpenedDb {
     initFullSchema(driver);
     return { driver, vecStatus };
   }
-  const version = driver.get<{ user_version: number }>("PRAGMA user_version")?.user_version;
-  if (version !== SCHEMA_VERSION) {
+  const version = driver.get<{ user_version: number }>("PRAGMA user_version")?.user_version ?? 0;
+  if (version > SCHEMA_VERSION) {
     throw new Error(
-      `database schema version ${version} does not match expected ${SCHEMA_VERSION}; migrations are not implemented yet`,
+      `database schema version ${version} is newer than this build supports (${SCHEMA_VERSION}); upgrade nooklet`,
     );
   }
+  if (version < SCHEMA_VERSION) runMigrations(driver, version);
   return { driver, vecStatus };
+}
+
+/**
+ * Bring an existing database from `fromVersion` up to `SCHEMA_VERSION` by running every
+ * `schema.ts#MIGRATIONS` entry in between, each in its own transaction, recording a
+ * `schema_migration` row and bumping `PRAGMA user_version` as it goes so a crash mid-upgrade
+ * resumes from the last completed step next time `openDb` runs rather than re-applying (or
+ * skipping) a migration. M4/plugins introduced the first of these (`plugin_kv`, SCHEMA_VERSION
+ * 1 -> 2); before that, a version mismatch was a hard error (no migration path existed yet).
+ */
+function runMigrations(driver: SqlDriver, fromVersion: number): void {
+  const pending = MIGRATIONS.filter(
+    (m) => m.version > fromVersion && m.version <= SCHEMA_VERSION,
+  ).sort((a, b) => a.version - b.version);
+  const covered = fromVersion + pending.length;
+  if (covered !== SCHEMA_VERSION) {
+    throw new Error(
+      `database schema version ${fromVersion} has no migration path to ${SCHEMA_VERSION} ` +
+        `(missing migration(s) after version ${covered}); upgrade nooklet in order, or restore a backup`,
+    );
+  }
+  for (const migration of pending) {
+    driver.transaction(() => {
+      migration.up(driver);
+      driver.exec(`PRAGMA user_version = ${migration.version}`);
+      driver.run(
+        "INSERT INTO schema_migration(version, applied_at, description) VALUES (?, ?, ?)",
+        [migration.version, Date.now(), migration.description],
+      );
+    });
+  }
 }
 
 /** Bare `SqlDriver`, unchanged signature — the vec-load outcome is still recorded and readable

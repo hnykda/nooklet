@@ -1,0 +1,727 @@
+/**
+ * Styles for apps/web/src/views/* and the block-tree/inline-content stubs. Builds on the theme
+ * tokens `shell.css` defines (--bg/--fg/--muted/--hairline/--accent) rather than redefining them.
+ * Mobile rules followed throughout (research/08-mobile.md §3): no extra scroll container (content
+ * lives inside the shell's one `.page-scroll`), interactive tap targets >= 44px, text inputs at
+ * 16px (avoids iOS auto-zoom-on-focus — shell.css already sets this globally, kept here only where
+ * a rule would otherwise override it).
+ */
+
+/* ---------------------------------------------------------------------------------------------
+   Shared: view nav + page finder
+--------------------------------------------------------------------------------------------- */
+
+.view-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.view-nav-links {
+  display: flex;
+  gap: 4px;
+}
+
+.view-nav-links a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 10px 12px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.view-nav-links a.active {
+  color: var(--fg);
+  background: var(--hairline);
+}
+
+.page-finder-trigger {
+  position: relative;
+}
+
+.page-finder-open {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.page-finder-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(360px, 90vw);
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  z-index: 20;
+}
+
+.page-finder-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--fg);
+  margin-bottom: 6px;
+}
+
+.page-finder-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.page-finder-result {
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.page-finder-result:hover,
+.page-finder-result:focus-visible {
+  background: var(--hairline);
+}
+
+.page-finder-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Journal stream + calendar
+--------------------------------------------------------------------------------------------- */
+
+.journal-stream-toolbar {
+  margin-bottom: 8px;
+}
+
+.journal-calendar-toggle,
+.page-view-back,
+.journal-day-unpin {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.journal-day {
+  margin-bottom: 28px;
+}
+
+.journal-day-title {
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.journal-day-today .journal-day-title {
+  color: var(--accent);
+}
+
+.journal-stream-sentinel {
+  height: 1px;
+}
+
+.calendar {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 16px;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.calendar-nav {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 20px;
+}
+
+.calendar-month-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.calendar-weekdays {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  min-height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.calendar-day:not(.calendar-day-empty):hover {
+  background: var(--hairline);
+}
+
+.calendar-day-today {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.calendar-day-selected {
+  background: var(--accent);
+  color: white;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Block tree (editor stub) + inline content
+--------------------------------------------------------------------------------------------- */
+
+.block-list {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+}
+
+.block-row {
+  padding-left: calc(var(--depth, 0) * 20px);
+}
+
+.block-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 44px;
+  padding: 4px 0;
+}
+
+.block-bullet {
+  color: var(--muted);
+  line-height: 1.6;
+  padding-top: 2px;
+  flex: 0 0 auto;
+}
+
+.block-task-checkbox {
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.block-task-checkbox.checked {
+  color: var(--accent);
+}
+
+.block-content {
+  flex: 1;
+  min-height: 32px;
+  padding: 4px 2px;
+  line-height: 1.6;
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.block-content-empty {
+  color: var(--muted);
+}
+
+.block-content-input {
+  flex: 1;
+  min-height: 44px;
+  padding: 4px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px;
+  resize: vertical;
+}
+
+.block-tree-loading,
+.block-tree-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.inline-content .ref-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.inline-content .ref-link:hover {
+  text-decoration: underline;
+}
+
+.inline-content mark {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Page view
+--------------------------------------------------------------------------------------------- */
+
+.page-view-breadcrumb {
+  margin-bottom: 12px;
+}
+
+.page-title-input {
+  width: 100%;
+  font-size: 24px;
+  font-weight: 700;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  padding: 8px 0;
+  margin-bottom: 8px;
+}
+
+.page-title-input:focus {
+  outline: 1px solid var(--hairline);
+  border-radius: 6px;
+}
+
+.page-view-missing {
+  color: var(--muted);
+}
+
+.page-view-missing button {
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  margin-top: 8px;
+}
+
+.page-properties {
+  margin: 12px 0 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+
+.page-property-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.page-property-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.page-property-key {
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 100px;
+}
+
+.page-property-value,
+.page-property-add-key,
+.page-property-add-value {
+  flex: 1;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.page-property-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.page-property-add button {
+  min-width: 44px;
+  min-height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.namespace-children {
+  margin: 20px 0;
+}
+
+.namespace-children ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.namespace-child-link {
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  padding: 6px 4px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.namespace-child-dimmed {
+  color: var(--muted);
+}
+
+.references-panel {
+  margin-top: 28px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+
+.reference-count {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 13px;
+}
+
+.reference-group {
+  margin-bottom: 12px;
+}
+
+.reference-group-page {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 6px 0;
+  min-height: 32px;
+}
+
+.reference-group ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 12px;
+}
+
+.reference-item-jump {
+  width: 100%;
+  text-align: left;
+  min-height: 40px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.references-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.unlinked-references summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Search
+--------------------------------------------------------------------------------------------- */
+
+.search-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.search-query-input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.search-mode-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.search-mode-toggle button {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.search-mode-toggle button.search-mode-active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.search-filters {
+  margin-bottom: 12px;
+}
+
+.search-filters summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.search-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.search-filters input {
+  min-height: 40px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.search-hint,
+.search-loading,
+.search-summary {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-result {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.search-result-open {
+  width: 100%;
+  text-align: left;
+  min-height: 56px;
+  padding: 10px 4px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+}
+
+.search-result-page {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.search-result-breadcrumb {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.search-result-snippet {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Tasks
+--------------------------------------------------------------------------------------------- */
+
+.task-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+
+.task-state-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.task-state-filters legend {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.task-state-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.task-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.task-filters input {
+  min-height: 40px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.task-group {
+  margin-bottom: 20px;
+}
+
+.task-group-page {
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 6px 0;
+}
+
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.task-checkbox {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.task-checkbox.checked {
+  color: var(--accent);
+}
+
+.task-content {
+  flex: 1;
+  text-align: left;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.task-due {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--muted);
+  padding-right: 4px;
+}
+
+.tasks-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .task-filters {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .search-mode-toggle {
+    flex-wrap: wrap;
+  }
+}

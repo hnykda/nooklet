@@ -34,19 +34,31 @@ export function detectPlatform(nav: NavigatorLike): WhenContext["platform"] {
  * media-query signal) since a real keyboard-attached check needs DOM APIs this pure function
  * doesn't have; callers on a real device additionally combine this with actual keyboard-event
  * observation over time if they have it (out of scope for this pure detector). */
-export function detectMobile(platform: WhenContext["platform"], coarsePrimaryPointer: boolean): boolean {
+export function detectMobile(
+  platform: WhenContext["platform"],
+  coarsePrimaryPointer: boolean,
+): boolean {
   return platform === "ios" || platform === "android" || coarsePrimaryPointer;
 }
 
 /** The one impure call site: reads the real `navigator` and `matchMedia`, for app startup. */
-export function detectPlatformFromEnvironment(): { platform: WhenContext["platform"]; mobile: boolean } {
+export function detectPlatformFromEnvironment(): {
+  platform: WhenContext["platform"];
+  mobile: boolean;
+} {
   const nav: NavigatorLike =
     typeof navigator !== "undefined"
-      ? { userAgent: navigator.userAgent, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints }
+      ? {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          maxTouchPoints: navigator.maxTouchPoints,
+        }
       : {};
   const platform = detectPlatform(nav);
   const coarsePrimaryPointer =
-    typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches && !matchMedia("(hover: hover)").matches;
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(pointer: coarse)").matches &&
+    !matchMedia("(hover: hover)").matches;
   return { platform, mobile: detectMobile(platform, coarsePrimaryPointer) };
 }
 

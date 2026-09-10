@@ -23,20 +23,35 @@ function parseRepeat(
   };
 }
 
-/** Advance a `"YYYY-MM-DD"` or `"YYYY-MM-DD HH:MM"` value by a repeat interval, keeping the time
- * part (if any) unchanged. Month/year use calendar-correct addition (`Date`'s own overflow rules
- * handle short months, e.g. Jan 31 + 1 month lands on the last valid day of March's overflow —
- * acceptable for v1; a dedicated calendar-math spec is out of this file's scope). */
-function advanceDate(value: string, n: number, unit: "d" | "w" | "m" | "y"): string {
-  const [datePart, timePart] = value.split(" ") as [string, string | undefined];
-  const [y, mo, d] = datePart.split("-").map(Number) as [number, number, number];
+/** Advance a bare `"YYYY-MM-DD"` date by a repeat interval. Month/year use calendar-correct
+ * addition (`Date`'s own overflow rules handle short months, e.g. Jan 31 + 1 month lands on the
+ * last valid day of March's overflow — acceptable for v1; a dedicated calendar-math spec is out
+ * of this file's scope). */
+function advanceDateOnly(dateOnly: string, n: number, unit: "d" | "w" | "m" | "y"): string {
+  const [y, mo, d] = dateOnly.split("-").map(Number) as [number, number, number];
   const dt = new Date(Date.UTC(y, mo - 1, d));
   if (unit === "d") dt.setUTCDate(dt.getUTCDate() + n);
   else if (unit === "w") dt.setUTCDate(dt.getUTCDate() + n * 7);
   else if (unit === "m") dt.setUTCMonth(dt.getUTCMonth() + n);
   else dt.setUTCFullYear(dt.getUTCFullYear() + n);
-  const iso = dt.toISOString().slice(0, 10);
-  return timePart ? `${iso} ${timePart}` : iso;
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Advance one `scheduled`/`deadline` field: the DATE anchor is either the field's own original
+ * date or (for a "from done" repeater) `doneDateOnly`, but the OUTPUT's time-of-day always comes
+ * from the field's own original value (date-only stays date-only) — never from the `done`
+ * timestamp's incidental time-of-day, which would otherwise leak a spurious "00:00" onto a
+ * previously date-only field. */
+function advanceField(
+  value: string,
+  n: number,
+  unit: "d" | "w" | "m" | "y",
+  doneDateOnly: string | null,
+): string {
+  const [datePart, timePart] = value.split(" ") as [string, string | undefined];
+  const anchor = doneDateOnly ?? datePart;
+  const advanced = advanceDateOnly(anchor, n, unit);
+  return timePart ? `${advanced} ${timePart}` : advanced;
 }
 
 function doneTimestamp(nowMs: number): string {
@@ -58,24 +73,22 @@ export function completeTask(block: EditableBlock, clock: Clock, now: number = D
     return ops;
   }
 
-  const from = repeat.fromDone ? doneTimestamp(now).slice(0, 16).replace("T", " ") : null;
+  const doneDateOnly = repeat.fromDone ? doneTimestamp(now).slice(0, 10) : null;
   if (block.scheduled) {
-    const base = from ?? block.scheduled;
     ops.push(
       op(clock, block.id, {
         kind: "block.prop",
         key: "scheduled",
-        value: advanceDate(base, repeat.n, repeat.unit),
+        value: advanceField(block.scheduled, repeat.n, repeat.unit, doneDateOnly),
       }),
     );
   }
   if (block.deadline) {
-    const base = from ?? block.deadline;
     ops.push(
       op(clock, block.id, {
         kind: "block.prop",
         key: "deadline",
-        value: advanceDate(base, repeat.n, repeat.unit),
+        value: advanceField(block.deadline, repeat.n, repeat.unit, doneDateOnly),
       }),
     );
   }

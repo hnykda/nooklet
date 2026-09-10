@@ -1,0 +1,20 @@
+{
+  "name": "nooklet-plugin-mermaid",
+  "version": "0.1.0",
+  "type": "module",
+  "nooklet": {
+    "id": "mermaid",
+    "name": "Mermaid diagrams",
+    "api": "1",
+    "client": "./src/client.ts",
+    "permissions": [],
+    "contributes": {
+      "slash": [
+        {
+          "id": "mermaid",
+          "label": "Mermaid diagram"
+        }
+      ]
+    }
+  }
+}

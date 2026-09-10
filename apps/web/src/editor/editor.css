@@ -1,0 +1,300 @@
+/**
+ * Editor styles: the block tree's chrome (bullet, collapse arrow, marker/priority pills,
+ * numbering) and the rendering-contract classes (`docs/spec/markdown-grammar.md` §4) shared by
+ * the read-only view and the CM6 live-preview decorations (`livePreview.ts`). Reuses the theme
+ * tokens already defined in `../styles/shell.css` (`--bg`/`--fg`/`--muted`/`--hairline`/`--accent`)
+ * rather than redefining a second palette, so the editor never fights the shell's light/dark
+ * switching.
+ *
+ * `content-visibility: auto` on every row is BUILD item 6's tier-1 long-page strategy
+ * (research/04-editor.md §5) — see `BlockTree.tsx`'s doc comment for the measured number and why
+ * tier 2 (virtualization) is not implemented yet.
+ */
+
+.vr-outliner {
+  padding: 4px 8px 40vh;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.vr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding-left: calc(var(--depth, 0) * 1.4rem);
+  border-radius: 4px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.6rem;
+}
+
+.vr-row-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.vr-row-editing {
+  background: transparent;
+}
+
+.vr-bullet-wrap {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 1.6rem;
+  position: relative;
+}
+
+.vr-collapse-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.vr-collapse-arrow.vr-collapsed svg {
+  transform: none;
+}
+.vr-collapse-arrow:not(.vr-collapsed) svg {
+  transform: rotate(90deg);
+}
+
+.vr-bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+@media (pointer: fine) {
+  .vr-bullet {
+    min-width: 20px;
+    min-height: 20px;
+    margin: 0;
+  }
+}
+
+.vr-bullet-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.vr-bullet-parent .vr-bullet-dot {
+  background: var(--fg);
+}
+
+.vr-child-count {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 2px;
+  user-select: none;
+}
+
+.vr-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  padding-block: 2px;
+}
+
+.vr-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.vr-block-view {
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+
+.vr-block-view :is(p, blockquote, table, .vr-fence) {
+  margin: 0;
+}
+
+/* CM6 host: identical font metrics to the rendered view so switching modes never shifts text. */
+.vr-surface-host .cm-editor {
+  font: inherit;
+}
+.vr-surface-host .cm-content,
+.vr-surface-host .cm-line {
+  padding: 0;
+}
+.vr-surface-host .cm-gutters {
+  display: none;
+}
+
+/* Task marker / priority / numbering ------------------------------------------------------- */
+
+.vr-marker {
+  flex: none;
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.vr-marker-CANCELED {
+  flex: none;
+  font-size: 11px;
+  text-decoration: line-through;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.vr-priority {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  padding: 0 3px;
+  color: var(--bg);
+}
+.vr-priority-A {
+  background: #e5484d;
+}
+.vr-priority-B {
+  background: #f5a623;
+}
+.vr-priority-C {
+  background: #6b6b73;
+}
+
+.vr-list-number {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rendering contract classes (markdown-grammar.md §4) --------------------------------------- */
+
+.vr-page-ref {
+  color: var(--accent);
+  text-decoration: none;
+}
+.vr-page-ref:hover {
+  text-decoration: underline;
+}
+.vr-page-ref.vr-ref-new {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.vr-tag {
+  color: var(--accent);
+  text-decoration: none;
+}
+.vr-tag:hover {
+  text-decoration: underline;
+}
+
+.vr-block-ref {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--hairline) 60%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.vr-embed {
+  border: 1px dashed var(--hairline);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--muted);
+  margin: 4px 0;
+}
+.vr-embed-error {
+  color: #e5484d;
+}
+
+.vr-macro-unknown {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+.vr-link {
+  color: var(--accent);
+}
+
+.vr-image {
+  max-width: 100%;
+  border-radius: 4px;
+  display: block;
+}
+
+.vr-highlight {
+  background: color-mix(in srgb, #f5d90a 55%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.vr-inline-code,
+.cm-inline-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--hairline) 70%, transparent);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.vr-math {
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+}
+
+.vr-checkbox {
+  vertical-align: -1px;
+}
+
+.vr-heading {
+  margin: 0;
+  line-height: 1.3;
+}
+
+.vr-fence {
+  background: color-mix(in srgb, var(--hairline) 40%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.vr-quote {
+  border-left: 3px solid var(--hairline);
+  margin: 0;
+  padding-left: 10px;
+  color: var(--muted);
+}
+
+.vr-table {
+  border-collapse: collapse;
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+.vr-table th,
+.vr-table td {
+  border: 1px solid var(--hairline);
+  padding: 4px 8px;
+}
+
+.vr-hr {
+  border: none;
+  border-top: 1px solid var(--hairline);
+  margin: 8px 0;
+}
