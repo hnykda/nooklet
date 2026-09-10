@@ -1,4 +1,4 @@
-# 06 — Built-in embeddings and "clever" search for vrite
+# 06 — Built-in embeddings and "clever" search for nooklet
 
 Research date: 2026-09-10. Machine used for measurements: MacBook Pro, Apple M4 Pro, 48 GB,
 macOS 26 (Darwin 25.6), Node 26.8.1, pnpm 12.3.4, Ollama 0.33.3 with `bge-m3:latest`
@@ -328,7 +328,7 @@ Lesson: every tool that people rate well adds *structural context* (title / head
 breadcrumb) to the embedded text; per-block-without-context (Logseq 2.0) is the weak
 baseline; whole-page chunks lose the ability to jump to a block.
 
-### 4.2 Recommended design for vrite
+### 4.2 Recommended design for nooklet
 
 Two unit kinds in one index:
 
@@ -341,7 +341,7 @@ Two unit kinds in one index:
    {descendants flattened, depth-first, "- " prefixed, until a budget of ~300 tokens}
    ```
    Descendants beyond the budget are cut (they have their own units). The breadcrumb is
-   cheap (a few tokens) and is what turns "fix reconnect bug" into "Projects › vrite ›
+   cheap (a few tokens) and is what turns "fix reconnect bug" into "Projects › nooklet ›
    sync › fix reconnect bug". Journal pages use the date as title.
 2. **Page units** — one per page: `{title}\n{top-level blocks flattened, ≤ ~500 tokens}`.
    Used for "related pages", for link suggestions, and as a fallback hit when a page has

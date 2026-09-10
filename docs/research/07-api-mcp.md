@@ -1,4 +1,4 @@
-# 07 — API and MCP surface for vrite (LLM-first design)
+# 07 — API and MCP surface for nooklet (LLM-first design)
 
 *Research date: 2026-09-10. All versions and spec facts below were verified against npm, GitHub, modelcontextprotocol.io, code.claude.com and platform.claude.com on that date; the connected `mcp-logseq` server in this session was probed directly for evidence.*
 
@@ -44,7 +44,7 @@
 The exact tool schemas loaded in this session (via ToolSearch) and three live calls tell the story:
 
 1. **`list_pages` is unpaginated and unfiltered.** `list_pages(include_journals=false)` returned **1,274 bullet lines** (roughly 9–10k tokens) — and the majority were journal pages (`sep 9th, 2026`, …) because the filter did not apply to this graph. Property-name pages (`author`, `due`, `status`…) are mixed in. Anthropic's guidance is explicit: prefer `search_*` over `list_*`; if you list, paginate and filter.
-2. **`get_page_content` timed out three times** (`Read timed out (read timeout=6)`) on ordinary pages. The server wraps a slow plugin API with a 6-second read timeout; the LLM gets an opaque error with no hint. Design consequence for vrite: reads must be O(page) from SQLite, and errors must carry a `hint`.
+2. **`get_page_content` timed out three times** (`Read timed out (read timeout=6)`) on ordinary pages. The server wraps a slow plugin API with a 6-second read timeout; the LLM gets an opaque error with no hint. Design consequence for nooklet: reads must be O(page) from SQLite, and errors must carry a `hint`.
 3. **Block ids are second-class.** `get_page_content(format="text")` returns Markdown *without* ids; ids exist only in `format="json"`. So the cheap format cannot be used to edit, and the editable format is ~3–5× the tokens. Every surveyed Logseq server has this split.
 4. **`search(format="json")` leaks internal representation.** The result contains Logseq FTS highlight sentinels (`$pfts_2lqh>$vibecoding$<pfts_2lqh$`) inside `content`, a `page?` key, numeric Datascript ids (`id: 13304`, `parent: 13303`) next to `uuid`, and `page` as a UUID. An LLM must guess which id to use where. Rule: never expose storage ids; one id type per entity; strip search-engine markup.
 5. **`insert_nested_block(parent_block_uuid, content, sibling)` is a one-block-per-call API.** Its own description has to shout "For multiple children under same parent, ALWAYS use false with the parent's UUID" — a symptom of a shape that fights the model. Writing a 12-block outline = 12 calls with UUID bookkeeping, and if the model wants "sibling *before*" there is no way. Contrast: `create_page`/`update_page` *do* parse Markdown into a tree — but only at page level, in `append`/`replace` modes; `replace` "clears all existing blocks" (destroys ids and block refs).
@@ -54,11 +54,11 @@ The exact tool schemas loaded in this session (via ToolSearch) and three live ca
 9. **Two search tools + `query` DSL + `find_pages_by_property` + `get_pages_from_namespace` + `get_pages_tree_from_namespace`** = six discovery tools whose overlap the model must reason about. One `search` with filters (`mode`, `tags`, `properties`, `namespace`, `since`) covers all of them.
 10. **DB-mode leakage:** `set_block_properties` only works on DB-mode graphs and requires "display names not idents". A v1 API should hide storage mode entirely.
 
-What ergut got *right* and vrite should keep: Markdown→block parsing with frontmatter→properties; fail-on-exists for `create_page`; namespace/tag ACLs; hybrid vector+keyword `vector_search` with a relevance label and `filter_tags`; the "create minimal page → append in chunks → verify" guidance for large writes.
+What ergut got *right* and nooklet should keep: Markdown→block parsing with frontmatter→properties; fail-on-exists for `create_page`; namespace/tag ACLs; hybrid vector+keyword `vector_search` with a relevance label and `filter_tags`; the "create minimal page → append in chunks → verify" guidance for large writes.
 
 ### 1.3 Pain points reported across the ecosystem (issues/READMEs) → design rules
 
-| Pain point (source) | Rule for vrite |
+| Pain point (source) | Rule for nooklet |
 |---|---|
 | Tool-schema context cost jumped 1,132 → 2,062 tokens (+82%) in one release (mcp-obsidian #163) | Budget ≤ ~150 tokens per tool description; ≤ 3 k tokens for the whole `tools/list`; measure in CI |
 | Missing `destructiveHint` on delete/put tools (mcp-obsidian #122); Trilium and leolulu add annotations on every tool | Every op declares `readOnlyHint/destructiveHint/idempotentHint`; `openWorldHint: false` |
@@ -82,9 +82,9 @@ What ergut got *right* and vrite should keep: Markdown→block parsing with fron
 
 Sources: https://modelcontextprotocol.io/specification/2026-07-28 , changelog https://modelcontextprotocol.io/specification/2026-07-28/changelog , blog https://blog.modelcontextprotocol.io/posts/2026-07-28/ .
 
-What changed vs 2025-11-25 and what it means for vrite:
+What changed vs 2025-11-25 and what it means for nooklet:
 
-| Change (SEP) | Consequence for vrite's server |
+| Change (SEP) | Consequence for nooklet's server |
 |---|---|
 | **Stateless core**: no `initialize` handshake, no `Mcp-Session-Id`; every request carries `_meta.io.modelcontextprotocol/{protocolVersion, clientInfo, clientCapabilities}`; new `server/discover` RPC (SEP-2575, SEP-2567) | Server is a pure function of (request, token). State across calls must be explicit handles in tool args (spec's "Stateful Tools" section) — e.g. our `cursor`, `idempotency_key`, `version` |
 | **Streamable HTTP**: single `POST` endpoint; **GET stream removed**; `Mcp-Method`, `Mcp-Name`, `MCP-Protocol-Version` headers required and validated against body (`-32020 HeaderMismatch`); optional `x-mcp-header` mirroring of tool params; SSE only per-request; `subscriptions/listen` long-lived POST for list-changed / resource-updated (SEP-2243, SEP-2575) | Use the SDK; don't hand-roll. Servers **MUST validate `Origin`** (DNS rebinding), **SHOULD bind 127.0.0.1**, SHOULD authenticate |
@@ -115,13 +115,13 @@ export interface ToolAnnotations {
 }
 ```
 
-Note the defaults: an *unannotated* write tool is presumed destructive, non-idempotent and open-world. vrite must set `openWorldHint: false` on everything and `destructiveHint: false` on additive writes (`page_append`, `block_insert`, `page_create`).
+Note the defaults: an *unannotated* write tool is presumed destructive, non-idempotent and open-world. nooklet must set `openWorldHint: false` on everything and `destructiveHint: false` on additive writes (`page_append`, `block_insert`, `page_create`).
 
 **Structured output**: `structuredContent` must conform to `outputSchema`; for backwards compatibility also return the JSON (or a rendered text) in a `content[].text` block. The SDK validates before sending. Recommendation: `content[0].text` = *LLM-optimised text rendering* (outline Markdown), `structuredContent` = the typed JSON — hosts that understand structured output (Claude Code shows it, programmatic clients parse it) get both.
 
-**Resources** (`resources/list`, `resources/templates/list` with RFC 6570 `uriTemplate`, `resources/read` returning `contents[{uri, mimeType, text|blob}]`, annotations `audience/priority/lastModified`, `subscriptions/listen` with `resourceSubscriptions`): vrite exposes templates `vrite://page/{name}`, `vrite://journal/{date}`, `vrite://block/{id}` (mimeType `text/markdown`) plus a *short* static list (today's journal, recent pages) — never the full page list. Claude Code surfaces them as `@vrite:vrite://page/Foo` mentions.
+**Resources** (`resources/list`, `resources/templates/list` with RFC 6570 `uriTemplate`, `resources/read` returning `contents[{uri, mimeType, text|blob}]`, annotations `audience/priority/lastModified`, `subscriptions/listen` with `resourceSubscriptions`): nooklet exposes templates `nooklet://page/{name}`, `nooklet://journal/{date}`, `nooklet://block/{id}` (mimeType `text/markdown`) plus a *short* static list (today's journal, recent pages) — never the full page list. Claude Code surfaces them as `@nooklet:nooklet://page/Foo` mentions.
 
-**Prompts** (`prompts/list`, `prompts/get` with `arguments` + completion): user-controlled; Claude Code exposes each as `/vrite:promptname (MCP)`. Keep to 2–3 (`daily_review`, `summarize_page`), they cost nothing in the tool budget.
+**Prompts** (`prompts/list`, `prompts/get` with `arguments` + completion): user-controlled; Claude Code exposes each as `/nooklet:promptname (MCP)`. Keep to 2–3 (`daily_review`, `summarize_page`), they cost nothing in the tool budget.
 
 **Elicitation** (form mode = flat object of string/number/boolean/enum; url mode for secrets/OAuth; actions `accept|decline|cancel`): under 2026-07-28 it rides MRTR. Not all hosts implement it — design so that a tool works without it (see §5).
 
@@ -151,7 +151,7 @@ import { createMcpHonoApp } from '@modelcontextprotocol/hono';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import type { Context } from 'hono';
 
-const handler = createMcpHandler(() => { const server = new McpServer({ name: 'vrite', version: '0.1.0' }); /* register */ return server; });
+const handler = createMcpHandler(() => { const server = new McpServer({ name: 'nooklet', version: '0.1.0' }); /* register */ return server; });
 const app = createMcpHonoApp();            // Host/Origin validation on by default
 app.all('/mcp', (c: Context) => handler.fetch(c.req.raw, { parsedBody: c.get('parsedBody') /* , authInfo */ }));
 ```
@@ -164,29 +164,29 @@ app.all('/mcp', (c: Context) => handler.fetch(c.req.raw, { parsedBody: c.get('pa
 
 | Client | Local HTTP (`http://127.0.0.1:PORT/mcp`) | Auth options | Notes / limits |
 |---|---|---|---|
-| **Claude Code** (https://code.claude.com/docs/en/mcp) | ✅ `claude mcp add --transport http vrite http://127.0.0.1:PORT/mcp --header "Authorization: Bearer $VRITE_TOKEN"`; or `.mcp.json` `{ "type": "http", "url": "${VRITE_URL:-http://127.0.0.1:PORT}/mcp", "headers": { "Authorization": "Bearer ${VRITE_TOKEN}" } }` (env expansion, project/user/local scopes); `headersHelper` script for dynamic tokens; OAuth via `/mcp` → `claude mcp login` | static headers, headersHelper, OAuth (401/403 triggers) | **Tool search on by default**: only tool *names* + **server instructions** load at start; `ENABLE_TOOL_SEARCH` = unset/`true` (defer all), `auto` (defer once definitions ≥ 10 % of context), `auto:N`, `false`; per-server `"alwaysLoad": true` in `.mcp.json` or per-tool `_meta["anthropic/alwaysLoad"]: true`. **Descriptions and server instructions truncated at 2 KB.** Output > 25 000 tokens (`MAX_MCP_OUTPUT_TOKENS`) is written to a file; per-tool `_meta["anthropic/maxResultSizeChars"]` (≤ 500 000). `_meta["anthropic/requiresUserInteraction"]: true` forces a prompt every call (even in `bypassPermissions`; denied in `dontAsk`) — v2.1.199+. Calls > 2 min auto-background. Permission rules: `mcp__vrite`, `mcp__vrite__page_read`, `mcp__vrite__page_*`. Resources: `@vrite:vrite://page/Foo`; prompts: `/vrite:daily_review`. Project `.mcp.json` servers need workspace trust. |
-| **Claude Desktop** (https://modelcontextprotocol.io/docs/develop/connect-local-servers , https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp) | ❌ *Custom connectors* connect **from Anthropic's cloud**, so `localhost` is unreachable; local servers are configured in `claude_desktop_config.json` as **stdio `command`** only | OAuth for remote connectors; env for stdio | Ship **`vrite mcp --stdio`** (a ~50-line stdio→local-HTTP bridge using `@modelcontextprotocol/client`, or `npx mcp-remote@0.8.6 http://127.0.0.1:PORT/mcp --header "Authorization: Bearer …"`), and a one-click **`.mcpb` bundle** (https://github.com/anthropics/mcpb : `manifest.json` with `server.type: node|python|binary`, `mcp_config`, `user_config` with `sensitive` fields stored in the OS keychain). For claude.ai/Cowork users a public HTTPS tunnel + OAuth would be required — out of scope for v1. |
-| **Cursor** (https://cursor.com/docs/context/mcp) | ✅ `.cursor/mcp.json` `{ "mcpServers": { "vrite": { "url": "http://localhost:PORT/mcp", "headers": { "Authorization": "Bearer …" } } } }` | headers, OAuth (static client id/secret) | Asks approval per tool by default; allowlists per Run Mode |
-| **VS Code / Copilot** | ✅ `.vscode/mcp.json` `{ "servers": { "vrite": { "type": "http", "url": "…" } } }` | headers/OAuth | — |
-| **Claude API MCP connector** (https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) | ❌ "must be publicly exposed through HTTP", `url` must start with `https://`; beta `mcp-client-2025-11-20`; only tool calls | `authorization_token` | `mcp_toolset` with `default_config.defer_loading` + per-tool `configs.enabled` — a hosted vrite could expose an allowlist of read tools |
+| **Claude Code** (https://code.claude.com/docs/en/mcp) | ✅ `claude mcp add --transport http nooklet http://127.0.0.1:PORT/mcp --header "Authorization: Bearer $NOOKLET_TOKEN"`; or `.mcp.json` `{ "type": "http", "url": "${NOOKLET_URL:-http://127.0.0.1:PORT}/mcp", "headers": { "Authorization": "Bearer ${NOOKLET_TOKEN}" } }` (env expansion, project/user/local scopes); `headersHelper` script for dynamic tokens; OAuth via `/mcp` → `claude mcp login` | static headers, headersHelper, OAuth (401/403 triggers) | **Tool search on by default**: only tool *names* + **server instructions** load at start; `ENABLE_TOOL_SEARCH` = unset/`true` (defer all), `auto` (defer once definitions ≥ 10 % of context), `auto:N`, `false`; per-server `"alwaysLoad": true` in `.mcp.json` or per-tool `_meta["anthropic/alwaysLoad"]: true`. **Descriptions and server instructions truncated at 2 KB.** Output > 25 000 tokens (`MAX_MCP_OUTPUT_TOKENS`) is written to a file; per-tool `_meta["anthropic/maxResultSizeChars"]` (≤ 500 000). `_meta["anthropic/requiresUserInteraction"]: true` forces a prompt every call (even in `bypassPermissions`; denied in `dontAsk`) — v2.1.199+. Calls > 2 min auto-background. Permission rules: `mcp__nooklet`, `mcp__nooklet__page_read`, `mcp__nooklet__page_*`. Resources: `@nooklet:nooklet://page/Foo`; prompts: `/nooklet:daily_review`. Project `.mcp.json` servers need workspace trust. |
+| **Claude Desktop** (https://modelcontextprotocol.io/docs/develop/connect-local-servers , https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp) | ❌ *Custom connectors* connect **from Anthropic's cloud**, so `localhost` is unreachable; local servers are configured in `claude_desktop_config.json` as **stdio `command`** only | OAuth for remote connectors; env for stdio | Ship **`nooklet mcp --stdio`** (a ~50-line stdio→local-HTTP bridge using `@modelcontextprotocol/client`, or `npx mcp-remote@0.8.6 http://127.0.0.1:PORT/mcp --header "Authorization: Bearer …"`), and a one-click **`.mcpb` bundle** (https://github.com/anthropics/mcpb : `manifest.json` with `server.type: node|python|binary`, `mcp_config`, `user_config` with `sensitive` fields stored in the OS keychain). For claude.ai/Cowork users a public HTTPS tunnel + OAuth would be required — out of scope for v1. |
+| **Cursor** (https://cursor.com/docs/context/mcp) | ✅ `.cursor/mcp.json` `{ "mcpServers": { "nooklet": { "url": "http://localhost:PORT/mcp", "headers": { "Authorization": "Bearer …" } } } }` | headers, OAuth (static client id/secret) | Asks approval per tool by default; allowlists per Run Mode |
+| **VS Code / Copilot** | ✅ `.vscode/mcp.json` `{ "servers": { "nooklet": { "type": "http", "url": "…" } } }` | headers/OAuth | — |
+| **Claude API MCP connector** (https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) | ❌ "must be publicly exposed through HTTP", `url` must start with `https://`; beta `mcp-client-2025-11-20`; only tool calls | `authorization_token` | `mcp_toolset` with `default_config.defer_loading` + per-tool `configs.enabled` — a hosted nooklet could expose an allowlist of read tools |
 | **Custom agents** (Anthropic SDK `mcpTools()` helpers, OpenAI Agents SDK, LangChain, SilverBullet AI plug, Home Assistant…) | ✅ any Streamable HTTP client | bearer | SilverBullet needs `trusted: false` by default → tools prompt |
 
 ### 2.4 Auth for a local/self-hosted server
 
-The spec's OAuth 2.1 machinery is **OPTIONAL** ("Authorization is OPTIONAL for MCP implementations"; stdio "SHOULD NOT" use it and should take credentials from the environment). For an HTTP server on localhost / a home LAN, **static bearer tokens** (`Authorization: Bearer vrt_…`) minted in the vrite UI are compliant and are what every surveyed local server (Obsidian Local REST API, SilverBullet MCP, ergut HTTP mode) does. Requirements that still apply: validate `Origin`, bind to loopback unless configured, never accept tokens in the query string, respond 401 with `WWW-Authenticate: Bearer` (Claude Code uses 401/403 to decide "needs auth"). Publish RFC 9728 PRM only when/if an OAuth authorization server is added (multi-user hosted mode).
+The spec's OAuth 2.1 machinery is **OPTIONAL** ("Authorization is OPTIONAL for MCP implementations"; stdio "SHOULD NOT" use it and should take credentials from the environment). For an HTTP server on localhost / a home LAN, **static bearer tokens** (`Authorization: Bearer vrt_…`) minted in the nooklet UI are compliant and are what every surveyed local server (Obsidian Local REST API, SilverBullet MCP, ergut HTTP mode) does. Requirements that still apply: validate `Origin`, bind to loopback unless configured, never accept tokens in the query string, respond 401 with `WWW-Authenticate: Bearer` (Claude Code uses 401/403 to decide "needs auth"). Publish RFC 9728 PRM only when/if an OAuth authorization server is added (multi-user hosted mode).
 
 ### 2.5 Tool-count and description guidance (what the hosts actually do)
 
 * Anthropic, *Writing effective tools for AI agents* (https://www.anthropic.com/engineering/writing-tools-for-agents): few high-impact tools over thin wrappers (`schedule_event` instead of `list_users`+`list_events`+`create_event`; `get_customer_context` instead of three getters); `search_contacts` not `list_contacts`; namespace by prefix; **resolve UUIDs to names in outputs** ("resolving arbitrary alphanumeric UUIDs to more semantically meaningful … language significantly improves Claude's precision"); a `response_format: 'concise' | 'detailed'` enum (65 % token reduction in their example); pagination/truncation with *instructions on how to get more*; unambiguous parameter names (`user_id` not `user`); write descriptions "as for a new team member", including when **not** to use the tool; evaluate with realistic multi-call tasks.
 * Claude API tool search docs (https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool): "Claude's ability to pick the right tool degrades once you exceed 30–50 available tools"; use tool search at ≥ 10 tools or > 10 k tokens of definitions; keep the 3–5 most used tools non-deferred; search covers names, descriptions, argument names and argument descriptions — so put task keywords in descriptions; "add a system prompt section describing available tool categories" ≈ MCP **server instructions**.
 * Claude Code: defers all MCP tools by default (§2.3); *server instructions* are the discovery text; 2 KB caps; deterministic order matters for prompt caching.
-* Trilium's maintainer consolidated 35 → 19 tools citing a 40-tool client cap; Notion ships 24; Obsidian Local REST API 19; eugeneyvt went to 4 verbs with discriminators (fewer tools but each schema becomes a union the model must parse — a real trade-off: discriminated unions hurt schema readability and break `strict` grammars in some hosts). **vrite target: 15 tools, flat schemas, no unions.**
+* Trilium's maintainer consolidated 35 → 19 tools citing a 40-tool client cap; Notion ships 24; Obsidian Local REST API 19; eugeneyvt went to 4 verbs with discriminators (fewer tools but each schema becomes a union the model must parse — a real trade-off: discriminated unions hurt schema readability and break `strict` grammars in some hosts). **nooklet target: 15 tools, flat schemas, no unions.**
 
 ## 3. HTTP API design and the single-definition pattern
 
 ### 3.1 Style: REST vs JSON-RPC vs RPC frameworks
 
-| Style | Fit for vrite |
+| Style | Fit for nooklet |
 |---|---|
 | Pure REST (`GET /pages/{name}/blocks`, `PATCH /blocks/{id}`) | Great for browsers/caches/curl; bad fit for "append this Markdown under block X as `child_last`" (verbs, positions, batches), and every REST route must be *re-described* as an MCP tool. Obsidian's REST API needed a JSON *instruction* body for PATCH anyway — i.e., RPC in a REST coat. |
 | JSON-RPC 2.0 | Exactly what MCP is; but browsers/curl/OpenAPI tooling are awkward and error codes are opaque. |
@@ -277,7 +277,7 @@ export class OpRegistry {
 // packages/server/src/http.ts
 import { Hono } from 'hono';
 import * as z from 'zod/v4';
-import { OpError, type OpRegistry } from '@vrite/api';
+import { OpError, type OpRegistry } from '@nooklet/api';
 
 export function mountHttp(app: Hono<Env>, reg: OpRegistry) {
   for (const op of reg.list().filter(o => o.expose?.http !== false)) {
@@ -308,7 +308,7 @@ export function buildOpenApi(reg: OpRegistry) {
       security: [{ bearer: [] }],
     } };
   }
-  return { openapi: '3.0.3', info: { title: 'vrite API', version: '1' }, paths,
+  return { openapi: '3.0.3', info: { title: 'nooklet API', version: '1' }, paths,
            components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } } };
 }
 ```
@@ -320,13 +320,13 @@ export function buildOpenApi(reg: OpRegistry) {
 import { createMcpHonoApp } from '@modelcontextprotocol/hono';
 import { createMcpHandler, McpServer, ResourceTemplate, requireBearerAuth } from '@modelcontextprotocol/server';
 
-const SERVER_INSTRUCTIONS = `vrite is a block-based outliner (pages, daily journals, nested blocks, [[page refs]], #tags, ((block refs)), key:: value properties).
+const SERVER_INSTRUCTIONS = `nooklet is a block-based outliner (pages, daily journals, nested blocks, [[page refs]], #tags, ((block refs)), key:: value properties).
 Use search to find things, page_read/block_read to read (results include block ids like ^b7k3mq9xz2ha), page_append/block_insert to write Markdown
 (indentation becomes nesting), block_update/block_move/block_delete for edits by id. Dates are YYYY-MM-DD; "today" is accepted. Prefer small reads (depth, max_chars).`; // ≤ 2 KB (Claude Code truncates)
 
 export function buildMcp(reg: OpRegistry, deps: Deps) {
   return createMcpHandler(({ authInfo }) => {
-    const server = new McpServer({ name: 'vrite', version: deps.version }, { instructions: SERVER_INSTRUCTIONS });
+    const server = new McpServer({ name: 'nooklet', version: deps.version }, { instructions: SERVER_INSTRUCTIONS });
     const ctxBase = deps.contextFromAuth(authInfo);                       // actor (agent name from token label), scopes, graph
     for (const op of reg.list().filter(o => o.expose?.mcp !== false)) {
       if (!op.scopes.every(s => ctxBase.scopes.includes(s))) continue;    // read-only token → write tools not even listed (spec allows per-credential lists)
@@ -349,11 +349,11 @@ export function buildMcp(reg: OpRegistry, deps: Deps) {
         }
       });
     }
-    server.registerResource('page', new ResourceTemplate('vrite://page/{name}', { list: undefined, complete: { name: q => deps.graph.completePageNames(q, 20) } }),
+    server.registerResource('page', new ResourceTemplate('nooklet://page/{name}', { list: undefined, complete: { name: q => deps.graph.completePageNames(q, 20) } }),
       { title: 'Page', mimeType: 'text/markdown' },
       async (uri, { name }) => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: await deps.graph.renderPage(String(name), { ids: 'all' }) }] }));
-    server.registerResource('journal', new ResourceTemplate('vrite://journal/{date}', { list: undefined }), { title: 'Journal day', mimeType: 'text/markdown' }, /* … */);
-    server.registerResource('block',   new ResourceTemplate('vrite://block/{id}',     { list: undefined }), { title: 'Block subtree', mimeType: 'text/markdown' }, /* … */);
+    server.registerResource('journal', new ResourceTemplate('nooklet://journal/{date}', { list: undefined }), { title: 'Journal day', mimeType: 'text/markdown' }, /* … */);
+    server.registerResource('block',   new ResourceTemplate('nooklet://block/{id}',     { list: undefined }), { title: 'Block subtree', mimeType: 'text/markdown' }, /* … */);
     server.registerPrompt('daily_review', { description: 'Review today and yesterday, surface open TODOs', argsSchema: { date: z.string().optional() } }, /* … */);
     return server;
   }, { legacy: 'stateless' });
@@ -370,12 +370,12 @@ app.route('/', mcpApp);
 
 ```ts
 // packages/client/src/index.ts
-import type { ops } from '@vrite/api/ops';                                // `export const ops = [pageRead, pageAppend, …] as const`
+import type { ops } from '@nooklet/api/ops';                                // `export const ops = [pageRead, pageAppend, …] as const`
 type Ops = typeof ops[number]; type Name = Ops['name'];
 type In<N extends Name>  = z.input<Extract<Ops, { name: N }>['input']>;
 type Out<N extends Name> = z.output<Extract<Ops, { name: N }>['output']>;
 
-export function createVriteClient(baseUrl: string, token: string) {
+export function createNookletClient(baseUrl: string, token: string) {
   return async function call<N extends Name>(name: N, input: In<N>, opts?: { idempotencyKey?: string; signal?: AbortSignal }): Promise<Out<N>> {
     const res = await fetch(`${baseUrl}/api/v1/${name}`, { method: 'POST', signal: opts?.signal,
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...(opts?.idempotencyKey ? { 'idempotency-key': opts.idempotencyKey } : {}) },
@@ -385,7 +385,7 @@ export function createVriteClient(baseUrl: string, token: string) {
     return body as Out<N>;
   };
 }
-// const vrite = createVriteClient('http://127.0.0.1:6100', token); await vrite('page.append', { page: 'today', markdown: '- hi' });
+// const nooklet = createNookletClient('http://127.0.0.1:6100', token); await nooklet('page.append', { page: 'today', markdown: '- hi' });
 ```
 
 Alternative with the same registry: `hc<typeof app>` from Hono gives route-typed fetch for free; the custom `call()` above is preferred because the op name is the single identifier shared by MCP, HTTP, plugins and the audit log.
@@ -417,7 +417,7 @@ Alternative with the same registry: `hc<typeof app>` from Hono gives route-typed
 import * as z from 'zod/v4';
 
 export const BlockId = z.string().regex(/^[0-9a-hjkmnp-tv-z]{12}$/).describe('12-char block id, e.g. b7k3mq9xz2ha (shown as ^b7k3mq9xz2ha in Markdown)');
-export const PageRef = z.string().min(1).max(512).describe('Page name (case-insensitive; namespaces use "/", e.g. "Projects/vrite"), a journal date YYYY-MM-DD, or "today" | "yesterday" | "tomorrow"');
+export const PageRef = z.string().min(1).max(512).describe('Page name (case-insensitive; namespaces use "/", e.g. "Projects/nooklet"), a journal date YYYY-MM-DD, or "today" | "yesterday" | "tomorrow"');
 export const Cursor = z.string().max(256).describe('Opaque pagination cursor from a previous response');
 export const Limit = (d: number, max: number) => z.number().int().min(1).max(max).default(d).describe(`Max items (default ${d}, max ${max})`);
 export const IdempotencyKey = z.string().max(128).optional().describe('Client-chosen key; repeating a call with the same key returns the original result instead of applying it twice');
@@ -505,7 +505,7 @@ export const pageList = defineOp({
   name: 'page.list', summary: 'List pages (filtered, paginated)',
   description: 'Lists pages by namespace, name prefix, tag or kind, sorted by name or last update. Paginated (default 50). Journals are excluded unless kind is "journal" or "all". For content discovery use search instead.',
   input: z.object({
-    namespace: z.string().optional().describe('Only pages under this namespace, e.g. "Projects" matches "Projects/vrite"'),
+    namespace: z.string().optional().describe('Only pages under this namespace, e.g. "Projects" matches "Projects/nooklet"'),
     prefix: z.string().optional().describe('Case-insensitive name prefix'),
     tag: z.string().optional().describe('Only pages tagged with this tag (page property "tags")'),
     kind: z.enum(['page', 'journal', 'all']).default('page'),
@@ -702,7 +702,7 @@ Options evaluated for `page_read`/write results:
 | Positional paths (`1.2.3`) / line numbers | `1.2 text` | ~3 | breaks on any concurrent edit; Obsidian REST headings-path has the same fragility | only as a *secondary* hint |
 | No ids in text + JSON on demand (ergut) | — | 0 | forces a second, 3–5× larger read to edit | no |
 
-Format spec (`text/markdown; profile=vrite-outline`):
+Format spec (`text/markdown; profile=nooklet-outline`):
 
 ```
 title:: Project X                 ← page properties (key:: value) before the first bullet, only when present
@@ -728,8 +728,8 @@ Why 12-char base32 ids: 60 bits of randomness → collision probability across 1
 
 ```
 graph_overview {}                         → today 2026-09-10, 1,274 pages, recent journals…, seq 48210
-search {query:"API design decision", tags:["vrite"]}   → 3 hits with ^ids and breadcrumbs
-page_read {page:"Projects/vrite/API", depth:2, max_chars:6000}  → outline with ^ids, truncated:true, hint
+search {query:"API design decision", tags:["nooklet"]}   → 3 hits with ^ids and breadcrumbs
+page_read {page:"Projects/nooklet/API", depth:2, max_chars:6000}  → outline with ^ids, truncated:true, hint
 block_insert {ref:"c2mk7d8q4xwe", position:"child_last", markdown:"- Decision: RPC over HTTP\n  - see [[2026-09-10]]"}
    → "Inserted 2 blocks under ^c2mk7d8q4xwe (seq 48213): …"
 page_append {page:"today", markdown:"- Reviewed API doc with Claude ^…"}   (no ^id → new block)
@@ -740,7 +740,7 @@ changes_since {cursor:"48210"}            → the 3 events above, actor {kind:"a
 
 ### 5.1 Tokens and scopes
 
-* Tokens are created in the vrite UI/CLI (`vrite token create --label "claude-code (dan)" --scopes read,write --expires 90d`), stored hashed (SHA-256) in SQLite, shown once, prefixed `vrt_`. Fields: `id, label, scopes[], actor_name, created_by, expires_at, last_used_at, rate_limit_profile, namespace_allow[], namespace_deny[], tag_deny[]`.
+* Tokens are created in the nooklet UI/CLI (`nooklet token create --label "claude-code (dan)" --scopes read,write --expires 90d`), stored hashed (SHA-256) in SQLite, shown once, prefixed `vrt_`. Fields: `id, label, scopes[], actor_name, created_by, expires_at, last_used_at, rate_limit_profile, namespace_allow[], namespace_deny[], tag_deny[]`.
 * Scopes: `read` (all R tools), `write` (A/D tools), `admin` (tokens, reindex, trash purge, sync). **Default for new agent tokens: `read`**; the UI nudges to add `write` with an explicit label. The MCP `tools/list` is filtered by scope (spec-permitted; SDK docs also suggest `isError` inside handlers — do both), so a read-only Claude Desktop connection never sees `block_delete`.
 * Per-token namespace/tag ACLs (ergut's `LOGSEQ_EXCLUDE_TAGS`/`INCLUDE_NAMESPACES` idea) applied at the query layer, including search and backlinks and embeddings (index-time flag for excluded content).
 * `expiresAt` required (the SDK's `requireBearerAuth` rejects tokens without it); refresh = create a new token.

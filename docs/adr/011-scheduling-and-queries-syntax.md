@@ -28,7 +28,7 @@ Date: 2026-09-10. Status: accepted.
 ## Why
 
 Org-mode's syntax is three dialects next to `key:: value` (angle-bracket dates with weekdays,
-repeater shorthand, drawer blocks) for information vrite already has better places for: typed
+repeater shorthand, drawer blocks) for information nooklet already has better places for: typed
 properties for the data, the op log for history. One property syntax stays readable in the
 markdown mirror and cheap for LLMs to write; deriving history from the op log avoids bloating
 every task block with a growing drawer. One filter language reused by four consumers (Tasks

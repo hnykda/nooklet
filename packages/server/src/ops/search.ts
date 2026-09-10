@@ -1,4 +1,4 @@
-import { normalizePageName } from "@vrite/core";
+import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { isoFromJournalDay } from "../data-api.js";
 import { defineOp, OpError } from "./registry.js";
@@ -18,7 +18,7 @@ interface Candidate {
 }
 
 function breadcrumbForBlock(
-  driver: import("@vrite/core").SqlDriver,
+  driver: import("@nooklet/core").SqlDriver,
   parentId: string | null,
 ): string[] {
   const chain: string[] = [];

@@ -54,7 +54,7 @@ export const PropertyKey = z
   .string()
   .regex(/^[a-z][a-z0-9-]*$/)
   .describe(
-    'Lowercase key, hyphens not underscores (e.g. "due-date"), as vrite normalizes property keys',
+    'Lowercase key, hyphens not underscores (e.g. "due-date"), as nooklet normalizes property keys',
   );
 export const Properties = z
   .record(PropertyKey, z.string())

@@ -152,7 +152,7 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.0.0
         version: 2.0.0
-      '@vrite/core':
+      '@nooklet/core':
         specifier: workspace:*
         version: link:../core
       chokidar:

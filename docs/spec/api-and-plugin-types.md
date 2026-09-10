@@ -1,6 +1,6 @@
 # API and plugin types
 
-Status: draft, implementation-ready. Normative for `packages/server`, `@vrite/plugin-api`, and
+Status: draft, implementation-ready. Normative for `packages/server`, `@nooklet/plugin-api`, and
 every plugin. Refines ADR 007 (plugins), ADR 008 (API and MCP), ADR 009 (commands), and PLAN.md
 §§11-13. Follows `00-conventions.md`; does not contradict PLAN or the ADRs. Companion specs owned
 by other work: `mcp-tools.md` (the concrete 15 op/tool definitions, using the `defineOp` pattern
@@ -17,7 +17,7 @@ and client half) is written against:
 
 1. `defineOp` — the single definition that produces an HTTP route, an OpenAPI operation, an MCP
    tool, and a typed client call, plus the registry and the three mount functions.
-2. The plugin manifest (`package.json#vrite` and the single-file `*.plugin.ts` form).
+2. The plugin manifest (`package.json#nooklet` and the single-file `*.plugin.ts` form).
 3. The shared `DataApi` and the server/client `PluginContext` interfaces.
 4. The `Command` type and representative v1 commands.
 5. A complete worked example plugin.
@@ -70,7 +70,7 @@ the glossary") — are listed here for whoever next edits `00-conventions.md` to
    `openWorldHint`) MUST be set explicitly. `defineOp` MUST NOT default them — the MCP spec's
    defaults for an unannotated tool are the dangerous direction (destructive, non-idempotent,
    open-world).
-4. `openWorldHint` MUST be `false` for every core op (vrite is a closed world: it never reaches
+4. `openWorldHint` MUST be `false` for every core op (nooklet is a closed world: it never reaches
    the open internet on an op's behalf). A plugin op that wraps an external API (e.g. a web
    search provider) MAY set it `true`.
 5. Every object-typed `input`/`output` root schema MUST be `.strict()` (or otherwise forbid
@@ -104,7 +104,7 @@ the glossary") — are listed here for whoever next edits `00-conventions.md` to
 13. `beforeWrite` handlers MUST NOT be invoked for a pending write whose `origin.kind === 'sync'`
     (sync must always converge; a plugin veto would fork devices).
 14. A plugin manifest MUST declare at least one of `server` / `client`.
-15. `vrite.api` MUST be the literal string `"1"` for a v1 plugin. The host MUST refuse to
+15. `nooklet.api` MUST be the literal string `"1"` for a v1 plugin. The host MUST refuse to
     `activate()` a plugin whose `api` major it does not support, marking it `error` in
     Settings → Plugins, and MUST NOT abort server startup because of it (Home Assistant "safe
     mode" behavior).
@@ -139,7 +139,7 @@ the glossary") — are listed here for whoever next edits `00-conventions.md` to
 
 Packages, per `00-conventions.md`: `defineOp`, `OpDef`, `OpContext`, `OpError`, `Scope`,
 `OpAnnotations` live in `packages/server/src/ops/define-op.ts` and are re-exported from
-`@vrite/plugin-api` so plugin code never depends on `@vrite/server`. `OpRegistry` lives in
+`@nooklet/plugin-api` so plugin code never depends on `@nooklet/server`. `OpRegistry` lives in
 `packages/server/src/ops/registry.ts` (server-internal — plugins get the narrower
 `ctx.ops.register()` in §4). The mount functions live in `packages/server/src/http.ts` and
 `packages/server/src/mcp.ts`. `DataApi`, `ServerPluginContext`, `ClientPluginContext`,
@@ -156,7 +156,7 @@ export type Json = null | boolean | number | string | Json[] | { [k: string]: Js
 // packages/server/src/ops/define-op.ts
 import { z } from "zod"; // zod 4.6.1 — the package's default export is the v4 API;
 // "zod/v4" is an equivalent subpath kept for hybrid v3/v4 installs, not needed here.
-import type { Json } from "@vrite/plugin-api"; // re-exports packages/plugin-api/src/json.ts
+import type { Json } from "@nooklet/plugin-api"; // re-exports packages/plugin-api/src/json.ts
 
 export type Scope = "read" | "write" | "admin";
 
@@ -265,8 +265,8 @@ export function toErrorBody(e: unknown): { error: { code: OpErrorCode; message: 
 
 ```ts
 import type { DatabaseSync } from "node:sqlite"; // packages/server store driver (PLAN §3)
-import type { Op } from "@vrite/core"; // packages/core/src/ops.ts
-import type { DataApi } from "@vrite/plugin-api"; // §3 — the isomorphic facade, re-exported for server-side use too
+import type { Op } from "@nooklet/core"; // packages/core/src/ops.ts
+import type { DataApi } from "@nooklet/plugin-api"; // §3 — the isomorphic facade, re-exported for server-side use too
 
 /** Origin kinds, verbatim from 00-conventions.md §Vocabulary. */
 export type OriginKind =
@@ -299,7 +299,7 @@ export interface ApplyOpsResult {
 }
 
 export interface ServerConfig {
-  dataDir: string; // $VRITE_DATA
+  dataDir: string; // $NOOKLET_DATA
   graphId: string;
   timezone: string;
   port: number;
@@ -460,7 +460,7 @@ export function buildOpenApi(reg: OpRegistry) {
   }
   return {
     openapi: "3.0.3",
-    info: { title: "vrite API", version: "1" },
+    info: { title: "nooklet API", version: "1" },
     paths,
     components: { securitySchemes: { bearer: { type: "http", scheme: "bearer" } } },
   };
@@ -496,7 +496,7 @@ export function buildMcp(reg: OpRegistry, deps: { version: string; contextFromAu
   return createMcpHandler(
     ({ authInfo }) => {
       const server = new McpServer(
-        { name: "vrite", version: deps.version },
+        { name: "nooklet", version: deps.version },
         { instructions: SERVER_INSTRUCTIONS }, // <= 2 KB: Claude Code truncates server instructions there
       );
       const base = deps.contextFromAuth(authInfo);
@@ -541,7 +541,7 @@ export function buildMcp(reg: OpRegistry, deps: { version: string; contextFromAu
   );
 }
 
-const SERVER_INSTRUCTIONS = `vrite is a block outliner: pages, daily journals, nested blocks, [[refs]], #tags, key:: value properties.
+const SERVER_INSTRUCTIONS = `nooklet is a block outliner: pages, daily journals, nested blocks, [[refs]], #tags, key:: value properties.
 Use search to find things; page.read/block.read to read (block ids look like ^1k7f3q9xz2hav4); page.append/block.insert to write.
 Dates are YYYY-MM-DD ("today" accepted).`;
 
@@ -586,7 +586,7 @@ export function createOpClient<Ops extends readonly OpDef[]>(ops: Ops, baseUrl: 
 
 ### 2. Plugin manifest
 
-#### 2.1 `package.json#vrite`
+#### 2.1 `package.json#nooklet`
 
 ```ts
 // packages/plugin-api/src/manifest.ts
@@ -635,10 +635,10 @@ worked example is §Examples):
 
 ```jsonc
 {
-  "name": "vrite-plugin-mermaid-tools",
+  "name": "nooklet-plugin-mermaid-tools",
   "version": "0.1.0",
   "type": "module",
-  "vrite": {
+  "nooklet": {
     "id": "mermaid-tools",
     "name": "Mermaid + word count",
     "api": "1",
@@ -647,7 +647,7 @@ worked example is §Examples):
     "permissions": [],
     "contributes": { "slash": [{ "id": "mermaid", "label": "Mermaid diagram" }] }
   },
-  "engines": { "vrite": ">=0.4" },
+  "engines": { "nooklet": ">=0.4" },
   "dependencies": { "mermaid": "^11" }
 }
 ```
@@ -679,7 +679,7 @@ export function definePlugin<P extends SingleFilePlugin>(p: P): P {
 
 ```ts
 // plugins/wordcount.plugin.ts
-import { definePlugin } from "@vrite/plugin-api";
+import { definePlugin } from "@nooklet/plugin-api";
 
 export default definePlugin({
   id: "wordcount",
@@ -696,7 +696,7 @@ export default definePlugin({
 The loader (`packages/server/src/plugins/host.ts`, out of scope here — this spec fixes types, not
 the bundler/hot-reload mechanics already described in `research/05-plugins.md` §4) synthesizes an
 equivalent `PluginManifest` from the inline fields for single-file plugins; the discovery order
-(directory `package.json#vrite`, config-listed npm packages, `*.plugin.ts`) is unchanged from that
+(directory `package.json#nooklet`, config-listed npm packages, `*.plugin.ts`) is unchanged from that
 research report.
 
 ### 3. Shared `DataApi`
@@ -708,7 +708,7 @@ References `packages/core/src/model.ts` (`Block`, `Page`, `BlockId`, `PageId`, `
 
 ```ts
 // packages/plugin-api/src/data.ts
-import type { Block, BlockId, Page, PageId, Properties } from "@vrite/core";
+import type { Block, BlockId, Page, PageId, Properties } from "@nooklet/core";
 
 export interface BlockNode extends Block {
   children: BlockNode[];
@@ -781,7 +781,7 @@ either half.
 ```ts
 // packages/plugin-api/src/server-context.ts
 import type { z } from "zod";
-import type { Block, BlockId, Op, Page, PageId } from "@vrite/core";
+import type { Block, BlockId, Op, Page, PageId } from "@nooklet/core";
 import type { DataApi } from "./data.js"; // §3
 import type { Disposable } from "./disposable.js"; // §6
 import type { HttpMethod, Json, JsonSchema, OpAnnotations, OpDef, PluginPermission } from "./index.js";
@@ -922,7 +922,7 @@ CREATE TABLE plugin_kv (
 
 ```ts
 // packages/plugin-api/src/client-context.ts
-import type { Block, BlockId, Page, PageId } from "@vrite/core";
+import type { Block, BlockId, Page, PageId } from "@nooklet/core";
 import type { DataApi } from "./data.js"; // §3
 import type { Disposable } from "./disposable.js"; // §6
 import type { Json } from "./json.js";
@@ -1148,10 +1148,10 @@ and MCP on the server.
 ```jsonc
 // plugins/mermaid-tools/package.json
 {
-  "name": "vrite-plugin-mermaid-tools",
+  "name": "nooklet-plugin-mermaid-tools",
   "version": "0.1.0",
   "type": "module",
-  "vrite": {
+  "nooklet": {
     "id": "mermaid-tools",
     "name": "Mermaid + word count",
     "api": "1",
@@ -1160,16 +1160,16 @@ and MCP on the server.
     "permissions": [],
     "contributes": { "slash": [{ "id": "mermaid", "label": "Mermaid diagram" }] }
   },
-  "engines": { "vrite": ">=0.4" },
+  "engines": { "nooklet": ">=0.4" },
   "dependencies": { "mermaid": "^11" }
 }
 ```
 
 ```ts
 // plugins/mermaid-tools/src/server.ts
-import { defineOp, OpError } from "@vrite/plugin-api";
+import { defineOp, OpError } from "@nooklet/plugin-api";
 import { z } from "zod";
-import type { ServerPluginModule } from "@vrite/plugin-api";
+import type { ServerPluginModule } from "@nooklet/plugin-api";
 
 export default {
   async activate(plugin) {
@@ -1212,7 +1212,7 @@ export default {
 
 ```ts
 // plugins/mermaid-tools/src/client.ts
-import type { ClientPluginModule } from "@vrite/plugin-api";
+import type { ClientPluginModule } from "@nooklet/plugin-api";
 
 export default {
   async activate(ctx) {
@@ -1277,7 +1277,7 @@ The MCP `tools/list` entry this op produces (name = `page_wordcount`, `.` → `_
 
 ## Versioning and compatibility
 
-1. `vrite.api` is a **string major** (`"1"` in v1). Within API 1.x, `@vrite/plugin-api` changes
+1. `nooklet.api` is a **string major** (`"1"` in v1). Within API 1.x, `@nooklet/plugin-api` changes
    are additive-only: new optional fields, new `register*` methods, new event names. Nothing that
    type-checks against API 1.0 may stop type-checking against a later 1.x.
 2. The host checks `manifest.api` before calling `activate()`:
@@ -1288,7 +1288,7 @@ The MCP `tools/list` entry this op produces (name = `page_wordcount`, `.` → `_
    function assertApiSupported(manifest: PluginManifest): void {
      if (!SUPPORTED_API_MAJORS.has(manifest.api)) {
        throw new PluginLoadError(
-         `plugin "${manifest.id}" targets vrite plugin api "${manifest.api}"; ` +
+         `plugin "${manifest.id}" targets nooklet plugin api "${manifest.api}"; ` +
            `this host supports: ${[...SUPPORTED_API_MAJORS].join(", ")}`,
        );
      }
@@ -1297,7 +1297,7 @@ The MCP `tools/list` entry this op produces (name = `page_wordcount`, `.` → `_
 
    A load failure here marks the plugin `error` in Settings → Plugins (with the message above)
    and MUST NOT stop the server or other plugins from starting (rule 15).
-3. `engines.vrite` (a semver range on the *host* version, e.g. `">=0.4"`) is checked but only
+3. `engines.nooklet` (a semver range on the *host* version, e.g. `">=0.4"`) is checked but only
    warns when unmet — unlike `api`, it is advisory, matching Obsidian's `minAppVersion` and VS
    Code's `engines.vscode`.
 4. A breaking API change (removing/renaming a field, changing a `register*` signature
@@ -1336,7 +1336,7 @@ The MCP `tools/list` entry this op produces (name = `page_wordcount`, `.` → `_
    bodies for identical logical input.
 8. **REST alias is additive.** An op with `expose: { http: { method: "GET", path: "/pages/{page}" } }`
    → `GET /api/v1/pages/today` AND `POST /api/v1/page.read` both work (rule 9).
-9. **Manifest validation.** A `package.json#vrite` with neither `server` nor `client` → loader
+9. **Manifest validation.** A `package.json#nooklet` with neither `server` nor `client` → loader
    rejects at discovery time (rule 14), before any `import()`.
 10. **Unsupported API major.** A manifest with `"api": "2"` on a host that only supports `["1"]`
     → plugin marked `error`; server startup and all other plugins proceed unaffected (rule 15,

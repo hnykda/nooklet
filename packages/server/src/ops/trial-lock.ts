@@ -11,7 +11,7 @@
  * every write op's ENTIRE handler execution — not each individual `applyOps` call — in one mutex
  * means a trial's whole span (open savepoint -> run every step -> release/rollback) runs
  * uninterrupted, and a handler that calls `ctx.applyOps` several times never re-enters the lock
- * (it is acquired once, at the top, for the whole handler). vrite is a single-user local server,
+ * (it is acquired once, at the top, for the whole handler). nooklet is a single-user local server,
  * not a high-concurrency service, so a simple FIFO queue — no fairness/priority/timeout logic — is
  * plenty.
  */

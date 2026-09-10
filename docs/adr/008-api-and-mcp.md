@@ -7,7 +7,7 @@ Date: 2026-09-10. Status: accepted.
 - Stack: Hono 4 in one process (web client, `/api/v1`, `/mcp`, `/openapi.json`, `/sync`,
   `/assets`), Zod 4 schemas with generated JSON Schema, MCP SDK v2
   (`@modelcontextprotocol/server` + `@modelcontextprotocol/hono`, spec 2026-07-28) as a
-  stateless Streamable HTTP server with bearer auth, plus a `vrite mcp --stdio` bridge.
+  stateless Streamable HTTP server with bearer auth, plus a `nooklet mcp --stdio` bridge.
 - `defineOp({ name, summary, description, input, output, annotations, scopes, expose, render,
   handler })` is the single definition. Loops mount `POST /api/v1/<name>` (with REST-style
   aliases where natural), build OpenAPI, register MCP tools (text content from `render`,

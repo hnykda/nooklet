@@ -10,15 +10,15 @@
  * instead of being re-exported from a plugin-api package; move them out once that package exists.
  *
  * The MCP mount (§1.7 of the spec) lives in `../mcp/server.ts` instead of this file: it needs
- * vrite-specific wiring (server instructions text, bearer-auth-to-OpContext bridging via
+ * nooklet-specific wiring (server instructions text, bearer-auth-to-OpContext bridging via
  * `../auth/tokens.ts`) that would otherwise make this module depend on the auth layer. It still
  * builds on the exact same `OpRegistry`/`OpDef` this file defines, so op authors never see the
  * difference — `mcp/server.ts`'s `buildMcp` is the "mount 3 of 3" the spec describes, just kept in
  * its own file for that reason.
  */
 
-import type { AppliedOpResult, Op, OpPayload } from "@vrite/core";
-import { makeOp } from "@vrite/core";
+import type { AppliedOpResult, Op, OpPayload } from "@nooklet/core";
+import { makeOp } from "@nooklet/core";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "../apply-ops.js";
@@ -484,7 +484,7 @@ export function buildOpenApi(reg: OpRegistry): Record<string, unknown> {
   }
   return {
     openapi: "3.0.3",
-    info: { title: "vrite API", version: "1" },
+    info: { title: "nooklet API", version: "1" },
     paths,
     components: { securitySchemes: { bearer: { type: "http", scheme: "bearer" } } },
   };

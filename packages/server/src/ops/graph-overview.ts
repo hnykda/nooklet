@@ -1,4 +1,4 @@
-import { todayJournalDay } from "@vrite/core";
+import { todayJournalDay } from "@nooklet/core";
 import { z } from "zod";
 import { isoFromJournalDay } from "../data-api.js";
 import { defineOp, type OriginKind } from "./registry.js";

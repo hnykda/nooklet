@@ -1,10 +1,10 @@
-# vrite — plan and design
+# nooklet — plan and design
 
 Date: 2026-09-10. Status: design phase. Decisions are recorded in `adr/`; the reasoning behind
 them is in `research/` (eight reports, ~350 KB, produced by parallel research agents on this
 date). This document is the readable synthesis: what we build, how, and in what order.
 
-## 1. What vrite is
+## 1. What nooklet is
 
 A small, local-first outliner in the spirit of Logseq for one person with several devices:
 markdown blocks in nested bullets, `[[page refs]]` and `#tags`, linked and unlinked references,
@@ -91,7 +91,7 @@ the Logseq file graph (952 files, 17.5k blocks) and the Logseq DB markdown mirro
  └────────┬───────────────────┬───────────────────────┬────────┘
           │ push/pull ops, WS poke, assets, search      │
  ┌────────▼───────────────────▼───────────────────────▼────────┐
- │                      vrite server (Node 26)                 │
+ │                      nooklet server (Node 26)                 │
  │  SQLite: op log, state, refs, FTS5, embeddings, assets      │
  │  applyOps (single write path)  ← HTTP API ← MCP ← plugins   │
  │  importer / markdown mirror ↔ $DATA/pages/*.md, journals/   │
@@ -109,8 +109,8 @@ Packages (pnpm workspace):
   tokenizer, reference extraction, journal dates, page-name rules. Exists today (46 tests).
 - `packages/server` — Node: `node:sqlite` store, sync endpoints, operation registry, HTTP API,
   OpenAPI, MCP server, importer/mirror, embeddings worker, assets, auth tokens, plugin host, CLI
-  (`vrite serve`, `vrite import`, `vrite export`, `vrite mcp --stdio`, `vrite token`).
-- `packages/plugin-api` — the public types plugins compile against (`vrite.d.ts` in spirit).
+  (`nooklet serve`, `nooklet import`, `nooklet export`, `nooklet mcp --stdio`, `nooklet token`).
+- `packages/plugin-api` — the public types plugins compile against (`nooklet.d.ts` in spirit).
 - `apps/web` — the client (Vite + SolidJS + CodeMirror 6), PWA, later wrapped by Capacitor.
 - `plugins/*` — built-in plugins that dogfood the plugin API (Ollama provider, mermaid,
   tweet/video embeds, Logseq importer).
@@ -155,7 +155,7 @@ Markdown mirror (server side, opt-in, on by default for a fresh install):
 
 ```
 $DATA/
-  vrite.sqlite
+  nooklet.sqlite
   pages/<Page Name>.md          # our clean outline format, Logseq/Obsidian readable
   journals/2026_09_10.md
   assets/<id>.<ext>
@@ -323,7 +323,7 @@ Namespaces:
   is a distinct, forward-looking capability (most competitors' AI integrations are headless);
   see ADR 015 (decision) and `docs/research/09-live-ui-control.md` (survey) for the design.
 - Clients: Claude Code and Cursor connect to the local HTTP endpoint with a bearer token; Claude
-  Desktop uses the `vrite mcp --stdio` bridge.
+  Desktop uses the `nooklet mcp --stdio` bridge.
 
 ## 12. Commands, keybindings, palette, slash menu
 
@@ -340,7 +340,7 @@ Namespaces:
 
 ## 13. Plugins (ADR 007)
 
-- A plugin is a directory (or a single `*.plugin.ts`) with a `vrite` manifest: id, API version,
+- A plugin is a directory (or a single `*.plugin.ts`) with a `nooklet` manifest: id, API version,
   optional `server` and `client` entries, JSON-schema settings (host renders the UI, values
   synced), declared permissions, and declared contributions.
 - Server half: change events with origin (user/api/mcp/sync/plugin/import), one `beforeWrite`
@@ -363,7 +363,7 @@ Namespaces:
 PWA first with the native-feel rules (fixed shell, safe areas, measured keyboard inset, one
 moving editor element, toolbar with indent/outdent/move/task/date, swipe to indent, long-press
 drag, haptics via the platform layer), then a Capacitor 8 shell for iOS/Android stores (native
-SQLite, exact keyboard events, share-sheet receiving, `vrite://` scheme for Shortcuts and Siri,
+SQLite, exact keyboard events, share-sheet receiving, `nooklet://` scheme for Shortcuts and Siri,
 home-screen quick actions), then Tauri 2 for desktop (global quick-capture hotkey, tray). Quick
 capture is a dedicated lightweight route that appends to today's journal without loading the
 graph.

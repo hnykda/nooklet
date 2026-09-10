@@ -7,7 +7,7 @@ tool list, does not redesign it). Ids, block/page shapes and property semantics 
 
 ## 1. Purpose
 
-Define, tool by tool, the complete v1 operation registry that vrite exposes as HTTP endpoints
+Define, tool by tool, the complete v1 operation registry that nooklet exposes as HTTP endpoints
 under `/api/v1` and as MCP tools under `/mcp` (plus a stdio bridge): every op's name, LLM-facing
 description, Zod input/output schema, HTTP mapping, example, and error cases, so that
 `packages/server`'s operation registry, HTTP mounting and MCP registration (ADR 008) can be
@@ -97,7 +97,7 @@ Rules:
    property lines — until the matching closing fence; the whole fence is one block's `content`.
 2. `key` MUST match `/^[a-z][a-z0-9-]*$/`; a line with `::` whose key does not match is ordinary
    text, not a property (this matches `packages/core/src/outline.ts`'s `PROPERTY_RE` intent but
-   with vrite's hyphenated key alphabet, not the underscore-tolerant one — see §9.7). Reserved
+   with nooklet's hyphenated key alphabet, not the underscore-tolerant one — see §9.7). Reserved
    keys `marker`, `priority`, `collapsed`, `id` are never emitted as property lines; they are
    structural (marker/priority are in the bullet text, `collapsed`/`id` are separate concerns —
    `collapsed:: true` IS still emitted as a literal reserved-looking property line per
@@ -239,12 +239,12 @@ one for id-prefix matching); v1 requires full 14-char ids, so that case does not
 
 ### 3.9 Client setup
 
-`vrite serve` binds `127.0.0.1:<port>` by default (port is a `config.json`/env setting, no ADR
+`nooklet serve` binds `127.0.0.1:<port>` by default (port is a `config.json`/env setting, no ADR
 fixes a number yet; examples below use `6100`, see §9.13) and mounts `/mcp` (Streamable HTTP,
 stateless, spec 2026-07-28) behind `Authorization: Bearer <token>`. Server instructions (shown to
 every MCP client, ≤ 2 KB):
 
-> vrite is a block-based outliner: pages, daily journals, nested blocks, `[[page refs]]`,
+> nooklet is a block-based outliner: pages, daily journals, nested blocks, `[[page refs]]`,
 > `#tags`, `((block refs))`, `key:: value` properties. Use `search` to find things, `page_read`/
 > `block_read` to read — results include block ids like `^1k7f3q9xz2hav4`. Use `page_append`/
 > `block_insert` to write Markdown; indentation becomes nesting, and every write returns the new
@@ -260,15 +260,15 @@ every MCP client, ≤ 2 KB):
 // .mcp.json
 {
   "mcpServers": {
-    "vrite": {
+    "nooklet": {
       "type": "http",
       "url": "http://127.0.0.1:6100/mcp",
-      "headers": { "Authorization": "Bearer ${VRITE_TOKEN}" }
+      "headers": { "Authorization": "Bearer ${NOOKLET_TOKEN}" }
     }
   }
 }
 ```
-or `claude mcp add --transport http vrite http://127.0.0.1:6100/mcp --header "Authorization: Bearer $VRITE_TOKEN"`.
+or `claude mcp add --transport http nooklet http://127.0.0.1:6100/mcp --header "Authorization: Bearer $NOOKLET_TOKEN"`.
 `graph_overview`, `page_read`, `search`, `page_append` are `alwaysLoad`; the rest sit behind tool
 search (`ENABLE_TOOL_SEARCH`) until named.
 
@@ -278,32 +278,32 @@ search (`ENABLE_TOOL_SEARCH`) until named.
 // .cursor/mcp.json
 {
   "mcpServers": {
-    "vrite": { "url": "http://127.0.0.1:6100/mcp", "headers": { "Authorization": "Bearer <token>" } }
+    "nooklet": { "url": "http://127.0.0.1:6100/mcp", "headers": { "Authorization": "Bearer <token>" } }
   }
 }
 ```
 
 **Claude Desktop** — cannot reach `localhost` (custom connectors run from Anthropic's cloud), so
-it launches `vrite mcp --stdio`, a small process that speaks stdio to Claude Desktop and
+it launches `nooklet mcp --stdio`, a small process that speaks stdio to Claude Desktop and
 Streamable HTTP to the local server:
 
 ```json
 // claude_desktop_config.json
 {
   "mcpServers": {
-    "vrite": {
-      "command": "vrite",
+    "nooklet": {
+      "command": "nooklet",
       "args": ["mcp", "--stdio"],
-      "env": { "VRITE_URL": "http://127.0.0.1:6100", "VRITE_TOKEN": "vrt_…" }
+      "env": { "NOOKLET_URL": "http://127.0.0.1:6100", "NOOKLET_TOKEN": "vrt_…" }
     }
   }
 }
 ```
 
-`vrite mcp --stdio` is `@modelcontextprotocol/client` talking to `/mcp` under the hood (or
+`nooklet mcp --stdio` is `@modelcontextprotocol/client` talking to `/mcp` under the hood (or
 equivalently `npx mcp-remote@0.8.6 http://127.0.0.1:6100/mcp --header "Authorization: Bearer …"`
 as a fallback); it forwards `tools/list`/`tools/call` 1:1 and writes its own logs to stderr only
-(stdout is the protocol channel). A one-click `.mcpb` bundle (manifest + `vrite mcp --stdio` as
+(stdout is the protocol channel). A one-click `.mcpb` bundle (manifest + `nooklet mcp --stdio` as
 the `node` server type, `user_config.token` marked `sensitive` for OS-keychain storage) is the
 planned distribution for non-technical setup; not required for v1.
 
@@ -337,7 +337,7 @@ export const IfVersion = Version.optional()
   .describe('Only apply if the target is still at this version; on mismatch you get a conflict error with the current version');
 
 export const PropertyKey = z.string().regex(/^[a-z][a-z0-9-]*$/)
-  .describe('Lowercase key, hyphens not underscores (e.g. "due-date"), as vrite normalizes property keys');
+  .describe('Lowercase key, hyphens not underscores (e.g. "due-date"), as nooklet normalizes property keys');
 export const Properties = z.record(PropertyKey, z.string())
   .describe('key -> value as it appears in the "key:: value" line; multi-valued properties (tags, alias) are one comma-separated string');
 export const PropertiesPatch = z.record(PropertyKey, z.string().nullable())

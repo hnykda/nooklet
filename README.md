@@ -1,4 +1,4 @@
-# vrite
+# nooklet
 
 A small, local-first outliner in the spirit of Logseq: markdown blocks, `[[page refs]]`, `#tags`,
 linked/unlinked references, namespaces, journals, tasks, multi-device sync, a clear HTTP API + MCP

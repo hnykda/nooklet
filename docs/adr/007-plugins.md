@@ -4,7 +4,7 @@ Date: 2026-09-10. Status: accepted.
 
 ## Decision
 
-- A plugin is a directory with a `vrite` manifest in `package.json` (id, API version, optional
+- A plugin is a directory with a `nooklet` manifest in `package.json` (id, API version, optional
   `server` and `client` entries, JSON-schema settings, permissions, declared contributions), or
   a single `*.plugin.ts` for quick scripts. Shared code is an ordinary shared module.
 - The data API (`blocks`, `pages`, `query`, `transact`) is the same TypeScript interface on both
@@ -25,7 +25,7 @@ Date: 2026-09-10. Status: accepted.
 
 - Obsidian's simple trusted `Plugin` class with auto-cleanup registration is what made its
   ecosystem; SilverBullet's sandboxed portable runtime was abandoned in 2025 because two runtimes
-  were "a persistent burden" for authors. vrite needs server-authoritative features (MCP, jobs,
+  were "a persistent burden" for authors. nooklet needs server-authoritative features (MCP, jobs,
   hooks), so two explicit halves with one shared interface beats one portable runtime.
 - Sandboxes with real teeth (QuickJS-wasm, workers) all cost DOM and sync access, which is what
   renderers and slash commands want; `isolated-vm` is in maintenance with a 2026 escape CVE;

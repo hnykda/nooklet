@@ -1,10 +1,10 @@
 /**
  * Server-side `DataApi` (`docs/spec/api-and-plugin-types.md` §3): the isomorphic block/page/
- * query/transact facade op handlers and (eventually) plugins are written against. `@vrite/plugin-
+ * query/transact facade op handlers and (eventually) plugins are written against. `@nooklet/plugin-
  * api` does not exist yet in this repo (only `packages/core` and `packages/server` do), so the
  * `BlockNode`/`PropertyPatch`/`BlocksApi`/`PagesApi`/`QueryApi`/`DataApi` interfaces that spec
  * places in `packages/plugin-api/src/data.ts` are defined here instead, byte-compatible with the
- * spec's shapes; move them verbatim into `@vrite/plugin-api` once that package exists.
+ * spec's shapes; move them verbatim into `@nooklet/plugin-api` once that package exists.
  *
  * Every write method goes through `serverApplyOps` (ADR 003/008: "every write is an op") — never
  * a raw INSERT/UPDATE of `page`/`block`/`block_prop`/`page_prop`. Reads query the state tables
@@ -29,7 +29,7 @@ import {
   type Properties,
   type SqlDriver,
   todayJournalDay,
-} from "@vrite/core";
+} from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
 
 // ---------------------------------------------------------------------------------------------

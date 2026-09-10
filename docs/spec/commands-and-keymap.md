@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This spec is the exhaustive, implementation-ready reference for vrite's command system: the
+This spec is the exhaustive, implementation-ready reference for nooklet's command system: the
 `Command` type, the `when`-clause mini-language, every command core registers (id, title,
 category, default keybinding on desktop, mobile-toolbar/gesture equivalent, and precise
 behavior), the mobile keyboard toolbar, the `keybindings.json` override format, and the

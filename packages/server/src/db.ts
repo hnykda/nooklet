@@ -1,12 +1,12 @@
 /**
- * Opens and initializes the server's SQLite database: `@vrite/core`'s node:sqlite driver plus
+ * Opens and initializes the server's SQLite database: `@nooklet/core`'s node:sqlite driver plus
  * this package's full schema (core state tables + server-only tables, `schema.ts`).
  */
 
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { SqlDriver } from "@vrite/core";
-import { createNodeSqliteDriver, openNodeSqlite } from "@vrite/core/node-sqlite";
+import type { SqlDriver } from "@nooklet/core";
+import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 import { initFullSchema, SCHEMA_VERSION } from "./schema.js";
 
 export interface OpenDbOptions {

@@ -37,7 +37,7 @@ path and stable worker threads for speed we do not need.
 ## Consequences
 
 - No change to the current stack; `packages/server` stays on `node:sqlite` via
-  `@vrite/core/node-sqlite`.
+  `@nooklet/core/node-sqlite`.
 - Revisiting is cheap and bounded: `packages/core/src/sync/driver.ts` is a ~30-line interface and
   `node-sqlite-driver.ts` its ~85-line implementation, so a `bun-sqlite-driver.ts` is a small,
   self-contained addition if Bun's macOS SQLite situation improves or the tradeoffs change.

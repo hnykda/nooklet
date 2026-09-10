@@ -8,7 +8,7 @@ Date: 2026-09-10. Status: accepted.
   haptics, share, files, deep links, lifecycle).
 - v1 ships as an installable PWA (service worker, OPFS-backed SQLite, `persist()`, badging).
 - v1.x wraps the same build with Capacitor 8 for iOS/Android store apps, which adds native SQLite
-  (no quota or eviction), exact keyboard height, share-sheet receiving, `vrite://` scheme for
+  (no quota or eviction), exact keyboard height, share-sheet receiving, `nooklet://` scheme for
   Shortcuts/Siri, and home-screen quick actions.
 - Desktop gets Tauri 2 later for a global quick-capture hotkey, tray, and deep links. Electron,
   React Native, and Flutter are out.

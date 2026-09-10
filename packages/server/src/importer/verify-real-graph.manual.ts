@@ -20,7 +20,7 @@ import { openDb } from "../db.js";
 import { importLogseqGraph } from "./logseq.js";
 
 const graphDir = process.argv[2] ?? "~/notes-graph";
-const scratchDir = mkdtempSync(join(tmpdir(), "vrite-logseq-verify-"));
+const scratchDir = mkdtempSync(join(tmpdir(), "nooklet-logseq-verify-"));
 const dbPath = join(scratchDir, "graph.sqlite");
 
 async function main(): Promise<void> {

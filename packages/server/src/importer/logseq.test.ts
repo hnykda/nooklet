@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { isId, newId } from "@vrite/core";
+import { isId, newId } from "@nooklet/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { openDb } from "../db.js";
@@ -12,7 +12,7 @@ let graphDir: string;
 
 beforeEach(() => {
   ctx = createServerContext(openDb({ path: ":memory:" }));
-  graphDir = mkdtempSync(join(tmpdir(), "vrite-logseq-import-"));
+  graphDir = mkdtempSync(join(tmpdir(), "nooklet-logseq-import-"));
 });
 
 afterEach(() => {
@@ -155,7 +155,7 @@ describe("importLogseqGraph: page name resolution", () => {
 });
 
 describe("importLogseqGraph: block refs", () => {
-  it("rewrites a ((uuid)) block ref to the target block's new vrite id", async () => {
+  it("rewrites a ((uuid)) block ref to the target block's new nooklet id", async () => {
     const uuid = "61506710-484c-46d5-9983-3d1651ec02c8";
     writeGraphFile(
       "pages/RefSource.md",

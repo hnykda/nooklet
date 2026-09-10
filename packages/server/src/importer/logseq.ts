@@ -15,7 +15,7 @@
  *      that change how a file name/title maps to a page name.
  *   2. Directory scanning + page name resolution (`fileNameToPageName`/`journalDayFromFileName`
  *      from `page-name.ts`/`journal.ts`, `title::` override, duplicate-name detection).
- *   3. Two-pass Logseq-uuid -> vrite-id conversion (`assignIds`/`rewriteBlockRefs`) so `((uuid))`
+ *   3. Two-pass Logseq-uuid -> nooklet-id conversion (`assignIds`/`rewriteBlockRefs`) so `((uuid))`
  *      block refs keep resolving after import.
  *   4. Turning each page's tree into `page.create`/`block.create` ops (fractional-index sibling
  *      order via `ordersBetween`) and applying them through `serverApplyOps` — the server's own
@@ -42,7 +42,7 @@ import {
   ordersBetween,
   type ParsedPage,
   parseOutline,
-} from "@vrite/core";
+} from "@nooklet/core";
 import { type ServerContext, serverApplyOps } from "../apply-ops.js";
 
 // -------------------------------------------------------------------------------------------
@@ -267,7 +267,7 @@ function resolveFileEntries(
 }
 
 // -------------------------------------------------------------------------------------------
-// Pass 1: Logseq id (uuid, or occasionally something else) -> vrite id
+// Pass 1: Logseq id (uuid, or occasionally something else) -> nooklet id
 // -------------------------------------------------------------------------------------------
 
 /** Depth-first walk of one file's outline tree (local copy of `outline.ts`'s `walkOutline` shape
@@ -280,10 +280,10 @@ function* eachNode(nodes: readonly OutlineNode[]): Generator<OutlineNode> {
 }
 
 interface IdAssignment {
-  /** Logseq id (uuid or otherwise) -> fresh vrite id, for every block that carried one. Used
+  /** Logseq id (uuid or otherwise) -> fresh nooklet id, for every block that carried one. Used
    *  only to rewrite `((id))` references (pass 2); never consulted for a block's own identity. */
   idMap: Map<string, string>;
-  /** Every outline node (whether or not it carried a Logseq id) -> the fresh vrite id it will be
+  /** Every outline node (whether or not it carried a Logseq id) -> the fresh nooklet id it will be
    *  created with. Keyed by node identity since the same in-memory tree is walked in both
    *  passes. */
   nodeIds: Map<OutlineNode, string>;
@@ -324,7 +324,7 @@ function assignIds(entries: readonly FileEntry[], warnings: string[]): IdAssignm
 /** A block ref is `((` + a 36-char Logseq uuid + `))` (task step 4's exact candidate shape — we
  *  don't re-tokenize; a plain substring replace of matches that resolve is sufficient). A
  *  candidate whose inner text isn't in `idMap` is left untouched: either it's already a 14-char
- *  vrite id (re-importing previously exported content — never matches this pattern) or it's
+ *  nooklet id (re-importing previously exported content — never matches this pattern) or it's
  *  genuinely dangling (the target block doesn't exist in this graph; Logseq itself accumulates
  *  these over time per `docs/research/01-logseq.md`). */
 const BLOCK_REF_CANDIDATE_RE = /\(\(([0-9a-f-]{36})\)\)/g;

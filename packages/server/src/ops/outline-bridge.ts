@@ -1,15 +1,15 @@
 /**
  * Bridges the wire "outline Markdown with ^ids" format (`docs/spec/mcp-tools.md` §3.2) to/from
- * `@vrite/core`'s block tree:
+ * `@nooklet/core`'s block tree:
  *
  *  - write side: `page_append`/`block_insert`/`page_create` accept Markdown, PARSE it with
- *    `@vrite/core`'s `parseOutline` (the "write markdown, get blocks" feature, PLAN.md), and this
+ *    `@nooklet/core`'s `parseOutline` (the "write markdown, get blocks" feature, PLAN.md), and this
  *    module turns the resulting `OutlineNode` tree into a flat `Op[]` for `ctx.applyOps` — walking
  *    the tree ourselves rather than looping `DataApi.blocks.insert()` one block at a time, since
  *    that method's spec shape (api-and-plugin-types.md §3) has no marker/priority/children
  *    parameters (Open issue #7 there explicitly permits handlers to go around `DataApi` for this).
  *  - read side: `page_read`/`block_read` convert a `ServerBlockNode` tree (`../data-api.ts`) into
- *    `OutlineNode`s and call `@vrite/core`'s `serializeOutline` for the canonical ^id-suffixed
+ *    `OutlineNode`s and call `@nooklet/core`'s `serializeOutline` for the canonical ^id-suffixed
  *    text, rather than hand-rolling Markdown output.
  *
  * Simplification (documented, not a bug): depth-truncation's "(+N children)" inline annotation
@@ -19,8 +19,8 @@
  * `truncated`/`continue_hint`/the JSON-mode `child_count` field still carry the same information.
  */
 
-import type { Op, OpPayload, OutlineNode, ParsedPage, SqlDriver } from "@vrite/core";
-import { isId, newId, parseOutline, serializeOutline } from "@vrite/core";
+import type { Op, OpPayload, OutlineNode, ParsedPage, SqlDriver } from "@nooklet/core";
+import { isId, newId, parseOutline, serializeOutline } from "@nooklet/core";
 import {
   getBlockRowAny,
   newOrderKeys,
@@ -32,7 +32,7 @@ import type { BlockNodeT } from "./schemas.js";
 
 // ---------------------------------------------------------------------------------------------
 // Checkbox sugar ("- [ ] x" / "- [x] x" -> "- TODO x" / "- DONE x"), a pre-processing pass over
-// the raw Markdown since `@vrite/core`'s `outline.ts` parser (fixed, must-not-modify) does not
+// the raw Markdown since `@nooklet/core`'s `outline.ts` parser (fixed, must-not-modify) does not
 // implement it (mcp-tools.md §3.2 rule 4). Fence-aware so it never rewrites inside a code block.
 // ---------------------------------------------------------------------------------------------
 

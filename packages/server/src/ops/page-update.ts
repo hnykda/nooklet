@@ -1,4 +1,4 @@
-import { normalizePageName } from "@vrite/core";
+import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { buildWikilinkRewriteOps } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";

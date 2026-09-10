@@ -19,7 +19,7 @@ export interface CreateAppOptions {
   serverCtx: ServerContext;
   registry: OpRegistry;
   config: ServerConfig;
-  /** vrite package version, surfaced in the MCP server's `Implementation.version`. */
+  /** nooklet package version, surfaced in the MCP server's `Implementation.version`. */
   version?: string;
 }
 
@@ -27,7 +27,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   const app = new Hono();
   const { serverCtx, registry, config } = opts;
 
-  app.get("/", (c) => c.json({ name: "vrite", status: "ok" }));
+  app.get("/", (c) => c.json({ name: "nooklet", status: "ok" }));
   app.get("/openapi.json", (c) => c.json(buildOpenApi(registry)));
 
   app.use("/api/v1/*", bearerAuth(serverCtx.driver));

@@ -1,5 +1,5 @@
 /**
- * The server's actual single write path (ADR 003/008): wraps `@vrite/core`'s `applyOps` (the
+ * The server's actual single write path (ADR 003/008): wraps `@nooklet/core`'s `applyOps` (the
  * page/block/block_prop/page_prop state-mutation primitive, which has no server role) with
  * everything a real server must additionally do, per `docs/spec/sql-schema.md` rule 24:
  *
@@ -13,7 +13,7 @@
  * need no code here.
  */
 
-import type { AppliedOpResult, ApplyOpsResult, Op, OpPayload, SqlDriver } from "@vrite/core";
+import type { AppliedOpResult, ApplyOpsResult, Op, OpPayload, SqlDriver } from "@nooklet/core";
 import {
   applyOps as coreApplyOps,
   extractRefs,
@@ -21,7 +21,7 @@ import {
   makeOp,
   newId,
   tokenizeContent,
-} from "@vrite/core";
+} from "@nooklet/core";
 
 /** Reserved device id for ops the server itself authors (corrective moves). Never a real device. */
 export const SERVER_DEVICE_ID = "00000000";
@@ -53,7 +53,7 @@ export interface ServerApplyResult extends ApplyOpsResult {
 }
 
 /**
- * Apply `ops`, then do everything `@vrite/core`'s `applyOps` cannot (see file header). Runs in
+ * Apply `ops`, then do everything `@nooklet/core`'s `applyOps` cannot (see file header). Runs in
  * one transaction: either the whole batch's state + index + audit effects land, or none do.
  */
 export function serverApplyOps(

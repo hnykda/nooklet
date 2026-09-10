@@ -24,7 +24,7 @@ of) the headless 18-tool data API, which keeps working with no client open at al
    several windows open and no `window_id` returns `ambiguous_window` rather than guessing, since
    acting on the wrong window is materially worse than reading the wrong one.
 3. **Observed state is the client's existing `WhenContext`/`CommandContext`, serialized** — page,
-   zoom root, focused/selected blocks, cursor offset, viewport, open panel or dialog. vrite does
+   zoom root, focused/selected blocks, cursor offset, viewport, open panel or dialog. nooklet does
    not build a second "what is the user doing" model for agents; it exposes the one the command
    dispatcher already computes before every keystroke.
 4. **Actions are the existing `Command` registry (ADR 009), invoked by id + args**, with each
@@ -34,7 +34,7 @@ of) the headless 18-tool data API, which keeps working with no client open at al
 5. **New MCP surface**: `ui_list_windows`, `ui_get_state`, `ui_run_command`, plus thin
    `ui_navigate`/`ui_highlight` wrappers for the two constant cases. Tools, not resources, are the
    day-one surface — MCP 2026-07-28 *does* natively support subscribable resources, and a
-   `vrite://ui/window/{id}` resource should be added in parallel later, but Claude Code currently
+   `nooklet://ui/window/{id}` resource should be added in parallel later, but Claude Code currently
    surfaces resources only as manual `@mentions`, not something an autonomous loop polls.
 6. **Consent is asymmetric by default, and visible rather than hidden.** Two independent,
    device-local, unsynced toggles: *"let agents view this window"* defaults **on** (read-only, no
@@ -62,14 +62,14 @@ cheap to build and expensive to retrofit.
 The closest real precedent is **VS Code's Language Model Tools API plus Copilot Chat's editor
 context**: the only surveyed system that is also "an app with its own command registry and live
 focus/selection model, exposed to an LLM over a semantic channel," including a `when`-gated
-availability model nearly identical to vrite's own. Figma's agent canvas access is the second
+availability model nearly identical to nooklet's own. Figma's agent canvas access is the second
 template (structured operations against the document model, gated by an explicit capability).
 Home Assistant's WebSocket API — which the user already depends on daily — is the transport
 pattern: subscribe for state, call services for actions, confirm effects by watching the stream.
 
 Browser automation and "computer use" were rejected as the wrong shape: they exist to break into
 applications from the outside, paying in screenshots, vision tokens, pixel ambiguity, and a
-documented 2–5 seconds per action. vrite owns both ends of this connection, so it can have a
+documented 2–5 seconds per action. nooklet owns both ends of this connection, so it can have a
 typed JSON snapshot and a command id in tens of milliseconds instead.
 
 ## Consequences

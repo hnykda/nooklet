@@ -24,7 +24,7 @@ function firstLine(content: string): string {
   return (content.split("\n")[0] ?? "").trim();
 }
 
-function opsForRow(driver: import("@vrite/core").SqlDriver, opIdsJson: string): OpRow[] {
+function opsForRow(driver: import("@nooklet/core").SqlDriver, opIdsJson: string): OpRow[] {
   let ids: string[] = [];
   try {
     ids = JSON.parse(opIdsJson) as string[];

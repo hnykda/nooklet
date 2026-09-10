@@ -54,7 +54,7 @@ them and MUST NOT contradict them. The research reports (`../research/`) are bac
 ## Naming
 
 - TypeScript: `camelCase` fields, `PascalCase` types, files `kebab-case.ts`, ESM with `.js`
-  import specifiers. Public packages: `@vrite/core`, `@vrite/server`, `@vrite/plugin-api`.
+  import specifiers. Public packages: `@nooklet/core`, `@nooklet/server`, `@nooklet/plugin-api`.
 - SQL: `snake_case` tables and columns; tables singular (`page`, `block`, `block_prop`, `ref`,
   `op`, `embedding`). JSON columns end in `_json`. HLC columns end in `_hlc`.
 - Op definitions: `noun.verb` (`page.read`, `block.insert`, `graph.overview`, `sync.push`), except
@@ -91,7 +91,7 @@ them and MUST NOT contradict them. The research reports (`../research/`) are bac
 
 ## Storage conventions
 
-- Data directory `$VRITE_DATA` (default `~/.vrite/<graph>`): `graph.sqlite`, `pages/`,
+- Data directory `$NOOKLET_DATA` (default `~/.nooklet/<graph>`): `graph.sqlite`, `pages/`,
   `journals/`, `assets/`, `plugins/`, `config.json`, `tokens.json` is NOT a file (tokens live in
   SQLite, hashed).
 - SQLite: WAL mode, `foreign_keys` on, `synchronous=NORMAL`, one writer connection, separate

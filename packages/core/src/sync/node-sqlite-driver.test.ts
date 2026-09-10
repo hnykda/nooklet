@@ -2,7 +2,7 @@
  * `SqlDriver.savepoint()` (`./driver.ts`'s `Savepoint`) and its interaction with `transaction()`'s
  * shared `depth` counter — the mechanism `packages/server/src/ops/dry-run.ts` and `./batch.ts`
  * rely on instead of cloning the whole database for trial execution (see those files' header
- * comments). A plain ad hoc table is enough here; none of this needs vrite's real schema.
+ * comments). A plain ad hoc table is enough here; none of this needs nooklet's real schema.
  */
 
 import { DatabaseSync } from "node:sqlite";

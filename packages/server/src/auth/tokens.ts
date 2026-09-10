@@ -6,8 +6,8 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import type { SqlDriver } from "@vrite/core";
-import { newId } from "@vrite/core";
+import type { SqlDriver } from "@nooklet/core";
+import { newId } from "@nooklet/core";
 import type { MiddlewareHandler } from "hono";
 import type { Scope } from "../ops/registry.js";
 

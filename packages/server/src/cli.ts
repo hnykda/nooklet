@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * `vrite` CLI: the one entry point that wires the pieces of this package together.
+ * `nooklet` CLI: the one entry point that wires the pieces of this package together.
  *
- *   vrite serve   [--data <dir>] [--port <n>]     run the HTTP API + MCP endpoint
- *   vrite import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
- *   vrite export  [--data <dir>]                  write the markdown mirror (ADR 002)
- *   vrite mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
- *   vrite token   create --label <l> [--scope read|write|admin] [--sync] | list | revoke <id>
+ *   nooklet serve   [--data <dir>] [--port <n>]     run the HTTP API + MCP endpoint
+ *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
+ *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
+ *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
+ *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] | list | revoke <id>
  *
- * `--data` defaults to $VRITE_DATA, then ~/.vrite/default. The database lives at
+ * `--data` defaults to $NOOKLET_DATA, then ~/.nooklet/default. The database lives at
  * <data>/graph.sqlite and the mirror at <data>/{pages,journals}/ (00-conventions.md, Storage).
  */
 
@@ -54,8 +54,8 @@ function parseArgs(argv: string[]): Args {
 function dataDir(args: Args): string {
   const flag = args.flags.get("data");
   if (typeof flag === "string") return resolve(flag);
-  if (process.env.VRITE_DATA) return resolve(process.env.VRITE_DATA);
-  return join(homedir(), ".vrite", "default");
+  if (process.env.NOOKLET_DATA) return resolve(process.env.NOOKLET_DATA);
+  return join(homedir(), ".nooklet", "default");
 }
 
 function open(args: Args): { ctx: ServerContext; config: ServerConfig } {
@@ -75,19 +75,19 @@ function open(args: Args): { ctx: ServerContext; config: ServerConfig } {
 }
 
 function die(message: string): never {
-  process.stderr.write(`vrite: ${message}\n`);
+  process.stderr.write(`nooklet: ${message}\n`);
   process.exit(1);
 }
 
-const USAGE = `vrite — a local-first outliner server
+const USAGE = `nooklet — a local-first outliner server
 
-  vrite serve  [--data <dir>] [--port <n>]
-  vrite import <logseq-graph-dir> [--data <dir>]
-  vrite export [--data <dir>]
-  vrite mcp --stdio [--token <token>] [--data <dir>]
-  vrite token create --label <label> [--scope read|write|admin] [--sync]
-  vrite token list
-  vrite token revoke <token-id>
+  nooklet serve  [--data <dir>] [--port <n>]
+  nooklet import <logseq-graph-dir> [--data <dir>]
+  nooklet export [--data <dir>]
+  nooklet mcp --stdio [--token <token>] [--data <dir>]
+  nooklet token create --label <label> [--scope read|write|admin] [--sync]
+  nooklet token list
+  nooklet token revoke <token-id>
 `;
 
 async function main(): Promise<void> {
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
       const app = createApp({ serverCtx: ctx, registry: buildRegistry(), config });
       serve({ fetch: app.fetch, port: config.port }, (info) => {
         process.stdout.write(
-          `vrite serving ${config.dataDir}\n` +
+          `nooklet serving ${config.dataDir}\n` +
             `  http  http://127.0.0.1:${info.port}/api/v1\n` +
             `  mcp   http://127.0.0.1:${info.port}/mcp\n` +
             `  spec  http://127.0.0.1:${info.port}/openapi.json\n`,
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
     }
 
     case "mcp": {
-      if (!args.flags.get("stdio")) die("only --stdio is supported: vrite mcp --stdio");
+      if (!args.flags.get("stdio")) die("only --stdio is supported: nooklet mcp --stdio");
       const { ctx, config } = open(args);
       const token = args.flags.get("token");
       startStdioBridge({
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
       }
       if (sub === "revoke") {
         const id = args._[2];
-        if (!id) die("token revoke needs a token id (see: vrite token list)");
+        if (!id) die("token revoke needs a token id (see: nooklet token list)");
         revokeToken(ctx.driver, id);
         process.stdout.write(`revoked ${id}\n`);
         return;
@@ -196,6 +196,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`vrite: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(`nooklet: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
 });

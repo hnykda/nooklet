@@ -52,7 +52,7 @@ export function idTime(id: string): number {
   return v;
 }
 
-/** Logseq-style UUID (v4 in file graphs); accepted on import and mapped to a vrite id. */
+/** Logseq-style UUID (v4 in file graphs); accepted on import and mapped to a nooklet id. */
 export function isUuid(s: string): boolean {
   return UUID_RE.test(s);
 }

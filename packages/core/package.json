@@ -1,7 +1,7 @@
 {
-  "name": "@vrite/core",
+  "name": "@nooklet/core",
   "version": "0.0.1",
-  "description": "vrite core: block/page model, Logseq-compatible outline parser & serializer, reference extraction, journal dates",
+  "description": "nooklet core: block/page model, Logseq-compatible outline parser & serializer, reference extraction, journal dates",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

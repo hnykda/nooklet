@@ -1,4 +1,4 @@
-import type { SqlDriver } from "@vrite/core";
+import type { SqlDriver } from "@nooklet/core";
 import { z } from "zod";
 import { getBlockRow, isoFromJournalDay, type ServerBlockNode } from "../data-api.js";
 import { renderRootTruncated, toWireBlockNode } from "./outline-bridge.js";

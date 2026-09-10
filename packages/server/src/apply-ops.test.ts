@@ -1,4 +1,4 @@
-import { newId } from "@vrite/core";
+import { newId } from "@nooklet/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "./apply-ops.js";
 import { openDb } from "./db.js";

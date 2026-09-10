@@ -1,7 +1,7 @@
 /**
  * Generic `dry_run` support (every write op besides `batch`, which implements its own two-phase
  * apply-once-for-real logic directly — see `./batch.ts`). Runs `fn` against the REAL `ctx` inside
- * a `Savepoint` (`@vrite/core`'s `SqlDriver.savepoint()`, see `driver.ts`'s doc for why this
+ * a `Savepoint` (`@nooklet/core`'s `SqlDriver.savepoint()`, see `driver.ts`'s doc for why this
  * exists instead of a nested SQL transaction the driver's own `transaction()` could issue) that is
  * unconditionally rolled back afterward — so the handler's normal async logic (real `ctx.applyOps`
  * calls, real id/order-key allocation, real conflict checks) executes for real, and the actual

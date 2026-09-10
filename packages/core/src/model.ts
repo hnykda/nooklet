@@ -1,5 +1,5 @@
 /**
- * Core data model of a vrite graph.
+ * Core data model of a nooklet graph.
  *
  * A graph is a set of pages; each page owns an ordered tree of blocks.
  * Blocks carry markdown text. References ([[page]], #tag, ((block)))
@@ -45,7 +45,7 @@ export interface Block {
 
 export interface Page {
   id: PageId;
-  /** Display name with original casing, e.g. "Projects/Vrite". Namespaces are "/"-separated. */
+  /** Display name with original casing, e.g. "Projects/Nooklet". Namespaces are "/"-separated. */
   name: string;
   /** Identity key: normalizePageName(name). Unique per graph. */
   key: string;

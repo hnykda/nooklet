@@ -1,5 +1,5 @@
 /**
- * `@vrite/server` package entry: the pieces a CLI, another package, or a test needs to stand up a
+ * `@nooklet/server` package entry: the pieces a CLI, another package, or a test needs to stand up a
  * full server (DB, write path, op registry, HTTP+MCP app) without reaching into internal files.
  */
 

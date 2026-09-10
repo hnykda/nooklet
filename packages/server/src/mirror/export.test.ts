@@ -9,7 +9,7 @@ import {
   pageNameToFileName,
   parseOutline,
   type TaskMarker,
-} from "@vrite/core";
+} from "@nooklet/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { openDb } from "../db.js";
@@ -20,7 +20,7 @@ let dataDir: string;
 
 beforeEach(() => {
   ctx = createServerContext(openDb({ path: ":memory:" }));
-  dataDir = mkdtempSync(join(tmpdir(), "vrite-mirror-test-"));
+  dataDir = mkdtempSync(join(tmpdir(), "nooklet-mirror-test-"));
 });
 
 afterEach(() => {

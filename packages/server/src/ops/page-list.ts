@@ -1,4 +1,4 @@
-import { normalizePageName } from "@vrite/core";
+import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { defineOp, OpError } from "./registry.js";
 import { wirePageName } from "./resolve.js";

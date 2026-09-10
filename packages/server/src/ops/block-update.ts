@@ -1,4 +1,4 @@
-import type { Op } from "@vrite/core";
+import type { Op } from "@nooklet/core";
 import { z } from "zod";
 import { getBlockRow, isoFromJournalDay } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";

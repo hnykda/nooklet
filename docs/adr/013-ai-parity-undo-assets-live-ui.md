@@ -27,7 +27,7 @@ M2, not yet an implementation decision.
 
 ## Why
 
-The user's explicit goal is that vrite treats AI agents as first-class users of the product, not
+The user's explicit goal is that nooklet treats AI agents as first-class users of the product, not
 a headless API bolted onto a human-first editor. Two gaps surfaced by checking the finished
 `docs/spec/mcp-tools.md` against that bar:
 

@@ -1,4 +1,4 @@
-# vrite plugin system: survey and recommended design
+# nooklet plugin system: survey and recommended design
 
 Research date: 2026-09-10. Versions and statuses below were checked against npm, GitHub and the projects' own docs on that date (see "Sources" at the end).
 
@@ -6,13 +6,13 @@ Research date: 2026-09-10. Versions and statuses below were checked against npm,
 
 ## 0. TL;DR
 
-**Recommendation for vrite v1**
+**Recommendation for nooklet v1**
 
-1. **One plugin package, two entry points.** A plugin is an npm-style directory with a `vrite` field in `package.json` naming a `server` entry and/or a `client` entry (plus a JSON-schema `settings` block and a declared `permissions` list). Shared code is just a shared module; the *data* API (`blocks`, `pages`, `query`, `transact`) is **isomorphic** (identical TS interface on both sides), and the plugin's client half can call its server half through `ctx.rpc`. This is the SilverBullet "one code base" idea, but without SilverBullet's mistake of running the *same* plugin runtime in two places (they removed the server-side runtime in v2, see ADR-007 below).
+1. **One plugin package, two entry points.** A plugin is an npm-style directory with a `nooklet` field in `package.json` naming a `server` entry and/or a `client` entry (plus a JSON-schema `settings` block and a declared `permissions` list). Shared code is just a shared module; the *data* API (`blocks`, `pages`, `query`, `transact`) is **isomorphic** (identical TS interface on both sides), and the plugin's client half can call its server half through `ctx.rpc`. This is the SilverBullet "one code base" idea, but without SilverBullet's mistake of running the *same* plugin runtime in two places (they removed the server-side runtime in v2, see ADR-007 below).
 2. **Trusted code by default: plain ESM `import()` on both sides.** Self-hosted, single-user, technical authors: the trust boundary is the `plugins/` directory, exactly like Obsidian, Home Assistant, Fastify and Vite. This is what makes Obsidian's ecosystem work and what makes Logseq's iframe model painful. Say so loudly in the UI ("plugins run with full server access").
 3. **Design the API so a sandbox can be added later without changing it.** Three rules: every API call is `async` and takes/returns JSON-serialisable values; callbacks only enter the host through *registration* (`register(...)` returning a `Disposable`), never by passing functions into data calls; client renderers can be written in an "HTML-returning" form (`html(source) => string`) as well as the "mount into `el`" form. With these rules the server plugin host can be moved into a `worker_thread` (VS Code extension-host style, `birpc` over `MessagePort`, `resourceLimits`, kill-and-respawn = hot reload) and untrusted client plugins into Web Worker + sandboxed iframe (Figma/SilverBullet style) as a pure hosting change.
 4. **Small v1 extension-point list** (server: lifecycle, change events, one `beforeWrite` hook, commands, rpc functions, HTTP routes, MCP tools/resources, scheduled jobs, importers/exporters, embedding + search providers, settings, KV storage; client: lifecycle, commands + keybindings, slash commands, code-block and `{{macro}}` renderers, sidebar panels, block/page menu items, toolbar buttons, styles/themes, editor API, notifications/dialogs, settings, rpc). Everything returns a `Disposable`; `deactivate` disposes all.
-5. **Loader**: discover `plugins/*/package.json` (plus packages listed in config and single-file `*.plugin.ts`), bundle each entry with esbuild (server: ESM for Node with node builtins external; client: ESM served at `/plugins/<id>/client.js?v=<hash>`), `import()` it, call `activate(ctx)`. Reload = `deactivate` → rebuild → `import()` new hash → `activate`, broadcast to clients over the existing sync socket. Ship `@vrite/plugin-api` (types + `definePlugin` + `Disposable` helpers + an in-memory test host), a manifest `api: "1"` field, and `engines.vrite` for host-version compatibility (Obsidian `minAppVersion` / VS Code `engines.vscode`).
+5. **Loader**: discover `plugins/*/package.json` (plus packages listed in config and single-file `*.plugin.ts`), bundle each entry with esbuild (server: ESM for Node with node builtins external; client: ESM served at `/plugins/<id>/client.js?v=<hash>`), `import()` it, call `activate(ctx)`. Reload = `deactivate` → rebuild → `import()` new hash → `activate`, broadcast to clients over the existing sync socket. Ship `@nooklet/plugin-api` (types + `definePlugin` + `Disposable` helpers + an in-memory test host), a manifest `api: "1"` field, and `engines.nooklet` for host-version compatibility (Obsidian `minAppVersion` / VS Code `engines.vscode`).
 6. **Explicitly rejected as the default**: `node:vm` (documented "not a security mechanism"), `isolated-vm` (maintenance mode, native build, `--no-node-snapshot`, and an August 2026 sandbox-escape CVE), ShadowRealm (still Stage 2.7, shipped nowhere), SES/Compartments (needs realm-wide `lockdown()`, no DOM, breaks many libraries). QuickJS-in-wasm is the credible *future* option for genuinely untrusted scripts (it is what Figma moved to), not for v1.
 
 ---
@@ -210,7 +210,7 @@ export default class MermaidPlus extends Plugin {
 
 ### 2.3 SilverBullet: plugs, syscalls and Space Lua
 
-SilverBullet is the closest analogue to vrite (markdown, self-hosted, PWA, technical users) and has changed dramatically: v2 shipped 2025-08-29; the client toolchain moved from Deno to Node (2.6); the server was rewritten in Go (2025-09) and then Rust (v2.10.0, 2026-06); npm `@silverbulletmd/silverbullet` is 2.10.0 (2026-07-28).
+SilverBullet is the closest analogue to nooklet (markdown, self-hosted, PWA, technical users) and has changed dramatically: v2 shipped 2025-08-29; the client toolchain moved from Deno to Node (2.6); the server was rewritten in Go (2025-09) and then Rust (v2.10.0, 2026-06); npm `@silverbulletmd/silverbullet` is 2.10.0 (2026-07-28).
 
 **Plugs.** A plug is a compiled bundle `<name>.plug.js` (built by `plug-compile` / esbuild from a `<name>.plug.yaml` manifest plus TS files) that exports `{manifest, functionMapping}`. At load time **each plug runs in its own Web Worker in the browser**; it never touches the DOM; all interaction goes through *syscalls* (`globalThis.syscall(name, ...args)` forwarded to the main thread). Two message kinds cross the boundary: *invoke* (main → worker: run function X for a hook) and *syscall* (worker → main). Plugs are discovered as any `*.plug.js` file in the space; built-in plugs live under `Library/Std/Plugs`. Reloading is explicit (`Plugs: Reload`, `system.loadPlug(path)` / `system.unloadPlug(path)`); an earlier changelog entry notes "hot reloading plugs has been disabled because it caused some nasty race condition".
 
@@ -289,9 +289,9 @@ codeWidget.define { language = "mermaid", render = function(body) ... end }   --
 
 Runaway protection: a busy-time budget on the main thread; scripts that exceed it are offered *Stop*/*Keep going*; stopped definitions are *quarantined* (disabled on reload until edited). Widgets/expressions are cut off with an inline "Lua timeout".
 
-**The key lesson for vrite: ADR-007 "Core Application Logic on the Client" (2025-08-29).** The v1 PlugOS runtime could run plugs "either on the server or in the client" (server mode vs sync mode). The ADR's own words: "maintaining two runtime environments for PlugOS was a persistent burden: every capability had to work and the dual model produced subtle, hard-to-diagnose issues"; it "was also confusing for plug developers". v2 **eliminated the server-side runtime**: plugs, indexing, queries, Space Lua and sync run only in the client; the server "is reduced to a file store". Consequences they accept: every device re-indexes, no thin-client mode, and "server-authoritative features are harder" (CRDT/collab, anything needing a central source of truth). `system.getEnv` is now deprecated with the note "The environment is always the client".
+**The key lesson for nooklet: ADR-007 "Core Application Logic on the Client" (2025-08-29).** The v1 PlugOS runtime could run plugs "either on the server or in the client" (server mode vs sync mode). The ADR's own words: "maintaining two runtime environments for PlugOS was a persistent burden: every capability had to work and the dual model produced subtle, hard-to-diagnose issues"; it "was also confusing for plug developers". v2 **eliminated the server-side runtime**: plugs, indexing, queries, Space Lua and sync run only in the client; the server "is reduced to a file store". Consequences they accept: every device re-indexes, no thin-client mode, and "server-authoritative features are harder" (CRDT/collab, anything needing a central source of truth). `system.getEnv` is now deprecated with the note "The environment is always the client".
 
-vrite's requirements (server-side hooks, MCP, scheduled jobs, importers, embeddings on the server) are exactly the "server-authoritative" features SilverBullet gave up. So: *do not* build one runtime that must run identically in both places; build *two explicit halves* with a shared data interface and a thin RPC between them.
+nooklet's requirements (server-side hooks, MCP, scheduled jobs, importers, embeddings on the server) are exactly the "server-authoritative" features SilverBullet gave up. So: *do not* build one runtime that must run identically in both places; build *two explicit halves* with a shared data interface and a thin RPC between them.
 
 **Strengths.** Clean API boundary (syscalls are the single choke point, enumerable via `system.listSyscalls`, permission-gated); manifest makes contributions statically discoverable (commands, keybindings, slash commands appear before the code runs); per-plug worker isolation without a native dependency; syscall-exposed plug functions are callable from other plugs and from Lua; in-page scripting (Space Lua) has an extremely low barrier for small customisations; time-budget + quarantine is a nice robustness pattern.
 
@@ -312,13 +312,13 @@ Backend API (from `backend_script_api.ts`): `createTextNote/createDataNote/creat
 
 Execution: the client runs bundles with ``eval(`const apiContext = this; (async function() { ${bundle.script} })()`)``; the server does the same (`script.ts`: ``eval(`const apiContext = this;\r\n(${script}\r\n)()`)``) and `script_context.ts` states plainly "It is NOT a security sandbox. Scripts execute via eval() in the main Node.js". Notably TriliumNext recently added `scripting_guard.ts`: backend scripting is **off unless** `[Security] backendScriptingEnabled=true` ("WARNING: Backend scripts have full server access").
 
-Lessons: the "scripts in notes, run on both sides, `runOnBackend` bridge" model is beloved for its immediacy, but scripts-in-synced-content plus full server access is a footgun (hence the new kill-switch). If vrite ever adds in-page scripting, it should be client-only and sandboxed.
+Lessons: the "scripts in notes, run on both sides, `runOnBackend` bridge" model is beloved for its immediacy, but scripts-in-synced-content plus full server access is a footgun (hence the new kill-switch). If nooklet ever adds in-page scripting, it should be client-only and sandboxed.
 
 ### 2.6 Joplin
 
 Multi-process for *stability*, not security. The `PluginService` delegates to a platform `PluginRunner`: desktop creates a **new `BrowserWindow` (separate process) per plugin**; mobile runs plugins in an `about:srcdoc` iframe in a WebView; CLI uses `node:vm` in-process. A *sandbox proxy* in the plugin process turns every `joplin.*` call into an IPC message; functions cannot cross IPC, so event handlers are replaced by ids (`onExecute: '___event_handler_123'`) and re-materialised as stubs on the host. UI (`joplin.views.panels/dialogs`) is HTML in a webview with `postMessage`/`onMessage`; *content scripts* (`ContentScriptType.MarkdownItPlugin`, `CodeMirrorPlugin`) run inside the renderer/editor. Note `joplin.require()` gives plugins native packages (`sqlite3`, `fs-extra`), so desktop isolation is not a security boundary either. Packaging is a `.jpl` archive with `manifest.json`; the API is a `joplin` global with namespaces `plugins, workspace, filters, commands, views, interop, settings, contentScripts, clipboard, window, imaging, data, fs, ai`.
 
-Lesson: the id-for-callback IPC serialisation is exactly what vrite would implement if/when the server plugin host moves to a worker; designing the API as *registrations + dispatch* from day one makes that transparent.
+Lesson: the id-for-callback IPC serialisation is exactly what nooklet would implement if/when the server plugin host moves to a worker; designing the API as *registrations + dispatch* from day one makes that transparent.
 
 ### 2.7 SiYuan
 
@@ -336,11 +336,11 @@ Lesson: the "context object as capability bag" and "every register returns an un
 
 Fastify (5.12.3): a plugin is `async (fastify, opts) => { fastify.decorate(...); fastify.addHook('onRequest', ...); fastify.get(...) }`, registered with `fastify.register(plugin, opts)`. Registration creates an **encapsulated child context** (decorators/hooks only visible to descendants) unless wrapped in `fastify-plugin` (which also records `name`, supported `fastify` version and `dependencies`); `avvio` guarantees ordered, awaited loading. Vite (8.3.0): a plugin is a factory returning `{ name, enforce?: 'pre' | 'post', apply?: 'build' | 'serve' | fn, config, configResolved, configureServer, transformIndexHtml, handleHotUpdate, resolveId/load/transform }`; virtual modules use the `virtual:` / `\0` convention; naming `vite-plugin-*` with a `peerDependency` on `vite`.
 
-Lessons for vrite's server side: named plugins with declared host-version ranges and inter-plugin dependencies; ordering via `enforce`/priority rather than load order; hook handlers that can *transform or veto* (Vite `transform`, Fastify `preHandler`); a route/handler API that is framework-neutral (vrite should expose Web-standard `Request`/`Response` rather than Fastify/Express objects, so the HTTP framework can change).
+Lessons for nooklet's server side: named plugins with declared host-version ranges and inter-plugin dependencies; ordering via `enforce`/priority rather than load order; hook handlers that can *transform or veto* (Vite `transform`, Fastify `preHandler`); a route/handler API that is framework-neutral (nooklet should expose Web-standard `Request`/`Response` rather than Fastify/Express objects, so the HTTP framework can change).
 
 ### 2.10 Directus bundles (one npm package, both sides) and its sandbox
 
-Directus "bundle" extensions put several *app* (Vue frontend: interfaces, displays, layouts, modules, panels) and *api* (backend: hooks, endpoints, operations) extensions into one npm package, declared in `package.json` under `directus:extension` with `type: "bundle"` and `entries: [{ type, name, source }]`; `partial: true` lets users disable entries individually; `@directus/extensions-sdk` builds both sides. API extensions get a context (`services, database, getSchema, env, logger`), and can opt into a **sandbox** (`"sandbox": { "enabled": true, "requestedScopes": { "log": {}, "sleep": {}, "request": { "methods": ["GET"], "urls": ["https://example.com/*"] } } }`) in which only `import { log, request, sleep } from 'directus:api'` exist, no Node built-ins, no unbundled npm; the sandbox was built on isolated-vm. This is the best existing template for vrite's package format: one manifest, typed entries per side, per-entry enable/disable, opt-in sandbox with declared scopes.
+Directus "bundle" extensions put several *app* (Vue frontend: interfaces, displays, layouts, modules, panels) and *api* (backend: hooks, endpoints, operations) extensions into one npm package, declared in `package.json` under `directus:extension` with `type: "bundle"` and `entries: [{ type, name, source }]`; `partial: true` lets users disable entries individually; `@directus/extensions-sdk` builds both sides. API extensions get a context (`services, database, getSchema, env, logger`), and can opt into a **sandbox** (`"sandbox": { "enabled": true, "requestedScopes": { "log": {}, "sleep": {}, "request": { "methods": ["GET"], "urls": ["https://example.com/*"] } } }`) in which only `import { log, request, sleep } from 'directus:api'` exist, no Node built-ins, no unbundled npm; the sandbox was built on isolated-vm. This is the best existing template for nooklet's package format: one manifest, typed entries per side, per-entry enable/disable, opt-in sandbox with declared scopes.
 
 ### 2.11 Sandbox precedents: Figma, MetaMask Snaps, Zed
 
@@ -367,7 +367,7 @@ Directus "bundle" extensions put several *app* (Vue frontend: interfaces, displa
 
 ## 3. Sandboxing options in 2026
 
-| Option | Boundary | DX | Perf | Can render UI? | Status (2026-09) | Verdict for vrite |
+| Option | Boundary | DX | Perf | Can render UI? | Status (2026-09) | Verdict for nooklet |
 | --- | --- | --- | --- | --- | --- | --- |
 | **Trusted `import()`** (Obsidian/HA/Fastify) | none | best (sync-capable, real DOM, any npm) | native | yes | n/a | **default for v1** |
 | **`worker_threads` + capability API over `MessagePort`** | crash/latency isolation, `resourceLimits` (heap), `terminate()`; *not* a security boundary (same process, same `fs`) | good if API is async + JSON | structured-clone per call (fine for block-sized payloads; transferables for embeddings) | no (server) | stable; Node permission model (`--permission`, `--allow-fs-read`, `--allow-worker`) is Stable since 23.5 and process-wide | **v1.x upgrade path for the server plugin host** |
@@ -389,25 +389,25 @@ Directus "bundle" extensions put several *app* (Vue frontend: interfaces, displa
 
 **Discovery.** Three sources, all producing the same in-memory `PluginPackage`:
 
-1. `plugins/<dir>/package.json` with a `vrite` field (the normal case; `plugins/` lives in the data directory so it is backed up with the SQLite file).
-2. Packages named in server config (`plugins: ["vrite-plugin-foo"]`) resolved with `import.meta.resolve` from the server's `node_modules` (for plugins installed with `npm i`).
+1. `plugins/<dir>/package.json` with a `nooklet` field (the normal case; `plugins/` lives in the data directory so it is backed up with the SQLite file).
+2. Packages named in server config (`plugins: ["nooklet-plugin-foo"]`) resolved with `import.meta.resolve` from the server's `node_modules` (for plugins installed with `npm i`).
 3. Single-file plugins `plugins/<name>.plugin.ts` whose default export is a `definePlugin({...})` with inline `server`/`client` objects (for quick scripts; see §5.2).
 
-**Bundling.** Run esbuild (already a transitive dependency of most TS toolchains; ~10 MB) at load time: server entry → `<data>/.cache/plugins/<id>/server.<hash>.mjs` (`platform: 'node'`, `format: 'esm'`, `external: [node builtins, '@vrite/plugin-api']`); client entry → `<data>/.cache/plugins/<id>/client.<hash>.js` (`platform: 'browser'`, `format: 'esm'`, TSX allowed, everything bundled). Content hash goes in the file name, which doubles as the cache-busting key. Escape hatch: if `package.json#vrite.server`/`client` point at `.js`/`.mjs` files, they are used as-is (prebuilt with the author's own toolchain, e.g. `tsdown`/`vite`). (Node ≥ 22.18 can import erasable-syntax `.ts` directly via built-in type stripping, but that neither bundles a plugin's dependencies nor helps the browser side, so esbuild keeps both paths uniform.)
+**Bundling.** Run esbuild (already a transitive dependency of most TS toolchains; ~10 MB) at load time: server entry → `<data>/.cache/plugins/<id>/server.<hash>.mjs` (`platform: 'node'`, `format: 'esm'`, `external: [node builtins, '@nooklet/plugin-api']`); client entry → `<data>/.cache/plugins/<id>/client.<hash>.js` (`platform: 'browser'`, `format: 'esm'`, TSX allowed, everything bundled). Content hash goes in the file name, which doubles as the cache-busting key. Escape hatch: if `package.json#nooklet.server`/`client` point at `.js`/`.mjs` files, they are used as-is (prebuilt with the author's own toolchain, e.g. `tsdown`/`vite`). (Node ≥ 22.18 can import erasable-syntax `.ts` directly via built-in type stripping, but that neither bundles a plugin's dependencies nor helps the browser side, so esbuild keeps both paths uniform.)
 
 **Loading (server).** `const mod = await import(pathToFileURL(builtFile).href)`; `mod.default` must satisfy `ServerPlugin`; the host builds a `ServerContext` scoped to the plugin id and calls `activate(ctx)`; every registration is pushed into `ctx.subscriptions`; `deactivate()` disposes them in reverse order. Activation errors mark the plugin `error` (shown in Settings → Plugins) but never abort server start (HA "safe mode" behaviour).
 
-**Loading (client).** The server exposes `GET /api/plugins` (enabled plugins, their manifests, client bundle URLs with hashes, settings schemas, and *declared* contributions) and `GET /plugins/<id>/client.<hash>.js`. The PWA fetches the list on boot and after a `plugins.changed` message on the sync socket, then `await import(/* @vite-ignore */ url)` each bundle and calls `activate(ctx)`. The module receives everything through `ctx`; it must not import runtime code from the app (no import maps needed; `@vrite/plugin-api` is types + tiny helpers that get bundled).
+**Loading (client).** The server exposes `GET /api/plugins` (enabled plugins, their manifests, client bundle URLs with hashes, settings schemas, and *declared* contributions) and `GET /plugins/<id>/client.<hash>.js`. The PWA fetches the list on boot and after a `plugins.changed` message on the sync socket, then `await import(/* @vite-ignore */ url)` each bundle and calls `activate(ctx)`. The module receives everything through `ctx`; it must not import runtime code from the app (no import maps needed; `@nooklet/plugin-api` is types + tiny helpers that get bundled).
 
 **Hot reload.** A recursive `fs.watch` (or chokidar) on `plugins/` debounces changes per package: `deactivate()` → rebuild → `import()` (new hash ⇒ new module instance) → `activate()` → broadcast `plugins.changed`. ESM modules cannot be evicted from Node's cache (nodejs/node#38322 is still open; the query-string trick just loads another copy), so old module graphs leak until process restart. That is acceptable for a dev loop and exactly what SilverBullet does (explicit `Plugs: Reload`; they turned *automatic* hot reload off after race conditions). When the server host moves to a worker, reload becomes `worker.terminate()` + respawn, with no leak.
 
-**Types for authors: `@vrite/plugin-api`.** Publish a small package containing: the `ServerContext`/`ClientContext`/`DataApi` interfaces, `defineServerPlugin`/`defineClientPlugin`/`definePlugin` identity helpers, `Disposable` utilities, the manifest JSON schema, and `@vrite/plugin-api/testing` (an in-memory host that runs `activate` against a temp SQLite database so plugins can be unit-tested with Vitest). Plugins declare it as a `devDependency`/`peerDependency`; the host stamps `host.apiVersion` and `host.version` into `ctx`.
+**Types for authors: `@nooklet/plugin-api`.** Publish a small package containing: the `ServerContext`/`ClientContext`/`DataApi` interfaces, `defineServerPlugin`/`defineClientPlugin`/`definePlugin` identity helpers, `Disposable` utilities, the manifest JSON schema, and `@nooklet/plugin-api/testing` (an in-memory host that runs `activate` against a temp SQLite database so plugins can be unit-tested with Vitest). Plugins declare it as a `devDependency`/`peerDependency`; the host stamps `host.apiVersion` and `host.version` into `ctx`.
 
-**Versioning / compatibility.** `vrite.api: "1"` in the manifest (major of the API); `engines.vrite: ">=0.4"` for host version (like Obsidian's `minAppVersion` and VS Code's `engines.vscode`); the host refuses to load a plugin with an unknown `api` major and warns on unmet `engines`. Within API 1.x changes are additive only; deprecated members keep working for at least one minor and log once. Unstable surface lives under `ctx.experimental.*` and requires `"experimental": true` in the manifest (VS Code proposed-API idea).
+**Versioning / compatibility.** `nooklet.api: "1"` in the manifest (major of the API); `engines.nooklet: ">=0.4"` for host version (like Obsidian's `minAppVersion` and VS Code's `engines.vscode`); the host refuses to load a plugin with an unknown `api` major and warns on unmet `engines`. Within API 1.x changes are additive only; deprecated members keep working for at least one minor and log once. Unstable surface lives under `ctx.experimental.*` and requires `"experimental": true` in the manifest (VS Code proposed-API idea).
 
 ---
 
-## 5. Recommended design for vrite
+## 5. Recommended design for nooklet
 
 ### 5.1 Principles
 
@@ -424,10 +424,10 @@ Directus "bundle" extensions put several *app* (Vue frontend: interfaces, displa
 ```jsonc
 // plugins/mermaid/package.json
 {
-  "name": "vrite-plugin-mermaid",
+  "name": "nooklet-plugin-mermaid",
   "version": "0.1.0",
   "type": "module",
-  "vrite": {
+  "nooklet": {
     "id": "mermaid",                       // stable id, [a-z0-9-], namespaced storage/settings/routes
     "name": "Mermaid diagrams",
     "api": "1",                            // plugin API major
@@ -446,8 +446,8 @@ Directus "bundle" extensions put several *app* (Vue frontend: interfaces, displa
       }
     }
   },
-  "engines": { "vrite": ">=0.4" },
-  "devDependencies": { "@vrite/plugin-api": "^1", "typescript": "^5" },
+  "engines": { "nooklet": ">=0.4" },
+  "devDependencies": { "@nooklet/plugin-api": "^1", "typescript": "^5" },
   "dependencies": { "mermaid": "^11" }
 }
 ```
@@ -455,7 +455,7 @@ Directus "bundle" extensions put several *app* (Vue frontend: interfaces, displa
 Single-file variant for scripts (`plugins/wordcount.plugin.ts`):
 
 ```ts
-import { definePlugin } from '@vrite/plugin-api'
+import { definePlugin } from '@nooklet/plugin-api'
 export default definePlugin({
   id: 'wordcount', api: '1',
   server: { activate(ctx) { /* ... */ } },
@@ -504,7 +504,7 @@ Upgrade path (no API change):
 | HTTP routes | `ctx.http.route('GET' \| 'POST' …, '/path', (req: Request, info) => Response)` | mounted at `/api/plugins/<id>/path`, behind the normal auth by default (`auth: 'none'` opt-out for webhooks with an explicit warning) |
 | MCP | `ctx.mcp.registerTool(name, { description, inputSchema, outputSchema?, annotations? }, handler)`; `ctx.mcp.registerResource(...)` | wraps the MCP TS SDK v2 (`@modelcontextprotocol/server` 2.0.0, spec 2026-07-28); tool names are prefixed `<pluginId>_`; the SDK's registration handle (`enable/disable/update/remove`) is what the `Disposable` calls, and the SDK sends `notifications/tools/list_changed` automatically |
 | jobs | `ctx.jobs.schedule({ id, every?: '15m', cron?: '0 3 * * *', runOnStart?, run })` | single-flight, persisted last-run in KV, jittered |
-| importers / exporters | `ctx.importers.register({ id, title, accepts: ['.md', '.zip'], run(input, target, report) })`, `ctx.exporters.register({ id, title, run(scope) => stream })` | appear in the UI and as `vrite import/export` CLI |
+| importers / exporters | `ctx.importers.register({ id, title, accepts: ['.md', '.zip'], run(input, target, report) })`, `ctx.exporters.register({ id, title, run(scope) => stream })` | appear in the UI and as `nooklet import/export` CLI |
 | embeddings / search | `ctx.embeddings.registerProvider({ id, model, dims, embed(texts) })`, `ctx.search.registerProvider({ id, search(q, opts) })` | Ollama provider is itself a plugin; the active provider is a core setting |
 | settings / storage | `ctx.settings.get() / onChange(cb)`; `ctx.storage.get/set/delete/list` | settings schema from manifest; KV in SQLite table `plugin_kv(plugin_id, key, value)` |
 | misc | `ctx.log`, `ctx.plugin` (id, version, dir, dataDir), `ctx.host` (version, apiVersion), `ctx.experimental` | |
@@ -524,12 +524,12 @@ Upgrade path (no API change):
 | editor | `ctx.editor` (current page/block, selection, `insertText`, `replaceBlock`, `focusBlock`, `openPage`, `navigate`) |
 | bridge | `ctx.rpc.call(name, ...args)` → the plugin's own server functions; `ctx.settings`, `ctx.storage` (per-device, `localStorage`-backed) |
 
-Deliberately *not* in v1: custom block *types* (vrite blocks stay markdown text; renderers decorate), CodeMirror/ProseMirror extension injection (couples the API to the editor implementation; revisit once the editor is settled), custom views/routes in the client, inter-plugin dependencies, in-page scripting, plugin marketplace.
+Deliberately *not* in v1: custom block *types* (nooklet blocks stay markdown text; renderers decorate), CodeMirror/ProseMirror extension injection (couples the API to the editor implementation; revisit once the editor is settled), custom views/routes in the client, inter-plugin dependencies, in-page scripting, plugin marketplace.
 
 ### 5.5 API shapes (TypeScript sketch)
 
 ```ts
-// ─── @vrite/plugin-api ────────────────────────────────────────────────────────
+// ─── @nooklet/plugin-api ────────────────────────────────────────────────────────
 export interface Disposable { dispose(): void }
 export type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
 
@@ -769,7 +769,7 @@ export function extractTitle(src: string) { return /^%%\s*title:\s*(.+)$/m.exec(
 
 ```ts
 // plugins/mermaid/src/server.ts
-import { defineServerPlugin } from '@vrite/plugin-api'
+import { defineServerPlugin } from '@nooklet/plugin-api'
 import * as z from 'zod/v4'
 import { LANG, extractTitle } from './shared'
 
@@ -814,7 +814,7 @@ export default defineServerPlugin({
 
 ```ts
 // plugins/mermaid/src/client.ts
-import { defineClientPlugin } from '@vrite/plugin-api'
+import { defineClientPlugin } from '@nooklet/plugin-api'
 import mermaid from 'mermaid'          // bundled into client.<hash>.js by the host's esbuild step
 import { LANG } from './shared'
 
@@ -843,7 +843,7 @@ export default defineClientPlugin({
       run: ({ editor }) => editor.insertText('```mermaid\n\n```', { cursor: 11 }) })
     ctx.keybindings.bind('mod+shift+m', 'mermaid.insert')
 
-    ctx.ui.style(`.vrite-render[data-lang="mermaid"] svg { max-width: 100%; }`)
+    ctx.ui.style(`.nooklet-render[data-lang="mermaid"] svg { max-width: 100%; }`)
 
     ctx.ui.panel({ id: 'diagrams', title: 'Diagrams', icon: 'flowchart', side: 'right',
       mount(el) {
@@ -865,7 +865,7 @@ The same package on disk:
 
 ```
 plugins/mermaid/
-├── package.json        (vrite field above)
+├── package.json        (nooklet field above)
 ├── src/shared.ts
 ├── src/server.ts
 ├── src/client.ts
@@ -907,14 +907,14 @@ The context factory is where the "RPC-able" discipline is enforced: `createServe
 
 ### 5.9 Dev loop
 
-- `vrite plugin new <id>` scaffolds the package with `@vrite/plugin-api`, TS config and a Vitest test using `@vrite/plugin-api/testing`.
-- `vrite dev` (or the normal server with `VRITE_DEV=1`) watches `plugins/`, rebuilds, reloads server halves, and pushes `plugins.changed` so the open PWA re-imports client bundles (with `?v=<hash>`); errors show in a "Plugins" settings page with the stack trace, like Logseq's plugin dashboard and SilverBullet's console guidance.
+- `nooklet plugin new <id>` scaffolds the package with `@nooklet/plugin-api`, TS config and a Vitest test using `@nooklet/plugin-api/testing`.
+- `nooklet dev` (or the normal server with `NOOKLET_DEV=1`) watches `plugins/`, rebuilds, reloads server halves, and pushes `plugins.changed` so the open PWA re-imports client bundles (with `?v=<hash>`); errors show in a "Plugins" settings page with the stack trace, like Logseq's plugin dashboard and SilverBullet's console guidance.
 - Client bundles are served with `Cache-Control: immutable` keyed by hash; server bundles are cached under `.cache/`.
 
 ### 5.10 Compatibility policy
 
 - `api: "1"` is the contract; additive changes only within 1.x; breaking changes ⇒ `api: "2"` with a period of dual support in the host (Logseq's 0.0.x vs 0.2/0.3 split is the cautionary tale: publish the new line under the *same* package with a clear major, keep the `latest` tag honest).
-- `engines.vrite` is checked but only warns unless the host is older than the minimum.
+- `engines.nooklet` is checked but only warns unless the host is older than the minimum.
 - Anything under `ctx.experimental` may change in any release and requires `experimental: true`.
 - Deprecations: keep for ≥1 minor, warn once per process.
 

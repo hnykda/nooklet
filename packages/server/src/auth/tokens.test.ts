@@ -1,4 +1,4 @@
-import type { SqlDriver } from "@vrite/core";
+import type { SqlDriver } from "@nooklet/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "../db.js";
 import { makeTestServer, post, type TestServer } from "../test-helpers.js";

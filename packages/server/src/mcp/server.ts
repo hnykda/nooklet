@@ -3,7 +3,7 @@
  * used by the HTTP mount into MCP tools via `@modelcontextprotocol/server`/
  * `@modelcontextprotocol/hono` v2, stateless Streamable HTTP (ADR 008), mounted at `/mcp` in the
  * same Hono app. Kept in its own file (not `../ops/registry.ts`) only because it needs
- * vrite-specific wiring — server instructions text, bearer-auth-to-`OpContext` bridging via
+ * nooklet-specific wiring — server instructions text, bearer-auth-to-`OpContext` bridging via
  * `../auth/tokens.ts` — the registry file itself stays auth-agnostic.
  *
  * Deviations from api-and-plugin-types.md §1.7's code sketch, verified against the installed
@@ -17,7 +17,7 @@
  *    against the real signature; this file calls the gate itself inside the route handler instead
  *    (exactly the pattern `requireBearerAuth`'s own doc comment shows for fetch-native hosts).
  *  - `AuthInfo.expiresAt` is REQUIRED in practice: `verifyBearerToken` rejects a token whose
- *    `AuthInfo.expiresAt` is unset (the installed SDK's doc comment says so explicitly). vrite
+ *    `AuthInfo.expiresAt` is unset (the installed SDK's doc comment says so explicitly). nooklet
  *    tokens never expire today, so this file sets it to a far-future timestamp.
  */
 
@@ -51,7 +51,7 @@ declare module "hono" {
 const NEVER_EXPIRES = Math.floor(Date.now() / 1000) + 100 * 365 * 24 * 3600;
 
 const SERVER_INSTRUCTIONS =
-  "vrite is a block-based outliner: pages, daily journals, nested blocks, [[page refs]], #tags, " +
+  "nooklet is a block-based outliner: pages, daily journals, nested blocks, [[page refs]], #tags, " +
   "((block refs)), key:: value properties. Use search to find things, page_read/block_read to " +
   "read - results include block ids like ^1k7f3q9xz2hav4. Use page_append/block_insert to write " +
   "Markdown; indentation becomes nesting, and every write returns the new outline with ids so you " +
@@ -83,7 +83,7 @@ export function buildMcpServerInstance(
   auth: McpAuth,
   version = "0.0.1",
 ): McpServer {
-  const server = new McpServer({ name: "vrite", version }, { instructions: SERVER_INSTRUCTIONS });
+  const server = new McpServer({ name: "nooklet", version }, { instructions: SERVER_INSTRUCTIONS });
   const { scopes, actor } = auth;
 
   for (const op of reg.list()) {

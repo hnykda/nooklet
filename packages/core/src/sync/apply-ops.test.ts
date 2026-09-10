@@ -44,7 +44,7 @@ describe("page.create / rename / prop / delete", () => {
     const res = applyOps(driver, [
       makeOp(hlc, DEV_A, id, {
         kind: "page.create",
-        name: "Projects/Vrite",
+        name: "Projects/Nooklet",
         journalDay: null,
         properties: { area: "writing" },
         createdAt: BASE,
@@ -52,8 +52,8 @@ describe("page.create / rename / prop / delete", () => {
     ]);
     expect(res.applied).toBe(1);
     const page = getPage(driver, id);
-    expect(page?.name).toBe("Projects/Vrite");
-    expect(page?.key).toBe("projects/vrite");
+    expect(page?.name).toBe("Projects/Nooklet");
+    expect(page?.key).toBe("projects/nooklet");
   });
 
   it("rejects a create that collides with a live page of the same key under a different id", () => {
@@ -62,7 +62,7 @@ describe("page.create / rename / prop / delete", () => {
     applyOps(driver, [
       makeOp(hlcAt(BASE, DEV_A), DEV_A, id1, {
         kind: "page.create",
-        name: "Vrite",
+        name: "Nooklet",
         journalDay: null,
         createdAt: BASE,
       }),
@@ -70,7 +70,7 @@ describe("page.create / rename / prop / delete", () => {
     const res = applyOps(driver, [
       makeOp(hlcAt(BASE + 1, DEV_B), DEV_B, id2, {
         kind: "page.create",
-        name: "vrite", // same normalized key
+        name: "nooklet", // same normalized key
         journalDay: null,
         createdAt: BASE + 1,
       }),

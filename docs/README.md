@@ -1,4 +1,4 @@
-# vrite documentation
+# nooklet documentation
 
 - `PLAN.md` — the product and technical plan (scope, architecture, milestones).
 - `adr/` — architecture decision records; one decision per file, with rationale and consequences.

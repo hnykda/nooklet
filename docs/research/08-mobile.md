@@ -7,7 +7,7 @@ Research date: 2026-09-10. Facts below were checked against vendor docs, the npm
 **Packaging path: PWA first → Capacitor 8 for the iOS/Android stores → Tauri 2 for desktop.** One Vite build feeds all three; a thin `platform` layer hides the differences (storage driver, keyboard insets, haptics, share, deep links, files).
 
 - **PWA (v1).** iOS 26 opens *any* site added to the Home Screen as a web app by default; push (16.4+), badging (16.4+), OPFS/sqlite-wasm, `persist()` (15.2+) all work. What iOS still lacks and will not give a PWA: share target, install prompt, app shortcuts, protocol handlers, background sync, File System Access, link capturing (links open in Safari, not the installed app), `interactive-widget` (keyboard overlays the page), `navigator.vibrate`. Storage is *best-effort* and each Home-Screen icon is a separate storage container.
-- **Capacitor 8.5.1 (v1.x, stores).** Same WebKit engine on iOS, but you get: native SQLite (`@capacitor-community/sqlite` 8.1.1, no eviction/quota), exact keyboard height events + resize modes + hide the accessory bar, real haptics, share-sheet *receiving* (share extension), `vrite://` URL scheme (→ Shortcuts/Siri/Action Button), home-screen quick actions, App Store presence. ~1M weekly downloads, Logseq mobile is built on it. Submission is a normal Xcode/Play upload.
+- **Capacitor 8.5.1 (v1.x, stores).** Same WebKit engine on iOS, but you get: native SQLite (`@capacitor-community/sqlite` 8.1.1, no eviction/quota), exact keyboard height events + resize modes + hide the accessory bar, real haptics, share-sheet *receiving* (share extension), `nooklet://` URL scheme (→ Shortcuts/Siri/Action Button), home-screen quick actions, App Store presence. ~1M weekly downloads, Logseq mobile is built on it. Submission is a normal Xcode/Play upload.
 - **Tauri 2.11 (v1.5, desktop).** Excellent on desktop: global hotkey for quick capture, tray, deep-link, single-instance, updater, small binaries; Rust required but ~100 lines for v1. Tauri *mobile* works (all official plugins list iOS/Android) but has no keyboard/status-bar/share-target plugins and a smaller production base → not for the mobile store builds of an editor-heavy app.
 - **Not:** Electron (fine but heavy; only if you want Node in-process), Expo DOM components (you'd still rewrite the shell in RN), Flutter.
 
@@ -50,11 +50,11 @@ Must-do native-feel work (section 3): app-shell layout with `position:fixed; ins
 
 **Desktop:** Chrome/Edge install on Windows/macOS/Linux; Safari 17+ "File → Add to Dock" on macOS Sonoma+ (push, badging, manifest honoured; cookies copied at install, storage otherwise separate). Firefox desktop has no install. Source: https://webkit.org/blog/14205/news-from-wwdc23-webkit-features-in-safari-17-beta/
 
-Minimal manifest for vrite:
+Minimal manifest for nooklet:
 
 ```json
 {
-  "name": "vrite", "short_name": "vrite", "id": "/",
+  "name": "nooklet", "short_name": "nooklet", "id": "/",
   "start_url": "/?source=pwa", "scope": "/",
   "display": "standalone", "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#ffffff", "theme_color": "#ffffff",
@@ -71,7 +71,7 @@ Minimal manifest for vrite:
     "action": "/capture", "method": "GET",
     "params": { "title": "title", "text": "text", "url": "url" }
   },
-  "protocol_handlers": [{ "protocol": "web+vrite", "url": "/open?u=%s" }],
+  "protocol_handlers": [{ "protocol": "web+nooklet", "url": "/open?u=%s" }],
   "screenshots": [{ "src": "/shots/phone.png", "sizes": "1080x1920", "type": "image/png", "form_factor": "narrow" }]
 }
 ```
@@ -142,9 +142,9 @@ Hard constraints: SharedWorkers and ServiceWorkers **cannot** open OPFS sync acc
 
 **`navigator.storage.persist()`:** supported Safari 15.2+ (BCD). WebKit "grants a request based on heuristics like whether the website is opened as a Home Screen Web App" — no prompt. Chrome grants silently based on engagement/installed/bookmarked/notification permission. Firefox prompts. Persistence only protects against *automatic* eviction, never against the user clearing site data. Call it after install, and read back `persisted()` to show a warning if false. Source: https://web.dev/articles/persistent-storage
 
-**The 7-day rule (ITP):** Safari deletes all script-writable storage (IndexedDB, localStorage, OPFS, SW registrations, Cache) for an origin after **7 days of Safari use without user interaction with that site**. WebKit's exact wording: "Web applications added to the home screen are not part of Safari and thus have their own counter of days of use. Their days of use will match actual use of the web application which resets the timer." So a Home Screen web app that is actually used is *not* affected; a vrite tab left in Safari is. https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/
+**The 7-day rule (ITP):** Safari deletes all script-writable storage (IndexedDB, localStorage, OPFS, SW registrations, Cache) for an origin after **7 days of Safari use without user interaction with that site**. WebKit's exact wording: "Web applications added to the home screen are not part of Safari and thus have their own counter of days of use. Their days of use will match actual use of the web application which resets the timer." So a Home Screen web app that is actually used is *not* affected; a nooklet tab left in Safari is. https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/
 
-**Separate containers (important for vrite):** on iOS, Safari tabs, *each* Home-Screen icon, and each app's WKWebView all have separate storage. Consequences: (1) a user who used vrite in Safari, then installs it, starts with an empty local DB and must log in and re-sync; (2) a second icon for `/capture` would have its own DB — do not use that trick; (3) storage on iOS is best-effort even when persisted, so the local DB must always be reconstructable from the server, and the unsynced-ops queue must be flushed aggressively (on `visibilitychange`, `pagehide`, Capacitor `appStateChange`, and on reconnection). Design principle: **local DB = authoritative cache + outbox; server = durable truth.**
+**Separate containers (important for nooklet):** on iOS, Safari tabs, *each* Home-Screen icon, and each app's WKWebView all have separate storage. Consequences: (1) a user who used nooklet in Safari, then installs it, starts with an empty local DB and must log in and re-sync; (2) a second icon for `/capture` would have its own DB — do not use that trick; (3) storage on iOS is best-effort even when persisted, so the local DB must always be reconstructable from the server, and the unsynced-ops queue must be flushed aggressively (on `visibilitychange`, `pagehide`, Capacitor `appStateChange`, and on reconnection). Design principle: **local DB = authoritative cache + outbox; server = durable truth.**
 
 ### 1.4 Capability matrix (BCD, 2026-09)
 
@@ -195,7 +195,7 @@ Hard constraints: SharedWorkers and ServiceWorkers **cannot** open OPFS sync acc
 - **Plugins you need:** `@capacitor/keyboard` (resize modes `native|body|ionic|none`, `keyboardWillShow` with exact `keyboardHeight`, `setAccessoryBarVisible(false)` to remove the ◀ ▶ Done bar, `setScroll`), `@capacitor/haptics` (impact/notification/selection; web fallback uses `vibrate`), `@capacitor/status-bar` + core `SystemBars` (edge-to-edge; injects `--safe-area-inset-*` CSS vars where the Android WebView < 140 gets `env()` wrong), `@capacitor/share`, `@capacitor/app` (`appUrlOpen`, `getLaunchUrl`, `appStateChange`, back button), `@capacitor/filesystem`, `@capacitor/local-notifications`, `@capacitor-community/sqlite`, `@capawesome/capacitor-app-shortcuts` (icon quick actions), share receiving via `send-intent` (MIT; iOS needs a Share Extension target + App Group + URL scheme; https://github.com/carsten-klaffke/send-intent) or `@capgo/capacitor-share-target` or Capawesome's sponsor-only plugin.
 - **Storage inside Capacitor:** prefer `@capacitor-community/sqlite` (native, no quota, no eviction, survives backgrounding). If you want to reuse the wasm engine, use `opfs-sahpool` (no COOP/COEP needed — a custom-scheme handler cannot provide cross-origin isolation, so the SharedArrayBuffer-based `opfs` VFS is out) but beware the background access-handle closure on iOS reported by PowerSync; IDB VFS is the safe wasm fallback.
 - **WKWebView vs Safari differences that matter for the editor:** same engine, but: you control keyboard resize behaviour and the accessory bar; no ITP 7-day timer for your own origin; `allowsLinkPreview` and long-press behaviours are configurable; `ios.contentInset`, `scrollEnabled` (turn off webview scrolling if you scroll inside a container); `preferredContentMode`; the WebView is a *single* scroll view — the Logseq config sets `KeyboardResize.None` and manages layout itself (see 3.3).
-- **App Store effort:** it is a normal Xcode project — icons/launch screen, signing, privacy manifest (Capacitor ships one), TestFlight, review. Budget 1–2 days the first time. Review risk is Guideline 4.2 (minimum functionality) for "just a website" — vrite is offline-first with native integrations, so it passes as long as it works without network and does not look like a login-walled site. https://capacitorjs.com/docs/ios/deploying-to-app-store
+- **App Store effort:** it is a normal Xcode project — icons/launch screen, signing, privacy manifest (Capacitor ships one), TestFlight, review. Budget 1–2 days the first time. Review risk is Guideline 4.2 (minimum functionality) for "just a website" — nooklet is offline-first with native integrations, so it passes as long as it works without network and does not look like a login-walled site. https://capacitorjs.com/docs/ios/deploying-to-app-store
 - **Precedent:** Logseq's mobile app is Capacitor (`capacitor.config.ts` in the repo: `Keyboard.resize = None`, status bar overlays webview, safe-area handling, custom `Logseq` iOS scheme). *(Obsidian mobile is also widely reported to be Capacitor-based — unverified today.)*
 
 ### 2.2 Tauri 2 (recommended for desktop; mobile optional)
@@ -203,15 +203,15 @@ Hard constraints: SharedWorkers and ServiceWorkers **cannot** open OPFS sync acc
 - 2.11.x (mid-2026); stable since Oct 2024; patch releases every few weeks. Rust required (`rustup`), Xcode for iOS, Android Studio + NDK for Android. Webviews: WebView2 (Windows), WKWebView (macOS/iOS — same WebKit limits as Safari), webkit2gtk (Linux — often older WebKit; test the editor there), Android System WebView. https://v2.tauri.app/reference/webview-versions/ , https://v2.tauri.app/start/prerequisites/
 - **Official plugin matrix (https://v2.tauri.app/plugin/):** fs, sql (sqlx), store, notification, haptics, biometric, nfc, barcode-scanner, os, clipboard, dialog, opener, updater, window-state, http, websocket, log → all 5 platforms. **Desktop-only:** global-shortcut, single-instance, shell, autostart, positioner. **Missing on mobile:** keyboard (height/resize/accessory bar), status bar, safe-area, share-sheet receiving, app shortcuts — you'd write Swift/Kotlin plugin code yourself.
 - **Mobile maturity:** functional and shipping, but the team itself says not all desktop plugins are ported; community consensus in 2026 is "fine for internal tools/early products, Capacitor/RN more proven". App Store publishing is documented (`tauri ios build --export-method app-store-connect` + `altool`). https://v2.tauri.app/distribute/app-store/
-- **Desktop story for vrite** (section 5): global hotkey capture window, tray, deep-link (macOS registers scheme only when bundled in /Applications; Windows/Linux need single-instance), updater, autostart, ~5–10 MB installers.
+- **Desktop story for nooklet** (section 5): global hotkey capture window, tray, deep-link (macOS registers scheme only when bundled in /Applications; Windows/Linux need single-instance), updater, autostart, ~5–10 MB installers.
 
 ### 2.3 Electron / ToDesktop / Neutralino / Wails
 
-- **Electron 44.3.0** (Sept 2026; Chromium-bundled, ~100+ MB, Node in-process). Only worth it if you want to embed the Node sync server or use `better-sqlite3` in the app process. Logseq desktop is Electron. **ToDesktop** = hosted build/sign/update service on top of Electron (active changelog 2026). **Neutralino 6.x** (tiny, system webview, no mobile). **Wails v3** Go, beta.9 (Aug 2026), desktop only. None beat Tauri for vrite's desktop needs.
+- **Electron 44.3.0** (Sept 2026; Chromium-bundled, ~100+ MB, Node in-process). Only worth it if you want to embed the Node sync server or use `better-sqlite3` in the app process. Logseq desktop is Electron. **ToDesktop** = hosted build/sign/update service on top of Electron (active changelog 2026). **Neutralino 6.x** (tiny, system webview, no mobile). **Wails v3** Go, beta.9 (Aug 2026), desktop only. None beat Tauri for nooklet's desktop needs.
 
 ### 2.4 React Native / Expo
 
-Expo SDK 57; **DOM components** (`'use dom'`) render a React DOM component inside a WebView with serializable props and async "native action" props; each is an isolated WebView; Expo docs recommend them for rich-text/markdown, WebGL and auxiliary screens, not the app core. `react-native-web` 0.21 goes the other way (RN → web). Either way the outliner shell, navigation and storage would be re-written in RN. Not for vrite; revisit only if a fully native shell is ever demanded. https://docs.expo.dev/guides/dom-components/
+Expo SDK 57; **DOM components** (`'use dom'`) render a React DOM component inside a WebView with serializable props and async "native action" props; each is an isolated WebView; Expo docs recommend them for rich-text/markdown, WebGL and auxiliary screens, not the app core. `react-native-web` 0.21 goes the other way (RN → web). Either way the outliner shell, navigation and storage would be re-written in RN. Not for nooklet; revisit only if a fully native shell is ever demanded. https://docs.expo.dev/guides/dom-components/
 
 ### 2.5 Trusted Web Activity (Play Store without Capacitor)
 
@@ -220,7 +220,7 @@ Bubblewrap/PWABuilder wrap the PWA in a TWA: needs `assetlinks.json` (Digital As
 ### 2.6 Recommended path and why
 
 1. **v1 — PWA** (web + installable on all platforms). Gets iOS users a standalone app with push/badge/offline today; zero store overhead; instant updates.
-2. **v1.x — Capacitor iOS + Android** from the same `dist/`: share-sheet capture, `vrite://` + Shortcuts/Siri, home-screen quick actions, native SQLite, exact keyboard control, store presence. Optionally ship Android via TWA first.
+2. **v1.x — Capacitor iOS + Android** from the same `dist/`: share-sheet capture, `nooklet://` + Shortcuts/Siri, home-screen quick actions, native SQLite, exact keyboard control, store presence. Optionally ship Android via TWA first.
 3. **v1.5 — Tauri desktop**: global capture hotkey, tray, deep links, auto-update. Keep the wasm SQLite path inside Tauri initially (fewer adapters), move to rusqlite/`plugin-sql` when you need embeddings/FTS performance.
 4. Tauri-for-everything is tempting (one toolchain) but for a keyboard-centric editor the Capacitor keyboard/accessory/share-target plugins are exactly the pieces Tauri mobile lacks; Capacitor's production base is also far larger. Revisit if Tauri gains keyboard/status-bar plugins.
 
@@ -431,14 +431,14 @@ Cross-document transitions (Chrome 126+, Safari 18.2+) are irrelevant for an SPA
 ## 4. Deep links, share-to-app, quick capture, shortcuts, Siri
 
 **URL grammar (same on every platform):**
-- `vrite://page/<name>` ↔ `https://<host>/page/<name>`
-- `vrite://block/<uuid>` ↔ `https://<host>/block/<uuid>`
-- `vrite://capture?text=…&url=…&title=…` ↔ `https://<host>/capture?text=…` → appends to today's journal locally first, then syncs; shows a 1-screen confirm/edit sheet.
-- `vrite://search?q=…`
+- `nooklet://page/<name>` ↔ `https://<host>/page/<name>`
+- `nooklet://block/<uuid>` ↔ `https://<host>/block/<uuid>`
+- `nooklet://capture?text=…&url=…&title=…` ↔ `https://<host>/capture?text=…` → appends to today's journal locally first, then syncs; shows a 1-screen confirm/edit sheet.
+- `nooklet://search?q=…`
 
-**Why a custom scheme and not universal links:** universal/app links need `apple-app-site-association` / `assetlinks.json` on the *exact* domain and the domains listed in the app's entitlements at build time. With self-hosted servers every user has a different domain, so only an official hosted domain could get universal links. Ship `vrite://` everywhere; offer "Open in app" from the web app on mobile.
+**Why a custom scheme and not universal links:** universal/app links need `apple-app-site-association` / `assetlinks.json` on the *exact* domain and the domains listed in the app's entitlements at build time. With self-hosted servers every user has a different domain, so only an official hosted domain could get universal links. Ship `nooklet://` everywhere; offer "Open in app" from the web app on mobile.
 
-**Capacitor:** Info.plist `CFBundleURLTypes` (scheme `vrite`), Android `<intent-filter>` with `<data android:scheme="vrite"/>`; handle warm and cold starts:
+**Capacitor:** Info.plist `CFBundleURLTypes` (scheme `nooklet`), Android `<intent-filter>` with `<data android:scheme="nooklet"/>`; handle warm and cold starts:
 ```ts
 import { App } from '@capacitor/app';
 App.addListener('appUrlOpen', ({ url }) => deepLinks.open(url));
@@ -448,30 +448,30 @@ App.getLaunchUrl().then(r => r?.url && deepLinks.open(r.url));   // cold start f
 
 **Tauri:** `tauri-plugin-deep-link` 2.4.10 on all platforms; mobile schemes must be declared in `tauri.conf.json` (`plugins.deep-link.mobile`), desktop in `plugins.deep-link.desktop`; on macOS the scheme only works for a bundled app in /Applications; on Windows/Linux pair with `single-instance` (`deep-link` feature) so a running instance receives the URL. https://v2.tauri.app/plugin/deep-linking/
 
-**PWA:** Android WebAPK captures in-scope `https://` links; `protocol_handlers` (`web+vrite`) only on Chrome desktop. iOS: nothing — links open in Safari (separate storage!).
+**PWA:** Android WebAPK captures in-scope `https://` links; `protocol_handlers` (`web+nooklet`) only on Chrome desktop. iOS: nothing — links open in Safari (separate storage!).
 
 **Share-to-app:**
 - Android PWA: `share_target` GET → `/capture?text=&url=&title=` (POST + files needs a SW `fetch` handler; MDN example).
 - Capacitor Android: `ACTION_SEND` intent filter (`send-intent` plugin or ~50 lines of Kotlin in `MainActivity`).
-- Capacitor iOS: a **Share Extension** target (Swift) writes the payload to an App Group container and opens `vrite://capture?…`; `send-intent` (MIT) and `@capgo/capacitor-share-target` provide the scaffolding. This is the only way to get vrite into the iOS share sheet.
+- Capacitor iOS: a **Share Extension** target (Swift) writes the payload to an App Group container and opens `nooklet://capture?…`; `send-intent` (MIT) and `@capgo/capacitor-share-target` provide the scaffolding. This is the only way to get nooklet into the iOS share sheet.
 - Tauri mobile: no plugin; native code needed.
 
 **Quick capture (the #1 mobile use case):**
 1. Always-visible "+" (FAB) on the journal, and `start_url=/journal/today` with the composer pre-opened (cannot pre-raise the keyboard on iOS; one tap is the floor).
 2. Icon quick actions: PWA `shortcuts` (Android/desktop only); Capacitor `@capawesome/capacitor-app-shortcuts` (iOS + Android; `set()`, `addListener('click')`).
 3. Share sheet (above).
-4. **iOS Shortcuts / Siri / Action Button / Back Tap / lock-screen widget** — all via the Shortcuts app running "Open URL → `vrite://capture?text=[Dictated text]`". That gives "Hey Siri, vrite this" for free without App Intents; document a ready-made shortcut. Requires the Capacitor build (a PWA's URL would open Safari, whose storage is not the app's).
+4. **iOS Shortcuts / Siri / Action Button / Back Tap / lock-screen widget** — all via the Shortcuts app running "Open URL → `nooklet://capture?text=[Dictated text]`". That gives "Hey Siri, nooklet this" for free without App Intents; document a ready-made shortcut. Requires the Capacitor build (a PWA's URL would open Safari, whose storage is not the app's).
 5. Android: Quick Settings tile / widget need native code — later.
 6. Desktop: global hotkey (section 5).
 
-Push/badging are secondary for vrite (sync is pull-based); reminders could use local notifications (`@capacitor/local-notifications`) or Declarative Web Push on the PWA.
+Push/badging are secondary for nooklet (sync is pull-based); reminders could use local notifications (`@capacitor/local-notifications`) or Declarative Web Push on the PWA.
 
 ---
 
 ## 5. Desktop: minimal story for v1
 
 - **v1: installed PWA.** Chrome/Edge "Install" (Windows/macOS/Linux) and Safari "Add to Dock" (macOS 14+). Offline via the SW; updates instantly. Keyboard shortcuts: an installed PWA window receives almost everything, but the browser still owns Cmd/Ctrl+W/T/N/Q, Cmd+Shift+T, Ctrl+Tab, Cmd+, (settings), F11/Cmd+Ctrl+F, Cmd+L (Chrome), Cmd+H (macOS). Don't bind those; expose rebinding. `display_override: ["window-controls-overlay"]` lets Chrome draw a native-looking title bar (`env(titlebar-area-*)`).
-- **What a PWA cannot do:** global (system-wide) quick-capture hotkey, tray/menu-bar item, launch at login, custom URL scheme on macOS (Chrome desktop supports `protocol_handlers` for `web+vrite` only), local Node/Ollama integration beyond HTTP.
+- **What a PWA cannot do:** global (system-wide) quick-capture hotkey, tray/menu-bar item, launch at login, custom URL scheme on macOS (Chrome desktop supports `protocol_handlers` for `web+nooklet` only), local Node/Ollama integration beyond HTTP.
 - **v1.5: Tauri 2 wrapper** for exactly those:
 
 ```ts
@@ -489,10 +489,10 @@ async function openCapture() {
 await register('CommandOrControl+Shift+Space', e => { if (e.state === 'Pressed') openCapture(); });
 const menu = await Menu.new({ items: [
   { id: 'capture', text: 'Quick capture', action: openCapture },
-  { id: 'open', text: 'Open vrite', action: () => WebviewWindow.getByLabel('main').then(w => w?.show()) },
+  { id: 'open', text: 'Open nooklet', action: () => WebviewWindow.getByLabel('main').then(w => w?.show()) },
   { id: 'quit', text: 'Quit', action: () => import('@tauri-apps/plugin-process').then(m => m.exit(0)) },
 ] });
-await TrayIcon.new({ icon: 'icons/tray.png', menu, tooltip: 'vrite', menuOnLeftClick: true });
+await TrayIcon.new({ icon: 'icons/tray.png', menu, tooltip: 'nooklet', menuOnLeftClick: true });
 ```
 Cargo: `tauri = { features = ["tray-icon"] }`, plugins `global-shortcut`, `single-instance`, `deep-link`, `updater`, `autostart`, `window-state`, `sql` (or your own rusqlite commands). Capability files must allow `global-shortcut:allow-register`, `tray`, `menu`, `webview-window` permissions. (Rust-side registration, per the Tauri docs, is equally short if you'd rather keep the handler out of the webview.) https://v2.tauri.app/plugin/global-shortcut/ , https://v2.tauri.app/learn/system-tray/
 - Electron only if you decide the desktop app should embed the Node sync server; otherwise Tauri.
@@ -546,7 +546,7 @@ Adapters:
 | Separate storage per Safari / each Home-Screen icon / WKWebView | Empty DB after install, no cross-icon tricks | Fast first-sync, "install" onboarding, one icon only, Capacitor for capture entry points |
 | No `interactive-widget`; iOS 26.0/26.1 fixed-position + `visualViewport` regressions | Toolbar under/over keyboard, jitter | Fixed shell + inner scroll + `--kb` from visualViewport; dead-band + post-blur re-measure; Capacitor Keyboard plugin gives exact heights |
 | Keyboard only rises inside a trusted event; async `focus()` ignored | Enter/new-block loses keyboard | Single moving editor element, `flushSync`, hidden-input handoff, toolbar `pointerdown.preventDefault()` |
-| No share target / shortcuts / link capturing / protocol handlers for PWAs | Quick capture limited to opening the app | Capacitor build: share extension, `vrite://` + Shortcuts/Siri, app shortcuts |
+| No share target / shortcuts / link capturing / protocol handlers for PWAs | Quick capture limited to opening the app | Capacitor build: share extension, `nooklet://` + Shortcuts/Siri, app shortcuts |
 | No background execution or Background Sync | Sync only while foregrounded | Flush on pause with keepalive; resume-sync on foreground |
 | WKWebView quota 15 %/20 % of disk (non-browser apps) | Large graphs with attachments in Capacitor wasm/OPFS | Native SQLite + Filesystem for attachments |
 | OPFS handles closed when Capacitor app backgrounds (PowerSync report) | DB errors on resume | Native SQLite (or IDB VFS) in Capacitor |

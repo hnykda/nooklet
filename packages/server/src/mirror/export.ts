@@ -45,7 +45,7 @@ import {
   type SqlDriver,
   serializeOutline,
   type TaskMarker,
-} from "@vrite/core";
+} from "@nooklet/core";
 
 export interface RenderedPage {
   pageId: string;

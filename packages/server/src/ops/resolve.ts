@@ -5,8 +5,8 @@
  * `if_version` conflict checking.
  */
 
-import type { Page, SqlDriver } from "@vrite/core";
-import { isId } from "@vrite/core";
+import type { Page, SqlDriver } from "@nooklet/core";
+import { isId } from "@nooklet/core";
 import type { z } from "zod";
 import { isoFromJournalDay, journalDayFromWire } from "../data-api.js";
 import { type OpContext, OpError } from "./registry.js";

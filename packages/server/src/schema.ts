@@ -1,7 +1,7 @@
 /**
- * Server-only tables that extend `@vrite/core`'s state-mutation core (`page`, `block`,
+ * Server-only tables that extend `@nooklet/core`'s state-mutation core (`page`, `block`,
  * `block_prop`, `page_prop`, `op`) into the full graph store: `docs/spec/sql-schema.md`'s
- * "Consolidated DDL", minus the five tables `@vrite/core` already owns.
+ * "Consolidated DDL", minus the five tables `@nooklet/core` already owns.
  *
  * Adds: `schema_migration` bookkeeping, `setting`/`keybinding`/`plugin` state, derived
  * `ref`/`path_ref`/`page_alias` and FTS5 (`block_fts`/`block_tri`/`page_fts`/`page_tri`) plus
@@ -11,8 +11,8 @@
  * part of this static DDL.
  */
 
-import type { SqlDriver } from "@vrite/core";
-import { CORE_SCHEMA_STATEMENTS } from "@vrite/core";
+import type { SqlDriver } from "@nooklet/core";
+import { CORE_SCHEMA_STATEMENTS } from "@nooklet/core";
 
 export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE schema_migration (

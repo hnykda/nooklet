@@ -1,13 +1,13 @@
 {
-  "name": "@vrite/server",
+  "name": "@nooklet/server",
   "version": "0.0.1",
-  "description": "vrite server: SQLite store, sync, HTTP API, MCP server, Logseq importer, markdown mirror",
+  "description": "nooklet server: SQLite store, sync, HTTP API, MCP server, Logseq importer, markdown mirror",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "bin": {
-    "vrite": "./src/cli.ts"
+    "nooklet": "./src/cli.ts"
   },
   "scripts": {
     "dev": "tsx src/cli.ts serve",
@@ -19,7 +19,7 @@
     "@hono/node-server": "^2.1.1",
     "@modelcontextprotocol/hono": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
-    "@vrite/core": "workspace:*",
+    "@nooklet/core": "workspace:*",
     "chokidar": "^5.0.0",
     "hono": "^4.13.7",
     "zod": "^4.6.1"

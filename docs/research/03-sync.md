@@ -1,4 +1,4 @@
-# vrite — Sync architecture research (2026-09-10)
+# nooklet — Sync architecture research (2026-09-10)
 
 Scope: local-first block-outliner (Logseq replacement) with a self-hosted Node "home" server that also hosts the HTTP API, MCP server and Ollama embeddings; web/PWA clients (incl. iOS/Android) that work fully offline; markdown files on disk as import/export or continuous mirror.
 
@@ -141,7 +141,7 @@ iOS / Android specifics:
 
 ## 5. How comparable apps do it
 
-| App | Sync design | Conflicts | Takeaway for vrite |
+| App | Sync design | Conflicts | Takeaway for nooklet |
 |---|---|---|---|
 | **Logseq DB (2.0 beta, July 2026)** | SQLite-wasm in OPFS worker + in-memory DataScript; RTC over WebSocket; a `client-ops` SQLite DB records local tx history; ops pushed with throttling; remote ops applied via outliner ops; server = Cloudflare Worker + D1 (prod) **or a Node adapter with SQLite** (`deps/db-sync`, self-host; PR #13117 adds a no-Cognito token mode, open Aug 2026) | **Rebase**: remote applied first, then pending local txs replayed on top; if a conflict/large divergence, throw and do a **full graph pull** | Closest to your shape. Hub server, op log, rebase-on-conflict, full-pull escape hatch. Also: syncing the SQLite file itself corrupts graphs (WAL + per-device state) — never do file-level sync. |
 | **Actual Budget** | HLC-stamped per-field messages in SQLite; Merkle trie for divergence; tiny relay server | LWW by HLC | The simplest proven CRDT-in-SQLite. Your base. |

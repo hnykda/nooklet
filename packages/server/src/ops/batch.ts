@@ -1,4 +1,4 @@
-import { isId, newId } from "@vrite/core";
+import { isId, newId } from "@nooklet/core";
 import { z } from "zod";
 import { blockDelete } from "./block-delete.js";
 import { blockInsert } from "./block-insert.js";
@@ -225,7 +225,7 @@ export const batch = defineOp({
     }
 
     // Run every step for real, exactly ONCE, against the real `ctx` — inside a `Savepoint`
-    // (`@vrite/core`'s `SqlDriver.savepoint()`; see `driver.ts`'s doc for why this exists instead
+    // (`@nooklet/core`'s `SqlDriver.savepoint()`; see `driver.ts`'s doc for why this exists instead
     // of a nested SQL transaction `serverApplyOps`'s own `transaction()` call could conflict
     // with). A failure anywhere throws inside `runAllSteps`; the catch below rolls back
     // everything already applied by earlier steps in this same batch before rethrowing — this is

@@ -4,7 +4,7 @@ Date: 2026-09-10. Status: accepted.
 
 ## Decision
 
-vrite's Logseq importer (M1) is built and tested against exactly one source format: the classic
+nooklet's Logseq importer (M1) is built and tested against exactly one source format: the classic
 Logseq file graph, where markdown files under `pages/`/`journals/` plus `logseq/config.edn` are
 themselves the source of truth (`logseq/og`, in maintenance mode as of this writing). It does
 **not** target the newer Logseq DB version's one-way markdown export (SQLite/Datascript is that
@@ -22,7 +22,7 @@ page-level `id::` line) likewise stays as incidental, free tolerance, not a feat
 ## Why
 
 The user has both kinds of graphs but asked to support only one, and judged the file-graph format
-"a bit better" — consistent with vrite's own architecture (ADR 002: markdown files are canonical,
+"a bit better" — consistent with nooklet's own architecture (ADR 002: markdown files are canonical,
 SQLite is a derived index), which matches the classic Logseq product's philosophy directly, rather
 than the DB version's "SQLite is truth, markdown is an export" philosophy. Building and testing one
 importer path instead of two is meaningfully less M1 work for no loss of the graph the user

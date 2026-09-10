@@ -8,7 +8,7 @@
  *   - `packages/server` can reuse it later (Node is the server runtime) instead of re-writing
  *     the same adapter, by importing it via the package's `./node-sqlite` subpath export
  *     (see `package.json`'s `exports` map) rather than the main `.` entry point.
- * A browser bundler that only ever imports `@vrite/core`'s main entry point never reaches this
+ * A browser bundler that only ever imports `@nooklet/core`'s main entry point never reaches this
  * file, so it never sees a `node:sqlite` import.
  */
 
@@ -114,7 +114,7 @@ export function createNodeSqliteDriver(db: DatabaseSync): SqlDriver {
   };
 }
 
-/** Open an in-memory or file-backed `DatabaseSync` with vrite's server PRAGMAs (rule 29) applied. */
+/** Open an in-memory or file-backed `DatabaseSync` with nooklet's server PRAGMAs (rule 29) applied. */
 export function openNodeSqlite(path = ":memory:"): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA foreign_keys = ON");
