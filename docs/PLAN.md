@@ -39,7 +39,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 | References | `[[page]]`, `#tag`, `#[[multi word]]`, `((block))`, `{{embed}}` of page or block, aliases; linked references grouped by page and unlinked references per page |
 | Namespaces | `A/B/C` page names; hierarchy view on the namespace page; short-form display; create with implied parents |
 | Journals | A stream: today is always open at the top, older non-empty days below; a calendar to open any day; empty days do not exist as pages |
-| Tasks | Turn a block into a task; cycle status with a shortcut or by clicking the checkbox; `TODO DOING DONE WAITING CANCELED`; a Tasks view with filters; `due::` and `scheduled::` date properties |
+| Tasks | Turn a block into a task; cycle status with a shortcut or by clicking the checkbox; `TODO DOING DONE WAITING CANCELED`; priorities; `scheduled::` and `deadline::` dates with optional time and repeater; a "Scheduled and deadline" section on each journal day; a Tasks view with filters |
 | Properties | Typed properties (text, number, date, checkbox, page, url, list) on blocks and on pages; a properties panel; tag pages can declare a property template |
 | Search | Fuzzy page switcher (accent-insensitive), full-text search with snippets, semantic and hybrid search, "related pages/blocks" |
 | Commands | Command palette for every operation, `/` slash menu while typing, user-customizable keybindings (JSON), plugins contribute commands |
@@ -57,8 +57,8 @@ Flashcards, whiteboards, kanban boards, graph view, real-time cursors/co-editing
 permissions (one user, many devices; the design leaves room for graph membership later),
 end-to-end encryption (transport TLS + tokens; E2EE would block server-side embeddings and
 MCP), PDF annotation, Logseq advanced queries (`{{query}}`), org-mode, LOGBOOK/time tracking,
-templates (later as a plugin or slash command), SCHEDULED/DEADLINE org syntax (replaced by date
-properties).
+templates (later as a plugin or slash command). Logseq's org-style `SCHEDULED: <...>` lines are
+an import target only; the feature itself (scheduled and deadline dates with repeaters) is in core.
 
 ### What the user's own graph told us
 
@@ -217,15 +217,23 @@ Properties:
   editor shows properties as chips under the block with an inline editor per type.
 - A tag page (kind `tag`) may declare `template::` listing property keys; tagging a block or page
   offers those properties. This covers most of what Tana calls supertags with Logseq syntax.
-- Special keys: `alias::` (list of pages), `tags::` (list), `due::`/`scheduled::` (date),
+- Special keys: `alias::` (list of pages), `tags::` (list), `scheduled::`/`deadline::` (date with optional time and repeater),
   `collapsed`, `marker`, `priority`, `list:: number` are stored in dedicated columns.
 
 Tasks:
 - A block becomes a task via the slash menu, the palette, the shortcut, or by typing a marker
   word at the start. Cycling order: none → TODO → DOING → DONE → none; WAITING and CANCELED are
   reachable from the menu. Clicking the checkbox toggles DONE.
-- The Tasks view lists open tasks grouped by page with filters (state, tag, due, page/namespace)
-  and the same list is available as an API/MCP query.
+- Scheduled and deadline (kept from Logseq, see https://docs.logseq.com/#/page/tasks): any block
+  can carry `scheduled::` and `deadline::` typed date values (`2026-09-12`, optional time,
+  optional repeater such as `.+1w`, `+1m`, `++1d` with Logseq semantics). Slash commands
+  `/scheduled` and `/deadline` open a date picker; the journal page for a day shows a "Scheduled
+  and deadline" section listing blocks scheduled for or due on that day plus overdue ones; the
+  Tasks view sorts by these dates. Marking a repeating task DONE advances the date and resets the
+  marker. Logseq's `SCHEDULED: <2026-09-12 Sat .+1w>` lines are parsed on import into these
+  properties and written back in our property syntax.
+- The Tasks view lists open tasks grouped by page with filters (state, tag, scheduled/deadline
+  window, page/namespace) and the same list is available as an API/MCP query.
 
 Journals:
 - The Journals view is a stream: today's page is always shown at the top (virtual until the
@@ -384,6 +392,7 @@ Czech and English; M4 has three built-in plugins running through the public API 
 4. **Mirror default**: markdown mirror on by default in the server data directory. Confirmed.
 5. **Embedding models**: bge-m3 is the default; qwen3-embedding:8b is the other first-class
    profile. Both selectable at runtime.
-6. **Cut features**: templates, SCHEDULED/DEADLINE syntax, LOGBOOK, PDF highlights, query blocks,
-   and tweet/video macros stay out of core. Confirmed.
+6. **Cut features**: templates, LOGBOOK, PDF highlights, query blocks, and tweet/video macros stay
+   out of core. Confirmed. Scheduled/deadline was later restored to core at the user's request
+   (the org-style syntax stays import-only).
 7. **Multi-graph**: one graph per server in v1. Confirmed.
