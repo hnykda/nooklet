@@ -13,10 +13,11 @@ Date: 2026-09-10. Status: accepted.
   aliases where natural), build OpenAPI, register MCP tools (text content from `render`,
   structured content validated against the output schema, errors with hints), and derive a typed
   client. Plugins register ops through the same registry; plugin ops default to HTTP-only.
-- v1 exposes 15 MCP tools with annotations and a token budget for `tools/list`; read tools are
-  marked always-loaded for clients that defer tools behind tool search. Writes accept markdown
-  and return created outlines with ids; `block_update` supports string replacement within a
-  block and `if_version`; `batch` is atomic with `dry_run` and idempotency keys.
+- v1 exposes 18 MCP tools (ADR 013 adds `batch_undo` and `asset_upload` to the original 16) with
+  annotations and a token budget for `tools/list`; read tools are marked always-loaded for
+  clients that defer tools behind tool search. Writes accept markdown and return created
+  outlines with ids; `block_update` supports string replacement within a block and `if_version`;
+  `batch` is atomic with `dry_run` and idempotency keys.
 - Outline serialization: our mirror format with ` ^id` suffixes; `ids: none`, depth and size
   limits for cheap reads; JSON on request.
 - Safety: scoped tokens (`read` default, `write`, `admin`) with labels as audit actors, soft

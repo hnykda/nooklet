@@ -300,18 +300,28 @@ Namespaces:
   and the handler. One loop mounts HTTP, one registers MCP tools (MCP SDK v2, spec 2026-07-28,
   stateless Streamable HTTP with bearer auth), one derives the typed client. Plugins register ops
   the same way and default to HTTP-only exposure.
-- v1 MCP tools (15, few and well-described, most read tools always loaded): `graph_overview`,
+- v1 MCP tools (18, few and well-described, most read tools always loaded): `graph_overview`,
   `page_list`, `page_read`, `block_read`, `search`, `page_backlinks`, `changes_since`,
   `page_create`, `page_append`, `block_insert`, `block_update`, `block_move`, `block_delete`,
-  `page_update`, `batch` (plus `page_delete` requiring user interaction). Writes accept
-  markdown and return the created outline with ids; `block_update` supports `old_str/new_str`
-  edits and `if_version`; `batch` is atomic with `dry_run`.
+  `page_update`, `batch`, `batch_undo`, `asset_upload` (plus `page_delete` requiring user
+  interaction). Writes accept markdown and return the created outline with ids; `block_update`
+  supports `old_str/new_str` edits and `if_version`; `batch` is atomic with `dry_run`.
+  `batch_undo` and `asset_upload` are MVP, not deferred (ADR 013): an agent needs the same
+  ability to attach media and cleanly reverse its own mistakes that a human has in the editor.
 - Serialization for agents is the same outline format as the mirror (` ^id` suffixes), with
   `ids: none` and depth/size limits for cheap read-only passes and a JSON tree on request.
 - Safety: scoped tokens (`read` default, `write`, `admin`) with labels that become the audit
   actor; soft delete to trash; idempotency keys; rate limits; a `changes` table written in the
   same transaction as the ops, powering `changes_since`, UI badges ("changed by agent X"), and
-  undo of an agent's batch.
+  `batch_undo` (reverses one batch_id's before/after state; itself a new, separately-audited
+  batch — undoing an undo is just calling it again on the new batch).
+- **AI parity with the live UI (ADR 013, M2 design)**: beyond the headless data API above,
+  a running client instance should be observably and controllably by an agent while a human is
+  looking at it, not just the underlying graph data — "what page/block is currently focused,
+  what's selected" and "run this command" (reusing the ADR 009 command registry), over the
+  same live connection the sync protocol already keeps open between server and client. This
+  is a distinct, forward-looking capability (most competitors' AI integrations are headless);
+  see ADR 013 and `docs/research/09-live-ui-control.md` for the design exploration.
 - Clients: Claude Code and Cursor connect to the local HTTP endpoint with a bearer token; Claude
   Desktop uses the `vrite mcp --stdio` bridge.
 
@@ -366,7 +376,7 @@ Effort assumes one developer directing coding agents; the editor and mobile work
 |---|---|---|---|
 | M0 | Foundations (in progress) | `core`: model, parser/serializer, refs, journals, ids, HLC, ops (done); short ids; inline tokenizer; `applyOps` on a driver interface with property tests | 1–2 weeks |
 | M1 | Server | SQLite store, sync endpoints, importer for both Logseq formats, mirror export, FTS5, op registry, HTTP API + OpenAPI, MCP server + stdio bridge, tokens, CLI, audit/changes | 3 weeks |
-| M2 | Web client | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell | 6 weeks |
+| M2 | Web client | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell, live-UI-control channel (ADR 013) | 6 weeks |
 | M3 | Embeddings | Provider interface, Ollama + OpenAI-compatible, worker queue, hybrid search, related, MCP search tools | 1.5 weeks |
 | M4 | Plugins | Manifest, loader for both halves, extension points, built-ins as plugins, `plugin-api` package and docs | 2 weeks |
 | M5 | Mobile polish | Keyboard toolbar, gestures, quick capture route, Capacitor shell and store builds | 3 weeks |
