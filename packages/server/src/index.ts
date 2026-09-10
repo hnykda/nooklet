@@ -3,24 +3,29 @@
  * full server (DB, write path, op registry, HTTP+MCP app) without reaching into internal files.
  */
 
-export { createServerContext, type ServerContext, serverApplyOps, SERVER_DEVICE_ID } from "./apply-ops.js";
-export { openDb, type OpenDbOptions } from "./db.js";
-export { initFullSchema, SCHEMA_VERSION } from "./schema.js";
+export {
+  createServerContext,
+  SERVER_DEVICE_ID,
+  type ServerContext,
+  serverApplyOps,
+} from "./apply-ops.js";
+export { bearerAuth, createToken, revokeToken, scopesFor, verifyToken } from "./auth/tokens.js";
 export { createDataApi, type DataApi } from "./data-api.js";
+export { type OpenDbOptions, openDb } from "./db.js";
+export { type CreateAppOptions, createApp } from "./http/app.js";
+export { buildMcp, buildMcpServerInstance, type McpAuth, mountMcp } from "./mcp/server.js";
+export { type StdioBridgeOptions, startStdioBridge } from "./mcp/stdio.js";
 export { buildRegistry, CORE_OPS } from "./ops/index.js";
 export {
-  defineOp,
-  OpError,
-  OpRegistry,
   buildOpContext,
   buildOpenApi,
+  defineOp,
   mountHttp,
   type OpContext,
   type OpDef,
-  type ServerConfig,
+  OpError,
+  OpRegistry,
   type Scope,
+  type ServerConfig,
 } from "./ops/registry.js";
-export { createApp, type CreateAppOptions } from "./http/app.js";
-export { createToken, verifyToken, revokeToken, bearerAuth, scopesFor } from "./auth/tokens.js";
-export { buildMcp, buildMcpServerInstance, mountMcp, type McpAuth } from "./mcp/server.js";
-export { startStdioBridge, type StdioBridgeOptions } from "./mcp/stdio.js";
+export { initFullSchema, SCHEMA_VERSION } from "./schema.js";

@@ -7,7 +7,13 @@ import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { bearerAuth } from "../auth/tokens.js";
 import { mountMcp } from "../mcp/server.js";
-import { buildOpContext, buildOpenApi, mountHttp, type OpRegistry, type ServerConfig } from "../ops/registry.js";
+import {
+  buildOpContext,
+  buildOpenApi,
+  mountHttp,
+  type OpRegistry,
+  type ServerConfig,
+} from "../ops/registry.js";
 
 export interface CreateAppOptions {
   serverCtx: ServerContext;

@@ -24,15 +24,14 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { serveStdio, type StdioServerHandle } from "@modelcontextprotocol/server/stdio";
+import { type StdioServerHandle, serveStdio } from "@modelcontextprotocol/server/stdio";
+import type { ServerContext } from "../apply-ops.js";
 import { createServerContext } from "../apply-ops.js";
+import { scopesFor, verifyToken } from "../auth/tokens.js";
 import { openDb } from "../db.js";
 import { buildRegistry } from "../ops/index.js";
-import type { ServerConfig } from "../ops/registry.js";
-import { scopesFor, verifyToken } from "../auth/tokens.js";
+import type { OpRegistry, ServerConfig } from "../ops/registry.js";
 import { buildMcpServerInstance, type McpAuth } from "./server.js";
-import type { ServerContext } from "../apply-ops.js";
-import type { OpRegistry } from "../ops/registry.js";
 
 export interface StdioBridgeOptions {
   serverCtx: ServerContext;
@@ -53,10 +52,16 @@ export function startStdioBridge(opts: StdioBridgeOptions): StdioServerHandle {
   if (!verified) {
     throw new Error("vrite mcp --stdio: token is invalid or revoked");
   }
-  const auth: McpAuth = { scopes: scopesFor(verified.scope), actor: { label: verified.label, tokenId: verified.id } };
-  return serveStdio(() => buildMcpServerInstance(opts.registry, opts.serverCtx, opts.config, auth, opts.version), {
-    onerror: (e) => console.error("[vrite mcp --stdio]", e), // stdout is the protocol channel; logs go to stderr only
-  });
+  const auth: McpAuth = {
+    scopes: scopesFor(verified.scope),
+    actor: { label: verified.label, tokenId: verified.id },
+  };
+  return serveStdio(
+    () => buildMcpServerInstance(opts.registry, opts.serverCtx, opts.config, auth, opts.version),
+    {
+      onerror: (e) => console.error("[vrite mcp --stdio]", e), // stdout is the protocol channel; logs go to stderr only
+    },
+  );
 }
 
 function parseArgs(argv: string[]): { token?: string; dataPath?: string } {
@@ -72,7 +77,10 @@ function parseArgs(argv: string[]): { token?: string; dataPath?: string } {
  * (`node dist/mcp/stdio.js --token vrt_… [--data /path/to/graph.sqlite]`). */
 export function main(argv: string[] = process.argv.slice(2)): void {
   const args = parseArgs(argv);
-  const dataPath = args.dataPath ?? process.env.VRITE_DATA_FILE ?? `${process.env.HOME ?? "."}/.vrite/default/graph.sqlite`;
+  const dataPath =
+    args.dataPath ??
+    process.env.VRITE_DATA_FILE ??
+    `${process.env.HOME ?? "."}/.vrite/default/graph.sqlite`;
   const serverCtx = createServerContext(openDb({ path: dataPath }));
   const registry = buildRegistry();
   const config: ServerConfig = {

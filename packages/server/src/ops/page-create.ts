@@ -2,8 +2,8 @@ import { z } from "zod";
 import { boundsForPageEnd, journalDayFromWire } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
 import { prepareMarkdownInsert } from "./outline-bridge.js";
-import { currentHeadSeq, wirePageName } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
+import { currentHeadSeq, wirePageName } from "./resolve.js";
 import { IdempotencyKey, MarkdownInput, PageRef, Properties, WriteResult } from "./schemas.js";
 
 export const pageCreate = defineOp({
@@ -26,18 +26,29 @@ export const pageCreate = defineOp({
     })
     .strict(),
   output: WriteResult.extend({ existed: z.boolean(), page_id: z.string() }),
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   render: (out) => (out.existed ? `${out.page} already existed` : `created ${out.page}`),
   handler: async (input, ctx) => {
     return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       if (journalDayFromWire(input.name) !== null) {
-        throw new OpError("invalid", "page.create cannot target a journal day", "use page_append to create/append a journal day");
+        throw new OpError(
+          "invalid",
+          "page.create cannot target a journal day",
+          "use page_append to create/append a journal day",
+        );
       }
       const existing = await ctx.data.pages.get({ name: input.name });
       if (existing) {
         if (input.if_exists === "error") {
-          throw new OpError("conflict", `page "${input.name}" already exists`, undefined, { page_id: existing.id });
+          throw new OpError("conflict", `page "${input.name}" already exists`, undefined, {
+            page_id: existing.id,
+          });
         }
         if (input.if_exists === "return" || !input.markdown) {
           return {

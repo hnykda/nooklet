@@ -7,7 +7,7 @@ import { blockUpdate, blockUpdateInputShape } from "./block-update.js";
 import { pageAppend } from "./page-append.js";
 import { pageCreate } from "./page-create.js";
 import { pageUpdate } from "./page-update.js";
-import { defineOp, OpError, type OpContext } from "./registry.js";
+import { defineOp, type OpContext, OpError } from "./registry.js";
 import { IdempotencyKey } from "./schemas.js";
 
 /** `$N`/`$N.k` placeholders (00-conventions.md glossary) may be typed as a bare id even in fields
@@ -19,12 +19,14 @@ import { IdempotencyKey } from "./schemas.js";
  * to exercise this gap in.
  */
 const PLACEHOLDER_RE = /^\$\d+(\.\d+)?$/;
-const IdOrPlaceholder = z
-  .string()
-  .refine((v) => isId(v) || PLACEHOLDER_RE.test(v), { message: 'must be a 14-char id or a "$N"/"$N.k" batch placeholder' });
+const IdOrPlaceholder = z.string().refine((v) => isId(v) || PLACEHOLDER_RE.test(v), {
+  message: 'must be a 14-char id or a "$N"/"$N.k" batch placeholder',
+});
 
 const BatchOp = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("page.create") }).extend(pageCreate.input.omit({ idempotency_key: true, dry_run: true }).shape),
+  z
+    .object({ op: z.literal("page.create") })
+    .extend(pageCreate.input.omit({ idempotency_key: true, dry_run: true }).shape),
   z
     .object({ op: z.literal("page.append") })
     .extend(pageAppend.input.omit({ idempotency_key: true, dry_run: true }).shape)
@@ -45,14 +47,19 @@ const BatchOp = z.discriminatedUnion("op", [
     .object({ op: z.literal("block.delete") })
     .extend(blockDelete.input.omit({ idempotency_key: true, dry_run: true }).shape)
     .extend({ id: IdOrPlaceholder }),
-  z.object({ op: z.literal("page.update") }).extend(pageUpdate.input.omit({ idempotency_key: true, dry_run: true }).shape),
+  z
+    .object({ op: z.literal("page.update") })
+    .extend(pageUpdate.input.omit({ idempotency_key: true, dry_run: true }).shape),
 ]);
 
 type BatchOpName = z.infer<typeof BatchOp>["op"];
 
-// biome-ignore lint/suspicious/noExplicitAny: each op's own zod schema types its own input; the
-// dispatch table below is inherently heterogeneous (that's exactly what `batch` is for).
-const OPS_BY_NAME: Record<BatchOpName, { input: z.ZodType; handler: (input: any, ctx: OpContext) => unknown }> = {
+/** Each op's own zod schema types its own input; this dispatch table is inherently heterogeneous
+ * (that's exactly what `batch` is for), so its handler's input is deliberately untyped here. */
+// biome-ignore lint/suspicious/noExplicitAny: see above
+type BatchDispatchEntry = { input: z.ZodType; handler: (input: any, ctx: OpContext) => unknown };
+
+const OPS_BY_NAME: Record<BatchOpName, BatchDispatchEntry> = {
   "page.create": pageCreate,
   "page.append": pageAppend,
   "block.insert": blockInsert,
@@ -73,7 +80,11 @@ function bindingFor(opName: BatchOpName, result: Record<string, unknown>): StepB
   return { firstId: created[0], created };
 }
 
-function resolvePlaceholders(entry: Record<string, unknown>, bindings: StepBinding[], index: number): Record<string, unknown> {
+function resolvePlaceholders(
+  entry: Record<string, unknown>,
+  bindings: StepBinding[],
+  index: number,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entry)) {
     if (typeof value === "string") {
@@ -82,19 +93,34 @@ function resolvePlaceholders(entry: Record<string, unknown>, bindings: StepBindi
         const n = Number(m[1]);
         const k = m[2] !== undefined ? Number(m[2]) : undefined;
         if (n < 1 || n > bindings.length) {
-          throw new OpError("invalid", `"${value}" references an op that has not run (only ${bindings.length} earlier op(s))`, undefined, { index });
+          throw new OpError(
+            "invalid",
+            `"${value}" references an op that has not run (only ${bindings.length} earlier op(s))`,
+            undefined,
+            { index },
+          );
         }
         // biome-ignore lint/style/noNonNullAssertion: bounds checked above
         const step = bindings[n - 1]!;
         if (k !== undefined) {
           const id = step.created[k];
           if (id === undefined) {
-            throw new OpError("invalid", `"${value}" is out of range for op ${n}'s created ids`, undefined, { index });
+            throw new OpError(
+              "invalid",
+              `"${value}" is out of range for op ${n}'s created ids`,
+              undefined,
+              { index },
+            );
           }
           out[key] = id;
         } else {
           if (step.firstId === undefined) {
-            throw new OpError("invalid", `"${value}" references an op that created no ids`, undefined, { index });
+            throw new OpError(
+              "invalid",
+              `"${value}" references an op that created no ids`,
+              undefined,
+              { index },
+            );
           }
           out[key] = step.firstId;
         }
@@ -112,13 +138,17 @@ export const batch = defineOp({
   description:
     "Runs up to 100 write operations (page.create, page.append, block.insert, block.update, " +
     "block.move, block.delete, page.update) in order, inside one transaction: either every one " +
-    'succeeds or none are applied. A later operation can reference an id created by an earlier ' +
+    "succeeds or none are applied. A later operation can reference an id created by an earlier " +
     'one with "$1" (that op\'s first created id) or "$1.2" (its third created id, 0-indexed) ' +
     "wherever a page or block id is expected. dry_run: true validates everything and resolves " +
     "placeholders without writing anything. One idempotency_key covers the whole batch.",
   input: z
     .object({
-      ops: z.array(BatchOp).min(1).max(100).describe('Fields inside may reference "$N" / "$N.k" ids created by earlier entries'),
+      ops: z
+        .array(BatchOp)
+        .min(1)
+        .max(100)
+        .describe('Fields inside may reference "$N" / "$N.k" ids created by earlier entries'),
       dry_run: z.boolean().default(false),
       idempotency_key: IdempotencyKey,
     })
@@ -129,7 +159,9 @@ export const batch = defineOp({
         index: z.number().int(),
         ok: z.boolean(),
         result: z.unknown().optional().describe("That op's own output shape on success"),
-        error: z.object({ code: z.string(), message: z.string(), hint: z.string().optional() }).optional(),
+        error: z
+          .object({ code: z.string(), message: z.string(), hint: z.string().optional() })
+          .optional(),
       }),
     ),
     applied: z.boolean(),
@@ -137,7 +169,12 @@ export const batch = defineOp({
     batch_id: z.string(),
     dry_run: z.boolean(),
   }),
-  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   render: (out) => `batch ${out.batch_id}: ${out.results.length} op(s), applied=${out.applied}`,
   handler: async (input, ctx) => {
@@ -173,7 +210,10 @@ export const batch = defineOp({
           result = (await opDef.handler(parsed.data, stepCtx)) as Record<string, unknown>;
         } catch (e) {
           if (e instanceof OpError) {
-            const details = e.details && typeof e.details === "object" && !Array.isArray(e.details) ? e.details : {};
+            const details =
+              e.details && typeof e.details === "object" && !Array.isArray(e.details)
+                ? e.details
+                : {};
             throw new OpError(e.code, e.message, e.hint, { ...details, index: i });
           }
           throw e;
@@ -194,14 +234,24 @@ export const batch = defineOp({
     const trialResults = await runAllSteps(ctx.forkForTrial(), trialBatchId);
 
     if (input.dry_run) {
-      return { results: trialResults, applied: false, seq: undefined, batch_id: trialBatchId, dry_run: true };
+      return {
+        results: trialResults,
+        applied: false,
+        seq: undefined,
+        batch_id: trialBatchId,
+        dry_run: true,
+      };
     }
 
     // Phase 2: the trial proved every step succeeds, so replay the same sequence for real. Fresh
     // ids/batchId (this is a completely independent, second pass — the trial's clone is discarded).
     const realBatchId = newId();
     const realResults = await runAllSteps(ctx, realBatchId);
-    const seq = ctx.db.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes WHERE batch_id = ?", [realBatchId])?.n ?? 0;
+    const seq =
+      ctx.db.get<{ n: number }>(
+        "SELECT COALESCE(MAX(seq), 0) AS n FROM changes WHERE batch_id = ?",
+        [realBatchId],
+      )?.n ?? 0;
     return { results: realResults, applied: true, seq, batch_id: realBatchId, dry_run: false };
   },
 });

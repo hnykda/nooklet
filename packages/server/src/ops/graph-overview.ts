@@ -17,7 +17,11 @@ export const graphOverview = defineOp({
   output: z.object({
     today: z.string().describe("YYYY-MM-DD"),
     timezone: z.string(),
-    counts: z.object({ pages: z.number().int(), journals: z.number().int(), blocks: z.number().int() }),
+    counts: z.object({
+      pages: z.number().int(),
+      journals: z.number().int(),
+      blocks: z.number().int(),
+    }),
     recent_journals: z.array(
       z.object({ date: z.string(), first_line: z.string(), block_count: z.number().int() }),
     ),
@@ -32,20 +36,28 @@ export const graphOverview = defineOp({
     top_tags: z.array(z.object({ tag: z.string(), uses: z.number().int() })),
     seq: z.number().int().describe("Current changes-log position; pass to changes_since as cursor"),
   }),
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["read"],
   expose: { mcp: { alwaysLoad: true } },
   render: (out) =>
     `${out.counts.pages} pages, ${out.counts.journals} journals, ${out.counts.blocks} blocks. today ${out.today}. seq ${out.seq}`,
   handler: async (_input, ctx) => {
     const driver = ctx.db;
-    const pages = driver.get<{ n: number }>(
-      "SELECT count(*) AS n FROM page WHERE deleted_at IS NULL AND journal_day IS NULL",
-    )?.n ?? 0;
-    const journals = driver.get<{ n: number }>(
-      "SELECT count(*) AS n FROM page WHERE deleted_at IS NULL AND journal_day IS NOT NULL",
-    )?.n ?? 0;
-    const blocks = driver.get<{ n: number }>("SELECT count(*) AS n FROM block WHERE deleted_at IS NULL")?.n ?? 0;
+    const pages =
+      driver.get<{ n: number }>(
+        "SELECT count(*) AS n FROM page WHERE deleted_at IS NULL AND journal_day IS NULL",
+      )?.n ?? 0;
+    const journals =
+      driver.get<{ n: number }>(
+        "SELECT count(*) AS n FROM page WHERE deleted_at IS NULL AND journal_day IS NOT NULL",
+      )?.n ?? 0;
+    const blocks =
+      driver.get<{ n: number }>("SELECT count(*) AS n FROM block WHERE deleted_at IS NULL")?.n ?? 0;
 
     const recentJournalRows = driver.all<{ id: string; journal_day: number }>(
       "SELECT id, journal_day FROM page WHERE deleted_at IS NULL AND journal_day IS NOT NULL ORDER BY journal_day DESC LIMIT 7",
@@ -72,15 +84,23 @@ export const graphOverview = defineOp({
       origin: string;
       actor: string;
       created_at: number;
-    }>("SELECT entity_type, entity_id, origin, actor, created_at FROM changes ORDER BY seq DESC LIMIT 500");
+    }>(
+      "SELECT entity_type, entity_id, origin, actor, created_at FROM changes ORDER BY seq DESC LIMIT 500",
+    );
     const seenPages = new Set<string>();
-    const recentPages: Array<{ name: string; updated_at: string; updated_by: { origin: OriginKind; actor: string } }> = [];
+    const recentPages: Array<{
+      name: string;
+      updated_at: string;
+      updated_by: { origin: OriginKind; actor: string };
+    }> = [];
     for (const r of changeRows) {
       if (recentPages.length >= 20) break;
       let pageId: string | null = null;
       if (r.entity_type === "page") pageId = r.entity_id;
       else if (r.entity_type === "block") {
-        pageId = driver.get<{ page_id: string }>("SELECT page_id FROM block WHERE id = ?", [r.entity_id])?.page_id ?? null;
+        pageId =
+          driver.get<{ page_id: string }>("SELECT page_id FROM block WHERE id = ?", [r.entity_id])
+            ?.page_id ?? null;
       }
       if (!pageId || seenPages.has(pageId)) continue;
       const p = driver.get<{ name: string; journal_day: number | null }>(

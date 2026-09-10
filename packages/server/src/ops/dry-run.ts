@@ -9,6 +9,10 @@
 
 import type { OpContext } from "./registry.js";
 
-export async function runWithDryRun<T>(ctx: OpContext, dryRun: boolean, fn: (ctx: OpContext) => Promise<T> | T): Promise<T> {
+export async function runWithDryRun<T>(
+  ctx: OpContext,
+  dryRun: boolean,
+  fn: (ctx: OpContext) => Promise<T> | T,
+): Promise<T> {
   return fn(dryRun ? ctx.forkForTrial() : ctx);
 }

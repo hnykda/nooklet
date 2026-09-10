@@ -2,9 +2,16 @@ import { z } from "zod";
 import { getBlockRow, resolveInsertionBounds } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
 import { prepareMarkdownInsert } from "./outline-bridge.js";
-import { checkIfVersion, currentHeadSeq, wirePageName } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
-import { BlockId, IdempotencyKey, IfVersion, MarkdownInput, Position, WriteResult } from "./schemas.js";
+import { checkIfVersion, currentHeadSeq, wirePageName } from "./resolve.js";
+import {
+  BlockId,
+  IdempotencyKey,
+  IfVersion,
+  MarkdownInput,
+  Position,
+  WriteResult,
+} from "./schemas.js";
 
 export const blockInsert = defineOp({
   name: "block.insert",
@@ -26,7 +33,12 @@ export const blockInsert = defineOp({
     })
     .strict(),
   output: WriteResult,
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   render: (out) => out.outline || `(no blocks created near ^${out.page})`,
   handler: async (input, ctx) => {
@@ -43,10 +55,26 @@ export const blockInsert = defineOp({
         [refRow.page_id],
       );
       const pageWire = pageRow
-        ? wirePageName({ id: refRow.page_id, name: pageRow.name, key: "", journalDay: pageRow.journal_day, properties: {}, createdAt: 0, updatedAt: 0 })
+        ? wirePageName({
+            id: refRow.page_id,
+            name: pageRow.name,
+            key: "",
+            journalDay: pageRow.journal_day,
+            properties: {},
+            createdAt: 0,
+            updatedAt: 0,
+          })
         : refRow.page_id;
       const seq = applyResult?.seq ?? currentHeadSeq(ctx.db);
-      return { page: pageWire, created, updated: [], deleted: [], outline, seq, dry_run: input.dry_run };
+      return {
+        page: pageWire,
+        created,
+        updated: [],
+        deleted: [],
+        outline,
+        seq,
+        dry_run: input.dry_run,
+      };
     });
   },
 });

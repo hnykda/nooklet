@@ -72,7 +72,10 @@ export function verifyToken(driver: SqlDriver, rawToken: string): VerifiedToken 
 }
 
 export function revokeToken(driver: SqlDriver, id: string): boolean {
-  const r = driver.run("UPDATE token SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", [Date.now(), id]);
+  const r = driver.run("UPDATE token SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", [
+    Date.now(),
+    id,
+  ]);
   return r.changes > 0;
 }
 
@@ -99,11 +102,17 @@ export function bearerAuth(driver: SqlDriver): MiddlewareHandler {
     const header = c.req.header("authorization");
     const raw = header?.match(/^Bearer\s+(.+)$/i)?.[1];
     if (!raw) {
-      return c.json({ error: { code: "unauthorized", message: "missing or invalid bearer token" } }, 401);
+      return c.json(
+        { error: { code: "unauthorized", message: "missing or invalid bearer token" } },
+        401,
+      );
     }
     const verified = verifyToken(driver, raw);
     if (!verified) {
-      return c.json({ error: { code: "unauthorized", message: "missing or invalid bearer token" } }, 401);
+      return c.json(
+        { error: { code: "unauthorized", message: "missing or invalid bearer token" } },
+        401,
+      );
     }
     c.set("authScopes", scopesFor(verified.scope));
     c.set("authActorLabel", verified.label);

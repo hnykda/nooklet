@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { runWithDryRun } from "./dry-run.js";
-import { checkIfVersion, requirePage, wirePageName } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
+import { checkIfVersion, requirePage, wirePageName } from "./resolve.js";
 import { IdempotencyKey, IfVersion, PageRef } from "./schemas.js";
 
 export const pageDelete = defineOp({
@@ -12,7 +12,14 @@ export const pageDelete = defineOp({
     "become unresolved until restored. Prefer editing or renaming a page over deleting it; use " +
     "this only when the user has explicitly asked to delete the page - most hosts will prompt for " +
     "confirmation before running it.",
-  input: z.object({ page: PageRef, if_version: IfVersion, dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey }).strict(),
+  input: z
+    .object({
+      page: PageRef,
+      if_version: IfVersion,
+      dry_run: z.boolean().default(false),
+      idempotency_key: IdempotencyKey,
+    })
+    .strict(),
   output: z.object({
     page: z.string(),
     deleted_blocks: z.number().int(),
@@ -20,10 +27,16 @@ export const pageDelete = defineOp({
     seq: z.number().int(),
     dry_run: z.boolean(),
   }),
-  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   expose: { mcp: { requiresUserInteraction: true } },
-  render: (out) => `deleted ${out.page} (${out.deleted_blocks} blocks, ${out.backlinks_affected} backlinks affected)`,
+  render: (out) =>
+    `deleted ${out.page} (${out.deleted_blocks} blocks, ${out.backlinks_affected} backlinks affected)`,
   handler: async (input, ctx) => {
     return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       const page = await requirePage(ctx, input.page);
@@ -35,7 +48,9 @@ export const pageDelete = defineOp({
       }
       checkIfVersion(page.updatedAt, input.if_version);
       const blockIds = ctx.db
-        .all<{ id: string }>("SELECT id FROM block WHERE page_id = ? AND deleted_at IS NULL", [page.id])
+        .all<{ id: string }>("SELECT id FROM block WHERE page_id = ? AND deleted_at IS NULL", [
+          page.id,
+        ])
         .map((r) => r.id);
       const backlinksAffected =
         ctx.db.get<{ n: number }>(
@@ -43,7 +58,10 @@ export const pageDelete = defineOp({
           [page.key, page.id],
         )?.n ?? 0;
       const now = Date.now();
-      const ops = [ctx.mintOp(page.id, { kind: "page.delete", deletedAt: now }), ...blockIds.map((id) => ctx.mintOp(id, { kind: "block.delete", deletedAt: now }))];
+      const ops = [
+        ctx.mintOp(page.id, { kind: "page.delete", deletedAt: now }),
+        ...blockIds.map((id) => ctx.mintOp(id, { kind: "block.delete", deletedAt: now })),
+      ];
       const applyResult = await ctx.applyOps(ops);
       return {
         page: wirePageName(page),

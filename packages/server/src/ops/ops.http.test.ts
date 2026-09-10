@@ -16,7 +16,9 @@ describe("graph.overview", () => {
   });
 
   it("rejects unknown fields (invalid)", async () => {
-    const { status, json } = await post(s.app, "/api/v1/graph.overview", s.writeToken, { bogus: 1 });
+    const { status, json } = await post(s.app, "/api/v1/graph.overview", s.writeToken, {
+      bogus: 1,
+    });
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
   });
@@ -37,7 +39,10 @@ describe("page.create", () => {
 
   it("conflicts when if_exists is error and the page already exists", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Dup" });
-    const { status, json } = await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Dup", if_exists: "error" });
+    const { status, json } = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Dup",
+      if_exists: "error",
+    });
     expect(status).toBe(409);
     expect(json.error.code).toBe("conflict");
     expect(json.error.details.page_id).toBeDefined();
@@ -53,7 +58,10 @@ describe("page.append", () => {
     expect(status).toBe(200);
     expect(json.created).toHaveLength(5);
     // verify the tree via page.read (json format) rather than re-parsing the outline text
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "today", format: "json" });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "today",
+      format: "json",
+    });
     expect(read.status).toBe(200);
     const tree = read.json.tree;
     expect(tree.map((n: { content: string }) => n.content)).toEqual(["a", "e"]);
@@ -81,7 +89,9 @@ describe("page.read", () => {
   });
 
   it("is not_found for a missing page", async () => {
-    const { status, json } = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Nope Nope" });
+    const { status, json } = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Nope Nope",
+    });
     expect(status).toBe(404);
     expect(json.error.code).toBe("not_found");
   });
@@ -89,8 +99,14 @@ describe("page.read", () => {
 
 describe("block.read", () => {
   it("reads one block subtree with breadcrumb (success)", async () => {
-    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Tree", markdown: "- top\n  - child" });
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Tree", format: "json" });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Tree",
+      markdown: "- top\n  - child",
+    });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Tree",
+      format: "json",
+    });
     const topId = read.json.tree[0].id;
     const childId = read.json.tree[0].children[0].id;
     const { status, json } = await post(s.app, "/api/v1/block.read", s.writeToken, { id: childId });
@@ -100,7 +116,9 @@ describe("block.read", () => {
   });
 
   it("is not_found for an unknown block id", async () => {
-    const { status, json } = await post(s.app, "/api/v1/block.read", s.writeToken, { id: "1k7f3q9xz2hav4" });
+    const { status, json } = await post(s.app, "/api/v1/block.read", s.writeToken, {
+      id: "1k7f3q9xz2hav4",
+    });
     expect(status).toBe(404);
     expect(json.error.code).toBe("not_found");
   });
@@ -109,7 +127,10 @@ describe("block.read", () => {
 describe("block.insert", () => {
   it("inserts markdown relative to a block (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Ins", markdown: "- root" });
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Ins", format: "json" });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Ins",
+      format: "json",
+    });
     const rootId = read.json.tree[0].id;
     const { status, json } = await post(s.app, "/api/v1/block.insert", s.writeToken, {
       ref: rootId,
@@ -134,8 +155,14 @@ describe("block.insert", () => {
 
 describe("block.update", () => {
   it("replaces text via old_str/new_str, auto-stamping done:: on -> DONE (success)", async () => {
-    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Tasks", markdown: "- TODO buy milk" });
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Tasks", format: "json" });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Tasks",
+      markdown: "- TODO buy milk",
+    });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Tasks",
+      format: "json",
+    });
     const id = read.json.tree[0].id;
     const { status, json } = await post(s.app, "/api/v1/block.update", s.writeToken, {
       id,
@@ -150,7 +177,10 @@ describe("block.update", () => {
 
   it("is invalid when both content and old_str are given", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Bad", markdown: "- x" });
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Bad", format: "json" });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Bad",
+      format: "json",
+    });
     const id = read.json.tree[0].id;
     const { status, json } = await post(s.app, "/api/v1/block.update", s.writeToken, {
       id,
@@ -166,22 +196,31 @@ describe("block.update", () => {
 describe("block.move", () => {
   it("moves a block subtree (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Mv", markdown: "- a\n- b" });
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Mv", format: "json" });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Mv",
+      format: "json",
+    });
     const [a, b] = read.json.tree;
-    const { status, json } = await post(s.app, "/api/v1/block.move", s.writeToken, {
+    const { status } = await post(s.app, "/api/v1/block.move", s.writeToken, {
       id: b.id,
       ref: a.id,
       position: "child_first",
     });
     expect(status).toBe(200);
-    const after = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Mv", format: "json" });
+    const after = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Mv",
+      format: "json",
+    });
     expect(after.json.tree).toHaveLength(1);
     expect(after.json.tree[0].children[0].content).toBe("b");
   });
 
   it("rejects moving a block under its own descendant (invalid, cycle)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Cyc", markdown: "- a\n  - b" });
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Cyc", format: "json" });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Cyc",
+      format: "json",
+    });
     const a = read.json.tree[0];
     const b = a.children[0];
     const { status, json } = await post(s.app, "/api/v1/block.move", s.writeToken, {
@@ -197,17 +236,25 @@ describe("block.move", () => {
 describe("block.delete", () => {
   it("soft-deletes a subtree (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Del", markdown: "- a\n  - b" });
-    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Del", format: "json" });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Del",
+      format: "json",
+    });
     const a = read.json.tree[0];
     const { status, json } = await post(s.app, "/api/v1/block.delete", s.writeToken, { id: a.id });
     expect(status).toBe(200);
     expect(json.deleted_count).toBe(2);
-    const after = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Del", format: "json" });
+    const after = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Del",
+      format: "json",
+    });
     expect(after.json.tree).toHaveLength(0);
   });
 
   it("is not_found for an unknown id", async () => {
-    const { status, json } = await post(s.app, "/api/v1/block.delete", s.writeToken, { id: "1k7f3q9xz2hav4" });
+    const { status, json } = await post(s.app, "/api/v1/block.delete", s.writeToken, {
+      id: "1k7f3q9xz2hav4",
+    });
     expect(status).toBe(404);
     expect(json.error.code).toBe("not_found");
   });
@@ -216,7 +263,10 @@ describe("block.delete", () => {
 describe("page.update", () => {
   it("renames a page and rewrites [[links]] to it (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Old Name" });
-    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Linker", markdown: "- see [[Old Name]]" });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Linker",
+      markdown: "- see [[Old Name]]",
+    });
     const { status, json } = await post(s.app, "/api/v1/page.update", s.writeToken, {
       page: "Old Name",
       new_name: "New Name",
@@ -243,13 +293,20 @@ describe("page.list", () => {
   it("lists pages under a namespace (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Projects/A" });
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Projects/B" });
-    const { status, json } = await post(s.app, "/api/v1/page.list", s.writeToken, { namespace: "Projects" });
+    const { status, json } = await post(s.app, "/api/v1/page.list", s.writeToken, {
+      namespace: "Projects",
+    });
     expect(status).toBe(200);
-    expect(json.items.map((p: { name: string }) => p.name).sort()).toEqual(["Projects/A", "Projects/B"]);
+    expect(json.items.map((p: { name: string }) => p.name).sort()).toEqual([
+      "Projects/A",
+      "Projects/B",
+    ]);
   });
 
   it("is invalid for a malformed cursor", async () => {
-    const { status, json } = await post(s.app, "/api/v1/page.list", s.writeToken, { cursor: "not-base64-offset!" });
+    const { status, json } = await post(s.app, "/api/v1/page.list", s.writeToken, {
+      cursor: "not-base64-offset!",
+    });
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
   });
@@ -257,8 +314,13 @@ describe("page.list", () => {
 
 describe("search", () => {
   it("finds a block by keyword (success)", async () => {
-    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "SearchMe", markdown: "- vendor pricing detail" });
-    const { status, json } = await post(s.app, "/api/v1/search", s.writeToken, { query: "pricing" });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "SearchMe",
+      markdown: "- vendor pricing detail",
+    });
+    const { status, json } = await post(s.app, "/api/v1/search", s.writeToken, {
+      query: "pricing",
+    });
     expect(status).toBe(200);
     expect(json.mode_used).toBe("keyword");
     expect(json.hits.some((h: { page: string }) => h.page === "SearchMe")).toBe(true);
@@ -266,7 +328,10 @@ describe("search", () => {
 
   it("is invalid with more than 20 pages", async () => {
     const pages = Array.from({ length: 21 }, (_, i) => `p${i}`);
-    const { status, json } = await post(s.app, "/api/v1/search", s.writeToken, { query: "x", pages });
+    const { status, json } = await post(s.app, "/api/v1/search", s.writeToken, {
+      query: "x",
+      pages,
+    });
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
   });
@@ -275,15 +340,22 @@ describe("search", () => {
 describe("page.backlinks", () => {
   it("lists linked references to a page (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Target" });
-    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Other", markdown: "- mentions [[Target]]" });
-    const { status, json } = await post(s.app, "/api/v1/page.backlinks", s.writeToken, { target: "Target" });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Other",
+      markdown: "- mentions [[Target]]",
+    });
+    const { status, json } = await post(s.app, "/api/v1/page.backlinks", s.writeToken, {
+      target: "Target",
+    });
     expect(status).toBe(200);
     expect(json.linked).toHaveLength(1);
     expect(json.linked[0].page).toBe("Other");
   });
 
   it("is not_found for an unresolvable target", async () => {
-    const { status, json } = await post(s.app, "/api/v1/page.backlinks", s.writeToken, { target: "1k7f3q9xz2hav4" });
+    const { status, json } = await post(s.app, "/api/v1/page.backlinks", s.writeToken, {
+      target: "1k7f3q9xz2hav4",
+    });
     expect(status).toBe(404);
     expect(json.error.code).toBe("not_found");
   });
@@ -292,14 +364,18 @@ describe("page.backlinks", () => {
 describe("changes.since", () => {
   it("returns change events after a cursor (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Changed" });
-    const { status, json } = await post(s.app, "/api/v1/changes.since", s.writeToken, { cursor: "0" });
+    const { status, json } = await post(s.app, "/api/v1/changes.since", s.writeToken, {
+      cursor: "0",
+    });
     expect(status).toBe(200);
     expect(json.items.length).toBeGreaterThan(0);
     expect(json.items[0].kind).toBe("page.created");
   });
 
   it("is invalid for a non-numeric cursor", async () => {
-    const { status, json } = await post(s.app, "/api/v1/changes.since", s.writeToken, { cursor: "abc" });
+    const { status, json } = await post(s.app, "/api/v1/changes.since", s.writeToken, {
+      cursor: "abc",
+    });
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
   });
@@ -308,7 +384,9 @@ describe("changes.since", () => {
 describe("page.delete", () => {
   it("soft-deletes a page and its blocks (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Bye", markdown: "- x" });
-    const { status, json } = await post(s.app, "/api/v1/page.delete", s.writeToken, { page: "Bye" });
+    const { status, json } = await post(s.app, "/api/v1/page.delete", s.writeToken, {
+      page: "Bye",
+    });
     expect(status).toBe(200);
     expect(json.deleted_blocks).toBe(1);
     const after = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Bye" });
@@ -316,7 +394,9 @@ describe("page.delete", () => {
   });
 
   it("is not_found for an unknown page", async () => {
-    const { status, json } = await post(s.app, "/api/v1/page.delete", s.writeToken, { page: "Never Existed" });
+    const { status, json } = await post(s.app, "/api/v1/page.delete", s.writeToken, {
+      page: "Never Existed",
+    });
     expect(status).toBe(404);
     expect(json.error.code).toBe("not_found");
   });

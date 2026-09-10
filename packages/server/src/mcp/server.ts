@@ -21,13 +21,25 @@
  *    tokens never expire today, so this file sets it to a far-future timestamp.
  */
 
-import type { AuthInfo, ServerContext as McpServerContext } from "@modelcontextprotocol/server";
-import { createMcpHandler, McpServer, OAuthError, OAuthErrorCode, requireBearerAuth } from "@modelcontextprotocol/server";
 import { createMcpHonoApp } from "@modelcontextprotocol/hono";
+import type { AuthInfo, ServerContext as McpServerContext } from "@modelcontextprotocol/server";
+import {
+  createMcpHandler,
+  McpServer,
+  OAuthError,
+  OAuthErrorCode,
+  requireBearerAuth,
+} from "@modelcontextprotocol/server";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { scopesFor, verifyToken } from "../auth/tokens.js";
-import { buildOpContext, mcpExpose, type OpRegistry, type ServerConfig, toErrorBody } from "../ops/registry.js";
+import {
+  buildOpContext,
+  mcpExpose,
+  type OpRegistry,
+  type ServerConfig,
+  toErrorBody,
+} from "../ops/registry.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -74,53 +86,75 @@ export function buildMcpServerInstance(
   const { scopes, actor } = auth;
 
   for (const op of reg.list()) {
-        if (mcpExpose(op, op.owner) === false) continue;
-        if (!op.scopes.every((s) => scopes.includes(s))) continue; // rule 10: not even listed for this token
+    if (mcpExpose(op, op.owner) === false) continue;
+    if (!op.scopes.every((s) => scopes.includes(s))) continue; // rule 10: not even listed for this token
 
-        const mcpConf = op.expose?.mcp;
-        server.registerTool(
-          op.name.replace(/\./g, "_"),
-          {
-            title: op.summary,
-            description: op.description,
-            inputSchema: op.input,
-            outputSchema: op.output,
-            annotations: op.annotations,
-            _meta: {
-              ...(typeof mcpConf === "object" && mcpConf.alwaysLoad ? { "anthropic/alwaysLoad": true } : {}),
-              ...(typeof mcpConf === "object" && mcpConf.requiresUserInteraction ? { "anthropic/requiresUserInteraction": true } : {}),
-              ...(typeof mcpConf === "object" && mcpConf.maxResultSizeChars ? { "anthropic/maxResultSizeChars": mcpConf.maxResultSizeChars } : {}),
+    const mcpConf = op.expose?.mcp;
+    server.registerTool(
+      op.name.replace(/\./g, "_"),
+      {
+        title: op.summary,
+        description: op.description,
+        inputSchema: op.input,
+        outputSchema: op.output,
+        annotations: op.annotations,
+        _meta: {
+          ...(typeof mcpConf === "object" && mcpConf.alwaysLoad
+            ? { "anthropic/alwaysLoad": true }
+            : {}),
+          ...(typeof mcpConf === "object" && mcpConf.requiresUserInteraction
+            ? { "anthropic/requiresUserInteraction": true }
+            : {}),
+          ...(typeof mcpConf === "object" && mcpConf.maxResultSizeChars
+            ? { "anthropic/maxResultSizeChars": mcpConf.maxResultSizeChars }
+            : {}),
+        },
+      },
+      async (input: unknown, toolCtx: McpServerContext) => {
+        try {
+          const opCtx = buildOpContext(
+            serverCtx,
+            config,
+            { scopes, actor, origin: { kind: "mcp", tokenId: actor.tokenId } },
+            {
+              transport: "mcp",
+              requestId: String(toolCtx.mcpReq.id),
+              signal: toolCtx.mcpReq.signal,
             },
-          },
-          async (input: unknown, toolCtx: McpServerContext) => {
-            try {
-              const opCtx = buildOpContext(
-                serverCtx,
-                config,
-                { scopes, actor, origin: { kind: "mcp", tokenId: actor.tokenId } },
-                { transport: "mcp", requestId: String(toolCtx.mcpReq.id), signal: toolCtx.mcpReq.signal },
-              );
-              const out = await op.handler(input, opCtx);
-              return {
-                content: [{ type: "text" as const, text: op.render ? op.render(out) : JSON.stringify(out) }],
-                structuredContent: out as Record<string, unknown>,
-              };
-            } catch (e) {
-              const { error } = toErrorBody(e);
-              return {
-                isError: true,
-                content: [{ type: "text" as const, text: `${error.code}: ${error.message}${error.hint ? `\nHint: ${error.hint}` : ""}` }],
-              };
-            }
-          },
-        );
+          );
+          const out = await op.handler(input, opCtx);
+          return {
+            content: [
+              { type: "text" as const, text: op.render ? op.render(out) : JSON.stringify(out) },
+            ],
+            structuredContent: out as Record<string, unknown>,
+          };
+        } catch (e) {
+          const { error } = toErrorBody(e);
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: `${error.code}: ${error.message}${error.hint ? `\nHint: ${error.hint}` : ""}`,
+              },
+            ],
+          };
+        }
+      },
+    );
   }
   return server;
 }
 
 /** Mount 3 of 3's HTTP entry: one fresh `McpServer` per request (stateless, ADR 008), auth resolved
  * from the bearer token via `authInfo` (rule 10: unauthorized scopes are never even listed). */
-export function buildMcp(reg: OpRegistry, serverCtx: ServerContext, config: ServerConfig, version = "0.0.1") {
+export function buildMcp(
+  reg: OpRegistry,
+  serverCtx: ServerContext,
+  config: ServerConfig,
+  version = "0.0.1",
+) {
   return createMcpHandler(
     (requestCtx) => {
       const authInfo = requestCtx.authInfo;
@@ -132,7 +166,13 @@ export function buildMcp(reg: OpRegistry, serverCtx: ServerContext, config: Serv
   );
 }
 
-export function mountMcp(app: Hono, reg: OpRegistry, serverCtx: ServerContext, config: ServerConfig, version?: string): void {
+export function mountMcp(
+  app: Hono,
+  reg: OpRegistry,
+  serverCtx: ServerContext,
+  config: ServerConfig,
+  version?: string,
+): void {
   const handler = buildMcp(reg, serverCtx, config, version);
   const mcpApp = createMcpHonoApp(); // Host/Origin validation on by default (DNS rebinding)
   const gate = requireBearerAuth({

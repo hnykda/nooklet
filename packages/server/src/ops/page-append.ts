@@ -2,8 +2,8 @@ import { z } from "zod";
 import { boundsForPageEnd, boundsForParent } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
 import { prepareMarkdownInsert } from "./outline-bridge.js";
-import { currentHeadSeq, resolvePageRef, wirePageName } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
+import { currentHeadSeq, resolvePageRef, wirePageName } from "./resolve.js";
 import { BlockId, IdempotencyKey, MarkdownInput, PageRef, WriteResult } from "./schemas.js";
 
 export const pageAppend = defineOp({
@@ -22,14 +22,24 @@ export const pageAppend = defineOp({
       page: PageRef,
       markdown: MarkdownInput,
       position: z.enum(["end", "start"]).default("end"),
-      parent: BlockId.optional().describe("Append as children of this block (must already be on the page) instead of at the top level"),
+      parent: BlockId.optional().describe(
+        "Append as children of this block (must already be on the page) instead of at the top level",
+      ),
       create_page: z.boolean().default(true),
-      dry_run: z.boolean().default(false).describe("Parse and show what would be created without writing"),
+      dry_run: z
+        .boolean()
+        .default(false)
+        .describe("Parse and show what would be created without writing"),
       idempotency_key: IdempotencyKey,
     })
     .strict(),
   output: WriteResult,
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   expose: { mcp: { alwaysLoad: true } },
   render: (out) => out.outline || `(no blocks created on ${out.page})`,
@@ -47,7 +57,10 @@ export const pageAppend = defineOp({
       if (input.parent) {
         const parentBlock = await ctx.data.blocks.get(input.parent);
         if (!parentBlock || parentBlock.pageId !== page.id) {
-          throw new OpError("not_found", `block ${input.parent} is not on page "${wirePageName(page)}"`);
+          throw new OpError(
+            "not_found",
+            `block ${input.parent} is not on page "${wirePageName(page)}"`,
+          );
         }
         bounds = boundsForParent(ctx.db, page.id, input.parent);
       } else {
@@ -56,7 +69,15 @@ export const pageAppend = defineOp({
       const { ops, created, outline } = prepareMarkdownInsert(ctx, input.markdown, bounds);
       const applyResult = ops.length > 0 ? await ctx.applyOps(ops) : undefined;
       const seq = applyResult?.seq ?? currentHeadSeq(ctx.db);
-      return { page: wirePageName(page), created, updated: [], deleted: [], outline, seq, dry_run: input.dry_run };
+      return {
+        page: wirePageName(page),
+        created,
+        updated: [],
+        deleted: [],
+        outline,
+        seq,
+        dry_run: input.dry_run,
+      };
     });
   },
 });

@@ -1,7 +1,7 @@
 import { normalizePageName } from "@vrite/core";
 import { z } from "zod";
-import { wirePageName } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
+import { wirePageName } from "./resolve.js";
 import { Cursor, Limit } from "./schemas.js";
 
 function encodeCursor(offset: number): string {
@@ -11,7 +11,11 @@ function decodeCursor(cursor: string | undefined): number {
   if (!cursor) return 0;
   const n = Number.parseInt(Buffer.from(cursor, "base64").toString("utf8"), 10);
   if (!Number.isFinite(n) || n < 0) {
-    throw new OpError("invalid", "cursor is not valid for this query", "start a new page.list without cursor");
+    throw new OpError(
+      "invalid",
+      "cursor is not valid for this query",
+      "start a new page.list without cursor",
+    );
   }
   return n;
 }
@@ -25,7 +29,10 @@ export const pageList = defineOp({
     "slice of the graph (a namespace, a tag); to find pages or blocks by content use search instead.",
   input: z
     .object({
-      namespace: z.string().optional().describe('Only pages under this namespace, e.g. "Projects" matches "Projects/Aurora"'),
+      namespace: z
+        .string()
+        .optional()
+        .describe('Only pages under this namespace, e.g. "Projects" matches "Projects/Aurora"'),
       prefix: z.string().optional().describe("Case-insensitive name prefix"),
       tag: z.string().optional().describe('Only pages whose "tags" property includes this tag'),
       kind: z.enum(["page", "journal", "all"]).default("page"),
@@ -47,7 +54,12 @@ export const pageList = defineOp({
     ),
     cursor: z.string().optional().describe("Present when more pages match; pass back to continue"),
   }),
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["read"],
   expose: { http: { method: "GET", path: "/pages" } },
   render: (out) => `${out.items.length} page(s)${out.cursor ? " (more available)" : ""}`,
@@ -73,7 +85,8 @@ export const pageList = defineOp({
       );
       params.push(`%${input.tag}%`);
     }
-    const sortCol = input.sort === "updated" ? "updated_at" : input.sort === "created" ? "created_at" : "name";
+    const sortCol =
+      input.sort === "updated" ? "updated_at" : input.sort === "created" ? "created_at" : "name";
     const order = input.order === "desc" ? "DESC" : "ASC";
     const rows = driver.all<{
       id: string;
@@ -93,7 +106,15 @@ export const pageList = defineOp({
       );
       return {
         id: r.id,
-        name: wirePageName({ id: r.id, name: r.name, key: "", journalDay: r.journal_day, properties: {}, createdAt: 0, updatedAt: r.updated_at }),
+        name: wirePageName({
+          id: r.id,
+          name: r.name,
+          key: "",
+          journalDay: r.journal_day,
+          properties: {},
+          createdAt: 0,
+          updatedAt: r.updated_at,
+        }),
         kind: r.journal_day !== null ? ("journal" as const) : ("page" as const),
         updated_at: new Date(r.updated_at).toISOString(),
         block_count: count?.n ?? 0,

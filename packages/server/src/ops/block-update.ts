@@ -2,9 +2,13 @@ import type { Op } from "@vrite/core";
 import { z } from "zod";
 import { getBlockRow, isoFromJournalDay } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
-import { parseSingleBlockGrammar, renderOutlineNodes, renderSingleBlockText } from "./outline-bridge.js";
-import { checkIfVersion } from "./resolve.js";
+import {
+  parseSingleBlockGrammar,
+  renderOutlineNodes,
+  renderSingleBlockText,
+} from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
+import { checkIfVersion } from "./resolve.js";
 import { BlockId, IdempotencyKey, IfVersion, PropertiesPatch, WriteResult } from "./schemas.js";
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -26,8 +30,16 @@ function countOccurrences(haystack: string, needle: string): number {
 export const blockUpdateInputShape = z
   .object({
     id: BlockId,
-    content: z.string().max(100_000).optional().describe("New full text for this block, single-block grammar (no children)"),
-    old_str: z.string().max(100_000).optional().describe("Must occur exactly once in the block's current raw text"),
+    content: z
+      .string()
+      .max(100_000)
+      .optional()
+      .describe("New full text for this block, single-block grammar (no children)"),
+    old_str: z
+      .string()
+      .max(100_000)
+      .optional()
+      .describe("Must occur exactly once in the block's current raw text"),
     new_str: z.string().max(100_000).optional(),
     properties: PropertiesPatch.optional(),
     if_version: IfVersion,
@@ -52,10 +64,20 @@ export const blockUpdate = defineOp({
     (v) =>
       (v.content !== undefined) !== (v.old_str !== undefined || v.new_str !== undefined) ||
       (v.content === undefined && v.old_str === undefined && v.properties !== undefined),
-    { message: "give content, or old_str+new_str, or properties (or combine properties with either)" },
+    {
+      message:
+        "give content, or old_str+new_str, or properties (or combine properties with either)",
+    },
   ),
-  output: WriteResult.extend({ before: z.string().describe("The block's previous raw text, for your own verification") }),
-  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  output: WriteResult.extend({
+    before: z.string().describe("The block's previous raw text, for your own verification"),
+  }),
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   render: (out) => out.outline,
   handler: async (input, ctx) => {
@@ -74,12 +96,16 @@ export const blockUpdate = defineOp({
         newMarker = node.marker;
         ops.push(ctx.mintOp(input.id, { kind: "block.text", content: node.content }));
         ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: "marker", value: node.marker }));
-        ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: "priority", value: node.priority }));
+        ops.push(
+          ctx.mintOp(input.id, { kind: "block.prop", key: "priority", value: node.priority }),
+        );
         const newKeys = new Set(Object.keys(node.properties));
         for (const k of Object.keys(before.properties)) {
-          if (!newKeys.has(k)) ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: k, value: null }));
+          if (!newKeys.has(k))
+            ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: k, value: null }));
         }
-        for (const [k, v] of Object.entries(node.properties)) ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: k, value: v }));
+        for (const [k, v] of Object.entries(node.properties))
+          ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: k, value: v }));
       };
 
       if (input.content !== undefined) {
@@ -97,18 +123,26 @@ export const blockUpdate = defineOp({
           );
         }
         const idx = beforeRaw.indexOf(input.old_str);
-        const newRaw = beforeRaw.slice(0, idx) + input.new_str + beforeRaw.slice(idx + input.old_str.length);
+        const newRaw =
+          beforeRaw.slice(0, idx) + input.new_str + beforeRaw.slice(idx + input.old_str.length);
         applyTextReplace(parseSingleBlockGrammar(newRaw));
       }
 
       if (input.properties) {
-        for (const [k, v] of Object.entries(input.properties)) ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: k, value: v }));
+        for (const [k, v] of Object.entries(input.properties))
+          ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: k, value: v }));
       }
 
       // Logseq-style convenience: stamp/clear `done` when the marker transitions to/from DONE.
       if (newMarker !== before.marker) {
         if (newMarker === "DONE") {
-          ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: "done", value: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") }));
+          ops.push(
+            ctx.mintOp(input.id, {
+              kind: "block.prop",
+              key: "done",
+              value: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+            }),
+          );
         } else if (before.marker === "DONE") {
           ops.push(ctx.mintOp(input.id, { kind: "block.prop", key: "done", value: null }));
         }
@@ -122,15 +156,36 @@ export const blockUpdate = defineOp({
       const after = await ctx.data.blocks.get(input.id);
       if (!after) throw new OpError("internal", "block disappeared during update");
       const outline = renderOutlineNodes([
-        { id: input.id, content: after.content, marker: after.marker, priority: after.priority, properties: after.properties, collapsed: after.collapsed, children: [] },
+        {
+          id: input.id,
+          content: after.content,
+          marker: after.marker,
+          priority: after.priority,
+          properties: after.properties,
+          collapsed: after.collapsed,
+          children: [],
+        },
       ]);
       const pageRow = ctx.db.get<{ name: string; journal_day: number | null }>(
         "SELECT name, journal_day FROM page WHERE id = ?",
         [row.page_id],
       );
-      const pageWire = pageRow ? (pageRow.journal_day !== null ? isoFromJournalDay(pageRow.journal_day) : pageRow.name) : row.page_id;
+      const pageWire = pageRow
+        ? pageRow.journal_day !== null
+          ? isoFromJournalDay(pageRow.journal_day)
+          : pageRow.name
+        : row.page_id;
 
-      return { page: pageWire, created: [], updated: [input.id], deleted: [], outline, seq: applyResult.seq, dry_run: input.dry_run, before: beforeRaw };
+      return {
+        page: pageWire,
+        created: [],
+        updated: [input.id],
+        deleted: [],
+        outline,
+        seq: applyResult.seq,
+        dry_run: input.dry_run,
+        before: beforeRaw,
+      };
     });
   },
 });

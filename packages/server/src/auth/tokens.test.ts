@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { createToken, getToken, revokeToken, scopesFor, verifyToken } from "./tokens.js";
-import { openDb } from "../db.js";
 import type { SqlDriver } from "@vrite/core";
+import { beforeEach, describe, expect, it } from "vitest";
+import { openDb } from "../db.js";
 import { makeTestServer, post, type TestServer } from "../test-helpers.js";
+import { createToken, getToken, revokeToken, scopesFor, verifyToken } from "./tokens.js";
 
 describe("createToken / verifyToken / revokeToken", () => {
   let driver: SqlDriver;
@@ -65,12 +65,17 @@ describe("bearerAuth over HTTP", () => {
       body: "{}",
     });
     expect(res.status).toBe(401);
-    const json = await res.json();
+    const json = (await res.json()) as { error: { code: string } };
     expect(json.error.code).toBe("unauthorized");
   });
 
   it("rejects an invalid token (401)", async () => {
-    const { status, json } = await post(s.app, "/api/v1/graph.overview", "vrt_not-a-real-token", {});
+    const { status, json } = await post(
+      s.app,
+      "/api/v1/graph.overview",
+      "vrt_not-a-real-token",
+      {},
+    );
     expect(status).toBe(401);
     expect(json.error.code).toBe("unauthorized");
   });
@@ -84,13 +89,17 @@ describe("bearerAuth over HTTP", () => {
   });
 
   it("rejects a write op called with a read-only token (403 forbidden)", async () => {
-    const { status, json } = await post(s.app, "/api/v1/page.create", s.readToken, { name: "Nope" });
+    const { status, json } = await post(s.app, "/api/v1/page.create", s.readToken, {
+      name: "Nope",
+    });
     expect(status).toBe(403);
     expect(json.error.code).toBe("forbidden");
   });
 
   it("allows a write op with a write token, and reads with either", async () => {
-    const created = await post(s.app, "/api/v1/page.create", s.writeToken, { name: "ReadableByEither" });
+    const created = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "ReadableByEither",
+    });
     expect(created.status).toBe(200);
     const read = await post(s.app, "/api/v1/page.read", s.readToken, { page: "ReadableByEither" });
     expect(read.status).toBe(200);

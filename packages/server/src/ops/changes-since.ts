@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { currentHeadSeq, requirePage, wirePageName } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
+import { currentHeadSeq, requirePage, wirePageName } from "./resolve.js";
 import { Limit, OriginEnum } from "./schemas.js";
 
 interface ChangeRow {
@@ -32,7 +32,10 @@ function opsForRow(driver: import("@vrite/core").SqlDriver, opIdsJson: string): 
     ids = [];
   }
   if (ids.length === 0) return [];
-  return driver.all<OpRow>(`SELECT id, kind, payload_json FROM op WHERE id IN (${ids.map(() => "?").join(",")})`, ids);
+  return driver.all<OpRow>(
+    `SELECT id, kind, payload_json FROM op WHERE id IN (${ids.map(() => "?").join(",")})`,
+    ids,
+  );
 }
 
 function classify(entityType: "page" | "block", ops: OpRow[]): { kind: string; summary: string } {
@@ -113,15 +116,26 @@ export const changesSince = defineOp({
       }),
     ),
     cursor: z.string().describe("Pass as cursor on the next call"),
-    has_more: z.boolean().describe("true = more events available now, call again immediately; false = caught up"),
+    has_more: z
+      .boolean()
+      .describe("true = more events available now, call again immediately; false = caught up"),
   }),
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["read"],
   render: (out) => `${out.items.length} change(s), has_more=${out.has_more}`,
   handler: async (input, ctx) => {
     const cursorNum = Number(input.cursor);
     if (!Number.isInteger(cursorNum) || cursorNum < 0) {
-      throw new OpError("invalid", "cursor is not a valid seq", 'pass a numeric seq string, or "0" for the beginning');
+      throw new OpError(
+        "invalid",
+        "cursor is not a valid seq",
+        'pass a numeric seq string, or "0" for the beginning',
+      );
     }
     const driver = ctx.db;
     const conditions = ["seq > ?"];
@@ -158,12 +172,39 @@ export const changesSince = defineOp({
           "SELECT name, journal_day FROM page WHERE id = ?",
           [r.entity_id],
         );
-        pageWire = p ? wirePageName({ id: r.entity_id, name: p.name, key: "", journalDay: p.journal_day, properties: {}, createdAt: 0, updatedAt: 0 }) : r.entity_id;
+        pageWire = p
+          ? wirePageName({
+              id: r.entity_id,
+              name: p.name,
+              key: "",
+              journalDay: p.journal_day,
+              properties: {},
+              createdAt: 0,
+              updatedAt: 0,
+            })
+          : r.entity_id;
       } else {
         blockId = r.entity_id;
-        const b = driver.get<{ page_id: string }>("SELECT page_id FROM block WHERE id = ?", [r.entity_id]);
-        const p = b ? driver.get<{ name: string; journal_day: number | null }>("SELECT name, journal_day FROM page WHERE id = ?", [b.page_id]) : undefined;
-        pageWire = p ? wirePageName({ id: b?.page_id ?? "", name: p.name, key: "", journalDay: p.journal_day, properties: {}, createdAt: 0, updatedAt: 0 }) : (b?.page_id ?? "");
+        const b = driver.get<{ page_id: string }>("SELECT page_id FROM block WHERE id = ?", [
+          r.entity_id,
+        ]);
+        const p = b
+          ? driver.get<{ name: string; journal_day: number | null }>(
+              "SELECT name, journal_day FROM page WHERE id = ?",
+              [b.page_id],
+            )
+          : undefined;
+        pageWire = p
+          ? wirePageName({
+              id: b?.page_id ?? "",
+              name: p.name,
+              key: "",
+              journalDay: p.journal_day,
+              properties: {},
+              createdAt: 0,
+              updatedAt: 0,
+            })
+          : (b?.page_id ?? "");
       }
       return {
         seq: r.seq,
@@ -188,7 +229,9 @@ export const changesSince = defineOp({
       };
     });
 
-    const cursor = hasMore ? String(page[page.length - 1]?.seq ?? cursorNum) : String(currentHeadSeq(driver));
+    const cursor = hasMore
+      ? String(page[page.length - 1]?.seq ?? cursorNum)
+      : String(currentHeadSeq(driver));
     return { items, cursor, has_more: hasMore };
   },
 });

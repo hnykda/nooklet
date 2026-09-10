@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { isoFromJournalDay } from "../data-api.js";
-import { resolvePageRef, wirePageName } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
+import { resolvePageRef, wirePageName } from "./resolve.js";
 import { BlockId, Cursor, Limit, PageRef } from "./schemas.js";
 
 export const pageBacklinks = defineOp({
@@ -14,7 +14,9 @@ export const pageBacklinks = defineOp({
     "deleting a page to see what points at it.",
   input: z
     .object({
-      target: z.union([PageRef, BlockId]).describe("Page name/date/alias, a page id, or a block id"),
+      target: z
+        .union([PageRef, BlockId])
+        .describe("Page name/date/alias, a page id, or a block id"),
       include_unlinked: z.boolean().default(false),
       limit: Limit,
       cursor: Cursor.optional(),
@@ -22,21 +24,36 @@ export const pageBacklinks = defineOp({
     .strict(),
   output: z.object({
     target: z.string(),
-    linked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() })),
+    linked: z.array(
+      z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() }),
+    ),
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
     cursor: z.string().optional(),
   }),
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["read"],
   expose: { http: { method: "GET", path: "/pages/{page}/backlinks" } },
-  render: (out) => `${out.linked.length} linked, ${out.unlinked.length} unlinked reference(s) to ${out.target}`,
+  render: (out) =>
+    `${out.linked.length} linked, ${out.unlinked.length} unlinked reference(s) to ${out.target}`,
   handler: async (input, ctx) => {
     const driver = ctx.db;
-    const offset = input.cursor ? Number.parseInt(Buffer.from(input.cursor, "base64").toString("utf8"), 10) : 0;
+    const offset = input.cursor
+      ? Number.parseInt(Buffer.from(input.cursor, "base64").toString("utf8"), 10)
+      : 0;
 
     const asPage = await resolvePageRef(ctx, input.target);
     let targetWire: string;
-    let linkedRows: Array<{ block_id: string; page_id: string; content: string; updated_at: number }>;
+    let linkedRows: Array<{
+      block_id: string;
+      page_id: string;
+      content: string;
+      updated_at: number;
+    }>;
     let unlinkedRows: Array<{ block_id: string; page_id: string; content: string }> = [];
 
     if (asPage) {

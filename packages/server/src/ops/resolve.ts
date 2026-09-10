@@ -7,15 +7,19 @@
 
 import type { Page, SqlDriver } from "@vrite/core";
 import { isId } from "@vrite/core";
-import { isoFromJournalDay, journalDayFromWire } from "../data-api.js";
-import { OpError, type OpContext } from "./registry.js";
-import type { PageMeta as PageMetaSchema } from "./schemas.js";
 import type { z } from "zod";
+import { isoFromJournalDay, journalDayFromWire } from "../data-api.js";
+import { type OpContext, OpError } from "./registry.js";
+import type { PageMeta as PageMetaSchema } from "./schemas.js";
 
 export type PageMetaT = z.output<typeof PageMetaSchema>;
 
 /** Resolve a `PageRef` string. Returns `null` when nothing matches (never creates). */
-export async function resolvePageRef(ctx: OpContext, ref: string, opts?: { create?: boolean }): Promise<Page | null> {
+export async function resolvePageRef(
+  ctx: OpContext,
+  ref: string,
+  opts?: { create?: boolean },
+): Promise<Page | null> {
   if (journalDayFromWire(ref) !== null) {
     return ctx.data.pages.journal(ref, { create: opts?.create ?? false });
   }
@@ -26,10 +30,18 @@ export async function resolvePageRef(ctx: OpContext, ref: string, opts?: { creat
   return ctx.data.pages.get({ name: ref });
 }
 
-export async function requirePage(ctx: OpContext, ref: string, opts?: { create?: boolean }): Promise<Page> {
+export async function requirePage(
+  ctx: OpContext,
+  ref: string,
+  opts?: { create?: boolean },
+): Promise<Page> {
   const page = await resolvePageRef(ctx, ref, opts);
   if (!page) {
-    throw new OpError("not_found", `no page named "${ref}"`, "use page_create or page_append to create it");
+    throw new OpError(
+      "not_found",
+      `no page named "${ref}"`,
+      "use page_create or page_append to create it",
+    );
   }
   return page;
 }
@@ -39,10 +51,16 @@ export function wirePageName(page: Page): string {
   return page.journalDay !== null ? isoFromJournalDay(page.journalDay) : page.name;
 }
 
-export function pageMetaWire(driver: SqlDriver, page: Page, opts?: { backlinkCount?: number }): PageMetaT {
+export function pageMetaWire(
+  driver: SqlDriver,
+  page: Page,
+  opts?: { backlinkCount?: number },
+): PageMetaT {
   const blockCount =
-    driver.get<{ n: number }>("SELECT count(*) AS n FROM block WHERE page_id = ? AND deleted_at IS NULL", [page.id])
-      ?.n ?? 0;
+    driver.get<{ n: number }>(
+      "SELECT count(*) AS n FROM block WHERE page_id = ? AND deleted_at IS NULL",
+      [page.id],
+    )?.n ?? 0;
   return {
     id: page.id,
     name: page.name,
@@ -78,8 +96,13 @@ export function checkIfVersion(currentUpdatedAt: number, ifVersion: string | und
   if (ifVersion === undefined) return;
   const current = new Date(currentUpdatedAt).toISOString();
   if (current !== ifVersion) {
-    throw new OpError("conflict", "target has changed since if_version", "read it again to get the current version", {
-      current_version: current,
-    });
+    throw new OpError(
+      "conflict",
+      "target has changed since if_version",
+      "read it again to get the current version",
+      {
+        current_version: current,
+      },
+    );
   }
 }

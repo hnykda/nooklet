@@ -1,11 +1,14 @@
-import { z } from "zod";
 import type { SqlDriver } from "@vrite/core";
+import { z } from "zod";
 import { getBlockRow, isoFromJournalDay, type ServerBlockNode } from "../data-api.js";
 import { renderRootTruncated, toWireBlockNode } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
 import { BlockId, BlockNode, Format } from "./schemas.js";
 
-function breadcrumbFor(driver: SqlDriver, parentId: string | null): Array<{ id: string; text: string }> {
+function breadcrumbFor(
+  driver: SqlDriver,
+  parentId: string | null,
+): Array<{ id: string; text: string }> {
   const chain: Array<{ id: string; text: string }> = [];
   let cur = parentId;
   while (cur !== null) {
@@ -41,7 +44,12 @@ export const blockRead = defineOp({
     text: z.string(),
     truncated: z.boolean(),
   }),
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["read"],
   expose: { http: { method: "GET", path: "/blocks/{id}" } },
   render: (out) => out.text,
@@ -49,7 +57,11 @@ export const blockRead = defineOp({
     const driver = ctx.db;
     const row = getBlockRow(driver, input.id);
     if (!row) {
-      throw new OpError("not_found", `no block with id ${input.id}`, "this block may be in the trash; ask the user to restore it");
+      throw new OpError(
+        "not_found",
+        `no block with id ${input.id}`,
+        "this block may be in the trash; ask the user to restore it",
+      );
     }
     const [rootNode] = await ctx.data.blocks.tree(input.id, { depth: input.depth });
     const node = rootNode as ServerBlockNode;
@@ -58,7 +70,11 @@ export const blockRead = defineOp({
       "SELECT name, journal_day FROM page WHERE id = ?",
       [row.page_id],
     );
-    const pageWire = pageRow ? (pageRow.journal_day !== null ? isoFromJournalDay(pageRow.journal_day) : pageRow.name) : row.page_id;
+    const pageWire = pageRow
+      ? pageRow.journal_day !== null
+        ? isoFromJournalDay(pageRow.journal_day)
+        : pageRow.name
+      : row.page_id;
     return {
       page: pageWire,
       breadcrumb: breadcrumbFor(driver, row.parent_id),

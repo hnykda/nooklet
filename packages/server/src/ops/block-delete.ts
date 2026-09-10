@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { getBlockRow, type ServerBlockNode } from "../data-api.js";
-import { renderOutlineText } from "./outline-bridge.js";
-import { checkIfVersion } from "./resolve.js";
 import { runWithDryRun } from "./dry-run.js";
+import { renderOutlineText } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
+import { checkIfVersion } from "./resolve.js";
 import { BlockId, IdempotencyKey, IfVersion, WriteResult } from "./schemas.js";
 
 export const blockDelete = defineOp({
@@ -14,12 +14,24 @@ export const blockDelete = defineOp({
     "elsewhere show as broken until restored. Returns the deleted outline so you can confirm what " +
     "was removed. Use dry_run: true first if you are not sure how large the subtree is - it " +
     "returns the same outline and counts without deleting anything.",
-  input: z.object({ id: BlockId, if_version: IfVersion, dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey }).strict(),
+  input: z
+    .object({
+      id: BlockId,
+      if_version: IfVersion,
+      dry_run: z.boolean().default(false),
+      idempotency_key: IdempotencyKey,
+    })
+    .strict(),
   output: WriteResult.extend({
     deleted_count: z.number().int(),
     refs_broken: z.number().int().describe("Blocks elsewhere that referenced the deleted blocks"),
   }),
-  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   render: (out) => `deleted ${out.deleted_count} block(s)`,
   handler: async (input, ctx) => {
@@ -37,7 +49,10 @@ export const blockDelete = defineOp({
         // biome-ignore lint/style/noNonNullAssertion: loop guarded by stack.length
         const cur = stack.pop()!;
         ids.push(cur);
-        for (const child of ctx.db.all<{ id: string }>("SELECT id FROM block WHERE parent_id = ? AND deleted_at IS NULL", [cur])) {
+        for (const child of ctx.db.all<{ id: string }>(
+          "SELECT id FROM block WHERE parent_id = ? AND deleted_at IS NULL",
+          [cur],
+        )) {
           stack.push(child.id);
         }
       }
@@ -50,9 +65,13 @@ export const blockDelete = defineOp({
         )?.n ?? 0;
 
       const now = Date.now();
-      const applyResult = await ctx.applyOps(ids.map((id) => ctx.mintOp(id, { kind: "block.delete", deletedAt: now })));
+      const applyResult = await ctx.applyOps(
+        ids.map((id) => ctx.mintOp(id, { kind: "block.delete", deletedAt: now })),
+      );
 
-      const pageRow = ctx.db.get<{ name: string }>("SELECT name FROM page WHERE id = ?", [row.page_id]);
+      const pageRow = ctx.db.get<{ name: string }>("SELECT name FROM page WHERE id = ?", [
+        row.page_id,
+      ]);
       return {
         page: pageRow?.name ?? row.page_id,
         created: [],

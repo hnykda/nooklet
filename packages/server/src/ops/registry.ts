@@ -17,11 +17,10 @@
  * its own file for that reason.
  */
 
-import type { Context, Hono } from "hono";
-import type { Op, OpPayload } from "@vrite/core";
+import type { AppliedOpResult, Op, OpPayload } from "@vrite/core";
 import { makeOp } from "@vrite/core";
+import type { Context, Hono } from "hono";
 import { z } from "zod";
-import type { AppliedOpResult } from "@vrite/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import type { DataApi } from "../data-api.js";
 import { createDataApi } from "../data-api.js";
@@ -127,15 +126,26 @@ export class OpError extends Error {
 export function toErrorBody(e: unknown): {
   error: { code: OpErrorCode; message: string; hint?: string; details?: Json };
 } {
-  if (e instanceof OpError) return { error: { code: e.code, message: e.message, hint: e.hint, details: e.details } };
-  return { error: { code: "internal", message: e instanceof Error ? e.message : "internal error" } };
+  if (e instanceof OpError)
+    return { error: { code: e.code, message: e.message, hint: e.hint, details: e.details } };
+  return {
+    error: { code: "internal", message: e instanceof Error ? e.message : "internal error" },
+  };
 }
 
 // -------------------------------------------------------------------------------------------
 // 1.3 OpContext
 // -------------------------------------------------------------------------------------------
 
-export type OriginKind = "user" | "api" | "mcp" | "sync" | "plugin" | "import" | "mirror" | "system";
+export type OriginKind =
+  | "user"
+  | "api"
+  | "mcp"
+  | "sync"
+  | "plugin"
+  | "import"
+  | "mirror"
+  | "system";
 
 export interface Origin {
   kind: OriginKind;
@@ -229,7 +239,12 @@ export function buildOpContext(
   serverCtx: ServerContext,
   config: ServerConfig,
   auth: { scopes: Scope[]; actor: Actor; origin: Origin },
-  transportMeta: { transport: OpContext["transport"]; requestId: string; idempotencyKey?: string; signal?: AbortSignal },
+  transportMeta: {
+    transport: OpContext["transport"];
+    requestId: string;
+    idempotencyKey?: string;
+    signal?: AbortSignal;
+  },
 ): OpContext {
   const data = createDataApi(serverCtx, { origin: auth.origin.kind, actor: auth.actor.label });
   return {
@@ -248,7 +263,8 @@ export function buildOpContext(
       const seq =
         seqRow && seqRow.n > 0
           ? seqRow.n
-          : (serverCtx.driver.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes")?.n ?? 0);
+          : (serverCtx.driver.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes")
+              ?.n ?? 0);
       return { seq, results: result.results, batchId: result.batchId };
     },
     mintOp(entity, payload) {
@@ -279,9 +295,9 @@ export class OpRegistry {
     if (!OP_NAME_RE.test(op.name)) {
       throw new Error(`op name "${op.name}" must be dotted lower-case segments, e.g. "page.read"`);
     }
-    if (this.ops.has(op.name)) {
-      // biome-ignore lint/style/noNonNullAssertion: `has` just confirmed presence
-      throw new Error(`op "${op.name}" is already registered (by "${this.ops.get(op.name)!.owner}")`);
+    const existing = this.ops.get(op.name);
+    if (existing) {
+      throw new Error(`op "${op.name}" is already registered (by "${existing.owner}")`);
     }
     if ((op.expose?.mcp ?? owner === "core") !== false && !op.render) {
       throw new Error(`op "${op.name}" is exposed to MCP but has no render()`);
@@ -314,6 +330,16 @@ function toHonoPath(path: string): string {
   return path.replace(/\{(\w+)\}/g, ":$1");
 }
 
+/** Best-effort string -> JSON-value coercion for a REST alias's query params ("2" -> 2, "true" ->
+ * true), falling back to the raw string when it is not valid JSON (e.g. "child_first"). */
+function coerceQueryValue(v: string): unknown {
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+}
+
 // -------------------------------------------------------------------------------------------
 // 1.5 Mount 1 of 3 — HTTP router
 // -------------------------------------------------------------------------------------------
@@ -332,23 +358,38 @@ export function mountHttp(app: Hono, reg: OpRegistry, buildOpCtx: BuildOpCtx): v
       const parsed = op.input.safeParse(raw);
       if (!parsed.success) {
         return c.json(
-          { error: { code: "invalid", message: z.prettifyError(parsed.error), hint: "fix the listed fields and retry" } },
+          {
+            error: {
+              code: "invalid",
+              message: z.prettifyError(parsed.error),
+              hint: "fix the listed fields and retry",
+            },
+          },
           400,
         );
       }
       const ctx = await buildOpCtx(c, op);
       if (!ctx) {
-        return c.json({ error: { code: "unauthorized", message: "missing or invalid bearer token" } }, 401);
+        return c.json(
+          { error: { code: "unauthorized", message: "missing or invalid bearer token" } },
+          401,
+        );
       }
       if (!op.scopes.every((s) => ctx.scopes.includes(s))) {
-        return c.json({ error: { code: "forbidden", message: `requires scope(s): ${op.scopes.join(", ")}` } }, 403);
+        return c.json(
+          { error: { code: "forbidden", message: `requires scope(s): ${op.scopes.join(", ")}` } },
+          403,
+        );
       }
       try {
         const out = await op.handler(parsed.data, ctx);
         return c.json(out as Record<string, unknown>);
       } catch (e) {
         const body = toErrorBody(e);
-        return c.json(body, (HTTP_STATUS[body.error.code] ?? 500) as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500);
+        return c.json(
+          body,
+          (HTTP_STATUS[body.error.code] ?? 500) as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500,
+        );
       }
     };
 
@@ -362,7 +403,16 @@ export function mountHttp(app: Hono, reg: OpRegistry, buildOpCtx: BuildOpCtx): v
     }
     if (typeof http === "object") {
       const alias = http;
-      app.on(alias.method, `/api/v1${toHonoPath(alias.path)}`, (c) => run(c, { ...c.req.param(), ...c.req.query() }));
+      app.on(alias.method, `/api/v1${toHonoPath(alias.path)}`, (c) => {
+        // REST-alias query params arrive as strings (e.g. "depth=2"); a schema field typed
+        // z.number()/z.boolean() would otherwise fail validation on a value that came in fine
+        // over the canonical JSON-body POST route. Path params (ids/names) are left as strings,
+        // since every PageRef/BlockId-typed field is itself a string schema.
+        const query = Object.fromEntries(
+          Object.entries(c.req.query()).map(([k, v]) => [k, coerceQueryValue(v)]),
+        );
+        return run(c, { ...c.req.param(), ...query });
+      });
     }
   }
 }
@@ -374,7 +424,16 @@ export function mountHttp(app: Hono, reg: OpRegistry, buildOpCtx: BuildOpCtx): v
 const ErrorEnvelopeJsonSchema = z.toJSONSchema(
   z.object({
     error: z.object({
-      code: z.enum(["not_found", "invalid", "conflict", "forbidden", "unauthorized", "rate_limited", "too_large", "internal"]),
+      code: z.enum([
+        "not_found",
+        "invalid",
+        "conflict",
+        "forbidden",
+        "unauthorized",
+        "rate_limited",
+        "too_large",
+        "internal",
+      ]),
       message: z.string(),
       hint: z.string().optional(),
       details: z.record(z.string(), z.unknown()).optional(),
@@ -397,11 +456,21 @@ export function buildOpenApi(reg: OpRegistry): Record<string, unknown> {
         "x-scopes": op.scopes,
         requestBody: {
           required: true,
-          content: { "application/json": { schema: z.toJSONSchema(op.input, { target: "openapi-3.0" }) } },
+          content: {
+            "application/json": { schema: z.toJSONSchema(op.input, { target: "openapi-3.0" }) },
+          },
         },
         responses: {
-          "200": { description: "OK", content: { "application/json": { schema: z.toJSONSchema(op.output, { target: "openapi-3.0" }) } } },
-          default: { description: "Error", content: { "application/json": { schema: ErrorEnvelopeJsonSchema } } },
+          "200": {
+            description: "OK",
+            content: {
+              "application/json": { schema: z.toJSONSchema(op.output, { target: "openapi-3.0" }) },
+            },
+          },
+          default: {
+            description: "Error",
+            content: { "application/json": { schema: ErrorEnvelopeJsonSchema } },
+          },
         },
         security: [{ bearer: [] }],
       },

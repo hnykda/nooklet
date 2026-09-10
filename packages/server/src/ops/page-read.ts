@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { loadBlockTree } from "../data-api.js";
 import { renderTruncated, toWireBlockNode } from "./outline-bridge.js";
-import { pageMetaWire, requirePage } from "./resolve.js";
 import { defineOp } from "./registry.js";
+import { pageMetaWire, requirePage } from "./resolve.js";
 import { BlockNode, Format, PageMeta } from "./schemas.js";
 
 export const pageRead = defineOp({
@@ -20,9 +20,26 @@ export const pageRead = defineOp({
     .object({
       page: z.string().min(1).max(512),
       format: Format,
-      depth: z.number().int().min(0).max(20).default(6).describe("Max nesting depth to include (0 = only top-level blocks)"),
-      max_chars: z.number().int().min(500).max(200_000).default(20_000).describe("Truncate text output after this many characters, at a block boundary"),
-      ids: z.enum(["all", "none"]).default("all").describe("Include ^ids (needed for editing) or omit them to save tokens; ignored when format is json"),
+      depth: z
+        .number()
+        .int()
+        .min(0)
+        .max(20)
+        .default(6)
+        .describe("Max nesting depth to include (0 = only top-level blocks)"),
+      max_chars: z
+        .number()
+        .int()
+        .min(500)
+        .max(200_000)
+        .default(20_000)
+        .describe("Truncate text output after this many characters, at a block boundary"),
+      ids: z
+        .enum(["all", "none"])
+        .default("all")
+        .describe(
+          "Include ^ids (needed for editing) or omit them to save tokens; ignored when format is json",
+        ),
       include_backlink_count: z.boolean().default(true),
     })
     .strict(),
@@ -33,10 +50,19 @@ export const pageRead = defineOp({
     truncated: z.boolean(),
     continue_hint: z.string().optional(),
   }),
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["read"],
-  expose: { http: { method: "GET", path: "/pages/{page}" }, mcp: { alwaysLoad: true, maxResultSizeChars: 200_000 } },
-  render: (out) => (out.tree ? `${out.page.name}: ${out.page.block_count} blocks (json)` : out.text),
+  expose: {
+    http: { method: "GET", path: "/pages/{page}" },
+    mcp: { alwaysLoad: true, maxResultSizeChars: 200_000 },
+  },
+  render: (out) =>
+    out.tree ? `${out.page.name}: ${out.page.block_count} blocks (json)` : out.text,
   handler: async (input, ctx) => {
     const page = await requirePage(ctx, input.page);
     const driver = ctx.db;

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { makeTestServer, type TestServer } from "../test-helpers.js";
 import { CORE_OPS } from "../ops/index.js";
+import { type JsonAny, makeTestServer, type TestServer } from "../test-helpers.js";
 
 let s: TestServer;
 
@@ -8,7 +8,13 @@ beforeEach(() => {
   s = makeTestServer();
 });
 
-async function rpc(app: TestServer["app"], token: string, method: string, params: unknown, id = 1): Promise<any> {
+async function rpc(
+  app: TestServer["app"],
+  token: string,
+  method: string,
+  params: unknown,
+  id = 1,
+): Promise<{ status: number; body: JsonAny }> {
   const res = await app.request("/mcp", {
     method: "POST",
     headers: {
@@ -22,10 +28,11 @@ async function rpc(app: TestServer["app"], token: string, method: string, params
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("text/event-stream")) {
     const text = await res.text();
-    const dataLine = text
-      .split("\n")
-      .find((l) => l.startsWith("data:"));
-    return { status: res.status, body: dataLine ? JSON.parse(dataLine.slice("data:".length).trim()) : undefined };
+    const dataLine = text.split("\n").find((l) => l.startsWith("data:"));
+    return {
+      status: res.status,
+      body: dataLine ? JSON.parse(dataLine.slice("data:".length).trim()) : undefined,
+    };
   }
   const body = await res.json().catch(() => undefined);
   return { status: res.status, body };
@@ -35,7 +42,10 @@ describe("MCP tools/list", () => {
   it("lists all 16 core ops as tools, with correct annotations, for a write-scoped token", async () => {
     const { status, body } = await rpc(s.app, s.writeToken, "tools/list", {});
     expect(status).toBe(200);
-    const tools = body.result.tools as Array<{ name: string; annotations: Record<string, unknown> }>;
+    const tools = body.result.tools as Array<{
+      name: string;
+      annotations: Record<string, unknown>;
+    }>;
     expect(tools).toHaveLength(CORE_OPS.length);
     expect(tools).toHaveLength(16);
     const names = tools.map((t) => t.name).sort();
@@ -60,7 +70,11 @@ describe("MCP tools/list", () => {
       ].sort(),
     );
     const graphOverview = tools.find((t) => t.name === "graph_overview");
-    expect(graphOverview?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, openWorldHint: false });
+    expect(graphOverview?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    });
     const pageDelete = tools.find((t) => t.name === "page_delete");
     expect(pageDelete?.annotations).toMatchObject({ destructiveHint: true, readOnlyHint: false });
   });

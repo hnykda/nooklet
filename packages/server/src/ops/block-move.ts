@@ -1,11 +1,17 @@
 import { z } from "zod";
-import { boundsForPageEnd, getBlockRow, newOrderKeys, resolveInsertionBounds, wouldCycle } from "../data-api.js";
-import { renderOutlineText } from "./outline-bridge.js";
-import { checkIfVersion, requirePage, wirePageName } from "./resolve.js";
-import { runWithDryRun } from "./dry-run.js";
-import { defineOp, OpError } from "./registry.js";
-import { BlockId, IdempotencyKey, IfVersion, PageRef, Position, WriteResult } from "./schemas.js";
 import type { ServerBlockNode } from "../data-api.js";
+import {
+  boundsForPageEnd,
+  getBlockRow,
+  newOrderKeys,
+  resolveInsertionBounds,
+  wouldCycle,
+} from "../data-api.js";
+import { runWithDryRun } from "./dry-run.js";
+import { renderOutlineText } from "./outline-bridge.js";
+import { defineOp, OpError } from "./registry.js";
+import { checkIfVersion, requirePage, wirePageName } from "./resolve.js";
+import { BlockId, IdempotencyKey, IfVersion, PageRef, Position, WriteResult } from "./schemas.js";
 
 /** Pre-`.refine()` plain object schema — see `blockUpdateInputShape`'s comment for why `batch.ts`
  * needs this rather than `blockMove.input` directly. */
@@ -14,7 +20,9 @@ export const blockMoveInputShape = z
     id: BlockId,
     ref: BlockId.optional(),
     position: Position.optional(),
-    page: PageRef.optional().describe("Move to the top level (end) of this page instead of relative to ref"),
+    page: PageRef.optional().describe(
+      "Move to the top level (end) of this page instead of relative to ref",
+    ),
     if_version: IfVersion,
     dry_run: z.boolean().default(false),
     idempotency_key: IdempotencyKey,
@@ -29,11 +37,19 @@ export const blockMove = defineOp({
     "before/after) or to the top level of a page (page instead of ref/position). Ids are " +
     "preserved, so existing ((block refs)) to it keep working. You cannot move a block under its " +
     "own descendant.",
-  input: blockMoveInputShape.refine((v) => (v.ref !== undefined && v.position !== undefined) !== (v.page !== undefined), {
-    message: "give ref+position, or page, not both",
-  }),
+  input: blockMoveInputShape.refine(
+    (v) => (v.ref !== undefined && v.position !== undefined) !== (v.page !== undefined),
+    {
+      message: "give ref+position, or page, not both",
+    },
+  ),
   output: WriteResult,
-  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["write"],
   render: (out) => out.outline,
   handler: async (input, ctx) => {
@@ -56,24 +72,43 @@ export const blockMove = defineOp({
           })();
 
       if (bounds.parentId !== null && wouldCycle(ctx.db, input.id, bounds.parentId)) {
-        throw new OpError("invalid", "ref is the block itself or one of its descendants (would create a cycle)");
+        throw new OpError(
+          "invalid",
+          "ref is the block itself or one of its descendants (would create a cycle)",
+        );
       }
 
       // biome-ignore lint/style/noNonNullAssertion: newOrderKeys(bounds, 1) always returns one key
       const key = newOrderKeys(bounds, 1)[0]!;
       const applyResult = await ctx.applyOps([
-        ctx.mintOp(input.id, { kind: "block.place", place: { pageId: bounds.pageId, parentId: bounds.parentId, order: key } }),
+        ctx.mintOp(input.id, {
+          kind: "block.place",
+          place: { pageId: bounds.pageId, parentId: bounds.parentId, order: key },
+        }),
       ]);
-      const rejected = applyResult.results.find((r) => r.entity === input.id && r.status === "rejected");
+      const rejected = applyResult.results.find(
+        (r) => r.entity === input.id && r.status === "rejected",
+      );
       if (rejected) throw new OpError("invalid", `move rejected: ${rejected.reason}`);
 
       const [subtree] = await ctx.data.blocks.tree(input.id);
-      const pageRow = ctx.db.get<{ name: string; journal_day: number | null }>("SELECT name, journal_day FROM page WHERE id = ?", [
-        bounds.pageId,
-      ]);
+      const pageRow = ctx.db.get<{ name: string; journal_day: number | null }>(
+        "SELECT name, journal_day FROM page WHERE id = ?",
+        [bounds.pageId],
+      );
       const outline = renderOutlineText(subtree ? [subtree as ServerBlockNode] : [], "all");
       return {
-        page: pageRow ? wirePageName({ id: bounds.pageId, name: pageRow.name, key: "", journalDay: pageRow.journal_day, properties: {}, createdAt: 0, updatedAt: 0 }) : bounds.pageId,
+        page: pageRow
+          ? wirePageName({
+              id: bounds.pageId,
+              name: pageRow.name,
+              key: "",
+              journalDay: pageRow.journal_day,
+              properties: {},
+              createdAt: 0,
+              updatedAt: 0,
+            })
+          : bounds.pageId,
         created: [],
         updated: [input.id],
         deleted: [],

@@ -341,9 +341,10 @@ export function wouldCycle(driver: SqlDriver, movedId: string, newParentId: stri
   let guard = 0;
   while (cur !== null && guard++ < 1000) {
     if (cur === movedId) return true;
-    const parentRow: { parent_id: string | null } | undefined = driver.get("SELECT parent_id FROM block WHERE id = ?", [
-      cur,
-    ]);
+    const parentRow: { parent_id: string | null } | undefined = driver.get(
+      "SELECT parent_id FROM block WHERE id = ?",
+      [cur],
+    );
     cur = parentRow?.parent_id ?? null;
   }
   return false;

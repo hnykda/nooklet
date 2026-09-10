@@ -21,9 +21,14 @@
 
 import type { Op, OpPayload, OutlineNode, ParsedPage, SqlDriver } from "@vrite/core";
 import { isId, newId, parseOutline, serializeOutline } from "@vrite/core";
-import type { BlockNodeT, PropertyKey as _PropertyKey } from "./schemas.js";
-import { OpError, type OpContext } from "./registry.js";
-import { getBlockRowAny, type OrderBounds, newOrderKeys, type ServerBlockNode } from "../data-api.js";
+import {
+  getBlockRowAny,
+  newOrderKeys,
+  type OrderBounds,
+  type ServerBlockNode,
+} from "../data-api.js";
+import { type OpContext, OpError } from "./registry.js";
+import type { BlockNodeT } from "./schemas.js";
 
 // ---------------------------------------------------------------------------------------------
 // Checkbox sugar ("- [ ] x" / "- [x] x" -> "- TODO x" / "- DONE x"), a pre-processing pass over
@@ -152,7 +157,12 @@ export function buildInsertOps(
   const updated: string[] = [];
   const now = Date.now();
 
-  const walk = (list: OutlineNode[], pageId: string, parentId: string | null, b: [string | null, string | null]) => {
+  const walk = (
+    list: OutlineNode[],
+    pageId: string,
+    parentId: string | null,
+    b: [string | null, string | null],
+  ) => {
     const keys = newOrderKeys({ pageId, parentId, lower: b[0], upper: b[1] }, list.length);
     list.forEach((node, i) => {
       const order = keys[i] as string;
@@ -163,8 +173,15 @@ export function buildInsertOps(
         ops.push(mintOp(entity, { kind: "block.text", content: node.content }));
         ops.push(mintOp(entity, { kind: "block.prop", key: "marker", value: node.marker }));
         ops.push(mintOp(entity, { kind: "block.prop", key: "priority", value: node.priority }));
-        ops.push(mintOp(entity, { kind: "block.prop", key: "collapsed", value: node.collapsed ? "true" : "false" }));
-        for (const [k, v] of Object.entries(node.properties)) ops.push(mintOp(entity, { kind: "block.prop", key: k, value: v }));
+        ops.push(
+          mintOp(entity, {
+            kind: "block.prop",
+            key: "collapsed",
+            value: node.collapsed ? "true" : "false",
+          }),
+        );
+        for (const [k, v] of Object.entries(node.properties))
+          ops.push(mintOp(entity, { kind: "block.prop", key: k, value: v }));
         updated.push(entity);
       } else {
         entity = newId();
@@ -198,10 +215,18 @@ export interface MarkdownInsertResult extends InsertOpsResult {
 /** The full write path shared by `page.append`/`block.insert`/`page.create`'s `markdown` field:
  * parse, validate `^id`s, mint ops, and render the (now ^id-annotated) inserted tree as text. Does
  * NOT call `ctx.applyOps` itself — the caller applies (batches often combine several of these). */
-export function prepareMarkdownInsert(ctx: OpContext, markdown: string, bounds: OrderBounds): MarkdownInsertResult {
+export function prepareMarkdownInsert(
+  ctx: OpContext,
+  markdown: string,
+  bounds: OrderBounds,
+): MarkdownInsertResult {
   const nodes = parseMarkdownBlocks(markdown);
   if (nodes.length === 0) {
-    throw new OpError("invalid", "markdown did not parse to any blocks", "check for a dangling fence or empty input");
+    throw new OpError(
+      "invalid",
+      "markdown did not parse to any blocks",
+      "check for a dangling fence or empty input",
+    );
   }
   validateOutlineIds(ctx.db, nodes);
   const { ops, created, updated } = buildInsertOps(ctx.mintOp, nodes, bounds);
@@ -246,7 +271,11 @@ export interface RenderedOutline {
 /** Cut `nodes` (siblings at one level) at whole-top-level-chunk boundaries once the accumulated
  * text would exceed `maxChars` (mcp-tools.md §3.2 rule 8: "never mid-block"). The first chunk is
  * always included in full even alone it exceeds `maxChars`. */
-export function renderTruncated(nodes: ServerBlockNode[], ids: "all" | "none", maxChars: number): RenderedOutline {
+export function renderTruncated(
+  nodes: ServerBlockNode[],
+  ids: "all" | "none",
+  maxChars: number,
+): RenderedOutline {
   let text = "";
   let lastIncludedId: string | undefined;
   for (let i = 0; i < nodes.length; i++) {
@@ -268,9 +297,14 @@ export function renderTruncated(nodes: ServerBlockNode[], ids: "all" | "none", m
  * Truncation boundary here is "how many of the root's immediate children fit", since there is
  * exactly one root (no sibling list to chunk across, unlike `page_read`'s top-level blocks).
  */
-export function renderRootTruncated(root: ServerBlockNode, ids: "all" | "none", maxChars: number): RenderedOutline {
+export function renderRootTruncated(
+  root: ServerBlockNode,
+  ids: "all" | "none",
+  maxChars: number,
+): RenderedOutline {
   let best = renderOutlineText([{ ...root, children: [] }], ids);
-  if (root.children.length === 0) return { text: best, truncated: false, lastIncludedId: root.id, omittedCount: 0 };
+  if (root.children.length === 0)
+    return { text: best, truncated: false, lastIncludedId: root.id, omittedCount: 0 };
   let included = 0;
   for (let k = 1; k <= root.children.length; k++) {
     const candidate = renderOutlineText([{ ...root, children: root.children.slice(0, k) }], ids);

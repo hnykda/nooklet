@@ -39,7 +39,17 @@ export function authHeaders(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}`, "content-type": "application/json" };
 }
 
-export async function post(app: Hono, path: string, token: string, body: unknown): Promise<{ status: number; json: any }> {
+/** Test-only escape hatch: callers assert on whatever shape their fixture data produces, so a
+ * precise response-body union isn't worth the ceremony in test helpers. */
+// biome-ignore lint/suspicious/noExplicitAny: see comment above
+export type JsonAny = any;
+
+export async function post(
+  app: Hono,
+  path: string,
+  token: string,
+  body: unknown,
+): Promise<{ status: number; json: JsonAny }> {
   const res = await app.request(path, {
     method: "POST",
     headers: authHeaders(token),

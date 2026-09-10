@@ -1,8 +1,8 @@
 import { normalizePageName } from "@vrite/core";
 import { z } from "zod";
 import { isoFromJournalDay } from "../data-api.js";
-import { resolvePageIds } from "./resolve.js";
 import { defineOp, OpError } from "./registry.js";
+import { resolvePageIds } from "./resolve.js";
 import { Cursor, Limit, PageRef, PropertyKey } from "./schemas.js";
 
 interface Candidate {
@@ -17,7 +17,10 @@ interface Candidate {
   updatedAt: number;
 }
 
-function breadcrumbForBlock(driver: import("@vrite/core").SqlDriver, parentId: string | null): string[] {
+function breadcrumbForBlock(
+  driver: import("@vrite/core").SqlDriver,
+  parentId: string | null,
+): string[] {
   const chain: string[] = [];
   let cur = parentId;
   let guard = 0;
@@ -49,9 +52,15 @@ export const search = defineOp({
     .object({
       query: z.string().min(1).max(500),
       mode: z.enum(["hybrid", "keyword", "semantic"]).default("hybrid"),
-      scope: z.enum(["blocks", "pages", "all"]).default("all").describe("Match block content, page names/properties, or both"),
+      scope: z
+        .enum(["blocks", "pages", "all"])
+        .default("all")
+        .describe("Match block content, page names/properties, or both"),
       tags: z.array(z.string()).max(10).optional(),
-      properties: z.record(PropertyKey, z.string()).optional().describe('Exact key=value filters, e.g. {"marker":"TODO"}'),
+      properties: z
+        .record(PropertyKey, z.string())
+        .optional()
+        .describe('Exact key=value filters, e.g. {"marker":"TODO"}'),
       namespace: z.string().optional(),
       pages: z.array(PageRef).max(20).optional(),
       journals_only: z.boolean().default(false),
@@ -76,9 +85,16 @@ export const search = defineOp({
       }),
     ),
     cursor: z.string().optional(),
-    mode_used: z.enum(["hybrid", "keyword", "semantic"]).describe('"keyword" if hybrid/semantic was requested but embeddings are unavailable'),
+    mode_used: z
+      .enum(["hybrid", "keyword", "semantic"])
+      .describe('"keyword" if hybrid/semantic was requested but embeddings are unavailable'),
   }),
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   scopes: ["read"],
   expose: { mcp: { alwaysLoad: true } },
   render: (out) => `${out.hits.length} hit(s) (${out.mode_used})`,
@@ -108,7 +124,10 @@ export const search = defineOp({
         );
         params.push(normalizePageName(input.namespace), `${normalizePageName(input.namespace)}/%`);
       }
-      if (input.journals_only) conditions.push("EXISTS (SELECT 1 FROM page p WHERE p.id = b.page_id AND p.journal_day IS NOT NULL)");
+      if (input.journals_only)
+        conditions.push(
+          "EXISTS (SELECT 1 FROM page p WHERE p.id = b.page_id AND p.journal_day IS NOT NULL)",
+        );
       if (input.updated_after) {
         conditions.push("b.updated_at > ?");
         params.push(Date.parse(input.updated_after));
@@ -122,11 +141,15 @@ export const search = defineOp({
         params.push(...pageIds);
       }
       for (const tag of input.tags ?? []) {
-        conditions.push("EXISTS (SELECT 1 FROM ref r WHERE r.src_block_id = b.id AND r.kind = 'tag' AND r.dst_page_key = ?)");
+        conditions.push(
+          "EXISTS (SELECT 1 FROM ref r WHERE r.src_block_id = b.id AND r.kind = 'tag' AND r.dst_page_key = ?)",
+        );
         params.push(normalizePageName(tag));
       }
       for (const [k, v] of Object.entries(input.properties ?? {})) {
-        conditions.push("EXISTS (SELECT 1 FROM block_prop bp WHERE bp.block_id = b.id AND bp.key = ? AND bp.value = ?)");
+        conditions.push(
+          "EXISTS (SELECT 1 FROM block_prop bp WHERE bp.block_id = b.id AND bp.key = ? AND bp.value = ?)",
+        );
         params.push(k, v);
       }
       sql += ` AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
@@ -162,15 +185,19 @@ export const search = defineOp({
       const conditions = ["p.deleted_at IS NULL"];
       const params: unknown[] = [input.query];
       if (input.journals_only) conditions.push("p.journal_day IS NOT NULL");
-      if (pageIds && pageIds.length > 0) conditions.push(`p.id IN (${pageIds.map(() => "?").join(",")})`);
+      if (pageIds && pageIds.length > 0)
+        conditions.push(`p.id IN (${pageIds.map(() => "?").join(",")})`);
       if (pageIds && pageIds.length > 0) params.push(...pageIds);
       const sql = `SELECT p.id AS id, p.name AS name, p.journal_day AS journal_day, p.updated_at AS updated_at, bm25(page_fts) AS rank
                    FROM page_fts JOIN page p ON p.rowid = page_fts.rowid
                    WHERE page_fts MATCH ? AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
-      const rows = driver.all<{ id: string; name: string; journal_day: number | null; updated_at: number; rank: number }>(
-        sql,
-        params,
-      );
+      const rows = driver.all<{
+        id: string;
+        name: string;
+        journal_day: number | null;
+        updated_at: number;
+        rank: number;
+      }>(sql, params);
       for (const r of rows) {
         candidates.push({
           kind: "page",
@@ -187,7 +214,9 @@ export const search = defineOp({
     }
 
     candidates.sort((a, b) => b.score - a.score);
-    const offset = input.cursor ? Number.parseInt(Buffer.from(input.cursor, "base64").toString("utf8"), 10) : 0;
+    const offset = input.cursor
+      ? Number.parseInt(Buffer.from(input.cursor, "base64").toString("utf8"), 10)
+      : 0;
     const page = candidates.slice(offset, offset + input.limit);
     const hasMore = candidates.length > offset + input.limit;
 

@@ -56,15 +56,33 @@ const TABLES = [
   "plugin",
 ];
 
+/**
+ * Columns SQLite computes itself and therefore refuses to accept in an INSERT
+ * ("cannot INSERT into generated column"). `block.due_day` is one (schema.ts:
+ * `GENERATED ALWAYS AS (coalesce(scheduled_day, deadline_day)) STORED`), so a naive
+ * `SELECT *` -> `INSERT` copy crashes on any graph that has even one block. `table_xinfo`
+ * (unlike `table_info`) lists them, flagged `hidden` 2 (VIRTUAL) or 3 (STORED).
+ */
+function generatedColumns(driver: SqlDriver, table: string): Set<string> {
+  const info = driver.all<{ name: string; hidden: number }>(`PRAGMA table_xinfo(${table})`);
+  return new Set(info.filter((c) => c.hidden === 2 || c.hidden === 3).map((c) => c.name));
+}
+
 function copyTable(source: SqlDriver, dest: SqlDriver, table: string): void {
   // `block`/`page` rowids drive the FTS5 `content_rowid` linkage (schema.ts); copying in rowid
   // order into an empty table reproduces the same rowid assignment on the destination.
   const orderBy = table === "block" || table === "page" ? " ORDER BY rowid" : "";
   const rows = source.all<Record<string, unknown>>(`SELECT * FROM ${table}${orderBy}`);
+  if (rows.length === 0) return;
+  const generated = generatedColumns(source, table);
+  const cols = Object.keys(rows[0] as Record<string, unknown>).filter((c) => !generated.has(c));
+  if (cols.length === 0) return;
+  const sql = `INSERT INTO ${table}(${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
   for (const row of rows) {
-    const cols = Object.keys(row);
-    if (cols.length === 0) continue;
-    dest.run(`INSERT INTO ${table}(${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`, cols.map((c) => row[c]));
+    dest.run(
+      sql,
+      cols.map((c) => row[c]),
+    );
   }
 }
 
