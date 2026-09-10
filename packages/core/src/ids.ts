@@ -1,41 +1,58 @@
+/**
+ * Ids (ADR 004): 14 lowercase Crockford base32 characters.
+ *   - 9 chars = 45 bits of milliseconds since the epoch (time-ordered, sortable)
+ *   - 5 chars = 25 random bits, bumped monotonically inside the same millisecond
+ * Short enough for LLM serialization (`- text ^1k7f3q9xz2hav4`), Obsidian `^id` compatible.
+ * Logseq UUIDs are recognized by `isUuid` for import-time mapping.
+ */
+
+const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
+const ID_RE = /^[0-9a-hjkmnp-tv-z]{14}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TIME_CHARS = 9;
+const RAND_CHARS = 5;
+const RAND_MAX = 2 ** (RAND_CHARS * 5);
 
 let lastMs = 0;
-let seq = 0;
+let lastRand = 0;
 
-/**
- * UUIDv7: time-ordered, so new blocks and ops sort by creation time, while still being
- * a valid UUID for Logseq-style `id::` properties and ((block refs)).
- * Monotonic within a process: same-millisecond ids increase via the 12-bit rand_a field.
- */
+function encode(value: number, chars: number): string {
+  let out = "";
+  let v = value;
+  for (let i = 0; i < chars; i++) {
+    out = ALPHABET[v % 32] + out;
+    v = Math.floor(v / 32);
+  }
+  return out;
+}
+
 export function newId(now: number = Date.now()): string {
   if (now > lastMs) {
     lastMs = now;
-    seq = Math.floor(Math.random() * 0x800);
+    const r = crypto.getRandomValues(new Uint32Array(1))[0] as number;
+    lastRand = r % RAND_MAX;
   } else {
-    seq++;
-    if (seq > 0xfff) {
+    lastRand++;
+    if (lastRand >= RAND_MAX) {
       lastMs++;
-      seq = 0;
+      lastRand = 0;
     }
   }
-  const ms = lastMs;
-  const bytes = new Uint8Array(16);
-  bytes[0] = (ms / 2 ** 40) & 0xff;
-  bytes[1] = (ms / 2 ** 32) & 0xff;
-  bytes[2] = (ms / 2 ** 24) & 0xff;
-  bytes[3] = (ms / 2 ** 16) & 0xff;
-  bytes[4] = (ms / 2 ** 8) & 0xff;
-  bytes[5] = ms & 0xff;
-  bytes[6] = 0x70 | (seq >> 8);
-  bytes[7] = seq & 0xff;
-  const rand = crypto.getRandomValues(new Uint8Array(8));
-  bytes[8] = 0x80 | ((rand[0] as number) & 0x3f);
-  for (let i = 1; i < 8; i++) bytes[8 + i] = rand[i] as number;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  return encode(lastMs, TIME_CHARS) + encode(lastRand, RAND_CHARS);
 }
 
+export function isId(s: string): boolean {
+  return ID_RE.test(s);
+}
+
+/** Milliseconds encoded in an id (creation time). */
+export function idTime(id: string): number {
+  let v = 0;
+  for (let i = 0; i < TIME_CHARS; i++) v = v * 32 + ALPHABET.indexOf(id[i] as string);
+  return v;
+}
+
+/** Logseq-style UUID (v4 in file graphs); accepted on import and mapped to a vrite id. */
 export function isUuid(s: string): boolean {
   return UUID_RE.test(s);
 }

@@ -8,7 +8,7 @@
  */
 
 import { isHlc } from "./hlc.js";
-import { isUuid } from "./ids.js";
+import { isId, isUuid } from "./ids.js";
 import type { Priority, Properties, TaskMarker } from "./model.js";
 
 export interface BlockPlace {
@@ -73,7 +73,7 @@ export function isOp(x: unknown): x is Op {
     o.id === o.hlc &&
     typeof o.device === "string" &&
     typeof o.entity === "string" &&
-    isUuid(o.entity) &&
+    (isId(o.entity) || isUuid(o.entity)) &&
     typeof o.payload === "object" &&
     o.payload !== null &&
     typeof (o.payload as { kind?: unknown }).kind === "string"

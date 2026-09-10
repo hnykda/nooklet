@@ -250,19 +250,31 @@ Namespaces:
 - Related: KNN over page vectors (mean of block vectors) excluding self, shown in the sidebar.
 - Unlinked reference suggestions reuse full-text search.
 
-## 10. Embeddings (ADR 009, to be finalized with `research/06-embeddings.md`)
+## 10. Embeddings (ADR 010)
 
-- Provider interface `embed(texts) -> vectors` with an Ollama implementation over `/api/embed`
-  (batch input, dimensions detected at runtime, per-model query/document instruction prefixes
-  where the model expects them), and an OpenAI-compatible implementation so LM Studio,
-  llama.cpp, or hosted APIs can be swapped in. Any model the user has in Ollama can be chosen.
-- Unit of embedding: a block with its ancestor path and page title as context
-  ("Page › parent › block"), truncated to the model's window; whole-page vectors are means.
-- Incremental: `applyOps` enqueues changed blocks; a single worker drains the queue, skips
-  unchanged content hashes, deletes vectors of deleted blocks; switching models re-indexes in the
-  background while the old index keeps serving.
-- Storage: float32 BLOBs in SQLite with brute-force cosine in the worker up to roughly 200k
-  blocks, `sqlite-vec` as an optional accelerated index. Embeddings never sync to devices.
+- Provider interface `embed(texts, kind: query | document) -> vectors` with an Ollama
+  implementation over `/api/embed` (batches of 64, dimensions read from `/api/show`, per-model
+  query-side instruction prefixes for models that expect them such as qwen3-embedding, none for
+  bge-m3) and an OpenAI-compatible implementation so LM Studio, llama.cpp, or hosted APIs can be
+  swapped in. Any model the user has in Ollama can be chosen at runtime.
+- Default model bge-m3: multilingual (Czech and English), 1024 dims, about 65 short documents
+  per second on this machine versus 8 for qwen3-embedding:8b, and it needs no query prefix. It
+  is hard-capped at 2,048 tokens per input on Ollama, so units stay well under that.
+- Unit of embedding: a block with its breadcrumb (`Page › ancestor › …`) plus its text and
+  flattened descendants up to about 300 tokens; page units are the title plus top-level outline.
+  This is where Smart Connections, Obsidian Copilot, Khoj, and the user's own Logseq MCP server
+  converged; Logseq 2.0's context-free block embedding is the known-weak baseline.
+- Incremental: `applyOps` marks changed units; a worker with its own SQLite connection drains a
+  database-backed queue (3 s per-page debounce), skips unchanged content hashes, deletes vectors
+  of deleted blocks, and reconciles on startup. Switching models builds a second index in the
+  background and flips when complete.
+- Storage: `sqlite-vec` `vec0` tables in the same SQLite file (float32, cosine), one table per
+  model. Measured on this machine: a 20k-block graph is about 85 MB with hybrid queries in 22 ms;
+  100k×1024 is 415 MB with KNN in 99 ms (int8 or binary quantization available if ever needed).
+  Embeddings never sync to devices; semantic search is an API/MCP call.
+- Hybrid search: FTS5 (unicode61 with diacritics removed, plus a trigram twin for substring
+  matches) fused with KNN by reciprocal rank fusion in one SQL statement. Related pages/blocks
+  use the stored vector of the current item, self excluded. No reranker in v1.
 - No built-in chatbot: LLM features arrive through MCP tools (search, related, read, write).
 
 ## 11. HTTP API and MCP (ADR 008)

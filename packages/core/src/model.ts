@@ -6,8 +6,8 @@
  * are *derived* from block content, never stored as source of truth.
  */
 
-export type BlockId = string; // UUID v4 (Logseq-compatible for ((refs)) and id:: properties)
-export type PageId = string; // UUID v4
+export type BlockId = string; // 14-char time-ordered id (ADR 004); imported Logseq uuids are mapped
+export type PageId = string;
 
 /** Task markers. Both Logseq workflows are supported (TODO/DOING and LATER/NOW). */
 export const TASK_MARKERS = [

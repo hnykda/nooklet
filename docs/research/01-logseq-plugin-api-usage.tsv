@@ -1,0 +1,94 @@
+logseq.Editor.getCurrentBlock	{
+	"message": "API rate limit exceeded for user ID 2741256. If you reach out to GitHub Support for help, please include the request ID 8B33:2917A3:99B080F:956FBF7:6AA29B4B and timestamp 2026-09-10 11:58:03 UTC. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https:\/\/docs.github.com\/en\/site-policy\/github-terms\/github-terms-of-service)",
+	"documentation_url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#rate-limiting",
+	"status": "403"
+}
+logseq.Editor.getBlock	662
+logseq.Editor.insertBlock	390
+logseq.Editor.updateBlock	433
+logseq.Editor.removeBlock	218
+logseq.Editor.insertBatchBlock	{
+	"message": "API rate limit exceeded for user ID 2741256. If you reach out to GitHub Support for help, please include the request ID 8AE5:21BF41:987AEC4:941FB6E:6AA29B71 and timestamp 2026-09-10 11:58:41 UTC. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https:\/\/docs.github.com\/en\/site-policy\/github-terms\/github-terms-of-service)",
+	"documentation_url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#rate-limiting",
+	"status": "403"
+}
+logseq.Editor.getCurrentPage	{
+	"message": "API rate limit exceeded for user ID 2741256. If you reach out to GitHub Support for help, please include the request ID 8AD8:20090A:97280D4:9302E68:6AA29B78 and timestamp 2026-09-10 11:58:48 UTC. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https:\/\/docs.github.com\/en\/site-policy\/github-terms\/github-terms-of-service)",
+	"documentation_url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#rate-limiting",
+	"status": "403"
+}
+logseq.Editor.getPage	{
+	"message": "API rate limit exceeded for user ID 2741256. If you reach out to GitHub Support for help, please include the request ID 8C1E:921AB:9A78C55:9617A80:6AA29B7F and timestamp 2026-09-10 11:58:55 UTC. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https:\/\/docs.github.com\/en\/site-policy\/github-terms\/github-terms-of-service)",
+	"documentation_url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#rate-limiting",
+	"status": "403"
+}
+logseq.Editor.createPage	{
+	"message": "API rate limit exceeded for user ID 2741256. If you reach out to GitHub Support for help, please include the request ID 8AB1:23D795:9689243:924EB1D:6AA29B86 and timestamp 2026-09-10 11:59:02 UTC. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https:\/\/docs.github.com\/en\/site-policy\/github-terms\/github-terms-of-service)",
+	"documentation_url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#rate-limiting",
+	"status": "403"
+}
+logseq.Editor.getPageBlocksTree	340
+logseq.Editor.getCurrentPageBlocksTree	106
+logseq.Editor.registerSlashCommand	368
+logseq.Editor.registerBlockContextMenuItem	130
+logseq.Editor.getEditingBlockContent	67
+logseq.Editor.insertAtEditingCursor	186
+logseq.Editor.checkEditing	56
+logseq.Editor.getSelectedBlocks	69
+logseq.Editor.upsertBlockProperty	203
+logseq.Editor.getBlockProperties	72
+logseq.Editor.getBlockProperty	45
+logseq.Editor.appendBlockInPage	168
+logseq.Editor.getAllPages	120
+logseq.Editor.openInRightSidebar	83
+logseq.Editor.scrollToBlockInPage	62
+logseq.Editor.exitEditingMode	118
+logseq.Editor.editBlock	91
+logseq.Editor.setBlockCollapsed	47
+logseq.Editor.getPageLinkedReferences	60
+logseq.Editor.moveBlock	65
+logseq.Editor.getEditingCursorPosition	61
+logseq.Editor.prependBlockInPage	30
+logseq.Editor.deletePage	94
+logseq.Editor.renamePage	45
+logseq.Editor.getPreviousSiblingBlock	25
+logseq.DB.q	146
+logseq.DB.datascriptQuery	374
+logseq.DB.onChanged	129
+logseq.DB.onBlockChanged	25
+logseq.App.showMsg	174
+logseq.UI.showMsg	581
+logseq.App.registerCommandPalette	317
+logseq.App.registerCommandShortcut	41
+logseq.App.registerUIItem	284
+logseq.App.getUserConfigs	298
+logseq.App.onRouteChanged	97
+logseq.App.onCurrentGraphChanged	88
+logseq.App.pushState	150
+logseq.App.getCurrentGraph	231
+logseq.App.onMacroRendererSlotted	136
+logseq.App.onBlockRendererSlotted	9
+logseq.App.onThemeModeChanged	97
+logseq.App.registerPageMenuItem	35
+logseq.App.onSidebarVisibleChanged	41
+logseq.App.getInfo	58
+logseq.App.queryElementById	12
+logseq.App.execGitCommand	5
+logseq.App.onPageHeadActionsSlotted	22
+logseq.provideUI	223
+logseq.provideStyle	337
+logseq.provideModel	338
+logseq.useSettingsSchema	399
+logseq.updateSettings	208
+logseq.showMainUI	267
+logseq.hideMainUI	280
+logseq.setMainUIInlineStyle	142
+logseq.provideTheme	7
+logseq.beforeunload	104
+logseq.onSettingsChanged	157
+logseq.Assets.listFilesOfCurrentGraph	29
+logseq.FileStorage.getItem	7
+logseq.Assets.makeUrl	26
+logseq.Git.execCommand	40
+logseq.Editor.getBlockAndChildren	0
+DONE
