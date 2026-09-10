@@ -25,3 +25,15 @@ The user wants the app to work the way native apps do without maintaining a seco
 storage for web apps is best-effort (separate containers per icon, eviction under pressure),
 which makes "server is truth" mandatory anyway. Logseq's own mobile uses this exact Capacitor
 configuration (`KeyboardResize.None` with a CSS keyboard-height variable).
+
+## Note: why the UI framework choice (ADR 006, SolidJS) does not lock us out of native shells
+
+PWA, Capacitor, and Tauri all work by embedding a system or bundled webview and pointing it at
+the ordinary web build; Electron would work the same way. SolidJS compiles to standard DOM
+operations, so the identical client code runs unchanged inside any of them — only the
+`platform` adapter's implementation swaps per target. This is exactly why Electron, React
+Native, and Flutter are excluded above for different reasons than "wrong framework": Electron is
+simply redundant with Tauri (same webview-wrapping approach, much larger binary), while React
+Native and Flutter replace the DOM with a native-widget tree and would require rewriting every
+UI component from scratch, regardless of which web framework we had chosen. A future native
+rewrite is a decision about the widget model, not about SolidJS.
