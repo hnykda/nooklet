@@ -1,33 +1,57 @@
 /**
- * Logseq-compatible outline markdown: text <-> tree of OutlineNode.
+ * Outline markdown: text <-> tree of OutlineNode.
  *
- * File format (what Logseq writes, and what we write):
+ * Canonical format (`docs/spec/markdown-grammar.md`; what our server writes):
  *
- *   title:: Page Title            <- optional page properties ("pre-block"), no bullet
+ *   title:: Page Title                  <- optional page properties ("pre-block"), no bullet
  *
- *   - first block                 <- one bullet per block; children indented by one tab
- *     id:: 66f0...                <- block properties as `key:: value` lines after the first line
- *     second line of the block    <- continuation lines: block indent + 2 spaces
- *   	- TODO child block         <- task marker (and optional [#A] priority) at line start
- *   	  collapsed:: true
- *   	  ```js
- *   	  - not a bullet: inside a fence
- *   	  ```
+ *   - first block ^1k7f3q9xz2hav4       <- one bullet per block; a trailing " ^id" suffix
+ *     collapsed:: true                     (Obsidian-style, OUT-11) carries the block id
+ *     second line of the block          <- continuation lines: block indent + one indent unit
+ *   - TODO [#A] child block ^1k7f3q9xz2hav5
+ *     scheduled:: 2026-09-12
+ *     repeat:: 1w
+ *   - ^1k7f3q9xz2hav6                   <- when line 1 would open a fence, the id sits alone
+ *     ```js                                on its own first line (OUT-14)
+ *     - not a bullet: inside a fence
+ *     ```
  *
- * Parsing is indentation-width based (tab = 4 columns), so 2-space and 4-space
- * indented files import as well. Serialization always writes tabs, like Logseq.
+ * Canonical nesting uses two-space indentation (OUT-6). Parsing is indentation-width based
+ * (tab = 4 columns), so tab-, 2-space-, and 4-space-indented files all import identically
+ * (each line's own width is computed independently, OUT-5) — this is what makes both Logseq
+ * file graphs (tabs) and Logseq DB markdown mirrors (2/4 spaces) import losslessly.
+ *
+ * Import tolerance (never emitted by the serializer): Logseq's `id:: <uuid>` property line
+ * (OUT-15), literal `1. `/`*`/`+` bullets (OUT-4), `custom_id::`/`logseq.order-list-type::`
+ * key remapping (OUT-19), `heading:: N` folded into a `#`-prefix (OUT-25), and org-mode
+ * `SCHEDULED:`/`DEADLINE:`/`:LOGBOOK:` syntax mapped onto `scheduled::`/`deadline::`/
+ * `repeat::` typed properties (ADR 011, OUT-23) with LOGBOOK history simply dropped (that
+ * history lives in the sync op log, not the file).
  */
 
+import { isId } from "./ids.js";
 import type { OutlineNode, ParsedPage, Priority, Properties, TaskMarker } from "./model.js";
 
 const TAB_WIDTH = 4;
 const BULLET_RE = /^([\t ]*)-(?: (.*))?$/;
+const ALT_BULLET_RE = /^([\t ]*)[*+](?: (.*))?$/;
+const NUMBERED_BULLET_RE = /^([\t ]*)[0-9]+\.(?: (.*))?$/;
 const FENCE_RE = /^(`{3,}|~{3,})/;
 const PROPERTY_RE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):: ?(.*)$/;
 const MARKER_RE =
   /^(TODO|DOING|DONE|LATER|NOW|WAITING|WAIT|CANCELED|CANCELLED|IN-PROGRESS)(?=\s|$)/;
 const PRIORITY_RE = /^\[#([ABC])\](?=\s|$)/;
 const FRONT_MATTER_LINE_RE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):\s*(.*)$/;
+/** OUT-12: a trailing " ^id" suffix on a line that also has other content. */
+const ID_SUFFIX_RE = / \^([0-9a-z]{14})$/;
+/** OUT-14: a line that is *only* an id (used when line 1 would otherwise open a fence). */
+const ID_ALONE_RE = /^\^([0-9a-z]{14})$/;
+/** OUT-23: org timestamp lines. Group 1 = SCHEDULED|DEADLINE, group 2 = the `<...>` interior. */
+const SCHEDULED_DEADLINE_RE = /^\s*(SCHEDULED|DEADLINE):\s*<([^>]+)>\s*$/;
+/** Interior of an org timestamp: date, optional weekday, optional time, optional repeater. */
+const TIMESTAMP_INNER_RE =
+  /^(\d{4}-\d{2}-\d{2})(?:\s+[A-Za-z]{2,3})?(?:\s+(\d{1,2}:\d{2}))?(?:\s+[.+]{1,2}(\d+)([dwmy]))?$/;
+const HEADING_PREFIX_RE = /^#{1,6} /;
 
 const MARKER_ALIASES: Record<string, TaskMarker> = {
   WAIT: "WAITING",
@@ -35,11 +59,20 @@ const MARKER_ALIASES: Record<string, TaskMarker> = {
   "IN-PROGRESS": "DOING",
 };
 
+/** OUT-19: keys remapped (after lowercasing) before the generic `_` -> `-` rule applies. */
+const PROPERTY_KEY_REMAP: Record<string, string> = {
+  custom_id: "id",
+  "custom-id": "id",
+  "logseq.order-list-type": "list",
+};
+
 interface RawNode {
   width: number;
   lines: string[];
   children: RawNode[];
   bullet: boolean;
+  /** OUT-4/17: opened by a literal `1. `-style bullet; folded into `list:: number` if unset. */
+  numbered: boolean;
 }
 
 function indentWidth(ws: string): number {
@@ -71,7 +104,7 @@ function stripContinuation(line: string, width: number): string {
   return line.slice(i);
 }
 
-/** Opening fence: line starts with ``` or ~~~ and the same fence does not close on the same line. */
+/** Opening fence: line starts with ``` or ~~~ and the same fence does not also close on it. */
 function openingFence(text: string): string | null {
   const m = FENCE_RE.exec(text);
   if (!m) return null;
@@ -97,7 +130,7 @@ export function parseOutline(text: string): ParsedPage {
   let fence: string | null = null;
   let i = 0;
 
-  // YAML front matter (older Logseq graphs / other tools)
+  // YAML front matter (OUT-3: older Logseq graphs / other tools)
   if (lines[0] === "---") {
     const end = lines.indexOf("---", 1);
     if (end > 0) {
@@ -109,9 +142,9 @@ export function parseOutline(text: string): ParsedPage {
     }
   }
 
-  const startNode = (width: number, firstLine: string, bullet: boolean): void => {
+  const startNode = (width: number, firstLine: string, bullet: boolean, numbered = false): void => {
     while (stack.length > 0 && (stack[stack.length - 1] as RawNode).width >= width) stack.pop();
-    const node: RawNode = { width, lines: [firstLine], children: [], bullet };
+    const node: RawNode = { width, lines: [firstLine], children: [], bullet, numbered };
     const parent = stack[stack.length - 1];
     if (parent) parent.children.push(node);
     else roots.push(node);
@@ -141,6 +174,16 @@ export function parseOutline(text: string): ParsedPage {
       startNode(indentWidth(m[1] as string), m[2] ?? "", true);
       continue;
     }
+    const am = ALT_BULLET_RE.exec(line);
+    if (am) {
+      startNode(indentWidth(am[1] as string), am[2] ?? "", true);
+      continue;
+    }
+    const nm = NUMBERED_BULLET_RE.exec(line);
+    if (nm) {
+      startNode(indentWidth(nm[1] as string), nm[2] ?? "", true, true);
+      continue;
+    }
 
     const ws = /^[\t ]*/.exec(line)?.[0] ?? "";
     const w = indentWidth(ws);
@@ -156,13 +199,13 @@ export function parseOutline(text: string): ParsedPage {
       continue;
     }
 
-    // Plain paragraph (no bullet) at this indentation: becomes its own block.
+    // Plain paragraph (no bullet) at this indentation: becomes its own block (OUT-9).
     startNode(w, line.slice(ws.length), false);
   }
 
   const nodes = roots.map(finalizeNode);
 
-  // Pre-block: a leading property-only block holds the page properties.
+  // Pre-block: a leading property-only block holds the page properties (OUT-2).
   const first = nodes[0];
   if (first && first.content === "" && first.marker === null && first.children.length === 0) {
     const hasProps = Object.keys(first.properties).length > 0 || first.id !== undefined;
@@ -176,12 +219,20 @@ export function parseOutline(text: string): ParsedPage {
   return page;
 }
 
+/** Normalize a raw property key per OUT-19: lowercase, remap table, else `_` -> `-`. */
+function normalizePropertyKey(raw: string): string {
+  const lower = raw.toLowerCase();
+  return PROPERTY_KEY_REMAP[lower] ?? lower.replace(/_/g, "-");
+}
+
 function finalizeNode(raw: RawNode): OutlineNode {
   const properties: Properties = {};
   const kept: string[] = [];
   let id: string | undefined;
   let collapsed = false;
+  let headingLevel: number | undefined;
   let fence: string | null = null;
+  let inLogbook = false;
   let firstKeptWasFirstLine = false;
 
   raw.lines.forEach((line, idx) => {
@@ -190,14 +241,38 @@ function finalizeNode(raw: RawNode): OutlineNode {
       if (closesFence(line, fence)) fence = null;
       return;
     }
+    // OUT-23: a :LOGBOOK: ... :END: drawer is dropped entirely (its history lives in the op log).
+    if (inLogbook) {
+      if (line.trim() === ":END:") inLogbook = false;
+      return;
+    }
+    if (line.trim() === ":LOGBOOK:") {
+      inLogbook = true;
+      return;
+    }
     const pm = PROPERTY_RE.exec(line);
     if (pm) {
-      const key = (pm[1] as string).toLowerCase();
+      const key = normalizePropertyKey(pm[1] as string);
       const value = (pm[2] as string).trim();
       if (key === "id") id = value;
       else if (key === "collapsed") collapsed = value === "true";
-      else properties[key] = value;
+      else if (key === "heading") {
+        const n = Number.parseInt(value, 10);
+        if (n >= 1 && n <= 6) headingLevel = n;
+      } else properties[key] = value;
       return;
+    }
+    // OUT-23: org SCHEDULED:/DEADLINE: timestamp lines -> scheduled::/deadline::/repeat::.
+    const sdm = SCHEDULED_DEADLINE_RE.exec(line);
+    if (sdm) {
+      const tm = TIMESTAMP_INNER_RE.exec((sdm[2] as string).trim());
+      if (tm) {
+        const kind = (sdm[1] as string).toLowerCase();
+        properties[kind] = tm[2] ? `${tm[1]} ${tm[2]}` : (tm[1] as string);
+        if (tm[3] && tm[4]) properties.repeat = `${tm[3]}${tm[4]}`;
+        return;
+      }
+      // malformed timestamp: fall through and keep the line as ordinary content (no data loss).
     }
     if (kept.length === 0 && idx === 0) firstKeptWasFirstLine = true;
     kept.push(line);
@@ -206,24 +281,53 @@ function finalizeNode(raw: RawNode): OutlineNode {
 
   let marker: TaskMarker | null = null;
   let priority: Priority | null = null;
+  let idFromSuffix: string | undefined;
+
   if (firstKeptWasFirstLine && kept.length > 0) {
-    let first = kept[0] as string;
-    const mm = MARKER_RE.exec(first);
-    if (mm) {
-      const raw = mm[1] as string;
-      marker = MARKER_ALIASES[raw] ?? (raw as TaskMarker);
-      first = first.slice(raw.length).trimStart();
+    // OUT-14: the id sits alone on line 1 when the real first line would open a fence
+    // (accepted harmlessly whenever a further line follows, even a non-fence one).
+    if (kept.length > 1) {
+      const aloneMatch = ID_ALONE_RE.exec(kept[0] as string);
+      if (aloneMatch && isId(aloneMatch[1] as string)) {
+        idFromSuffix = aloneMatch[1];
+        kept.shift();
+      }
     }
-    const pm = PRIORITY_RE.exec(first);
-    if (pm) {
-      priority = pm[1] as Priority;
-      first = first.slice(pm[0].length).trimStart();
+    if (idFromSuffix === undefined) {
+      let first = kept[0] as string;
+      const mm = MARKER_RE.exec(first);
+      if (mm) {
+        const rawMarker = mm[1] as string;
+        marker = MARKER_ALIASES[rawMarker] ?? (rawMarker as TaskMarker);
+        first = first.slice(rawMarker.length).trimStart();
+      }
+      const pm = PRIORITY_RE.exec(first);
+      if (pm) {
+        priority = pm[1] as Priority;
+        first = first.slice(pm[0].length).trimStart();
+      }
+      // OUT-12: trailing " ^id" suffix, checked after marker/priority are stripped.
+      const suffixMatch = ID_SUFFIX_RE.exec(first);
+      if (suffixMatch && isId(suffixMatch[1] as string)) {
+        idFromSuffix = suffixMatch[1];
+        first = first.slice(0, suffixMatch.index);
+      }
+      kept[0] = first;
     }
-    kept[0] = first;
   }
 
+  // OUT-15: the ^id suffix wins over an `id::` property line; the property is dropped either way.
+  if (idFromSuffix !== undefined) id = idFromSuffix;
+
+  if (raw.numbered && properties.list === undefined) properties.list = "number";
+
   while (kept.length > 0 && (kept[kept.length - 1] as string).trim() === "") kept.pop();
-  const content = kept.join("\n").replace(/[ \t]+$/gm, (m) => (m.length ? "" : m));
+  let content = kept.join("\n").replace(/[ \t]+$/gm, (m) => (m.length ? "" : m));
+
+  // OUT-25: `heading:: N` folds into a literal `#` prefix; a pre-existing `#` count always wins.
+  if (headingLevel !== undefined && !HEADING_PREFIX_RE.test(content)) {
+    content = `${"#".repeat(headingLevel)} ${content}`;
+  }
 
   const node: OutlineNode = {
     content,
@@ -238,15 +342,15 @@ function finalizeNode(raw: RawNode): OutlineNode {
 }
 
 export interface SerializeOptions {
-  /** Indent unit for nesting. Logseq writes tabs. */
+  /** Indent unit for nesting. Canonical is two spaces (OUT-6); Logseq OG writes tabs. */
   indent?: "\t" | "  " | "    ";
-  /** Which nodes get an `id::` line: nodes that have an id (default) or none. */
+  /** Which nodes get an ` ^id` suffix: nodes that have an id (default) or none. */
   ids?: "present" | "none";
 }
 
-/** Tree -> Logseq-compatible markdown text. */
+/** Tree -> canonical outline markdown text (`docs/spec/markdown-grammar.md`). */
 export function serializeOutline(page: ParsedPage, opts: SerializeOptions = {}): string {
-  const indentUnit = opts.indent ?? "\t";
+  const indentUnit = opts.indent ?? "  ";
   const writeIds = opts.ids !== "none";
   const out: string[] = [];
 
@@ -258,21 +362,38 @@ export function serializeOutline(page: ParsedPage, opts: SerializeOptions = {}):
   const walk = (node: OutlineNode, level: number): void => {
     const indent = indentUnit.repeat(level);
     const cont = `${indent}  `;
+    // Canonical output only ever uses the ^id suffix (OUT-11) for a genuine 14-char id; any
+    // other id shape (e.g. a Logseq UUID not yet remapped by the importer) round-trips through
+    // the OUT-15 `id::` property line instead, since a non-14-char suffix would not re-parse.
+    const suffixId = writeIds && node.id !== undefined && isId(node.id) ? node.id : undefined;
+    const legacyId = writeIds && node.id !== undefined && !isId(node.id) ? node.id : undefined;
     const head = [node.marker, node.priority ? `[#${node.priority}]` : null]
       .filter((s): s is string => s !== null)
       .join(" ");
     const contentLines = node.content === "" ? [] : node.content.split("\n");
     const first = contentLines[0] ?? "";
-    const firstLine = [head, first].filter((s) => s !== "").join(" ");
-    out.push(firstLine === "" ? `${indent}-` : `${indent}- ${firstLine}`);
+    let restContentLines: string[];
+
+    if (suffixId !== undefined && openingFence(first) !== null) {
+      // OUT-14: line 1 would open a fence, so the id sits alone and the fence starts on line 2.
+      out.push(`${indent}- ^${suffixId}`);
+      restContentLines = contentLines;
+    } else {
+      let firstLine = [head, first].filter((s) => s !== "").join(" ");
+      if (suffixId !== undefined) {
+        firstLine = firstLine === "" ? `^${suffixId}` : `${firstLine} ^${suffixId}`;
+      }
+      out.push(firstLine === "" ? `${indent}-` : `${indent}- ${firstLine}`);
+      restContentLines = contentLines.slice(1);
+    }
 
     const props: Array<[string, string]> = [];
-    if (writeIds && node.id) props.push(["id", node.id]);
+    if (legacyId !== undefined) props.push(["id", legacyId]);
     if (node.collapsed) props.push(["collapsed", "true"]);
     for (const [k, v] of Object.entries(node.properties)) props.push([k, v]);
     for (const [k, v] of props) out.push(`${cont}${k}:: ${v}`);
 
-    for (const rest of contentLines.slice(1)) out.push(rest === "" ? "" : `${cont}${rest}`);
+    for (const rest of restContentLines) out.push(rest === "" ? "" : `${cont}${rest}`);
     for (const child of node.children) walk(child, level + 1);
   };
 

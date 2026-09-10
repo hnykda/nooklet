@@ -133,9 +133,19 @@ describe("parseOutline", () => {
 });
 
 describe("serializeOutline", () => {
-  it("writes tabs, markers, priorities, properties and continuation lines", () => {
+  it("writes 2-space indent, markers, priorities, an id suffix and continuation lines", () => {
     const text =
-      "- TODO [#B] task\n  id:: 64f1a2b3-0000-4000-8000-000000000001\n  second line\n\t- child\n\t  collapsed:: true\n\t\t- grandchild\n";
+      "- TODO [#B] task ^64f1a2b3000041\n  second line\n  - child\n    collapsed:: true\n    - grandchild\n";
+    expect(roundTrip(text)).toBe(text);
+  });
+
+  it("still supports tab indentation as an explicit option", () => {
+    const parsed = parseOutline("- a ^64f1a2b3000041\n  - b\n");
+    expect(serializeOutline(parsed, { indent: "\t" })).toBe("- a ^64f1a2b3000041\n\t- b\n");
+  });
+
+  it("writes a lone-id first line before a fence (OUT-14)", () => {
+    const text = "- ^64f1a2b3000041\n  ```js\n  const x = 1;\n  ```\n";
     expect(roundTrip(text)).toBe(text);
   });
 
