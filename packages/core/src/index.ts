@@ -14,7 +14,9 @@ export * from "./refs.js";
 // browser bundle importing this main entry point never sees a `node:sqlite` import (ADR 001).
 export * from "./sync/apply-ops.js";
 export * from "./sync/driver.js";
+export * from "./sync/gc.js";
 export * from "./sync/queries.js";
 export * from "./sync/schema.js";
+export * from "./sync/text-merge.js";
 export * from "./sync/types.js";
 export * from "./tokens.js";

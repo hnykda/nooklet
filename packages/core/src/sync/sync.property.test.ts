@@ -15,14 +15,16 @@
 import { DatabaseSync } from "node:sqlite";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { Hlc } from "../hlc.js";
+import { compareHlc, Hlc } from "../hlc.js";
 import { newId } from "../ids.js";
 import { TASK_MARKERS } from "../model.js";
-import type { Op } from "../ops.js";
+import type { LoggedOp, Op } from "../ops.js";
 import { makeOp } from "../ops.js";
 import { applyOps, rebuild } from "./apply-ops.js";
 import type { SqlDriver } from "./driver.js";
+import { planOpLogGc } from "./gc.js";
 import { createNodeSqliteDriver } from "./node-sqlite-driver.js";
+import { getBlock, listBlockProps } from "./queries.js";
 import { initSchema } from "./schema.js";
 
 const DEVICE_IDS = ["aaaaaaa0", "aaaaaaa1", "aaaaaaa2", "aaaaaaa3"];
@@ -134,6 +136,29 @@ function descendantsOf(driver: SqlDriver, blockId: string): Set<string> {
     for (const c of children.get(cur) ?? []) stack.push(c);
   }
   return out;
+}
+
+/** Human-readable op log, HLC-ordered, for failure output — printing the abstract fast-check seeds
+ * alone (`blockSeed`, `parentSeed`, ...) is not enough to reconstruct what actually happened. */
+function formatOpLogForDebug(ops: Iterable<Op>): string {
+  const sorted = [...ops].sort((a, b) => compareHlc(a.hlc, b.hlc));
+  if (sorted.length === 0) return "(no ops)";
+  return sorted
+    .map((o) => `  ${o.hlc} dev=${o.device} entity=${o.entity} ${JSON.stringify(o.payload)}`)
+    .join("\n");
+}
+
+/** Run `fn`; on any thrown assertion, dump every op any device has authored/seen (HLC-ordered)
+ * before rethrowing, so a property-test failure is debuggable from the test output alone. */
+function withOpLogOnFailure(devices: readonly Device[], label: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    const allOps = new Map<string, Op>();
+    for (const d of devices) for (const [id, op] of d.log) allOps.set(id, op);
+    console.error(`${label} failed — op log:\n${formatOpLogForDebug(allOps.values())}`);
+    throw err;
+  }
 }
 
 function pick<T>(pool: readonly T[], seed: number): T | undefined {
@@ -255,6 +280,10 @@ function runScenario(deviceCount: number, actions: Action[]): void {
   const sharedNow = () => clockNow++;
   const devices = DEVICE_IDS.slice(0, deviceCount).map((id) => makeDevice(id, sharedNow));
 
+  withOpLogOnFailure(devices, "runScenario", () => runScenarioBody(devices, actions));
+}
+
+function runScenarioBody(devices: Device[], actions: Action[]): void {
   for (const action of actions) {
     const devSeed = action.t === "sync" ? 0 : action.dev;
     const dev = devices[((devSeed % devices.length) + devices.length) % devices.length] as Device;
@@ -423,6 +452,35 @@ function runScenario(deviceCount: number, actions: Action[]): void {
     rebuild(fresh, [...d.log.values()]);
     expect(dumpState(fresh)).toEqual(dumpState(d.driver));
   }
+
+  // (c) no op is ever lost: every op any device authored is present, with the *same* status, in
+  // every device's own `op` log table after a full sync — not just reflected in the state tables.
+  const authored = new Map<string, Op>();
+  for (const d of devices) for (const [id, op] of d.log) authored.set(id, op);
+  const opStatusPerDevice = devices.map(
+    (d) =>
+      new Map(
+        d.driver
+          .all<{ id: string; status: "applied" | "noop" | "rejected" }>("SELECT id, status FROM op")
+          .map((r) => [r.id, r.status] as const),
+      ),
+  );
+  for (const id of authored.keys()) {
+    const statuses = opStatusPerDevice.map((rows) => rows.get(id));
+    for (const [i, s] of statuses.entries()) {
+      if (s === undefined) {
+        throw new Error(`op ${id} is missing from device index ${i}'s op log after full sync`);
+      }
+    }
+    const first = statuses[0];
+    for (let i = 1; i < statuses.length; i++) {
+      if (statuses[i] !== first) {
+        throw new Error(
+          `op ${id} has divergent status across devices: ${JSON.stringify(statuses)}`,
+        );
+      }
+    }
+  }
 }
 
 describe("multi-device sync convergence", () => {
@@ -467,6 +525,485 @@ describe("multi-device sync convergence", () => {
         },
       ),
       { numRuns: 200 },
+    );
+  }, 30_000);
+});
+
+// -------------------------------------------------------------------------------------------
+// A device offline for a long stretch, reconnecting with a large backlog (research/03 §9: "Hand-
+// rolled sync bug (lost update, divergence)" / ADR 003's HLC-ordering guarantee across a big gap).
+// -------------------------------------------------------------------------------------------
+
+/** `actionArb` minus `sync`: every generated action accumulates in some device's own local log,
+ * with `runScenario`'s single mandatory *final* sync as the only point anything is exchanged —
+ * i.e. every device is "offline" for the entire scenario and reconnects once, all at once. */
+const noIntermediateSyncArb: fc.Arbitrary<Action> = actionArb.filter((a) => a.t !== "sync");
+
+describe("long-offline device reconnects with a large backlog", () => {
+  it("a big backlog delivered in one go still HLC-orders correctly and converges", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 3 }),
+        fc.array(noIntermediateSyncArb, { minLength: 40, maxLength: 90 }),
+        (deviceCount, actions) => {
+          runScenario(deviceCount, [{ t: "createPage", dev: 0 }, ...actions] as Action[]);
+        },
+      ),
+      { numRuns: 40 },
+    );
+  }, 30_000);
+});
+
+// -------------------------------------------------------------------------------------------
+// Three-way concurrent moves of the same subtree: a genuine 3-cycle attempt (X under Y, Y under
+// Z, Z under X), one move authored by each of 3 devices, all issued before any device has seen
+// another's move. Exercises the cycle-correction path under real concurrency (not the
+// single-device case `apply-ops.test.ts` already covers).
+// -------------------------------------------------------------------------------------------
+
+describe("three-way concurrent moves of the same subtree", () => {
+  const allOrders: ReadonlyArray<readonly [number, number, number]> = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ];
+
+  for (const order of allOrders) {
+    it(`rotation X→Y, Y→Z, Z→X issued in HLC order ${JSON.stringify(order)} never produces a cycle`, () => {
+      let clockNow = BASE;
+      const sharedNow = () => clockNow++;
+      const devices = DEVICE_IDS.slice(0, 3).map((id) => makeDevice(id, sharedNow));
+
+      withOpLogOnFailure(devices, "3-way rotation", () => {
+        const [d0] = devices as [Device, Device, Device];
+        const pageId = newId();
+        applyLocal(
+          d0,
+          makeOp(d0.clock.next(), d0.id, pageId, {
+            kind: "page.create",
+            name: pageId,
+            journalDay: null,
+            createdAt: BASE,
+          }),
+        );
+        const [xId, yId, zId] = [newId(), newId(), newId()];
+        for (const [i, blockId] of [xId, yId, zId].entries()) {
+          applyLocal(
+            d0,
+            makeOp(d0.clock.next(), d0.id, blockId, {
+              kind: "block.create",
+              place: { pageId, parentId: null, order: `k${i}` },
+              content: blockId,
+              createdAt: BASE,
+            }),
+          );
+        }
+        // Every device starts from the same tree (X, Y, Z as top-level siblings) before the
+        // concurrent rotation is issued.
+        syncAll(devices);
+
+        // moves[0] = X under Y, moves[1] = Y under Z, moves[2] = Z under X — a full rotation.
+        const moves: ReadonlyArray<readonly [string, string]> = [
+          [xId, yId],
+          [yId, zId],
+          [zId, xId],
+        ];
+        for (const idx of order) {
+          const [blockId, newParentId] = moves[idx] as readonly [string, string];
+          const dev = devices[idx] as Device;
+          applyLocal(
+            dev,
+            makeOp(dev.clock.next(), dev.id, blockId, {
+              kind: "block.place",
+              place: { pageId, parentId: newParentId, order: `m${idx}` },
+            }),
+          );
+        }
+
+        syncAll(devices);
+        for (const d of devices) assertNoCycles(d.driver);
+
+        const reference = dumpState(d0.driver);
+        for (const d of devices.slice(1)) expect(dumpState(d.driver)).toEqual(reference);
+
+        // A full 3-cycle can never all succeed: exactly one of the three rotating moves is
+        // rejected regardless of the HLC order they were issued in, the other two apply.
+        const placeStatuses = d0.driver.all<{ status: string }>(
+          "SELECT status FROM op WHERE kind = 'block.place'",
+        );
+        expect(placeStatuses.filter((r) => r.status === "rejected").length).toBe(1);
+        expect(placeStatuses.filter((r) => r.status === "applied").length).toBe(2);
+      });
+    });
+  }
+});
+
+// -------------------------------------------------------------------------------------------
+// Interleaved delete/restore/move of THE SAME block, across devices, with no ordering guarantee
+// between them — the delete/move interaction research/03 §6.4 calls out ("the block ends up
+// tombstoned at its new location (restorable)"), stressed under real multi-device concurrency
+// rather than a single-device sequence.
+// -------------------------------------------------------------------------------------------
+
+type DrmAction =
+  | { t: "delete"; dev: number }
+  | { t: "restore"; dev: number }
+  | { t: "move"; dev: number; parentSeed: number }
+  | { t: "sync" };
+
+const drmActionArb: fc.Arbitrary<DrmAction> = fc.oneof(
+  { weight: 3, arbitrary: fc.record({ t: fc.constant("delete" as const), dev: fc.nat() }) },
+  { weight: 3, arbitrary: fc.record({ t: fc.constant("restore" as const), dev: fc.nat() }) },
+  {
+    weight: 4,
+    arbitrary: fc.record({
+      t: fc.constant("move" as const),
+      dev: fc.nat(),
+      parentSeed: fc.nat(),
+    }),
+  },
+  { weight: 2, arbitrary: fc.record({ t: fc.constant("sync" as const) }) },
+);
+
+describe("interleaved delete/restore/move of the same block", () => {
+  it("converges regardless of interleaving, and place/delete never clobber each other", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 4 }),
+        fc.array(drmActionArb, { minLength: 10, maxLength: 40 }),
+        (deviceCount, actions) => {
+          let clockNow = BASE;
+          const sharedNow = () => clockNow++;
+          const devices = DEVICE_IDS.slice(0, deviceCount).map((id) => makeDevice(id, sharedNow));
+
+          withOpLogOnFailure(devices, "interleaved delete/restore/move", () => {
+            const d0 = devices[0] as Device;
+            const pageId = newId();
+            const targetId = newId();
+            const otherIds = [newId(), newId()];
+            applyLocal(
+              d0,
+              makeOp(d0.clock.next(), d0.id, pageId, {
+                kind: "page.create",
+                name: pageId,
+                journalDay: null,
+                createdAt: BASE,
+              }),
+            );
+            for (const id of [targetId, ...otherIds]) {
+              applyLocal(
+                d0,
+                makeOp(d0.clock.next(), d0.id, id, {
+                  kind: "block.create",
+                  place: { pageId, parentId: null, order: `k${id}` },
+                  content: id,
+                  createdAt: BASE,
+                }),
+              );
+            }
+            syncAll(devices);
+
+            for (const action of actions) {
+              if (action.t === "sync") {
+                syncAll(devices);
+                for (const d of devices) assertNoCycles(d.driver);
+                continue;
+              }
+              const dev = devices[
+                ((action.dev % devices.length) + devices.length) % devices.length
+              ] as Device;
+              switch (action.t) {
+                case "delete":
+                  applyLocal(
+                    dev,
+                    makeOp(dev.clock.next(), dev.id, targetId, {
+                      kind: "block.delete",
+                      deletedAt: BASE,
+                    }),
+                  );
+                  break;
+                case "restore":
+                  applyLocal(
+                    dev,
+                    makeOp(dev.clock.next(), dev.id, targetId, {
+                      kind: "block.delete",
+                      deletedAt: null,
+                    }),
+                  );
+                  break;
+                case "move": {
+                  const parentId =
+                    action.parentSeed % 3 === 0
+                      ? null
+                      : (pick(otherIds, action.parentSeed) ?? null);
+                  applyLocal(
+                    dev,
+                    makeOp(dev.clock.next(), dev.id, targetId, {
+                      kind: "block.place",
+                      place: { pageId, parentId, order: `m${action.parentSeed % 1000}` },
+                    }),
+                  );
+                  break;
+                }
+                default: {
+                  const exhaustive: never = action;
+                  throw new Error(`unhandled action: ${JSON.stringify(exhaustive)}`);
+                }
+              }
+            }
+
+            syncAll(devices);
+            for (const d of devices) assertNoCycles(d.driver);
+
+            const reference = dumpState(d0.driver);
+            for (const d of devices.slice(1)) expect(dumpState(d.driver)).toEqual(reference);
+
+            // Independent fields on the SAME hotly-contested block: whichever field (delete vs.
+            // place) has ops must land on exactly its own max-HLC writer, unaffected by the other
+            // field's traffic.
+            const targetOps = [...d0.log.values()].filter((o) => o.entity === targetId);
+            const row = getBlock(d0.driver, targetId);
+            expect(row).toBeDefined();
+
+            const placeCandidates = targetOps.filter(
+              (o) => o.payload.kind === "block.create" || o.payload.kind === "block.place",
+            );
+            const maxPlace = placeCandidates.reduce((a, b) =>
+              compareHlc(a.hlc, b.hlc) > 0 ? a : b,
+            );
+            expect(row?.placeHlc).toBe(maxPlace.hlc);
+
+            const deleteOps = targetOps.filter((o) => o.payload.kind === "block.delete");
+            if (deleteOps.length > 0) {
+              const maxDelete = deleteOps.reduce((a, b) => (compareHlc(a.hlc, b.hlc) > 0 ? a : b));
+              expect(row?.deletedHlc).toBe(maxDelete.hlc);
+            } else {
+              expect(row?.deletedHlc).toBeNull();
+            }
+          });
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// Property writes racing text writes on the SAME block: per-field HLCs (ADR 003) mean a
+// concurrent `block.text` and `block.prop` on one block must never clobber each other, no matter
+// how densely interleaved across devices.
+// -------------------------------------------------------------------------------------------
+
+type RaceAction =
+  | { t: "text"; dev: number; seed: number }
+  | { t: "prop"; dev: number; keySeed: number; valueSeed: number }
+  | { t: "sync" };
+
+const raceActionArb: fc.Arbitrary<RaceAction> = fc.oneof(
+  {
+    weight: 5,
+    arbitrary: fc.record({ t: fc.constant("text" as const), dev: fc.nat(), seed: fc.nat() }),
+  },
+  {
+    weight: 5,
+    arbitrary: fc.record({
+      t: fc.constant("prop" as const),
+      dev: fc.nat(),
+      keySeed: fc.nat(),
+      valueSeed: fc.nat(),
+    }),
+  },
+  { weight: 2, arbitrary: fc.record({ t: fc.constant("sync" as const) }) },
+);
+
+/** Two prop keys with clean "starts unset" semantics: `area` (generic, routed to `block_prop`)
+ * and `scheduled` (a reserved key with its own dedicated column+HLC, but — unlike marker/priority
+ * — NOT given a baseline HLC by `block.create`), so a field's current HLC is exactly the max HLC
+ * of the ops this test issued for it, with no creation-time wrinkle to account for. */
+function racePropWrite(keySeed: number, valueSeed: number): { key: string; value: string } {
+  if (keySeed % 2 === 0) return { key: "area", value: `val-${valueSeed % 10}` };
+  const day = (Math.abs(valueSeed) % 27) + 1;
+  return { key: "scheduled", value: `2026-09-${String(day).padStart(2, "0")}` };
+}
+
+describe("property writes racing text writes on the same block", () => {
+  it("content and each prop key converge independently to their own max-HLC writer", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 4 }),
+        fc.array(raceActionArb, { minLength: 10, maxLength: 40 }),
+        (deviceCount, actions) => {
+          let clockNow = BASE;
+          const sharedNow = () => clockNow++;
+          const devices = DEVICE_IDS.slice(0, deviceCount).map((id) => makeDevice(id, sharedNow));
+
+          withOpLogOnFailure(devices, "prop-vs-text race", () => {
+            const d0 = devices[0] as Device;
+            const pageId = newId();
+            const targetId = newId();
+            applyLocal(
+              d0,
+              makeOp(d0.clock.next(), d0.id, pageId, {
+                kind: "page.create",
+                name: pageId,
+                journalDay: null,
+                createdAt: BASE,
+              }),
+            );
+            applyLocal(
+              d0,
+              makeOp(d0.clock.next(), d0.id, targetId, {
+                kind: "block.create",
+                place: { pageId, parentId: null, order: "k0" },
+                content: "initial",
+                createdAt: BASE,
+              }),
+            );
+            syncAll(devices);
+
+            for (const action of actions) {
+              if (action.t === "sync") {
+                syncAll(devices);
+                for (const d of devices) assertNoCycles(d.driver);
+                continue;
+              }
+              const dev = devices[
+                ((action.dev % devices.length) + devices.length) % devices.length
+              ] as Device;
+              if (action.t === "text") {
+                applyLocal(
+                  dev,
+                  makeOp(dev.clock.next(), dev.id, targetId, {
+                    kind: "block.text",
+                    content: `text-${action.seed}`,
+                  }),
+                );
+              } else {
+                const { key, value } = racePropWrite(action.keySeed, action.valueSeed);
+                applyLocal(
+                  dev,
+                  makeOp(dev.clock.next(), dev.id, targetId, { kind: "block.prop", key, value }),
+                );
+              }
+            }
+
+            syncAll(devices);
+            for (const d of devices) assertNoCycles(d.driver);
+
+            const reference = dumpState(d0.driver);
+            for (const d of devices.slice(1)) expect(dumpState(d.driver)).toEqual(reference);
+
+            const targetOps = [...d0.log.values()].filter((o) => o.entity === targetId);
+            const row = getBlock(d0.driver, targetId);
+            expect(row).toBeDefined();
+
+            const textOps = targetOps.filter((o) => o.payload.kind === "block.text");
+            if (textOps.length > 0) {
+              const maxText = textOps.reduce((a, b) => (compareHlc(a.hlc, b.hlc) > 0 ? a : b));
+              expect(row?.contentHlc).toBe(maxText.hlc);
+              if (maxText.payload.kind === "block.text") {
+                expect(row?.content).toBe(maxText.payload.content);
+              }
+            }
+
+            const areaOps = targetOps.filter(
+              (o) => o.payload.kind === "block.prop" && o.payload.key === "area",
+            );
+            if (areaOps.length > 0) {
+              const maxArea = areaOps.reduce((a, b) => (compareHlc(a.hlc, b.hlc) > 0 ? a : b));
+              const prop = listBlockProps(d0.driver, targetId).find((p) => p.key === "area");
+              expect(prop?.hlc).toBe(maxArea.hlc);
+            }
+
+            const schedOps = targetOps.filter(
+              (o) => o.payload.kind === "block.prop" && o.payload.key === "scheduled",
+            );
+            if (schedOps.length > 0) {
+              const maxSched = schedOps.reduce((a, b) => (compareHlc(a.hlc, b.hlc) > 0 ? a : b));
+              expect(row?.scheduledHlc).toBe(maxSched.hlc);
+            }
+          });
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// Op-log GC (research/03 §6.5, `./gc.ts`'s `planOpLogGc`). The safety property under test: a
+// device that has already caught up to exactly the floor (i.e. has applied every op with
+// `seq < floor` — which, by the floor's own definition as `MIN(device.acked_seq)`, is EVERY real
+// device, since none can be behind the minimum) can reach the true current state using ONLY
+// `plan.retain` (`seq >= floor`) — dropping `plan.drop` therefore loses nothing any real device
+// will ever ask for again.
+//
+// IMPORTANT — a hazard this suite's first draft caught (see the file's own commit history /
+// PR description for the write-up): this is NOT the same as "copy a snapshot of the CURRENT
+// state, then blindly reapply every retained op on top." That formulation is unsound and this
+// test used to (wrongly) assert it: `applyOps`'s `resolvePlace` resolves `block.place.parentId`
+// against whatever the driver's parent row looks like *right now* (a live block, or "doesn't
+// exist / is deleted -> fall back to null") — it has no notion of "as of when this op was
+// originally authored." Reprocessing an OLD `block.place` op against a driver that has since
+// moved PAST it (e.g. the referenced parent was deleted by a *later* op already baked into that
+// "current" snapshot) can silently null out a parent that op never actually detached, changing
+// the outcome. This is exactly why `applyOps` guards every op through the `op` table's
+// "already recorded -> skip" check in normal operation (push/pull), and precisely why GC and
+// bootstrap must only ever pair `plan.retain` with a snapshot taken AT OR BEFORE the floor
+// (reflecting exactly `plan.drop`'s effect, never anything from `plan.retain` itself) — never
+// with a snapshot of "current." `planOpLogGc`'s doc comment and `gc.ts`'s file header both flag
+// this explicitly. The corrected property below reflects the pairing that is actually safe.
+// -------------------------------------------------------------------------------------------
+
+describe("op-log GC", () => {
+  it("planOpLogGc partitions correctly, and a device caught up to the floor can reach current state using only the retained tail", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 4 }),
+        fc.array(actionArb, { minLength: 15, maxLength: 40 }),
+        fc.nat(),
+        (deviceCount, actions, floorSeed) => {
+          let clockNow = BASE;
+          const sharedNow = () => clockNow++;
+          const devices = DEVICE_IDS.slice(0, deviceCount).map((id) => makeDevice(id, sharedNow));
+
+          withOpLogOnFailure(devices, "op-log GC", () => {
+            runScenarioBody(devices, actions);
+            syncAll(devices);
+
+            // `seq` = order each op was first authored across the whole simulation — a stand-in
+            // for server arrival order, deliberately NOT re-sorted by HLC (arrival order and HLC
+            // order can and do diverge; see file header).
+            const merged = [...(devices[0] as Device).log.values()];
+            const logged: LoggedOp[] = merged.map((op, i) => ({
+              ...op,
+              seq: i,
+              status: "applied",
+            }));
+            const floor = logged.length === 0 ? 0 : floorSeed % (logged.length + 1);
+
+            const plan = planOpLogGc(logged, floor);
+            expect(plan.drop.length + plan.retain.length).toBe(logged.length);
+            expect(plan.drop.every((o) => o.seq < floor)).toBe(true);
+            expect(plan.retain.every((o) => o.seq >= floor)).toBe(true);
+
+            const current = (devices[0] as Device).driver;
+
+            // A device already caught up to the floor: its state reflects exactly `plan.drop`
+            // (every op with `seq < floor`), nothing more. Bringing it current needs only
+            // `plan.retain` applied on top, in the same causal (HLC) order `applyOps` always
+            // uses — never anything from `plan.drop` again.
+            const caughtUpToFloor = newDriver();
+            rebuild(caughtUpToFloor, plan.drop);
+            applyOps(caughtUpToFloor, plan.retain);
+            expect(dumpState(caughtUpToFloor)).toEqual(dumpState(current));
+          });
+        },
+      ),
+      { numRuns: 60 },
     );
   }, 30_000);
 });
