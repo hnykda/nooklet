@@ -35,7 +35,16 @@
 import type { EditorView } from "@codemirror/view";
 import { makeOp, type Op } from "@nooklet/core";
 import "./editor.css";
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  untrack,
+} from "solid-js";
 import {
   createEditorHost,
   setActiveContextSnapshot,
@@ -156,7 +165,18 @@ export function BlockTree(props: {
       // Never let a resource refetch clobber the live CM6 buffer for the block being typed into.
       const live = surface.content();
       const idx = flat.findIndex((b) => b.id === editingBlockId);
-      if (idx !== -1) flat[idx] = { ...(flat[idx] as EditableBlock), content: live };
+      if (idx !== -1) {
+        flat[idx] = { ...(flat[idx] as EditableBlock), content: live };
+      } else {
+        // The block being edited is not in this query result yet — it was just created
+        // optimistically (Enter for a new sibling) and the write has not committed by the time
+        // this refetch resolved. Dropping it here would unmount its row mid-keystroke, detaching
+        // the editor and silently swallowing whatever was typed next; the visible symptom was
+        // Enter followed by "second bullet" landing as "cond bullet". Keep the local row and let
+        // the next refetch, which will contain it, take over.
+        const local = untrack(localBlocks).find((b) => b.id === editingBlockId);
+        if (local) flat.push({ ...local, content: live });
+      }
     }
     setLocalBlocks(flat);
   });
@@ -173,6 +193,13 @@ export function BlockTree(props: {
 
   const rows = createMemo(() => flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }));
   const visibleIds = createMemo(() => rows().map((r) => r.id));
+  // Rendering iterates `visibleIds()` (strings, compared by value) rather than `rows()` (fresh
+  // objects on every rebuild), so `<For>` reuses each row's DOM instead of recreating it. This is
+  // load-bearing, not a micro-optimisation: every keystroke refetches the page resource, which
+  // rebuilds `rows()`; keying on those objects tore out the element the single CM6 surface had
+  // been re-parented into, so editing died after exactly one character. This map keeps the
+  // per-row lookup O(1).
+  const rowById = createMemo(() => new Map(rows().map((r) => [r.id, r])));
 
   const numbering = createMemo(() => {
     const t = editorTree();
@@ -526,6 +553,24 @@ export function BlockTree(props: {
   const surface: Surface = createSurface({ onTextChange, dispatchKey, onPaste });
   onCleanup(() => surface.detach());
 
+  // A typed edit is only written after a ~500 ms pause (`onTextChange`'s debounce). Without the
+  // listeners below, anything typed in that window is lost outright if the tab is closed, hidden,
+  // or reloaded first — the op was never built, so it is not in the local replica either. Both
+  // events are the documented ones for "you may never run again"; `visibilitychange` is what
+  // actually fires on mobile, where a backgrounded tab can be killed without `pagehide`.
+  onMount(() => {
+    const flushNow = (): void => flushPendingEdit();
+    const onHidden = (): void => {
+      if (document.visibilityState === "hidden") flushPendingEdit();
+    };
+    window.addEventListener("pagehide", flushNow);
+    document.addEventListener("visibilitychange", onHidden);
+    onCleanup(() => {
+      window.removeEventListener("pagehide", flushNow);
+      document.removeEventListener("visibilitychange", onHidden);
+    });
+  });
+
   // Publish this tree as the command system's `EditorHost` while it owns the shared surface, so
   // the palette, slash menu and `[[`/`#`/`((` popups act on whatever the user is actually editing
   // (`../app/editor-host.ts` explains why this is a live registration and not a singleton).
@@ -737,34 +782,53 @@ export function BlockTree(props: {
   }
 
   return (
-    <div class="vr-outliner" role="tree" tabindex={-1} onKeyDown={onContainerKeyDown}>
-      <For each={rows()}>
-        {(row) => {
-          const block = createMemo(() => editorTree().byId.get(row.id));
+    <div
+      class="vr-outliner"
+      role="tree"
+      tabindex={-1}
+      onKeyDown={onContainerKeyDown}
+      // Clicking away is a commit point: don't make the user's edit wait out the debounce when
+      // they have visibly moved on. `relatedTarget` is where focus went — null when it left the
+      // document entirely, which also counts.
+      onFocusOut={(e) => {
+        const next = e.relatedTarget as Node | null;
+        if (!next || !e.currentTarget.contains(next)) flushPendingEdit();
+      }}
+    >
+      <For each={visibleIds()}>
+        {(id) => {
+          // Everything this row needs is read through memos keyed off `id`, so depth, collapse
+          // state and content all update this row IN PLACE. `<For>` only ever sees the id string.
+          const row = createMemo(() => rowById().get(id));
+          const block = createMemo(() => editorTree().byId.get(id));
           return (
-            <Show when={block()}>
-              {(b) => (
-                <BlockRowView
-                  id={row.id}
-                  depth={row.depth}
-                  hasChildren={row.hasChildren}
-                  collapsed={row.collapsed}
-                  childCount={childrenIds(editorTree(), row.id).length}
-                  block={b()}
-                  numbering={numbering().get(row.id)}
-                  editing={editingId() === row.id}
-                  selected={selection()?.ids.includes(row.id) ?? false}
-                  surfaceHost={(el) => surfaceHostRef(el, row.id)}
-                  onEnterEdit={(offset) => !props.readOnly && attachEditing(row.id, { offset })}
-                  onToggleCollapse={() => onToggleCollapse(row.id)}
-                  onZoomIn={() => setLocalZoomRoot(row.id)}
-                  onToggleMarker={() => onToggleMarker(row.id)}
-                  onSelectClick={() => onSelectClick(row.id)}
-                  onNavigate={props.onNavigate}
-                  onSwipeIndent={() => doIndent(row.id)}
-                  onSwipeOutdent={() => doOutdent(row.id)}
-                  onDragStep={(direction) => doMoveStep(row.id, direction)}
-                />
+            <Show when={row()}>
+              {(r) => (
+                <Show when={block()}>
+                  {(b) => (
+                    <BlockRowView
+                      id={id}
+                      depth={r().depth}
+                      hasChildren={r().hasChildren}
+                      collapsed={r().collapsed}
+                      childCount={childrenIds(editorTree(), id).length}
+                      block={b()}
+                      numbering={numbering().get(id)}
+                      editing={editingId() === id}
+                      selected={selection()?.ids.includes(id) ?? false}
+                      surfaceHost={(el) => surfaceHostRef(el, id)}
+                      onEnterEdit={(offset) => !props.readOnly && attachEditing(id, { offset })}
+                      onToggleCollapse={() => onToggleCollapse(id)}
+                      onZoomIn={() => setLocalZoomRoot(id)}
+                      onToggleMarker={() => onToggleMarker(id)}
+                      onSelectClick={() => onSelectClick(id)}
+                      onNavigate={props.onNavigate}
+                      onSwipeIndent={() => doIndent(id)}
+                      onSwipeOutdent={() => doOutdent(id)}
+                      onDragStep={(direction) => doMoveStep(id, direction)}
+                    />
+                  )}
+                </Show>
               )}
             </Show>
           );

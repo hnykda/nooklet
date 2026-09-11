@@ -24,7 +24,7 @@
  */
 
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join, normalize, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import type { Hono } from "hono";
@@ -90,6 +90,22 @@ function bodyOf(path: string): ReadableStream {
 export interface WebClientOptions {
   /** Absolute path to the built client (the directory containing `index.html`). */
   dir: string;
+  /**
+   * Config injected into `index.html` as `window.__NOOKLET__`, or `null` to inject nothing.
+   * Called per request with the `Host` header, because what the client is trusted with depends on
+   * who is asking — see `createApp`, which only hands out a token to loopback callers.
+   */
+  bootstrap?: (host: string | undefined) => object | null;
+}
+
+/** `</head>`-insertion, with the payload JSON-escaped so a token or path can never break out of
+ * the script element. `<` is the only character that can start a tag; escaping it is sufficient
+ * and leaves the JSON valid. */
+function injectBootstrap(html: string, config: object): string {
+  const json = JSON.stringify(config).replaceAll("<", "\\u003c");
+  const tag = `<script>window.__NOOKLET__=${json};</script>`;
+  const head = html.indexOf("</head>");
+  return head === -1 ? tag + html : html.slice(0, head) + tag + html.slice(head);
 }
 
 /**
@@ -141,8 +157,20 @@ export function mountWebClient(app: Hono, opts: WebClientOptions): void {
       );
     }
     const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" };
-    return method === "HEAD"
-      ? new Response(null, { headers })
-      : new Response(bodyOf(indexPath), { headers });
+    if (method === "HEAD") return new Response(null, { headers });
+    return new Response(await shellHtml(indexPath, opts, c.req.header("host")), { headers });
   });
+}
+
+/** The shell, with `window.__NOOKLET__` injected. Read as text rather than streamed because the
+ * payload has to go inside it; it is a few KB and re-read per navigation so a rebuilt client is
+ * picked up without restarting the server. */
+async function shellHtml(
+  indexPath: string,
+  opts: WebClientOptions,
+  host: string | undefined,
+): Promise<string> {
+  const html = await readFile(indexPath, "utf8");
+  const config = opts.bootstrap?.(host);
+  return config ? injectBootstrap(html, config) : html;
 }

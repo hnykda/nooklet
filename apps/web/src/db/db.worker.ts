@@ -64,7 +64,10 @@ let dbPromise: Promise<WorkerDb> | undefined;
 async function openDb(opts: WorkerInitOptions): Promise<WorkerDb> {
   await becomeLeader();
   const { driver } = await openSqliteWasmDriver();
-  const transport = createHttpTransport({ baseUrl: opts.syncBaseUrl, getToken: opts.getToken });
+  const transport = createHttpTransport({
+    baseUrl: opts.syncBaseUrl,
+    getToken: opts.getToken ?? (() => opts.token),
+  });
   const db = new WorkerDb({
     driver,
     transport,

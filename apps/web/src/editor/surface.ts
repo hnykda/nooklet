@@ -152,6 +152,19 @@ export function createSurface(deps: SurfaceDeps): Surface {
       host.appendChild(view.dom);
       view.focus();
       setCaretInternal(caret);
+      // Re-assert focus after the browser finishes dispatching the event that got us here.
+      //
+      // Entering edit mode swaps the clicked `.vr-block-view` out of the DOM for the surface host
+      // (BlockRowView's `Show`). That happens synchronously inside the click handler, so when the
+      // browser resumes its default processing the element it had focused no longer exists and it
+      // resets focus to `<body>` — silently undoing the `view.focus()` above. The visible symptom
+      // was a row that entered edit mode, showed a caret-less CodeMirror, and swallowed every
+      // keystroke, which reads as "I can't get back into editing".
+      //
+      // Guarded on still being attached to the same block so a genuine click-away is not fought.
+      requestAnimationFrame(() => {
+        if (current === id && !view.hasFocus) view.focus();
+      });
       view.dispatch({
         effects: EditorView.scrollIntoView(view.state.selection.main.head, {
           y: "nearest",

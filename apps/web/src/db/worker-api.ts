@@ -30,6 +30,12 @@ export interface WorkerInitOptions {
   /** Base URL for the sync server; omit to run local-only (no transport configured, e.g. tests
    * or a not-yet-paired device). */
   syncBaseUrl?: string;
+  /**
+   * Bearer token for `/sync/*`. A plain string, not a getter, because these options are
+   * structured-cloned to the worker and a function would throw `DataCloneError` — which is why
+   * `getToken` below is only usable when a `WorkerDb` is constructed directly (tests).
+   */
+  token?: string;
   getToken?: () => string | undefined;
 }
 

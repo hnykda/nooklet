@@ -49,6 +49,7 @@ import {
   SlashMenu,
   useCommands,
 } from "../commands/index.js";
+import { apiBaseUrl, authToken } from "../data/bootstrap.js";
 import { resolveBlockPageName } from "../data/store.js";
 import { forceSync, initDb } from "../db/client.js";
 import {
@@ -122,14 +123,14 @@ function LiveConnection(props: { getContext: () => ContextBase; editor: EditorHo
     }
     if (handle) return; // already connected/connecting for this (viewEnabled, deviceId) pair
     handle = connectLiveSocket({
-      baseUrl: import.meta.env.VITE_SYNC_BASE_URL,
+      baseUrl: apiBaseUrl(),
       deviceId: id,
       windowId,
       client: "nooklet-web",
       // Dev-only stand-in until device pairing (PLAN.md §6) ships a real per-device token — same
       // as `../data/api-client.ts`'s own `getToken`. `/ui/live` authenticates like `/sync/live`
       // (ADR 015 §2.1): a `can_sync` device token, not a separate MCP credential.
-      getToken: () => import.meta.env.VITE_NOOKLET_TOKEN,
+      getToken: authToken,
       getControlEnabled: () => liveConsent.get().controlEnabled,
       // TODO(views): resolve the current route to a real {id, name} once a cheap local lookup
       // exists here; ui_state's own state.get round trip already reports the page accurately, so

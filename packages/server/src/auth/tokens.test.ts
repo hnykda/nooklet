@@ -96,12 +96,7 @@ describe("bearerAuth over HTTP", () => {
   });
 
   it("rejects an invalid token (401)", async () => {
-    const { status, json } = await post(
-      s.app,
-      "/api/v1/graph.overview",
-      "nk_not-a-real-token",
-      {},
-    );
+    const { status, json } = await post(s.app, "/api/v1/graph.overview", "nk_not-a-real-token", {});
     expect(status).toBe(401);
     expect(json.error.code).toBe("unauthorized");
   });

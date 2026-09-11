@@ -6,7 +6,7 @@
 
 import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
-import { bearerAuth } from "../auth/tokens.js";
+import { bearerAuth, createToken } from "../auth/tokens.js";
 import { mountUiLive } from "../live/index.js";
 import { mountMcp } from "../mcp/server.js";
 import {
@@ -50,6 +50,53 @@ export interface CreateAppOptions {
    * (`./web-client.ts`). Omitted, the server is API-only exactly as before.
    */
   webClientDir?: string;
+}
+
+/** Loopback, i.e. "this request came from this machine". `Host` carries an optional port and IPv6
+ * literals arrive bracketed, so compare on the hostname alone. */
+function isLoopbackHost(host: string | undefined): boolean {
+  if (!host) return false;
+  const name = host.startsWith("[")
+    ? host.slice(0, host.indexOf("]") + 1)
+    : (host.split(":")[0] ?? "");
+  return name === "127.0.0.1" || name === "localhost" || name === "[::1]";
+}
+
+/**
+ * What the served client is told about itself, injected as `window.__NOOKLET__`.
+ *
+ * The client needs a bearer token to reach its own API — search, backlinks, `/sync/*` and
+ * `/ui/live` are all authenticated, and before this it had none, so a production build could
+ * render but never load references, never search, and never sync.
+ *
+ * **A token is issued only to a loopback caller.** On loopback, anything that can fetch this page
+ * can already read `graph.sqlite` directly, so the token grants nothing new and zero-config is the
+ * right trade. Over a LAN or tailnet it would hand a write credential to anyone who loads the
+ * page, so there the client gets a bootstrap with no token and must be given one explicitly.
+ *
+ * The token is minted once per server process (see `webClientToken`) rather than persisted: it
+ * lives only in memory and in the HTML it is injected into, so a restart invalidates old sessions.
+ */
+function buildClientBootstrap(ctx: ServerContext, host: string | undefined): object {
+  if (!isLoopbackHost(host)) return { token: null, reason: "non_loopback_host" };
+  return { token: webClientToken(ctx) };
+}
+
+/** Per-process web-client token, minted lazily on the first page load. `write` + `can_sync` is
+ * what the app itself does; `ui_control` is deliberately NOT granted — that capability is for an
+ * agent driving this window, and `/ui/live` only needs `can_sync` to expose one (ADR 015 §2.1). */
+const webClientTokens = new WeakMap<ServerContext, string>();
+function webClientToken(ctx: ServerContext): string {
+  let token = webClientTokens.get(ctx);
+  if (!token) {
+    token = createToken(ctx.driver, {
+      label: "web-client (auto)",
+      scope: "write",
+      canSync: true,
+    }).token;
+    webClientTokens.set(ctx, token);
+  }
+  return token;
 }
 
 export function createApp(opts: CreateAppOptions): Hono {
@@ -104,7 +151,12 @@ export function createApp(opts: CreateAppOptions): Hono {
   mountMcp(app, registry, serverCtx, config, opts.version);
 
   // Last, and deliberately as `notFound` rather than a route: see `./web-client.ts`.
-  if (opts.webClientDir) mountWebClient(app, { dir: opts.webClientDir });
+  if (opts.webClientDir) {
+    mountWebClient(app, {
+      dir: opts.webClientDir,
+      bootstrap: (host) => buildClientBootstrap(serverCtx, host),
+    });
+  }
 
   return app;
 }
