@@ -98,3 +98,39 @@ test("page properties start collapsed", async ({ page }) => {
   await toggle.click();
   await expect(page.locator(".page-property-add")).toBeVisible();
 });
+
+test("a task references the Task page without polluting its text", async ({ page }) => {
+  await page.goto("/journals");
+  await api(page, "page.create", { name: "Task Ref", if_exists: "return" });
+  await api(page, "page.append", { page: "Task Ref", markdown: "- TODO write the report" });
+
+  // The block's own text stays clean — no literal "#Task" written into it.
+  const read = (await api(page, "page.read", { page: "Task Ref" })) as { text: string };
+  expect(read.text).toContain("TODO write the report");
+  expect(read.text).not.toContain("#Task");
+
+  // …yet it references the `Task` page, so once that page exists every task shows up in its
+  // linked references — tasks live in the same machinery as any other tag, with nothing
+  // special-casing them. A ref to a page that does not exist yet is normal here, exactly as
+  // `[[Some Page]]` is before you create it.
+  await api(page, "page.create", { name: "Task", if_exists: "return" });
+  const backlinks = (await api(page, "page.backlinks", { target: "Task" })) as {
+    linked: Array<{ text: string }>;
+  };
+  expect(backlinks.linked.some((r) => r.text.includes("write the report"))).toBe(true);
+});
+
+test("each task state renders its own glyph", async ({ page }) => {
+  await page.goto("/journals");
+  await api(page, "page.create", { name: "Task Glyphs", if_exists: "return" });
+  await api(page, "page.append", {
+    page: "Task Glyphs",
+    markdown: "- TODO to do\n- DOING in progress\n- DONE finished",
+  });
+
+  await page.goto("/page/Task%20Glyphs");
+  const outliner = page.locator(".vr-outliner").first();
+  await expect(outliner.locator(".vr-marker-TODO")).toHaveText("☐");
+  await expect(outliner.locator(".vr-marker-DOING")).toHaveText("◐");
+  await expect(outliner.locator(".vr-marker-DONE")).toHaveText("☑");
+});

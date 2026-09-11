@@ -15,6 +15,18 @@ import { attachSwipeRow } from "./gestures/swipeAttach.js";
 import { BlockContentView, type Navigate } from "./render/tokens.js";
 import type { EditableBlock } from "./types.js";
 
+/** The glyph for each task state. Deliberately text rather than SVG: it inherits colour and size
+ * from the row, so it stays aligned with the text baseline at any zoom. */
+const MARKER_GLYPH: Record<string, string> = {
+  TODO: "☐",
+  LATER: "☐",
+  NOW: "◐",
+  DOING: "◐",
+  WAITING: "◔",
+  DONE: "☑",
+  CANCELED: "☒",
+};
+
 export function BlockRowView(props: {
   id: string;
   depth: number;
@@ -86,18 +98,20 @@ export function BlockRowView(props: {
       />
       <div class="vr-row-main">
         <Show when={props.block.marker !== null}>
-          <Show
-            when={props.block.marker !== "CANCELED"}
-            fallback={<span class="vr-marker vr-marker-CANCELED">CANCELED</span>}
+          {/* One button per state rather than a checkbox: a checkbox has two states and a task has
+              six, so DOING and WAITING had no representation at all and read as "not done". The
+              glyph carries the state — empty box to do, half-filled while in progress, a check
+              when done — which is what makes a list scannable without reading it. */}
+          <button
+            type="button"
+            class={`vr-marker vr-marker-${props.block.marker}`}
+            aria-label={`Task: ${props.block.marker}`}
+            title={`${props.block.marker} — click to advance`}
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={props.onToggleMarker}
           >
-            <input
-              type="checkbox"
-              class={`vr-marker vr-marker-${props.block.marker}`}
-              checked={props.block.marker === "DONE"}
-              onPointerDown={(e) => e.preventDefault()}
-              onClick={props.onToggleMarker}
-            />
-          </Show>
+            {MARKER_GLYPH[props.block.marker ?? ""] ?? "☐"}
+          </button>
         </Show>
         <Show when={props.block.priority}>
           <span class={`vr-priority vr-priority-${props.block.priority}`}>

@@ -362,3 +362,38 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Task markers: the glyph carries the state, so a list is scannable without reading it. */
+.vr-marker {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 4px 0 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.vr-marker-DOING,
+.vr-marker-NOW {
+  color: #e8890c;
+}
+
+.vr-marker-WAITING {
+  color: #d4a017;
+}
+
+.vr-marker-DONE {
+  color: #2b8a3e;
+}
+
+.vr-marker-CANCELED {
+  color: var(--muted);
+}
+
+/* Finished work recedes: struck through and dimmed, so open items stand out. */
+.vr-row:has(.vr-marker-DONE) .vr-block-view,
+.vr-row:has(.vr-marker-CANCELED) .vr-block-view {
+  text-decoration: line-through;
+  opacity: 0.55;
+}

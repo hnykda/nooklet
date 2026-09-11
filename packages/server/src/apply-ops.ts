@@ -191,6 +191,10 @@ function reindexBlockAndSubtree(driver: SqlDriver, blockId: string): void {
   );
 }
 
+/** The page every task block references. Capitalised because it is a page name people will see
+ * and link to by hand; lookups normalise case anyway (`normalizeKey`). */
+const TASK_TAG = "Task";
+
 function rebuildRefRows(driver: SqlDriver, blockId: string, pageId: string, content: string): void {
   driver.run("DELETE FROM ref WHERE src_block_id = ?", [blockId]);
   const props = driver.all<{ key: string; value: string | null }>(
@@ -214,6 +218,21 @@ function rebuildRefRows(driver: SqlDriver, blockId: string, pageId: string, cont
   };
   for (const p of extracted.pageRefs) insert("page", p);
   for (const t of extracted.tags) insert("tag", t);
+
+  // A block with a task marker also refs the `Task` page, so tasks live in the same reference
+  // machinery as everything else: `[[Task]]` lists them all, a tag query finds them, and nothing
+  // has to special-case "tasks" as a separate concept.
+  //
+  // DERIVED from `block.marker` rather than written into the block's text as a literal `#Task`.
+  // Writing it would put the same fact in two places that can disagree — delete the tag and you
+  // have a task that is not a Task; change the marker by hand in the markdown mirror and the tag
+  // is stale. Here the marker stays the single source of truth and the tag is a projection of it,
+  // rebuilt on every write. Note the block is re-read from the database above, so the marker is
+  // already current by the time this runs.
+  const marked = driver.get<{ marker: string | null }>("SELECT marker FROM block WHERE id = ?", [
+    blockId,
+  ]);
+  if (marked?.marker) insert("tag", TASK_TAG);
   for (const blockRefId of extracted.blockRefs) {
     const target = driver.get<{ id: string; page_id: string }>(
       "SELECT id, page_id FROM block WHERE id = ?",
