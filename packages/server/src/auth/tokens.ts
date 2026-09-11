@@ -63,7 +63,10 @@ export function scopesFor(scope: Scope): Scope[] {
 
 export function createToken(driver: SqlDriver, opts: CreateTokenOptions): CreatedToken {
   const id = newId();
-  const raw = `vrt_${randomBytes(24).toString("hex")}`;
+  // The prefix is cosmetic — it makes a leaked token recognisable in logs and secret scanners.
+  // Verification is by `sha256(token)` lookup alone, so tokens minted under an older prefix keep
+  // working unchanged.
+  const raw = `nk_${randomBytes(24).toString("hex")}`;
   driver.run(
     `INSERT INTO token(id, label, scope, can_sync, ui_control, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [

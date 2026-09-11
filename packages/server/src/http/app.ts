@@ -18,6 +18,7 @@ import {
 } from "../ops/registry.js";
 import { mountSync } from "../sync/index.js";
 import { mountAssetRoutes } from "./assets.js";
+import { mountWebClient } from "./web-client.js";
 
 export interface CreateAppOptions {
   serverCtx: ServerContext;
@@ -42,13 +43,25 @@ export interface CreateAppOptions {
    * needing BOTH of those things can be added without `../plugins/` reaching back into this file.
    */
   mountBeforeMcp?: (app: Hono) => void;
+  /**
+   * Absolute path to a built web client (`apps/web/dist`). When set, the same origin also serves
+   * the app itself — which is what lets one process be a desktop bundle or a phone-reachable home
+   * server. Installed as the not-found handler, so it can never shadow an API/sync/MCP route
+   * (`./web-client.ts`). Omitted, the server is API-only exactly as before.
+   */
+  webClientDir?: string;
 }
 
 export function createApp(opts: CreateAppOptions): Hono {
   const app = opts.app ?? new Hono();
   const { serverCtx, registry, config } = opts;
 
-  app.get("/", (c) => c.json({ name: "nooklet", status: "ok" }));
+  // `/healthz` is the stable, machine-readable liveness probe. `/` answers the same JSON only
+  // when no web client is being served — once there is one, `/` belongs to the app, and a JSON
+  // health payload there would mean you could never open nooklet at its own root URL.
+  const health = { name: "nooklet", status: "ok" } as const;
+  app.get("/healthz", (c) => c.json(health));
+  if (!opts.webClientDir) app.get("/", (c) => c.json(health));
   app.get("/openapi.json", (c) => c.json(buildOpenApi(registry)));
   mountAssetRoutes(app, serverCtx, config); // GET /assets/:id (asset.upload, ADR 013)
 
@@ -89,6 +102,9 @@ export function createApp(opts: CreateAppOptions): Hono {
   mountUiLive(app, serverCtx);
 
   mountMcp(app, registry, serverCtx, config, opts.version);
+
+  // Last, and deliberately as `notFound` rather than a route: see `./web-client.ts`.
+  if (opts.webClientDir) mountWebClient(app, { dir: opts.webClientDir });
 
   return app;
 }

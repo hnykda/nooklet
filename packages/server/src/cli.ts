@@ -23,6 +23,7 @@
  * <data>/graph.sqlite and the mirror at <data>/{pages,journals}/ (00-conventions.md, Storage).
  */
 
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,10 +90,35 @@ function dataDir(args: Args): string {
   return join(homedir(), ".nooklet", "default");
 }
 
+/**
+ * Where the built web client lives, or `undefined` to stay API-only.
+ *
+ * Checked in order: an explicit `--web <dir>`, then `$NOOKLET_WEB_DIR`, then the two layouts that
+ * actually occur — a packaged app, where the client sits next to the server bundle, and this
+ * monorepo, where it is `apps/web/dist` some number of levels up. Resolution is relative to THIS
+ * FILE, never `process.cwd()`: a desktop app is launched from Finder with cwd `/`, and `nooklet
+ * serve` is meant to work from any directory.
+ */
+function resolveWebClientDir(flag: string | boolean | undefined): string | undefined {
+  if (typeof flag === "string") return resolve(flag);
+  if (flag === false) return undefined;
+  if (process.env.NOOKLET_WEB_DIR) return resolve(process.env.NOOKLET_WEB_DIR);
+
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [join(here, "..", "web"), join(here, "..", "..", "web")];
+  for (let dir = here, i = 0; i < 6; i++, dir = dirname(dir)) {
+    candidates.push(join(dir, "apps", "web", "dist"));
+    if (dirname(dir) === dir) break;
+  }
+  return candidates.find((dir) => existsSync(join(dir, "index.html")));
+}
+
 function open(args: Args): { ctx: ServerContext; config: ServerConfig } {
   const dir = dataDir(args);
   const ctx = createServerContext(openDb({ path: join(dir, "graph.sqlite") }));
   const portFlag = args.flags.get("port");
+  const hostFlag = args.flags.get("host");
+  const allowFlag = args.flags.get("allow-host");
   return {
     ctx,
     config: {
@@ -101,6 +127,15 @@ function open(args: Args): { ctx: ServerContext; config: ServerConfig } {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       port: typeof portFlag === "string" ? Number(portFlag) : 6100,
       mirror: { enabled: args.flags.get("mirror") !== false },
+      host: typeof hostFlag === "string" ? hostFlag : "127.0.0.1",
+      // Comma-separated rather than repeatable, because `parseArgs` keeps one value per flag.
+      allowedHosts:
+        typeof allowFlag === "string"
+          ? allowFlag
+              .split(",")
+              .map((h) => h.trim())
+              .filter(Boolean)
+          : undefined,
     },
   };
 }
@@ -131,7 +166,8 @@ function die(message: string): never {
 
 const USAGE = `nooklet — a local-first outliner server
 
-  nooklet serve  [--data <dir>] [--port <n>]
+  nooklet serve  [--data <dir>] [--port <n>] [--web <dir>]
+                 [--host <addr>] [--allow-host <h,h>]   expose on a LAN/tailnet
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
@@ -170,11 +206,13 @@ async function main(): Promise<void> {
       }
 
       const registry = buildRegistry();
+      const webClientDir = resolveWebClientDir(args.flags.get("web"));
       const { app } = await createAppWithPlugins({
         serverCtx: ctx,
         registry,
         config,
         pluginDirs: pluginDirsFor(config),
+        webClientDir,
       });
       // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
       // adapter's `serve()` call — `upgradeWebSocket` (used by that route) only handles the Hono
@@ -195,16 +233,34 @@ async function main(): Promise<void> {
       };
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
-      serve({ fetch: app.fetch, port: config.port, websocket: { server: wss } }, (info) => {
-        process.stdout.write(
-          `nooklet serving ${config.dataDir}\n` +
-            `  http  http://127.0.0.1:${info.port}/api/v1\n` +
-            `  mcp   http://127.0.0.1:${info.port}/mcp\n` +
-            `  spec  http://127.0.0.1:${info.port}/openapi.json\n` +
-            `  sync  ws://127.0.0.1:${info.port}/sync/live\n` +
-            `  live  ws://127.0.0.1:${info.port}/ui/live\n`,
+      // Loopback by default (see ServerConfig.host): reaching this graph from another machine has
+      // to be something you asked for.
+      const hostname = config.host ?? "127.0.0.1";
+      const exposed = hostname !== "127.0.0.1" && hostname !== "localhost" && hostname !== "::1";
+      if (exposed && !config.allowedHosts?.length) {
+        process.stderr.write(
+          `nooklet: bound to ${hostname} with no --allow-host. Requests arriving with any other\n` +
+            `  Host header (a LAN IP, a tailnet name) are refused — pass e.g.\n` +
+            `  --allow-host 192.168.1.5,my-machine.local to reach it from another device.\n`,
         );
-      });
+      }
+      serve(
+        { fetch: app.fetch, port: config.port, hostname, websocket: { server: wss } },
+        (info) => {
+          const shown = exposed ? hostname : "127.0.0.1";
+          process.stdout.write(
+            `nooklet serving ${config.dataDir}\n` +
+              `  http  http://${shown}:${info.port}/api/v1\n` +
+              `  mcp   http://${shown}:${info.port}/mcp\n` +
+              `  spec  http://${shown}:${info.port}/openapi.json\n` +
+              `  sync  ws://${shown}:${info.port}/sync/live\n` +
+              `  live  ws://${shown}:${info.port}/ui/live\n` +
+              (webClientDir
+                ? `  app   http://${shown}:${info.port}/  (serving ${webClientDir})\n`
+                : `  app   not served — build it (pnpm --filter @nooklet/web build) or pass --web <dir>\n`),
+          );
+        },
+      );
       return;
     }
 

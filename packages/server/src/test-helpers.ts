@@ -21,7 +21,14 @@ export interface TestServer {
   adminToken: string;
 }
 
-export function makeTestServer(): TestServer {
+export interface TestServerOptions {
+  /** Serve a built web client from this directory too (`./http/web-client.ts`). */
+  webClientDir?: string;
+  /** Non-loopback hostnames the DNS-rebinding guard should accept (`ServerConfig.allowedHosts`). */
+  allowedHosts?: string[];
+}
+
+export function makeTestServer(opts: TestServerOptions = {}): TestServer {
   const serverCtx = createServerContext(openDb({ path: ":memory:" }));
   const registry = buildRegistry();
   const config: ServerConfig = {
@@ -32,8 +39,15 @@ export function makeTestServer(): TestServer {
     timezone: "UTC",
     port: 0,
     mirror: { enabled: false },
+    allowedHosts: opts.allowedHosts,
   };
-  const app = createApp({ serverCtx, registry, config, version: "0.0.1-test" });
+  const app = createApp({
+    serverCtx,
+    registry,
+    config,
+    version: "0.0.1-test",
+    webClientDir: opts.webClientDir,
+  });
   const writeToken = createToken(serverCtx.driver, { label: "test-write", scope: "write" }).token;
   const readToken = createToken(serverCtx.driver, { label: "test-read", scope: "read" }).token;
   const adminToken = createToken(serverCtx.driver, { label: "test-admin", scope: "admin" }).token;

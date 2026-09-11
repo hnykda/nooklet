@@ -99,7 +99,7 @@ describe("buildHello", () => {
     const hello = buildHello({
       deviceId: "d1",
       windowId: "w1",
-      token: "vrt_abc",
+      token: "nk_abc",
       client: "nooklet-web",
       controlEnabled: true,
       page: { id: "p1", name: "Projects/Aurora" },
@@ -109,7 +109,7 @@ describe("buildHello", () => {
       type: "hello",
       device_id: "d1",
       window_id: "w1",
-      token: "vrt_abc",
+      token: "nk_abc",
       client: "nooklet-web",
       control_enabled: true,
       page: { id: "p1", name: "Projects/Aurora" },

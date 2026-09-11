@@ -23,6 +23,8 @@ export interface CreateAppWithPluginsOptions {
   /** Directories scanned for plugins, in order (e.g. `<dataDir>/plugins`, and in dev, the repo
    * root's `plugins/`). Non-existent directories are skipped silently. */
   pluginDirs: string[];
+  /** Forwarded to `createApp` — serve the built web client on this origin. See ../http/app.ts. */
+  webClientDir?: string;
 }
 
 export async function createAppWithPlugins(

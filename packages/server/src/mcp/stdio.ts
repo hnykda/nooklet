@@ -76,7 +76,7 @@ function parseArgs(argv: string[]): { token?: string; dataPath?: string } {
 }
 
 /** Entry point for `nooklet mcp --stdio` once a CLI dispatcher exists; also runnable directly
- * (`node dist/mcp/stdio.js --token vrt_… [--data /path/to/graph.sqlite]`). */
+ * (`node dist/mcp/stdio.js --token nk_… [--data /path/to/graph.sqlite]`). */
 export function main(argv: string[] = process.argv.slice(2)): void {
   const args = parseArgs(argv);
   const dataPath =

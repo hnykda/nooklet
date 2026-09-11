@@ -305,7 +305,7 @@ Streamable HTTP to the local server:
     "nooklet": {
       "command": "nooklet",
       "args": ["mcp", "--stdio"],
-      "env": { "NOOKLET_URL": "http://127.0.0.1:6100", "NOOKLET_TOKEN": "vrt_…" }
+      "env": { "NOOKLET_URL": "http://127.0.0.1:6100", "NOOKLET_TOKEN": "nk_…" }
     }
   }
 }

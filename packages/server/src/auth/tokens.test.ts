@@ -20,7 +20,7 @@ describe("createToken / verifyToken / revokeToken", () => {
 
   it("returns the raw token once, storing only its hash", () => {
     const { id, token } = createToken(driver, { label: "cli", scope: "write" });
-    expect(token).toMatch(/^vrt_[0-9a-f]{48}$/);
+    expect(token).toMatch(/^nk_[0-9a-f]{48}$/);
     const row = getToken(driver, id);
     expect(row?.token_hash).not.toBe(token);
     expect(row?.label).toBe("cli");
@@ -36,7 +36,7 @@ describe("createToken / verifyToken / revokeToken", () => {
   });
 
   it("rejects an unknown token", () => {
-    expect(verifyToken(driver, "vrt_does-not-exist")).toBeNull();
+    expect(verifyToken(driver, "nk_does-not-exist")).toBeNull();
   });
 
   it("rejects a revoked token", () => {
@@ -99,7 +99,7 @@ describe("bearerAuth over HTTP", () => {
     const { status, json } = await post(
       s.app,
       "/api/v1/graph.overview",
-      "vrt_not-a-real-token",
+      "nk_not-a-real-token",
       {},
     );
     expect(status).toBe(401);

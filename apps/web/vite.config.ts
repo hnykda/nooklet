@@ -35,6 +35,13 @@ export default defineConfig({
       devOptions: { enabled: false },
     }),
   ],
+  build: {
+    // NOT Vite's default "assets": when the server hosts this build on its own origin
+    // (`packages/server/src/http/web-client.ts`), `/assets/*` is already taken by the graph's own
+    // asset route (`GET /assets/:id`, ADR 013). Hashed build output lives under `/static/*`
+    // instead, which is also the prefix that gets `immutable` caching.
+    assetsDir: "static",
+  },
   optimizeDeps: {
     exclude: ["@sqlite.org/sqlite-wasm"],
   },

@@ -250,6 +250,10 @@ export function buildMcp(
   );
 }
 
+/** Always permitted, whatever `config.allowedHosts` adds: a desktop bundle and `nooklet mcp
+ * --stdio` both reach the server by one of these, and losing them would break the default setup. */
+const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1", "[::1]"];
+
 export function mountMcp(
   app: Hono,
   reg: OpRegistry,
@@ -258,7 +262,20 @@ export function mountMcp(
   version?: string,
 ): void {
   const handler = buildMcp(reg, serverCtx, config, version);
-  const mcpApp = createMcpHonoApp(); // Host/Origin validation on by default (DNS rebinding)
+  // DNS-rebinding protection. Note this guard is installed by the library as a `use("*")`
+  // middleware and `createApp` merges this whole sub-app at `"/"`, so it governs EVERY path that
+  // has no earlier route — including the web client's SPA fallback (`../http/web-client.ts`).
+  // That is why binding to a LAN address without listing the hostname you reach it by fails the
+  // app itself, not just `/mcp`: the allowlist has to cover both.
+  const mcpApp = createMcpHonoApp(
+    config.allowedHosts?.length
+      ? {
+          host: config.host,
+          allowedHosts: [...LOOPBACK_HOSTS, ...config.allowedHosts],
+          allowedOrigins: [...LOOPBACK_HOSTS, ...config.allowedHosts],
+        }
+      : { host: config.host },
+  );
   const gate = requireBearerAuth({
     verifier: {
       async verifyAccessToken(token: string): Promise<AuthInfo> {

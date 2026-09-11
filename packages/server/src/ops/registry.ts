@@ -201,6 +201,19 @@ export interface ServerConfig {
   timezone: string;
   port: number;
   mirror: { enabled: boolean };
+  /**
+   * Address to bind. Defaults to `127.0.0.1` — a personal journal should not be reachable from the
+   * coffee-shop Wi-Fi because you forgot a flag. Set `0.0.0.0` to expose it on a LAN or tailnet,
+   * and then `allowedHosts` below is what keeps DNS rebinding from turning a browser on that
+   * network into a proxy into this server.
+   */
+  host?: string;
+  /**
+   * Hostnames a request's `Host` header may carry, beyond the loopback names that are always
+   * allowed. Needed whenever `host` is not loopback: `@modelcontextprotocol/hono`'s guard is
+   * installed app-wide, so an un-allowlisted `Host` fails the web client and `/mcp` alike.
+   */
+  allowedHosts?: string[];
 }
 
 export interface Logger {
