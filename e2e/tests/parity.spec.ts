@@ -161,3 +161,51 @@ test("the context menu hides entries whose when-clause does not hold", async ({ 
   // While an `editorFocused` entry in the same menu is.
   await expect(menu).toContainText("Indent");
 });
+
+test("the context menu is populated the first time it opens", async ({ page }) => {
+  await openEditing(page, "Parity Menu First", "- right click me");
+  await page.locator(".vr-outliner").first().locator(".vr-row").first().click({ button: "right" });
+
+  const menu = page.locator(".ctx-menu");
+  await expect(menu).toBeVisible();
+  // The regression: opening it before the editor host had registered produced an empty menu.
+  await expect(menu).not.toContainText("Nothing available here");
+  await expect(menu).toContainText("Zoom in");
+});
+
+test("Cmd/Ctrl+Shift+P opens the palette", async ({ page }) => {
+  await page.goto("/journals");
+  await page.keyboard.press("ControlOrMeta+Shift+P");
+  await expect(page.locator(".cmd-palette")).toBeVisible();
+});
+
+test("the palette offers to create a page that does not exist", async ({ page }) => {
+  await page.goto("/journals");
+  await page.keyboard.press("ControlOrMeta+k");
+  const popup = page.locator(".cmd-palette");
+  await expect(popup).toBeVisible();
+
+  await popup.locator(".cmd-input").fill("Totally New Page");
+  await expect(popup).toContainText('Create page "Totally New Page"');
+  await popup.locator(".cmd-list >> text=/Create page/").first().click();
+
+  await expect(page).toHaveURL(/\/page\/Totally%20New%20Page/);
+  await expect(page.locator("body")).not.toContainText("doesn't exist yet");
+});
+
+test("zooming into a block shows a breadcrumb back to the page", async ({ page }) => {
+  await openEditing(page, "Parity Zoom", "- parent block\n  - child block");
+  const outliner = page.locator(".vr-outliner").first();
+
+  await outliner.locator(".vr-row").first().click({ button: "right" });
+  await page.locator(".ctx-item", { hasText: "Zoom in" }).first().click();
+
+  const trail = page.locator(".vr-zoom-trail");
+  await expect(trail).toBeVisible();
+  await expect(trail).toContainText("Parity Zoom");
+  await expect(trail).toContainText("parent block");
+
+  // And it gets you back out.
+  await trail.locator(".vr-crumb", { hasText: "Parity Zoom" }).click();
+  await expect(trail).toHaveCount(0);
+});

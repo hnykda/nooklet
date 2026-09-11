@@ -4,11 +4,14 @@
  * editor watches document changes with `autocomplete/trigger.ts`'s pure matchers and passes the
  * live match down as `props.trigger` (`null` = closed).
  */
+
+import { formatJournalTitle } from "@nooklet/core";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import type { EditorHost } from "../hosts/editor-host.js";
 import type { BlockSource, BlockSummary, PageSource, PageSummary } from "../hosts/page-source.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
+import { dateShortcuts } from "./dates.js";
 import type { AutocompleteMatch } from "./trigger.js";
 import "../styles.css";
 
@@ -32,6 +35,8 @@ interface Row {
   isCreate?: boolean;
   page?: PageSummary;
   block?: BlockSummary;
+  /** A journal day to link to, from the date shortcuts (`./dates.ts`). */
+  day?: number;
 }
 
 // Delimiter length + closing text per variant (R56/R57/R58).
@@ -53,8 +58,17 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     () => (props.variant !== "block" && props.trigger !== null ? true : undefined),
     async () => (props.pages ? props.pages.listPages() : []),
   );
+  // `[[` searches blocks too, not only pages — the same thing Logseq does once you start typing,
+  // and the reason it is worth having: most of the time you are trying to find a thought you
+  // already wrote, and you do not remember which page it is on. Requires a query; listing every
+  // block for an empty one would be noise.
   const [blockResults] = createResource(
-    () => (props.variant === "block" && props.trigger !== null ? props.trigger.query : undefined),
+    () => {
+      if (props.trigger === null) return undefined;
+      if (props.variant === "block") return props.trigger.query;
+      if (props.variant === "page" && props.trigger.query.trim() !== "") return props.trigger.query;
+      return undefined;
+    },
     async (query) => (props.blocks ? props.blocks.searchBlocks(query) : []),
   );
 
@@ -79,13 +93,33 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       page: r.item,
     }));
 
+    // Nothing typed yet, linking a page: offer the dates. This is the single most common thing
+    // anyone links to from a journal, and writing the title format out by hand is tedious.
+    if (props.variant === "page" && trig.query.trim() === "") {
+      const dateRows: Row[] = dateShortcuts().map((d) => ({
+        id: d.id,
+        label: d.label,
+        sublabel: formatJournalTitle(d.day),
+        day: d.day,
+      }));
+      return [...dateRows, ...pageRows];
+    }
+
     // R56/R57: append "Create <query>" unless some candidate's title matches the query exactly
     // (case-insensitive), and only once the user has typed something.
     if (trig.query.trim() !== "") {
       const q = trig.query.toLowerCase();
       const hasExact = candidates.some((p) => p.title.toLowerCase() === q);
       if (!hasExact) {
-        pageRows.push({ id: "__create__", label: `Create "${trig.query}"`, isCreate: true });
+        pageRows.push({ id: "__create__", label: `New page "${trig.query}"`, isCreate: true });
+      }
+    }
+
+    // Then blocks that mention it, so "I know I wrote this somewhere" works without leaving the
+    // editor. After pages and Create: naming a page is the primary intent of `[[`.
+    if (props.variant === "page") {
+      for (const b of blockResults() ?? []) {
+        pageRows.push({ id: `block:${b.id}`, label: b.snippet, sublabel: b.pageTitle, block: b });
       }
     }
     return pageRows;
@@ -104,8 +138,24 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       return;
     }
 
-    if (props.variant === "block" && row.block) {
-      replaceQueryWith(trig, shape, row.block.id);
+    // A date shortcut links to that journal day by its real title, whatever format this graph uses.
+    if (row.day !== undefined) {
+      replaceQueryWith(trig, shape, formatJournalTitle(row.day));
+      props.onDismiss();
+      return;
+    }
+
+    if (row.block) {
+      // Picking a block from `[[` means "reference that block", so the whole `[[…]]` becomes a
+      // block ref rather than a page link.
+      if (props.variant === "page") {
+        const from = trig.from;
+        const to = trig.from + shape.delimiterLen + trig.query.length;
+        const text = `((${row.block.id}))`;
+        props.editor.replaceRange({ from, to, text, caretOffset: text.length });
+      } else {
+        replaceQueryWith(trig, shape, row.block.id);
+      }
       props.onDismiss();
       return;
     }

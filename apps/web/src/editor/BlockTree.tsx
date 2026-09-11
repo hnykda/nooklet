@@ -69,6 +69,7 @@ import {
   setCollapsed,
   splitBlock,
 } from "./commands.js";
+import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
@@ -142,6 +143,15 @@ function toKeyDescriptor(e: KeyboardEvent): KeyDescriptor {
   return { key: e.key, mod: mac ? e.metaKey : e.ctrlKey, shift: e.shiftKey, alt: e.altKey };
 }
 
+/** A block's first line, trimmed of outline syntax and clipped — for breadcrumbs, where the point
+ * is recognition, not the full text. */
+function firstLine(content: string): string {
+  const line = (content.split("\n")[0] ?? "")
+    .replace(/^\s*(TODO|DOING|DONE|LATER|NOW|WAITING|CANCELED)\s+/, "")
+    .trim();
+  return line.length > 48 ? `${line.slice(0, 47)}…` : line || "(empty)";
+}
+
 function rangeBetween(ids: readonly BlockId[], a: number, b: number): BlockId[] {
   const [lo, hi] = a <= b ? [a, b] : [b, a];
   return ids.slice(lo, hi + 1);
@@ -183,6 +193,17 @@ export function BlockTree(props: {
   });
 
   const editorTree = createMemo<EditorTree>(() => buildEditorTree(props.pageId, localBlocks()));
+
+  // Claim a pending "focus this block" request once this tree can actually render the block.
+  // The requester is often already unmounted by then (see `./focus-request.ts`), which is why the
+  // request lives outside any component.
+  createEffect(() => {
+    const want = blockFocusRequest();
+    if (!want || props.readOnly) return;
+    if (!editorTree().byId.has(want)) return;
+    clearBlockFocusRequest();
+    attachEditing(want, { at: "end" });
+  });
   const [localZoomRoot, setLocalZoomRoot] = createSignal<BlockId | undefined>(undefined);
   const effectiveRoot = createMemo(() => localZoomRoot() ?? props.rootBlockId);
   createEffect(() => {
@@ -190,6 +211,30 @@ export function BlockTree(props: {
     void props.pageId;
     void props.rootBlockId;
     setLocalZoomRoot(undefined);
+  });
+
+  /**
+   * Where you are, when zoomed into a block: page name, then each ancestor between it and the
+   * zoom root. Without this, zooming just replaced the outline with a shorter one and gave no
+   * clue you were no longer looking at the whole page — or how to get back.
+   *
+   * First line only, and short: this is orientation, not content.
+   */
+  const zoomTrail = createMemo<Array<{ id: BlockId | null; label: string }>>(() => {
+    const root = effectiveRoot();
+    if (root === undefined) return [];
+    const tree = editorTree();
+    const trail: Array<{ id: BlockId | null; label: string }> = [];
+    let cursor = tree.byId.get(root)?.parentId ?? null;
+    while (cursor !== null) {
+      const block = tree.byId.get(cursor);
+      if (!block) break;
+      trail.unshift({ id: cursor, label: firstLine(block.content) });
+      cursor = block.parentId;
+    }
+    const pageName = treeResource()?.page.name;
+    if (pageName) trail.unshift({ id: null, label: pageName });
+    return trail;
   });
 
   const rows = createMemo(() => flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }));
@@ -804,66 +849,98 @@ export function BlockTree(props: {
   }
 
   return (
-    <div
-      class="vr-outliner"
-      role="tree"
-      tabindex={-1}
-      onKeyDown={onContainerKeyDown}
-      // Clicking away is a commit point: don't make the user's edit wait out the debounce when
-      // they have visibly moved on. `relatedTarget` is where focus went — null when it left the
-      // document entirely, which also counts.
-      onFocusOut={(e) => {
-        const next = e.relatedTarget as Node | null;
-        if (!next || !e.currentTarget.contains(next)) flushPendingEdit();
-      }}
-    >
-      <For each={visibleIds()}>
-        {(id) => {
-          // Everything this row needs is read through memos keyed off `id`, so depth, collapse
-          // state and content all update this row IN PLACE. `<For>` only ever sees the id string.
-          const row = createMemo(() => rowById().get(id));
-          const block = createMemo(() => editorTree().byId.get(id));
-          return (
-            <Show when={row()}>
-              {(r) => (
-                <Show when={block()}>
-                  {(b) => (
-                    <BlockRowView
-                      id={id}
-                      depth={r().depth}
-                      hasChildren={r().hasChildren}
-                      collapsed={r().collapsed}
-                      childCount={childrenIds(editorTree(), id).length}
-                      block={b()}
-                      numbering={numbering().get(id)}
-                      editing={editingId() === id}
-                      selected={selection()?.ids.includes(id) ?? false}
-                      surfaceHost={(el) => surfaceHostRef(el, id)}
-                      onEnterEdit={(offset) => !props.readOnly && attachEditing(id, { offset })}
-                      onToggleCollapse={() => onToggleCollapse(id)}
-                      onZoomIn={() => setLocalZoomRoot(id)}
-                      onToggleMarker={() => onToggleMarker(id)}
-                      onSelectClick={() => onSelectClick(id)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        // Put the caret in the right-clicked block first, so the menu's entries
-                        // resolve their `when` clauses against THAT block rather than whatever
-                        // happened to be focused before.
-                        if (!props.readOnly && editingId() !== id) attachEditing(id, { at: "end" });
-                        openBlockMenu({ blockId: id, x: e.clientX, y: e.clientY });
-                      }}
-                      onNavigate={props.onNavigate}
-                      onSwipeIndent={() => doIndent(id)}
-                      onSwipeOutdent={() => doOutdent(id)}
-                      onDragStep={(direction) => doMoveStep(id, direction)}
-                    />
-                  )}
-                </Show>
-              )}
-            </Show>
-          );
+    <>
+      <Show when={zoomTrail().length > 0}>
+        <nav class="vr-zoom-trail" aria-label="Breadcrumb">
+          <For each={zoomTrail()}>
+            {(crumb) => (
+              <>
+                <button
+                  type="button"
+                  class="vr-crumb"
+                  onClick={() => setLocalZoomRoot(crumb.id ?? undefined)}
+                >
+                  {crumb.label}
+                </button>
+                <span class="vr-crumb-sep" aria-hidden="true">
+                  /
+                </span>
+              </>
+            )}
+          </For>
+          <span class="vr-crumb-current">
+            {firstLine(editorTree().byId.get(effectiveRoot() as BlockId)?.content ?? "")}
+          </span>
+        </nav>
+      </Show>
+      <div
+        class="vr-outliner"
+        role="tree"
+        tabindex={-1}
+        onKeyDown={onContainerKeyDown}
+        // Clicking away is a commit point: don't make the user's edit wait out the debounce when
+        // they have visibly moved on. `relatedTarget` is where focus went — null when it left the
+        // document entirely, which also counts.
+        onFocusOut={(e) => {
+          const next = e.relatedTarget as Node | null;
+          if (!next || !e.currentTarget.contains(next)) flushPendingEdit();
         }}
-      </For>
-    </div>
+      >
+        <For each={visibleIds()}>
+          {(id) => {
+            // Everything this row needs is read through memos keyed off `id`, so depth, collapse
+            // state and content all update this row IN PLACE. `<For>` only ever sees the id string.
+            const row = createMemo(() => rowById().get(id));
+            const block = createMemo(() => editorTree().byId.get(id));
+            return (
+              <Show when={row()}>
+                {(r) => (
+                  <Show when={block()}>
+                    {(b) => (
+                      <BlockRowView
+                        id={id}
+                        depth={r().depth}
+                        hasChildren={r().hasChildren}
+                        collapsed={r().collapsed}
+                        childCount={childrenIds(editorTree(), id).length}
+                        block={b()}
+                        numbering={numbering().get(id)}
+                        editing={editingId() === id}
+                        selected={selection()?.ids.includes(id) ?? false}
+                        surfaceHost={(el) => surfaceHostRef(el, id)}
+                        onEnterEdit={(offset) => !props.readOnly && attachEditing(id, { offset })}
+                        onToggleCollapse={() => onToggleCollapse(id)}
+                        onZoomIn={() => setLocalZoomRoot(id)}
+                        onToggleMarker={() => onToggleMarker(id)}
+                        onSelectClick={() => onSelectClick(id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          // Put the caret in the right-clicked block first, so the menu's entries
+                          // resolve their `when` clauses against THAT block rather than whatever
+                          // happened to be focused before.
+                          if (!props.readOnly && editingId() !== id)
+                            attachEditing(id, { at: "end" });
+                          // A microtask, so the menu is built AFTER Solid's effects have run and
+                          // registered this tree as the active editor host. Opening it in the same
+                          // tick asked every `when` clause about a context that did not exist yet,
+                          // and the menu rendered "Nothing available here" until something else
+                          // happened to re-open it.
+                          const at = { blockId: id, x: e.clientX, y: e.clientY };
+                          queueMicrotask(() => openBlockMenu(at));
+                        }}
+                        onNavigate={props.onNavigate}
+                        onSwipeIndent={() => doIndent(id)}
+                        onSwipeOutdent={() => doOutdent(id)}
+                        onDragStep={(direction) => doMoveStep(id, direction)}
+                      />
+                    )}
+                  </Show>
+                )}
+              </Show>
+            );
+          }}
+        </For>
+      </div>
+    </>
   );
 }

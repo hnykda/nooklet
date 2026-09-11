@@ -23,10 +23,14 @@ export interface CommandPaletteProps {
   getContext: () => Omit<CommandContext, "exec" | "args">;
   /** Navigate to a page the user picked. Wiring actual routing is outside this package's scope. */
   onSelectPage?: (page: PageSummary) => void;
+  /** Create a page that does not exist yet and open it. Without this, the only way to make a page
+   * was to type a `[[link]]` to it first — which is fine once you know, and a dead end if you do
+   * not. */
+  onCreatePage?: (name: string) => void;
 }
 
 interface Row {
-  kind: "command" | "page";
+  kind: "command" | "page" | "create";
   id: string;
   title: string;
   subtitle?: string;
@@ -78,14 +82,35 @@ export function CommandPalette(props: CommandPaletteProps) {
       page: r.item,
     }));
 
+    // Offer to create the page you just described, unless it already exists. Last, so it never
+    // displaces a real match, and never for tag mode (tags come from use, not from a New button).
+    const trimmed = query.trim();
+    const exists = pageCandidates.some(
+      (p) => p.title.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    const createRows: Row[] =
+      trimmed !== "" && mode !== "tags" && mode !== "commands" && !exists && props.onCreatePage
+        ? [
+            {
+              kind: "create",
+              id: `create:${trimmed}`,
+              title: `Create page "${trimmed}"`,
+              score: -1,
+            },
+          ]
+        : [];
+
     if (mode === "commands") return commandRows;
-    if (mode === "pages" || mode === "tags") return pageRows;
+    if (mode === "pages" || mode === "tags") return [...pageRows, ...createRows];
 
     // Mixed mode: an empty query keeps each side's own MRU-first order, concatenated (commands
     // first is an arbitrary but stable choice); a non-empty query re-sorts the combined set by
     // score, matching R73's "results interleave" for the shared ranking algorithm.
     if (query.trim() === "") return [...commandRows, ...pageRows];
-    return [...commandRows, ...pageRows].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return [
+      ...[...commandRows, ...pageRows].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)),
+      ...createRows,
+    ];
   });
 
   function onInput(value: string) {
@@ -108,6 +133,11 @@ export function CommandPalette(props: CommandPaletteProps) {
   }
 
   async function selectRow(row: Row) {
+    if (row.kind === "create") {
+      props.onCreatePage?.(palette.state().query.trim());
+      palette.close();
+      return;
+    }
     if (row.kind === "command") {
       const ctx = buildContext(props.getContext());
       await ctx.exec(row.id);

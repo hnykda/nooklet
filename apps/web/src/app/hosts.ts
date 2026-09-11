@@ -208,7 +208,7 @@ function pageRefQuery(): PageRefQuery {
   };
 }
 
-function pagePath(name: string): string {
+export function pagePath(name: string): string {
   return `/page/${name.split("/").map(encodeURIComponent).join("/")}`;
 }
 

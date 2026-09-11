@@ -19,6 +19,7 @@
  * reimplementing anything.
  */
 
+import { newId } from "@nooklet/core";
 import { useLocation, useNavigate } from "@solidjs/router";
 import {
   createEffect,
@@ -50,7 +51,7 @@ import {
   useCommands,
 } from "../commands/index.js";
 import { apiBaseUrl, authToken } from "../data/bootstrap.js";
-import { resolveBlockPageName } from "../data/store.js";
+import { applyOp, resolveBlockPageName } from "../data/store.js";
 import { forceSync, initDb } from "../db/client.js";
 import {
   buildUiWindowState,
@@ -70,6 +71,7 @@ import {
   createNavigationHost,
   createPageSource,
   createStore,
+  pagePath,
 } from "./hosts.js";
 import { useTheme } from "./theme.js";
 
@@ -276,6 +278,19 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
         pages={pages}
         getContext={getContext}
         onSelectPage={(p) => navigation.openPage(p.id)}
+        onCreatePage={(name) => {
+          // Create it and go there in one step. `page.create` is the same op the API uses, so a
+          // page made this way is indistinguishable from one an agent or an import produced.
+          // `journalDay: null` — a page typed into the palette is an ordinary page. A journal day
+          // is reached through the calendar or the journal stream, which own that mapping.
+          void applyOp(newId(), {
+            kind: "page.create",
+            name,
+            journalDay: null,
+            createdAt: Date.now(),
+          });
+          navigate(pagePath(name));
+        }}
       />
       <Show when={triggers().slash}>
         {(t) => (

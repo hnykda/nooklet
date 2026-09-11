@@ -318,3 +318,47 @@
   border-top: 1px solid var(--hairline);
   margin: 8px 0;
 }
+
+/* Zoom breadcrumb: page / ancestors / current block. Rendered only while zoomed — see
+   `BlockTree.tsx`'s `zoomTrail`. Zooming without it just showed a shorter outline with no
+   indication you were no longer looking at the whole page. */
+.vr-zoom-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.vr-crumb {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  padding: 2px 0;
+  cursor: pointer;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vr-crumb:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.vr-crumb-sep {
+  opacity: 0.5;
+}
+
+.vr-crumb-current {
+  color: var(--fg);
+  font-weight: 600;
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

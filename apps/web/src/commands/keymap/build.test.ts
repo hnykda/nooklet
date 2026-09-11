@@ -73,15 +73,19 @@ describe("buildKeymap — base defaults (R64 step 1)", () => {
 describe("buildKeymap — secondary defaults (R21/R64 step 2)", () => {
   it("adds the Delete -> block.deleteSelected row unconditionally", () => {
     const rows = buildKeymap([], [], { platform: "mac" });
-    expect(rows).toEqual([
-      {
-        key: "Delete",
-        command: "block.deleteSelected",
-        when: "blockSelected",
-        source: "secondary",
-        order: 0,
-      },
-    ]);
+    expect(rows).toContainEqual({
+      key: "Delete",
+      command: "block.deleteSelected",
+      when: "blockSelected",
+      source: "secondary",
+      order: 0,
+    });
+  });
+
+  it("binds the VS Code palette chord as well as the command's own default", () => {
+    const rows = buildKeymap([], [], { platform: "mac" });
+    const palette = rows.filter((r) => r.command === "palette.open").map((r) => r.key);
+    expect(palette).toContain("Cmd+Shift+P");
   });
 });
 

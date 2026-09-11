@@ -9,6 +9,7 @@ import { createSignal, type JSX, Show } from "solid-js";
 import { applyOp } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
+import { requestBlockFocus } from "../editor/focus-request.js";
 
 export interface VirtualJournalDayProps {
   day: number;
@@ -19,25 +20,52 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   const [pageId, setPageId] = createSignal<string | undefined>(undefined);
   const [draft, setDraft] = createSignal("");
 
-  async function materialize(): Promise<void> {
+  /**
+   * Commit the placeholder row, creating the page and its first block.
+   *
+   * `continueEditing` is the difference between the two ways out of this row. Pressing Enter in an
+   * outliner means "done with this bullet, give me the next one", so it also creates an empty
+   * sibling and focuses it — without that, Enter committed the text and dropped you out of editing
+   * entirely, and the only way to keep writing was to hunt for a bullet to click. Blurring means
+   * "I'm leaving", so it commits one block and takes focus nowhere.
+   */
+  async function materialize(continueEditing = false): Promise<void> {
     const value = draft();
     if (value === "" || pageId() !== undefined) return;
     const newPageId = newId();
-    // Optimistic: swap to the real BlockTree immediately using the id we just minted, rather than
+    const firstBlockId = newId();
+    const nextBlockId = continueEditing ? newId() : undefined;
+    const firstOrder = orderBetween(null, null);
+
+    // Optimistic: swap to the real BlockTree immediately using the ids we just minted, rather than
     // waiting on the write + the reactive resource refetch round trip.
+    //
+    // The focus request is module-level, not a prop: this component is about to be replaced by the
+    // journal stream's own BlockTree the moment the page exists, so a prop on the tree rendered
+    // below would be thrown away before the block it names ever appears.
+    if (nextBlockId) requestBlockFocus(nextBlockId);
     setPageId(newPageId);
+
     await applyOp(newPageId, {
       kind: "page.create",
       name: formatJournalTitle(props.day),
       journalDay: props.day,
       createdAt: Date.now(),
     });
-    await applyOp(newId(), {
+    await applyOp(firstBlockId, {
       kind: "block.create",
-      place: { pageId: newPageId, parentId: null, order: orderBetween(null, null) },
+      place: { pageId: newPageId, parentId: null, order: firstOrder },
       content: value,
       createdAt: Date.now(),
     });
+    if (nextBlockId) {
+      await applyOp(nextBlockId, {
+        kind: "block.create",
+        place: { pageId: newPageId, parentId: null, order: orderBetween(firstOrder, null) },
+        content: "",
+        createdAt: Date.now(),
+      });
+    }
   }
 
   return (
@@ -61,7 +89,7 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      void materialize();
+                      void materialize(true);
                     }
                   }}
                 />

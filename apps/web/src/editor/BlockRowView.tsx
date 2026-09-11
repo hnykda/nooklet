@@ -8,6 +8,7 @@
  */
 import { classifyBlockContent } from "@nooklet/core";
 import { createEffect, createMemo, onCleanup, Show } from "solid-js";
+import { lookupBlockText } from "../data/block-ref-cache.js";
 import { Bullet } from "./Bullet.js";
 import { resolveClickOffset } from "./caret.js";
 import { attachSwipeRow } from "./gestures/swipeAttach.js";
@@ -143,7 +144,17 @@ export function BlockRowView(props: {
               >
                 <BlockContentView
                   content={content()}
-                  ctx={{ source: props.block.content, onNavigate: props.onNavigate }}
+                  ctx={{
+                    source: props.block.content,
+                    onNavigate: props.onNavigate,
+                    // `((id))` renders the referenced block's own text rather than an opaque id.
+                    // Resolved through a cache that fetches on a miss and re-renders when the
+                    // text lands (`../data/block-ref-cache.ts`).
+                    resolveBlockRef: (id) => {
+                      const content = lookupBlockText(id);
+                      return content === undefined ? undefined : { content };
+                    },
+                  }}
                 />
               </div>
             }

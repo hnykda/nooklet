@@ -43,7 +43,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
       </CommandProvider>
     ));
     expect(await screen.findByText("Recipes")).toBeTruthy();
-    expect(screen.getByText('Create "Rec"')).toBeTruthy();
+    expect(screen.getByText('New page "Rec"')).toBeTruthy();
   });
 
   it("does not show Create when a page matches exactly (case-insensitive)", async () => {
