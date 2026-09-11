@@ -52,6 +52,25 @@ pnpm nooklet serve --data ~/.nooklet --host 0.0.0.0 --allow-host my-mac.tailnet.
 A remote device has no token until you give it one: open the app, and it will ask. Create the
 token with `pnpm nooklet token create --label phone --scope write --sync`.
 
+## Desktop app (macOS)
+
+A native window around the same client, 4 MB rather than the ~124 MB an Electron shell would
+cost — because the server is already running, so the app carries no JavaScript runtime at all
+(ADR 016).
+
+```sh
+pnpm nooklet serve          # in one terminal
+pnpm desktop                # dev: opens the app
+pnpm desktop:build          # produces apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app
+```
+
+It points at `http://127.0.0.1:6100` and loads the client from the server itself, so the token
+handshake, the local replica and the sync socket all behave exactly as they do in a browser. If
+the server isn't running it says so and keeps retrying, rather than showing a blank window; the
+address is editable from that screen.
+
+Building it needs a Rust toolchain (`rustup`); nothing else in the repo does.
+
 ## Connecting an agent
 
 For Claude Code or Cursor, point them at the MCP endpoint with the token you minted:

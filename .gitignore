@@ -18,3 +18,4 @@ data/
 .nooklet-build/
 test-results/
 playwright-report/
+apps/desktop/src-tauri/target/

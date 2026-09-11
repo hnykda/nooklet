@@ -14,7 +14,9 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "e2e": "playwright test --config e2e/playwright.config.ts",
-    "e2e:headed": "playwright test --config e2e/playwright.config.ts --headed"
+    "e2e:headed": "playwright test --config e2e/playwright.config.ts --headed",
+    "desktop": "pnpm --filter @nooklet/desktop exec tauri dev",
+    "desktop:build": "pnpm --filter @nooklet/desktop exec tauri build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
