@@ -95,9 +95,23 @@ describe("importLogseqGraph: basic pages + journals", () => {
     expect(journal).toBeDefined();
   });
 
-  it("uses config.edn's :journal/page-title-format for the journal page's display name", async () => {
-    writeGraphFile("logseq/config.edn", '{:journal/page-title-format "yyyy-MM-dd"}');
+  it("stores a journal under its ISO name, not the source graph's title format (ADR 018)", async () => {
+    writeGraphFile("logseq/config.edn", '{:journal/page-title-format "E, dd.MM.yyyy"}');
     writeGraphFile("journals/2026_09_10.md", "- entry\n");
+
+    const stats = await importLogseqGraph(ctx, graphDir);
+
+    const journal = ctx.driver.get<{ name: string }>(
+      "SELECT name FROM page WHERE journal_day = 20260910",
+    );
+    expect(journal?.name).toBe("2026-09-10");
+    // The format is not lost, it moves from storage to a note: it is the format this person has
+    // been reading for years, and it is now a display setting rather than a fact about the data.
+    expect(stats.warnings.some((w) => w.includes("E, dd.MM.yyyy"))).toBe(true);
+  });
+
+  it("ignores a title:: override on a journal file — the day already names the page", async () => {
+    writeGraphFile("journals/2026_09_10.md", "title:: My Special Thursday\n- entry\n");
 
     await importLogseqGraph(ctx, graphDir);
 

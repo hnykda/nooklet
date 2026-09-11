@@ -30,7 +30,12 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   use: {
-    baseURL: process.env.NOOKLET_E2E_URL ?? "http://127.0.0.1:6188",
+    // Derived from NOOKLET_E2E_PORT, the same knob `global-setup.ts` starts the server on. These
+    // used to be independent: setting only the port moved the server and left the browser pointing
+    // at 6188, where another agent's dev server was happily answering with last week's code. A
+    // whole afternoon of "but it works when I curl it" lives in this line.
+    baseURL:
+      process.env.NOOKLET_E2E_URL ?? `http://127.0.0.1:${process.env.NOOKLET_E2E_PORT ?? 6188}`,
     trace: "retain-on-failure",
     video: "retain-on-failure",
     screenshot: "only-on-failure",

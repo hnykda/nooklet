@@ -1,5 +1,6 @@
 /** E.5 Insert / slash-menu-only commands (category `Insert`, id area `block`) — R48-R50. */
 import { formatJournalTitle, todayJournalDay } from "@nooklet/core";
+import { journalTitleFormat } from "../../data/page-title.js";
 import type { EditorHost } from "../hosts/editor-host.js";
 import type { Command } from "../types.js";
 import {
@@ -103,7 +104,7 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       run() {
         const sel = editor.getSelection();
         if (!sel) return;
-        const title = formatJournalTitle(todayJournalDay(new Date(now())));
+        const title = formatJournalTitle(todayJournalDay(new Date(now())), journalTitleFormat());
         editor.replaceRange(insertToday(sel.start, sel.end, title));
       },
     },

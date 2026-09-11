@@ -19,7 +19,7 @@
  */
 
 import type { SqlDriver } from "@nooklet/core";
-import { normalizePageName, splitList } from "@nooklet/core";
+import { canonicalRefName, normalizePageName, splitList } from "@nooklet/core";
 
 /** The tag every journal day carries. Capitalised because people see and link to it by hand;
  * lookups normalise case anyway. */
@@ -66,7 +66,9 @@ export function rebuildPageTags(driver: SqlDriver, pageId: string): void {
     for (const item of splitList(tagsProp.value)) {
       const name = bareTagName(item);
       if (name === "") continue;
-      const key = normalizePageName(name);
+      // Same canonicalisation `ref` uses (ADR 018), so `tags:: Sep 7th, 2026` and a `[[2026-09-07]]`
+      // in a block agree about which page they mean.
+      const key = normalizePageName(canonicalRefName(name));
       // An intrinsic tag wins: `tags:: Journal` on a journal day is the same tag, and calling it
       // user-removable would be a lie.
       if (!tags.has(key)) tags.set(key, { name, source: "property" });

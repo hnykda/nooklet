@@ -15,11 +15,13 @@
 
 import type { AppliedOpResult, ApplyOpsResult, Op, OpPayload, SqlDriver } from "@nooklet/core";
 import {
+  canonicalRefName,
   applyOps as coreApplyOps,
   extractRefs,
   Hlc,
   makeOp,
   newId,
+  normalizePageName,
   tokenizeContent,
 } from "@nooklet/core";
 import { rebuildPageTags } from "./page-tags.js";
@@ -257,8 +259,14 @@ function rebuildRefRows(driver: SqlDriver, blockId: string, pageId: string, cont
   void tokenizeContent; // reserved for a future richer embed/kind distinction; not needed for v1 refs.
 }
 
+/**
+ * The key a reference is indexed under. Case and whitespace are folded as ever; on top of that a
+ * journal day written in any recognised title format collapses to its ISO name (ADR 018), so
+ * `[[Mon, 07.09.2026]]`, `[[Sep 7th, 2026]]` and `[[2026-09-07]]` are one reference and land in
+ * one backlinks list — and all three resolve to the page, which is stored under the ISO name.
+ */
 function normalizeKey(name: string): string {
-  return name.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+  return normalizePageName(canonicalRefName(name));
 }
 
 function subtreeIds(driver: SqlDriver, rootId: string): string[] {

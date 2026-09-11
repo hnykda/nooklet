@@ -8,6 +8,7 @@
 import type { TaskMarker } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { displayRefName } from "../data/page-title.js";
 import { applyOps, getOpClock, useOpenTasks } from "../data/store.js";
 import type { TaskRow } from "../data/types.js";
 import { InlineContent } from "../editor/InlineContent.js";
@@ -147,7 +148,7 @@ export function TasksView(): JSX.Element {
                 class="task-group-page"
                 onClick={() => navigate(pageRoutePath(group.pageName))}
               >
-                {group.pageName}
+                {displayRefName(group.pageName)}
               </button>
             </h2>
             <ul class="task-list">

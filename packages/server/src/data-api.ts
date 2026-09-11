@@ -15,7 +15,7 @@
 import {
   type Block,
   type BlockId,
-  formatJournalTitle,
+  isoJournalName,
   makeOp,
   namespaceParent,
   newId,
@@ -178,11 +178,14 @@ export function formatDoneIso(epochMs: number): string {
   return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-/** `YYYYMMDD` -> `YYYY-MM-DD` (rule 18: journal pages are addressed by ISO date on the wire). */
-export function isoFromJournalDay(day: number): string {
-  const s = String(day);
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-}
+/**
+ * `YYYYMMDD` -> `YYYY-MM-DD` (rule 18: journal pages are addressed by ISO date on the wire).
+ *
+ * Since ADR 018 this is also the name the page is STORED under, so the wire form and the stored
+ * form are the same string — kept as a separate name here because the two are different ideas
+ * that merely happen to agree.
+ */
+export const isoFromJournalDay = isoJournalName;
 
 function rowToPage(driver: SqlDriver, row: PageRow): Page {
   const propRows = driver.all<{ key: string; value: string | null }>(
@@ -635,9 +638,14 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
       if (row) return rowToPage(driver, row);
       if (!opts?.create) return null;
       const id = newId();
-      const title = formatJournalTitle(day);
       apply([
-        mint(id, { kind: "page.create", name: title, journalDay: day, createdAt: Date.now() }),
+        mint(id, {
+          kind: "page.create",
+          // Stored under the ISO name, never a display format (ADR 018).
+          name: isoJournalName(day),
+          journalDay: day,
+          createdAt: Date.now(),
+        }),
       ]);
       const created = getPageRow(driver, id);
       if (!created) throw new Error("journal: failed to read back created page");

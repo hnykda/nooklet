@@ -12,6 +12,7 @@
 import { A } from "@solidjs/router";
 import { CalendarDays, CircleCheck, FileText, Network, Search, Star } from "lucide-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { displayPageName } from "../data/page-title.js";
 import { useAllPages, useFavoritePages } from "../data/store.js";
 import "./sidebar.css";
 
@@ -75,7 +76,7 @@ export function Sidebar(): JSX.Element {
                 {(page) => (
                   <li>
                     <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
-                      {page.name}
+                      {displayPageName(page)}
                     </A>
                   </li>
                 )}
@@ -92,7 +93,7 @@ export function Sidebar(): JSX.Element {
                 {(page) => (
                   <li>
                     <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
-                      {page.name}
+                      {displayPageName(page)}
                     </A>
                   </li>
                 )}

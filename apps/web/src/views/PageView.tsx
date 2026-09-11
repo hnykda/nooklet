@@ -8,6 +8,7 @@
 import { newId } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
+import { displayPageName, displayRefName } from "../data/page-title.js";
 import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
@@ -30,6 +31,14 @@ export function PageView(props: PageViewProps): JSX.Element {
   const pageId = () => page()?.id;
   const properties = usePageProperties(pageId);
   const blockId = () => props.blockId?.();
+
+  /** A journal's title is its date, rendered in the reader's chosen format (ADR 018) — there is no
+   *  name to edit, so the input becomes a heading. */
+  const isJournal = () => (page()?.journalDay ?? null) !== null;
+  const title = () => {
+    const p = page();
+    return p ? displayPageName(p) : props.name();
+  };
 
   const [titleDraft, setTitleDraft] = createSignal(props.name());
   createEffect(() => {
@@ -67,7 +76,7 @@ export function PageView(props: PageViewProps): JSX.Element {
             class="page-view-back"
             onClick={() => navigate(pageRoutePath(props.name()))}
           >
-            ← {page()?.name ?? props.name()}
+            ← {title()}
           </button>
         </div>
       </Show>
@@ -82,7 +91,7 @@ export function PageView(props: PageViewProps): JSX.Element {
 
       <Show when={!page.loading && page() === null}>
         <div class="page-view-missing">
-          <h1>{props.name()}</h1>
+          <h1>{displayRefName(props.name())}</h1>
           <p>This page doesn't exist yet.</p>
           <button type="button" onClick={() => void createThisPage()}>
             Create "{props.name()}"
@@ -93,16 +102,21 @@ export function PageView(props: PageViewProps): JSX.Element {
       <Show when={page()}>
         {(p) => (
           <>
-            <input
-              class="page-title-input"
-              value={titleDraft()}
-              onInput={(e) => setTitleDraft(e.currentTarget.value)}
-              onBlur={() => void commitTitle()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-              }}
-              aria-label="Page title"
-            />
+            {/* `.page-title-input` zeroes its own margins, so the heading and the input occupy
+                the same space — moving between a journal and an ordinary page does not shift the
+                content below. */}
+            <Show when={!isJournal()} fallback={<h1 class="page-title-input">{title()}</h1>}>
+              <input
+                class="page-title-input"
+                value={titleDraft()}
+                onInput={(e) => setTitleDraft(e.currentTarget.value)}
+                onBlur={() => void commitTitle()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+                aria-label="Page title"
+              />
+            </Show>
             <PageProperties pageId={p().id} properties={properties()} />
             <BlockTree pageId={p().id} rootBlockId={blockId()} onNavigate={onNavigate} />
 

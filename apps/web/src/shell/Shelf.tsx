@@ -29,6 +29,7 @@ import {
   shelfOpen,
 } from "../app/shelf.js";
 import { lookupBlockText } from "../data/block-ref-cache.js";
+import { displayPageName, displayRefName } from "../data/page-title.js";
 import { usePageByName, usePageTree } from "../data/store.js";
 import type { BlockTreeNode, NavigateTarget } from "../data/types.js";
 import { MARKER_GLYPH } from "../editor/BlockRowView.js";
@@ -139,7 +140,10 @@ function BlockCard(props: {
   // page read that refetches whenever that page's blocks change.
   const tree = usePageTree(() => props.item.pageId);
   const node = createMemo(() => findNode(tree()?.blocks ?? [], props.item.blockId));
-  const pageName = createMemo(() => tree()?.page.name ?? "");
+  const pageName = createMemo(() => {
+    const page = tree()?.page;
+    return page ? displayPageName(page) : "";
+  });
 
   return (
     <ShelfCardFrame
@@ -170,7 +174,10 @@ function PageCard(props: {
 
   return (
     <ShelfCardFrame
-      title={page()?.name ?? props.item.pageName}
+      title={(() => {
+        const p = page();
+        return p ? displayPageName(p) : displayRefName(props.item.pageName);
+      })()}
       itemKey={props.item.key}
       onOpenTitle={() => props.onNavigate({ kind: "page", name: props.item.pageName })}
     >

@@ -6,7 +6,7 @@
  */
 
 import type { Page, SqlDriver } from "@nooklet/core";
-import { isId } from "@nooklet/core";
+import { isId, parseJournalTitle } from "@nooklet/core";
 import type { z } from "zod";
 import { isoFromJournalDay, journalDayFromWire } from "../data-api.js";
 import { type OpContext, OpError } from "./registry.js";
@@ -14,20 +14,44 @@ import type { PageMeta as PageMetaSchema } from "./schemas.js";
 
 export type PageMetaT = z.output<typeof PageMetaSchema>;
 
-/** Resolve a `PageRef` string. Returns `null` when nothing matches (never creates). */
+/**
+ * Resolve a `PageRef` string, optionally creating the page it names.
+ *
+ * Order matters, and each step earns its place:
+ *
+ *  1. An ISO date or `today`/`yesterday`/`tomorrow` is a journal day — the documented wire form.
+ *  2. A 14-char id is an id.
+ *  3. A name is a name, INCLUDING one that happens to look like a date: a page someone
+ *     deliberately called `11.12.2024` must stay reachable by that name.
+ *  4. Only when no such page exists, a name in any other recognised journal title format
+ *     (`Sep 4th, 2026`, `Mon, 07.09.2026`) means that journal day. Without this, `page_append`
+ *     with a human-written date would create an ordinary page shadowing the journal forever —
+ *     the same hole B-23 closed in `page.create`, through a different door.
+ *  5. Failing everything, `create` makes an ordinary page. Step 4 having run first is what keeps
+ *     this from minting a shadow journal.
+ */
 export async function resolvePageRef(
   ctx: OpContext,
   ref: string,
   opts?: { create?: boolean },
 ): Promise<Page | null> {
+  const create = opts?.create ?? false;
   if (journalDayFromWire(ref) !== null) {
-    return ctx.data.pages.journal(ref, { create: opts?.create ?? false });
+    return ctx.data.pages.journal(ref, { create });
   }
   if (isId(ref)) {
     const byId = await ctx.data.pages.get(ref);
     if (byId) return byId;
   }
-  return ctx.data.pages.get({ name: ref });
+  const byName = await ctx.data.pages.get({ name: ref });
+  if (byName) return byName;
+
+  const asJournalDay = parseJournalTitle(ref);
+  if (asJournalDay !== null) {
+    return ctx.data.pages.journal(isoFromJournalDay(asJournalDay), { create });
+  }
+  if (!create) return null;
+  return ctx.data.pages.create({ name: ref });
 }
 
 export async function requirePage(

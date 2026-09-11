@@ -1,9 +1,11 @@
 /**
  * Journal addressing and the journal stream.
  *
- * Both bugs here came from the same place: a journal day has a *day number*, but its page is
- * stored under whatever title format the graph was written with ("Mon, 07.09.2026" in a Logseq
- * graph using that pattern), while search results and block references hand out the ISO date.
+ * The bugs here all came from the same place: a journal day has a *day number*, but its page used
+ * to be stored under whatever title format the graph was written with ("Mon, 07.09.2026" in a
+ * Logseq graph using that pattern), while search results and block references hand out the ISO
+ * date. ADR 018 closed that gap by storing the ISO name and making the format a display setting;
+ * the tests below are what stops it reopening.
  */
 
 import { expect, type Page, test } from "@playwright/test";
@@ -24,9 +26,8 @@ async function api(page: Page, op: string, body: unknown): Promise<unknown> {
   );
 }
 
-/** The ISO date `offsetDays` from today. Journals are addressed by ISO through the API
- * (`journalDayFromWire`); the page itself is then STORED under the configured title format, which
- * is exactly the mismatch these tests exist for. */
+/** The ISO date `offsetDays` from today — how journals are addressed through the API
+ * (`journalDayFromWire`) and, since ADR 018, how the page itself is named. */
 function isoOffset(offsetDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
@@ -40,8 +41,7 @@ test("a journal page is reachable by ISO date even when stored under another tit
 }) => {
   await page.goto("/journals");
   const past = isoOffset(-3);
-  // `page.append` is the only way to create a journal day (page.create refuses them), and it
-  // stores the page under the configured title format, not this ISO string.
+  // `page.append` is the only way to create a journal day (page.create refuses them).
   await api(page, "page.append", { page: past, markdown: "- written three days ago" });
 
   // Exactly what a search result links to.
@@ -83,4 +83,30 @@ test("clicking a search result opens the page it came from", async ({ page }) =>
   // The regression: this landed on "This page doesn't exist yet."
   await expect(page.locator("body")).not.toContainText("doesn't exist yet");
   await expect(page.locator(".vr-outliner").first()).toContainText("findable journal content");
+});
+
+test("a journal is stored under its ISO name and found by every way of writing that date", async ({
+  page,
+}) => {
+  await page.goto("/journals");
+  const day = isoOffset(-7);
+  await api(page, "page.append", { page: day, markdown: "- a week ago" });
+
+  // ADR 018: the stored name is the ISO date, not a display format.
+  const read = (await api(page, "page.read", { page: day })) as { page: { name: string } };
+  expect(read.page.name).toBe(day);
+
+  // And a block that links to that day in a *human* format still lands in its backlinks, because
+  // the reference index canonicalises — this is the half of ADR 018 that is easy to forget.
+  const [y, m, d] = day.split("-");
+  const human = `${d}.${m}.${y}`;
+  await api(page, "page.append", {
+    page: "Cross Format Refs",
+    markdown: `- looking back at [[${human}]]`,
+  });
+
+  const backlinks = (await api(page, "page.backlinks", { target: day })) as {
+    linked: Array<{ page: string; text: string }>;
+  };
+  expect(backlinks.linked.map((l) => l.page)).toContain("Cross Format Refs");
 });

@@ -48,6 +48,7 @@ import {
 } from "./embeddings/index.js";
 import { runGc } from "./gc.js";
 import { importLogseqGraph } from "./importer/logseq.js";
+import { migrateJournalNames } from "./journal-names.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
 import { buildRegistry } from "./ops/index.js";
@@ -116,6 +117,18 @@ function resolveWebClientDir(flag: string | boolean | undefined): string | undef
 function open(args: Args): { ctx: ServerContext; config: ServerConfig } {
   const dir = dataDir(args);
   const ctx = createServerContext(openDb({ path: join(dir, "graph.sqlite") }));
+  // ADR 018. Not a `schema.ts` migration because it writes ops, not rows — see journal-names.ts.
+  // A no-op on every run after the first, so it sits in the shared `open()` rather than in each
+  // command that happens to write.
+  const journals = migrateJournalNames(ctx);
+  if (journals.renamed > 0) {
+    process.stderr.write(`nooklet: gave ${journals.renamed} journal pages their ISO names\n`);
+  }
+  for (const name of journals.collided) {
+    process.stderr.write(
+      `nooklet: left journal page "${name}" alone — another page already owns that ISO name\n`,
+    );
+  }
   const portFlag = args.flags.get("port");
   const hostFlag = args.flags.get("host");
   const allowFlag = args.flags.get("allow-host");

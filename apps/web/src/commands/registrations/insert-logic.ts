@@ -46,8 +46,9 @@ export function embedBlock(start: number, end: number, query = ""): ReplaceRange
   return { from: start, to: end, text, caretOffset: "{{embed ((".length + query.length };
 }
 
-/** R49: a `[[<journal title>]]` wikilink resolving to today's journal, using the recognized
- * display format (`@nooklet/core#formatJournalTitle`'s default, "Sep 10th, 2026"). */
+/** R49: a `[[<journal title>]]` wikilink resolving to today's journal, written in the reader's
+ * chosen display format rather than the ISO name the page is stored under (ADR 018) — every
+ * recognised format resolves to the same page, so the text can read the way a person writes. */
 export function insertToday(start: number, end: number, journalTitle: string): ReplaceRangeSpec {
   const text = `[[${journalTitle}]]`;
   return { from: start, to: end, text, caretOffset: text.length };

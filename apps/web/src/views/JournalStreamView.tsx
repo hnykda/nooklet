@@ -5,9 +5,10 @@
  * the primary phone surface — kept usable one-handed: the calendar is collapsed by default, "load
  * more" happens automatically near the bottom of the scroll (no precise tapping required).
  */
-import { todayJournalDay } from "@nooklet/core";
+import { formatJournalTitle, todayJournalDay } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { journalTitleFormat } from "../data/page-title.js";
 import { useJournalStream, usePinnedJournalDay } from "../data/store.js";
 import type { JournalDayEntry, NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
@@ -18,9 +19,10 @@ import { VirtualJournalDay } from "./VirtualJournalDay.js";
 const INITIAL_MAX_DAYS = 14;
 const LOAD_MORE_STEP = 14;
 
+/** The reader's chosen date format (ADR 018) — this stream is where they see it most, so it was
+ *  the most visible place hard-coded ISO was wrong. */
 function dayTitle(day: number): string {
-  const s = String(day).padStart(8, "0");
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  return formatJournalTitle(day, journalTitleFormat());
 }
 
 export function JournalStreamView(): JSX.Element {

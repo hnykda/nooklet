@@ -14,50 +14,6 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
-### B-32 · `graph.spec.ts` writes into today's journal
-**Status:** open · **Severity:** low · **Found:** 2026-09-11
-
-`e2e/tests/graph.spec.ts` appends `- journal mentions [[Graph Leaf]]` to **today's** journal,
-which is precisely the shared state `a-fresh-journal.spec.ts` needs untouched — that spec is named
-to sort first for exactly this reason, and only works because it runs before anything that writes
-there.
-
-It should use a dated journal in the past instead. Until then, reordering the specs or sharding
-the run will break the journal test, and the failure will look like an editor bug rather than a
-fixture collision.
-
----
-
-### B-21 · Journal page names should be canonical ISO, with the display format a setting
-**Status:** open · **Severity:** medium · **Raised:** 2026-09-11 (user: "stored name should IMHO be
-ISO. and then we should have in settings selectable format of that")
-
-A journal page is currently *stored* under whatever title format the graph was written with —
-`Mon, 07.09.2026` in the imported Logseq graph — while search results, block references and the
-API all hand out the ISO date. That mismatch caused B-22 and will keep causing this class of bug.
-
-Proposal: store the canonical name as ISO (`2026-09-07`), keep `journal_day` as the real key, and
-make the *rendered* title a user setting (`MMM do, yyyy`, `EEEE, dd.MM.yyyy`, ISO, …). Affects the
-markdown mirror's filenames and titles, `[[Mon, 07.09.2026]]` references inside existing content,
-and Logseq round-trip fidelity — so it needs an ADR and a migration, not a quick edit.
-
-The resolve-by-day-number fix in B-22 is a prerequisite either way and is already in.
-
----
-
-### B-23 · `page.create` accepts a journal-formatted name and makes a non-journal page
-**Status:** open · **Severity:** medium · **Found:** 2026-09-11, while writing journal e2e tests
-
-`page.create` deliberately refuses journal days — but its guard uses `journalDayFromWire`, which
-only understands ISO and `today`/`yesterday`, not the title formats `parseJournalTitle` accepts.
-So `page.create({name: "Tue, 08.09.2026"})` succeeds and produces a page with `journal_day = NULL`:
-a page that looks like a journal day, is named like one, and is not one. It will never appear in
-the journal stream.
-
-The guard should use the same parser the rest of the system does.
-
----
-
 ### B-07 · Cmd+A in a block doesn't select its text
 **Status:** fixed (by B-15's focus fix; covered by `e2e/tests/parity.spec.ts`) · **Status was:** open · **Severity:** high · **Found:** 2026-09-11, while writing e2e tests
 
@@ -165,6 +121,110 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 ---
 
 ## Fixed
+
+### B-32 · `graph.spec.ts` wrote into today's journal
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-11
+
+The graph spec appended to **today's** journal, which is exactly the shared state
+`a-fresh-journal.spec.ts` needs untouched — that spec is named to sort first for this reason, and
+only worked because it happened to run earlier. Reordering or sharding the suite would have broken
+the journal test with a failure that read as an editor bug rather than a fixture collision.
+
+It now writes to a dated day in the past, with a comment saying why.
+
+### B-37 · The Settings command navigated to a route that does not exist
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-11 by a subagent building the panel
+
+`app.openSettings` called `navigate("/settings")`. There is no such route, so the command — bound
+to a key and listed in the palette — landed on a blank page. It now raises the settings panel.
+
+Test: `e2e/tests/settings.spec.ts`.
+
+### B-38 · Embeddings could not be configured without dropping to the CLI
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-11 by a subagent
+
+Semantic search needed `nooklet embed model …` from a terminal: there was no HTTP op to see
+whether a provider was reachable, pick a model, or start a backfill, and nothing in the UI to do it
+with. Someone who installed the app and wanted the feature it advertises had no path to it.
+
+Now `embeddings.status` / `configure` / `reindex` exist (HTTP-only, deliberately not MCP tools:
+they are operator decisions with real cost), the provider is probed *before* anything is persisted
+so a bad host is never stored, and the indexer activates a model once its backfill drains — which
+is the part a request handler cannot do synchronously and the reason an HTTP-configured model
+would otherwise sit inactive forever.
+
+Tests: `packages/server/src/ops/ops.http.test.ts` (against a stub Ollama, so results do not depend
+on the machine), `e2e/tests/settings.spec.ts`. Also verified end to end against a real Ollama with
+`bge-m3`: an English query returned a Czech note as its top hit.
+
+### B-21 · Journal pages were stored under a display format
+**Status:** fixed · **Severity:** medium · **Raised:** 2026-09-11 (user: "stored name should IMHO
+be ISO. and then we should have in settings selectable format of that") · ADR 018
+
+A journal page was *stored* under whatever title format the graph was written with —
+`Mon, 07.09.2026` in the imported Logseq graph — while search results, block references and the
+API all handed out the ISO date. The format a date is displayed in had become part of its
+identity, and that one mistake produced B-22, B-23, and a quieter third: `ref.dst_page_key` is the
+reference text, so `[[Mon, 07.09.2026]]`, `[[Sep 7th, 2026]]` and `[[2026-09-07]]` were three
+different keys and a journal's backlinks were whichever subset happened to match its stored name.
+
+Now: a page with a journal day is stored as `2026-09-07` (derived in `@nooklet/core`'s reducer, so
+client, server and replay all agree); every recognised date format canonicalises to one reference
+key; and the displayed title is a per-device setting (Settings → Appearance → Journal date format).
+
+Existing graphs are migrated by `packages/server/src/journal-names.ts`, which mints real
+`page.rename` ops — a raw UPDATE would desync live state from the op log and no other device would
+ever hear about it. Run against the real 952-page graph: 825 pages renamed, `nooklet verify` clean,
+and unresolved references *dropped* (path_ref 7403 → 5889, ref 1444 → 1357) because dates written
+in a different format now resolve.
+
+Tests: `packages/core/src/journal.test.ts`, `packages/core/src/sync/apply-ops.test.ts`,
+`packages/server/src/journal-names.test.ts`, `e2e/tests/journals.spec.ts`.
+
+### B-23 · `page.create` accepted a journal-formatted name and made a non-journal page
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-11, while writing journal e2e tests ·
+commit `dab7dc7`
+
+`page.create` deliberately refuses journal days — but its guard used `journalDayFromWire`, which
+only understands ISO and `today`/`yesterday`, not the title formats `parseJournalTitle` accepts. So
+`page.create({name: "Tue, 08.09.2026"})` succeeded and produced a page with `journal_day = NULL`:
+named like a journal day, looking like one, and invisible to the journal stream forever.
+
+The guard now uses `parseJournalTitle` — the parser the rest of the system resolves references
+with — and the error names the ISO date to use with `page_append` instead.
+
+Test: `packages/server/src/ops/ops.http.test.ts`, `describe("page.create journal guard")`.
+
+### B-35 · `page.append` could not create an ordinary page, and shadowed journals
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-11, by an e2e test that tried to use it
+
+Two faults in one function. `page_append`'s `create_page` flag defaults to true and is documented
+as creating the page — but `resolvePageRef` only ever honoured it on the journal branch, so
+appending to a page that did not exist yet failed with *"does not exist and create_page is false"*
+having been passed exactly the opposite. An agent reading that message would conclude the flag was
+the problem and never find the real one.
+
+And the fallthrough was B-23's hole through a different door: `page_append({page: "Sep 8th, 2026"})`
+would have created an ordinary page shadowing that journal day.
+
+`resolvePageRef` now resolves in a documented order — wire date, id, existing name, *then* any
+other journal title format, and only then creates an ordinary page. The name-before-date step is
+what keeps an imported page genuinely called `11.12.2024` reachable by its name.
+
+Test: `packages/server/src/ops/ops.http.test.ts`, `describe("page.append page resolution")`.
+
+### B-36 · Moving the e2e port left the browser pointing at the old one
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-11, immediately after B-34's guard fired
+
+B-34 taught the suite to refuse a port that is already serving nooklet, and to say
+`NOOKLET_E2E_PORT`. Doing what it said moved the *server* but not the *browser*: `baseURL` came
+from a separate `NOOKLET_E2E_URL` and stayed at 6188 — the very server the guard had just objected
+to. The suite then tested a concurrent agent's build and reported a failure in code that was
+correct, which is the exact outcome B-34 existed to prevent.
+
+`baseURL` is now derived from `NOOKLET_E2E_PORT`. One knob.
+
+**Lesson:** a guard that tells you which knob to turn has to be sure that knob turns everything.
 
 ### B-33 · `.gitignore` silently excluded seven source files from the repository
 **Status:** fixed · **Severity:** critical · **Found:** 2026-09-11 by a subagent

@@ -8,6 +8,7 @@
  */
 
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { displayPageName } from "../data/page-title.js";
 import { setPageFavorite, useAllPages, useFavoritePages } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { pageRoutePath } from "./navigateTarget.js";
@@ -28,11 +29,15 @@ export function AllPagesView(props: { onNavigate?: (t: NavigateTarget) => void }
     const q = query().trim().toLowerCase();
     const list = pages().filter((p) => {
       if (!showJournals() && p.journalDay !== null) return false;
-      return q === "" || p.name.toLowerCase().includes(q);
+      // Matched against what is on screen AND the stored name, so a journal is found by
+      // "2026-09" as well as by "Sep 7th" (ADR 018 — the two are no longer the same string).
+      return q === "" || `${displayPageName(p)} ${p.name}`.toLowerCase().includes(q);
     });
     const by = sort();
     return [...list].sort((a, b) =>
-      by === "name" ? a.name.localeCompare(b.name) : (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+      by === "name"
+        ? displayPageName(a).localeCompare(displayPageName(b))
+        : (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
     );
   });
 
@@ -85,7 +90,7 @@ export function AllPagesView(props: { onNavigate?: (t: NavigateTarget) => void }
                 {favoriteIds().has(page.id) ? "★" : "☆"}
               </button>
               <a class="all-pages-name" href={pageRoutePath(page.name)}>
-                {page.name}
+                {displayPageName(page)}
               </a>
             </li>
           )}

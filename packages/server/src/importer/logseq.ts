@@ -32,7 +32,7 @@ import {
   type AppliedOpResult,
   DEFAULT_JOURNAL_TITLE_FORMAT,
   fileNameToPageName,
-  formatJournalTitle,
+  isoJournalName,
   journalDayFromFileName,
   makeOp,
   newId,
@@ -195,11 +195,7 @@ function errMsg(err: unknown): string {
 /** Scans `pages/` then `journals/` (in that order; each sorted by file name) and resolves each
  *  file's page name, deduplicating by normalized key (first file wins, later ones are skipped
  *  with a warning — ADR 012 §3: "rare, malformed graphs"). */
-function resolveFileEntries(
-  graphDir: string,
-  config: LogseqConfig,
-  warnings: string[],
-): FileEntry[] {
+function resolveFileEntries(graphDir: string, warnings: string[]): FileEntry[] {
   const entries: FileEntry[] = [];
   const seenKeys = new Map<string, string>();
 
@@ -259,8 +255,14 @@ function resolveFileEntries(
       record({ isJournal: false, journalDay: null, parsed, resolvedName }, filePath);
       continue;
     }
-    const resolvedName = titleOverride || formatJournalTitle(day, config.journalPageTitleFormat);
-    record({ isJournal: true, journalDay: day, parsed, resolvedName }, filePath);
+    // A journal page is stored under its ISO name (ADR 018) — `config.journalPageTitleFormat` is
+    // the format the SOURCE graph wrote its titles in, which is what `parseJournalTitle` needs to
+    // resolve `[[Mon, 07.09.2026]]` references, not a name to carry into storage. A `title::`
+    // override is ignored for the same reason: the day already names the page.
+    record(
+      { isJournal: true, journalDay: day, parsed, resolvedName: isoJournalName(day) },
+      filePath,
+    );
   }
 
   return entries;
@@ -479,7 +481,17 @@ export async function importLogseqGraph(
   const errors: string[] = [];
 
   const config: LogseqConfig = { ...readConfig(graphDir, warnings), ...opts.config };
-  const entries = resolveFileEntries(graphDir, config, warnings);
+  // Journal pages are stored under their ISO name now (ADR 018), so the source graph's title
+  // format no longer decides anything about storage — but it is the format this person has been
+  // reading their dates in for years, and settings can be set to match. Saying so beats leaving
+  // them to wonder why every journal suddenly looks different.
+  if (config.journalPageTitleFormat !== DEFAULT_JOURNAL_TITLE_FORMAT) {
+    warnings.push(
+      `this graph wrote journal titles as "${config.journalPageTitleFormat}"; pages are stored ` +
+        "by ISO date and shown in the format chosen under Settings → Journal date format",
+    );
+  }
+  const entries = resolveFileEntries(graphDir, warnings);
   const ids = assignIds(entries, warnings);
 
   let pagesImported = 0;

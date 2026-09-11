@@ -4,7 +4,7 @@
  * committing it (blur, or Enter) creates the page AND its first block together — nothing is
  * written before that. Once materialized, every further edit on this page is `BlockTree`'s job.
  */
-import { formatJournalTitle, newId, orderBetween } from "@nooklet/core";
+import { isoJournalName, newId, orderBetween } from "@nooklet/core";
 import { createSignal, type JSX, Show } from "solid-js";
 import { applyOp } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
@@ -48,7 +48,7 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
 
     await applyOp(newPageId, {
       kind: "page.create",
-      name: formatJournalTitle(props.day),
+      name: isoJournalName(props.day),
       journalDay: props.day,
       createdAt: Date.now(),
     });
@@ -72,15 +72,22 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
     <Show
       when={pageId()}
       fallback={
-        <div class="block-tree">
-          <ul class="block-list">
-            <li class="block-row block-row-first">
-              <div class="block-row-main">
-                <span class="block-bullet" aria-hidden="true">
-                  •
-                </span>
+        // Real outliner markup, not a lookalike (docs/BUGS.md B-12). This row becomes a `BlockTree`
+        // row the instant it is committed, so rendering it with the same classes the tree uses
+        // (`../editor/editor.css`) is what stops the handover from being a visible jump — and
+        // stops the placeholder from drifting out of sync with the real thing every time the
+        // outliner's bullet, indent or line-height changes.
+        <div class="vr-draft">
+          <div class="vr-row vr-row-draft">
+            <span class="vr-bullet-wrap" aria-hidden="true">
+              <span class="vr-bullet">
+                <span class="vr-bullet-dot" />
+              </span>
+            </span>
+            <div class="vr-row-main">
+              <div class="vr-content">
                 <textarea
-                  class="block-content-input"
+                  class="vr-draft-input"
                   value={draft()}
                   rows={1}
                   placeholder="Start typing…"
@@ -94,8 +101,8 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
                   }}
                 />
               </div>
-            </li>
-          </ul>
+            </div>
+          </div>
         </div>
       }
     >

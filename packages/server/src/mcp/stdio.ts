@@ -23,13 +23,9 @@
  * tool call for the lifetime of the stdio connection.
  */
 
-import { fileURLToPath } from "node:url";
 import { type StdioServerHandle, serveStdio } from "@modelcontextprotocol/server/stdio";
 import type { ServerContext } from "../apply-ops.js";
-import { createServerContext } from "../apply-ops.js";
 import { scopesFor, verifyToken } from "../auth/tokens.js";
-import { openDb } from "../db.js";
-import { buildRegistry } from "../ops/index.js";
 import type { OpRegistry, ServerConfig } from "../ops/registry.js";
 import { buildMcpServerInstance, type McpAuth } from "./server.js";
 

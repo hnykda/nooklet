@@ -33,6 +33,7 @@
  */
 
 import { compareHlc, parseHlc } from "../hlc.js";
+import { isoJournalName, isValidJournalDay, type JournalDay } from "../journal.js";
 import { TASK_MARKERS } from "../model.js";
 import type { BlockPlace, Op, OpKind, OpPayload } from "../ops.js";
 import { normalizePageName } from "../page-name.js";
@@ -169,6 +170,24 @@ function applyOne(driver: SqlDriver, op: Op): OpOutcome {
 // page.*
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A journal page's name is DERIVED from its day, never carried (ADR 018): whatever name an op
+ * proposes, a page with a journal day is stored as `2026-09-07`.
+ *
+ * Done here, in the shared reducer, rather than at each of the half-dozen call sites that create
+ * journal pages, because this is the one place every device and every replay funnels through — so
+ * client, server and a `rebuild()` from the op log all reach the same name. The coercion is pure
+ * (day in, string out) and so does not disturb replay determinism: `verify` rebuilds live state
+ * through this same function and gets the same answer.
+ *
+ * `isValidJournalDay` guards the arithmetic — an op carrying a nonsense day is stored under its
+ * proposed name rather than crashing a whole sync batch on a `date-fns` range error.
+ */
+function storedPageName(name: string, journalDay: JournalDay | null): string {
+  if (journalDay === null || !isValidJournalDay(journalDay)) return name;
+  return isoJournalName(journalDay);
+}
+
 function pageKeyCollision(driver: SqlDriver, key: string, excludeId: string): boolean {
   return (
     driver.get("SELECT id FROM page WHERE key = ? AND deleted_at IS NULL AND id != ?", [
@@ -184,7 +203,8 @@ function applyPageCreate(
   entity: string,
   payload: Extract<OpPayload, { kind: "page.create" }>,
 ): OpOutcome {
-  const key = normalizePageName(payload.name);
+  const name = storedPageName(payload.name, payload.journalDay);
+  const key = normalizePageName(name);
   if (pageKeyCollision(driver, key, entity))
     return { status: "rejected", reason: "page-key-collision" };
 
@@ -192,7 +212,7 @@ function applyPageCreate(
   const ins = driver.run(
     `INSERT OR IGNORE INTO page(id, name, key, journal_day, created_at, updated_at, name_hlc)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [entity, payload.name, key, payload.journalDay, payload.createdAt, payload.createdAt, hlc],
+    [entity, name, key, payload.journalDay, payload.createdAt, payload.createdAt, hlc],
   );
   if (ins.changes > 0) changed = true;
 
@@ -210,16 +230,23 @@ function applyPageRename(
   entity: string,
   payload: Extract<OpPayload, { kind: "page.rename" }>,
 ): OpOutcome {
-  const row = driver.get<{ name_hlc: string }>("SELECT name_hlc FROM page WHERE id = ?", [entity]);
+  const row = driver.get<{ name_hlc: string; journal_day: JournalDay | null }>(
+    "SELECT name_hlc, journal_day FROM page WHERE id = ?",
+    [entity],
+  );
   if (!row) return { status: "noop", reason: "no-such-page" };
   if (compareHlc(hlc, row.name_hlc) <= 0) return { status: "noop", reason: "stale" };
 
-  const key = normalizePageName(payload.name);
+  // Same derivation as on create, so renaming a journal page is not a way around it — the rename
+  // lands, it just lands on the ISO name. That is also what lets the one-time migration in
+  // `packages/server/src/journal-names.ts` do its work through ordinary `page.rename` ops.
+  const name = storedPageName(payload.name, row.journal_day);
+  const key = normalizePageName(name);
   if (pageKeyCollision(driver, key, entity))
     return { status: "rejected", reason: "page-key-collision" };
 
   driver.run("UPDATE page SET name = ?, key = ?, name_hlc = ? WHERE id = ?", [
-    payload.name,
+    name,
     key,
     hlc,
     entity,

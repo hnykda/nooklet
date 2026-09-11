@@ -10,7 +10,7 @@
  * then `block.create`) for the "page doesn't exist yet" case, and a single `block.create` appended
  * after the last root block otherwise — never a parallel write path.
  */
-import { formatJournalTitle, type JournalDay, makeOp, type Op, orderBetween } from "@nooklet/core";
+import { isoJournalName, type JournalDay, makeOp, type Op, orderBetween } from "@nooklet/core";
 import type { Clock } from "../editor/types.js";
 
 /** What the caller already knows about today's journal page, or `null` if it does not exist yet
@@ -54,7 +54,7 @@ export function buildQuickCaptureOps(
     ops.push(
       makeOp(input.clock.next(), input.clock.device, pageId, {
         kind: "page.create",
-        name: formatJournalTitle(input.day),
+        name: isoJournalName(input.day),
         journalDay: input.day,
         createdAt: now,
       }),

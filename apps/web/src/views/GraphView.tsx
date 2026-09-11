@@ -28,6 +28,7 @@
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import type { GraphEdge, GraphNode } from "../data/api-client.js";
+import { displayRefName } from "../data/page-title.js";
 import { useGraphLinks } from "../data/store.js";
 import { pageRoutePath } from "./navigateTarget.js";
 import "./graph.css";
@@ -394,7 +395,7 @@ export function GraphView(): JSX.Element {
       ctx.fillStyle = colors.accent;
       for (const n of [focus, ...focus.neighbours]) {
         const p = toScreen(n);
-        ctx.fillText(n.name, p.x + radiusOf(n) * scale + 4, p.y);
+        ctx.fillText(displayRefName(n.name), p.x + radiusOf(n) * scale + 4, p.y);
         labelled.add(n);
       }
     }
@@ -408,7 +409,7 @@ export function GraphView(): JSX.Element {
         if (budget <= 0) break;
         if (labelled.has(n)) continue;
         const p = toScreen(n);
-        ctx.fillText(n.name, p.x + radiusOf(n) * scale + 4, p.y);
+        ctx.fillText(displayRefName(n.name), p.x + radiusOf(n) * scale + 4, p.y);
         budget--;
       }
       ctx.globalAlpha = 1;
@@ -648,7 +649,7 @@ export function GraphView(): JSX.Element {
         <Show when={hovered()}>
           {(node) => (
             <p class="graph-hover">
-              {node().name} · {node().refCount} reference(s)
+              {displayRefName(node().name)} · {node().refCount} reference(s)
             </p>
           )}
         </Show>
@@ -667,7 +668,7 @@ export function GraphView(): JSX.Element {
                 onCleanup(() => anchors.delete(node.id));
               }}
             >
-              <a href={pageRoutePath(node.name)}>{node.name}</a>
+              <a href={pageRoutePath(node.name)}>{displayRefName(node.name)}</a>
             </li>
           )}
         </For>

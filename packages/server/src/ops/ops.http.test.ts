@@ -1,4 +1,17 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { newId } from "@nooklet/core";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { serverApplyOps } from "../apply-ops.js";
+import {
+  activateModel,
+  buildProviderForModel,
+  EmbeddingIndexer,
+  getActiveModel,
+  getEmbeddingSettings,
+  registerModel,
+  setEmbeddingSettings,
+} from "../embeddings/index.js";
 import { type JsonAny, makeTestServer, post, type TestServer } from "../test-helpers.js";
 
 let s: TestServer;
@@ -390,19 +403,17 @@ describe("page.create journal guard", () => {
   // journal written in any other title format slipped through and became a page with
   // `journal_day = NULL` — named like a journal, looking like one, and invisible to the journal
   // stream forever.
-  it.each([
-    ["2026-09-08"],
-    ["Tue, 08.09.2026"],
-    ["Sep 8th, 2026"],
-    ["today"],
-  ])("refuses %s and names the ISO date to use instead", async (name) => {
-    const s2 = makeTestServer();
-    const { status, json } = await post(s2.app, "/api/v1/page.create", s2.writeToken, { name });
-    expect(status).toBe(400);
-    expect(json.error.code).toBe("invalid");
-    expect(json.error.hint).toMatch(/page_append/);
-    expect(json.error.hint).toMatch(/\d{4}-\d{2}-\d{2}/);
-  });
+  it.each([["2026-09-08"], ["Tue, 08.09.2026"], ["Sep 8th, 2026"], ["today"]])(
+    "refuses %s and names the ISO date to use instead",
+    async (name) => {
+      const s2 = makeTestServer();
+      const { status, json } = await post(s2.app, "/api/v1/page.create", s2.writeToken, { name });
+      expect(status).toBe(400);
+      expect(json.error.code).toBe("invalid");
+      expect(json.error.hint).toMatch(/page_append/);
+      expect(json.error.hint).toMatch(/\d{4}-\d{2}-\d{2}/);
+    },
+  );
 
   it("still accepts an ordinary page whose name merely contains digits", async () => {
     const s2 = makeTestServer();
@@ -410,6 +421,79 @@ describe("page.create journal guard", () => {
       name: "97 poets of Revachol",
     });
     expect(status).toBe(200);
+  });
+});
+
+describe("page.append page resolution", () => {
+  it("creates an ordinary page when create_page is on", async () => {
+    // `create_page` defaults to true and is documented as doing this, but `resolvePageRef` only
+    // ever honoured it for journal days — an agent appending to a page that did not exist yet got
+    // "does not exist and create_page is false" while having passed exactly the opposite.
+    const s2 = makeTestServer();
+    const { status, json } = await post(s2.app, "/api/v1/page.append", s2.writeToken, {
+      page: "Brand New Page",
+      markdown: "- first thought",
+    });
+    expect(status).toBe(200);
+    expect(json.created).toHaveLength(1);
+
+    const read = await post(s2.app, "/api/v1/page.read", s2.writeToken, { page: "Brand New Page" });
+    expect(read.json.text).toContain("first thought");
+  });
+
+  it("still refuses when create_page is explicitly off", async () => {
+    const s2 = makeTestServer();
+    const { status, json } = await post(s2.app, "/api/v1/page.append", s2.writeToken, {
+      page: "Nope",
+      markdown: "- x",
+      create_page: false,
+    });
+    expect(status).toBe(400);
+    expect(json.error.message).toMatch(/create_page is false/);
+  });
+
+  it("appends a human-written date to the journal day, not a shadow page", async () => {
+    // The B-23 hole through page.append's door: without this, "Sep 8th, 2026" would have created
+    // an ordinary page with journal_day NULL, invisible to the journal stream forever.
+    const s2 = makeTestServer();
+    await post(s2.app, "/api/v1/page.append", s2.writeToken, {
+      page: "Sep 8th, 2026",
+      markdown: "- written on a human-shaped date",
+    });
+    const { json } = await post(s2.app, "/api/v1/page.read", s2.writeToken, { page: "2026-09-08" });
+    expect(json.page.kind).toBe("journal");
+    expect(json.page.name).toBe("2026-09-08");
+    expect(json.text).toContain("human-shaped date");
+  });
+
+  it("prefers an existing page over reading its name as a date", async () => {
+    // A page named "11.12.2024" cannot be made through `page.create` (B-23 reads any parseable
+    // date as a journal), but a graph imported from Logseq can contain one. When it does, the
+    // name wins: that is a real page with real content, and the journal day is reachable by ISO.
+    const s2 = makeTestServer();
+    const id = newId();
+    const hlc = s2.serverCtx.hlc.next();
+    serverApplyOps(
+      s2.serverCtx,
+      [
+        {
+          id: hlc,
+          hlc,
+          device: "aaaaaaaa",
+          entity: id,
+          payload: { kind: "page.create", name: "11.12.2024", journalDay: null, createdAt: 1 },
+        },
+      ],
+      { origin: "import", actor: "test" },
+    );
+
+    const { json } = await post(s2.app, "/api/v1/page.append", s2.writeToken, {
+      page: "11.12.2024",
+      markdown: "- belongs to the page, not the day",
+    });
+    expect(json.page).toBe("11.12.2024");
+    const read = await post(s2.app, "/api/v1/page.read", s2.writeToken, { page: "11.12.2024" });
+    expect(read.json.page.kind).toBe("page");
   });
 });
 
@@ -712,5 +796,223 @@ describe("batch/dry_run against a non-empty graph", () => {
     // own already-applied steps for real (instead of committing the trial itself) would produce.
     expect(after.op - before.op).toBe(3);
     expect(after.changes - before.changes).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// embeddings.* — the settings panel's way into M3/ADR 010 (`./embeddings.ts`).
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A stand-in Ollama over a real socket.
+ *
+ * These ops exist to turn two network failures into sentences a person can act on ("nothing is
+ * listening there", "that model was never pulled"), so the tests have to produce those failures
+ * for real. A mocked `fetch` would assert on the shape of the mock, not on what the providers and
+ * the probe actually do with an HTTP answer — and the probe's whole job is reading that answer.
+ *
+ * Deliberately NOT the machine's own Ollama: the dev box running these tests has one on
+ * :11434, CI does not, and a suite whose result depends on that is worse than no suite.
+ */
+interface StubOllama {
+  host: string;
+  close: () => Promise<void>;
+  embedCalls: number;
+}
+
+async function startStubOllama(opts: { models: string[]; dims: number }): Promise<StubOllama> {
+  const stub: StubOllama = { host: "", embedCalls: 0, close: async () => {} };
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => {
+      const body = chunks.length ? (JSON.parse(Buffer.concat(chunks).toString()) as JsonAny) : {};
+      const json = (payload: unknown): void => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(payload));
+      };
+      if (req.url === "/api/tags") {
+        json({ models: opts.models.map((name) => ({ name })) });
+      } else if (req.url === "/api/show") {
+        json({
+          model_info: { "general.architecture": "bert", "bert.embedding_length": opts.dims },
+        });
+      } else if (req.url === "/api/embed") {
+        stub.embedCalls++;
+        const inputs: string[] = body.input ?? [];
+        json({
+          model: body.model,
+          // Distinct-but-deterministic vectors: identical ones would make any later similarity
+          // assertion meaningless, and these rows are real vec0 inserts.
+          embeddings: inputs.map((text, i) =>
+            Array.from({ length: opts.dims }, (_, d) => ((text.length + i + d) % 7) / 7),
+          ),
+        });
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  stub.host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  stub.close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+  return stub;
+}
+
+/** Nothing listens here, and a refused connection comes back immediately. */
+const DEAD_HOST = "http://127.0.0.1:1";
+
+describe("embeddings.status", () => {
+  it("reports the defaults, no active model, and sqlite-vec, without touching the network", async () => {
+    const { status, json } = await post(s.app, "/api/v1/embeddings.status", s.readToken, {
+      probe: false,
+    });
+    expect(status).toBe(200);
+    // The state every install starts in, and the reason this whole feature was invisible.
+    expect(json.active).toBeNull();
+    expect(json.switching_to).toBeNull();
+    expect(json.configured).toEqual({
+      provider: "ollama",
+      model: "bge-m3",
+      host: "http://127.0.0.1:11434",
+    });
+    expect(json.sqlite_vec.loaded).toBe(true);
+    expect(json.provider.reachable).toBeNull(); // not probed
+  });
+
+  it("says the provider is unreachable, with the reason", async () => {
+    setEmbeddingSettings(s.serverCtx.driver, { host: DEAD_HOST });
+    const { status, json } = await post(s.app, "/api/v1/embeddings.status", s.readToken, {});
+    expect(status).toBe(200);
+    expect(json.provider.reachable).toBe(false);
+    expect(json.provider.error).toBeTruthy();
+  });
+});
+
+describe("embeddings.configure", () => {
+  let stub: StubOllama;
+
+  beforeAll(async () => {
+    stub = await startStubOllama({ models: ["stub-embed:latest", "other:latest"], dims: 8 });
+  });
+  afterAll(async () => {
+    await stub.close();
+  });
+
+  it("refuses an unreachable host with a message that names it, and stores nothing", async () => {
+    const { status, json } = await post(s.app, "/api/v1/embeddings.configure", s.writeToken, {
+      provider: "ollama",
+      host: DEAD_HOST,
+      model: "bge-m3",
+    });
+    expect(status).toBe(400);
+    expect(json.error.code).toBe("invalid");
+    expect(json.error.message).toContain("Could not reach");
+    expect(json.error.message).toContain(DEAD_HOST);
+    expect(json.error.hint).toContain("ollama serve");
+    // A configuration it has just proven does not work must not survive the call.
+    expect(getEmbeddingSettings(s.serverCtx.driver).host).toBe("http://127.0.0.1:11434");
+    expect(getActiveModel(s.serverCtx.driver)).toBeUndefined();
+  });
+
+  it("refuses a model the host does not have, and lists the ones it does", async () => {
+    const { status, json } = await post(s.app, "/api/v1/embeddings.configure", s.writeToken, {
+      provider: "ollama",
+      host: stub.host,
+      model: "not-pulled",
+    });
+    expect(status).toBe(400);
+    expect(json.error.message).toContain('no model named "not-pulled"');
+    expect(json.error.hint).toContain("ollama pull not-pulled");
+    expect(json.error.hint).toContain("stub-embed:latest");
+    expect(getEmbeddingSettings(s.serverCtx.driver).model).toBe("bge-m3");
+  });
+
+  it("accepts a bare model name for a tagged model, discovers dims, and activates on an empty graph", async () => {
+    const { status, json } = await post(s.app, "/api/v1/embeddings.configure", s.writeToken, {
+      provider: "ollama",
+      host: stub.host,
+      // Bare name for "stub-embed:latest" -- what people actually type.
+      model: "stub-embed",
+    });
+    expect(status).toBe(200);
+    expect(json.dimensions).toBe(8); // read from the provider, never from the caller
+    expect(json.queued).toBe(0);
+    expect(json.active).toBe(true); // nothing to backfill, so rule 19's flip happens at once
+
+    const after = await post(s.app, "/api/v1/embeddings.status", s.writeToken, { probe: false });
+    expect(after.json.active).toMatchObject({
+      provider: "ollama",
+      model: "stub-embed",
+      dimensions: 8,
+    });
+    expect(after.json.switching_to).toBeNull();
+  });
+
+  it("backfills before activating on a graph with content, then activates itself when drained", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Projects/Nooklet",
+      markdown: "- sync needs a reconnect backoff\n- oat milk, coffee, bread",
+    });
+
+    const { json } = await post(s.app, "/api/v1/embeddings.configure", s.writeToken, {
+      provider: "ollama",
+      host: stub.host,
+      model: "stub-embed",
+    });
+    expect(json.queued).toBeGreaterThan(0);
+    // Rule 19: a model with an outstanding backfill must NOT become the active one -- that is what
+    // would swap a working index for an empty one mid-switch.
+    expect(json.active).toBe(false);
+
+    const mid = await post(s.app, "/api/v1/embeddings.status", s.writeToken, { probe: false });
+    expect(mid.json.active).toBeNull();
+    expect(mid.json.switching_to).toMatchObject({ model: "stub-embed" });
+    expect(mid.json.queued).toBeGreaterThan(0);
+
+    // What `nooklet serve`'s in-process indexer does on its 3s tick.
+    const driver = s.serverCtx.driver;
+    await new EmbeddingIndexer({
+      driver,
+      providerFor: (m) => buildProviderForModel(driver, m),
+    }).drainUntilEmpty();
+    expect(stub.embedCalls).toBeGreaterThan(0);
+
+    const done = await post(s.app, "/api/v1/embeddings.status", s.writeToken, { probe: false });
+    expect(done.json.active).toMatchObject({ model: "stub-embed" });
+    expect(done.json.active.indexed).toBeGreaterThan(0);
+    expect(done.json.active.pending).toBe(0);
+    expect(done.json.switching_to).toBeNull();
+  });
+
+  it("requires a write scope (read tokens cannot reconfigure the server)", async () => {
+    const { status } = await post(s.app, "/api/v1/embeddings.configure", s.readToken, {
+      host: stub.host,
+      model: "stub-embed",
+    });
+    expect(status).toBe(403);
+  });
+});
+
+describe("embeddings.reindex", () => {
+  it("refuses when no model is registered instead of silently queueing nothing", async () => {
+    const { status, json } = await post(s.app, "/api/v1/embeddings.reindex", s.writeToken, {});
+    expect(status).toBe(400);
+    expect(json.error.message).toContain("No embedding model is registered");
+  });
+
+  it("queues every page and block once a model exists", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Reindexable",
+      markdown: "- one\n- two",
+    });
+    const driver = s.serverCtx.driver;
+    const model = registerModel(driver, { provider: "fake", model: "test-model", dims: 8 });
+    activateModel(driver, model.id);
+
+    const { status, json } = await post(s.app, "/api/v1/embeddings.reindex", s.writeToken, {});
+    expect(status).toBe(200);
+    expect(json.model).toBe("fake:test-model");
+    expect(json.queued).toBe(3); // 1 page + 2 blocks
   });
 });

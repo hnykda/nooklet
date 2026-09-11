@@ -56,6 +56,53 @@ describe("page.create / rename / prop / delete", () => {
     expect(page?.key).toBe("projects/nooklet");
   });
 
+  it("stores a journal page under its ISO name whatever name the op proposed (ADR 018)", () => {
+    const id = newId();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE, DEV_A), DEV_A, id, {
+        kind: "page.create",
+        // What a client written before ADR 018 — or an importer reading a Logseq graph — sends.
+        name: "Mon, 07.09.2026",
+        journalDay: 20260907,
+        createdAt: BASE,
+      }),
+    ]);
+    const page = getPage(driver, id);
+    expect(page?.name).toBe("2026-09-07");
+    expect(page?.key).toBe("2026-09-07");
+  });
+
+  it("renaming a journal page lands on the ISO name, not the one asked for", () => {
+    // Which is what lets the one-time migration do its work through ordinary rename ops, and what
+    // stops a display format becoming data again by way of the title editor.
+    const id = newId();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE, DEV_A), DEV_A, id, {
+        kind: "page.create",
+        name: "Mon, 07.09.2026",
+        journalDay: 20260907,
+        createdAt: BASE,
+      }),
+      makeOp(hlcAt(BASE + 1, DEV_A), DEV_A, id, { kind: "page.rename", name: "My Favourite Day" }),
+    ]);
+    expect(getPage(driver, id)?.name).toBe("2026-09-07");
+  });
+
+  it("leaves an ordinary page whose name looks like a date exactly as named", () => {
+    // `journal_day` is the fact, not the shape of the string: a page someone deliberately called
+    // "11.12.2024" is theirs to name.
+    const id = newId();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE, DEV_A), DEV_A, id, {
+        kind: "page.create",
+        name: "11.12.2024",
+        journalDay: null,
+        createdAt: BASE,
+      }),
+    ]);
+    expect(getPage(driver, id)?.name).toBe("11.12.2024");
+  });
+
   it("rejects a create that collides with a live page of the same key under a different id", () => {
     const id1 = newId();
     const id2 = newId();

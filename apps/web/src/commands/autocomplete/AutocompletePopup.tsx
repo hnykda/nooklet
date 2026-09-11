@@ -7,6 +7,7 @@
 
 import { formatJournalTitle } from "@nooklet/core";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
+import { journalTitleFormat } from "../../data/page-title.js";
 import type { EditorHost } from "../hosts/editor-host.js";
 import type { BlockSource, BlockSummary, PageSource, PageSummary } from "../hosts/page-source.js";
 import { useCommands } from "../provider/CommandProvider.js";
@@ -99,7 +100,7 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       const dateRows: Row[] = dateShortcuts().map((d) => ({
         id: d.id,
         label: d.label,
-        sublabel: formatJournalTitle(d.day),
+        sublabel: formatJournalTitle(d.day, journalTitleFormat()),
         day: d.day,
       }));
       return [...dateRows, ...pageRows];
@@ -138,9 +139,11 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       return;
     }
 
-    // A date shortcut links to that journal day by its real title, whatever format this graph uses.
+    // A date shortcut inserts the date the way the reader reads dates, not the ISO name the page
+    // is stored under (ADR 018): `normalizeKey` resolves any recognised format to the same page, so
+    // the words in the block can stay the words a person would write.
     if (row.day !== undefined) {
-      replaceQueryWith(trig, shape, formatJournalTitle(row.day));
+      replaceQueryWith(trig, shape, formatJournalTitle(row.day, journalTitleFormat()));
       props.onDismiss();
       return;
     }

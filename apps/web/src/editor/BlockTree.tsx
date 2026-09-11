@@ -52,6 +52,7 @@ import {
   setActiveEditorHost,
 } from "../app/editor-host.js";
 import { openOnShelf } from "../app/shelf.js";
+import { displayPageName } from "../data/page-title.js";
 import { applyOps, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
 import { BlockRowView } from "./BlockRowView.js";
@@ -233,8 +234,8 @@ export function BlockTree(props: {
       trail.unshift({ id: cursor, label: firstLine(block.content) });
       cursor = block.parentId;
     }
-    const pageName = treeResource()?.page.name;
-    if (pageName) trail.unshift({ id: null, label: pageName });
+    const page = treeResource()?.page;
+    if (page) trail.unshift({ id: null, label: displayPageName(page) });
     return trail;
   });
 

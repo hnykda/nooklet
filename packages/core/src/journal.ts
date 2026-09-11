@@ -47,6 +47,33 @@ export function formatJournalTitle(
 }
 
 /**
+ * The name a journal page is STORED under (ADR 018): the ISO date, always, whatever format the
+ * user chooses to read it in. `2026-09-07`.
+ *
+ * Not `formatJournalTitle(day)` with some pattern — that is a display concern, and a display
+ * concern that leaks into storage is what B-22 was: a graph written with `EEEE, dd.MM.yyyy` stored
+ * pages the API then handed out as ISO, so half the system could not find the other half.
+ */
+export function isoJournalName(day: JournalDay): string {
+  const s = String(day).padStart(8, "0");
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+}
+
+/**
+ * The canonical name for a page reference: a journal day written in ANY recognised title format
+ * collapses to its ISO name, everything else passes through untouched.
+ *
+ * This is what makes `[[Mon, 07.09.2026]]`, `[[Sep 7th, 2026]]` and `[[2026-09-07]]` one
+ * reference rather than three. Note it is deliberately *not* applied to page names on creation —
+ * there the journal day is known outright (`isoJournalName`) and guessing from the string would
+ * turn an ordinary page honestly named `11.12.2024` into a journal.
+ */
+export function canonicalRefName(name: string): string {
+  const day = parseJournalTitle(name);
+  return day === null ? name : isoJournalName(day);
+}
+
+/**
  * Title formats we try when resolving a page reference to a journal day.
  * Covers Logseq's default, common custom formats, and ISO.
  */

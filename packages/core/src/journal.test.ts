@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalRefName,
   formatJournalTitle,
+  isoJournalName,
   isValidJournalDay,
   journalDayFromFileName,
   journalDayToFileName,
@@ -43,5 +45,34 @@ describe("journal", () => {
   it("validates days", () => {
     expect(isValidJournalDay(20240229)).toBe(true);
     expect(isValidJournalDay(20230229)).toBe(false);
+  });
+});
+
+describe("canonical journal names (ADR 018)", () => {
+  it("names a journal page by its ISO date, whatever the display format", () => {
+    expect(isoJournalName(20260907)).toBe("2026-09-07");
+    expect(isoJournalName(20240101)).toBe("2024-01-01");
+  });
+
+  it("collapses every recognised journal title to one reference key", () => {
+    for (const written of [
+      "2026-09-07",
+      "Sep 7th, 2026",
+      "September 7th, 2026",
+      "Mon, 07.09.2026",
+      "Monday, 07.09.2026",
+      "07.09.2026",
+      "2026_09_07",
+    ]) {
+      expect(canonicalRefName(written), written).toBe("2026-09-07");
+    }
+  });
+
+  it("leaves a name that is not a date exactly as written", () => {
+    // The last two are the interesting ones: digits and dots in a name must not be enough to
+    // turn an ordinary page into a journal.
+    for (const name of ["travel/trip-planning", "97 poets of Revachol", "v1.2.3", "Q3 2026"]) {
+      expect(canonicalRefName(name), name).toBe(name);
+    }
   });
 });
