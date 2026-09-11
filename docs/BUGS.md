@@ -152,6 +152,34 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 
 ## Fixed
 
+### B-29 · A self-executing module hijacked the CLI once bundled
+**Status:** fixed · **Found:** 2026-09-11, building the desktop app's bundled server
+
+The desktop app's server died on `unable to open database file` for a directory that plainly
+existed. The path it tried to open was the data **directory**, not `graph.sqlite` inside it.
+
+`mcp/stdio.ts` ended with a standalone entry point:
+
+```js
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+```
+
+Bundled by esbuild into a single file alongside `cli.ts`, that guard compares *the bundle's* path
+— so it is true for whichever entry point is actually running, and the stdio bridge's `main()`
+ran instead of the CLI's. The two read `--data` differently on purpose: the CLI takes a data
+directory, the bridge takes the database file. Hence the error.
+
+`main()` and its `parseArgs` now live in `mcp/stdio-main.ts`; `mcp/stdio.ts` is a pure library.
+
+**The red herring worth remembering:** a byte-identical copy of the bundle ran fine from `/tmp`
+and failed from the repo. That is not filesystem magic — `/tmp` is a symlink to `/private/tmp`,
+so `import.meta.url` (symlinks resolved) and `process.argv[1]` (as given) did not match, and the
+guard stayed false. Chasing "the location matters" nearly sent this in the wrong direction; what
+settled it was printing the path that was actually being opened.
+
+**Rule:** a module that can be imported must not self-execute. Bundling makes every entry point
+look like *the* entry point.
+
 ### B-28 · The entire command layer was wired to a no-op editor
 **Status:** fixed · **Test:** `e2e/tests/parity.spec.ts` (6 tests)
 **Found:** 2026-09-11, by finally exercising B-17/B-18 in a browser

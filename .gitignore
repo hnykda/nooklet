@@ -19,3 +19,5 @@ data/
 test-results/
 playwright-report/
 apps/desktop/src-tauri/target/
+apps/desktop/.cache/
+apps/desktop/sidecar/

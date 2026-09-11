@@ -9,9 +9,9 @@
  *   db.prepare('select vec_version() v').get(); // { v: 'v0.1.9' }
  */
 
+import { createRequire } from "node:module";
 import type { DatabaseSync } from "node:sqlite";
 import type { SqlDriver } from "@nooklet/core";
-import * as sqliteVec from "sqlite-vec";
 
 export interface VecStatus {
   loaded: boolean;
@@ -27,7 +27,20 @@ export interface VecStatus {
  */
 export function loadSqliteVec(db: DatabaseSync): VecStatus {
   try {
-    sqliteVec.load(db);
+    // `sqlite-vec` normally locates its per-platform `vec0` dylib by resolving a sibling package
+    // out of `node_modules`, which does not exist inside a packaged desktop app. The env var is
+    // the seam for that case: the desktop build ships the dylib as an app resource and points
+    // here (`apps/desktop`). Required lazily so a bundler can drop the package entirely when the
+    // path is supplied.
+    const override = process.env.NOOKLET_SQLITE_VEC_PATH;
+    if (override) {
+      db.loadExtension(override);
+    } else {
+      const sqliteVec = createRequire(import.meta.url)("sqlite-vec") as {
+        load(db: DatabaseSync): void;
+      };
+      sqliteVec.load(db);
+    }
     db.enableLoadExtension(false);
     const row = db.prepare("select vec_version() v").get() as { v: string } | undefined;
     return { loaded: true, version: row?.v };

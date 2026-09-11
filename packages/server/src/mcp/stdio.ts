@@ -65,36 +65,3 @@ export function startStdioBridge(opts: StdioBridgeOptions): StdioServerHandle {
     },
   );
 }
-
-function parseArgs(argv: string[]): { token?: string; dataPath?: string } {
-  const out: { token?: string; dataPath?: string } = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--token") out.token = argv[++i];
-    else if (argv[i] === "--data") out.dataPath = argv[++i];
-  }
-  return out;
-}
-
-/** Entry point for `nooklet mcp --stdio` once a CLI dispatcher exists; also runnable directly
- * (`node dist/mcp/stdio.js --token nk_… [--data /path/to/graph.sqlite]`). */
-export function main(argv: string[] = process.argv.slice(2)): void {
-  const args = parseArgs(argv);
-  const dataPath =
-    args.dataPath ??
-    process.env.NOOKLET_DATA_FILE ??
-    `${process.env.HOME ?? "."}/.nooklet/default/graph.sqlite`;
-  const serverCtx = createServerContext(openDb({ path: dataPath }));
-  const registry = buildRegistry();
-  const config: ServerConfig = {
-    dataDir: dataPath,
-    graphId: "default",
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    port: 0,
-    mirror: { enabled: false },
-  };
-  startStdioBridge({ serverCtx, registry, config, token: args.token });
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
-}

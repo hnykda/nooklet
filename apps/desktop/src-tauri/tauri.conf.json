@@ -7,28 +7,26 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "nooklet",
-        "width": 1100,
-        "height": 800,
-        "minWidth": 480,
-        "minHeight": 400,
-        "resizable": true,
-        "titleBarStyle": "Transparent",
-        "hiddenTitle": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
-    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
     "macOS": {
       "minimumSystemVersion": "10.15"
+    },
+    "resources": {
+      "../sidecar": "sidecar"
     }
   }
 }
