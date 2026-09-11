@@ -11,6 +11,7 @@ import { request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { afterEach, describe, expect, it } from "vitest";
+import { setSuggestedJournalTitleFormat } from "../journal-format.js";
 import { makeTestServer } from "../test-helpers.js";
 
 let running: Server | undefined;
@@ -63,6 +64,18 @@ describe("loopback detection", () => {
     const port = await listen(s.app);
     const body = JSON.parse((await get(port, "/api/session")).body) as { token: string | null };
     expect(body.token).toBeTruthy();
+  });
+
+  it("hands the graph's own journal date format to the client (ADR 018)", async () => {
+    // Storage is ISO, display is a preference — and an imported graph's own format is the only
+    // sensible initial value for that preference, so `/api/session` carries it.
+    const s = makeTestServer({ webClientDir: undefined });
+    setSuggestedJournalTitleFormat(s.serverCtx.driver, "E, dd.MM.yyyy");
+    const port = await listen(s.app);
+    const body = JSON.parse((await get(port, "/api/session")).body) as {
+      journalTitleFormat?: string;
+    };
+    expect(body.journalTitleFormat).toBe("E, dd.MM.yyyy");
   });
 
   it("refuses a token when the Host header does not name loopback, even from a loopback peer", async () => {

@@ -44,6 +44,7 @@ import {
   parseOutline,
 } from "@nooklet/core";
 import { type ServerContext, serverApplyOps } from "../apply-ops.js";
+import { setSuggestedJournalTitleFormat } from "../journal-format.js";
 
 // -------------------------------------------------------------------------------------------
 // config.edn (tiny EDN subset)
@@ -486,9 +487,10 @@ export async function importLogseqGraph(
   // reading their dates in for years, and settings can be set to match. Saying so beats leaving
   // them to wonder why every journal suddenly looks different.
   if (config.journalPageTitleFormat !== DEFAULT_JOURNAL_TITLE_FORMAT) {
+    setSuggestedJournalTitleFormat(ctx.driver, config.journalPageTitleFormat);
     warnings.push(
       `this graph wrote journal titles as "${config.journalPageTitleFormat}"; pages are stored ` +
-        "by ISO date and shown in the format chosen under Settings → Journal date format",
+        "by ISO date and shown in that same format, changeable under Settings → Journal date format",
     );
   }
   const entries = resolveFileEntries(graphDir, warnings);

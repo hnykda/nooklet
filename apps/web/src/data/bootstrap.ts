@@ -59,6 +59,12 @@ export interface BootstrapConfig {
    * halves disagree.
    */
   graphMismatch?: boolean;
+  /**
+   * The journal title format this graph was imported with, when it had one (ADR 018). A
+   * suggestion for the initial value of the display setting, never an override of a choice the
+   * reader has already made.
+   */
+  journalTitleFormat?: string;
 }
 
 /** The graph this device's replica belongs to. */
@@ -81,7 +87,12 @@ export function rememberGraphId(id: string): void {
 }
 
 interface InjectedWindow {
-  __NOOKLET__?: { token?: string | null; reason?: string; graphId?: string };
+  __NOOKLET__?: {
+    token?: string | null;
+    reason?: string;
+    graphId?: string;
+    journalTitleFormat?: string;
+  };
 }
 
 function injected(): { token?: string | null; reason?: string } | undefined {
@@ -113,6 +124,7 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
         token?: string | null;
         reason?: string;
         graphId?: string;
+        journalTitleFormat?: string;
       };
       // A stored device token wins only when the server offers none: on loopback the server mints
       // a fresh token per process, and a token stored by an earlier run would be stale.
@@ -127,6 +139,7 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
         reason: token ? undefined : (body.reason ?? "no_token_available"),
         graphId,
         graphMismatch: Boolean(graphId && known && known !== graphId),
+        journalTitleFormat: body.journalTitleFormat,
       };
       return cached;
     }

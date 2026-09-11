@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { bearerAuth, createToken } from "../auth/tokens.js";
 import { graphInstanceId } from "../graph-identity.js";
+import { suggestedJournalTitleFormat } from "../journal-format.js";
 import { mountUiLive } from "../live/index.js";
 import { mountMcp } from "../mcp/server.js";
 import {
@@ -112,8 +113,12 @@ function buildClientBootstrap(ctx: ServerContext, c: Context): object {
   // that the replica it is holding belongs to a different graph than this server is serving
   // (`../graph-identity.ts`).
   const graphId = graphInstanceId(ctx.driver);
-  if (!isLoopbackRequest(c)) return { token: null, reason: "non_loopback_host", graphId };
-  return { token: webClientToken(ctx), graphId };
+  // A suggestion, not a setting: the format this graph's journals were written in, used as the
+  // client's initial choice and ignored the moment someone picks one (ADR 018).
+  const journalTitleFormat = suggestedJournalTitleFormat(ctx.driver) ?? undefined;
+  if (!isLoopbackRequest(c))
+    return { token: null, reason: "non_loopback_host", graphId, journalTitleFormat };
+  return { token: webClientToken(ctx), graphId, journalTitleFormat };
 }
 
 /** Per-process web-client token, minted lazily on the first page load. `write` + `can_sync` is

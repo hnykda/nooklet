@@ -5,6 +5,7 @@ import { isId, newId } from "@nooklet/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { openDb } from "../db.js";
+import { suggestedJournalTitleFormat } from "../journal-format.js";
 import { importLogseqGraph, parseLogseqConfigEdn } from "./logseq.js";
 
 let ctx: ServerContext;
@@ -105,9 +106,17 @@ describe("importLogseqGraph: basic pages + journals", () => {
       "SELECT name FROM page WHERE journal_day = 20260910",
     );
     expect(journal?.name).toBe("2026-09-10");
-    // The format is not lost, it moves from storage to a note: it is the format this person has
-    // been reading for years, and it is now a display setting rather than a fact about the data.
+    // The format is not lost, it moves from storage to a suggestion: it is the format this person
+    // has been reading for years, so it becomes the client's initial display setting rather than a
+    // fact about the data. Without this, 825 imported journals change appearance overnight.
     expect(stats.warnings.some((w) => w.includes("E, dd.MM.yyyy"))).toBe(true);
+    expect(suggestedJournalTitleFormat(ctx.driver)).toBe("E, dd.MM.yyyy");
+  });
+
+  it("suggests nothing when the graph used the same format we default to", async () => {
+    writeGraphFile("journals/2026_09_10.md", "- entry\n");
+    await importLogseqGraph(ctx, graphDir);
+    expect(suggestedJournalTitleFormat(ctx.driver)).toBeNull();
   });
 
   it("ignores a title:: override on a journal file — the day already names the page", async () => {
