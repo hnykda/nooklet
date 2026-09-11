@@ -113,7 +113,12 @@ export class ApiError extends Error {
   }
 }
 
-async function post<TOut>(base: string, opName: string, body: unknown, getToken?: () => string | undefined): Promise<TOut> {
+async function post<TOut>(
+  base: string,
+  opName: string,
+  body: unknown,
+  getToken?: () => string | undefined,
+): Promise<TOut> {
   const res = await fetch(`${base}/api/v1/${opName}`, {
     method: "POST",
     headers: { "content-type": "application/json", ...authHeaders(getToken) },
@@ -217,7 +222,12 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
       );
       return {
         target: out.target,
-        linked: out.linked.map((r) => ({ id: r.id, page: r.page, text: r.text, updatedAt: r.updated_at })),
+        linked: out.linked.map((r) => ({
+          id: r.id,
+          page: r.page,
+          text: r.text,
+          updatedAt: r.updated_at,
+        })),
         unlinked: out.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
         cursor: out.cursor,
       };
@@ -229,7 +239,10 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
         "graph.links",
         // The server's own default (1500) is deliberately not repeated here: the cap is a
         // property of what the backend can answer cheaply, not of this call site.
-        { include_journals: input.includeJournals ?? false, ...(input.limit ? { limit: input.limit } : {}) },
+        {
+          include_journals: input.includeJournals ?? false,
+          ...(input.limit ? { limit: input.limit } : {}),
+        },
         opts.getToken,
       );
       return {

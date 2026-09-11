@@ -166,6 +166,40 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 
 ## Fixed
 
+### B-33 · `.gitignore` silently excluded seven source files from the repository
+**Status:** fixed · **Severity:** critical · **Found:** 2026-09-11 by a subagent
+
+`.gitignore` line 12 was a bare `data/`, which matches **any** directory named `data` at any
+depth — so `apps/web/src/data/` was never committed. The published repository was missing
+`store.ts`, `api-client.ts`, `bootstrap.ts`, `types.ts`, `tree.ts`, `block-ref-cache.ts` and
+`tree.test.ts`, and could not build.
+
+Nothing local would ever have caught it: the files exist on disk, `git status` is clean, every
+test passes. It surfaced only because a subagent noticed its own edits to `store.ts` were
+invisible to `git status` and said so rather than assuming it had misread.
+
+Now `/data/`, anchored to the root, which is what it always meant. Verified by cloning the repo
+into a temp directory and running `typecheck` + `build` there — the check that would have caught
+this at any point.
+
+**Lesson:** a repo that builds locally proves nothing about what was committed. Clone it.
+
+### B-34 · The e2e suite could silently run against someone else's server
+**Status:** fixed · **Found:** 2026-09-11, chasing a test that failed only in the full suite
+
+`global-setup.ts` spawned a server on a fixed port and then waited for `/healthz`. When something
+was already listening — a concurrent agent's Playwright run — the spawn failed to bind but the
+health check succeeded against the OTHER process, so the whole suite ran against a foreign server
+carrying foreign data.
+
+It presented as a real product bug: one spec failed on state it never created, and kept failing
+when run in isolation. Several rounds went into looking for a regression in the editor that did
+not exist.
+
+The setup now refuses to start when the port is already serving nooklet, and says what to do
+(`NOOKLET_E2E_PORT`). Logged alongside B-32, which was the same class of problem one level up —
+tests sharing state they did not declare.
+
 ### B-30 · A client silently held a copy of a different graph
 **Status:** fixed · **Found:** 2026-09-11, chasing "search finds nothing but the sidebar is full"
 

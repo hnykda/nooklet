@@ -16,38 +16,39 @@
  * ergonomics (`.loading`, `.error`, `resource()` for the current value) exactly as you would for
  * any other async data source.
  */
+
 import {
+  type ApplyOpsResult,
+  Hlc,
+  makeOp,
+  normalizePageName,
+  type Op,
+  type OpPayload,
+  type PageRow,
+  parseJournalTitle,
+} from "@nooklet/core";
+import {
+  type Accessor,
   createResource,
   createSignal,
-  type Accessor,
   type InitializedResource,
   type Resource,
 } from "solid-js";
 import {
-  Hlc,
-  makeOp,
-  normalizePageName,
-  parseJournalTitle,
-  type ApplyOpsResult,
-  type Op,
-  type OpPayload,
-  type PageRow,
-} from "@nooklet/core";
-import { invalidateBlockRefs } from "./block-ref-cache.js";
-import {
+  getSyncStatus,
+  initDb,
+  onChange,
+  onSyncStatus,
+  queryAs,
   applyOps as workerApplyOps,
   getDeviceId as workerGetDeviceId,
   getJournalStream as workerGetJournalStream,
   getPageTree as workerGetPageTree,
-  getSyncStatus,
-  initDb,
   nextHlc as workerNextHlc,
-  onChange,
-  onSyncStatus,
-  queryAs,
 } from "../db/client.js";
 import type { ChangedTable } from "../db/worker-api.js";
 import type { Clock } from "../editor/types.js";
+import type { SyncStatus } from "../sync/types.js";
 import {
   apiClient,
   type BacklinksResult,
@@ -56,8 +57,8 @@ import {
   type SearchInput,
   type SearchResult,
 } from "./api-client.js";
+import { invalidateBlockRefs } from "./block-ref-cache.js";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult, TaskRow } from "./types.js";
-import type { SyncStatus } from "../sync/types.js";
 
 // ---------------------------------------------------------------------------------------------
 // Invalidation bus
@@ -126,7 +127,9 @@ function ensureWired(): void {
 // "Give me this page's block tree"
 // ---------------------------------------------------------------------------------------------
 
-export function usePageTree(pageId: Accessor<string | undefined>): Resource<PageTreeResult | undefined> {
+export function usePageTree(
+  pageId: Accessor<string | undefined>,
+): Resource<PageTreeResult | undefined> {
   ensureWired();
   const [resource] = createResource(
     () => {
@@ -143,7 +146,9 @@ export function usePageTree(pageId: Accessor<string | undefined>): Resource<Page
 // "Give me the journal stream"
 // ---------------------------------------------------------------------------------------------
 
-export function useJournalStream(opts: Accessor<JournalStreamOptions>): Resource<JournalDayEntry[] | undefined> {
+export function useJournalStream(
+  opts: Accessor<JournalStreamOptions>,
+): Resource<JournalDayEntry[] | undefined> {
   ensureWired();
   const [resource] = createResource(
     () => {
@@ -158,7 +163,9 @@ export function useJournalStream(opts: Accessor<JournalStreamOptions>): Resource
  * otherwise — regardless of `useJournalStream`'s `maxDays` window. Backs the journal calendar
  * (`views/Calendar.tsx`): PLAN.md §8's "a calendar opens any day as a virtual page" needs to reach
  * a day that may be well outside (or, for a future date, ahead of) the normal scroll window. */
-export function usePinnedJournalDay(day: Accessor<number | undefined>): Resource<JournalDayEntry | undefined> {
+export function usePinnedJournalDay(
+  day: Accessor<number | undefined>,
+): Resource<JournalDayEntry | undefined> {
   ensureWired();
   const [resource] = createResource(
     () => {
@@ -296,7 +303,9 @@ function toPageRow(r: PageSqlRow): PageRow {
 
 /** Resolve a page name to its row, case/whitespace-insensitively (`normalizePageName`). `null`
  * means "no such page" (distinct from `undefined` = still loading / no name given yet). */
-export function usePageByName(name: Accessor<string | undefined>): Resource<PageRow | null | undefined> {
+export function usePageByName(
+  name: Accessor<string | undefined>,
+): Resource<PageRow | null | undefined> {
   ensureWired();
   const [resource] = createResource(
     () => {
@@ -522,7 +531,9 @@ export function useOpenTasks(): InitializedResource<TaskRow[]> {
 
 /** Direct and indirect children of namespace `name` ("A" matches "A/B" and "A/B/C"), live pages
  * only, name-sorted. Empty (not loading) for a page with no namespace children. */
-export function useNamespaceChildren(name: Accessor<string | undefined>): InitializedResource<PageRow[]> {
+export function useNamespaceChildren(
+  name: Accessor<string | undefined>,
+): InitializedResource<PageRow[]> {
   ensureWired();
   const [resource] = createResource(
     () => {

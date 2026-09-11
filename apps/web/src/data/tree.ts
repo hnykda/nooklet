@@ -3,10 +3,13 @@
  * `BlockTreeNode[]`. Pure and driver-agnostic, so it is unit tested directly (`tree.test.ts`)
  * without touching SQLite at all; `../db/worker-core.ts` is the only caller in this milestone.
  */
-import { compareOrder, type BlockRow } from "@nooklet/core";
+import { type BlockRow, compareOrder } from "@nooklet/core";
 import type { BlockTreeNode } from "./types.js";
 
-export function buildBlockTree(rows: readonly BlockRow[], rootParentId: string | null = null): BlockTreeNode[] {
+export function buildBlockTree(
+  rows: readonly BlockRow[],
+  rootParentId: string | null = null,
+): BlockTreeNode[] {
   const byParent = new Map<string | null, BlockRow[]>();
   for (const row of rows) {
     const bucket = byParent.get(row.parentId);

@@ -2,7 +2,9 @@ import type { BlockRow } from "@nooklet/core";
 import { describe, expect, it } from "vitest";
 import { buildBlockTree } from "./tree.js";
 
-function block(overrides: Partial<BlockRow> & Pick<BlockRow, "id" | "parentId" | "order">): BlockRow {
+function block(
+  overrides: Partial<BlockRow> & Pick<BlockRow, "id" | "parentId" | "order">,
+): BlockRow {
   return {
     graphId: "default",
     pageId: "page1",
