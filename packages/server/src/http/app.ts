@@ -108,6 +108,19 @@ export function createApp(opts: CreateAppOptions): Hono {
   // health payload there would mean you could never open nooklet at its own root URL.
   const health = { name: "nooklet", status: "ok" } as const;
   app.get("/healthz", (c) => c.json(health));
+
+  /**
+   * This client's credentials, fetched at runtime rather than read out of the HTML.
+   *
+   * The token used to be injected into `index.html` alone — which the PWA service worker
+   * precaches AT BUILD TIME, so from the second load onward the browser was served a shell with
+   * no token in it and the app silently lost its credentials on every reload. A shell is static
+   * and cacheable; a credential is neither, so it gets its own endpoint. `/api/…` is already
+   * `NetworkOnly` in the service worker's runtime caching (`apps/web/vite.config.ts`), and this
+   * sits outside `/api/v1/*` so it is deliberately NOT behind `bearerAuth` — it is what you call
+   * when you do not yet have a token.
+   */
+  app.get("/api/session", (c) => c.json(buildClientBootstrap(serverCtx, c.req.header("host"))));
   if (!opts.webClientDir) app.get("/", (c) => c.json(health));
   app.get("/openapi.json", (c) => c.json(buildOpenApi(registry)));
   mountAssetRoutes(app, serverCtx, config); // GET /assets/:id (asset.upload, ADR 013)

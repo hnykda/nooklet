@@ -122,6 +122,25 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 
 ## Fixed
 
+### B-19 · The service worker served a shell with no token, so reloads lost credentials
+**Status:** fixed · **Test:** `e2e/tests/remote-device.spec.ts`, plus every reload-based editing test
+**Found:** 2026-09-11, while adding the connect screen
+
+The web-client token was injected into `index.html`. The PWA service worker precaches that file
+**at build time**, so from the second page load onward the browser was handed a shell containing
+no `window.__NOOKLET__` at all — the app silently lost its credentials on every reload, on
+loopback, where everything was supposed to just work. It had been happening since the token
+injection landed; it only became visible once a missing token started rendering a connect screen
+instead of failing quietly.
+
+A shell is static and cacheable; a credential is neither. The token now comes from
+`GET /api/session` at startup (`data/bootstrap.ts#initBootstrap`), which the service worker's
+runtime caching already treats as `NetworkOnly`.
+
+**Lesson worth keeping:** two of the reload-based editing tests started failing the moment the
+connect screen existed. They were not regressions — they were the first time this bug had anything
+to fail against.
+
 ### B-15 · Keystrokes lost right after clicking a block or pressing Enter
 **Status:** fixed · **Test:** `e2e/tests/editing.spec.ts`, "typing immediately after Enter"
 **Reported:** 2026-09-11 as "I type, press enter, the new text disappears", "can't click on a new

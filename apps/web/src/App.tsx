@@ -13,14 +13,16 @@
  */
 import "./styles/views.css";
 import { Navigate, Route, Router, type RouteSectionProps } from "@solidjs/router";
-import type { JSX } from "solid-js";
+import { createSignal, type JSX, Show } from "solid-js";
 import { CommandLayer } from "./app/CommandLayer.js";
+import { bootstrapConfig } from "./data/bootstrap.js";
 import { CaptureRoute } from "./routes/CaptureRoute.js";
 import { JournalsRoute } from "./routes/JournalsRoute.js";
 import { PageRoute } from "./routes/PageRoute.js";
 import { SearchRoute } from "./routes/SearchRoute.js";
 import { TasksRoute } from "./routes/TasksRoute.js";
 import { AppShell } from "./shell/AppShell.js";
+import { ConnectView } from "./views/ConnectView.js";
 
 function RouterRoot(routeProps: RouteSectionProps): JSX.Element {
   if (routeProps.location.pathname === "/capture") return <>{routeProps.children}</>;
@@ -35,15 +37,29 @@ function RouterRoot(routeProps: RouteSectionProps): JSX.Element {
 }
 
 export function App() {
+  // A device with no token can render the app but can never sync, search or load references —
+  // every one of those endpoints is authenticated. Rather than let it look broken (which is
+  // exactly how the missing-token bug presented), ask for one up front. Loopback clients are
+  // handed a token by the server and never see this.
+  const config = bootstrapConfig();
+  const [skipped, setSkipped] = createSignal(false);
+  // `/capture` is deliberately exempt: quick capture must open instantly and writes locally.
+  const isCapture = (): boolean => globalThis.location?.pathname === "/capture";
+
   return (
-    <Router root={RouterRoot}>
-      <Route path="/" component={() => <Navigate href="/journals" />} />
-      <Route path="/journal/today" component={() => <Navigate href="/journals" />} />
-      <Route path="/journals" component={JournalsRoute} />
-      <Route path="/page/*name" component={PageRoute} />
-      <Route path="/search" component={SearchRoute} />
-      <Route path="/tasks" component={TasksRoute} />
-      <Route path="/capture" component={CaptureRoute} />
-    </Router>
+    <Show
+      when={config.token !== null || skipped() || isCapture()}
+      fallback={<ConnectView reason={config.reason} onSkip={() => setSkipped(true)} />}
+    >
+      <Router root={RouterRoot}>
+        <Route path="/" component={() => <Navigate href="/journals" />} />
+        <Route path="/journal/today" component={() => <Navigate href="/journals" />} />
+        <Route path="/journals" component={JournalsRoute} />
+        <Route path="/page/*name" component={PageRoute} />
+        <Route path="/search" component={SearchRoute} />
+        <Route path="/tasks" component={TasksRoute} />
+        <Route path="/capture" component={CaptureRoute} />
+      </Router>
+    </Show>
   );
 }

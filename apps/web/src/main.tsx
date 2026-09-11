@@ -1,11 +1,15 @@
 import { render } from "solid-js/web";
 import { App } from "./App.js";
-import { apiBaseUrl, authToken } from "./data/bootstrap.js";
+import { apiBaseUrl, authToken, initBootstrap } from "./data/bootstrap.js";
 import { initDb } from "./db/client.js";
 import { registerServiceWorker } from "./sw/register.js";
 
-// Start the DB worker immediately; App/routes read through src/data/store.ts's resources, which
-// resolve once init() finishes (Solid resources handle the pending state on their own).
+// Credentials first: the sync worker is handed its token once, at startup, and `App` decides
+// whether to show the connect screen from the same config — so both must wait for it. Everything
+// else (the local replica, rendering) proceeds normally afterwards; Solid resources handle the
+// pending state on their own.
+await initBootstrap();
+
 void initDb({ syncBaseUrl: apiBaseUrl(), token: authToken() });
 
 registerServiceWorker();
