@@ -114,20 +114,33 @@ function resolveWebClientDir(flag: string | boolean | undefined): string | undef
   return candidates.find((dir) => existsSync(join(dir, "index.html")));
 }
 
-function open(args: Args): { ctx: ServerContext; config: ServerConfig } {
+interface OpenOptions {
+  /**
+   * Run pending data migrations (today: ADR 018's journal renames, which mint ops rather than
+   * updating rows and so cannot live in `schema.ts`).
+   *
+   * Off by default, and opted into only by the commands that are already writers. `backup`,
+   * `verify`, `gc` and `export` are things you reach for when you want to inspect or preserve a
+   * graph, not change it — a "read-only" command that quietly rewrote 825 page names would be a
+   * nasty surprise, and `verify`'s report would be about a database other than the one you asked
+   * about. Found the hard way, by running `nooklet backup` on a real graph.
+   */
+  migrate?: boolean;
+}
+
+function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config: ServerConfig } {
   const dir = dataDir(args);
   const ctx = createServerContext(openDb({ path: join(dir, "graph.sqlite") }));
-  // ADR 018. Not a `schema.ts` migration because it writes ops, not rows — see journal-names.ts.
-  // A no-op on every run after the first, so it sits in the shared `open()` rather than in each
-  // command that happens to write.
-  const journals = migrateJournalNames(ctx);
-  if (journals.renamed > 0) {
-    process.stderr.write(`nooklet: gave ${journals.renamed} journal pages their ISO names\n`);
-  }
-  for (const name of journals.collided) {
-    process.stderr.write(
-      `nooklet: left journal page "${name}" alone — another page already owns that ISO name\n`,
-    );
+  if (opts.migrate) {
+    const journals = migrateJournalNames(ctx);
+    if (journals.renamed > 0) {
+      process.stderr.write(`nooklet: gave ${journals.renamed} journal pages their ISO names\n`);
+    }
+    for (const name of journals.collided) {
+      process.stderr.write(
+        `nooklet: left journal page "${name}" alone — another page already owns that ISO name\n`,
+      );
+    }
   }
   const portFlag = args.flags.get("port");
   const hostFlag = args.flags.get("host");
@@ -206,7 +219,7 @@ async function main(): Promise<void> {
 
   switch (cmd) {
     case "serve": {
-      const { ctx, config } = open(args);
+      const { ctx, config } = open(args, { migrate: true });
 
       // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a scratch
       // database on every start and diff it against the live state tables." Dev-only (the replay
@@ -280,7 +293,7 @@ async function main(): Promise<void> {
     case "import": {
       const graphDir = args._[1];
       if (!graphDir) die("import needs a Logseq graph directory");
-      const { ctx } = open(args);
+      const { ctx } = open(args, { migrate: true });
       const stats = await importLogseqGraph(ctx, resolve(graphDir));
       process.stdout.write(`${JSON.stringify(stats, null, 2)}\n`);
       return;
@@ -295,7 +308,7 @@ async function main(): Promise<void> {
 
     case "mcp": {
       if (!args.flags.get("stdio")) die("only --stdio is supported: nooklet mcp --stdio");
-      const { ctx, config } = open(args);
+      const { ctx, config } = open(args, { migrate: true });
       const token = args.flags.get("token");
       startStdioBridge({
         serverCtx: ctx,

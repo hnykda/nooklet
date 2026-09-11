@@ -33,6 +33,23 @@ scale, spacing rhythm, and focus/hover states.
 
 ## Fixed
 
+### B-39 · `nooklet backup` rewrote the graph it was asked to preserve
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-11, by running it on a real graph
+
+ADR 018's journal-name migration was hooked into `cli.ts`'s shared `open()` on the reasoning that
+it is idempotent and cheap, so it may as well be everywhere. Every command goes through `open()` —
+including `backup`, `verify`, `gc` and `export`, which are the commands you reach for when you
+want to inspect or preserve a graph, not change it.
+
+Two consequences, both bad. Taking a backup *before* a migration produced a backup taken *after*
+it, which is the opposite of the thing being asked for. And `verify` — a diagnostic whose entire
+job is to report on a database's state — would have reported on a database it had just modified.
+
+`open()` now takes `{ migrate: true }`, passed only by `serve`, `import` and `mcp`.
+
+**Lesson:** "idempotent and cheap" is an argument about cost, not about permission. A command that
+does not say it writes must not write.
+
 ### B-32 · `graph.spec.ts` wrote into today's journal
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-11
 
