@@ -1,7 +1,17 @@
 # 11 — End-to-end encrypted sync: what a blind relay would actually cost
 
 Dated record, 2026-09-11. Like the other files in `docs/research/`, this is kept as written rather
-than updated in place. No ADR follows from it yet; §10 proposes what would.
+than updated in place. No ADR follows from it yet; §10 proposes what one would contain. (ADR 016 is
+reserved for `research/10`'s desktop-packaging decision and ADR 017 for `research/12`'s, so this
+would be ADR 018 or later.)
+
+**Read `research/12-multi-user-and-pairing.md` alongside this.** The two were written on the same
+day and divide the problem: doc 12 covers **pairing a device to a server** — bearer tokens, QR
+codes, LAN exposure, multi-graph storage, revocation — and concludes "stay single-user, spend the
+effort on pairing". This report covers the orthogonal half: **getting a graph *key* to a device
+without the server learning it**, and what a server that holds only ciphertext can still do. Where
+they touch (§4 pairing, §7 multi-graph), this report defers to doc 12 on the token and storage
+mechanics and adds only the key-distribution layer on top.
 
 The question this answers is the user's, stated plainly: *"I want to host sync for other people
 without being able to read their notes. Is that sound?"* PLAN.md §2 currently lists E2EE as an
@@ -9,7 +19,7 @@ explicit non-goal, with a one-line reason ("E2EE would block server-side embeddi
 That reason is correct but understates the problem, and it is also wrong about which parts are
 genuinely blocked. This report replaces the one-liner with a measured inventory.
 
-Everything in §1, §2.3, §3.5, §5 and §6 was measured on this machine against the real imported
+Everything in §1, §2.3, §3.6, §5 and §6 was measured on this machine against the real imported
 graph (`scratchpad/real/graph.sqlite`, 952 pages / 18,628 blocks / 46.3 MiB, Node 26.8.1,
 `node:sqlite` with SQLite 3.53.4, M-series arm64). Probe scripts are named inline.
 
@@ -35,13 +45,22 @@ graph (`scratchpad/real/graph.sqlite`, 952 pages / 18,628 blocks / 46.3 MiB, Nod
    For *hosting other people's graphs*, E2EE is the only defensible posture, and the way to get
    it without gutting the product is to move the API/MCP/search/embedding tier out of the relay
    and into the **headless CLI replica** (§8) — a device with a key, running next to the user, not
-   next to the relay. That reframes question 7 from "a backup idea" into the load-bearing piece of
-   the whole design.
+   next to the relay. That turns the "CLI backup client" idea from a side quest into the
+   load-bearing piece of the whole design.
 5. **Hosting a browser-delivered E2EE relay for strangers is not defensible on its own** (§9). The
    relay serves the JavaScript that holds the keys. Conditions under which it becomes defensible
    are listed there; "we use strong encryption" is not one of them.
 6. **Adding E2EE later is a breaking change to the op log wire format but not to the op
-   *model*.** `Op.payload` becomes opaque; `id`/`hlc`/`device`/`entity` must stay clear. §10.3.
+   *model*.** `Op.payload` becomes opaque; `id`/`hlc`/`device`/`entity` must stay clear. There is
+   exactly **one field worth adding now**: a nullable `key_epoch` on `op`. Without it, key
+   rotation — and therefore device revocation and sharing — means rewriting the entire log. §10.3.
+7. **The single most important operational consequence is not cryptographic.** Today the design
+   says client storage may vanish and the client re-bootstraps from the server. Under E2EE, losing
+   IndexedDB loses the device key and the relay cannot help, by construction. A recovery key
+   becomes mandatory at onboarding, not an optional setting. §3.5.
+8. **There is a precondition before any of this.** `crypto.subtle` is secure-context-only, and the
+   plain-LAN URL `README.md` recommends (`http://192.168.1.5:6100`) is not a secure context. E2EE
+   over that deployment is not weaker — it is impossible. HTTPS or Tailscale first. §3.4.
 
 ---
 
@@ -275,7 +294,7 @@ The reflexive 2026 answer is XChaCha20-Poly1305, and for this project it is the 
   (<https://nodejs.org/api/crypto.html>). It exists only in libsodium (sumo build) and
   `@noble/ciphers`.
 - **AES-GCM is in every browser, is hardware-accelerated, and is fast enough by three orders of
-  magnitude** (§3.5).
+  magnitude** (§3.6).
 
 So: **AES-256-GCM via `crypto.subtle`, with no third-party crypto library in the encryption path.**
 That is a deliberate, defensible choice: the smallest trusted computing base, no WASM blob to
@@ -300,11 +319,11 @@ plaintexts and enables forgery. Do not couple an id-uniqueness assumption to a c
 invariant.
 
 Bind the AAD to the plaintext metadata so the relay cannot transplant a ciphertext onto a different
-op: `AAD = id ‖ entity ‖ epoch`. (This is what the §3.5 benchmark measured.)
+op: `AAD = id ‖ entity ‖ epoch`. (This is what the §3.6 benchmark measured.)
 
 ### 3.3 Key derivation and the recovery phrase
 
-The recovery phrase is the only thing standing between a user and permanent data loss (§3.4), so
+The recovery phrase is the only thing standing between a user and permanent data loss (§3.5), so
 it is derived, not stored.
 
 Argon2id is the right KDF and **is not available in browsers**: it is in the same WICG draft as
@@ -332,7 +351,29 @@ stretch — which deletes the Argon2-in-the-browser problem, the parameter-tunin
 weak-passphrase problem in one move. The cost is that the user must actually store it. Given this
 is a self-hosted tool for technical users, that is the better trade.
 
-### 3.4 Browser key storage — and a Safari bug that constrains the design
+### 3.4 A deployment precondition that comes before any of this
+
+`crypto.subtle` is **secure-context-only** — MDN states it plainly: *"This feature is available
+only in secure contexts (HTTPS)"*
+(<https://developer.mozilla.org/en-US/docs/Web/API/Crypto/subtle>). And per the W3C Secure Contexts
+algorithm (<https://w3c.github.io/webappsec-secure-contexts/>), an `https`/`wss` scheme qualifies,
+as do loopback `127.0.0.0/8` and `::1/128` and `localhost`, but **a plain-HTTP private LAN address
+does not** — `192.168.0.0/16` is not in the loopback range and there is no private-IP exception.
+
+So on `http://192.168.1.5:6100` — which is the URL `README.md` currently tells the user to use to
+reach their graph from a phone — **`crypto.subtle` does not exist, and no amount of design in this
+report applies.** This was found independently and in more depth by `research/12` §10, which
+reaches a stronger version of the same conclusion: OPFS and `navigator.locks` are also
+secure-context-gated, so the client cannot open its local replica at all on that URL, encrypted or
+not.
+
+The consequence for E2EE specifically: **the transport question is a precondition, not a detail.**
+Any E2EE deployment must be HTTPS or Tailscale (which gives real names and certificates) from the
+start. A self-hoster who puts the relay on plain LAN HTTP does not get a weaker version of this
+design; they get none of it. That should be enforced in code — refuse to enable E2EE on a
+non-secure origin with a clear message — rather than failing later as an undefined-property error.
+
+### 3.5 Browser key storage — and a Safari bug that constrains the design
 
 Store the device keypair as non-extractable `CryptoKey` objects structured-cloned into IndexedDB,
 so the private key material is never visible to JavaScript. That is the standard advice and it is
@@ -370,7 +411,7 @@ construction. The data is still there and is now permanently unreadable by that 
 - At least two devices (or one device plus the recovery key, or the CLI replica of §8) must hold a
   wrapped copy of the graph key at all times, and the UI should say so when only one does.
 
-### 3.5 What it costs, measured
+### 3.6 What it costs, measured
 
 Benchmarked over the real 19,580-op log with AES-256-GCM through Node 26.8.1's `crypto.subtle`
 (`scratchpad/crypto-bench.mjs`, `crypto-bench2.mjs`), AAD bound to `id ‖ entity`:
@@ -390,7 +431,7 @@ overhead on tiny payloads, not by AES; the whole graph encrypts in 12 ms as one 
 to the ~8 % that the tags and IVs actually cost. If E2EE ships, change the wire encoding at the
 same time.
 
-### 3.6 At-rest encryption on the client is a separate, weaker question
+### 3.7 At-rest encryption on the client is a separate, weaker question
 
 Worth stating because it is easy to conflate with E2EE: the official `@sqlite.org/sqlite-wasm`
 build (3.53.4-build1) **has no encryption-at-rest capability at all** — its documentation
@@ -461,6 +502,13 @@ a simple construction you fully understand.
 
 ### 4.3 Recommended pairing flow
 
+Scope note: this is **not** the same problem as `research/12` §5's pairing design, and the two
+compose rather than compete. Doc 12 pairs a device to a *server* — it needs a bearer token, and as
+of commit `0654dd5` that ships as `ConnectView.tsx`, a deliberate paste-a-token screen (its header
+notes "a pairing code or QR is a nicer front-end for" the same thing). What follows adds the layer
+E2EE needs on top: the device also needs the *graph key*, and unlike a token, the server must never
+learn it. A token can be minted by the server; a key cannot.
+
 Follow 1Password and Apple, not Obsidian. The new device generates its own keypair; an
 already-enrolled device wraps the graph key to it; the relay only ever moves ciphertext.
 
@@ -500,7 +548,7 @@ sentence Obsidian, Standard Notes, 1Password and Signal all had to write.
 Mitigations that are actually available to a self-hoster:
 
 - A **recovery key generated at onboarding**, shown once, with a forced "type it back" confirmation
-  before the first op is written (§3.4). 128 bits of entropy, dense alphanumeric.
+  before the first op is written (§3.5). 128 bits of entropy, dense alphanumeric.
 - The **CLI replica (§8) as a second key holder** — the most useful thing it does after backups.
 - A **warning state in the UI when only one device holds the key.** Apple's Advanced Data
   Protection refuses to turn on without a recovery contact or recovery key; that is the right
@@ -669,9 +717,26 @@ This is the one genuine loss, and it is not fixable by moving code.
   (`@huggingface/transformers`, "tens–hundreds of MB"). That report's conclusion — "not worth it
   for a mobile PWA" — was reached for performance reasons and holds a fortiori here.
 
+The counterargument, stated fairly because it has gotten stronger since `research/06` was written:
+a small embedding model in the browser is no longer absurd. `Xenova/all-MiniLM-L6-v2`'s ONNX
+weights are **23 MB quantized (int8)** and 45.3 MB at fp16
+(<https://huggingface.co/Xenova/all-MiniLM-L6-v2/tree/main/onnx>), running under transformers.js on
+WASM or WebGPU (<https://huggingface.co/docs/transformers.js/index>) — a one-time download
+comparable to a font bundle, cacheable. sqlite-vec's own documentation states it *"runs anywhere
+SQLite runs… including in the browser with WASM"* (<https://github.com/asg017/sqlite-vec>), and a
+standalone browser vector index exists in `voy` (<https://github.com/tantaraio/voy>, 75 KB gzipped,
+though it documents **no incremental updates — full rebuild only** and a pre-1.0 API).
+
+That is a genuine "feasible to prototype", not a "mature subsystem", and it comes with three costs
+this report will not hand-wave: a 23 MB model is a different-quality model from bge-m3 and would
+give **different, worse results on Czech** (the user's graph is bilingual, which is exactly why
+ADR 010 chose a multilingual model); no published in-browser inference latency figure was found
+(§11); and it means maintaining two embedding pipelines whose vectors are not interchangeable.
+
 So under E2EE, semantic search is available **only where a full-strength device with the key and a
 local model exists**: a desktop client, or the headless CLI replica of §8. Phones get keyword
-search. That is the honest trade and it should be stated as a product fact, not engineered around.
+search, or a degraded second-tier model if someone wants to build that later. That is the honest
+trade and it should be stated as a product fact, not engineered around.
 
 ### 5.5 Recommendation for §5
 
@@ -736,7 +801,7 @@ ciphertext cannot produce it. Two replacements:
 
 - **Replay the whole encrypted log.** Measured: replaying all 19,580 ops into an empty replica
   takes **244 ms** (`scratchpad/replay.mts`, via `applyOps` through the real `SqlDriver`), plus
-  **287 ms** to AES-GCM-decrypt them one-by-one (§3.5) and ~12.3 MiB of transfer. Viable *at this
+  **287 ms** to AES-GCM-decrypt them one-by-one (§3.6) and ~12.3 MiB of transfer. Viable *at this
   log's size* — but this log has exactly one op per entity, because it came from an import.
   `sql-schema.md` rule 28 projects a mature log at **50k–150k ops**; scaling linearly gives
   0.6–1.9 s of replay natively, and `sqlite-wasm` on a phone is plausibly 10–20× that. So
@@ -781,18 +846,26 @@ one graph per server (PLAN.md §17.7).
 - **Per-graph keys.** The unit of encryption is the graph, matching the unit of sharing and the
   unit that already has a column. A graph key encrypts that graph's ops, assets, and snapshots;
   nothing else.
-- **Server-side isolation.** Independent of crypto, and needed first: today `graph_id` is never
-  set to anything but the default, `snapshot.ts` does `SELECT * FROM page` with no `graph_id`
-  filter, and `recordChanges` hardcodes `'default'`. Multi-tenancy means auditing every query for
-  a `graph_id` predicate and binding tokens to graphs. **Do that before, and separately from,
-  E2EE** — a tenancy bug leaks ciphertext-plus-metadata to the wrong user, and E2EE will not save
-  you from it.
+- **Server-side isolation.** Independent of crypto, and needed first. `research/12` §6.1 documents
+  this far better than this report could and reaches a blunter conclusion — *"The `graph_id`
+  columns are a decoy, and should be labelled as one"* — with five independent reasons, including
+  that `data-api.ts`'s 816 lines contain **zero** occurrences of `graph_id`, that the derived
+  tables deliberately lack the column so an FTS5 `MATCH` cannot be graph-filtered without a join,
+  and that `trial-lock.ts`'s process-wide write lock would serialize every graph behind every
+  other. Its recommendation is **one SQLite file per graph** (§6.2), which sidesteps the audit
+  entirely. **Do that before, and separately from, E2EE** — a tenancy bug leaks
+  ciphertext-plus-metadata to the wrong user, and encryption will not save you from it. One file
+  per graph also happens to be the cleanest possible fit for per-graph keys.
 - **Sharing a graph** means wrapping the graph key to another user's public key. That requires
   per-user identity keys and a way to trust them (§4), which is the hard part, not the wrapping.
 - **Revoking a device or a user** requires rotating the graph key and re-wrapping to the remaining
   members — and, to be blunt about it: **you cannot un-share what they already decrypted.** A
   revoked member keeps every plaintext they ever held. Rotation protects *future* ops only. Any
-  UI that says "removed" must not imply otherwise.
+  UI that says "removed" must not imply otherwise. `research/12` §8.3 reaches the identical
+  conclusion from the token side and already drafts the wording the revocation UI should print;
+  E2EE changes nothing about it except adding a key to rotate alongside the token. Note the
+  asymmetry worth being precise about: revoking a *token* stops future sync; rotating the *key*
+  stops future reads. You need both, and neither is retroactive.
 - Rotation also means ops carry a **key epoch** so a client knows which key decrypts which op.
   That field has to exist from the first encrypted op ever written, or rotation is a migration.
   See §10.3.
@@ -986,12 +1059,15 @@ Each is independently justified, and each removes a dependency E2EE would otherw
    the browser, and it makes search and backlinks work offline today. Highest value, lowest risk.
 2. **Real `graph_id` scoping and per-graph token binding** (§7). Multi-tenancy correctness is a
    prerequisite for hosting anyone else's data at all, encrypted or not.
-3. **A binary sync wire format.** §3.5 shows base64 would cost +36 % against +8 % for the tags
+3. **A binary sync wire format.** §3.6 shows base64 would cost +36 % against +8 % for the tags
    themselves. Changing the encoding is easier before there is ciphertext in it.
 4. **Per-device Ed25519 signing on ops** (§2.4). Useful on its own — it turns `device` from a label
    into an identity, and it is the precondition for detecting a withholding relay.
 5. **A `nooklet sync` client mode for `packages/server`** (§8). The headless replica is a good
    backup story today and the load-bearing component under E2EE.
+6. **A secure-context deployment story** (§3.4). `research/12` §10 argues this is already breaking
+   the LAN setup today, independent of encryption; it is simply also an absolute precondition for
+   E2EE. Nothing in §10.2 can start before it.
 
 ### 10.2 Then, if E2EE is wanted
 
@@ -1034,7 +1110,7 @@ now if it is ever to be added cheaply.**
 - Do not build a PAKE on a stale draft implementation (§4.2).
 - Do not ship a PIN-based recovery flow without rate-limiting hardware (§4.4).
 - Do not describe a browser-delivered E2EE relay as something the operator cannot read (§9.4).
-- Do not add app-level at-rest encryption on the client and call it E2EE (§3.6).
+- Do not add app-level at-rest encryption on the client and call it E2EE (§3.7).
 
 ---
 
@@ -1086,7 +1162,7 @@ change its conclusions if they came out differently.
     mechanism is inferable only from `libsignal` source.
 12. **Matrix device dehydration** is MSC3814, still marked Work In Progress as of 2026-07-01, not a
     ratified spec module. Relevant if a "cold spare device" is ever wanted instead of §8's replica.
-13. **SQLite3MultipleCiphers' WASM build with OPFS** (§3.6) — the changelog shows a WASM build
+13. **SQLite3MultipleCiphers' WASM build with OPFS** (§3.7) — the changelog shows a WASM build
     exists; OPFS compatibility is unconfirmed.
 14. **Whether anyone ships a synced encrypted search index.** None was found (§5.3), but the search
     tooling for this report was degraded (WebSearch quota was exhausted; findings came from direct
@@ -1103,7 +1179,8 @@ change its conclusions if they came out differently.
 Architecture and measurements, in this repository: `docs/PLAN.md`, `docs/adr/003-sync-oplog-hlc-lww.md`,
 `docs/adr/010-embeddings-and-search.md`, `docs/adr/013-ai-parity-undo-assets-live-ui.md`,
 `docs/spec/sql-schema.md`, `docs/research/03-sync.md` §4/§6, `docs/research/06-embeddings.md` §3.2,
-`docs/research/10-desktop-packaging.md` §4, `packages/core/src/{ops,hlc,ids,refs}.ts`,
+`docs/research/10-desktop-packaging.md` §4, `docs/research/12-multi-user-and-pairing.md` §5/§6/§8,
+`apps/web/src/views/ConnectView.tsx`, `packages/core/src/{ops,hlc,ids,refs}.ts`,
 `packages/core/src/sync/{apply-ops,schema,gc}.ts`, `packages/server/src/apply-ops.ts`,
 `packages/server/src/sync/{push,pull,snapshot,auth,device}.ts`, `packages/server/src/verify.ts`,
 `packages/server/src/ops/batch-undo.ts`, `packages/server/src/mirror/export.ts`,
@@ -1114,7 +1191,9 @@ Measurement scripts written for this report (scratchpad, not committed): `crypto
 `crypto-bench2.mjs`, `buildidx.mjs`, `q.mjs`, `leak.mjs`, `wire.mjs`, `replay.mts`.
 
 Standards and specifications: W3C Web Cryptography API Level 2 <https://w3c.github.io/webcrypto/>;
-WICG Modern Algorithms <https://wicg.github.io/webcrypto-modern-algos/>; W3C Subresource Integrity
+WICG Modern Algorithms <https://wicg.github.io/webcrypto-modern-algos/>; W3C Secure Contexts
+<https://w3c.github.io/webappsec-secure-contexts/>; MDN `Crypto.subtle`
+<https://developer.mozilla.org/en-US/docs/Web/API/Crypto/subtle>; W3C Subresource Integrity
 <https://www.w3.org/TR/SRI/>; NIST SP 800-38D
 <https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf>; RFC 9106 (Argon2)
 <https://www.rfc-editor.org/rfc/rfc9106.html>; RFC 9382 (SPAKE2)
@@ -1163,6 +1242,11 @@ snake oil* <https://www.devever.net/~hl/webcrypto>; bren2010, *A Criticism of Ja
 <https://palant.info/2018/09/06/keybase-our-browser-extension-subverts-our-encryption-but-why-should-we-care/>;
 EFF on Apple client-side scanning
 <https://www.eff.org/deeplinks/2021/08/apples-plan-think-different-about-encryption-opens-backdoor-your-private-life>.
+
+On-device models and vectors: transformers.js <https://huggingface.co/docs/transformers.js/index>;
+`Xenova/all-MiniLM-L6-v2` ONNX weights
+<https://huggingface.co/Xenova/all-MiniLM-L6-v2/tree/main/onnx>; sqlite-vec
+<https://github.com/asg017/sqlite-vec>; voy <https://github.com/tantaraio/voy>.
 
 Libraries: `@noble/ciphers` 2.4.0 <https://github.com/paulmillr/noble-ciphers> (cure53 audit at
 v1.0.0, Sept 2024); `libsodium.js` <https://github.com/jedisct1/libsodium.js>; `hash-wasm`

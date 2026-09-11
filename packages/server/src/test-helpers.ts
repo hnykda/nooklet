@@ -26,6 +26,8 @@ export interface TestServerOptions {
   webClientDir?: string;
   /** Non-loopback hostnames the DNS-rebinding guard should accept (`ServerConfig.allowedHosts`). */
   allowedHosts?: string[];
+  /** Bind address (`ServerConfig.host`); the Host allowlist only engages when it is non-loopback. */
+  host?: string;
 }
 
 export function makeTestServer(opts: TestServerOptions = {}): TestServer {
@@ -40,6 +42,7 @@ export function makeTestServer(opts: TestServerOptions = {}): TestServer {
     port: 0,
     mirror: { enabled: false },
     allowedHosts: opts.allowedHosts,
+    host: opts.host,
   };
   const app = createApp({
     serverCtx,

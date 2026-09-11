@@ -27,7 +27,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join, normalize, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 
 /** Extension → content type. Deliberately small: this serves one known Vite build, not arbitrary
  * user files. `.wasm` matters (SQLite WASM refuses to stream-compile without it) and so does
@@ -92,10 +92,11 @@ export interface WebClientOptions {
   dir: string;
   /**
    * Config injected into `index.html` as `window.__NOOKLET__`, or `null` to inject nothing.
-   * Called per request with the `Host` header, because what the client is trusted with depends on
-   * who is asking — see `createApp`, which only hands out a token to loopback callers.
+   * Called per request with the full context, because what the client is trusted with depends on
+   * WHO is asking — and that has to be decided from the peer address, not a forgeable header.
+   * See `createApp`'s `isLoopbackRequest`.
    */
-  bootstrap?: (host: string | undefined) => object | null;
+  bootstrap?: (c: Context) => object | null;
 }
 
 /** `</head>`-insertion, with the payload JSON-escaped so a token or path can never break out of
@@ -158,19 +159,15 @@ export function mountWebClient(app: Hono, opts: WebClientOptions): void {
     }
     const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" };
     if (method === "HEAD") return new Response(null, { headers });
-    return new Response(await shellHtml(indexPath, opts, c.req.header("host")), { headers });
+    return new Response(await shellHtml(indexPath, opts, c), { headers });
   });
 }
 
 /** The shell, with `window.__NOOKLET__` injected. Read as text rather than streamed because the
  * payload has to go inside it; it is a few KB and re-read per navigation so a rebuilt client is
  * picked up without restarting the server. */
-async function shellHtml(
-  indexPath: string,
-  opts: WebClientOptions,
-  host: string | undefined,
-): Promise<string> {
+async function shellHtml(indexPath: string, opts: WebClientOptions, c: Context): Promise<string> {
   const html = await readFile(indexPath, "utf8");
-  const config = opts.bootstrap?.(host);
+  const config = opts.bootstrap?.(c);
   return config ? injectBootstrap(html, config) : html;
 }

@@ -35,13 +35,22 @@ the same running server.
 
 ### Reaching it from another device
 
-`serve` binds to `127.0.0.1`. To open your graph from a phone on the same network or over
-Tailscale, bind wider and allowlist the hostname you'll actually type — both are required, because
-the DNS-rebinding guard rejects any other `Host`:
+`serve` binds to `127.0.0.1`. To reach it from another device, bind wider **and** allowlist the
+hostname you will actually type — both are required, since any other `Host` is refused with 403:
 
 ```sh
-pnpm nooklet serve --data ~/.nooklet --host 0.0.0.0 --allow-host 192.168.1.5,my-mac.tailnet.ts.net
+pnpm nooklet serve --data ~/.nooklet --host 0.0.0.0 --allow-host my-mac.tailnet.ts.net
 ```
+
+> **Use HTTPS or a tailnet, not a plain LAN IP.** `http://192.168.1.5:6100` is not a *secure
+> context*, and the client stores its replica in OPFS and coordinates writers with
+> `navigator.locks` — both of which browsers gate behind secure contexts. The app will fail to
+> open its local database there. `https://`, `localhost`, and Tailscale's `*.ts.net` (which serves
+> HTTPS) all qualify. A bearer token over plain HTTP is also readable by anyone on the network
+> path.
+
+A remote device has no token until you give it one: open the app, and it will ask. Create the
+token with `pnpm nooklet token create --label phone --scope write --sync`.
 
 ## Connecting an agent
 

@@ -239,9 +239,9 @@ async function main(): Promise<void> {
       const exposed = hostname !== "127.0.0.1" && hostname !== "localhost" && hostname !== "::1";
       if (exposed && !config.allowedHosts?.length) {
         process.stderr.write(
-          `nooklet: bound to ${hostname} with no --allow-host. Requests arriving with any other\n` +
-            `  Host header (a LAN IP, a tailnet name) are refused — pass e.g.\n` +
-            `  --allow-host 192.168.1.5,my-machine.local to reach it from another device.\n`,
+          `nooklet: bound to ${hostname} with no --allow-host, so ONLY requests addressed to\n` +
+            `  localhost are accepted — reaching this server by its LAN IP or tailnet name will\n` +
+            `  return 403. Pass e.g. --allow-host 192.168.1.5,my-machine.local to allow it.\n`,
         );
       }
       serve(

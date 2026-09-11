@@ -4,6 +4,8 @@
  * `/sync/{push,pull,snapshot,live}` (`../sync/index.ts`, ADR 003) with its own auth gate.
  */
 
+import { getConnInfo } from "@hono/node-server/conninfo";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { bearerAuth, createToken } from "../auth/tokens.js";
@@ -52,14 +54,41 @@ export interface CreateAppOptions {
   webClientDir?: string;
 }
 
-/** Loopback, i.e. "this request came from this machine". `Host` carries an optional port and IPv6
- * literals arrive bracketed, so compare on the hostname alone. */
-function isLoopbackHost(host: string | undefined): boolean {
-  if (!host) return false;
-  const name = host.startsWith("[")
-    ? host.slice(0, host.indexOf("]") + 1)
-    : (host.split(":")[0] ?? "");
-  return name === "127.0.0.1" || name === "localhost" || name === "[::1]";
+/** The `Host` header's hostname, without port; IPv6 literals arrive bracketed. */
+function hostName(host: string | undefined): string {
+  if (!host) return "";
+  return host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : (host.split(":")[0] ?? "");
+}
+
+function isLoopbackName(name: string): boolean {
+  return name === "127.0.0.1" || name === "localhost" || name === "[::1]" || name === "::1";
+}
+
+/**
+ * "Did this request come from this machine?" — decided by the PEER ADDRESS, not the `Host` header.
+ *
+ * `Host` is attacker-controlled. Trusting it meant anyone who could reach the server over a LAN
+ * could mint themselves a `write` + `can_sync` token simply by asking for one:
+ *
+ *     curl -H 'Host: localhost:6100' http://192.168.1.6:6100/api/session
+ *     -> {"token":"nk_…"}
+ *
+ * The socket's remote address cannot be forged that way. The `Host` check is kept as a second
+ * condition rather than replaced: a DNS-rebinding attack arrives from a real loopback peer (the
+ * victim's own browser) but carries the attacker's hostname, so both have to hold.
+ */
+function isLoopbackRequest(c: Context): boolean {
+  let remote: string | undefined;
+  try {
+    remote = getConnInfo(c).remote.address;
+  } catch {
+    return false; // no socket (in-process `app.request()`); never hand out a credential
+  }
+  if (!remote) return false;
+  // Node reports IPv4-mapped IPv6 for a dual-stack listener.
+  const peer = remote.startsWith("::ffff:") ? remote.slice(7) : remote;
+  const peerIsLoopback = peer === "::1" || peer.startsWith("127.");
+  return peerIsLoopback && isLoopbackName(hostName(c.req.header("host")));
 }
 
 /**
@@ -77,8 +106,8 @@ function isLoopbackHost(host: string | undefined): boolean {
  * The token is minted once per server process (see `webClientToken`) rather than persisted: it
  * lives only in memory and in the HTML it is injected into, so a restart invalidates old sessions.
  */
-function buildClientBootstrap(ctx: ServerContext, host: string | undefined): object {
-  if (!isLoopbackHost(host)) return { token: null, reason: "non_loopback_host" };
+function buildClientBootstrap(ctx: ServerContext, c: Context): object {
+  if (!isLoopbackRequest(c)) return { token: null, reason: "non_loopback_host" };
   return { token: webClientToken(ctx) };
 }
 
@@ -103,6 +132,45 @@ export function createApp(opts: CreateAppOptions): Hono {
   const app = opts.app ?? new Hono();
   const { serverCtx, registry, config } = opts;
 
+  /**
+   * DNS-rebinding / unexpected-Host guard, registered BEFORE every route so that it actually
+   * covers them.
+   *
+   * `@modelcontextprotocol/hono` ships its own equivalent, but `mountMcp` merges that sub-app at
+   * the END of this function — and Hono composes handlers in registration order, so a terminal
+   * handler registered earlier short-circuits before the merged middleware ever runs. It was
+   * therefore guarding only the paths that had no earlier route, while `cli.ts` printed that
+   * requests with an unexpected `Host` "are refused". They were not.
+   *
+   * Only enforced when bound to a non-loopback address: on loopback the peer is already this
+   * machine, and a stricter default would break `nooklet serve` for everyone.
+   */
+  const boundHost = config.host ?? "127.0.0.1";
+  if (!isLoopbackName(boundHost)) {
+    const allowed = new Set([
+      "127.0.0.1",
+      "localhost",
+      "[::1]",
+      "::1",
+      ...(config.allowedHosts ?? []),
+    ]);
+    app.use("*", async (c, next) => {
+      const name = hostName(c.req.header("host"));
+      if (!allowed.has(name)) {
+        return c.json(
+          {
+            error: {
+              code: "forbidden",
+              message: `Host "${name || "(missing)"}" is not allowed. Start the server with --allow-host ${name || "<hostname>"} to reach it by this name.`,
+            },
+          },
+          403,
+        );
+      }
+      return next();
+    });
+  }
+
   // `/healthz` is the stable, machine-readable liveness probe. `/` answers the same JSON only
   // when no web client is being served — once there is one, `/` belongs to the app, and a JSON
   // health payload there would mean you could never open nooklet at its own root URL.
@@ -120,7 +188,7 @@ export function createApp(opts: CreateAppOptions): Hono {
    * sits outside `/api/v1/*` so it is deliberately NOT behind `bearerAuth` — it is what you call
    * when you do not yet have a token.
    */
-  app.get("/api/session", (c) => c.json(buildClientBootstrap(serverCtx, c.req.header("host"))));
+  app.get("/api/session", (c) => c.json(buildClientBootstrap(serverCtx, c)));
   if (!opts.webClientDir) app.get("/", (c) => c.json(health));
   app.get("/openapi.json", (c) => c.json(buildOpenApi(registry)));
   mountAssetRoutes(app, serverCtx, config); // GET /assets/:id (asset.upload, ADR 013)
@@ -167,7 +235,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   if (opts.webClientDir) {
     mountWebClient(app, {
       dir: opts.webClientDir,
-      bootstrap: (host) => buildClientBootstrap(serverCtx, host),
+      bootstrap: (c) => buildClientBootstrap(serverCtx, c),
     });
   }
 

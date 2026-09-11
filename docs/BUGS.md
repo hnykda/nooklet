@@ -152,6 +152,58 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 
 ## Fixed
 
+### B-25 · Any LAN caller could mint a write token by forging `Host: localhost`
+**Status:** fixed · **Severity:** critical · **Test:** `packages/server/src/http/host-guard.test.ts`
+**Found:** 2026-09-11 by the multi-user/pairing research agent, reproduced before fixing
+
+`buildClientBootstrap` decided "is this loopback?" from the `Host` header, which the caller
+controls. Verified against a running server bound to `0.0.0.0`:
+
+```
+curl -H 'Host: localhost:6198' http://192.168.1.6:6198/api/session
+→ {"token":"nk_<redacted>"}
+```
+
+That is a `write` + `can_sync` token handed to anyone who can reach the port. Introduced in this
+session along with the bootstrap endpoint.
+
+Now decided from the socket's peer address (`getConnInfo`), with the `Host` check RETAINED as a
+second condition rather than replaced — a DNS-rebinding attack arrives from a genuine loopback
+peer (the victim's own browser) carrying the attacker's hostname, so both must hold. An
+in-process request with no socket is treated as non-loopback: never hand out a credential to a
+caller you cannot identify.
+
+### B-26 · The DNS-rebinding guard covered 2 routes out of 7
+**Status:** fixed · **Test:** `packages/server/src/http/host-guard.test.ts`, "guards EVERY route"
+**Found:** 2026-09-11, same research pass
+
+`@modelcontextprotocol/hono` ships a Host guard, but `createApp` merges that sub-app *after*
+`/api/v1/*`, `/sync/*`, `/api/session` and `/assets/*` are registered — and Hono composes handlers
+in registration order, so a terminal handler registered earlier short-circuits before the merged
+middleware runs. The guard only ever covered paths with no earlier route. Meanwhile `cli.ts`
+printed that requests with an unexpected `Host` "are refused". They were not.
+
+nooklet now installs its own allowlist middleware *before* every route, active only when bound to
+a non-loopback address. Verified per-route: with `--host 0.0.0.0` and no `--allow-host`, all of
+`/healthz`, `/openapi.json`, `/api/session` and `/` return 403 to a LAN Host and 200 to loopback;
+adding `--allow-host` opens exactly that hostname. The CLI message now says what actually happens.
+
+**Testing note:** these cannot be tested through `app.request()` — both behaviours depend on the
+connection itself. And `fetch` silently drops a `Host` header (it is a forbidden header name), so
+the tests use raw `node:http`; written with `fetch` they would have asserted nothing while passing.
+
+### B-27 · A plain LAN IP cannot run the client at all
+**Status:** documented · **Severity:** high · **Found:** 2026-09-11, same research pass
+
+`http://192.168.1.5:6100` — the URL the README previously recommended for phone access — is not a
+*secure context*. The client stores its replica via OPFS (`installOpfsSAHPoolVfs`) and elects a
+writer with `navigator.locks`; both are secure-context-gated and neither has a fallback, so the
+client cannot open its database there at all. README now recommends HTTPS or a tailnet and
+explains why.
+
+Not a code fix: the real remedy is a documented deployment shape. Revisit if a plain-LAN fallback
+is ever wanted, which would mean a non-OPFS storage path.
+
 ### B-22 · Clicking a search result said "This page doesn't exist yet"
 **Status:** fixed · **Test:** `e2e/tests/journals.spec.ts` (3 tests)
 **Reported:** 2026-09-11
