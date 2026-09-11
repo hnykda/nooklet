@@ -75,6 +75,12 @@ export function flattenVisible(tree: EditorTree, opts: FlattenOptions = {}): Row
     if (!b.collapsed) for (const c of kids) visit(c, depth + 1);
   };
   if (opts.rootBlockId !== undefined) {
+    // Tolerate a zoom root that is not in the tree instead of throwing through `getBlock`. It is
+    // absent on the very first render — the page resource has not resolved yet, so the tree is
+    // empty — and throwing there took down the whole subtree, leaving a zoomed block permanently
+    // blank behind a "Loading…" that never cleared. It is also absent, legitimately, when the
+    // block has since been deleted.
+    if (!tree.byId.has(opts.rootBlockId)) return rows;
     visit(opts.rootBlockId, 0);
   } else {
     for (const id of childrenIds(tree, null)) visit(id, 0);

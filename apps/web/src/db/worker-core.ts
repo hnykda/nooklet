@@ -178,13 +178,25 @@ export class WorkerDb {
       blocks: todayPage ? buildBlockTree(collectPageBlocks(this.driver, todayPage.id)) : [],
     });
 
+    // Future days first, and ALL of them: a journal day ahead of today exists because something
+    // was deliberately scheduled or written there, so hiding it is the one case where "empty days
+    // are not shown" turns into "days you created are not shown". There are normally a handful,
+    // so they are not counted against `maxDays` — that window exists to bound scrolling back
+    // through years of history, which is a different problem.
+    const later = this.driver.all<{ id: string; journal_day: number }>(
+      `SELECT id, journal_day FROM page
+       WHERE journal_day IS NOT NULL AND journal_day > ? AND deleted_at IS NULL
+       ORDER BY journal_day DESC`,
+      [opts.today],
+    );
+
     const earlier = this.driver.all<{ id: string; journal_day: number }>(
       `SELECT id, journal_day FROM page
        WHERE journal_day IS NOT NULL AND journal_day < ? AND deleted_at IS NULL
        ORDER BY journal_day DESC LIMIT ?`,
       [opts.today, Math.max(0, opts.maxDays)],
     );
-    for (const row of earlier) {
+    for (const row of [...later, ...earlier]) {
       const page = getPage(this.driver, row.id);
       if (!page) continue;
       entries.push({

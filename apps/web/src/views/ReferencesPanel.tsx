@@ -32,10 +32,10 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
             {(b) => <span class="reference-count"> ({b().linked.length})</span>}
           </Show>
         </h3>
-        <Show when={backlinks.loading}>
+        <Show when={backlinks.loading && backlinks() === undefined}>
           <p>Loading…</p>
         </Show>
-        <Show when={!backlinks.loading && linkedGroups().length === 0}>
+        <Show when={backlinks() !== undefined && linkedGroups().length === 0}>
           <p class="references-empty">No linked references yet.</p>
         </Show>
         <For each={linkedGroups()}>
@@ -75,7 +75,7 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
             {(b) => <span class="reference-count"> ({b().unlinked.length})</span>}
           </Show>
         </summary>
-        <Show when={!backlinks.loading && unlinkedGroups().length === 0}>
+        <Show when={backlinks() !== undefined && unlinkedGroups().length === 0}>
           <p class="references-empty">No unlinked mentions found.</p>
         </Show>
         <For each={unlinkedGroups()}>

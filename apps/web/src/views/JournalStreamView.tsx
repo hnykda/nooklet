@@ -43,11 +43,19 @@ export function JournalStreamView(): JSX.Element {
     stream()?.find((e) => e.day === today),
   );
 
-  // "Earlier non-empty days" per PLAN.md §8: everything `useJournalStream` returned after today,
-  // minus the pinned day if the calendar jump duplicates one already in that window.
+  // Journal days AHEAD of today, rendered above it so the whole stream reads newest-first. These
+  // exist only because something was deliberately written or scheduled there, so unlike empty past
+  // days they are never hidden (`worker-core.ts#getJournalStream`).
+  const laterDays = createMemo<JournalDayEntry[]>(() => {
+    const all = stream() ?? [];
+    return all.filter((e) => e.day > today && e.day !== pinnedDay());
+  });
+
+  // "Earlier non-empty days" per PLAN.md §8, minus the pinned day if the calendar jump duplicates
+  // one already in that window.
   const earlierDays = createMemo<JournalDayEntry[]>(() => {
     const all = stream() ?? [];
-    return all.filter((e) => e.day !== today && e.day !== pinnedDay());
+    return all.filter((e) => e.day < today && e.day !== pinnedDay());
   });
 
   let sentinel: HTMLDivElement | undefined;
@@ -84,6 +92,17 @@ export function JournalStreamView(): JSX.Element {
           }}
         />
       </Show>
+
+      <For each={laterDays()}>
+        {(entry) => (
+          <section class="journal-day journal-day-upcoming" aria-label={dayTitle(entry.day)}>
+            <h2 class="journal-day-title">{dayTitle(entry.day)} · Upcoming</h2>
+            <Show when={entry.page}>
+              {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
+            </Show>
+          </section>
+        )}
+      </For>
 
       <section class="journal-day journal-day-today" aria-label="Today">
         <h2 class="journal-day-title">{dayTitle(today)} · Today</h2>

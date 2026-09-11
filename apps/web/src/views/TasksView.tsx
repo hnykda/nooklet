@@ -133,10 +133,10 @@ export function TasksView(): JSX.Element {
         </label>
       </div>
 
-      <Show when={tasks.loading}>
+      <Show when={tasks.loading && tasks() === undefined}>
         <p>Loading…</p>
       </Show>
-      <Show when={!tasks.loading && groups().length === 0}>
+      <Show when={tasks() !== undefined && groups().length === 0}>
         <p class="tasks-empty">No open tasks match these filters.</p>
       </Show>
 

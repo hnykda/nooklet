@@ -14,6 +14,36 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
+### B-21 · Journal page names should be canonical ISO, with the display format a setting
+**Status:** open · **Severity:** medium · **Raised:** 2026-09-11 (user: "stored name should IMHO be
+ISO. and then we should have in settings selectable format of that")
+
+A journal page is currently *stored* under whatever title format the graph was written with —
+`Mon, 07.09.2026` in the imported Logseq graph — while search results, block references and the
+API all hand out the ISO date. That mismatch caused B-22 and will keep causing this class of bug.
+
+Proposal: store the canonical name as ISO (`2026-09-07`), keep `journal_day` as the real key, and
+make the *rendered* title a user setting (`MMM do, yyyy`, `EEEE, dd.MM.yyyy`, ISO, …). Affects the
+markdown mirror's filenames and titles, `[[Mon, 07.09.2026]]` references inside existing content,
+and Logseq round-trip fidelity — so it needs an ADR and a migration, not a quick edit.
+
+The resolve-by-day-number fix in B-22 is a prerequisite either way and is already in.
+
+---
+
+### B-23 · `page.create` accepts a journal-formatted name and makes a non-journal page
+**Status:** open · **Severity:** medium · **Found:** 2026-09-11, while writing journal e2e tests
+
+`page.create` deliberately refuses journal days — but its guard uses `journalDayFromWire`, which
+only understands ISO and `today`/`yesterday`, not the title formats `parseJournalTitle` accepts.
+So `page.create({name: "Tue, 08.09.2026"})` succeeds and produces a page with `journal_day = NULL`:
+a page that looks like a journal day, is named like one, and is not one. It will never appear in
+the journal stream.
+
+The guard should use the same parser the rest of the system does.
+
+---
+
 ### B-07 · Cmd+A in a block doesn't select its text
 **Status:** open · **Severity:** high · **Found:** 2026-09-11, while writing e2e tests
 
@@ -121,6 +151,37 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 ---
 
 ## Fixed
+
+### B-22 · Clicking a search result said "This page doesn't exist yet"
+**Status:** fixed · **Test:** `e2e/tests/journals.spec.ts` (3 tests)
+**Reported:** 2026-09-11
+
+Three separate defects on one path.
+
+1. **Journal pages were only addressable by their stored name.** The graph stores
+   `Mon, 07.09.2026`; search results and references hand out `2026-09-11`. `usePageByName` looked
+   up by name only, so a journal that plainly existed reported "doesn't exist yet". It now falls
+   back to `parseJournalTitle` → `journal_day`, which is format-agnostic. See B-21 for the
+   underlying design fix.
+2. **Zooming into a block threw and left the view permanently blank.** `flattenVisible` called
+   `getBlock`, which throws on an unknown id — and on the first render the tree is empty because
+   the page resource has not resolved, so a `?block=` URL took down the whole subtree behind a
+   "Loading…" that never cleared. A missing zoom root now yields no rows instead of throwing.
+3. **"Loading…" never cleared even once data arrived.** `createResource` sets `loading = true` on
+   every REFETCH, and after the version-stamping fix (B-05) every resource refetches whenever its
+   tables change — so a spinner keyed on `loading` alone reappeared on every sync pull. Views now
+   show a spinner only while there is nothing to display (`loading && value === undefined`).
+   Fixed in `PageView`, `TasksView`, `ReferencesPanel` and `SearchView`.
+
+### B-24 · Future journal days were invisible
+**Status:** fixed · **Test:** `e2e/tests/journals.spec.ts`, "a future journal day appears in the stream"
+**Reported:** 2026-09-11 ("shows just today page even though /page/Sep 12th, 2026 exists")
+
+The stream query was `journal_day < today`, so a day ahead of today never appeared. Empty past
+days are hidden deliberately; a *future* day exists only because something was written or
+scheduled there, so hiding it turned into "days you created are not shown". Future days now render
+above today (keeping the stream newest-first) and are not counted against the `maxDays` window,
+which exists to bound scrolling back through years of history.
 
 ### B-20 · The app never updated — a browser stayed pinned to the first build it cached
 **Status:** fixed · **Reported:** 2026-09-11 as search still hanging and "agents can't see this

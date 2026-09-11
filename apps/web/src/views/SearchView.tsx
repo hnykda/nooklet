@@ -112,7 +112,7 @@ export function SearchView(): JSX.Element {
       <Show when={input() === undefined}>
         <p class="search-hint">Type to search.</p>
       </Show>
-      <Show when={results.loading}>
+      <Show when={results.loading && results() === undefined}>
         <p class="search-loading">Searching…</p>
       </Show>
       <Show when={results()}>

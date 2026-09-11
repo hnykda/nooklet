@@ -75,7 +75,11 @@ export function PageView(props: PageViewProps): JSX.Element {
         </div>
       </Show>
 
-      <Show when={page.loading}>
+      {/* Only while there is nothing to show yet. `loading` is also true on every REFETCH, and
+          every resource refetches whenever its tables change (`data/store.ts`'s version stamping),
+          so keying a spinner off `loading` alone replaces the page with "Loading…" every time sync
+          pulls — which read as a page stuck loading forever. */}
+      <Show when={page.loading && page() === undefined}>
         <p class="page-view-loading">Loading…</p>
       </Show>
 
