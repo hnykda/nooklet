@@ -114,6 +114,23 @@ export function BlockRowView(props: {
                 aria-multiline="true"
                 tabIndex={0}
                 dir="auto"
+                onMouseDown={(e) => {
+                  // Stop the browser focusing this element on mousedown. It is swapped out for
+                  // the editor inside the click handler that follows, and the browser then resets
+                  // focus to <body> once the handler returns — leaving a window of a frame or two
+                  // in which every keystroke is dropped. That is what made "click a bullet and
+                  // type" lose its first characters, and "press Enter then type" lose the start of
+                  // the new block.
+                  //
+                  // Narrow on purpose: only a plain left click on non-interactive content.
+                  // Anything interactive inside the rendered block (a [[page]] link, a task
+                  // checkbox) keeps the browser's default so its own click still fires, which is
+                  // also why entering edit mode stays on `click` rather than moving to `mousedown`.
+                  const target = e.target as HTMLElement;
+                  if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return;
+                  if (target.closest("a, button, input, label, summary")) return;
+                  e.preventDefault();
+                }}
                 onClick={handleContentClick}
                 onKeyDown={(e) => {
                   if (e.key !== "Enter" || e.shiftKey) return;

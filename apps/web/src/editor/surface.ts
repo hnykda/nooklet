@@ -152,19 +152,24 @@ export function createSurface(deps: SurfaceDeps): Surface {
       host.appendChild(view.dom);
       view.focus();
       setCaretInternal(caret);
-      // Re-assert focus after the browser finishes dispatching the event that got us here.
-      //
-      // Entering edit mode swaps the clicked `.vr-block-view` out of the DOM for the surface host
-      // (BlockRowView's `Show`). That happens synchronously inside the click handler, so when the
-      // browser resumes its default processing the element it had focused no longer exists and it
-      // resets focus to `<body>` — silently undoing the `view.focus()` above. The visible symptom
-      // was a row that entered edit mode, showed a caret-less CodeMirror, and swallowed every
-      // keystroke, which reads as "I can't get back into editing".
-      //
-      // Guarded on still being attached to the same block so a genuine click-away is not fought.
-      requestAnimationFrame(() => {
+      // Re-assert focus, twice, for two different reasons. Guarded on still being attached to the
+      // same block so a genuine click-away is never fought.
+      const refocus = (): void => {
         if (current === id && !view.hasFocus) view.focus();
-      });
+      };
+
+      // 1. Solid runs a `ref` callback when the element is CREATED, not when it is inserted into
+      //    the document — so the `view.focus()` above often runs while `host` is still detached,
+      //    where focusing is a no-op. A microtask runs after Solid finishes inserting but before
+      //    the browser dispatches the next input event, which is what keeps keystrokes typed
+      //    immediately after Enter from being delivered to `<body>` and lost.
+      queueMicrotask(refocus);
+
+      // 2. Entering edit mode also removes the previously focused element (the clicked
+      //    `.vr-block-view`, or the previous row's host). The browser resets focus to `<body>`
+      //    when that happens, potentially after the current event finishes dispatching, so a
+      //    frame-later backstop is still needed on top of the microtask.
+      requestAnimationFrame(refocus);
       view.dispatch({
         effects: EditorView.scrollIntoView(view.state.selection.main.head, {
           y: "nearest",

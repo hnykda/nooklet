@@ -249,8 +249,13 @@ export function BlockTree(props: {
     if (!pendingEdit) return;
     const { id, content, treeBefore, headBefore } = pendingEdit;
     pendingEdit = null;
-    const before = treeBefore.byId.get(id);
-    if (!before || before.content === content) return;
+    // `treeBefore` is the tree as of the first keystroke of this edit. A block created moments
+    // earlier (Enter for a new sibling, paste of a subtree) is not in it yet, and the original
+    // `!before` guard discarded the edit outright — type immediately after Enter and everything
+    // typed was silently thrown away. Absent from the snapshot is not "unchanged": fall back to
+    // the live tree, and only skip when the content genuinely has not moved.
+    const before = treeBefore.byId.get(id) ?? editorTree().byId.get(id);
+    if (before && before.content === content) return;
     const clock = clockSig();
     if (!clock) return;
     const headAfter = surface.currentId() === id ? surface.head() : content.length;

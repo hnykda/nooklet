@@ -94,14 +94,66 @@ scale, spacing rhythm, and focus/hover states.
 ### B-14 · No context menu on a bullet
 **Status:** open · **Severity:** medium · **Requested:** 2026-09-11
 
-Right-clicking a bullet should open an app-specific menu (zoom in, indent/outdent, toggle task,
-copy block ref, delete) rather than the browser's default.
+Right-clicking a bullet should open an app-specific menu rather than the browser's default:
+zoom in, indent/outdent, toggle task, copy block ref, delete — and **formatting** (bold, italic,
+highlight) when there is a selection. The commands already exist
+(`commands/registrations/format.ts`, `structural.ts`); this is the missing surface for them.
+
+---
+
+### B-17 · Slash menu never verified in a browser
+**Status:** needs-repro · **Severity:** medium · **Raised:** 2026-09-11
+
+`SlashMenu`, `matchSlashTrigger` and the insert commands are implemented and unit-tested, and
+`CommandLayer` wires them up — but nothing has ever exercised typing `/` in a real browser. Given
+that every keyboard path checked so far had a defect (B-02, B-07, B-15), assume it is broken until
+an e2e test says otherwise. Same for the `[[`, `#` and `((` autocomplete popups.
+
+---
+
+### B-18 · Formatting shortcuts never verified in a browser
+**Status:** needs-repro · **Severity:** medium · **Raised:** 2026-09-11
+
+`format.bold` / `format.italic` / `format.highlight` are registered with Cmd+B/I and unit-tested
+against a fake editor host, but have never been pressed in a real browser. These route through the
+same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows is fragile.
 
 ---
 
 ## Fixed
 
-All six below were reported within minutes of first opening a served production build, and all six
+### B-15 · Keystrokes lost right after clicking a block or pressing Enter
+**Status:** fixed · **Test:** `e2e/tests/editing.spec.ts`, "typing immediately after Enter"
+**Reported:** 2026-09-11 as "I type, press enter, the new text disappears", "can't click on a new
+bullet point to put cursor in there", and "tab + shift tab doesn't work"
+
+All three were one defect. Solid runs a `ref` callback when the element is *created*, not when it
+is inserted into the document, so `surface.attach`'s `view.focus()` ran against a still-detached
+host and did nothing. Focus sat on `<body>` until a `requestAnimationFrame` backstop restored it a
+frame later, and everything typed in that window went to `<body>` and was discarded. Measured:
+immediately after Enter, `document.activeElement` was `BODY` and the focus trace read
+`out->BODY`, `in:cm-content`.
+
+It read as "Tab doesn't work" for the same reason — with focus on `<body>`, CodeMirror's keymap
+never saw the key, so *no* structural key worked, including Backspace.
+
+Fixed by re-asserting focus in a `queueMicrotask` (runs after Solid inserts the element but before
+the browser dispatches the next input event), keeping the rAF as a backstop for the separate case
+where the browser resets focus after removing the previously focused element.
+
+### B-16 · An edit typed into a just-created block was discarded
+**Status:** fixed · **Test:** `e2e/tests/editing.spec.ts`, "typing immediately after Enter"
+
+`flushPendingEdit` looked the block up in `treeBefore` — the tree as of the edit's first keystroke
+— and returned early when absent (`if (!before || before.content === content) return`). A block
+created moments earlier (Enter for a new sibling, pasting a subtree) is not in that snapshot, so
+the text op was never built and the typing was lost with no error. Absent from the snapshot is not
+"unchanged": it now falls back to the live tree and only skips when content genuinely has not
+moved.
+
+---
+
+The six below were reported within minutes of first opening a served production build, and all six
 had passed the 1,180-test unit suite. That is what `e2e/` now exists to prevent — see its
 `playwright.config.ts` header.
 
@@ -159,5 +211,10 @@ edited is now preserved when absent from a query result.
   the only suite that would have caught B-01 through B-06.
 - When a bug is "it doesn't update", check `data/store.ts` first — B-05's pattern was replicated
   across eight resources and is easy to reintroduce.
-- Bugs found while fixing other bugs (B-06, B-09, B-12) are worth recording even when small; three
-  of the entries above exist only because something else was being read carefully.
+- Bugs found while fixing other bugs (B-06, B-09, B-12, B-16) are worth recording even when small;
+  several entries above exist only because something else was being read carefully.
+- **Assertions can hide bugs.** `expect(outliner).toContainText("first bullet")` and
+  `toContainText("second bullet")` both passed while Enter was doing nothing at all, because both
+  strings were sitting in one block. Assert structure (`toHaveCount`) alongside content.
+- When a keyboard interaction "does nothing", check `document.activeElement` first. Three separate
+  reports (B-15) were one focus bug, and the giveaway was that Backspace did not work either.

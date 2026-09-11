@@ -80,6 +80,9 @@ test("Enter creates a second bullet and both keep their text", async ({ page }) 
   await page.keyboard.type("second bullet", { delay: 20 });
 
   await page.locator("body").click({ position: { x: 5, y: 5 } });
+  // Row count, not just substrings: `toContainText` on the container also passes when both
+  // strings land in ONE block, which is exactly how "Enter does nothing" hid here before.
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
   await expect(outliner).toContainText("first bullet");
   await expect(outliner).toContainText("second bullet");
 
@@ -87,4 +90,42 @@ test("Enter creates a second bullet and both keep their text", async ({ page }) 
   const reloaded = page.locator(".vr-outliner").first();
   await expect(reloaded).toContainText("first bullet");
   await expect(reloaded).toContainText("second bullet");
+});
+
+test("typing immediately after Enter is not discarded", async ({ page }) => {
+  // Its own page: the specs share one server, so the journal accumulates state across tests and
+  // this assertion needs an exactly-known starting point.
+  await page.goto("/journals");
+  await page.evaluate(async () => {
+    const token = (window as unknown as { __NOOKLET__?: { token?: string } }).__NOOKLET__?.token;
+    const call = (op: string, body: unknown) =>
+      fetch(`/api/v1/${op}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+    await call("page.create", { name: "Enter Probe" });
+    await call("page.append", { page: "Enter Probe", markdown: "- alpha" });
+  });
+
+  await page.goto("/page/Enter%20Probe");
+  const outliner = page.locator(".vr-outliner").first();
+  await expect(outliner.locator(".vr-row")).toHaveCount(1);
+
+  await outliner.locator(".vr-block-view").first().click();
+  await expect(page.locator(".cm-content")).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  // No delay: `flushPendingEdit` used to drop this entirely, because the block had just been
+  // created and was absent from the tree snapshot taken on the first keystroke.
+  await page.keyboard.type("beta");
+
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await expect(outliner).toContainText("beta");
+
+  await page.reload();
+  const reloaded = page.locator(".vr-outliner").first();
+  await expect(reloaded.locator(".vr-row")).toHaveCount(2);
+  await expect(reloaded).toContainText("alpha");
+  await expect(reloaded).toContainText("beta");
 });
