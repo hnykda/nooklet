@@ -16,6 +16,15 @@ import { ViewNav } from "./ViewNav.js";
 
 const MODES = ["hybrid", "keyword", "semantic"] as const;
 
+/** A short, human-readable reason. Network failures surface as a bare TypeError, which on its own
+ * tells the reader nothing. */
+function errorText(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (/failed to fetch|networkerror|load failed/i.test(message))
+    return "Could not reach the server.";
+  return message;
+}
+
 export function SearchView(): JSX.Element {
   const navigate = useNavigate();
 
@@ -39,7 +48,7 @@ export function SearchView(): JSX.Element {
     };
   });
 
-  const [results] = useSearchResults(input);
+  const [results, { refetch }] = useSearchResults(input);
 
   function openHit(hit: SearchHit): void {
     navigate(hit.kind === "page" ? pageRoutePath(hit.page) : pageZoomRoutePath(hit.page, hit.id));
@@ -114,6 +123,16 @@ export function SearchView(): JSX.Element {
       </Show>
       <Show when={results.loading && results() === undefined}>
         <p class="search-loading">Searching…</p>
+      </Show>
+      {/* Without this, a failed request left "Searching…" on screen forever — which is exactly
+          how a missing API token presented, and is indistinguishable from a slow server. */}
+      <Show when={!results.loading && results.error !== undefined}>
+        <p class="search-error" role="alert">
+          Search failed. {errorText(results.error)}{" "}
+          <button type="button" class="search-retry" onClick={() => refetch()}>
+            Retry
+          </button>
+        </p>
       </Show>
       <Show when={results()}>
         {(r) => (

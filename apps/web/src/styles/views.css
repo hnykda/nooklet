@@ -436,7 +436,74 @@
 .reference-count {
   color: var(--muted);
   font-weight: 400;
+  font-size: 12px;
+  /* A pill, so the number reads as a count rather than as part of the heading. */
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 2px;
+}
+
+/* Both halves of the panel collapse; the toggle IS the heading. */
+.references-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 14px;
+  text-align: left;
+  padding: 6px 0;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+.references-toggle:hover {
+  color: var(--accent);
+}
+
+.references-caret {
+  color: var(--muted);
+  font-size: 11px;
+  width: 10px;
+}
+
+.search-error {
+  color: var(--danger, #c92a2a);
   font-size: 13px;
+}
+
+.search-retry {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.references-loading,
+.references-error {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.references-error {
+  color: var(--danger, #c92a2a);
+}
+
+.references-retry {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
 }
 
 .reference-group {

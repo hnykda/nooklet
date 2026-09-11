@@ -60,7 +60,7 @@ rather than this bug.
 ---
 
 ### B-08 · References panel always present, no counts, not collapsible
-**Status:** open · **Severity:** medium · **Reported:** 2026-09-11
+**Status:** fixed · **Test:** `e2e/tests/references.spec.ts` · **Status was:** open · **Severity:** medium · **Reported:** 2026-09-11
 
 Linked and unlinked references render as sections even when there are none, show no count, and
 cannot be collapsed. Should show `Linked references (3)`, collapse/expand, and disappear entirely
@@ -71,7 +71,7 @@ when empty.
 ---
 
 ### B-09 · References don't refresh after a local edit
-**Status:** open · **Severity:** medium · **Found:** 2026-09-11, reading the code for B-08
+**Status:** fixed · **Test:** `e2e/tests/references.spec.ts` · **Status was:** open · **Severity:** medium · **Found:** 2026-09-11, reading the code for B-08
 
 `useLinkedReferences` and `useSearchResults` are server-backed and deliberately not wired to the
 local change bus (`apps/web/src/data/store.ts`), exposing a manual `refetch` instead — but nothing
@@ -82,7 +82,7 @@ Related to B-05's root cause but a separate path: those two resources bypass the
 ---
 
 ### B-10 · A failed request renders as a permanent spinner
-**Status:** open · **Severity:** high · **Reported:** 2026-09-11 (as "searching for aa just stops at Searching…")
+**Status:** fixed (search + references) · **Test:** `e2e/tests/references.spec.ts` · **Status was:** open · **Severity:** high · **Reported:** 2026-09-11 (as "searching for aa just stops at Searching…")
 
 `SearchView` has a loading branch and a results branch but no error branch, so a rejected fetch
 leaves "Searching…" on screen forever. The underlying 401 was B-01, but the *invisibility* is its
