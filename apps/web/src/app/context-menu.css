@@ -1,0 +1,45 @@
+/* Block right-click menu (`BlockContextMenu.tsx`). */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 13rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border, rgb(0 0 0 / 12%));
+  background: var(--surface-1, #fff);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 8%),
+    0 8px 24px rgb(0 0 0 / 12%);
+  font-size: 0.875rem;
+}
+
+.ctx-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ctx-item:hover,
+.ctx-item:focus-visible {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+  outline: none;
+}
+
+.ctx-sep {
+  height: 1px;
+  margin: 0.25rem 0.35rem;
+  background: var(--border, rgb(0 0 0 / 10%));
+}
+
+.ctx-empty {
+  padding: 0.4rem 0.6rem;
+  opacity: 0.6;
+}

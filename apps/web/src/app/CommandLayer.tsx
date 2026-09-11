@@ -62,6 +62,7 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
+import { BlockContextMenu } from "./BlockContextMenu.js";
 import { activeContextSnapshot, buildContextBase, liveEditorHost } from "./editor-host.js";
 import {
   createAppHost,
@@ -300,6 +301,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
           />
         )}
       </Show>
+      <BlockContextMenu getContext={getContext} />
       <MobileKeyboardToolbar getContext={getContext} />
     </CommandProvider>
   );

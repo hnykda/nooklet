@@ -30,6 +30,8 @@ export function BlockRowView(props: {
   onZoomIn: () => void;
   onToggleMarker: () => void;
   onSelectClick: (e: MouseEvent) => void;
+  /** Right-click anywhere on the row. `BlockTree` decides what to focus and opens the menu. */
+  onContextMenu?: (e: MouseEvent) => void;
   onNavigate?: Navigate;
   /** Swipe-right/left-to-indent/outdent (research/08-mobile.md §3.5). Pure presentation still
    * holds: this component only forwards intent, `BlockTree.tsx` runs the actual op. */
@@ -71,6 +73,7 @@ export function BlockRowView(props: {
       style={{ "--depth": props.depth }}
       data-block-id={props.id}
       ref={rowEl}
+      onContextMenu={(e) => props.onContextMenu?.(e)}
     >
       <Bullet
         hasChildren={props.hasChildren}

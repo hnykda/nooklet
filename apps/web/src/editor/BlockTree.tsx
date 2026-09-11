@@ -45,6 +45,7 @@ import {
   Show,
   untrack,
 } from "solid-js";
+import { openBlockMenu } from "../app/context-menu.js";
 import {
   createEditorHost,
   setActiveContextSnapshot,
@@ -843,6 +844,14 @@ export function BlockTree(props: {
                       onZoomIn={() => setLocalZoomRoot(id)}
                       onToggleMarker={() => onToggleMarker(id)}
                       onSelectClick={() => onSelectClick(id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        // Put the caret in the right-clicked block first, so the menu's entries
+                        // resolve their `when` clauses against THAT block rather than whatever
+                        // happened to be focused before.
+                        if (!props.readOnly && editingId() !== id) attachEditing(id, { at: "end" });
+                        openBlockMenu({ blockId: id, x: e.clientX, y: e.clientY });
+                      }}
                       onNavigate={props.onNavigate}
                       onSwipeIndent={() => doIndent(id)}
                       onSwipeOutdent={() => doOutdent(id)}

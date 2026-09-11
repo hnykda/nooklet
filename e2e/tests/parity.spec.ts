@@ -112,3 +112,52 @@ test("a task cycles TODO -> DOING -> DONE", async ({ page }) => {
   // The marker renders as a checkbox/pill rather than literal text in the block body.
   await expect(outliner.locator(".vr-marker").first()).toBeVisible();
 });
+
+test("right-clicking a bullet opens an app context menu", async ({ page }) => {
+  await openEditing(page, "Parity Menu", "- right click me");
+  const outliner = page.locator(".vr-outliner").first();
+
+  await outliner.locator(".vr-row").first().click({ button: "right" });
+
+  const menu = page.locator(".ctx-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu).toContainText("Zoom in");
+  await expect(menu).toContainText("Copy block reference");
+
+  // Escape dismisses.
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+});
+
+test("the context menu runs a real command", async ({ page }) => {
+  await openEditing(page, "Parity Menu Run", "- indent me\n- second");
+  const outliner = page.locator(".vr-outliner").first();
+
+  await outliner.locator(".vr-row").nth(1).click({ button: "right" });
+  await expect(page.locator(".ctx-menu")).toBeVisible();
+  await page.locator(".ctx-item", { hasText: "Indent" }).first().click();
+
+  await expect(page.locator(".ctx-menu")).toBeHidden();
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () =>
+          (document.querySelectorAll(".vr-row")[1] as HTMLElement | undefined)?.style
+            .getPropertyValue("--depth")
+            .trim() ?? "",
+      ),
+    )
+    .toBe("1");
+});
+
+test("the context menu hides entries whose when-clause does not hold", async ({ page }) => {
+  await openEditing(page, "Parity Menu When", "- only block");
+  await page.locator(".vr-outliner").first().locator(".vr-row").first().click({ button: "right" });
+  const menu = page.locator(".ctx-menu");
+  await expect(menu).toBeVisible();
+  // `block.deleteSelected` is gated on `blockSelected`, and right-clicking puts the caret in the
+  // block (editing, not block-selection mode) — so Delete must not be offered here.
+  await expect(menu).not.toContainText("Delete");
+  // While an `editorFocused` entry in the same menu is.
+  await expect(menu).toContainText("Indent");
+});

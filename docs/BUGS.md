@@ -122,7 +122,7 @@ scale, spacing rhythm, and focus/hover states.
 ---
 
 ### B-14 · No context menu on a bullet
-**Status:** open · **Severity:** medium · **Requested:** 2026-09-11
+**Status:** fixed · **Test:** `e2e/tests/parity.spec.ts` (3 tests) · **Status was:** open · **Severity:** medium · **Requested:** 2026-09-11
 
 Right-clicking a bullet should open an app-specific menu rather than the browser's default:
 zoom in, indent/outdent, toggle task, copy block ref, delete — and **formatting** (bold, italic,
