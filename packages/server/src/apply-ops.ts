@@ -22,6 +22,7 @@ import {
   newId,
   tokenizeContent,
 } from "@nooklet/core";
+import { rebuildPageTags } from "./page-tags.js";
 import { runBeforeWrite } from "./plugins/before-write.js";
 import { notifyCommit } from "./sync/realtime.js";
 
@@ -162,6 +163,9 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
   }
   for (const blockId of touchedBlocks) reindexBlockAndSubtree(driver, blockId);
   for (const pageId of touchedPages) {
+    // Page-level tags are derived from the page's `tags` property and its journal day, so any
+    // page write can change them (ADR 017) — the page equivalent of `rebuildRefRows` above.
+    rebuildPageTags(driver, pageId);
     driver.run(
       "INSERT OR IGNORE INTO embed_dirty(unit_kind, unit_id, enqueued_at) VALUES ('page', ?, ?)",
       [pageId, Date.now()],

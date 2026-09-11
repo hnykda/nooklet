@@ -10,7 +10,7 @@
  */
 
 import { A } from "@solidjs/router";
-import { CalendarDays, CircleCheck, FileText, Search, Star } from "lucide-solid";
+import { CalendarDays, CircleCheck, FileText, Network, Search, Star } from "lucide-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { useAllPages, useFavoritePages } from "../data/store.js";
 import "./sidebar.css";
@@ -59,6 +59,9 @@ export function Sidebar(): JSX.Element {
           </A>
           <A href="/search">
             <Search size={15} /> Search
+          </A>
+          <A href="/graph">
+            <Network size={15} /> Graph
           </A>
         </nav>
 

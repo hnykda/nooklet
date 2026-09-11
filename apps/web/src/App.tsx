@@ -1,8 +1,8 @@
 /**
  * Route table. `/journals` is the default route (PLAN.md §8). `/page/*name` takes a page name, not
  * an id (a splat so a namespace's "/" survives as real path segments — `../views/navigateTarget.ts`),
- * optionally scoped to one block via `?block=<id>` (zoom, BUILD item 3). `/search` and `/tasks`
- * round out the views. The command palette (Cmd/Ctrl+K), slash menu, autocomplete popups and
+ * optionally scoped to one block via `?block=<id>` (zoom, BUILD item 3). `/search`, `/tasks` and
+ * `/graph` round out the views. The command palette (Cmd/Ctrl+K), slash menu, autocomplete popups and
  * mobile toolbar are overlays mounted once by `app/CommandLayer.tsx`, not routes of their own.
  *
  * `/capture` (PLAN.md §14, M5 BUILD item 3) is deliberately NOT wrapped in `CommandLayer`/
@@ -17,6 +17,7 @@ import { createSignal, type JSX, Show } from "solid-js";
 import { CommandLayer } from "./app/CommandLayer.js";
 import { bootstrapConfig } from "./data/bootstrap.js";
 import { CaptureRoute } from "./routes/CaptureRoute.js";
+import { GraphRoute } from "./routes/GraphRoute.js";
 import { JournalsRoute } from "./routes/JournalsRoute.js";
 import { PageRoute } from "./routes/PageRoute.js";
 import { PagesRoute } from "./routes/PagesRoute.js";
@@ -24,6 +25,7 @@ import { SearchRoute } from "./routes/SearchRoute.js";
 import { TasksRoute } from "./routes/TasksRoute.js";
 import { AppShell } from "./shell/AppShell.js";
 import { ConnectView } from "./views/ConnectView.js";
+import { GraphMismatchView } from "./views/GraphMismatchView.js";
 
 function RouterRoot(routeProps: RouteSectionProps): JSX.Element {
   if (routeProps.location.pathname === "/capture") return <>{routeProps.children}</>;
@@ -47,6 +49,12 @@ export function App() {
   // `/capture` is deliberately exempt: quick capture must open instantly and writes locally.
   const isCapture = (): boolean => globalThis.location?.pathname === "/capture";
 
+  // Checked before anything else: a graph mismatch makes every other screen quietly lie, so
+  // there is no point rendering them.
+  if (config.graphMismatch && config.graphId) {
+    return <GraphMismatchView graphId={config.graphId} />;
+  }
+
   return (
     <Show
       when={config.token !== null || skipped() || isCapture()}
@@ -60,6 +68,7 @@ export function App() {
         <Route path="/page/*name" component={PageRoute} />
         <Route path="/search" component={SearchRoute} />
         <Route path="/tasks" component={TasksRoute} />
+        <Route path="/graph" component={GraphRoute} />
         <Route path="/capture" component={CaptureRoute} />
       </Router>
     </Show>

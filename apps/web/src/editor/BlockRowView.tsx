@@ -16,8 +16,11 @@ import { BlockContentView, type Navigate } from "./render/tokens.js";
 import type { EditableBlock } from "./types.js";
 
 /** The glyph for each task state. Deliberately text rather than SVG: it inherits colour and size
- * from the row, so it stays aligned with the text baseline at any zoom. */
-const MARKER_GLYPH: Record<string, string> = {
+ * from the row, so it stays aligned with the text baseline at any zoom.
+ *
+ * Exported because the shelf (`../shell/Shelf.tsx`) renders blocks read-only too, and a second
+ * copy of this table is how DOING quietly becomes a different symbol in one of the two places. */
+export const MARKER_GLYPH: Record<string, string> = {
   TODO: "☐",
   LATER: "☐",
   NOW: "◐",
@@ -46,6 +49,10 @@ export function BlockRowView(props: {
   /** Right-click anywhere on the row. `BlockTree` decides what to focus and opens the menu. */
   onContextMenu?: (e: MouseEvent) => void;
   onNavigate?: Navigate;
+  /** Shift+click: put this block — or, from inside the rendered content, a `[[page]]` link's
+   * target — on the right-hand shelf (`../app/shelf.ts`). Absent for trees with no shelf wired,
+   * in which case Shift falls back to its old meaning (block selection). */
+  onShelfOpen?: Navigate;
   /** Swipe-right/left-to-indent/outdent (research/08-mobile.md §3.5). Pure presentation still
    * holds: this component only forwards intent, `BlockTree.tsx` runs the actual op. */
   onSwipeIndent?: () => void;
@@ -70,6 +77,25 @@ export function BlockRowView(props: {
   });
 
   function handleContentClick(e: MouseEvent): void {
+    // Shift+click used to mean "select this block", and now means "put it on the shelf"; block
+    // selection keeps Cmd/Ctrl+click. Three reasons for resolving the collision that way round:
+    //
+    //  - Shift+click IS the shelf gesture in the tool this app is in the spirit of. Rebinding it
+    //    to something else would make the feature undiscoverable for exactly the people it is for.
+    //  - Selection loses nothing: it keeps a mouse gesture (Cmd/Ctrl+click, which is already the
+    //    platform idiom for "add this to a selection" everywhere else) AND it has a complete
+    //    keyboard route — Escape to select the block, then Shift+Up/Down to extend
+    //    (`block.selectBlock`/`block.extendSelection*`). The shelf has no other way in at all.
+    //  - The alternative of moving selection to Alt+click is worse than it looks: Option+click is
+    //    a word-select gesture in macOS text, and Alt+drag is grabbed by several Linux window
+    //    managers before the page ever sees it.
+    //
+    // Trees with no shelf wired (`onShelfOpen` absent) keep the old behaviour, so nothing that
+    // renders rows outside the app shell silently loses Shift+click.
+    if (e.shiftKey && props.onShelfOpen) {
+      props.onShelfOpen({ kind: "block", id: props.id });
+      return;
+    }
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
       props.onSelectClick(e);
       return;
@@ -140,12 +166,18 @@ export function BlockRowView(props: {
                   // type" lose its first characters, and "press Enter then type" lose the start of
                   // the new block.
                   //
-                  // Narrow on purpose: only a plain left click on non-interactive content.
-                  // Anything interactive inside the rendered block (a [[page]] link, a task
-                  // checkbox) keeps the browser's default so its own click still fires, which is
-                  // also why entering edit mode stays on `click` rather than moving to `mousedown`.
+                  // Narrow on purpose: only a left click on non-interactive content. Anything
+                  // interactive inside the rendered block (a [[page]] link, a task checkbox) keeps
+                  // the browser's default so its own click still fires, which is also why entering
+                  // edit mode stays on `click` rather than moving to `mousedown`.
+                  //
+                  // Shift is included even though it no longer enters edit mode: its default is to
+                  // extend the DOCUMENT text selection from wherever the caret last was, so every
+                  // Shift+click onto the shelf would also leave the intervening blocks smeared with
+                  // highlight. Cmd/Ctrl is not, since that gesture may be a real open-in-new-tab on
+                  // whatever the pointer is over.
                   const target = e.target as HTMLElement;
-                  if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return;
+                  if (e.button !== 0 || e.metaKey || e.ctrlKey) return;
                   if (target.closest("a, button, input, label, summary")) return;
                   e.preventDefault();
                 }}
@@ -161,6 +193,7 @@ export function BlockRowView(props: {
                   ctx={{
                     source: props.block.content,
                     onNavigate: props.onNavigate,
+                    onShelfOpen: props.onShelfOpen,
                     // `((id))` renders the referenced block's own text rather than an opaque id.
                     // Resolved through a cache that fetches on a miss and re-renders when the
                     // text lands (`../data/block-ref-cache.ts`).

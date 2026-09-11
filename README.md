@@ -49,7 +49,8 @@ pnpm nooklet serve
 ```
 
 Then open <http://127.0.0.1:6100>. Import an existing Logseq graph with
-`pnpm nooklet import ~/path/to/graph --data ~/.nooklet`.
+`pnpm nooklet import ~/path/to/graph` — which writes to the same default graph the
+desktop app opens (`~/.nooklet/default`, or `$NOOKLET_DATA`).
 
 ---
 

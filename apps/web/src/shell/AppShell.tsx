@@ -20,6 +20,8 @@ import {
   diagnosticsOpen,
   openDiagnostics,
 } from "../views/DiagnosticsPanel.js";
+import { HelpMenu } from "./HelpMenu.js";
+import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
 import "../styles/shell.css";
 
@@ -92,7 +94,11 @@ export function AppShell(props: { children?: JSX.Element }) {
         <div class="page-scroll">
           <div class="page-scroll-inner">{props.children}</div>
         </div>
+        {/* Renders nothing at all while empty, so the shelf costs no width until something is on
+            it (`./Shelf.tsx`). */}
+        <Shelf />
       </div>
+      <HelpMenu />
       <Show when={diagnosticsOpen()}>
         <DiagnosticsPanel onClose={closeDiagnostics} />
       </Show>

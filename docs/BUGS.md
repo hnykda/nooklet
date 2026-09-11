@@ -14,6 +14,20 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
+### B-32 · `graph.spec.ts` writes into today's journal
+**Status:** open · **Severity:** low · **Found:** 2026-09-11
+
+`e2e/tests/graph.spec.ts` appends `- journal mentions [[Graph Leaf]]` to **today's** journal,
+which is precisely the shared state `a-fresh-journal.spec.ts` needs untouched — that spec is named
+to sort first for exactly this reason, and only works because it runs before anything that writes
+there.
+
+It should use a dated journal in the past instead. Until then, reordering the specs or sharding
+the run will break the journal test, and the failure will look like an editor bug rather than a
+fixture collision.
+
+---
+
 ### B-21 · Journal page names should be canonical ISO, with the display format a setting
 **Status:** open · **Severity:** medium · **Raised:** 2026-09-11 (user: "stored name should IMHO be
 ISO. and then we should have in settings selectable format of that")
@@ -151,6 +165,38 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 ---
 
 ## Fixed
+
+### B-30 · A client silently held a copy of a different graph
+**Status:** fixed · **Found:** 2026-09-11, chasing "search finds nothing but the sidebar is full"
+
+The sidebar listed a thousand pages while search returned zero results. Both were telling the
+truth about different graphs: the client's replica lives in OPFS keyed by **origin**, so pointing
+`127.0.0.1:6100` at another data directory leaves the browser reusing the copy it already had.
+The page list reads the local replica; search and backlinks read the server. Every individual
+part worked.
+
+Each database now mints a stable identity (`packages/server/src/graph-identity.ts`), exposed via
+`GET /api/session`. The client remembers which graph its replica belongs to and, on a change,
+stops and explains instead of rendering two disagreeing halves (`views/GraphMismatchView.tsx`).
+
+**It asks rather than wiping.** The local replica can hold edits that were never pushed, and
+destroying those silently to fix a configuration mistake would be the worst possible trade.
+
+Two contributing causes worth recording: the README's quick start said `--data ~/.nooklet` while
+the CLI defaults to `~/.nooklet/default`, so following it produced a second graph; and the desktop
+app used the platform app-data directory, so it opened a third. Both now use one default.
+
+### B-31 · A wall-clock assertion in the unit suite
+**Status:** fixed · **Found:** 2026-09-11 by a subagent, which correctly refused to blame its own change
+
+`packages/core/src/tokens.test.ts` asserted `tokenizeContent` over 20,000 blocks finished in under
+50 ms. It measured 60-71 ms when run alongside the rest of the suite and passed every time in
+isolation — the test was measuring the machine's load, not the code.
+
+A test that fails when the laptop is busy teaches nobody anything and trains people to re-run
+until green. The budget is now 500 ms: an order of magnitude above the real ~30 ms, which still
+catches the regression actually worth catching (an accidental quadratic turning this into
+seconds) and never fires on load.
 
 ### B-29 · A self-executing module hijacked the CLI once bundled
 **Status:** fixed · **Found:** 2026-09-11, building the desktop app's bundled server

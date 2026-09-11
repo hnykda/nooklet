@@ -6,6 +6,8 @@ import { defineConfig } from "vitest/config";
 // (research/08 §1.2 / sqlite.org/wasm persistence.md); `worker.format: 'es'` is required for the
 // dedicated worker (`db/db.worker.ts`) to use `import`/Comlink instead of classic-worker `importScripts`.
 export default defineConfig({
+  // Surfaced in the help menu so a bug report can name its build without anyone remembering.
+  define: { __APP_VERSION__: JSON.stringify("0.1.0") },
   plugins: [
     solid(),
     VitePWA({

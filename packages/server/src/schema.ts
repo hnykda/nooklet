@@ -13,6 +13,7 @@
 
 import type { SqlDriver } from "@nooklet/core";
 import { CORE_SCHEMA_STATEMENTS } from "@nooklet/core";
+import { rebuildPageTags } from "./page-tags.js";
 
 export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE schema_migration (
@@ -75,6 +76,15 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
     PRIMARY KEY (block_id, page_key)
   ) WITHOUT ROWID`,
   `CREATE INDEX path_ref_page_key ON path_ref(page_key)`,
+
+  `CREATE TABLE page_tag (
+    page_id     TEXT NOT NULL REFERENCES page(id),
+    tag_key     TEXT NOT NULL,
+    tag_page_id TEXT,
+    source      TEXT NOT NULL CHECK (source IN ('property','intrinsic')),
+    PRIMARY KEY (page_id, tag_key)
+  ) WITHOUT ROWID`,
+  `CREATE INDEX page_tag_key ON page_tag(tag_key)`,
 
   `CREATE TABLE page_alias (
     page_id   TEXT NOT NULL REFERENCES page(id),
@@ -286,9 +296,30 @@ export const MIGRATIONS: readonly Migration[] = [
       }
     },
   },
+  {
+    version: 4,
+    description: "add page_tag (ADR 017: page-level tags, and #Journal on daily pages)",
+    up: (driver) => {
+      driver.exec(`CREATE TABLE IF NOT EXISTS page_tag (
+        page_id     TEXT NOT NULL REFERENCES page(id),
+        tag_key     TEXT NOT NULL,
+        tag_page_id TEXT,
+        source      TEXT NOT NULL CHECK (source IN ('property','intrinsic')),
+        PRIMARY KEY (page_id, tag_key)
+      ) WITHOUT ROWID`);
+      driver.exec("CREATE INDEX IF NOT EXISTS page_tag_key ON page_tag(tag_key)");
+      // Derived, so this is a rebuild rather than a data migration: every existing page is
+      // re-examined for a `tags` property and for being a journal day.
+      for (const row of driver.all<{ id: string }>(
+        "SELECT id FROM page WHERE deleted_at IS NULL",
+      )) {
+        rebuildPageTags(driver, row.id);
+      }
+    },
+  },
 ];
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {

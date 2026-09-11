@@ -43,7 +43,35 @@ async function waitForHealth(url: string, timeoutMs = 60_000): Promise<void> {
   throw new Error(`server never became healthy at ${url}: ${last}`);
 }
 
+/**
+ * Refuse to run if something is already listening on our port.
+ *
+ * Without this the failure is silent and deeply confusing: our own `serve` fails to bind, but
+ * `waitForHealth` succeeds against the OTHER process, so the whole suite runs against a foreign
+ * server carrying foreign data. That surfaces as unrelated specs failing on state they never
+ * created — which reads as a product bug, not a harness one, and costs a long time to see.
+ */
+async function ensurePortFree(port: number): Promise<void> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/healthz`, {
+      signal: AbortSignal.timeout(800),
+    });
+    if (res.ok) {
+      throw new Error(
+        `port ${port} is already serving nooklet. The e2e suite needs its own server and its own ` +
+          `data — running against one it did not start means testing against someone else's ` +
+          `state. Stop it, or set NOOKLET_E2E_PORT to a free port.`,
+      );
+    }
+  } catch (err) {
+    // A refused connection is what we want; anything else (including our own throw) is not.
+    if (err instanceof Error && err.message.includes("already serving")) throw err;
+  }
+}
+
 export default async function globalSetup(): Promise<void> {
+  await ensurePortFree(PORT);
+
   // The served client is a build artifact; stale output would silently test yesterday's code.
   await run("pnpm", ["--filter", "@nooklet/web", "build"], "client build");
 

@@ -1,0 +1,206 @@
+/* Right-hand shelf (`Shelf.tsx`). Deliberately the mirror image of `sidebar.css` — same widths,
+   paddings, hairline and hover conventions — so the two edges of the app read as one chrome. */
+
+.app-shelf {
+  flex: 0 0 20rem;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px 10px 24px;
+  border-left: 1px solid var(--hairline);
+  font-size: 13px;
+}
+
+/* The shelf is closed but not empty: keep a way back to it. */
+.shelf-rail {
+  flex: 0 0 auto;
+  padding: 8px 6px;
+  border-left: 1px solid var(--hairline);
+}
+
+.shelf-reopen {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shelf-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0 8px;
+  /* Cards scroll under this; without an opaque backdrop their text shows through the header. */
+  background: var(--bg);
+}
+
+.shelf-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  margin: 0 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.shelf-count {
+  border-radius: 999px;
+  padding: 0 5px;
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Cards ------------------------------------------------------------------------------------- */
+
+.shelf-card {
+  margin-bottom: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-1, transparent);
+}
+
+.shelf-card-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.shelf-crumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 5px;
+  padding: 3px 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shelf-crumb:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+  color: var(--accent);
+}
+
+.shelf-card-body {
+  /* A shelved page can be thousands of blocks long; the card is a window on it, not a second
+     copy of the page view. The shelf itself stays the scroll container for the stack. */
+  max-height: 22rem;
+  overflow-y: auto;
+  padding: 6px 8px 8px;
+  overflow-wrap: anywhere;
+}
+
+.shelf-empty {
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Read-only outline inside a card ----------------------------------------------------------- */
+
+.shelf-outline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shelf-outline .shelf-outline {
+  padding-left: 12px;
+}
+
+.shelf-outline-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.shelf-outline-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.shelf-bullet {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.shelf-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding-block: 1px;
+  line-height: 1.5;
+}
+
+.shelf-block-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.shelf-block-text :is(p, blockquote, table, .vr-fence) {
+  margin: 0;
+}
+
+.shelf-marker {
+  flex: none;
+}
+
+/* A card is a 20rem column, not a page. Browser-default heading sizes (which the outliner keeps,
+   `editor.css`) swamp it — an `h1` card ends up shouting louder than the page you are reading.
+   Scaled down proportionally, so the hierarchy inside a card still reads. */
+.shelf-card-body :is(h1, h2, h3, h4, h5, h6).vr-heading {
+  font-size: 1.05em;
+  font-weight: 650;
+}
+
+.shelf-card-body h1.vr-heading {
+  font-size: 1.25em;
+}
+
+.shelf-card-body h2.vr-heading {
+  font-size: 1.12em;
+}
+
+/* Same "a finished task reads as finished" rule the outliner applies (`editor.css`). */
+.shelf-block:has(.vr-marker-DONE) .shelf-block-text,
+.shelf-block:has(.vr-marker-CANCELED) .shelf-block-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+@media (max-width: 44rem) {
+  /* Same call the left sidebar makes: on a phone the panel covers the content instead of
+     squeezing a 20rem column out of a 24rem screen. */
+  .app-shelf {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 40;
+    width: 88vw;
+    max-width: 22rem;
+    background: var(--surface-1, var(--bg));
+    box-shadow: 0 0 40px rgb(0 0 0 / 20%);
+  }
+}

@@ -1,8 +1,9 @@
 /**
- * The v1 operation registry: 24 core ops from `docs/spec/mcp-tools.md` §4, registered once
+ * The v1 operation registry: 26 core ops from `docs/spec/mcp-tools.md` §4, registered once
  * (16 from the original v1 list, `batch.undo`/`asset.upload` added by ADR 013's M1.5 scope,
- * `related.find` added by M3/ADR 010's embeddings work, and the five `ui.*` ops added by ADR 015's
- * live-UI-control channel).
+ * `related.find` added by M3/ADR 010's embeddings work, the five `ui.*` ops added by ADR 015's
+ * live-UI-control channel, `system.diagnostics` for backend health, and `graph.links` for the
+ * graph view — `ref` is server-only, so only the server can answer "what links to what").
  */
 
 // ADR 015: live-UI-control ops, kept in `../live/` (tightly coupled to the window registry/RPC
@@ -18,6 +19,7 @@ import { blockRead } from "./block-read.js";
 import { blockUpdate } from "./block-update.js";
 import { changesSince } from "./changes-since.js";
 import { systemDiagnostics } from "./diagnostics.js";
+import { graphLinks } from "./graph-links.js";
 import { graphOverview } from "./graph-overview.js";
 import { pageAppend } from "./page-append.js";
 import { pageBacklinks } from "./page-backlinks.js";
@@ -39,6 +41,7 @@ export const CORE_OPS = [
   search,
   relatedFind,
   pageBacklinks,
+  graphLinks,
   changesSince,
   pageCreate,
   pageAppend,
@@ -75,6 +78,7 @@ export {
   blockRead,
   blockUpdate,
   changesSince,
+  graphLinks,
   graphOverview,
   pageAppend,
   pageBacklinks,

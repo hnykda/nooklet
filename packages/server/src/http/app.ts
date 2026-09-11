@@ -9,6 +9,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { bearerAuth, createToken } from "../auth/tokens.js";
+import { graphInstanceId } from "../graph-identity.js";
 import { mountUiLive } from "../live/index.js";
 import { mountMcp } from "../mcp/server.js";
 import {
@@ -107,8 +108,12 @@ function isLoopbackRequest(c: Context): boolean {
  * lives only in memory and in the HTML it is injected into, so a restart invalidates old sessions.
  */
 function buildClientBootstrap(ctx: ServerContext, c: Context): object {
-  if (!isLoopbackRequest(c)) return { token: null, reason: "non_loopback_host" };
-  return { token: webClientToken(ctx) };
+  // The graph's identity goes to every client, credential or not: a client needs it to notice
+  // that the replica it is holding belongs to a different graph than this server is serving
+  // (`../graph-identity.ts`).
+  const graphId = graphInstanceId(ctx.driver);
+  if (!isLoopbackRequest(c)) return { token: null, reason: "non_loopback_host", graphId };
+  return { token: webClientToken(ctx), graphId };
 }
 
 /** Per-process web-client token, minted lazily on the first page load. `write` + `can_sync` is

@@ -51,6 +51,7 @@ import {
   setActiveContextSnapshot,
   setActiveEditorHost,
 } from "../app/editor-host.js";
+import { openOnShelf } from "../app/shelf.js";
 import { applyOps, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
 import { BlockRowView } from "./BlockRowView.js";
@@ -827,6 +828,15 @@ export function BlockTree(props: {
     commit(toggleDone(block, clock), editorTree(), "structure", null, null);
   }
 
+  /** Shift+click, from a row or from a `[[page]]` link inside one (`BlockRowView.tsx` explains why
+   * Shift and not something else). The shelf wants a block's page id as well as its own, and this
+   * tree is the last place that knows it for free — every row here belongs to `props.pageId`. */
+  function onShelfOpen(target: NavigateTarget): void {
+    openOnShelf(
+      target.kind === "page" ? target : { kind: "block", id: target.id, pageId: props.pageId },
+    );
+  }
+
   function onSelectClick(id: BlockId): void {
     const ids = visibleIds();
     const existing = selection();
@@ -929,6 +939,7 @@ export function BlockTree(props: {
                           queueMicrotask(() => openBlockMenu(at));
                         }}
                         onNavigate={props.onNavigate}
+                        onShelfOpen={onShelfOpen}
                         onSwipeIndent={() => doIndent(id)}
                         onSwipeOutdent={() => doOutdent(id)}
                         onDragStep={(direction) => doMoveStep(id, direction)}

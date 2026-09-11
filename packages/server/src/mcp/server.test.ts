@@ -65,6 +65,9 @@ const CORE_TOOL_NAMES = [
   // Backend health, so a client (or an agent deciding whether semantic search is worth trying)
   // can tell a broken backend from a slow one.
   "system_diagnostics",
+  // The page-to-page link graph, behind the graph view. Server-side because `ref` is a
+  // server-only derived table (sql-schema.md rule 1), so no client can compute an edge.
+  "graph_links",
 ].sort();
 
 const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();
@@ -78,7 +81,7 @@ describe("MCP tools/list", () => {
       annotations: Record<string, unknown>;
     }>;
     // A plain write-scoped token has no ui:control (ADR 015 §7), so it must not see the 5 ui_*
-    // tools at all (rule 10: "not even listed for this token") — CORE_OPS.length (24) minus those
+    // tools at all (rule 10: "not even listed for this token") — CORE_OPS.length (26) minus those
     // i.e. every core op except the UI-control ones.
     expect(tools).toHaveLength(CORE_OPS.length - UI_TOOL_NAMES.length);
     const names = tools.map((t) => t.name).sort();

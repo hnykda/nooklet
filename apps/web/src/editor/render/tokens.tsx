@@ -41,6 +41,10 @@ export interface RenderCtx {
   /** The full string these tokens' offsets are relative to. */
   source: string;
   onNavigate?: Navigate;
+  /** Shift+click on a `[[page]]`/`#tag` link opens that page on the right-hand shelf instead of
+   * navigating to it (`../../app/shelf.ts`). Only page links are wired: a `((block-ref))` would
+   * need its own page id, which this renderer has no way to resolve. Absent = plain navigation. */
+  onShelfOpen?: Navigate;
   /** Depth-limited recursive rendering for blockRef/embed (rendering contract: "depth-limited to
    * 2"); defaults to 0 and increments on recursion — callers normally never set this. */
   refDepth?: number;
@@ -65,6 +69,7 @@ function NavLink(props: {
   from: number;
   to: number;
   onNavigate?: Navigate;
+  onShelfOpen?: Navigate;
   children: unknown;
 }) {
   return (
@@ -74,6 +79,14 @@ function NavLink(props: {
       data-from={props.from}
       data-to={props.to}
       onClick={(e) => {
+        // Shift first, and `stop` before anything else runs: the enclosing block row treats a
+        // Shift+click of its own as "shelve this block", so without halting propagation here you
+        // would get the link's page AND the block it was written in.
+        if (e.shiftKey && props.onShelfOpen) {
+          stop(e);
+          props.onShelfOpen(props.target);
+          return;
+        }
         if (!props.onNavigate) return;
         stop(e);
         props.onNavigate(props.target);
@@ -196,6 +209,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
                 from={tok.start}
                 to={tok.end}
                 onNavigate={ctx.onNavigate}
+                onShelfOpen={ctx.onShelfOpen}
               >
                 {tok.alias ?? tok.target}
               </NavLink>
@@ -209,6 +223,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
                 from={tok.start}
                 to={tok.end}
                 onNavigate={ctx.onNavigate}
+                onShelfOpen={ctx.onShelfOpen}
               >
                 {tok.multiWord ? `#[[${tok.name}]]` : `#${tok.name}`}
               </NavLink>
@@ -238,6 +253,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
                 from={tok.start}
                 to={tok.end}
                 onNavigate={ctx.onNavigate}
+                onShelfOpen={ctx.onShelfOpen}
               >
                 <InlineTokens tokens={tok.label} ctx={ctx} />
               </NavLink>

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { makeTestServer, post, type TestServer } from "../test-helpers.js";
+import { type JsonAny, makeTestServer, post, type TestServer } from "../test-helpers.js";
 
 let s: TestServer;
 
@@ -411,6 +411,109 @@ describe("page.backlinks", () => {
     });
     expect(status).toBe(200);
     expect(json.linked).toHaveLength(0);
+  });
+});
+
+describe("graph.links", () => {
+  it("returns pages as nodes and references as weighted edges (success)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Beta" });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Alpha",
+      markdown: "- see [[Beta]]\n- and [[Beta]] again\n- and a #Gamma tag",
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Gamma" });
+
+    const { status, json } = await post(s.app, "/api/v1/graph.links", s.writeToken, {});
+    expect(status).toBe(200);
+    expect(json.nodes.map((n: JsonAny) => n.name).sort()).toEqual(["Alpha", "Beta", "Gamma"]);
+
+    const node = (name: string): JsonAny => json.nodes.find((n: JsonAny) => n.name === name);
+    const alpha = node("Alpha");
+    const beta = node("Beta");
+    const gamma = node("Gamma");
+    const edge = json.edges.find((e: JsonAny) => e.from === alpha.id && e.to === beta.id);
+    // Two blocks link Beta, so the edge is weighted 2 rather than deduplicated to 1.
+    expect(edge.count).toBe(2);
+    // A #tag is a reference like any other, so it is an edge too.
+    expect(json.edges.some((e: JsonAny) => e.from === alpha.id && e.to === gamma.id)).toBe(true);
+    // ref_count is the degree (in + out): Alpha writes 3 refs, Beta receives 2.
+    expect(alpha.ref_count).toBe(3);
+    expect(beta.ref_count).toBe(2);
+    expect(json.truncated).toBe(false);
+  });
+
+  it("resolves an edge to a page that was created after the link was written", async () => {
+    // `ref.dst_page_id` is NULL until rule 18's refresh runs, which is exactly why the handler
+    // joins on `page.key` instead. Linking a page that does not exist yet and creating it
+    // afterwards is the normal wiki order of events, and the edge must appear.
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Early",
+      markdown: "- points at [[Later]]",
+    });
+    const before = await post(s.app, "/api/v1/graph.links", s.writeToken, {});
+    expect(before.json.edges).toHaveLength(0);
+
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Later" });
+    const after = await post(s.app, "/api/v1/graph.links", s.writeToken, {});
+    expect(after.json.edges).toHaveLength(1);
+  });
+
+  it("drops an edge whose block was deleted", async () => {
+    // Deletes are soft and `ref` is rebuilt from the still-present content of a deleted block, so
+    // without a read-time filter the edge would outlive the bullet that created it.
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Kept" });
+    const created = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Deleter",
+      markdown: "- links [[Kept]]",
+    });
+    expect((await post(s.app, "/api/v1/graph.links", s.writeToken, {})).json.edges).toHaveLength(1);
+
+    await post(s.app, "/api/v1/block.delete", s.writeToken, { id: created.json.created[0] });
+    const after = await post(s.app, "/api/v1/graph.links", s.writeToken, {});
+    expect(after.json.edges).toHaveLength(0);
+    // Both pages are still pages, just unconnected ones.
+    expect(after.json.nodes).toHaveLength(2);
+    expect(after.json.nodes.every((n: JsonAny) => n.ref_count === 0)).toBe(true);
+  });
+
+  it("excludes journals by default, along with the references written in them", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Person" });
+    await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "2026-09-11",
+      markdown: "- met [[Person]]",
+    });
+
+    const excluded = await post(s.app, "/api/v1/graph.links", s.writeToken, {});
+    expect(excluded.json.nodes.map((n: JsonAny) => n.name)).toEqual(["Person"]);
+    // The edge went with the journal it was written on — the note has to say so, or a sparse
+    // graph looks like broken ref extraction.
+    expect(excluded.json.edges).toHaveLength(0);
+    expect(excluded.json.note).toContain("journal");
+
+    const included = await post(s.app, "/api/v1/graph.links", s.writeToken, {
+      include_journals: true,
+    });
+    expect(included.json.nodes.map((n: JsonAny) => n.name).sort()).toEqual([
+      "2026-09-11",
+      "Person",
+    ]);
+    expect(included.json.edges).toHaveLength(1);
+  });
+
+  it("caps at limit, keeps the most-connected pages, and says what it dropped", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Hub" });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Spoke",
+      markdown: "- [[Hub]]",
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Orphan" });
+
+    const { json } = await post(s.app, "/api/v1/graph.links", s.writeToken, { limit: 2 });
+    expect(json.nodes).toHaveLength(2);
+    expect(json.nodes.map((n: JsonAny) => n.name).sort()).toEqual(["Hub", "Spoke"]);
+    expect(json.truncated).toBe(true);
+    expect(json.total_nodes).toBe(3);
+    expect(json.note).toContain("3 pages");
   });
 });
 

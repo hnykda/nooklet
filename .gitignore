@@ -9,7 +9,9 @@ build/
 !.env.example
 coverage/
 *.tsbuildinfo
-data/
+# Anchored to the repo root: a bare `data/` matches ANY directory named data at any depth, and
+# silently excluded all of apps/web/src/data/ — seven source files the app cannot build without.
+/data/
 *.sqlite
 *.sqlite-*
 *.db
