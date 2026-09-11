@@ -6,6 +6,7 @@ export * from "./knn.js";
 export * from "./model-registry.js";
 export * from "./ollama-provider.js";
 export * from "./openai-provider.js";
+export * from "./probe.js";
 export * from "./provider.js";
 export * from "./rrf.js";
 export * from "./semantic-search.js";

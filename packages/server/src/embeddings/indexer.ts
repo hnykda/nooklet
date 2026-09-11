@@ -12,7 +12,7 @@
 import type { SqlDriver } from "@nooklet/core";
 import { hashText } from "./chunker.js";
 import type { EmbeddingModelRow } from "./model-registry.js";
-import { listModels } from "./model-registry.js";
+import { listModels, promoteConfiguredModelIfReady } from "./model-registry.js";
 import type { EmbeddingProvider } from "./provider.js";
 import { buildBlockUnit, buildPageUnit } from "./units.js";
 
@@ -75,7 +75,17 @@ export class EmbeddingIndexer {
     this.abort = new AbortController();
     const signal = opts.signal ?? this.abort.signal;
     try {
-      return await drainOnce(this.deps, { limit: opts.limit ?? 256, signal });
+      const stats = await drainOnce(this.deps, { limit: opts.limit ?? 256, signal });
+      // Rule 19's flip, once the backfill it was waiting on is actually done. This is the only
+      // thing that finishes a model switch started over HTTP (`embeddings.configure`), which
+      // cannot block for the minutes a real backfill takes — see `promoteConfiguredModelIfReady`.
+      const promoted = promoteConfiguredModelIfReady(this.deps.driver);
+      if (promoted) {
+        this.deps.log?.(
+          `activated ${promoted.provider}:${promoted.model} (id ${promoted.id}) — backfill complete`,
+        );
+      }
+      return stats;
     } finally {
       this.draining = false;
     }

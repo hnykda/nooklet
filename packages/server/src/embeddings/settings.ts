@@ -5,10 +5,15 @@
  * NOTE on `docs/spec/sql-schema.md` rule 25 / Open issue 1: `setting.set` has no op kind yet, and
  * that spec says implementers must not invent a parallel *user-facing* write path as a stopgap.
  * This module's `putSetting` is a narrow exception scoped to the embeddings subsystem configuring
- * itself (called only from the CLI's `embed model`/`embed status` commands and the model registry,
- * never exposed as an HTTP/MCP op) — the same category of server-internal bookkeeping
- * `embed_dirty`/`embedding_model` already are, not a general settings-write API. Revisit and fold
- * into a real `setting.set` op once that op kind lands.
+ * itself — the same category of server-internal bookkeeping `embed_dirty`/`embedding_model`
+ * already are, not a general settings-write API. Revisit and fold into a real `setting.set` op
+ * once that op kind lands.
+ *
+ * It now has exactly one caller beyond the CLI's `embed model`: the `embeddings.configure` op
+ * (`../ops/embeddings.ts`), which is the same three keys written by the same function for the same
+ * subsystem — a settings panel instead of a terminal. That op is deliberately NOT a generic
+ * settings writer: its input names provider/host/model and nothing else, so this stays a
+ * subsystem-scoped exception rather than the parallel user-facing write path rule 25 forbids.
  */
 
 import type { SqlDriver } from "@nooklet/core";

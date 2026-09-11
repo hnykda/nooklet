@@ -461,6 +461,15 @@ no manifest of what a given `command_id` does — the invoked command's own `whe
 (`admin.tokens.*`, `admin.embeddings.reindex`, `sync.*`, `trash.*`) exist in the registry with
 `expose.mcp: false`; out of scope for this document.
 
+The first of those HTTP-only ops have now landed as `embeddings.status` (read),
+`embeddings.configure` (write) and `embeddings.reindex` (write) — the settings panel's way to turn
+semantic search on without a terminal (`packages/server/src/ops/embeddings.ts`). They are
+deliberately not MCP tools: `configure`/`reindex` change how the machine is set up and cost real
+time, which is the operator's decision rather than an agent's, and `status` would have to carry
+`openWorldHint: true` (it contacts the provider), which rule §4.2 forbids for every tool in this
+catalog. `system_diagnostics` already answers the only question an agent has here — whether
+semantic search is worth attempting.
+
 ### 4.3 Full definitions
 
 #### 4.3.1 `graph.overview` / `graph_overview`

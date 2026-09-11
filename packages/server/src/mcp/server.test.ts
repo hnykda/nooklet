@@ -72,6 +72,18 @@ const CORE_TOOL_NAMES = [
 
 const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();
 
+/**
+ * Core ops that are deliberately NOT MCP tools (`expose: { mcp: false }`), so `CORE_OPS.length`
+ * stops being the tool count.
+ *
+ * The three `embeddings.*` ops (settings panel: turn semantic search on, switch model, reindex)
+ * are HTTP-only on purpose — see `../ops/embeddings.ts`'s header. Changing someone's embedding
+ * provider or re-embedding their whole graph is a setup decision with a real cost, not something
+ * an agent should do mid-answer; `system_diagnostics` already tells an agent whether semantic
+ * search is worth attempting, which is the only part of this an agent needs.
+ */
+const HTTP_ONLY_OP_NAMES = ["embeddings.status", "embeddings.configure", "embeddings.reindex"];
+
 describe("MCP tools/list", () => {
   it("lists every core op as a tool, with correct annotations, for a write-scoped token", async () => {
     const { status, body } = await rpc(s.app, s.writeToken, "tools/list", {});
@@ -80,10 +92,14 @@ describe("MCP tools/list", () => {
       name: string;
       annotations: Record<string, unknown>;
     }>;
-    // A plain write-scoped token has no ui:control (ADR 015 §7), so it must not see the 5 ui_*
-    // tools at all (rule 10: "not even listed for this token") — CORE_OPS.length (26) minus those
-    // i.e. every core op except the UI-control ones.
-    expect(tools).toHaveLength(CORE_OPS.length - UI_TOOL_NAMES.length);
+    // 29 core ops -> 21 tools here: minus the 5 ui_* ones (a plain write-scoped token has no
+    // ui:control, ADR 015 §7 rule 10 — "not even listed for this token") and minus the 3
+    // HTTP-only embeddings.* ones.
+    expect(tools).toHaveLength(CORE_OPS.length - UI_TOOL_NAMES.length - HTTP_ONLY_OP_NAMES.length);
+    expect(tools).toHaveLength(21);
+    expect(CORE_OPS.filter((op) => op.expose?.mcp === false).map((op) => op.name)).toEqual(
+      HTTP_ONLY_OP_NAMES,
+    );
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(CORE_TOOL_NAMES);
     const graphOverview = tools.find((t) => t.name === "graph_overview");

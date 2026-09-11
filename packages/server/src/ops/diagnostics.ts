@@ -11,7 +11,8 @@
  */
 
 import { z } from "zod";
-import { getActiveModel, getVecStatus, pendingCountForModel } from "../embeddings/index.js";
+import { getActiveModel, getVecStatus, modelCounts } from "../embeddings/index.js";
+import { graphInstanceId } from "../graph-identity.js";
 import { defineOp } from "./registry.js";
 
 export const systemDiagnostics = defineOp({
@@ -25,6 +26,12 @@ export const systemDiagnostics = defineOp({
     "search is the honest fallback.",
   input: z.object({}).strict(),
   output: z.object({
+    storage: z.object({
+      data_dir: z.string().describe("Where this server keeps graph.sqlite and the markdown mirror"),
+      graph_id: z
+        .string()
+        .describe("Identity of this graph, the same value a client compares its replica against"),
+    }),
     graph: z.object({
       pages: z.number().int(),
       blocks: z.number().int(),
@@ -61,16 +68,25 @@ export const systemDiagnostics = defineOp({
 
     const vec = getVecStatus(driver);
     const active = getActiveModel(driver);
+    // Vector/pending/error counts come from the embeddings module itself (`modelCounts`), which is
+    // also what `embeddings.status` reports — one implementation, so the settings panel and this
+    // panel can never disagree about how far indexing has got.
+    const counts = active ? modelCounts(driver, active) : undefined;
 
-    // The FTS and vector tables are server-only derived tables (sql-schema.md rule 1) and may not
-    // exist at all on a database that has never been indexed, so probe rather than assume.
-    const tableExists = (name: string): boolean =>
-      (driver.get<{ n: number }>("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ?", [name])
-        ?.n ?? 0) > 0;
-
-    const ftsPresent = tableExists("block_fts");
+    // The FTS tables are server-only derived tables (sql-schema.md rule 1) and may not exist at
+    // all on a database that has never been indexed, so probe rather than assume.
+    const ftsPresent =
+      (driver.get<{ n: number }>("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ?", [
+        "block_fts",
+      ])?.n ?? 0) > 0;
 
     return {
+      // Which graph this is, in the two forms people actually need: the directory to back up or
+      // `cd` into, and the graph's own identity. The identity is `graphInstanceId`, NOT
+      // `config.graphId` ("default", a slug for a multi-graph future) — the instance id is the
+      // value a client holds and compares against its local replica (`../graph-identity.ts`), so
+      // reporting anything else here would make "is this the graph I think it is?" unanswerable.
+      storage: { data_dir: ctx.config.dataDir, graph_id: graphInstanceId(driver) },
       graph: {
         pages: count("SELECT COUNT(*) AS n FROM page WHERE deleted_at IS NULL"),
         blocks: count("SELECT COUNT(*) AS n FROM block WHERE deleted_at IS NULL"),
@@ -85,12 +101,8 @@ export const systemDiagnostics = defineOp({
         sqlite_vec: { loaded: vec.loaded, version: vec.version ?? null },
         model: active?.model ?? null,
         dimensions: active?.dims ?? null,
-        // The vector rows live in the model's own `vec0` table, whose name is per-model.
-        indexed:
-          vec.loaded && active && tableExists(active.tableName)
-            ? count(`SELECT COUNT(*) AS n FROM ${active.tableName}`)
-            : 0,
-        pending: active ? pendingCountForModel(driver, active.id) : 0,
+        indexed: counts?.indexed ?? 0,
+        pending: counts?.pending ?? 0,
       },
     };
   },

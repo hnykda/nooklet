@@ -10,7 +10,11 @@ import type { EmbeddingModelRow } from "./model-registry.js";
 import { OllamaProvider } from "./ollama-provider.js";
 import { OpenAiCompatProvider } from "./openai-provider.js";
 import type { EmbeddingProvider } from "./provider.js";
-import { type EmbeddingProviderKind, getEmbeddingSettings } from "./settings.js";
+import {
+  type EmbeddingProviderKind,
+  type EmbeddingSettings,
+  getEmbeddingSettings,
+} from "./settings.js";
 
 /** Adapts a plugin's `EmbeddingProviderDef` (`@nooklet/plugin-api`: `{id, model, dims, embed(texts,
  * signal)}`) to this module's `EmbeddingProvider` interface (`{id(), dims(): Promise<number>,
@@ -52,6 +56,21 @@ function buildProvider(
 export function buildProviderFromSettings(driver: SqlDriver): EmbeddingProvider {
   const s = getEmbeddingSettings(driver);
   return buildProvider(driver, s.provider, s.model, s.host);
+}
+
+/**
+ * Provider for an explicit provider+model+host that is NOT (yet) what the settings table says.
+ *
+ * `embeddings.configure` needs this: it must probe a *candidate* model's dimensions before it
+ * commits anything, because persisting the settings first — which is what the CLI does, where a
+ * failure leaves a human staring at the error — would leave a server whose stored configuration
+ * points at a host it has just proven it cannot use.
+ */
+export function buildProviderFromConfig(
+  driver: SqlDriver,
+  settings: EmbeddingSettings,
+): EmbeddingProvider {
+  return buildProvider(driver, settings.provider, settings.model, settings.host);
 }
 
 /** Provider for an already-registered model row (host still comes from settings; provider+model

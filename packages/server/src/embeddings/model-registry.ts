@@ -6,6 +6,7 @@
  */
 
 import type { SqlDriver } from "@nooklet/core";
+import { getEmbeddingSettings } from "./settings.js";
 import { getVecStatus } from "./vec-loader.js";
 
 export interface EmbeddingModelRow {
@@ -183,6 +184,78 @@ export function pendingCountForModel(driver: SqlDriver, modelId: number): number
       [modelId],
     )?.n ?? 0
   );
+}
+
+export interface ModelCounts {
+  /** Vectors actually stored in this model's `vec0` table. */
+  indexed: number;
+  pending: number;
+  errors: number;
+}
+
+/** The vec0 table is created with its model row, but a database that has never been indexed (or
+ * one opened without `sqlite-vec`) may not have it at all — probe rather than assume. */
+function tableExists(driver: SqlDriver, name: string): boolean {
+  return (
+    (driver.get<{ n: number }>("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ?", [name])
+      ?.n ?? 0) > 0
+  );
+}
+
+/**
+ * How far along one model is. The single implementation of these three counts: `system.diagnostics`
+ * and `embeddings.status` both report them, and two copies of "how many vectors does this model
+ * have" would drift the moment the vec table's name or the `embedding` status vocabulary changed.
+ */
+export function modelCounts(driver: SqlDriver, model: EmbeddingModelRow): ModelCounts {
+  const count = (sql: string, params: unknown[] = []): number =>
+    driver.get<{ n: number }>(sql, params)?.n ?? 0;
+  const vecReady = getVecStatus(driver).loaded && tableExists(driver, model.tableName);
+  return {
+    // `model.tableName` is registry-controlled (`vecTableNameFor`), never user input.
+    indexed: vecReady ? count(`SELECT COUNT(*) AS n FROM ${model.tableName}`) : 0,
+    pending: pendingCountForModel(driver, model.id),
+    errors: count("SELECT COUNT(*) AS n FROM embedding WHERE model_id = ? AND status = 'error'", [
+      model.id,
+    ]),
+  };
+}
+
+/** Units waiting to be turned into embeddings, across every tracked model (`embed_dirty` is
+ * model-agnostic — rule 20). Non-zero means the indexer still has work queued. */
+export function embedQueueLength(driver: SqlDriver): number {
+  return driver.get<{ n: number }>("SELECT count(*) AS n FROM embed_dirty")?.n ?? 0;
+}
+
+/**
+ * Rule 19's flip, automated: the *configured* model (`embedding.provider`/`embedding.model`
+ * settings) becomes the active one as soon as its backfill has actually finished.
+ *
+ * Why this exists: the CLI's `embed model` performs rule 19's three steps — register, backfill,
+ * flip — in one blocking foreground run, which a request handler cannot do (a real graph takes
+ * minutes). Without something to finish the job, a model configured over HTTP would register,
+ * enqueue its backfill, and then sit inactive forever, which is exactly the "semantic search is
+ * configured but silently does nothing" failure this whole path exists to remove. Flipping early
+ * instead — the other obvious option — is what rule 19 forbids, and for a good reason: switching
+ * models would swap a complete index for an empty one mid-query.
+ *
+ * "Finished" means the shared queue is empty AND this model has no pending and no errored rows.
+ * Errors count: a model that failed to embed half the graph has not been backfilled, and
+ * activating it would present a half-empty index as the real thing. `embeddings.status` surfaces
+ * that error count so the fix (repair the provider, then reindex) is visible.
+ *
+ * Called after every indexer drain and once by `embeddings.configure`, so a reconfigure of an
+ * already-complete model activates immediately.
+ */
+export function promoteConfiguredModelIfReady(driver: SqlDriver): EmbeddingModelRow | undefined {
+  const settings = getEmbeddingSettings(driver);
+  const row = findModel(driver, settings.provider, settings.model);
+  if (!row || row.active) return undefined;
+  if (embedQueueLength(driver) > 0) return undefined;
+  const counts = modelCounts(driver, row);
+  if (counts.pending > 0 || counts.errors > 0) return undefined;
+  activateModel(driver, row.id);
+  return { ...row, active: true, readyAt: Date.now() };
 }
 
 /** Rule 19's atomic flip: two single-row UPDATEs in one transaction, so no query ever observes
