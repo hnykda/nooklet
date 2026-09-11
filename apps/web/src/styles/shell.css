@@ -1,12 +1,30 @@
 /**
- * The fixed app shell + single inner scroll container (research/08-mobile.md §3.1): this is what
- * stops iOS from ever scrolling the *document*, which is what keeps `visualViewport.offsetTop`
- * at 0 and therefore keeps `--kb`-positioned fixed elements (the keyboard toolbar the editor
- * agent will add) from floating mid-screen when the keyboard opens. Do not add `overflow: auto`
- * anywhere above `.page-scroll` in the tree.
+ * The design system + the app shell.
+ *
+ * Two jobs, deliberately in one file because the second depends on the first:
+ *
+ *  1. `:root` below is the ONLY place a raw colour, type size, spacing step, radius, shadow or
+ *     duration is allowed to appear. Every other stylesheet in `apps/web` reads these custom
+ *     properties. That rule is what makes the light/dark switch a single edit instead of fourteen,
+ *     and it is load-bearing for `views/graph.css`: `views/GraphView.tsx` samples `--fg`,
+ *     `--muted`, `--accent` and `--hairline` with `getComputedStyle` at paint time to colour the
+ *     canvas, so those four must always resolve to a real colour in both themes (a hex, not a
+ *     `color-mix()` the canvas may not parse).
+ *
+ *  2. The fixed app shell + single inner scroll container (research/08-mobile.md §3.1): this is
+ *     what stops iOS from ever scrolling the *document*, which keeps `visualViewport.offsetTop` at
+ *     0 and therefore keeps `--kb`-positioned fixed elements (the keyboard toolbar) from floating
+ *     mid-screen when the keyboard opens. Do not add `overflow: auto` anywhere above
+ *     `.page-scroll` in the tree.
+ *
+ * Register: quiet and dense-but-breathable. One accent, spent on things you can click through to
+ * (links, page refs, today) and almost nowhere else; hierarchy carried by type and spacing rather
+ * than by boxes and shadows. This is an outliner someone reads for hours — legibility beats
+ * decoration every time.
  */
 
 :root {
+  /* ── Environment (mobile shell geometry) ────────────────────────────────────────────────── */
   --kb: 0px;
   --toolbar-h: 44px;
   --sat: env(safe-area-inset-top, 0px);
@@ -14,31 +32,236 @@
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
 
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #111114;
-  --muted: #6b6b73;
-  --hairline: #e4e4e8;
-  --accent: #3358e0;
+  /* ── Typography ─────────────────────────────────────────────────────────────────────────── */
+
+  /* System stack on purpose: nooklet is local-first and must look finished with the network off,
+     so a webfont fetch is not something the first paint is allowed to depend on. SF Pro / Segoe /
+     Roboto are also the faces every other app on the device uses, which is exactly the register
+     we want — the app should read as part of the machine, not as a website. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* A scale, not a pile of ad-hoc pixel values. Whole pixels rather than a strict ratio: at these
+     sizes a fractional px is a blurry px on a 1x display, and text that is read for hours is the
+     wrong place to spend sharpness on mathematical purity. */
+  --text-2xs: 11px; /* counts, kbd, micro labels */
+  --text-xs: 12px; /* secondary metadata */
+  --text-sm: 13px; /* chrome default: sidebar, shelf, buttons */
+  --text-base: 14px; /* UI body */
+  --text-md: 15px; /* the outliner — the size the app is actually read at */
+  --text-lg: 17px; /* section + day headings */
+  --text-xl: 20px; /* view titles */
+  --text-2xl: 26px; /* page title */
+
+  --leading-tight: 1.25; /* headings */
+  --leading-snug: 1.4; /* dense UI rows */
+  --leading-normal: 1.55; /* outliner prose */
+  --leading-loose: 1.65; /* long-form reading (connect screen, help copy) */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Optical correction: display sizes need negative tracking to stop looking loose, micro
+     uppercase labels need positive tracking to stop looking jammed. */
+  --tracking-tight: -0.012em;
+  --tracking-label: 0.045em;
+
+  /* ── Spacing ────────────────────────────────────────────────────────────────────────────── */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 48px;
+
+  /* The reading column. ~72 characters at --text-md, which is the top of the comfortable range;
+     the outliner spends some of it on indentation, so a narrower measure would strand deep
+     blocks in a two-word column. */
+  --measure: 45rem;
+
+  /* Minimum comfortable touch target (research/08-mobile.md §3.2). Named so the reason survives:
+     every `min-height: 44px` in this codebase means "a finger has to be able to hit this". */
+  --touch: 44px;
+
+  /* ── Radii ──────────────────────────────────────────────────────────────────────────────── */
+  --radius-xs: 3px; /* inline chips: priority, marks, inline code */
+  --radius-sm: 5px; /* hover targets, small buttons */
+  --radius-md: 7px; /* inputs, list rows */
+  --radius-lg: 10px; /* cards, popovers */
+  --radius-xl: 14px; /* dialogs */
+  --radius-pill: 999px;
+
+  /* ── Elevation ──────────────────────────────────────────────────────────────────────────── */
+  /* Tinted toward the ink rather than pure black: a neutral-black shadow over a warm-neutral page
+     reads as grey dirt. Three steps only — anything that needs a fourth is really asking for a
+     border. */
+  --shadow-color: 220 12% 8%;
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 8%);
+  --shadow-md: 0 2px 6px hsl(var(--shadow-color) / 8%), 0 8px 24px hsl(var(--shadow-color) / 10%);
+  --shadow-lg:
+    0 4px 10px hsl(var(--shadow-color) / 10%), 0 18px 48px hsl(var(--shadow-color) / 16%);
+
+  /* ── Motion ─────────────────────────────────────────────────────────────────────────────── */
+  /* Only ever used for state the pointer or keyboard just caused. Nothing animates on its own. */
+  --ease: cubic-bezier(0.2, 0, 0.13, 1);
+  --dur-fast: 90ms;
+  --dur: 140ms;
+
+  /* ── Light palette ──────────────────────────────────────────────────────────────────────── */
+  color-scheme: light;
+
+  --bg: #ffffff; /* the page: the surface text is read on */
+  --surface-sunken: #f7f7f9; /* chrome behind the page: top bar, sidebar, shelf */
+  --surface-1: #ffffff; /* raised: menus, dialogs, popovers, cards */
+  --surface-2: #eeeef2; /* subtle fill: hover, pills, code, inputs */
+
+  --fg: #17171b;
+  --fg-soft: #45454f; /* secondary body text — still text, not metadata */
+  --muted: #6a6a76; /* metadata, placeholders, disabled-looking things */
+
+  --hairline: #e5e5ea; /* dividers inside a surface */
+  --border: #d4d4dd; /* the edge of a control you can type in or press */
+
+  --accent: #2f55d4;
+  --accent-strong: #23429f; /* hover/active on accent text and fills */
+  --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
+  --accent-contrast: #ffffff; /* ink on a filled accent surface */
+
+  --ok: #197a3d;
+  --warn: #8a5c00;
+  --danger: #bf2f2f;
+
+  /* Task markers and priorities. Their job is to be scannable at a glance without being read, so
+     they are the one place besides the accent that carries hue. */
+  --marker-todo: #6a6a76;
+  --marker-doing: #a85c00;
+  --marker-waiting: #7f6208;
+  --marker-done: #197a3d;
+  --marker-canceled: #6a6a76;
+  --prio-a: #c62a2f;
+  --prio-b: #a86200;
+  --prio-c: #6a6a76;
+
+  /* Tree guides in the outliner. Its own colour rather than a tint of --hairline: a guide has to
+     survive being drawn as a single 1px line over a tall row, which is a much weaker signal than
+     the same colour drawn as a full-width rule, so it needs to be slightly stronger than the
+     divider it sits next to — not weaker. */
+  --guide: #dcdce4;
+
+  /* `commands/styles.css` keeps itself host-agnostic and only reads `--cmd-*` (so the command
+     system still renders standing alone, in its own component tests). The shell supplies the
+     palette through these aliases — that is the seam, not a second theme. */
+  --cmd-bg: var(--surface-1);
+  --cmd-fg: var(--fg);
+  --cmd-border: var(--hairline);
+  --cmd-active-bg: var(--accent-soft);
+
+  --focus: var(--accent);
+  --scrim: hsl(var(--shadow-color) / 32%);
 }
+
+/* ── Dark palette ─────────────────────────────────────────────────────────────────────────────
+   Duplicated across a media query and an attribute selector on purpose: `app/theme.ts` writes
+   `data-theme` for an explicit choice, and `:not([data-theme="light"])` lets the OS preference win
+   only while the user has not made one. */
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b0b0f;
-    --fg: #e8e8ec;
-    --muted: #9a9aa3;
-    --hairline: #232329;
-    --accent: #7c93ff;
+    color-scheme: dark;
+
+    --bg: #0f0f13;
+    --surface-sunken: #0a0a0d;
+    --surface-1: #18181e;
+    --surface-2: #22222a;
+
+    --fg: #e9e9ee;
+    --fg-soft: #b9b9c4;
+    --muted: #91919d;
+
+    --hairline: #2a2a33;
+    --border: #3a3a46;
+
+    --accent: #8ba4ff;
+    --accent-strong: #a9bcff;
+    --accent-soft: color-mix(in srgb, var(--accent) 20%, transparent);
+    --accent-contrast: #0b0b0f;
+
+    --ok: #45b86a;
+    --warn: #e0a92c;
+    --danger: #ff7a70;
+
+    --marker-todo: #91919d;
+    --marker-doing: #f0942b;
+    --marker-waiting: #d9b14a;
+    --marker-done: #45b86a;
+    --marker-canceled: #91919d;
+    --prio-a: #f0575c;
+    --prio-b: #e0a92c;
+    --prio-c: #91919d;
+
+    --guide: #34343f;
+
+    /* Shadows do almost nothing over a dark ground; the depth has to come from the surface step
+       and a rim of border instead, so these go much heavier to stay visible at all. */
+    --shadow-color: 0 0% 0%;
+    --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 40%);
+    --shadow-md:
+      0 2px 6px hsl(var(--shadow-color) / 40%), 0 8px 24px hsl(var(--shadow-color) / 48%);
+    --shadow-lg:
+      0 4px 10px hsl(var(--shadow-color) / 44%), 0 18px 48px hsl(var(--shadow-color) / 60%);
+    --scrim: hsl(var(--shadow-color) / 55%);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0b0b0f;
-  --fg: #e8e8ec;
-  --muted: #9a9aa3;
-  --hairline: #232329;
-  --accent: #7c93ff;
+  color-scheme: dark;
+
+  --bg: #0f0f13;
+  --surface-sunken: #0a0a0d;
+  --surface-1: #18181e;
+  --surface-2: #22222a;
+
+  --fg: #e9e9ee;
+  --fg-soft: #b9b9c4;
+  --muted: #91919d;
+
+  --hairline: #2a2a33;
+  --border: #3a3a46;
+
+  --accent: #8ba4ff;
+  --accent-strong: #a9bcff;
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-contrast: #0b0b0f;
+
+  --ok: #45b86a;
+  --warn: #e0a92c;
+  --danger: #ff7a70;
+
+  --marker-todo: #91919d;
+  --marker-doing: #f0942b;
+  --marker-waiting: #d9b14a;
+  --marker-done: #45b86a;
+  --marker-canceled: #91919d;
+  --prio-a: #f0575c;
+  --prio-b: #e0a92c;
+  --prio-c: #91919d;
+
+  --guide: #34343f;
+
+  --shadow-color: 0 0% 0%;
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 40%);
+  --shadow-md: 0 2px 6px hsl(var(--shadow-color) / 40%), 0 8px 24px hsl(var(--shadow-color) / 48%);
+  --shadow-lg:
+    0 4px 10px hsl(var(--shadow-color) / 44%), 0 18px 48px hsl(var(--shadow-color) / 60%);
+  --scrim: hsl(var(--shadow-color) / 55%);
 }
+
+/* ── Base ─────────────────────────────────────────────────────────────────────────────────── */
 
 * {
   box-sizing: border-box;
@@ -52,7 +275,13 @@ body {
   overscroll-behavior: none;
   background: var(--bg);
   color: var(--fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+  /* Grease-free stems at small sizes on macOS, and the only way dark-mode body text stops looking
+     bolder than the same text in light mode. */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body,
@@ -65,8 +294,7 @@ input,
 }
 
 button,
-.bullet,
-.row-handle {
+.vr-bullet {
   touch-action: manipulation;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -78,7 +306,77 @@ input {
   font-size: 16px; /* below 16px triggers iOS auto-zoom on focus */
 }
 
-/* The shell: fixed to the viewport, one flex column, top bar + the ONE scrollable region. */
+/* Numbers that sit in a column — dates, counts, ordinals — must not jiggle as they change. */
+time,
+kbd,
+.vr-list-number,
+.journal-day-title,
+.all-pages-count,
+.graph-count,
+.shelf-count,
+.reference-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Focus ────────────────────────────────────────────────────────────────────────────────────
+   One ring, declared once, for everything. Focus states used to be whatever each control's
+   browser default happened to be — a blue halo on inputs, nothing at all on the many `<button>`s
+   styled with `border: none` — which left keyboard users unable to see where they were. The
+   offset keeps the ring outside the element's own border so it reads on dense rows too. */
+
+/* No `border-radius` here: an outline already follows the element's own corner radius, and setting
+   one in this rule would silently square off every pill and rounded control the moment it takes
+   focus. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* A control that already draws its own boundary takes the ring as a soft halo around that
+   boundary instead. A hard 2px outline on a bordered input reads as a double border — and on the
+   search field, which is the widest control in the app, it read as an alert. */
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+::placeholder {
+  color: var(--muted);
+}
+
+/* Scrollbars: present when in use, invisible when not. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* The one place `!important` is right: this has to beat every transition and animation declared
+   anywhere, including the ones CodeMirror injects at runtime, and there is no specificity that
+   reaches those. Near-zero rather than `none` so `transitionend`/`animationend` listeners still
+   fire — a `0s` duration makes some browsers skip the event and hang whatever waited on it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: see above. */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above. */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above. */
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── The shell ────────────────────────────────────────────────────────────────────────────── */
+
+/* Fixed to the viewport, one flex column: top bar + the ONE scrollable region. */
 .app-shell {
   position: fixed;
   inset: 0;
@@ -87,82 +385,72 @@ input {
   padding-top: var(--sat);
   padding-left: var(--sal);
   padding-right: var(--sar);
+  background: var(--surface-sunken);
 }
 
 .app-topbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding: 0 12px;
+  gap: var(--space-xs);
+  height: 44px;
+  padding: 0 var(--space-md);
+  background: var(--surface-sunken);
   border-bottom: 1px solid var(--hairline);
 }
 
 .app-topbar nav {
   display: flex;
-  gap: 4px;
+  gap: var(--space-2xs);
 }
 
 .app-topbar a {
   color: var(--muted);
   text-decoration: none;
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 14px;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.app-topbar a:hover {
+  color: var(--fg);
+  background: var(--surface-2);
 }
 
 .app-topbar a.active {
   color: var(--fg);
-  background: var(--hairline);
+  background: var(--surface-2);
 }
 
+.app-history {
+  display: flex;
+  gap: var(--space-2xs);
+}
+
+/* The sync state, doubling as the way into Diagnostics. Quiet by design — it is glanced at, not
+   read, and only earns attention when it says something other than "synced". */
 .app-sync-indicator {
   border: none;
   background: transparent;
   font: inherit;
+  font-size: var(--text-xs);
+  color: var(--muted);
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 6px;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-pill);
   margin-left: auto;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* This is the ONLY scroll container in the app (research/08 §3.1's central rule). */
-.page-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-bottom: calc(var(--kb) + var(--sab));
-  scroll-padding-bottom: var(--kb);
-}
-
-.page-scroll-inner {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 16px;
-}
-
-.kb-open .app-topbar {
-  /* keyboard covers the home indicator: no extra bottom chrome needed while it's up */
-}
-
-.placeholder-view {
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.placeholder-view code {
-  background: var(--hairline);
-  padding: 1px 5px;
-  border-radius: 4px;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .app-sync-indicator:hover {
-  background: var(--surface-2, rgb(0 0 0 / 6%));
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 /* One icon button style for the whole chrome. Lucide throughout — a single set, sized to the
@@ -175,13 +463,23 @@ input {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .app-icon-button:hover {
-  background: var(--surface-2, rgb(0 0 0 / 6%));
+  background: var(--surface-2);
   color: var(--fg);
+}
+
+.app-icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .app-shell-body {
@@ -190,7 +488,47 @@ input {
   display: flex;
 }
 
-.app-history {
-  display: flex;
-  gap: 2px;
+/* This is the ONLY scroll container in the app (research/08 §3.1's central rule). */
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  padding-bottom: calc(var(--kb) + var(--sab));
+  scroll-padding-bottom: var(--kb);
+}
+
+.page-scroll-inner {
+  max-width: var(--measure);
+  margin: 0 auto;
+  /* The tall tail is what lets you write on the middle of the screen rather than against its
+     bottom edge. It belongs here, once per scroll region — it used to live on `.vr-outliner`
+     (`../editor/editor.css`), which meant the journal stream reserved 40vh of blank space after
+     EVERY day and read as a page full of holes. */
+  padding: var(--space-2xl) var(--space-xl) 40vh;
+}
+
+@media (max-width: 44rem) {
+  .page-scroll-inner {
+    padding: var(--space-xl) var(--space-lg) 40vh;
+  }
+}
+
+.kb-open .app-topbar {
+  /* keyboard covers the home indicator: no extra bottom chrome needed while it's up */
+}
+
+.placeholder-view {
+  color: var(--muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-loose);
+}
+
+.placeholder-view code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
 }

@@ -282,6 +282,9 @@ export interface AppDeps {
   setTheme: (t: "light" | "dark" | "system") => void;
   getTheme: () => "light" | "dark" | "system";
   navigate: (path: string) => void;
+  /** Raises the settings panel. A dependency rather than a direct import because the panel is
+   * shell-level UI and this module is the data/router seam — `CommandLayer` owns that wiring. */
+  openSettings: () => void;
 }
 
 const THEME_CYCLE = { light: "dark", dark: "system", system: "light" } as const;
@@ -289,9 +292,11 @@ const THEME_CYCLE = { light: "dark", dark: "system", system: "light" } as const;
 export function createAppHost(deps: AppDeps): AppHost {
   return {
     toggleSidebar: deps.toggleSidebar,
-    openSettings() {
-      deps.navigate("/settings");
-    },
+    // NOT `navigate("/settings")`, which is what this used to do: there is no `/settings` route
+    // (see `../App.tsx`'s route table), so Cmd/Ctrl+, rendered an empty screen. Settings is a
+    // modal over whatever you were reading — the same shape as Diagnostics — so it keeps the
+    // current route instead of replacing it.
+    openSettings: deps.openSettings,
     openPluginManager() {
       deps.navigate("/settings/plugins");
     },

@@ -1,44 +1,80 @@
 /**
- * Styles for apps/web/src/views/* and the block-tree/inline-content stubs. Builds on the theme
- * tokens `shell.css` defines (--bg/--fg/--muted/--hairline/--accent) rather than redefining them.
+ * Styles for `apps/web/src/views/*`. Every value comes from the design tokens in `./shell.css`
+ * (`--text-*`, `--space-*`, `--radius-*`, and the palette) — this file defines no colours and no
+ * loose pixel sizes of its own.
+ *
+ * Naming: `vr-` throughout for anything that is part of the outliner's vocabulary (row, bullet,
+ * content), view-scoped names (`search-`, `task-`, `journal-`) for everything else. There used to
+ * be a second, parallel scheme here — `.block-tree` / `.block-row` / `.block-row-main` /
+ * `.block-bullet` / `.block-content-input` — describing exactly the same concepts as
+ * `../editor/editor.css`'s `.vr-row` / `.vr-row-main` / `.vr-bullet` / `.vr-content`
+ * (docs/BUGS.md B-12). It is gone, along with five rules for markup nothing rendered any more:
+ * the virtual journal day now emits *real* outliner markup, so the placeholder row and a live row
+ * are one set of rules rather than two that have to be kept looking alike by hand.
+ *
  * Mobile rules followed throughout (research/08-mobile.md §3): no extra scroll container (content
- * lives inside the shell's one `.page-scroll`), interactive tap targets >= 44px, text inputs at
- * 16px (avoids iOS auto-zoom-on-focus — shell.css already sets this globally, kept here only where
- * a rule would otherwise override it).
+ * lives inside the shell's one `.page-scroll`), interactive tap targets >= var(--touch), text
+ * inputs at 16px (shell.css sets this globally; repeated here only where a rule would override it).
  */
 
 /* ---------------------------------------------------------------------------------------------
-   Shared: view nav + page finder
+   Shared: view titles, nav, page finder
 --------------------------------------------------------------------------------------------- */
+
+/* Every view opens with its name at the same size and weight. Left to the browser these were
+   `h1 { 2em bold }` — 28px of black slab above a 14px interface, which is what made the app read
+   as an unstyled document rather than a tool. */
+.tasks-view > h1,
+.all-pages-header h1,
+.graph-header h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+
+.tasks-view > h1 {
+  margin-bottom: var(--space-lg);
+}
 
 .view-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
   flex-wrap: wrap;
 }
 
 .view-nav-links {
   display: flex;
-  gap: 4px;
+  gap: var(--space-2xs);
 }
 
 .view-nav-links a {
   color: var(--muted);
   text-decoration: none;
-  padding: 10px 12px;
-  min-height: 44px;
+  padding: var(--space-sm) var(--space-lg);
+  min-height: var(--touch);
   display: inline-flex;
   align-items: center;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.view-nav-links a:hover {
+  color: var(--fg);
+  background: var(--surface-2);
 }
 
 .view-nav-links a.active {
   color: var(--fg);
-  background: var(--hairline);
+  background: var(--surface-2);
 }
 
 .page-finder-trigger {
@@ -46,37 +82,46 @@
 }
 
 .page-finder-open {
-  min-height: 44px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--hairline);
-  background: var(--bg);
+  min-height: var(--touch);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.page-finder-open:hover {
+  color: var(--fg);
+  border-color: var(--muted);
 }
 
 .page-finder-popover {
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
+  top: calc(100% + var(--space-sm));
   width: min(360px, 90vw);
-  background: var(--bg);
+  background: var(--surface-1);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  padding: 8px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-xs);
   z-index: 20;
 }
 
 .page-finder-input {
   width: 100%;
-  min-height: 44px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--hairline);
+  min-height: var(--touch);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
   background: var(--bg);
   color: var(--fg);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-xs);
 }
 
 .page-finder-results {
@@ -90,24 +135,25 @@
 .page-finder-result {
   width: 100%;
   text-align: left;
-  min-height: 44px;
-  padding: 8px 10px;
+  min-height: var(--touch);
+  padding: var(--space-md) var(--space-lg);
   border: none;
   background: transparent;
   color: var(--fg);
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
 }
 
 .page-finder-result:hover,
 .page-finder-result:focus-visible {
-  background: var(--hairline);
+  background: var(--surface-2);
 }
 
 .page-finder-empty {
   color: var(--muted);
-  font-size: 13px;
-  padding: 8px 10px;
+  font-size: var(--text-sm);
+  padding: var(--space-md) var(--space-lg);
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -115,39 +161,62 @@
 --------------------------------------------------------------------------------------------- */
 
 .journal-stream-toolbar {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-lg);
 }
 
 .journal-calendar-toggle,
 .page-view-back,
 .journal-day-unpin {
-  min-height: 44px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--hairline);
-  background: var(--bg);
+  min-height: 30px;
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--fg-soft);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.journal-calendar-toggle:hover,
+.page-view-back:hover,
+.journal-day-unpin:hover {
+  background: var(--surface-2);
   color: var(--fg);
-  font-size: 14px;
 }
 
 .journal-day {
-  margin-bottom: 28px;
+  margin-bottom: var(--space-3xl);
 }
 
+/* The date is the anchor you scan for, so it gets weight and tight tracking; the hairline is what
+   turns a long stream into readable days rather than one continuous wall. */
 .journal-day-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 0 0 8px;
-  padding-bottom: 6px;
+  gap: var(--space-md);
+  margin: 0 0 var(--space-md);
+  padding-bottom: var(--space-sm);
   border-bottom: 1px solid var(--hairline);
 }
 
+/* Today is the one day you will look for without reading, so it is the one that gets the accent. */
 .journal-day-today .journal-day-title {
   color: var(--accent);
+  border-bottom-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.journal-day-upcoming .journal-day-title,
+.journal-day-pinned .journal-day-title {
+  color: var(--fg-soft);
 }
 
 .journal-stream-sentinel {
@@ -156,9 +225,11 @@
 
 .calendar {
   border: 1px solid var(--hairline);
-  border-radius: 10px;
-  padding: 10px;
-  margin-bottom: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
 }
 
 .calendar-header {
@@ -168,147 +239,121 @@
 }
 
 .calendar-nav {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--touch);
+  min-height: var(--touch);
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
+  color: var(--muted);
+  font-size: var(--text-lg);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.calendar-nav:hover {
+  background: var(--surface-2);
   color: var(--fg);
-  font-size: 20px;
 }
 
 .calendar-month-label {
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  letter-spacing: var(--tracking-tight);
 }
 
 .calendar-weekdays,
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+  gap: var(--space-2xs);
   text-align: center;
 }
 
 .calendar-weekdays {
   color: var(--muted);
-  font-size: 12px;
-  margin: 4px 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  margin: var(--space-xs) 0;
 }
 
 .calendar-day {
   aspect-ratio: 1;
-  min-height: 40px;
+  min-height: 36px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--fg);
-  font-size: 13px;
+  color: var(--fg-soft);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .calendar-day:not(.calendar-day-empty):hover {
-  background: var(--hairline);
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 .calendar-day-today {
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   color: var(--accent);
 }
 
-.calendar-day-selected {
+.calendar-day-selected,
+.calendar-day-selected.calendar-day-today {
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
 }
 
 /* ---------------------------------------------------------------------------------------------
-   Block tree (editor stub) + inline content
+   The virtual journal day's placeholder row
+
+   `VirtualJournalDay.tsx` renders real outliner markup (`.vr-draft` / `.vr-row` / `.vr-content`,
+   styled by `../editor/editor.css`) so the row you type today's first block into is visually the
+   same row it becomes a moment later. All that is left here is the draft textarea, which has to be
+   invisible: it used to be a bordered, accent-outlined box — the loudest element on the journals
+   screen, and nothing like the block it turns into.
 --------------------------------------------------------------------------------------------- */
 
-.block-list {
-  list-style: none;
-  margin: 0;
-  padding-left: 0;
-}
-
-.block-row {
-  padding-left: calc(var(--depth, 0) * 20px);
-}
-
-.block-row-main {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-height: 44px;
-  padding: 4px 0;
-}
-
-.block-bullet {
-  color: var(--muted);
-  line-height: 1.6;
-  padding-top: 2px;
-  flex: 0 0 auto;
-}
-
-.block-task-checkbox {
-  flex: 0 0 auto;
-  min-width: 32px;
-  min-height: 32px;
+.vr-draft-input {
+  display: block;
+  width: 100%;
   border: none;
   background: transparent;
-  font-size: 18px;
-  color: var(--muted);
-}
-
-.block-task-checkbox.checked {
-  color: var(--accent);
-}
-
-.block-content {
-  flex: 1;
-  min-height: 32px;
-  padding: 4px 2px;
-  line-height: 1.6;
-  cursor: text;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.block-content-empty {
-  color: var(--muted);
-}
-
-.block-content-input {
-  flex: 1;
-  min-height: 44px;
-  padding: 4px 6px;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  background: var(--bg);
   color: var(--fg);
   font: inherit;
-  font-size: 16px;
-  resize: vertical;
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  padding: 0;
+  margin: 0;
+  resize: none;
+  overflow: hidden;
+  min-height: calc(1em * var(--leading-normal));
 }
 
-.block-tree-loading,
-.block-tree-empty {
-  color: var(--muted);
-  font-size: 13px;
+.vr-draft-input:focus,
+.vr-draft-input:focus-visible {
+  outline: none;
 }
 
-.inline-content .ref-link {
-  color: var(--accent);
-  text-decoration: none;
+/* The caret is the focus indicator inside the text; the bullet carries it outside, exactly as it
+   does for a real editing row. */
+.vr-row-draft:focus-within .vr-bullet-dot {
+  background: var(--accent);
 }
 
-.inline-content .ref-link:hover {
-  text-decoration: underline;
-}
-
-.inline-content mark {
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
-  color: inherit;
-  border-radius: 3px;
-  padding: 0 2px;
+/* Keyed on the pointer, not the viewport: a tablet is wide and still auto-zooms a sub-16px text
+   field on focus. `--text-md` is 15px, so without this the one field on the journals screen would
+   yank the page into a zoom every time you tapped it. */
+@media (pointer: coarse) {
+  .vr-draft-input {
+    font-size: 16px;
+  }
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -316,44 +361,106 @@
 --------------------------------------------------------------------------------------------- */
 
 .page-view-breadcrumb {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-lg);
 }
 
 .page-title-input {
   width: 100%;
-  font-size: 24px;
-  font-weight: 700;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
   border: none;
   background: transparent;
   color: var(--fg);
-  padding: 8px 0;
-  margin-bottom: 8px;
+  padding: var(--space-2xs) 0;
+  margin: 0 0 var(--space-lg);
 }
 
-.page-title-input:focus {
-  outline: 1px solid var(--hairline);
-  border-radius: 6px;
+.page-title-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: var(--radius-xs);
 }
 
+.page-view-loading,
 .page-view-missing {
   color: var(--muted);
+  font-size: var(--text-base);
+}
+
+.page-view-missing h1 {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
+  margin: 0 0 var(--space-md);
 }
 
 .page-view-missing button {
-  min-height: 44px;
-  padding: 8px 16px;
-  border-radius: 8px;
+  min-height: 34px;
+  padding: 0 var(--space-xl);
+  border-radius: var(--radius-md);
   border: 1px solid var(--accent);
   background: transparent;
   color: var(--accent);
-  margin-top: 8px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  margin-top: var(--space-lg);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
+.page-view-missing button:hover {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* Page properties collapse by default: metadata you set occasionally and read rarely should not
+   push the page's actual content down on every page. */
+.page-properties-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  padding: var(--space-xs) 0;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.page-properties-toggle:hover {
+  color: var(--fg);
+}
+
+.page-properties-caret {
+  font-size: 9px;
+}
+
+.page-properties-count {
+  background: var(--surface-2);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-sm);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Collapsed, this is one line of quiet text; only the expanded form earns a panel. The container
+   used to carry the fill either way, which put an empty grey slab under the title of every page. */
 .page-properties {
-  margin: 12px 0 20px;
-  padding: 10px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
+  margin: var(--space-lg) 0 var(--space-2xl);
+}
+
+.page-properties:has(.page-property-list) {
+  padding: var(--space-md) var(--space-lg);
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
 }
 
 .page-property-list {
@@ -365,13 +472,14 @@
 .page-property-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
+  gap: var(--space-md);
+  min-height: 36px;
 }
 
 .page-property-key {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   min-width: 100px;
 }
 
@@ -379,31 +487,48 @@
 .page-property-add-key,
 .page-property-add-value {
   flex: 1;
-  min-height: 40px;
-  padding: 6px 8px;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  background: var(--bg);
+  min-height: 30px;
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--fg);
+  font-size: var(--text-sm);
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.page-property-value:hover,
+.page-property-add-key,
+.page-property-add-value {
+  background: var(--bg);
+  border-color: var(--hairline);
 }
 
 .page-property-add {
   display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
 }
 
 .page-property-add button {
-  min-width: 44px;
-  min-height: 40px;
-  border-radius: 6px;
-  border: 1px solid var(--hairline);
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
   background: var(--bg);
+  color: var(--fg-soft);
+  cursor: pointer;
+}
+
+.page-property-add button:hover {
   color: var(--fg);
+  border-color: var(--muted);
 }
 
 .namespace-children {
-  margin: 20px 0;
+  margin: var(--space-2xl) 0;
 }
 
 .namespace-children ul {
@@ -415,50 +540,64 @@
 .namespace-child-link {
   width: 100%;
   text-align: left;
-  min-height: 44px;
-  padding: 6px 4px;
+  min-height: 30px;
+  padding: var(--space-xs) var(--space-sm);
+  margin-left: calc(-1 * var(--space-sm));
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--fg);
-  font-size: 14px;
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.namespace-child-link:hover {
+  background: var(--surface-2);
 }
 
 .namespace-child-dimmed {
   color: var(--muted);
 }
 
+/* ---------------------------------------------------------------------------------------------
+   References
+--------------------------------------------------------------------------------------------- */
+
 .references-panel {
-  margin-top: 28px;
+  margin-top: var(--space-4xl);
   border-top: 1px solid var(--hairline);
-  padding-top: 12px;
+  padding-top: var(--space-lg);
 }
 
 .reference-count {
   color: var(--muted);
-  font-weight: 400;
-  font-size: 12px;
+  font-weight: var(--weight-medium);
+  font-size: var(--text-2xs);
   /* A pill, so the number reads as a count rather than as part of the heading. */
-  background: var(--surface-2, rgb(0 0 0 / 6%));
-  border-radius: 999px;
-  padding: 1px 7px;
-  margin-left: 2px;
+  background: var(--surface-2);
+  border-radius: var(--radius-pill);
+  padding: 1px var(--space-sm);
+  margin-left: var(--space-2xs);
 }
 
 /* Both halves of the panel collapse; the toggle IS the heading. */
 .references-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-sm);
   width: 100%;
   border: none;
   background: transparent;
   color: var(--fg);
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  letter-spacing: var(--tracking-tight);
   text-align: left;
-  padding: 6px 0;
-  min-height: 36px;
+  padding: var(--space-sm) 0;
+  min-height: 34px;
   cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
 }
 
 .references-toggle:hover {
@@ -467,87 +606,100 @@
 
 .references-caret {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 9px;
   width: 10px;
 }
 
-.search-error {
-  color: var(--danger, #c92a2a);
-  font-size: 13px;
+.references-loading,
+.references-error,
+.references-empty {
+  color: var(--muted);
+  font-size: var(--text-sm);
 }
 
+.references-error {
+  color: var(--danger);
+}
+
+.references-retry,
 .search-retry {
   border: none;
   background: transparent;
   color: var(--accent);
   font: inherit;
   text-decoration: underline;
-  cursor: pointer;
-  padding: 0;
-}
-
-.references-loading,
-.references-error {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.references-error {
-  color: var(--danger, #c92a2a);
-}
-
-.references-retry {
-  border: none;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  text-decoration: underline;
+  text-underline-offset: 0.16em;
   cursor: pointer;
   padding: 0;
 }
 
 .reference-group {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-xl);
 }
 
+.reference-group h3,
+.reference-group h4 {
+  margin: 0;
+}
+
+/* Neutral, with the accent held back for hover. These are headings that happen to be clickable,
+   and at full accent a page of eight task groups or reference groups was eight blue banners
+   competing with the page refs inside the blocks — which are the links that actually matter. */
 .reference-group-page {
   border: none;
   background: transparent;
+  color: var(--fg);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-tight);
+  padding: var(--space-xs) 0;
+  min-height: 26px;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.reference-group-page:hover {
   color: var(--accent);
-  font-weight: 600;
-  font-size: 14px;
-  padding: 6px 0;
-  min-height: 32px;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
 }
 
 .reference-group ul {
   list-style: none;
   margin: 0;
-  padding-left: 12px;
+  padding-left: var(--space-lg);
+  border-left: 1px solid var(--hairline);
 }
 
 .reference-item-jump {
   width: 100%;
   text-align: left;
-  min-height: 40px;
+  min-height: 28px;
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--fg);
-  padding: 4px 0;
-  font-size: 14px;
+  color: var(--fg-soft);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
-.references-empty {
-  color: var(--muted);
-  font-size: 13px;
+.reference-item-jump:hover {
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 .unlinked-references summary {
   cursor: pointer;
-  min-height: 44px;
+  min-height: 34px;
   display: flex;
   align-items: center;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -557,76 +709,107 @@
 .search-box {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
 }
 
 .search-query-input {
-  min-height: 44px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--hairline);
-  background: var(--bg);
+  min-height: 38px;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
   color: var(--fg);
 }
 
+/* A segmented control, not three buttons one of which is painted solid accent. The accent is for
+   things you navigate through; "which ranking is this" is a setting, and a setting that fills a
+   third of the screen with the loudest colour in the palette is shouting. */
 .search-mode-toggle {
   display: flex;
-  gap: 4px;
+  gap: var(--space-2xs);
+  padding: var(--space-2xs);
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
 }
 
 .search-mode-toggle button {
   flex: 1;
-  min-height: 44px;
-  border-radius: 8px;
-  border: 1px solid var(--hairline);
-  background: var(--bg);
+  min-height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   text-transform: capitalize;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.search-mode-toggle button:hover {
+  color: var(--fg);
 }
 
 .search-mode-toggle button.search-mode-active {
-  color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--fg);
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  box-shadow: var(--shadow-sm);
 }
 
 .search-filters {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-lg);
 }
 
-.search-filters summary {
+.search-filters summary,
+.task-filters-summary {
   cursor: pointer;
-  min-height: 44px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.search-filters summary:hover {
+  color: var(--fg);
 }
 
 .search-filters label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   color: var(--muted);
-  margin-top: 8px;
+  margin-top: var(--space-md);
 }
 
 .search-filters input {
-  min-height: 40px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--hairline);
-  background: var(--bg);
+  min-height: 32px;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
   color: var(--fg);
+  font-size: var(--text-sm);
 }
 
 .search-hint,
 .search-loading,
 .search-summary {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
+  margin: var(--space-md) 0;
+}
+
+.search-error {
+  color: var(--danger);
+  font-size: var(--text-sm);
 }
 
 .search-results {
@@ -635,35 +818,73 @@
   padding: 0;
 }
 
-.search-result {
+.search-result:not(:last-child) {
   border-bottom: 1px solid var(--hairline);
 }
 
 .search-result-open {
-  width: 100%;
+  display: block;
   text-align: left;
-  min-height: 56px;
-  padding: 10px 4px;
+  padding: var(--space-lg) var(--space-md);
+  margin-inline: calc(-1 * var(--space-md));
+  width: calc(100% + 2 * var(--space-md));
   border: none;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--fg);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.search-result-open:hover {
+  background: var(--surface-2);
 }
 
 .search-result-page {
-  font-weight: 600;
-  font-size: 13px;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  white-space: nowrap;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
   color: var(--accent);
+  margin-bottom: var(--space-xs);
 }
 
+/* A breadcrumb can be the whole parent block's text, which on a real graph runs to several lines
+   and buries the snippet it is supposed to be locating. One line, elided — hence the flex row
+   above: the page name holds its size and the trail is the part allowed to shrink. */
 .search-result-breadcrumb {
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--muted);
-  font-weight: 400;
+  font-weight: var(--weight-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-empty {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  padding: var(--space-md) 0;
 }
 
 .search-result-snippet {
-  margin-top: 4px;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--fg);
+}
+
+/* `SearchSnippet.tsx` emits bare `<mark>`, so this is the browser's highlighter yellow unless it
+   is told otherwise — a colour that appears nowhere else in the app and reads as a rendering bug
+   in dark mode. Tinted accent instead: the same colour the query itself is. */
+.search-result-snippet mark {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: inherit;
+  border-radius: var(--radius-xs);
+  padding: 0 2px;
+  box-decoration-break: clone;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -673,62 +894,103 @@
 .task-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin: 12px 0 20px;
+  align-items: flex-end;
+  gap: var(--space-lg);
+  margin: 0 0 var(--space-2xl);
+  padding: var(--space-lg);
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
 }
 
 .task-state-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  padding: 8px 10px;
+  align-items: center;
+  gap: var(--space-lg);
+  border: none;
+  border-radius: var(--radius-md);
+  margin: 0;
+  padding: 0;
 }
 
 .task-state-filters legend {
-  font-size: 12px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
   color: var(--muted);
-  padding: 0 4px;
+  padding: 0;
+  margin-bottom: var(--space-xs);
 }
 
-.task-state-checkbox {
+/* Specificity, not order: `.task-filters label` below sets `flex-direction: column` for the
+   labelled text fields, and it used to win here too — which stacked every state checkbox above
+   its own word and made the filter bar look broken. */
+.task-filters .task-state-checkbox {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
-  min-height: 44px;
-  font-size: 13px;
+  gap: var(--space-sm);
+  min-height: 28px;
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--fg-soft);
+  cursor: pointer;
+}
+
+.task-state-checkbox input {
+  accent-color: var(--accent);
+  margin: 0;
 }
 
 .task-filters label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
+  gap: var(--space-xs);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
   color: var(--muted);
 }
 
-.task-filters input {
-  min-height: 40px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--hairline);
-  background: var(--bg);
+.task-filters input:not([type="checkbox"]) {
+  min-height: 30px;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
   color: var(--fg);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .task-group {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-2xl);
 }
 
+.task-group h2 {
+  margin: 0 0 var(--space-xs);
+}
+
+/* Same call as `.reference-group-page` above: a heading first, a link on hover. */
 .task-group-page {
-  min-height: 44px;
+  min-height: 26px;
   border: none;
   background: transparent;
+  color: var(--fg);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-tight);
+  padding: 0;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.task-group-page:hover {
   color: var(--accent);
-  font-weight: 600;
-  font-size: 15px;
-  padding: 6px 0;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
 }
 
 .task-list {
@@ -739,86 +1001,84 @@
 
 .task-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
+  align-items: baseline;
+  gap: var(--space-md);
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.task-row:not(:last-child) {
   border-bottom: 1px solid var(--hairline);
 }
 
+.task-row:hover {
+  background: var(--surface-2);
+}
+
+/* Same glyph vocabulary as the outliner (`../editor/editor.css`), so a task looks like itself
+   wherever it is listed. */
 .task-checkbox {
-  flex: 0 0 auto;
-  min-width: 44px;
-  min-height: 44px;
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 30px;
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
-  font-size: 18px;
-  color: var(--muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--marker-todo);
+  cursor: pointer;
 }
 
 .task-checkbox.checked {
-  color: var(--accent);
+  color: var(--marker-done);
 }
 
 .task-content {
   flex: 1;
   text-align: left;
-  min-height: 44px;
+  min-height: 30px;
   border: none;
   background: transparent;
   color: var(--fg);
-  font-size: 14px;
-  padding: 4px 0;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  padding: var(--space-sm) 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.task-row:has(.task-checkbox.checked) .task-content {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 
 .task-due {
-  flex: 0 0 auto;
-  font-size: 12px;
+  flex: none;
+  align-self: center;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
-  padding-right: 4px;
+  padding-right: var(--space-xs);
 }
 
 .tasks-empty {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 @media (max-width: 480px) {
   .task-filters {
     flex-direction: column;
-    gap: 8px;
+    align-items: stretch;
+    gap: var(--space-lg);
   }
 
   .search-mode-toggle {
     flex-wrap: wrap;
   }
-}
-
-/* Page properties collapse by default: metadata you set occasionally and read rarely should not
-   push the page's actual content down on every page. */
-.page-properties-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  padding: 4px 0;
-  cursor: pointer;
-}
-
-.page-properties-toggle:hover {
-  color: var(--fg);
-}
-
-.page-properties-caret {
-  font-size: 10px;
-}
-
-.page-properties-count {
-  background: var(--surface-2, rgb(0 0 0 / 6%));
-  border-radius: 999px;
-  padding: 0 6px;
-  font-size: 11px;
 }

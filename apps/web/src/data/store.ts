@@ -19,7 +19,6 @@
 
 import {
   type ApplyOpsResult,
-  Hlc,
   makeOp,
   normalizePageName,
   type Op,
@@ -36,7 +35,6 @@ import {
 } from "solid-js";
 import {
   getSyncStatus,
-  initDb,
   onChange,
   onSyncStatus,
   queryAs,

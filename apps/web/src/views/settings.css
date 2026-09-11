@@ -1,0 +1,273 @@
+/* Settings panel (`SettingsPanel.tsx`). Shares the modal shape of `diagnostics.css` deliberately
+   — the two are siblings raised from the same shell — but carries its own controls (a segmented
+   theme picker, a provider form) that the diagnostics panel, being read-only, has no use for. */
+
+.set-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 71;
+  background: var(--scrim, rgb(0 0 0 / 35%));
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 1rem 1rem;
+  overflow-y: auto;
+}
+
+.set-panel {
+  width: min(38rem, 100%);
+  border-radius: var(--radius-xl, 0.75rem);
+  background: var(--surface-1, #fff);
+  border: 1px solid var(--hairline, rgb(0 0 0 / 12%));
+  box-shadow: var(--shadow-lg, 0 16px 48px rgb(0 0 0 / 22%));
+  color: var(--fg, inherit);
+  padding: 1rem 1.25rem 1.25rem;
+  font-size: var(--text-base, 0.875rem);
+}
+
+.set-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.set-header h2 {
+  margin: 0;
+  font-size: var(--text-lg, 1.05rem);
+}
+
+.set-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-sm, 0.35rem);
+}
+
+.set-close:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+}
+
+.set-panel section {
+  margin-top: 1.25rem;
+}
+
+.set-panel h3 {
+  margin: 0 0 0.4rem;
+  font-size: var(--text-xs, 0.75rem);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label, 0.04em);
+  color: var(--muted);
+}
+
+.set-row {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--hairline, rgb(0 0 0 / 7%));
+}
+
+.set-row:last-of-type {
+  border-bottom: none;
+}
+
+.set-label {
+  flex: 0 0 9rem;
+  color: var(--muted);
+}
+
+.set-value {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.set-value code,
+.set-panel code {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-sm, 0.8125rem);
+}
+
+.set-ok {
+  color: var(--ok, #2b8a3e);
+}
+
+.set-bad {
+  color: var(--danger, #c92a2a);
+}
+
+.set-muted {
+  color: var(--muted);
+}
+
+/* Explanatory copy: the "why" under a control, and the place the off state is stated in words. */
+.set-note {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm, 0.8125rem);
+  line-height: var(--leading-snug, 1.45);
+}
+
+/* An error a person has to be able to act on — never a spinner that never ends. */
+.set-error {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md, 0.4rem);
+  border: 1px solid var(--danger, #c92a2a);
+  background: color-mix(in srgb, var(--danger, #c92a2a) 8%, transparent);
+  color: var(--danger, #c92a2a);
+  font-size: var(--text-sm, 0.8125rem);
+  line-height: var(--leading-snug, 1.45);
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────────────────────────── */
+
+.set-segmented {
+  display: inline-flex;
+  border: 1px solid var(--border, rgb(0 0 0 / 15%));
+  border-radius: var(--radius-md, 0.4rem);
+  overflow: hidden;
+}
+
+.set-segment {
+  border: none;
+  border-right: 1px solid var(--border, rgb(0 0 0 / 15%));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm, 0.8125rem);
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.set-segment:last-child {
+  border-right: none;
+}
+
+.set-segment:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+}
+
+.set-segment[aria-pressed="true"] {
+  background: var(--accent, #2f55d4);
+  color: var(--accent-contrast, #fff);
+}
+
+/* A select standing on its own in a row (the journal date format), rather than inside the
+   provider form's label grid. */
+.set-value select {
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-md, 0.35rem);
+  border: 1px solid var(--border, rgb(0 0 0 / 18%));
+  background: var(--surface-1, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm, 0.8125rem);
+  max-width: 100%;
+}
+
+.set-value select:focus-visible {
+  outline: 2px solid var(--focus, #2f55d4);
+  outline-offset: 1px;
+}
+
+.set-button {
+  margin-top: 0.75rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: var(--radius-md, 0.4rem);
+  border: 1px solid var(--border, rgb(0 0 0 / 15%));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm, 0.8125rem);
+  cursor: pointer;
+}
+
+.set-button:hover:not(:disabled) {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+}
+
+.set-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.set-button-primary {
+  border-color: var(--accent, #2f55d4);
+  background: var(--accent, #2f55d4);
+  color: var(--accent-contrast, #fff);
+}
+
+.set-button-primary:hover:not(:disabled) {
+  background: var(--accent-strong, #23429f);
+}
+
+.set-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ── Provider form ──────────────────────────────────────────────────────────────────────────── */
+
+.set-form {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--hairline, rgb(0 0 0 / 12%));
+  border-radius: var(--radius-lg, 0.5rem);
+  background: var(--surface-2, rgb(0 0 0 / 3%));
+}
+
+.set-field {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.set-field > span {
+  flex: 0 0 9rem;
+  color: var(--muted);
+}
+
+.set-field input,
+.set-field select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-md, 0.35rem);
+  border: 1px solid var(--border, rgb(0 0 0 / 18%));
+  background: var(--surface-1, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm, 0.8125rem);
+}
+
+.set-field input:focus-visible,
+.set-field select:focus-visible {
+  outline: 2px solid var(--focus, #2f55d4);
+  outline-offset: 1px;
+}
+
+@media (max-width: 34rem) {
+  .set-row,
+  .set-field {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
+
+  .set-label,
+  .set-field > span {
+    flex: none;
+  }
+
+  .set-field input,
+  .set-field select {
+    width: 100%;
+  }
+}

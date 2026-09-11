@@ -59,7 +59,7 @@ test("a device with no token gets the connect screen, and pairing works", async 
   expect(stored).toBe(adminToken);
   // And it is genuinely usable: the app booted with the stored token while `/api/session`
   // continued to refuse one.
-  await expect(page.locator(".vr-outliner, .block-content-input").first()).toBeVisible();
+  await expect(page.locator(".vr-outliner, .vr-draft-input").first()).toBeVisible();
 });
 
 test("a paired remote device can read the graph it was given access to", async ({ page }) => {

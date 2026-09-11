@@ -15,7 +15,7 @@ test("Enter on a brand-new journal day continues into the next bullet", async ({
   // Scoped to TODAY: an "Upcoming" section can render above it, so an unscoped `.first()` would
   // pick whichever day happens to be on top.
   const today = page.locator(".journal-day-today");
-  const draft = today.locator(".block-content-input").first();
+  const draft = today.locator(".vr-draft-input").first();
   await expect(draft).toBeVisible();
 
   await draft.fill("first thought");

@@ -1,64 +1,76 @@
-/* The graph view (`GraphView.tsx`). Colours come from the theme tokens in `styles/shell.css`;
-   the canvas samples the same tokens at draw time, so there is exactly one palette. */
+/* The graph view (`GraphView.tsx`). Colours come from the theme tokens in `../styles/shell.css`;
+   the canvas samples `--fg`/`--muted`/`--accent`/`--hairline` at draw time with
+   `getComputedStyle`, so there is exactly one palette and those four must stay plain colours. */
 
 .graph-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.graph-header h1 {
-  margin: 0;
-  font-size: 20px;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
 }
 
 .graph-count {
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
 }
 
 .graph-toggle {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 13px;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
   color: var(--muted);
+  cursor: pointer;
+}
+
+.graph-toggle input {
+  accent-color: var(--accent);
 }
 
 .graph-fit {
   font: inherit;
-  font-size: 13px;
-  min-height: 44px;
-  padding: 5px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: 7px;
-  background: transparent;
-  color: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  min-height: 30px;
+  padding: 0 var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--fg-soft);
   cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
-.graph-status {
+.graph-fit:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.graph-status,
+.graph-note {
   color: var(--muted);
-  font-size: 13px;
-  margin: 0 0 10px;
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-lg);
 }
 
 .graph-error {
-  color: #c4453b;
+  color: var(--danger);
 }
 
 .graph-canvas-wrap {
   position: relative;
   /* A fixed height, not a flex fill: the shell owns the only scrollable region
-     (`styles/shell.css`), so this must size itself rather than stretch to it. `overflow: hidden`
+     (`../styles/shell.css`), so this must size itself rather than stretch to it. `overflow: hidden`
      clips the canvas's rounded corner — it is not a second scroll container. */
   height: min(68vh, 620px);
   min-height: 300px;
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
   overflow: hidden;
 }
 
@@ -78,16 +90,17 @@
 
 .graph-hover {
   position: absolute;
-  left: 10px;
-  bottom: 10px;
+  left: var(--space-lg);
+  bottom: var(--space-lg);
   margin: 0;
-  max-width: calc(100% - 20px);
-  padding: 5px 9px;
+  max-width: calc(100% - 2 * var(--space-lg));
+  padding: var(--space-sm) var(--space-lg);
   border: 1px solid var(--hairline);
-  border-radius: 7px;
-  background: var(--bg);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -114,7 +127,7 @@
   position: static;
   width: auto;
   height: auto;
-  margin-top: 12px;
+  margin-top: var(--space-lg);
   overflow: visible;
   clip-path: none;
   white-space: normal;
@@ -122,11 +135,12 @@
 
 .graph-node-list:focus-within li {
   display: inline-block;
-  margin: 0 10px 6px 0;
+  margin: 0 var(--space-lg) var(--space-sm) 0;
 }
 
 .graph-node-list a {
   color: var(--fg);
+  font-size: var(--text-sm);
 }
 
 @media (max-width: 600px) {

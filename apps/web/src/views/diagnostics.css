@@ -1,71 +1,80 @@
-/* Diagnostics panel (`DiagnosticsPanel.tsx`). */
+/* Diagnostics panel (`DiagnosticsPanel.tsx`). Same dialog recipe as the shortcuts sheet
+   (`../shell/help-menu.css`): scrim, raised surface, hairline rim, --shadow-lg. */
 
 .diag-backdrop {
   position: fixed;
   inset: 0;
   z-index: 70;
-  background: rgb(0 0 0 / 35%);
+  background: var(--scrim);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 6vh 1rem 1rem;
+  padding: 6vh var(--space-xl) var(--space-xl);
   overflow-y: auto;
 }
 
 .diag-panel {
   width: min(34rem, 100%);
-  border-radius: 0.75rem;
-  background: var(--surface-1, #fff);
-  border: 1px solid var(--hairline, rgb(0 0 0 / 12%));
-  box-shadow: 0 16px 48px rgb(0 0 0 / 22%);
-  padding: 1rem 1.25rem 1.25rem;
-  font-size: 0.875rem;
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-xl) var(--space-2xl) var(--space-2xl);
+  font-size: var(--text-sm);
+  color: var(--fg);
 }
 
 .diag-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-md);
 }
 
 .diag-header h2 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
 }
 
 .diag-close {
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: var(--text-base);
   cursor: pointer;
-  padding: 0.25rem 0.4rem;
-  border-radius: 0.35rem;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .diag-close:hover {
-  background: var(--surface-2, rgb(0 0 0 / 6%));
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 .diag-panel section {
-  margin-top: 1rem;
+  margin-top: var(--space-2xl);
 }
 
 .diag-panel h3 {
-  margin: 0 0 0.4rem;
-  font-size: 0.75rem;
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   color: var(--muted);
 }
 
 .diag-row {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-xl);
   align-items: baseline;
-  padding: 0.3rem 0;
-  border-bottom: 1px solid var(--hairline, rgb(0 0 0 / 7%));
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--hairline);
 }
 
 .diag-row:last-of-type {
@@ -81,18 +90,23 @@
   flex: 1;
   min-width: 0;
   word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 
 .diag-value code {
-  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  padding: 0.1em 0.32em;
 }
 
 .diag-ok {
-  color: var(--ok, #2b8a3e);
+  color: var(--ok);
 }
 
 .diag-bad {
-  color: var(--danger, #c92a2a);
+  color: var(--danger);
 }
 
 .diag-muted {
@@ -100,16 +114,23 @@
 }
 
 .diag-refresh {
-  margin-top: 0.75rem;
-  padding: 0.35rem 0.8rem;
-  border-radius: 0.4rem;
-  border: 1px solid var(--hairline, rgb(0 0 0 / 15%));
+  margin-top: var(--space-lg);
+  min-height: 30px;
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
   background: transparent;
-  color: inherit;
+  color: var(--fg-soft);
   font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .diag-refresh:hover {
-  background: var(--surface-2, rgb(0 0 0 / 6%));
+  background: var(--surface-2);
+  color: var(--fg);
 }

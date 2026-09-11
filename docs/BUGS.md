@@ -14,24 +14,74 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
-### B-12 · Two CSS naming schemes in the editor
-**Status:** open · **Severity:** low · **Found:** 2026-09-11
-
-`BlockRowView` uses `.vr-row` / `.vr-content` / `.vr-block-view`; `VirtualJournalDay` uses
-`.block-tree` / `.block-row` / `.block-content-input` for the same concepts. Confusing to style and
-to write selectors against. Fold into one scheme during the design pass.
-
----
-
-### B-13 · UI is visually unfinished
-**Status:** open · **Severity:** medium · **Reported:** 2026-09-11
-
-Verbatim: "looks absolutely barebones… like first project in life design." Needs a real typographic
-scale, spacing rhythm, and focus/hover states.
+Nothing open. When something is reported or noticed, it goes here first — before the fix, not
+after.
 
 ---
 
 ## Fixed
+
+### B-40 · Five CSS variables were used in eight stylesheets and defined nowhere
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-11, during the design pass · **Test:**
+the design tokens now live in one file; `e2e/tests/settings.spec.ts` asserts the theme toggle
+
+`--surface-1`, `--surface-2`, `--border`, `--danger` and `--ok` were referenced by the command
+palette, the keyboard-shortcuts dialog, the context menu, the diagnostics panel and the mobile
+drawers — and declared by nothing. Every one of those fell through to its hardcoded fallback, which
+was some flavour of `#fff`.
+
+In dark mode that means the shortcuts dialog and the command palette rendered as **white sheets
+carrying near-white text**: not unpolished, unreadable. Before/after in the design pass's
+screenshots (`00-before/d-dark-help-keys.png` vs `06-final/`).
+
+This is what an undeclared custom property costs: CSS has no error for it, the fallback silently
+wins, and the failure only appears in the theme you were not looking at. `styles/shell.css` is now
+the single place a raw colour may appear, and it supplies all five for both themes.
+
+Two smaller ones fixed alongside: `.task-filters label { flex-direction: column }` out-specified
+`.task-state-checkbox`, stacking every task-state checkbox above its own word; and priority chips
+were white on `#f5a623` at roughly 1.9:1.
+
+### B-41 · The journal stream reserved 40vh of blank space after every day
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-11, during the design pass
+
+`.vr-outliner` carried `padding-bottom: 40vh` — correct for a page view, where it keeps the last
+block reachable above the fold. But the journal stream renders one outliner *per day*, so the
+padding repeated down the whole stream. It was a good part of why the app read as "a page full of
+holes". Moved to `.page-scroll-inner`, where the intent actually lives.
+
+### B-12 · Two CSS naming schemes in the editor
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-11 · **Tests:** `a-fresh-journal`,
+`connectivity`, `editing`, `remote-device` specs updated to the surviving selectors
+
+`BlockRowView` used `.vr-row` / `.vr-content`; `VirtualJournalDay` used `.block-row` /
+`.block-content-input` for the same concepts, so the placeholder row and a live row were two things
+kept looking alike by hand.
+
+Resolved by making the virtual journal day emit **real outliner markup** rather than a lookalike:
+`.vr-draft` shares one declaration block with `.vr-outliner`, so they cannot drift. Eight dead rules
+for markup nothing renders were deleted. `.vr-draft` is deliberately not named `.vr-outliner` —
+several specs use that class with `.first()` to mean "a materialised tree", and a virtual day
+answering to it would break them silently.
+
+### B-13 · UI was visually unfinished
+**Status:** fixed · **Severity:** medium · **Reported:** 2026-09-11 ("looks absolutely barebones…
+like first project in life design")
+
+`styles/shell.css` is now a design system: an 8-step type scale, a spacing scale, radii, elevation,
+motion with a `prefers-reduced-motion` block, and a full two-theme palette whose contrast was
+computed rather than guessed (light `--muted` 5.34:1, `--accent` 6.23:1; dark 6.14:1 and 8.06:1).
+One focus recipe, audited by tabbing four routes.
+
+The outliner specifically: bullets now align at a given depth (the collapse arrow was rendered
+*in flow*, so a row with children pushed its own bullet ~14px right of a childless sibling — its
+lane is now always reserved); indent guides are painted per ancestor; task markers are fixed-width
+so text after `☐ ◐ ◔ ☑ ☒` starts at one x; and CodeMirror, which ships only a light theme, no
+longer draws a black caret on a black page.
+
+Known and left alone, in the design pass's own words: the top bar has nothing to say in its middle,
+collapsed rows shift ~13px right because the child count sits in flow, the tasks filter bar wraps
+arbitrarily, and the mobile drawers have no scrim. Each needs markup, not CSS.
 
 ### B-39 · `nooklet backup` rewrote the graph it was asked to preserve
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-11, by running it on a real graph

@@ -16,7 +16,7 @@ import "./all-pages.css";
 
 type SortKey = "name" | "updated";
 
-export function AllPagesView(props: { onNavigate?: (t: NavigateTarget) => void }): JSX.Element {
+export function AllPagesView(_props: { onNavigate?: (t: NavigateTarget) => void }): JSX.Element {
   const pages = useAllPages();
   const favorites = useFavoritePages();
   const [query, setQuery] = createSignal("");

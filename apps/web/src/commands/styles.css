@@ -1,12 +1,17 @@
-/* Shared, minimal styles for the command system's popups (palette, slash menu, autocomplete,
-   mobile toolbar). Deliberately unopinionated about theming/colors — the app shell owns the
-   design system; this only fixes the structural/interaction requirements the spec calls out
-   (fixed positioning that escapes clipping, >=44px touch targets, a visible active row). */
+/* Styles for the command system's popups (palette, slash menu, autocomplete, mobile toolbar).
+   Still deliberately host-agnostic about colour: every paint reads a `--cmd-*` custom property
+   with a light-mode fallback, so this package renders standing alone in its own component tests.
+   The app shell owns the design system and supplies those four properties from the real palette
+   (`../styles/shell.css`) — which it did not, before: the palette was `#fff` with `#111` text in
+   dark mode, i.e. a white sheet over a black app.
+
+   Structure and interaction requirements the spec calls out are also here: fixed positioning that
+   escapes clipping, >=44px touch targets, a visible active row. */
 
 .cmd-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--scrim, rgba(0, 0, 0, 0.25));
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -21,17 +26,23 @@
   flex-direction: column;
   background: var(--cmd-bg, #fff);
   color: var(--cmd-fg, #111);
-  border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--cmd-border, #e2e2e2);
+  border-radius: var(--radius-xl, 14px);
+  box-shadow: var(--shadow-lg, 0 8px 30px rgba(0, 0, 0, 0.2));
   overflow: hidden;
 }
 
-.cmd-input {
+/* No focus ring: the palette gives this input focus the moment it opens, so a ring here says
+   nothing — and `.cmd-palette` clips its own overflow, so the ring rendered as a stray coloured
+   line across the bottom of the search field. The dialog IS the focus indicator. */
+.cmd-input,
+.cmd-input:focus,
+.cmd-input:focus-visible {
   border: none;
   outline: none;
   font-size: 16px;
-  padding: 14px 16px;
-  min-height: 44px;
+  padding: var(--space-lg, 12px) var(--space-xl, 16px);
+  min-height: 46px;
   border-bottom: 1px solid var(--cmd-border, #e2e2e2);
   background: transparent;
   color: inherit;
@@ -40,7 +51,7 @@
 .cmd-list {
   list-style: none;
   margin: 0;
-  padding: 4px;
+  padding: var(--space-xs, 4px);
   overflow-y: auto;
 }
 
@@ -48,10 +59,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 44px;
-  padding: 0 12px;
-  border-radius: 6px;
+  gap: var(--space-lg, 12px);
+  min-height: 38px;
+  padding: 0 var(--space-lg, 12px);
+  border-radius: var(--radius-sm, 5px);
+  font-size: var(--text-base, 14px);
   cursor: pointer;
 }
 
@@ -60,13 +72,16 @@
 }
 
 .cmd-row-subtitle {
-  font-size: 12px;
-  opacity: 0.6;
+  flex: none;
+  font-size: var(--text-xs, 12px);
+  color: var(--muted, #6a6a76);
+  opacity: 1;
 }
 
 .cmd-empty {
-  padding: 12px 16px;
-  opacity: 0.6;
+  padding: var(--space-lg, 12px) var(--space-xl, 16px);
+  color: var(--muted, #6a6a76);
+  font-size: var(--text-sm, 13px);
 }
 
 /* Slash menu / autocomplete popups: positioned by the caller (inline style `top`/`left`), fixed
@@ -78,10 +93,12 @@
   max-width: 360px;
   max-height: 280px;
   overflow-y: auto;
+  padding: var(--space-xs, 4px);
   background: var(--cmd-bg, #fff);
   color: var(--cmd-fg, #111);
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--cmd-border, #e2e2e2);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: var(--shadow-md, 0 6px 24px rgba(0, 0, 0, 0.18));
 }
 
 /* Mobile keyboard toolbar (R60-R61): one fixed row, positioned by --kb, never `bottom: 0`.
@@ -96,6 +113,7 @@
   display: flex;
   overflow-x: auto;
   background: var(--cmd-bg, #fff);
+  color: var(--cmd-fg, #111);
   border-top: 1px solid var(--cmd-border, #e2e2e2);
   padding-bottom: var(--sab, 0px);
   box-sizing: content-box;
@@ -115,7 +133,7 @@
   justify-content: center;
   border: none;
   background: transparent;
-  font-size: 18px;
+  font-size: var(--text-lg, 17px);
   color: inherit;
 }
 

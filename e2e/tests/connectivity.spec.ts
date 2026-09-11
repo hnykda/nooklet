@@ -36,7 +36,7 @@ test("the API accepts that token", async ({ page }) => {
 test("search returns rather than spinning forever", async ({ page }) => {
   // Seed something findable through the UI, so this also proves the write path reached the server.
   await page.goto("/journals");
-  const draft = page.locator(".block-content-input").first();
+  const draft = page.locator(".vr-draft-input").first();
   if (await draft.isVisible()) {
     await draft.fill("findable haystack needle");
     await draft.blur();

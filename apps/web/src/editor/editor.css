@@ -1,34 +1,75 @@
 /**
- * Editor styles: the block tree's chrome (bullet, collapse arrow, marker/priority pills,
- * numbering) and the rendering-contract classes (`docs/spec/markdown-grammar.md` §4) shared by
- * the read-only view and the CM6 live-preview decorations (`livePreview.ts`). Reuses the theme
- * tokens already defined in `../styles/shell.css` (`--bg`/`--fg`/`--muted`/`--hairline`/`--accent`)
- * rather than redefining a second palette, so the editor never fights the shell's light/dark
- * switching.
+ * Editor styles: the block tree's chrome (bullet, collapse arrow, indent guides, marker/priority
+ * chips, numbering) and the rendering-contract classes (`docs/spec/markdown-grammar.md` §4) shared
+ * by the read-only view and the CM6 live-preview decorations (`livePreview.ts`). Every colour,
+ * size and step comes from the tokens in `../styles/shell.css` — there is no second palette here.
  *
  * `content-visibility: auto` on every row is BUILD item 6's tier-1 long-page strategy
  * (research/04-editor.md §5) — see `BlockTree.tsx`'s doc comment for the measured number and why
  * tier 2 (virtualization) is not implemented yet.
  */
 
+/* `.vr-draft` is the one-row outliner `views/VirtualJournalDay.tsx` renders for a day that has no
+   page yet. It shares this block rather than copying the numbers, which is the whole point of
+   B-12: the placeholder row and a real row are one set of rules, so they cannot drift. It is
+   deliberately NOT `.vr-outliner` — several e2e specs use `.vr-outliner` to mean "a materialized
+   block tree", and a virtual day answering to that name would make `.first()` pick the wrong one. */
+.vr-outliner,
+.vr-draft {
+  /* Outliner geometry, in one place because four other rules have to agree with it — the row
+     indent, the guide lines, the bullet lane and the hanging collapse arrow are all derived from
+     these three numbers. */
+  --vr-indent: 22px;
+  --vr-gutter: 14px; /* the collapse arrow's lane, reserved whether or not an arrow is there */
+  --vr-bullet-size: 20px;
+  --vr-guide-x: calc(var(--vr-gutter) + var(--vr-bullet-size) / 2);
+  --vr-row-lead: calc(1em * var(--leading-normal));
+
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
 .vr-outliner {
-  padding: 4px 8px 40vh;
-  font-size: 15px;
-  line-height: 1.5;
+  padding: 0 0 var(--space-lg);
+}
+
+@media (max-width: 44rem) {
+  .vr-outliner,
+  .vr-draft {
+    --vr-indent: 17px;
+    --vr-gutter: 12px;
+  }
 }
 
 .vr-row {
   display: flex;
   align-items: flex-start;
-  gap: 4px;
-  padding-left: calc(var(--depth, 0) * 1.4rem);
-  border-radius: 4px;
+  gap: var(--space-xs);
+  padding-left: calc(var(--depth, 0) * var(--vr-indent));
+  border-radius: var(--radius-xs);
   content-visibility: auto;
-  contain-intrinsic-size: auto 1.6rem;
+  contain-intrinsic-size: auto 31px;
   /* research/08-mobile.md §3.5: pan_y keeps vertical scrolling native; the swipe gesture
      (`gestures/swipeAttach.ts`) reads horizontal moves out of the same touch sequence. */
   touch-action: pan-y;
   transition: transform 150ms ease-out;
+
+  /* Indent guides. The rows are a flat list, not nested elements, so the tree has to be painted
+     rather than bordered: one hairline per ancestor level, each sitting exactly under that
+     ancestor's bullet. The repeating gradient starts at the first bullet's centre and the
+     background box is clipped to `depth` indents wide, which yields exactly `depth` lines — a
+     leaf at depth 0 gets a zero-width box and therefore none.
+
+     Without these, "which bullet is this one under" was a question you answered by measuring
+     indentation with your eye, on every row, forever. */
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--guide) 0 1px,
+    transparent 1px var(--vr-indent)
+  );
+  background-position: var(--vr-guide-x) 0;
+  background-size: calc(var(--depth, 0) * var(--vr-indent)) 100%;
+  background-repeat: no-repeat;
 }
 
 /* While a swipe is live, no spring-back transition fights the finger's own movement — restored
@@ -37,20 +78,28 @@
   transition: none;
 }
 
+/* `background-color`, never the `background` shorthand: that would wipe out the indent guides. */
 .vr-row-selected {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background-color: var(--accent-soft);
 }
 
+/* The row being edited is marked by its bullet turning accent (below) rather than by a tint —
+   a highlight under the words you are typing is the one place in the app it is actively in the
+   way. */
 .vr-row-editing {
-  background: transparent;
+  background-color: transparent;
 }
 
 .vr-bullet-wrap {
   display: flex;
   align-items: center;
   flex: none;
-  height: 1.6rem;
   position: relative;
+  /* Always reserve the arrow's lane. It used to be in normal flow and conditionally rendered, so
+     a row with children pushed its bullet ~14px right of a childless sibling at the same depth —
+     the single biggest reason the outline read as ragged. */
+  padding-left: var(--vr-gutter);
+  height: calc(var(--vr-row-lead) + 2 * var(--space-xs));
   /* research/08-mobile.md §3.6: the drag handle disables the browser's own touch handling
      entirely so a long-press-then-drag never turns into a page scroll (`gestures/
      longPressDragAttach.ts`). */
@@ -64,6 +113,10 @@
 }
 
 .vr-collapse-arrow {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  margin-top: -8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -74,8 +127,26 @@
   background: none;
   color: var(--muted);
   cursor: pointer;
-  transition: transform 0.1s ease;
+  border-radius: var(--radius-xs);
+  /* Hidden until you go looking for it: an arrow on every parent row is a column of chevrons
+     down the page, and the thing it controls is already legible from the indentation. It stays
+     put when collapsed, because then it is the only sign content is hidden. */
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
+
+.vr-row:hover .vr-collapse-arrow,
+.vr-collapse-arrow:focus-visible,
+.vr-collapse-arrow.vr-collapsed {
+  opacity: 1;
+}
+
+.vr-collapse-arrow:hover {
+  color: var(--fg);
+}
+
 .vr-collapse-arrow.vr-collapsed svg {
   transform: none;
 }
@@ -83,24 +154,32 @@
   transform: rotate(90deg);
 }
 
+@media (pointer: coarse) {
+  /* No hover to reveal it with. */
+  .vr-collapse-arrow {
+    opacity: 1;
+  }
+}
+
 .vr-bullet {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  min-width: 44px;
-  min-height: 44px;
+  width: var(--vr-bullet-size);
+  height: var(--vr-bullet-size);
+  min-width: var(--touch);
+  min-height: var(--touch);
   margin: -12px;
   border: none;
   background: none;
   cursor: pointer;
+  border-radius: var(--radius-pill);
   touch-action: manipulation;
 }
 @media (pointer: fine) {
   .vr-bullet {
-    min-width: 20px;
-    min-height: 20px;
+    min-width: var(--vr-bullet-size);
+    min-height: var(--vr-bullet-size);
     margin: 0;
   }
 }
@@ -110,25 +189,51 @@
   height: 6px;
   border-radius: 50%;
   background: var(--muted);
+  transition:
+    background var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
+
 .vr-bullet-parent .vr-bullet-dot {
+  background: var(--fg-soft);
+}
+
+.vr-row:hover .vr-bullet-dot {
   background: var(--fg);
 }
 
+/* Where you are typing, shown on the bullet instead of behind the text. Doubled class so this
+   ties `.vr-row:hover` on specificity and wins on order — you are almost always hovering the row
+   you are editing, and "editing" is the more useful of the two things to be told. */
+.vr-row.vr-row-editing .vr-bullet-dot {
+  background: var(--accent);
+}
+
+/* A collapsed parent wears a halo — the standard outliner sign for "there is more in here". The
+   selector rides the arrow's own state class because the bullet has no collapsed class of its
+   own and the arrow is always its immediately preceding sibling (`Bullet.tsx`). Kept last: it is
+   the most specific of the `.vr-bullet-dot` rules. */
+.vr-collapsed + .vr-bullet .vr-bullet-dot {
+  box-shadow: 0 0 0 4px var(--surface-2);
+}
+
+/* Kept tight against the bullet: this sits in normal flow, so every pixel of margin here is a
+   pixel the collapsed row's text is pushed out of line with its siblings'. */
 .vr-child-count {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--muted);
-  margin-left: 2px;
+  margin-left: var(--space-2xs);
+  font-variant-numeric: tabular-nums;
   user-select: none;
 }
 
 .vr-row-main {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: var(--space-sm);
   min-width: 0;
   flex: 1;
-  padding-block: 2px;
+  padding-block: var(--space-xs);
 }
 
 .vr-content {
@@ -143,7 +248,7 @@
      and the only way into the editor was a two-pixel sliver beside the bullet — so a fresh bullet,
      which is exactly when you most want to type, was the hardest one to click. One line's worth of
      height, and full width, makes the whole row work. */
-  min-height: 1.55em;
+  min-height: var(--vr-row-lead);
   width: 100%;
 }
 
@@ -152,6 +257,9 @@
 }
 
 /* CM6 host: identical font metrics to the rendered view so switching modes never shifts text. */
+.vr-surface-host {
+  min-height: var(--vr-row-lead);
+}
 .vr-surface-host .cm-editor {
   font: inherit;
 }
@@ -163,39 +271,101 @@
   display: none;
 }
 
+/* CodeMirror ships a light theme and nothing else, so in dark mode the caret was a black bar on a
+   near-black page and the selection was pale lavender. Both have to be told about the theme. */
+.vr-surface-host .cm-cursor,
+.vr-surface-host .cm-dropCursor {
+  border-left-color: var(--fg);
+}
+/* Specificity rather than `!important`: CodeMirror's own theme reaches (0, 2, 0) via
+   `.cm-editor.cm-focused .cm-selectionBackground`, so a selector one level deeper wins outright. */
+.vr-surface-host .cm-editor .cm-selectionBackground,
+.vr-surface-host .cm-editor.cm-focused .cm-selectionBackground,
+.vr-surface-host .cm-editor .cm-content ::selection {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 /* Task marker / priority / numbering ------------------------------------------------------- */
 
+/* Task markers: the glyph carries the state, so a list is scannable without reading it. The fixed
+   width matters — `☐ ◐ ◔ ☑ ☒` are drawn at different advance widths by every font on every
+   platform, and without it the text after them starts at five different x positions. */
 .vr-marker {
   flex: none;
-  margin-top: 3px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15em;
+  min-height: var(--vr-row-lead);
+  padding: 0;
+  margin-right: var(--space-2xs);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  font-size: var(--text-md);
+  /* Match the row's line box rather than the glyph's own, so the marker sits on the text baseline
+     instead of riding above it. `line-height: 1` made every marker sit slightly high. */
+  line-height: var(--leading-normal);
+  color: var(--marker-todo);
   accent-color: var(--accent);
-}
-.vr-marker-CANCELED {
-  flex: none;
-  font-size: 11px;
-  text-decoration: line-through;
-  color: var(--muted);
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  padding: 0 4px;
+  transition: color var(--dur-fast) var(--ease);
 }
 
+.vr-marker-DOING,
+.vr-marker-NOW {
+  color: var(--marker-doing);
+}
+
+.vr-marker-WAITING {
+  color: var(--marker-waiting);
+}
+
+.vr-marker-DONE {
+  color: var(--marker-done);
+}
+
+.vr-marker-CANCELED {
+  color: var(--marker-canceled);
+  text-decoration: line-through;
+}
+
+/* Finished work recedes: struck through and dimmed, so open items stand out. */
+.vr-row:has(.vr-marker-DONE) .vr-block-view,
+.vr-row:has(.vr-marker-CANCELED) .vr-block-view {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, currentcolor 45%, transparent);
+  color: var(--muted);
+}
+
+/* Tinted, not filled. Filled chips needed light text on a mid-tone fill, which never reached 4.5:1
+   on the yellow and had to be read twice; a tint of the same hue carries the same information at
+   full text contrast, and is a great deal quieter next to the words it is labelling. */
 .vr-priority {
   flex: none;
-  font-size: 10px;
-  font-weight: 700;
-  border-radius: 3px;
-  padding: 0 3px;
-  color: var(--bg);
+  align-self: flex-start;
+  /* Optically centred on the first line of a 15px/1.55 row; the chip's own `em` is 11px, so this
+     cannot be expressed in terms of --vr-row-lead. */
+  margin-top: var(--space-xs);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-label);
+  border-radius: var(--radius-xs);
+  padding: 1px 4px;
 }
 .vr-priority-A {
-  background: #e5484d;
+  color: var(--prio-a);
+  background: color-mix(in srgb, var(--prio-a) 14%, transparent);
 }
 .vr-priority-B {
-  background: #f5a623;
+  color: var(--prio-b);
+  background: color-mix(in srgb, var(--prio-b) 14%, transparent);
 }
 .vr-priority-C {
-  background: #6b6b73;
+  color: var(--prio-c);
+  background: color-mix(in srgb, var(--prio-c) 14%, transparent);
 }
 
 .vr-list-number {
@@ -206,105 +376,148 @@
 
 /* Rendering contract classes (markdown-grammar.md §4) --------------------------------------- */
 
-.vr-page-ref {
+.vr-page-ref,
+.vr-tag,
+.vr-link {
   color: var(--accent);
   text-decoration: none;
+  /* An underline that only appears under the words, not under descenders, and only on hover:
+     a page full of permanently underlined refs is unreadable, and a page with no affordance at
+     all is undiscoverable. */
+  text-underline-offset: 0.16em;
+  text-decoration-thickness: from-font;
+  transition: color var(--dur-fast) var(--ease);
 }
-.vr-page-ref:hover {
+
+.vr-page-ref:hover,
+.vr-tag:hover,
+.vr-link:hover {
+  color: var(--accent-strong);
   text-decoration: underline;
 }
+
 .vr-page-ref.vr-ref-new {
   color: var(--muted);
   font-style: italic;
 }
 
-.vr-tag {
-  color: var(--accent);
-  text-decoration: none;
-}
-.vr-tag:hover {
-  text-decoration: underline;
-}
-
 .vr-block-ref {
-  color: var(--muted);
-  background: color-mix(in srgb, var(--hairline) 60%, transparent);
-  border-radius: 4px;
-  padding: 0 4px;
+  color: var(--fg-soft);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-xs);
+  box-decoration-break: clone;
   cursor: pointer;
 }
 
+.vr-block-ref:hover {
+  color: var(--fg);
+}
+
 .vr-embed {
-  border: 1px dashed var(--hairline);
-  border-radius: 6px;
-  padding: 6px 8px;
-  color: var(--muted);
-  margin: 4px 0;
+  border-left: 2px solid var(--hairline);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-2);
+  padding: var(--space-sm) var(--space-md);
+  color: var(--fg-soft);
+  margin: var(--space-xs) 0;
 }
 .vr-embed-error {
-  color: #e5484d;
+  color: var(--danger);
+  background: transparent;
+  border-left-color: var(--danger);
 }
 
 .vr-macro-unknown {
   color: var(--muted);
-  font-family: ui-monospace, monospace;
-  font-size: 0.9em;
-}
-
-.vr-link {
-  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
 }
 
 .vr-image {
   max-width: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: block;
 }
 
 .vr-highlight {
-  background: color-mix(in srgb, #f5d90a 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 26%, transparent);
   color: inherit;
-  border-radius: 2px;
-  padding: 0 1px;
+  border-radius: var(--radius-xs);
+  padding: 0 2px;
+  box-decoration-break: clone;
 }
 
 .vr-inline-code,
 .cm-inline-code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.9em;
-  background: color-mix(in srgb, var(--hairline) 70%, transparent);
-  border-radius: 3px;
-  padding: 0 3px;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  color: var(--fg-soft);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  padding: 0.1em 0.32em;
+  box-decoration-break: clone;
 }
 
 .vr-math {
-  font-family: ui-monospace, monospace;
-  color: var(--muted);
+  font-family: var(--font-mono);
+  color: var(--fg-soft);
 }
 
 .vr-checkbox {
   vertical-align: -1px;
+  accent-color: var(--accent);
 }
 
+/* Browser-default heading sizes are calibrated for a document, not for a 15px outline row: a
+   default `h1` is 2em — 30px — inside a block whose siblings are 15px, which makes one bullet
+   shout over the whole page. Scaled to a hierarchy that still reads at outline density. */
 .vr-heading {
   margin: 0;
-  line-height: 1.3;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  font-weight: var(--weight-semibold);
+}
+h1.vr-heading {
+  font-size: 1.45em;
+}
+h2.vr-heading {
+  font-size: 1.25em;
+}
+h3.vr-heading {
+  font-size: 1.1em;
+}
+h4.vr-heading,
+h5.vr-heading,
+h6.vr-heading {
+  font-size: 1em;
+}
+h5.vr-heading,
+h6.vr-heading {
+  color: var(--fg-soft);
 }
 
 .vr-fence {
-  background: color-mix(in srgb, var(--hairline) 40%, transparent);
-  border-radius: 6px;
-  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  margin: var(--space-xs) 0;
   overflow-x: auto;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.9em;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  line-height: 1.5;
+  color: var(--fg-soft);
+  tab-size: 2;
 }
 
 .vr-quote {
-  border-left: 3px solid var(--hairline);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   margin: 0;
-  padding-left: 10px;
-  color: var(--muted);
+  padding-left: var(--space-lg);
+  /* Quoted text is still text, not metadata — `--muted` made every quotation look like a caption
+     no one was meant to read. */
+  color: var(--fg-soft);
 }
 
 .vr-table {
@@ -312,17 +525,23 @@
   max-width: 100%;
   overflow-x: auto;
   display: block;
+  font-size: 0.94em;
 }
 .vr-table th,
 .vr-table td {
   border: 1px solid var(--hairline);
-  padding: 4px 8px;
+  padding: var(--space-xs) var(--space-md);
+  text-align: left;
+}
+.vr-table th {
+  background: var(--surface-2);
+  font-weight: var(--weight-semibold);
 }
 
 .vr-hr {
   border: none;
   border-top: 1px solid var(--hairline);
-  margin: 8px 0;
+  margin: var(--space-lg) 0;
 }
 
 /* Zoom breadcrumb: page / ancestors / current block. Rendered only while zoomed — see
@@ -332,9 +551,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px;
-  margin-bottom: 10px;
-  font-size: 13px;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 
@@ -349,63 +568,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease);
 }
 
 .vr-crumb:hover {
   color: var(--accent);
-  text-decoration: underline;
 }
 
 .vr-crumb-sep {
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 .vr-crumb-current {
   color: var(--fg);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   max-width: 34ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Task markers: the glyph carries the state, so a list is scannable without reading it. */
-.vr-marker {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0 4px 0 0;
-  font-size: 15px;
-  color: var(--muted);
-  /* Match the row's line box rather than the glyph's own, so the marker sits on the text baseline
-     instead of riding above it. `line-height: 1` made every marker sit slightly high. */
-  line-height: 1.55;
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  min-height: 1.55em;
-}
-
-.vr-marker-DOING,
-.vr-marker-NOW {
-  color: #e8890c;
-}
-
-.vr-marker-WAITING {
-  color: #d4a017;
-}
-
-.vr-marker-DONE {
-  color: #2b8a3e;
-}
-
-.vr-marker-CANCELED {
-  color: var(--muted);
-}
-
-/* Finished work recedes: struck through and dimmed, so open items stand out. */
-.vr-row:has(.vr-marker-DONE) .vr-block-view,
-.vr-row:has(.vr-marker-CANCELED) .vr-block-view {
-  text-decoration: line-through;
-  opacity: 0.55;
 }

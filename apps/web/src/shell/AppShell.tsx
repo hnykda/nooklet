@@ -20,6 +20,7 @@ import {
   diagnosticsOpen,
   openDiagnostics,
 } from "../views/DiagnosticsPanel.js";
+import { closeSettings, SettingsPanel, settingsOpen } from "../views/SettingsPanel.js";
 import { HelpMenu } from "./HelpMenu.js";
 import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
@@ -101,6 +102,11 @@ export function AppShell(props: { children?: JSX.Element }) {
       <HelpMenu />
       <Show when={diagnosticsOpen()}>
         <DiagnosticsPanel onClose={closeDiagnostics} />
+      </Show>
+      {/* Raised by the help menu and by `app.openSettings` (Cmd/Ctrl+,), which used to navigate to
+          a route that does not exist — see `../views/SettingsPanel.tsx`. */}
+      <Show when={settingsOpen()}>
+        <SettingsPanel onClose={closeSettings} />
       </Show>
     </div>
   );

@@ -10,7 +10,7 @@ import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { SearchHit, SearchInput } from "../data/api-client.js";
 import { useSearchResults } from "../data/store.js";
-import { goToTarget, pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
+import { pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
 import { SearchSnippet } from "./SearchSnippet.js";
 
 const MODES = ["hybrid", "keyword", "semantic"] as const;

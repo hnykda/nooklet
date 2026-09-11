@@ -10,9 +10,18 @@
  * than not listing it.
  */
 
-import { Bug, CircleQuestionMark, Keyboard, Lightbulb, ScrollText, X } from "lucide-solid";
+import {
+  Bug,
+  CircleQuestionMark,
+  Keyboard,
+  Lightbulb,
+  ScrollText,
+  Settings,
+  X,
+} from "lucide-solid";
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { useCommands } from "../commands/index.js";
+import { openSettings } from "../views/SettingsPanel.js";
 import "./help-menu.css";
 
 const REPO = "https://github.com/hnykda/nooklet";
@@ -89,6 +98,19 @@ export function HelpMenu(): JSX.Element {
           {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the backdrop dismissing a click on the menu itself. */}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: only stops propagation. */}
           <div class="help-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+            {/* The only pointer route into settings, deliberately just one: the panel is also on
+                Cmd/Ctrl+, and in the command palette, and a second button elsewhere in the shell
+                would be a second thing to keep in sync for no new reach. */}
+            <button
+              type="button"
+              class="help-item"
+              onClick={() => {
+                setOpen(false);
+                openSettings();
+              }}
+            >
+              <Settings size={15} /> Settings
+            </button>
             <button
               type="button"
               class="help-item"

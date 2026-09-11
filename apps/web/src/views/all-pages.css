@@ -1,52 +1,56 @@
-/* The all-pages list (`AllPagesView.tsx`). */
+/* The all-pages list (`AllPagesView.tsx`). Tokens from `../styles/shell.css`. */
 
 .all-pages-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
 }
 
-.all-pages-header h1 {
-  margin: 0;
-  font-size: 20px;
-}
-
+/* `h1` sizing is shared with the other view titles — see `../styles/views.css`. */
 .all-pages-count {
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
 }
 
 .all-pages-filter {
   flex: 1 1 12rem;
   min-width: 8rem;
-  padding: 6px 9px;
-  border: 1px solid var(--hairline);
-  border-radius: 7px;
-  background: transparent;
-  color: inherit;
+  min-height: 30px;
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .all-pages-toggle {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 13px;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
   color: var(--muted);
+  cursor: pointer;
+}
+
+.all-pages-toggle input {
+  accent-color: var(--accent);
 }
 
 .all-pages-sort {
   font: inherit;
-  font-size: 13px;
-  padding: 5px 6px;
-  border: 1px solid var(--hairline);
-  border-radius: 7px;
-  background: transparent;
-  color: inherit;
+  font-size: var(--text-sm);
+  min-height: 30px;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--fg-soft);
+  cursor: pointer;
 }
 
 .all-pages-list {
@@ -55,31 +59,61 @@
   padding: 0;
 }
 
+/* A long list of names, read by scanning: dense rows, a hairline to keep the eye on one line,
+   and a hover fill that extends into the gutter so the whole row reads as the target. */
 .all-pages-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid var(--hairline);
+  gap: var(--space-sm);
+  border-radius: var(--radius-sm);
+  padding-inline: var(--space-sm);
+  margin-inline: calc(-1 * var(--space-sm));
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.all-pages-row:not(:last-child) {
+  box-shadow: inset 0 -1px 0 var(--hairline);
+}
+
+.all-pages-row:hover {
+  background: var(--surface-2);
 }
 
 .all-pages-star {
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--text-base);
   cursor: pointer;
-  padding: 6px 2px;
+  padding: var(--space-sm) var(--space-2xs);
   line-height: 1;
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+/* Only there when it is useful: an empty star on every row is 127 pieces of chrome asking to be
+   clicked. A starred page keeps its star permanently, because then it is information. */
+.all-pages-row:hover .all-pages-star,
+.all-pages-star:focus-visible,
+.all-pages-star[aria-pressed="true"] {
+  opacity: 1;
 }
 
 .all-pages-star[aria-pressed="true"] {
-  color: #e8b339;
+  color: var(--warn);
 }
 
 .all-pages-name {
   flex: 1;
-  padding: 9px 0;
+  min-width: 0;
+  /* Block, not flex: `text-overflow: ellipsis` needs a block formatting context, and a long
+     namespaced page name is exactly what has to elide rather than push the star off the row. */
+  padding: var(--space-md) 0;
+  line-height: var(--leading-snug);
   color: var(--fg);
+  font-size: var(--text-base);
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -92,5 +126,16 @@
 
 .all-pages-empty {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
+}
+
+@media (pointer: coarse) {
+  /* Nothing to hover with — the star has to be reachable, and the row has to be tappable. */
+  .all-pages-star {
+    opacity: 1;
+  }
+
+  .all-pages-name {
+    min-height: var(--touch);
+  }
 }

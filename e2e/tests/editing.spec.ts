@@ -20,7 +20,7 @@ import { expect, type Page, test } from "@playwright/test";
  */
 async function openJournal(page: Page): Promise<void> {
   await page.goto("/journals");
-  const virtualDraft = page.locator(".block-content-input").first();
+  const virtualDraft = page.locator(".vr-draft-input").first();
   const outliner = page.locator(".vr-outliner").first();
 
   await expect(virtualDraft.or(outliner)).toBeVisible();
