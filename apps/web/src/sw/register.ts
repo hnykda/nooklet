@@ -8,16 +8,32 @@
  */
 import { registerSW } from "virtual:pwa-register";
 
+/** How often to ask the server whether a newer build exists, while the app stays open. */
+const UPDATE_CHECK_MS = 60 * 60 * 1000;
+
 export function registerServiceWorker(): void {
   if (!("serviceWorker" in navigator)) return;
-  registerSW({
+
+  const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
-      // TODO(views): surface a real "update available" affordance instead of a console log.
-      console.info("[nooklet] an update is available; reload to apply it.");
+      // Apply it, rather than logging and hoping. Under `registerType: "autoUpdate"` the new
+      // worker has already taken control; this reloads the page onto the new assets.
+      //
+      // Safe with respect to unsaved text: a pending edit is flushed on `pagehide` and
+      // `visibilitychange` (`editor/BlockTree.tsx`), both of which fire before the reload.
+      //
+      // This used to only `console.info`, which meant a browser kept serving the first build it
+      // had ever cached — the app silently ran old code against a newer server indefinitely.
+      void updateSW(true);
     },
     onOfflineReady() {
       console.info("[nooklet] ready to work offline.");
+    },
+    onRegisteredSW(_url, registration) {
+      // A service worker only checks for a new version on navigation, so a long-lived tab would
+      // otherwise never notice a deploy.
+      if (registration) setInterval(() => void registration.update(), UPDATE_CHECK_MS);
     },
   });
 }

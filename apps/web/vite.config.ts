@@ -13,7 +13,11 @@ export default defineConfig({
       // shell only, nothing custom (no push/share-target handler yet — that's later work, and it
       // would be the trigger to switch to injectManifest + hand-written SW + workbox-* runtime
       // deps). generateSW needs no extra runtime dependencies, keeping the dependency list tight.
-      registerType: "prompt",
+      // autoUpdate, NOT "prompt": with "prompt" the app only updates if something calls the
+      // update function, and `sw/register.ts` merely logged to the console — so a browser stayed
+      // pinned to the first build it ever cached and every subsequent fix was invisible to it.
+      // For a self-hosted app the client should match the server it is talking to.
+      registerType: "autoUpdate",
       injectRegister: false,
       manifest: false, // we ship public/manifest.webmanifest directly
       workbox: {

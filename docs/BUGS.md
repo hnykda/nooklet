@@ -122,6 +122,31 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 
 ## Fixed
 
+### B-20 · The app never updated — a browser stayed pinned to the first build it cached
+**Status:** fixed · **Reported:** 2026-09-11 as search still hanging and "agents can't see this
+window" persisting after both had been fixed and verified
+
+`vite.config.ts` used `registerType: "prompt"`, which only applies an update when something calls
+the update function — and `sw/register.ts`'s `onNeedRefresh` did nothing but `console.info`. So a
+browser kept serving the first build it had ever precached, forever. Every fix shipped after that
+first visit was invisible, and the symptoms looked like unfixed bugs.
+
+Proven by driving a *fresh* browser (no service worker) at the same server and the user's real
+graph: `/api/session` 200, `/api/v1/search` 200, 48 results, zero console errors, live UI
+connected. The code was correct; the cache was not.
+
+Now `registerType: "autoUpdate"`, `onNeedRefresh` actually applies the update, and a long-lived
+tab re-checks hourly (a service worker otherwise only looks for a new version on navigation).
+Safe for unsaved text because a pending edit already flushes on `pagehide`/`visibilitychange`
+(B-04).
+
+**To unstick a browser that is still on an old build:** hard-reload twice, or DevTools →
+Application → Service Workers → Unregister, then reload.
+
+**Lesson:** when a verified fix "doesn't work" for the user but passes in CI, suspect the
+delivery path before the code. `pnpm e2e` rebuilds and uses a fresh browser context every run, so
+it could never have caught this.
+
 ### B-19 · The service worker served a shell with no token, so reloads lost credentials
 **Status:** fixed · **Test:** `e2e/tests/remote-device.spec.ts`, plus every reload-based editing test
 **Found:** 2026-09-11, while adding the connect screen
