@@ -39,7 +39,7 @@ async function rpc(
   return { status: res.status, body };
 }
 
-const ORIGINAL_19_TOOL_NAMES = [
+const CORE_TOOL_NAMES = [
   // The original 16 (docs/spec/mcp-tools.md).
   "batch",
   "block_delete",
@@ -62,6 +62,9 @@ const ORIGINAL_19_TOOL_NAMES = [
   "asset_upload",
   // M3/ADR 010 embeddings.
   "related_find",
+  // Backend health, so a client (or an agent deciding whether semantic search is worth trying)
+  // can tell a broken backend from a slow one.
+  "system_diagnostics",
 ].sort();
 
 const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();
@@ -76,10 +79,10 @@ describe("MCP tools/list", () => {
     }>;
     // A plain write-scoped token has no ui:control (ADR 015 §7), so it must not see the 5 ui_*
     // tools at all (rule 10: "not even listed for this token") — CORE_OPS.length (24) minus those
-    // 5 is the original 19.
+    // i.e. every core op except the UI-control ones.
     expect(tools).toHaveLength(CORE_OPS.length - UI_TOOL_NAMES.length);
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(ORIGINAL_19_TOOL_NAMES);
+    expect(names).toEqual(CORE_TOOL_NAMES);
     const graphOverview = tools.find((t) => t.name === "graph_overview");
     expect(graphOverview?.annotations).toMatchObject({
       readOnlyHint: true,

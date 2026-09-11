@@ -93,7 +93,7 @@ Every view that can fail needs an error state. Same applies to the references pa
 ---
 
 ### B-11 · No diagnostics surface
-**Status:** open · **Severity:** medium · **Requested:** 2026-09-11
+**Status:** fixed · **Test:** `e2e/tests/diagnostics.spec.ts` · **Status was:** open · **Severity:** medium · **Requested:** 2026-09-11
 
 Nothing in the UI says whether the client reached the API, whether it has a token (and if not,
 why), how big the search index is, or whether embedding indexing is running. B-01 was invisible for

@@ -1,0 +1,115 @@
+/* Diagnostics panel (`DiagnosticsPanel.tsx`). */
+
+.diag-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgb(0 0 0 / 35%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 1rem 1rem;
+  overflow-y: auto;
+}
+
+.diag-panel {
+  width: min(34rem, 100%);
+  border-radius: 0.75rem;
+  background: var(--surface-1, #fff);
+  border: 1px solid var(--hairline, rgb(0 0 0 / 12%));
+  box-shadow: 0 16px 48px rgb(0 0 0 / 22%);
+  padding: 1rem 1.25rem 1.25rem;
+  font-size: 0.875rem;
+}
+
+.diag-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.diag-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.diag-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.35rem;
+}
+
+.diag-close:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+}
+
+.diag-panel section {
+  margin-top: 1rem;
+}
+
+.diag-panel h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.diag-row {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--hairline, rgb(0 0 0 / 7%));
+}
+
+.diag-row:last-of-type {
+  border-bottom: none;
+}
+
+.diag-label {
+  flex: 0 0 10rem;
+  color: var(--muted);
+}
+
+.diag-value {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.diag-value code {
+  font-size: 0.8125rem;
+}
+
+.diag-ok {
+  color: var(--ok, #2b8a3e);
+}
+
+.diag-bad {
+  color: var(--danger, #c92a2a);
+}
+
+.diag-muted {
+  color: var(--muted);
+}
+
+.diag-refresh {
+  margin-top: 0.75rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--hairline, rgb(0 0 0 / 15%));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.diag-refresh:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+}

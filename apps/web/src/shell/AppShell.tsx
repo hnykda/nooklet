@@ -8,17 +8,30 @@
  * NOT know anything about pages/blocks/editing — those are `TODO(views)` seams below.
  */
 import { A } from "@solidjs/router";
-import { type JSX, onCleanup, onMount } from "solid-js";
+import { type JSX, onCleanup, onMount, Show } from "solid-js";
 import { useSyncStatus } from "../data/store.js";
 // ADR 015 §2.6: the persistent live-UI-control consent badge — see ../live/ConsentBadge.tsx.
 import { ConsentBadge } from "../live/index.js";
 import { platform } from "../platform/index.js";
+import {
+  closeDiagnostics,
+  DiagnosticsPanel,
+  diagnosticsOpen,
+  openDiagnostics,
+} from "../views/DiagnosticsPanel.js";
 import "../styles/shell.css";
 
+/** The sync state, doubling as the way into Diagnostics — "why does it say that?" is exactly
+ * the question this indicator provokes, so the answer lives one click away from it. */
 function SyncIndicator() {
   const status = useSyncStatus();
   return (
-    <span class="app-sync-indicator">
+    <button
+      type="button"
+      class="app-sync-indicator"
+      title="Show diagnostics"
+      onClick={() => openDiagnostics()}
+    >
       {(() => {
         const s = status();
         if (!s) return "";
@@ -26,7 +39,7 @@ function SyncIndicator() {
         if (s.pendingCount > 0) return `syncing (${s.pendingCount})`;
         return "synced";
       })()}
-    </span>
+    </button>
   );
 }
 
@@ -52,6 +65,9 @@ export function AppShell(props: { children?: JSX.Element }) {
       <div class="page-scroll">
         <div class="page-scroll-inner">{props.children}</div>
       </div>
+      <Show when={diagnosticsOpen()}>
+        <DiagnosticsPanel onClose={closeDiagnostics} />
+      </Show>
     </div>
   );
 }

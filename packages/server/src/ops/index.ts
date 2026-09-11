@@ -17,6 +17,7 @@ import { blockMove } from "./block-move.js";
 import { blockRead } from "./block-read.js";
 import { blockUpdate } from "./block-update.js";
 import { changesSince } from "./changes-since.js";
+import { systemDiagnostics } from "./diagnostics.js";
 import { graphOverview } from "./graph-overview.js";
 import { pageAppend } from "./page-append.js";
 import { pageBacklinks } from "./page-backlinks.js";
@@ -31,6 +32,7 @@ import { search } from "./search.js";
 
 export const CORE_OPS = [
   graphOverview,
+  systemDiagnostics,
   pageList,
   pageRead,
   blockRead,
