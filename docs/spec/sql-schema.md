@@ -346,7 +346,10 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
     on false, the op is recorded in `op` with `status = 'noop'` and no state changes.
 
     - **`page.create`** `{name, journalDay, properties?, createdAt}` — computes
-      `key = normalizePageName(name)`. If a non-deleted page with that `key` already exists
+      `key = normalizePageName(name)`. **ADR 018:** when `journalDay` is a valid day, `name` is
+      DERIVED from it (`isoJournalName`, `2026-09-07`) and the payload's own `name` is ignored for
+      state purposes — the log keeps what the op carried, live state has one answer. The
+      derivation is pure, so a `rebuild()` replay reaches the same names and `verify` stays clean. If a non-deleted page with that `key` already exists
       under a **different** id (two devices created the same page name offline), the op is
       `status = 'rejected'` and no row is inserted — `page.key` MUST be enforced unique
       (partial unique index, `WHERE deleted_at IS NULL`) at the DB level as the backstop.
@@ -357,7 +360,10 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
       `page.create` was rejected this way (re-parenting any blocks it already placed under the
       losing id) is a sync-protocol concern for a future sync spec, not this schema — this
       schema only guarantees `page.key` is never duplicated (see Open issues).
-    - **`page.rename`** `{name}` — LWW on `(name, key)` as one field via `name_hlc`. Same
+    - **`page.rename`** `{name}` — LWW on `(name, key)` as one field via `name_hlc`. Carries the
+      same journal-day derivation as `page.create`, so a rename of a journal page lands on the ISO
+      name rather than being refused — which is what lets a migration rename through ordinary ops.
+      Same
       same-key-different-id check as `page.create` (reject if colliding with another live page).
       `applyOps` does **not** rewrite other blocks' `[[Old Name]]` text: that propagation, if
       wanted, is the caller's job — plan it as an explicit batch of `block.text` ops (discovered

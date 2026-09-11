@@ -247,8 +247,9 @@ Journals:
 - A calendar opens any day as a virtual page. A journal page is created only when it gets a
   block; an emptied journal page is removed by a server job. Lists, search, and the API never
   show empty days.
-- Journal titles are display-only; the day is the identity. References in any recognized date
-  format resolve to the day.
+- Journal titles are display-only; the day is the identity. The page is *stored* under its ISO
+  name (`2026-09-07`) and the title on screen is a user setting; references in any recognized date
+  format resolve to the same day, and to the same reference key. ADR 018.
 
 Namespaces:
 - `A/B/C` is stored as the name. The page shows its children as a tree, the breadcrumb shows the
