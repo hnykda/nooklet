@@ -1,0 +1,96 @@
+/* The all-pages list (`AllPagesView.tsx`). */
+
+.all-pages-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.all-pages-header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.all-pages-count {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.all-pages-filter {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  padding: 6px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.all-pages-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.all-pages-sort {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+}
+
+.all-pages-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.all-pages-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.all-pages-star {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 6px 2px;
+  line-height: 1;
+}
+
+.all-pages-star[aria-pressed="true"] {
+  color: #e8b339;
+}
+
+.all-pages-name {
+  flex: 1;
+  padding: 9px 0;
+  color: var(--fg);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.all-pages-name:hover {
+  color: var(--accent);
+}
+
+.all-pages-empty {
+  color: var(--muted);
+  font-size: 13px;
+}

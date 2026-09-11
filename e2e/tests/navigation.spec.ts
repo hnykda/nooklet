@@ -1,0 +1,100 @@
+/**
+ * The surfaces that make the app navigable rather than just editable: the sidebar with
+ * favourites, the all-pages list, history buttons, and Cmd+Enter task cycling.
+ */
+import { expect, type Page, test } from "@playwright/test";
+
+async function api(page: Page, op: string, body: unknown): Promise<unknown> {
+  return page.evaluate(
+    async ([op, body]) => {
+      const token = (window as unknown as { __NOOKLET__?: { token?: string } }).__NOOKLET__?.token;
+      const res = await fetch(`/api/v1/${op}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`${op} -> ${res.status} ${await res.text()}`);
+      return res.json();
+    },
+    [op, body] as const,
+  );
+}
+
+test("the all-pages list shows pages and filters", async ({ page }) => {
+  await page.goto("/journals");
+  await api(page, "page.create", { name: "Zebra Notes", if_exists: "return" });
+  await api(page, "page.create", { name: "Aardvark Notes", if_exists: "return" });
+
+  await page.goto("/pages");
+  const list = page.locator(".all-pages-list");
+  await expect(list).toContainText("Zebra Notes");
+  await expect(list).toContainText("Aardvark Notes");
+
+  await page.locator(".all-pages-filter").fill("Zebra");
+  await expect(list).toContainText("Zebra Notes");
+  await expect(list).not.toContainText("Aardvark Notes");
+});
+
+test("starring a page puts it in the sidebar, and it survives a reload", async ({ page }) => {
+  await page.goto("/journals");
+  await api(page, "page.create", { name: "Starred Page", if_exists: "return" });
+
+  await page.goto("/pages");
+  await page.locator(".all-pages-filter").fill("Starred Page");
+  const row = page.locator(".all-pages-row").first();
+  await row.locator(".all-pages-star").click();
+  await expect(row.locator(".all-pages-star")).toHaveAttribute("aria-pressed", "true");
+
+  // Open the sidebar; the favourite should be listed.
+  await page.locator(".app-sidebar-toggle").click();
+  const sidebar = page.locator(".app-sidebar");
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar).toContainText("Favourites");
+  await expect(sidebar).toContainText("Starred Page");
+
+  // It is a synced page property, not browser state, so a reload keeps it.
+  await page.reload();
+  await page.locator(".app-sidebar-toggle").click();
+  await expect(page.locator(".app-sidebar")).toContainText("Starred Page");
+});
+
+test("back and forward move through history", async ({ page }) => {
+  await page.goto("/journals");
+  await page.locator(".app-history button[aria-label='Back']").waitFor();
+  await page.goto("/pages");
+  await expect(page).toHaveURL(/\/pages/);
+
+  await page.locator(".app-history button[aria-label='Back']").click();
+  await expect(page).toHaveURL(/\/journals/);
+  await page.locator(".app-history button[aria-label='Forward']").click();
+  await expect(page).toHaveURL(/\/pages/);
+});
+
+test("Cmd/Ctrl+Enter cycles a task's state", async ({ page }) => {
+  await page.goto("/journals");
+  await api(page, "page.create", { name: "Task Cycle", if_exists: "return" });
+  await api(page, "page.append", { page: "Task Cycle", markdown: "- plain line" });
+
+  await page.goto("/page/Task%20Cycle");
+  const outliner = page.locator(".vr-outliner").first();
+  await outliner.locator(".vr-block-view").first().click();
+  await expect(page.locator(".cm-content")).toBeFocused();
+
+  // Cycling a plain block makes it a task, then advances through the marker states.
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(outliner.locator(".vr-marker").first()).toBeVisible();
+});
+
+test("page properties start collapsed", async ({ page }) => {
+  await page.goto("/journals");
+  await api(page, "page.create", { name: "Props Page", if_exists: "return" });
+  await api(page, "page.append", { page: "Props Page", markdown: "- body" });
+
+  await page.goto("/page/Props%20Page");
+  const toggle = page.locator(".page-properties-toggle");
+  await expect(toggle).toBeVisible();
+  // The editor for properties is hidden until asked for, so it stops pushing content down.
+  await expect(page.locator(".page-property-add")).toHaveCount(0);
+  await toggle.click();
+  await expect(page.locator(".page-property-add")).toBeVisible();
+});

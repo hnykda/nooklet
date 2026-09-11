@@ -792,3 +792,33 @@
     flex-wrap: wrap;
   }
 }
+
+/* Page properties collapse by default: metadata you set occasionally and read rarely should not
+   push the page's actual content down on every page. */
+.page-properties-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.page-properties-toggle:hover {
+  color: var(--fg);
+}
+
+.page-properties-caret {
+  font-size: 10px;
+}
+
+.page-properties-count {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+}

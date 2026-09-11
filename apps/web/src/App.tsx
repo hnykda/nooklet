@@ -19,6 +19,7 @@ import { bootstrapConfig } from "./data/bootstrap.js";
 import { CaptureRoute } from "./routes/CaptureRoute.js";
 import { JournalsRoute } from "./routes/JournalsRoute.js";
 import { PageRoute } from "./routes/PageRoute.js";
+import { PagesRoute } from "./routes/PagesRoute.js";
 import { SearchRoute } from "./routes/SearchRoute.js";
 import { TasksRoute } from "./routes/TasksRoute.js";
 import { AppShell } from "./shell/AppShell.js";
@@ -55,6 +56,7 @@ export function App() {
         <Route path="/" component={() => <Navigate href="/journals" />} />
         <Route path="/journal/today" component={() => <Navigate href="/journals" />} />
         <Route path="/journals" component={JournalsRoute} />
+        <Route path="/pages" component={PagesRoute} />
         <Route path="/page/*name" component={PageRoute} />
         <Route path="/search" component={SearchRoute} />
         <Route path="/tasks" component={TasksRoute} />

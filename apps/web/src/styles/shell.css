@@ -164,3 +164,45 @@ input {
 .app-sync-indicator:hover {
   background: var(--surface-2, rgb(0 0 0 / 6%));
 }
+
+.app-sidebar-toggle {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.app-sidebar-toggle:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+  color: var(--fg);
+}
+
+.app-shell-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.app-history {
+  display: flex;
+  gap: 2px;
+}
+
+.app-history button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.app-history button:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+  color: var(--fg);
+}

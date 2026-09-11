@@ -1,0 +1,78 @@
+/* Left sidebar (`Sidebar.tsx`), shown while `<body>` carries `sidebar-open`. */
+
+.app-sidebar {
+  flex: 0 0 15rem;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 12px 10px 24px;
+  border-right: 1px solid var(--hairline);
+  font-size: 13px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.sidebar-nav a,
+.sidebar-section a {
+  display: block;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--fg);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-nav a:hover,
+.sidebar-section a:hover {
+  background: var(--surface-2, rgb(0 0 0 / 6%));
+}
+
+.sidebar-nav a.active {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.sidebar-section {
+  margin-bottom: 16px;
+}
+
+.sidebar-section h2 {
+  margin: 0 0 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.sidebar-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The shell becomes a row once the sidebar is showing; the scroll container stays the only
+   scrollable region (research/08 §3.1), with the sidebar scrolling independently. */
+body.sidebar-open .app-shell-body {
+  display: flex;
+  min-height: 0;
+}
+
+@media (max-width: 44rem) {
+  /* On a phone the sidebar covers the content instead of squeezing it. */
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: 78vw;
+    max-width: 18rem;
+    background: var(--surface-1, #fff);
+    box-shadow: 0 0 40px rgb(0 0 0 / 20%);
+  }
+}

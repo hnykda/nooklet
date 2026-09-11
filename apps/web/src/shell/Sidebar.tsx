@@ -1,0 +1,94 @@
+/**
+ * Left sidebar: navigation, favourites, and recently edited pages.
+ *
+ * Favourites are a synced page property (`favorite`), not browser state — the list follows you to
+ * every device, and an agent can read or set it like any other property. See
+ * `data/store.ts#useFavoritePages`.
+ *
+ * Toggled by the existing `app.toggleSidebar` command, which flips a `sidebar-open` class on
+ * `<body>`; this component reads that rather than owning a second source of truth.
+ */
+
+import { A } from "@solidjs/router";
+import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { useAllPages, useFavoritePages } from "../data/store.js";
+import "./sidebar.css";
+
+function useBodyClass(name: string): () => boolean {
+  const [on, setOn] = createSignal(
+    typeof document !== "undefined" && document.body.classList.contains(name),
+  );
+  onMount(() => {
+    // The class is toggled imperatively by a command, so observe it rather than duplicating the
+    // state here and risking the two drifting apart.
+    const observer = new MutationObserver(() => setOn(document.body.classList.contains(name)));
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    onCleanup(() => observer.disconnect());
+  });
+  return on;
+}
+
+/** Most recently edited pages, journals excluded — the journal stream is its own view. */
+function recentPages(all: ReturnType<typeof useAllPages>): ReturnType<typeof useAllPages> {
+  return all;
+}
+
+export function Sidebar(): JSX.Element {
+  const open = useBodyClass("sidebar-open");
+  const favorites = useFavoritePages();
+  const allPages = useAllPages();
+
+  const recent = () =>
+    recentPages(allPages)()
+      .filter((p) => p.journalDay === null)
+      .slice(0, 12);
+
+  return (
+    <Show when={open()}>
+      <aside class="app-sidebar" aria-label="Sidebar">
+        <nav class="sidebar-nav">
+          <A href="/journals" end>
+            Journals
+          </A>
+          <A href="/pages">Pages</A>
+          <A href="/tasks">Tasks</A>
+          <A href="/search">Search</A>
+        </nav>
+
+        <Show when={favorites().length > 0}>
+          <section class="sidebar-section">
+            <h2>Favourites</h2>
+            <ul>
+              <For each={favorites()}>
+                {(page) => (
+                  <li>
+                    <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
+                      {page.name}
+                    </A>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </section>
+        </Show>
+
+        <Show when={recent().length > 0}>
+          <section class="sidebar-section">
+            <h2>Pages</h2>
+            <ul>
+              <For each={recent()}>
+                {(page) => (
+                  <li>
+                    <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
+                      {page.name}
+                    </A>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </section>
+        </Show>
+      </aside>
+    </Show>
+  );
+}
