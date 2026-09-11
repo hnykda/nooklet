@@ -400,12 +400,17 @@ describe("page.backlinks", () => {
     expect(json.linked[0].page).toBe("Other");
   });
 
-  it("is not_found for an unresolvable target", async () => {
+  it("returns an empty result for a target nothing points at", async () => {
+    // NOT a 404. A page that is referenced but not created yet is a normal, addressable thing in
+    // a wiki — `[[Lisbon]]` makes that page meaningful the moment the link is written, and
+    // opening it must show what points at it. Since any name can be a page key, the honest answer
+    // for an unknown one is "nothing links here", which a caller can act on; 404 made every
+    // not-yet-created page render as "Couldn't load references".
     const { status, json } = await post(s.app, "/api/v1/page.backlinks", s.writeToken, {
       target: "1k7f3q9xz2hav4",
     });
-    expect(status).toBe(404);
-    expect(json.error.code).toBe("not_found");
+    expect(status).toBe(200);
+    expect(json.linked).toHaveLength(0);
   });
 });
 

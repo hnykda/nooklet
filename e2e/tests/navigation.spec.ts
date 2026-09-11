@@ -46,7 +46,7 @@ test("starring a page puts it in the sidebar, and it survives a reload", async (
   await expect(row.locator(".all-pages-star")).toHaveAttribute("aria-pressed", "true");
 
   // Open the sidebar; the favourite should be listed.
-  await page.locator(".app-sidebar-toggle").click();
+  await page.locator("[aria-label='Toggle sidebar']").click();
   const sidebar = page.locator(".app-sidebar");
   await expect(sidebar).toBeVisible();
   await expect(sidebar).toContainText("Favourites");
@@ -54,7 +54,7 @@ test("starring a page puts it in the sidebar, and it survives a reload", async (
 
   // It is a synced page property, not browser state, so a reload keeps it.
   await page.reload();
-  await page.locator(".app-sidebar-toggle").click();
+  await page.locator("[aria-label='Toggle sidebar']").click();
   await expect(page.locator(".app-sidebar")).toContainText("Starred Page");
 });
 

@@ -15,7 +15,6 @@ import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageRoutePath } from "./navigateTarget.js";
 import { PageProperties } from "./PageProperties.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
-import { ViewNav } from "./ViewNav.js";
 
 export interface PageViewProps {
   name: Accessor<string>;
@@ -61,8 +60,6 @@ export function PageView(props: PageViewProps): JSX.Element {
 
   return (
     <div class="page-view">
-      <ViewNav />
-
       <Show when={blockId()}>
         <div class="page-view-breadcrumb">
           <button

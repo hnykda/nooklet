@@ -21,7 +21,6 @@ import {
   sortTasksByDue,
   type TaskFilters,
 } from "./taskFilters.js";
-import { ViewNav } from "./ViewNav.js";
 
 function reconstructDate(day: number | null, time: string | null): string | null {
   if (day === null) return null;
@@ -92,7 +91,6 @@ export function TasksView(): JSX.Element {
 
   return (
     <div class="tasks-view">
-      <ViewNav />
       <h1>Tasks</h1>
 
       <div class="task-filters">

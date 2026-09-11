@@ -13,7 +13,6 @@ import type { JournalDayEntry, NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { Calendar } from "./Calendar.js";
 import { goToTarget } from "./navigateTarget.js";
-import { ViewNav } from "./ViewNav.js";
 import { VirtualJournalDay } from "./VirtualJournalDay.js";
 
 const INITIAL_MAX_DAYS = 14;
@@ -73,7 +72,6 @@ export function JournalStreamView(): JSX.Element {
 
   return (
     <div class="journal-stream">
-      <ViewNav />
       <div class="journal-stream-toolbar">
         <button
           type="button"

@@ -1,3 +1,4 @@
+import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { isoFromJournalDay } from "../data-api.js";
 import { defineOp, OpError } from "./registry.js";
@@ -81,17 +82,49 @@ export const pageBacklinks = defineOp({
       }
     } else {
       const asBlock = await ctx.data.blocks.get(input.target);
-      if (!asBlock) {
-        throw new OpError("not_found", `no page or block matches "${input.target}"`);
+      if (asBlock) {
+        targetWire = input.target;
+        linkedRows = driver.all(
+          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
+           FROM ref r JOIN block b ON b.id = r.src_block_id AND b.deleted_at IS NULL
+           WHERE r.kind = 'block' AND r.dst_block_id = ?
+           ORDER BY b.updated_at DESC`,
+          [asBlock.id],
+        );
+      } else {
+        // A page that is REFERENCED but not created yet is a normal, addressable thing in a wiki:
+        // `[[Lisbon]]` makes that page meaningful the moment you write the link, and opening
+        // it should show what points at it. Refs are stored against `page_key`, so this needs no
+        // page row — and returning 404 here meant every not-yet-created page rendered as
+        // "Couldn't load references", which is both wrong and alarming.
+        //
+        // An unknown name simply has no backlinks, so the answer is an empty list rather than an
+        // error: a caller can tell the difference, and "this page has nothing pointing at it" is a
+        // true and useful answer.
+        const key = normalizePageName(input.target);
+        targetWire = input.target;
+        linkedRows = driver.all(
+          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
+           FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL
+           WHERE pr.page_key = ?
+           ORDER BY b.updated_at DESC`,
+          [key],
+        );
+        if (input.include_unlinked) {
+          const plainName = input.target.split("/").pop() ?? input.target;
+          if (plainName.length >= 3) {
+            const ftsQuery = `"${plainName.replace(/"/g, '""')}"`;
+            unlinkedRows = driver.all(
+              `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
+               FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
+               WHERE block_fts MATCH ? AND b.deleted_at IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key = ?)
+               LIMIT 50`,
+              [ftsQuery, key],
+            );
+          }
+        }
       }
-      targetWire = input.target;
-      linkedRows = driver.all(
-        `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
-         FROM ref r JOIN block b ON b.id = r.src_block_id AND b.deleted_at IS NULL
-         WHERE r.kind = 'block' AND r.dst_block_id = ?
-         ORDER BY b.updated_at DESC`,
-        [asBlock.id],
-      );
     }
 
     const hasMore = linkedRows.length > offset + input.limit;

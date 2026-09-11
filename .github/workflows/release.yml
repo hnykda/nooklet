@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Useful for checking the build works before committing to a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon — the primary target.
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          # Intel Macs.
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            label: macos-x64
+          # Best-effort: built and published, but not something the author runs daily.
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-x64
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          # The sidecar ships THIS Node version's official binary, so the runner's version is the
+          # one your users get — see apps/desktop/build-sidecar.mjs.
+          node-version: 26
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          key: ${{ matrix.target }}
+
+      # Tauri's Linux build needs the system webview and its build dependencies; macOS has
+      # WKWebView already.
+      - name: Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            build-essential curl wget file libssl-dev libayatana-appindicator3-dev
+
+      - run: pnpm install --frozen-lockfile
+
+      # The sidecar carries the server, the client, and the native pieces (Node, sqlite-vec,
+      # esbuild) for THIS platform. Building only the Tauri shell would ship an app with no
+      # backend.
+      - name: Build the sidecar
+        run: pnpm --filter @nooklet/desktop run sidecar
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signing and notarisation are skipped when these are absent: the build still produces a
+          # working bundle, macOS just warns on first open until the secrets are configured.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          args: --target ${{ matrix.target }}
+          tagName: ${{ github.ref_name }}
+          releaseName: nooklet ${{ github.ref_name }}
+          releaseBody: |
+            Download the build for your platform below.
+
+            **macOS**: `nooklet_*_aarch64.dmg` for Apple Silicon, `_x64.dmg` for Intel. Until
+            signing is configured you will need to right-click → Open the first time, because the
+            build is unsigned.
+
+            **Linux**: `.AppImage` or `.deb`. Best-effort — less tested than macOS.
+          releaseDraft: true
+          prerelease: false

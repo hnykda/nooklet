@@ -43,13 +43,26 @@ function mib(path) {
   return `${(statSync(path).size / 1024 / 1024).toFixed(1)} MiB`;
 }
 
+/** Platform-specific names for everything native the sidecar ships. */
+const PLATFORM = {
+  /** What `sqlite-vec`'s loadable extension is called here. */
+  vecExt: { darwin: "dylib", linux: "so", win32: "dll" }[process.platform] ?? "so",
+  /** Executables need the suffix on Windows or `Command::new` will not find them. */
+  exe: process.platform === "win32" ? ".exe" : "",
+  /** How nodejs.org names its archives, and which unpacker to use. */
+  nodeOs: { darwin: "darwin", linux: "linux", win32: "win" }[process.platform] ?? "linux",
+  nodeArch: process.arch === "arm64" ? "arm64" : "x64",
+};
+
 /** esbuild's JS API spawns a per-platform executable that ships in its own package. */
 function findEsbuildBinary() {
   const target = `${process.platform}-${process.arch}`;
   const store = join(repoRoot, "node_modules", ".pnpm");
   const candidates = readdirSync(store)
     .filter((name) => name.startsWith(`@esbuild+${target}@`))
-    .map((name) => join(store, name, "node_modules", "@esbuild", target, "bin", "esbuild"))
+    .map((name) =>
+      join(store, name, "node_modules", "@esbuild", target, "bin", `esbuild${PLATFORM.exe}`),
+    )
     .filter((p) => existsSync(p));
   const found = candidates[0];
   if (!found) {
@@ -67,21 +80,27 @@ const NODE_VERSION = process.versions.node;
 /** Downloads (and caches) the official Node tarball for this platform and returns the `node`
  * inside it. */
 async function officialNodeBinary(version) {
-  const target = `${process.platform === "darwin" ? "darwin" : process.platform}-${process.arch}`;
+  const target = `${PLATFORM.nodeOs}-${PLATFORM.nodeArch}`;
   const name = `node-v${version}-${target}`;
+  // Windows ships a zip with node.exe at the root; the unix builds ship a tarball with bin/node.
+  const isZip = PLATFORM.nodeOs === "win";
   const cacheDir = join(here, ".cache");
-  const extracted = join(cacheDir, name, "bin", "node");
+  const extracted = isZip ? join(cacheDir, name, "node.exe") : join(cacheDir, name, "bin", "node");
   if (existsSync(extracted)) return extracted;
 
   mkdirSync(cacheDir, { recursive: true });
-  const url = `https://nodejs.org/dist/v${version}/${name}.tar.xz`;
+  const url = `https://nodejs.org/dist/v${version}/${name}.${isZip ? "zip" : "tar.xz"}`;
   console.log(`downloading ${url}…`);
   const res = await fetch(url);
   if (!res.ok) throw new Error(`could not download Node ${version} for ${target}: ${res.status}`);
-  const archive = join(cacheDir, `${name}.tar.xz`);
+  const archive = join(cacheDir, `${name}.${isZip ? "zip" : "tar.xz"}`);
   writeFileSync(archive, Buffer.from(await res.arrayBuffer()));
-  const r = spawnSync("tar", ["-xJf", archive, "-C", cacheDir], { stdio: "inherit" });
-  if (r.status !== 0) throw new Error("could not extract the Node tarball");
+  // `tar` and `unzip`/Expand-Archive are present on every GitHub runner and every dev machine
+  // this targets; bundling an extractor would be more moving parts than it is worth.
+  const r = isZip
+    ? spawnSync("unzip", ["-q", "-o", archive, "-d", cacheDir], { stdio: "inherit" })
+    : spawnSync("tar", ["-xJf", archive, "-C", cacheDir], { stdio: "inherit" });
+  if (r.status !== 0) throw new Error("could not extract the Node archive");
   if (!existsSync(extracted)) throw new Error(`no node binary at ${extracted}`);
   return extracted;
 }
@@ -113,22 +132,25 @@ console.log(`server.mjs        ${mib(join(outDir, "server.mjs"))}`);
 // Homebrew dylibs by absolute path; copied into an app bundle it dies with
 // "Library not loaded: @rpath/libnode.147.dylib". The nodejs.org builds are self-contained.
 const nodeBin = await officialNodeBinary(NODE_VERSION);
-cpSync(nodeBin, join(outDir, "node"));
-chmodSync(join(outDir, "node"), 0o755);
-console.log(`node              ${mib(join(outDir, "node"))}  (official v${NODE_VERSION})`);
+const nodeOut = join(outDir, `node${PLATFORM.exe}`);
+cpSync(nodeBin, nodeOut);
+chmodSync(nodeOut, 0o755);
+console.log(`node              ${mib(nodeOut)}  (official v${NODE_VERSION})`);
 
 // 3. sqlite-vec's native extension.
 const vecPath = require("sqlite-vec").getLoadablePath();
-cpSync(vecPath, join(outDir, "vec0.dylib"));
-console.log(`vec0.dylib        ${mib(join(outDir, "vec0.dylib"))}`);
+const vecOut = join(outDir, `vec0.${PLATFORM.vecExt}`);
+cpSync(vecPath, vecOut);
+console.log(`vec0.${PLATFORM.vecExt.padEnd(12)}${mib(vecOut)}`);
 
 // 4. esbuild's per-platform binary, for runtime plugin bundling.
 // Located by walking the store rather than `require.resolve`: pnpm isolates the per-platform
 // package so it is not resolvable from the server's own dependency graph, only from esbuild's.
 const esbuildBin = findEsbuildBinary();
-cpSync(esbuildBin, join(outDir, "esbuild"));
-chmodSync(join(outDir, "esbuild"), 0o755);
-console.log(`esbuild           ${mib(join(outDir, "esbuild"))}`);
+const esbuildOut = join(outDir, `esbuild${PLATFORM.exe}`);
+cpSync(esbuildBin, esbuildOut);
+chmodSync(esbuildOut, 0o755);
+console.log(`esbuild           ${mib(esbuildOut)}`);
 
 // 5. The web client. Built first if missing, since a desktop app with no UI is not useful.
 const webDist = join(repoRoot, "apps", "web", "dist");

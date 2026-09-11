@@ -165,17 +165,21 @@ input {
   background: var(--surface-2, rgb(0 0 0 / 6%));
 }
 
-.app-sidebar-toggle {
+/* One icon button style for the whole chrome. Lucide throughout — a single set, sized to the
+   text around it, inheriting colour so it follows the theme. */
+.app-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 15px;
   cursor: pointer;
-  padding: 2px 8px;
+  padding: 4px 6px;
   border-radius: 6px;
 }
 
-.app-sidebar-toggle:hover {
+.app-icon-button:hover {
   background: var(--surface-2, rgb(0 0 0 / 6%));
   color: var(--fg);
 }
@@ -189,20 +193,4 @@ input {
 .app-history {
   display: flex;
   gap: 2px;
-}
-
-.app-history button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 17px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px 7px;
-  border-radius: 6px;
-}
-
-.app-history button:hover {
-  background: var(--surface-2, rgb(0 0 0 / 6%));
-  color: var(--fg);
 }

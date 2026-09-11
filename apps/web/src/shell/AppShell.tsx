@@ -7,7 +7,8 @@
  * This component also starts the keyboard watcher and applies the sync-status indicator; it does
  * NOT know anything about pages/blocks/editing — those are `TODO(views)` seams below.
  */
-import { A, useNavigate } from "@solidjs/router";
+import { useNavigate } from "@solidjs/router";
+import { ChevronLeft, ChevronRight, PanelLeft } from "lucide-solid";
 import { type JSX, onCleanup, onMount, Show } from "solid-js";
 import { useSyncStatus } from "../data/store.js";
 // ADR 015 §2.6: the persistent live-UI-control consent badge — see ../live/ConsentBadge.tsx.
@@ -56,27 +57,33 @@ export function AppShell(props: { children?: JSX.Element }) {
       <div class="app-topbar">
         <button
           type="button"
-          class="app-sidebar-toggle"
+          class="app-icon-button"
           aria-label="Toggle sidebar"
+          title="Toggle sidebar"
           onClick={() => document.body.classList.toggle("sidebar-open")}
         >
-          ☰
+          <PanelLeft size={17} />
         </button>
         <div class="app-history">
-          <button type="button" aria-label="Back" title="Back" onClick={() => navigate(-1)}>
-            ‹
+          <button
+            type="button"
+            class="app-icon-button"
+            aria-label="Back"
+            title="Back"
+            onClick={() => navigate(-1)}
+          >
+            <ChevronLeft size={17} />
           </button>
-          <button type="button" aria-label="Forward" title="Forward" onClick={() => navigate(1)}>
-            ›
+          <button
+            type="button"
+            class="app-icon-button"
+            aria-label="Forward"
+            title="Forward"
+            onClick={() => navigate(1)}
+          >
+            <ChevronRight size={17} />
           </button>
         </div>
-        <nav>
-          <A href="/journals" end>
-            Journals
-          </A>
-          {/* TODO(views): page links become real once the page switcher/palette exists. */}
-          <A href="/search">Search</A>
-        </nav>
         <SyncIndicator />
         <ConsentBadge />
       </div>

@@ -209,3 +209,27 @@ test("zooming into a block shows a breadcrumb back to the page", async ({ page }
   await trail.locator(".vr-crumb", { hasText: "Parity Zoom" }).click();
   await expect(trail).toHaveCount(0);
 });
+
+test("an empty bullet is clickable across the whole row, not just beside the bullet", async ({
+  page,
+}) => {
+  await openEditing(page, "Parity Empty Click", "- first");
+  const outliner = page.locator(".vr-outliner").first();
+
+  // Make a second, empty bullet, then move the caret back to the first one so the empty row
+  // renders as a read-only view rather than holding the editor.
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await outliner.locator(".vr-row").first().locator(".vr-block-view").click();
+  await expect(outliner.locator(".vr-row").nth(1).locator(".vr-block-view")).toBeVisible();
+
+  const emptyView = outliner.locator(".vr-row").nth(1).locator(".vr-block-view");
+  const box = await emptyView.boundingBox();
+  expect(box, "the empty block's click target must have real size").not.toBeNull();
+  expect(box?.height ?? 0).toBeGreaterThan(10);
+
+  // Click near the RIGHT edge, far from the bullet — the part that used to do nothing.
+  await emptyView.click({ position: { x: Math.max((box?.width ?? 40) - 8, 8), y: 6 } });
+  await expect(page.locator(".cm-content")).toBeFocused();
+});

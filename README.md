@@ -1,127 +1,154 @@
 # nooklet
 
-A small, local-first outliner in the spirit of Logseq: markdown blocks in nested bullets,
-`[[page refs]]` and `#tags`, linked and unlinked references, namespaces, a journal stream, tasks
-with scheduling, and multi-device sync.
+A note-taking app in the tradition of Logseq, Roam and Obsidian: everything is a bullet in an
+outline, pages link to each other with `[[wiki links]]` and `#tags`, and those links turn the
+whole thing into a graph you can walk backwards through.
 
-It is built so that **AI agents are first-class users, not an afterthought**. The same operations
-the app uses are exposed as an HTTP API and an MCP server, so Claude Code, Claude Desktop, Cursor,
-or anything else that speaks MCP can read and write your graph precisely — including surgical
-edits inside a single bullet, not just whole-page replacement.
+Built around four things:
 
-## Quick start
+- **Open source and self-hosted.** MIT licensed. Your notes live in a SQLite database and a mirror
+  of plain markdown files on your own disk. No account, no cloud, nothing phones home.
+- **Simple on purpose.** An outliner, tasks, links, search. No flashcards, no kanban boards, no
+  whiteboards.
+- **Syncable, if you want it.** One machine and nothing else is a perfectly normal way to run
+  nooklet. When you do want more, run the server wherever you like — a laptop, a home server, a
+  VPS behind Tailscale — and every device keeps a full local copy that works offline and
+  reconciles when it reconnects.
+- **AI as a first-class citizen, and entirely optional.** Agents can read and write your graph
+  over MCP with real precision, search it semantically, and — if you let them — see and drive the
+  window you have open. Every bit of it is off until you switch it on, and nothing degrades if you
+  never do.
+
+**Nothing here is mandatory.** Install it, write notes, and that is the whole product: a local
+outliner with a markdown mirror on your disk. Sync needs a second device you choose to pair. AI
+needs a token you choose to mint. Semantic search needs Ollama you choose to install. Skip all
+three and nothing is missing or nagging you to enable it.
+
+> **Status: early.** It works, it is tested, and its author uses it daily. Expect rough edges and
+> breaking changes before 1.0. macOS is the supported platform today; Linux builds are
+> best-effort and Windows is not built yet.
+
+---
+
+## Install
+
+**macOS** — download the `.dmg` from [Releases](../../releases), or:
+
+```sh
+brew install --cask hnykda/tap/nooklet
+```
+
+The desktop app is self-contained: it runs its own server, so launching it is all you need.
+
+### Or run it from source
 
 ```sh
 pnpm install
-pnpm --filter @nooklet/web build          # the client; the server serves it from its own origin
-
-# Optional: import an existing Logseq graph (the classic markdown file-graph format)
-pnpm nooklet import ~/path/to/logseq-graph --data ~/.nooklet
-
-# Mint a token for an agent, then run it
-pnpm nooklet token create --label claude-code --scope write --sync --data ~/.nooklet
-pnpm nooklet serve --data ~/.nooklet
+pnpm --filter @nooklet/web build
+pnpm nooklet serve
 ```
 
-Open <http://127.0.0.1:6100>. The same process serves the app, the HTTP API, the MCP endpoint,
-the OpenAPI spec and the sync WebSockets — it prints all of them on startup. `--data` defaults to
-`$NOOKLET_DATA`, then `~/.nooklet/default`.
+Then open <http://127.0.0.1:6100>. Import an existing Logseq graph with
+`pnpm nooklet import ~/path/to/graph --data ~/.nooklet`.
 
-The raw token is shown **once**, at creation. `--scope write` lets an agent edit the graph;
-`--sync` lets a device sync; add `--ui-control` to let an agent see and drive a live window.
+---
 
-For hacking on the client, `pnpm --filter @nooklet/web dev` still gives you Vite with HMR against
-the same running server.
+## What it does
 
-### Reaching it from another device
+**Outlining.** Nested bullets, fold and zoom into any block, drag to reorder, indent with Tab. One
+block is one thought; `[[links]]`, `#tags` and `((block refs))` connect them. A block reference
+renders as the referenced block's own text, not an id.
 
-`serve` binds to `127.0.0.1`. To reach it from another device, bind wider **and** allowlist the
-hostname you will actually type — both are required, since any other `Host` is refused with 403:
+**Tasks.** Mark a bullet `TODO` and cycle it with `Cmd+Enter` through DOING, DONE and the rest.
+Each state has its own glyph, so a list is scannable without reading it. Tasks carry scheduled and
+deadline dates as typed properties (see [ADR 011](docs/adr/011-scheduling-and-queries-syntax.md)
+for why not org-mode syntax), and every task automatically references a `Task` page — derived from
+the marker, never written into your text.
 
-```sh
-pnpm nooklet serve --data ~/.nooklet --host 0.0.0.0 --allow-host my-mac.tailnet.ts.net
-```
+**Linking and references.** Every page shows what links to it, grouped by source page, plus
+unlinked mentions. Namespaces (`Projects/Aurora`) nest. `[[` offers date shortcuts and searches
+your existing blocks, so linking to a thought you already wrote does not mean remembering where it
+was.
 
-> **Use HTTPS or a tailnet, not a plain LAN IP.** `http://192.168.1.5:6100` is not a *secure
-> context*, and the client stores its replica in OPFS and coordinates writers with
-> `navigator.locks` — both of which browsers gate behind secure contexts. The app will fail to
-> open its local database there. `https://`, `localhost`, and Tailscale's `*.ts.net` (which serves
-> HTTPS) all qualify. A bearer token over plain HTTP is also readable by anyone on the network
-> path.
+**Search.** Full-text through SQLite FTS5, and — optionally — **semantic search in any language**
+via local embeddings through [Ollama](https://ollama.com) (default `bge-m3`, which is
+multilingual), indexed into `sqlite-vec` and fused with keyword results. Nothing leaves your
+machine. Leave it off and search stays keyword-only.
 
-A remote device has no token until you give it one: open the app, and it will ask. Create the
-token with `pnpm nooklet token create --label phone --scope write --sync`.
+**Sync.** Every client holds a full SQLite replica. Writes become operations in an append-only log
+stamped with a hybrid logical clock; fields merge last-writer-wins and sibling order uses
+fractional indexing, so devices reconcile without a central lock and offline edits queue until
+they can be pushed. `nooklet verify` replays the entire log and diffs it against live state.
 
-## Desktop app (macOS)
+**Markdown mirror.** Your notes are also written out as plain markdown, one file per page, with a
+stable `^id` on each block so the round trip is lossless. The files are never the sync medium —
+they are a greppable, git-able copy you can walk away with at any time.
 
-A native window around the same client, 4 MB rather than the ~124 MB an Electron shell would
-cost — because the server is already running, so the app carries no JavaScript runtime at all
-(ADR 016).
+---
 
-```sh
-pnpm nooklet serve          # in one terminal
-pnpm desktop                # dev: opens the app
-pnpm desktop:build          # produces apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app
-```
+## AI, if you want it
 
-It points at `http://127.0.0.1:6100` and loads the client from the server itself, so the token
-handshake, the local replica and the sync socket all behave exactly as they do in a browser. If
-the server isn't running it says so and keeps retrying, rather than showing a blank window; the
-address is editable from that screen.
-
-Building it needs a Rust toolchain (`rustup`); nothing else in the repo does.
-
-## Connecting an agent
-
-For Claude Code or Cursor, point them at the MCP endpoint with the token you minted:
+The same operations the app uses are exposed as an HTTP API, an OpenAPI spec, and an **MCP
+server** — so Claude Code, Claude Desktop, Cursor or anything else that speaks MCP can work with
+your graph properly, rather than pasting whole pages back and forth.
 
 ```json
 { "mcpServers": { "nooklet": {
   "type": "http",
   "url": "http://127.0.0.1:6100/mcp",
-  "headers": { "Authorization": "Bearer <your-token>" }
+  "headers": { "Authorization": "Bearer nk_…" }
 } } }
 ```
 
-Claude Desktop connects over stdio instead:
+Mint the token with `nooklet token create --label claude --scope write`. An agent gets tools to
+orient itself (`graph_overview`), search (keyword, semantic or hybrid), read and append pages,
+**edit an exact substring inside a single bullet**, run atomic multi-step batches, and undo any
+batch it just made.
+
+**Agents can also see and drive an open window** — read what you are looking at, run any command
+the keyboard can, navigate, highlight a block. This is off by default and gated behind both an
+explicit per-window consent toggle and a separate token capability (`--ui-control`); see
+[ADR 015](docs/adr/015-live-ui-control-channel.md).
+
+None of it is required. Never create a token and nooklet is an ordinary local notes app.
+
+---
+
+## Security
+
+- The server binds to `127.0.0.1` by default. Reaching it from another device needs both `--host`
+  and an explicit `--allow-host` allowlist.
+- A token is issued automatically only to a browser on the same machine, decided by the
+  connection's peer address rather than a forgeable header. Every other device must be given one
+  deliberately.
+- Tokens are stored hashed, carry a scope (`read`/`write`/`admin`) plus separate `sync` and
+  `ui-control` capabilities, and can be revoked.
+- There is no TLS: put it behind a reverse proxy or a tailnet if it leaves your machine. A plain
+  LAN IP is also not a browser *secure context*, so the client cannot open its local database
+  there — use HTTPS or Tailscale.
+
+Found a security problem? Please report it privately through
+[GitHub security advisories](../../security/advisories/new) rather than a public issue.
+
+---
+
+## Contributing
+
+Feature requests and bugs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Feature requests
+are prioritised partly by 👍 reactions, so
+[vote on the ones you want](../../issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement+sort%3Areactions-%2B1-desc).
 
 ```sh
-nooklet mcp --stdio --token <your-token> --data ~/.nooklet
+pnpm test        # unit and component tests
+pnpm e2e         # real Chromium against a real server — the suite that catches integration bugs
+pnpm typecheck
+pnpm lint
 ```
 
-An agent gets 25 tools. The ones that matter most: `graph_overview` to orient, `search`
-(keyword, semantic, or hybrid), `page_read`, `page_append` (write nested markdown in one call and
-get back stable block ids), `block_update` (replace an exact substring inside one block),
-`batch` (atomic multi-step edits), and `batch_undo` (reverse any batch it just made).
-
-## CLI
-
-| Command | What it does |
-|---|---|
-| `nooklet serve` | The app, HTTP API, MCP endpoint, sync endpoints, asset serving |
-| `nooklet import <dir>` | One-shot import of a Logseq file graph |
-| `nooklet export` | Write the markdown mirror to the data directory |
-| `nooklet mcp --stdio` | MCP over stdio, for Claude Desktop |
-| `nooklet token create/list/revoke` | Manage API tokens (`read`, `write`, `admin`) |
-| `nooklet embed status/run/model` | Embedding index status, indexing, model switching |
-| `nooklet backup` / `restore` | Consistent snapshot of the database plus assets, and its restore |
-| `nooklet verify` | Replay the whole op log and diff it against live state |
-
-In this repo, run any of them as `pnpm nooklet <command>`.
-
-## How it works
-
-SQLite is the source of truth, on the server and in every client. Every write anywhere becomes an
-op in an append-only log with a hybrid logical clock, and each field merges last-writer-wins, so
-devices reconcile without a central lock. The server validates tree structure and issues
-corrective ops when two devices move blocks into a cycle.
-
-Your notes are also mirrored to plain markdown files that Logseq and Obsidian can open, with a
-stable `^id` on each block so the round trip is lossless. Files are never the sync medium — they
-are a transparent, greppable, git-able copy you can walk away with.
-
-Embeddings run locally through Ollama (default `bge-m3`), indexed incrementally into `sqlite-vec`
-alongside SQLite's own full-text search, and fused for hybrid results.
+`docs/` holds the reasoning: [`PLAN.md`](docs/PLAN.md) for scope, [`adr/`](docs/adr/) for
+decisions and what they cost, [`spec/`](docs/spec/) for implementation-ready detail,
+[`research/`](docs/research/) for the findings behind them, and [`BUGS.md`](docs/BUGS.md) for what
+is known to be broken.
 
 ## Layout
 
@@ -130,16 +157,10 @@ alongside SQLite's own full-text search, and fused for hybrid results.
 | `packages/core` | Data model, outline parser/serializer, inline tokenizer, refs, op log, `applyOps` |
 | `packages/server` | SQLite store, sync, HTTP API, MCP server, importer, mirror, embeddings, CLI |
 | `packages/plugin-api` | Public types plugin authors compile against |
-| `apps/web` | The web client (PWA) |
-| `docs/PLAN.md` | The plan: scope, architecture, milestones |
-| `docs/adr/` | Architecture decisions, one per file, with the reasoning |
-| `docs/spec/` | Implementation-ready specs (grammar, schema, API types, MCP tools, keymap) |
-| `docs/research/` | The research reports the design came from (written under the project's old name) |
+| `apps/web` | The web client — also what the desktop app displays |
+| `apps/desktop` | Tauri shell that runs its own server ([ADR 016](docs/adr/016-desktop-shell-tauri.md)) |
+| `e2e` | Playwright tests against a real server |
 
-## Development
+## License
 
-```sh
-pnpm test        # all packages
-pnpm typecheck
-pnpm lint
-```
+[MIT](LICENSE).

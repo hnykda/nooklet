@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/hnykda/nooklet/discussions
+    about: For anything that is not yet a concrete bug or feature request.
+  - name: Security vulnerability
+    url: https://github.com/hnykda/nooklet/security/advisories/new
+    about: Please report security problems privately, not as a public issue.

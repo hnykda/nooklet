@@ -139,6 +139,12 @@
 .vr-block-view {
   cursor: text;
   overflow-wrap: anywhere;
+  /* An empty block still has to be a click target. With no text the box collapses to zero height,
+     and the only way into the editor was a two-pixel sliver beside the bullet — so a fresh bullet,
+     which is exactly when you most want to type, was the hardest one to click. One line's worth of
+     height, and full width, makes the whole row work. */
+  min-height: 1.55em;
+  width: 100%;
 }
 
 .vr-block-view :is(p, blockquote, table, .vr-fence) {
@@ -370,8 +376,14 @@
   cursor: pointer;
   padding: 0 4px 0 0;
   font-size: 15px;
-  line-height: 1;
   color: var(--muted);
+  /* Match the row's line box rather than the glyph's own, so the marker sits on the text baseline
+     instead of riding above it. `line-height: 1` made every marker sit slightly high. */
+  line-height: 1.55;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 1.55em;
 }
 
 .vr-marker-DOING,

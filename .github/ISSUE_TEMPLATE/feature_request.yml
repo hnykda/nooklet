@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest something nooklet should do
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requests are prioritised partly by 👍 reactions — after opening this, react to your own
+        issue, and [vote on others](https://github.com/hnykda/nooklet/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement+sort%3Areactions-%2B1-desc).
+
+        nooklet is deliberately small. Flashcards, kanban and whiteboards are out of scope; a good
+        argument can still change that, but say why rather than assuming.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution. What were you doing when you wanted this?
+      placeholder: "I keep several projects in one graph and I cannot tell at a glance which tasks belong to which."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like nooklet to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you work around it today?
+      description: Including "I don't" — that is useful to know.
+  - type: input
+    id: prior-art
+    attributes:
+      label: Does another tool do this well?
+      description: Logseq, Roam, Obsidian, anything else. A link or a screenshot helps a lot.

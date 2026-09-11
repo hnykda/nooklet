@@ -28,6 +28,7 @@
     "@sqlite.org/sqlite-wasm": "^3.53.4-build1",
     "comlink": "^4.4.2",
     "fuzzysort": "^4.0.2",
+    "lucide-solid": "^1.44.0",
     "solid-js": "^1.9.15"
   },
   "devDependencies": {

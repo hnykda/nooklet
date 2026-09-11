@@ -12,7 +12,6 @@ import type { SearchHit, SearchInput } from "../data/api-client.js";
 import { useSearchResults } from "../data/store.js";
 import { goToTarget, pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
 import { SearchSnippet } from "./SearchSnippet.js";
-import { ViewNav } from "./ViewNav.js";
 
 const MODES = ["hybrid", "keyword", "semantic"] as const;
 
@@ -56,8 +55,6 @@ export function SearchView(): JSX.Element {
 
   return (
     <div class="search-view">
-      <ViewNav />
-
       <div class="search-box">
         <input
           type="search"

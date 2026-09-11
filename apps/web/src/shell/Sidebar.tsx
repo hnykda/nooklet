@@ -10,6 +10,7 @@
  */
 
 import { A } from "@solidjs/router";
+import { CalendarDays, CircleCheck, FileText, Search, Star } from "lucide-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { useAllPages, useFavoritePages } from "../data/store.js";
 import "./sidebar.css";
@@ -48,16 +49,24 @@ export function Sidebar(): JSX.Element {
       <aside class="app-sidebar" aria-label="Sidebar">
         <nav class="sidebar-nav">
           <A href="/journals" end>
-            Journals
+            <CalendarDays size={15} /> Journals
           </A>
-          <A href="/pages">Pages</A>
-          <A href="/tasks">Tasks</A>
-          <A href="/search">Search</A>
+          <A href="/pages">
+            <FileText size={15} /> Pages
+          </A>
+          <A href="/tasks">
+            <CircleCheck size={15} /> Tasks
+          </A>
+          <A href="/search">
+            <Search size={15} /> Search
+          </A>
         </nav>
 
         <Show when={favorites().length > 0}>
           <section class="sidebar-section">
-            <h2>Favourites</h2>
+            <h2>
+              <Star size={12} /> Favourites
+            </h2>
             <ul>
               <For each={favorites()}>
                 {(page) => (

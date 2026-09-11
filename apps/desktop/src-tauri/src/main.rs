@@ -56,12 +56,26 @@ fn nooklet_is_listening() -> bool {
     body.contains("\"nooklet\"")
 }
 
+/// Executable suffix and loadable-extension suffix for the platform this was built for. Both are
+/// decided at compile time: the bundle only ever contains one platform's binaries.
+#[cfg(windows)]
+const EXE: &str = ".exe";
+#[cfg(not(windows))]
+const EXE: &str = "";
+
+#[cfg(target_os = "macos")]
+const VEC_EXT: &str = "dylib";
+#[cfg(target_os = "windows")]
+const VEC_EXT: &str = "dll";
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+const VEC_EXT: &str = "so";
+
 /// Starts the bundled server. `resource_dir` holds the sidecar assembled by `build-sidecar.mjs`.
 fn spawn_server(resource_dir: &PathBuf, data_dir: &PathBuf) -> std::io::Result<Child> {
     let sidecar = resource_dir.join("sidecar");
     std::fs::create_dir_all(data_dir)?;
 
-    Command::new(sidecar.join("node"))
+    Command::new(sidecar.join(format!("node{EXE}")))
         .arg(sidecar.join("server.mjs"))
         .arg("serve")
         .arg("--data")
@@ -72,13 +86,29 @@ fn spawn_server(resource_dir: &PathBuf, data_dir: &PathBuf) -> std::io::Result<C
         .arg(sidecar.join("web"))
         // sqlite-vec normally resolves its dylib out of node_modules, which does not exist in an
         // app bundle; without this, semantic and hybrid search quietly degrade to keyword only.
-        .env("NOOKLET_SQLITE_VEC_PATH", sidecar.join("vec0.dylib"))
+        .env("NOOKLET_SQLITE_VEC_PATH", sidecar.join(format!("vec0.{VEC_EXT}")))
         // esbuild's JS API shells out to a per-platform binary to bundle user plugins.
-        .env("ESBUILD_BINARY_PATH", sidecar.join("esbuild"))
+        .env("ESBUILD_BINARY_PATH", sidecar.join(format!("esbuild{EXE}")))
         .env("NODE_ENV", "production")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
+}
+
+/// Where the graph lives.
+///
+/// The SAME place the CLI defaults to — `$NOOKLET_DATA`, else `~/.nooklet/default` — rather than
+/// the platform app-data directory. Using a private location made the app open its own empty
+/// graph while `nooklet import` had put everything in the CLI's default, and there was no hint
+/// that two graphs even existed: the app just looked like it had lost your notes. One tool, one
+/// graph, unless you deliberately point them apart.
+fn graph_dir(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Ok(dir) = std::env::var("NOOKLET_DATA") {
+        if !dir.is_empty() {
+            return Ok(PathBuf::from(dir));
+        }
+    }
+    Ok(app.path().home_dir()?.join(".nooklet").join("default"))
 }
 
 fn wait_until_ready() -> bool {
@@ -98,9 +128,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let resource_dir = app.path().resource_dir()?;
-            // The graph lives outside the app bundle, in the user's data directory, so it survives
-            // reinstalling and updating the app.
-            let data_dir = app.path().app_data_dir()?.join("graph");
+            let data_dir = graph_dir(&handle)?;
 
             // Reuse a server that is already running before starting a second one on the same
             // database.
