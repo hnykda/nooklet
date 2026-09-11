@@ -41,6 +41,24 @@ export function activeEditorHost(): EditorHost {
   return active ?? NOOP_HOST;
 }
 
+/**
+ * A STABLE `EditorHost` that forwards every call to whichever host is active at that moment.
+ *
+ * `activeEditorHost()` returns a snapshot of the host as of the instant it is called. Anything
+ * built once at startup — the command registry, the slash menu, the autocomplete popups — must
+ * hold THIS instead, or it captures the inert no-op host that exists before any `BlockTree` has
+ * taken focus and keeps it forever. That is precisely what happened: `CommandLayer` did
+ * `const editor = activeEditorHost()` at setup, so `getSelection()` always returned null and the
+ * slash menu, `[[`/`#`/`((` autocomplete and the formatting shortcuts silently did nothing,
+ * despite every one of them being unit-tested against a fake host.
+ */
+export const liveEditorHost: EditorHost = {
+  getSelection: () => activeEditorHost().getSelection(),
+  replaceRange: (spec) => activeEditorHost().replaceRange(spec),
+  runStructuralCommand: (id, ctx) => activeEditorHost().runStructuralCommand(id, ctx),
+  getLinkAtCaret: () => activeEditorHost().getLinkAtCaret(),
+};
+
 /** A live host view over one editor surface. `BlockTree` builds this once and registers it. */
 export interface EditorHostBacking {
   currentId(): string | null;

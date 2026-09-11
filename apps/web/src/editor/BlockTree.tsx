@@ -585,7 +585,17 @@ export function BlockTree(props: {
     head: () => surface.head(),
     anchor: () => surface.anchor(),
     setText: (id, text, caret) => {
-      onTextChange(id as BlockId, text);
+      const view = surface.view();
+      if (view && surface.currentId() === id) {
+        // Write through the EDITOR, not just the optimistic model. Calling `onTextChange` alone
+        // updated `localBlocks` while CodeMirror kept the old buffer, so a formatting command or
+        // an autocomplete insertion appeared to do nothing — and the next refetch, which prefers
+        // the live buffer for the block being edited, then discarded it outright. The surface's
+        // own update listener calls `onTextChange` for us once this dispatch lands.
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+      } else {
+        onTextChange(id as BlockId, text);
+      }
       surface.setCaret(typeof caret === "number" ? { offset: caret } : { offset: caret.head });
     },
     runStructural: (id, commandId, _ctx) => {
@@ -595,7 +605,13 @@ export function BlockTree(props: {
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
   });
   createEffect(() => {
-    if (surface.currentId() !== null) {
+    // Depend on `editingId()`, a real signal. The original condition read
+    // `surface.currentId()` — a plain closure variable inside `surface.ts`, not anything
+    // reactive — so this effect ran exactly once, at mount, when nothing was being edited yet,
+    // and never registered the host at all. Everything routed through `EditorHost` was therefore
+    // talking to the inert no-op host forever: the slash menu and `[[`/`#`/`((` autocomplete never
+    // saw a selection to trigger on, and the formatting commands had nothing to act on.
+    if (editingId() !== null) {
       setActiveEditorHost(editorHost);
       // The command context is recomputed on every read (before each keydown dispatch and each
       // palette/menu render), never cached — the spec's Definitions section requires exactly that.

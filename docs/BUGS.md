@@ -45,7 +45,7 @@ The guard should use the same parser the rest of the system does.
 ---
 
 ### B-07 · Cmd+A in a block doesn't select its text
-**Status:** open · **Severity:** high · **Found:** 2026-09-11, while writing e2e tests
+**Status:** fixed (by B-15's focus fix; covered by `e2e/tests/parity.spec.ts`) · **Status was:** open · **Severity:** high · **Found:** 2026-09-11, while writing e2e tests
 
 Pressing Cmd+A (Ctrl+A) while editing a block does not select that block's text. It detaches the
 editor and swallows the following keystroke — typing `persisted` after it produced
@@ -132,7 +132,7 @@ highlight) when there is a selection. The commands already exist
 ---
 
 ### B-17 · Slash menu never verified in a browser
-**Status:** needs-repro · **Severity:** medium · **Raised:** 2026-09-11
+**Status:** FIXED — see B-28 below · **Status was:** needs-repro · **Severity:** medium · **Raised:** 2026-09-11
 
 `SlashMenu`, `matchSlashTrigger` and the insert commands are implemented and unit-tested, and
 `CommandLayer` wires them up — but nothing has ever exercised typing `/` in a real browser. Given
@@ -142,7 +142,7 @@ an e2e test says otherwise. Same for the `[[`, `#` and `((` autocomplete popups.
 ---
 
 ### B-18 · Formatting shortcuts never verified in a browser
-**Status:** needs-repro · **Severity:** medium · **Raised:** 2026-09-11
+**Status:** FIXED — see B-28 below · **Status was:** needs-repro · **Severity:** medium · **Raised:** 2026-09-11
 
 `format.bold` / `format.italic` / `format.highlight` are registered with Cmd+B/I and unit-tested
 against a fake editor host, but have never been pressed in a real browser. These route through the
@@ -151,6 +151,33 @@ same global capture-phase dispatcher and `EditorHost` delegation that B-07 shows
 ---
 
 ## Fixed
+
+### B-28 · The entire command layer was wired to a no-op editor
+**Status:** fixed · **Test:** `e2e/tests/parity.spec.ts` (6 tests)
+**Found:** 2026-09-11, by finally exercising B-17/B-18 in a browser
+
+The slash menu, `[[`/`#`/`((` autocomplete and every formatting shortcut did nothing. All were
+implemented and unit-tested against a fake host; none had ever run in a browser. Three bugs,
+stacked:
+
+1. **`CommandLayer` captured the host once.** `const editor = activeEditorHost()` evaluates at
+   setup, when no `BlockTree` has focus — so it captured the inert no-op host and kept it forever.
+   `activeEditorHost()` returns a *snapshot*; anything built once at startup needs the new
+   `liveEditorHost`, which forwards each call to whoever is active now.
+2. **The host was never registered anyway.** `BlockTree`'s registration effect was
+   `createEffect(() => { if (surface.currentId() !== null) … })` — and `surface.currentId()` reads
+   a plain closure variable inside `surface.ts`, not a signal. The effect ran once, at mount, with
+   nothing focused, and never re-ran. Now keyed on `editingId()`, which is a real signal.
+   Measured before the fix: `getSelection()` returned `null` on every keystroke, so no trigger
+   could ever match.
+3. **Commands wrote to the model but not the editor.** With the above fixed, `Cmd+B` resolved and
+   *ran* (`handled: true`) yet the text never changed: `EditorHost.setText` called `onTextChange`,
+   updating `localBlocks` while CodeMirror kept the old buffer — and the next refetch, which
+   prefers the live buffer for the block being edited, then discarded the change entirely. It now
+   dispatches a real CodeMirror transaction and lets the surface's update listener do the rest.
+
+**Lesson:** a unit test against a fake host proves the command's logic and nothing about whether
+the host is connected. Every one of these had passing unit tests.
 
 ### B-25 · Any LAN caller could mint a write token by forging `Host: localhost`
 **Status:** fixed · **Severity:** critical · **Test:** `packages/server/src/http/host-guard.test.ts`

@@ -62,7 +62,7 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
-import { activeContextSnapshot, activeEditorHost, buildContextBase } from "./editor-host.js";
+import { activeContextSnapshot, buildContextBase, liveEditorHost } from "./editor-host.js";
 import {
   createAppHost,
   createBlockSource,
@@ -192,7 +192,9 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
   // Created here, not by the provider: `createCoreCommands` needs it as a dependency, so both
   // the commands and the provider must share one instance.
   const palette = createPaletteController();
-  const editor = activeEditorHost();
+  // `liveEditorHost`, NOT `activeEditorHost()`: this is evaluated once, and a snapshot taken here
+  // would pin every editor command to the no-op host that exists before any block has focus.
+  const editor = liveEditorHost;
   const store = createStore();
   const pages = createPageSource();
   const blocks = createBlockSource();

@@ -27,6 +27,9 @@ async function api(page: Page, op: string, body: unknown): Promise<unknown> {
 /** Seeds a page with `markdown`, opens it, and puts the caret at the end of the first block. */
 async function openEditing(page: Page, name: string, markdown = "- start"): Promise<void> {
   await page.goto("/journals");
+  // `page.create` first: `page.append`'s `create_page` defaults to true but only materialises
+  // JOURNAL days, so it refuses an unknown ordinary page with a message that blames the flag.
+  await api(page, "page.create", { name, if_exists: "return" });
   await api(page, "page.append", { page: name, markdown });
   await page.goto(`/page/${encodeURIComponent(name)}`);
   const outliner = page.locator(".vr-outliner").first();
@@ -40,8 +43,9 @@ test("Tab indents and Shift+Tab outdents", async ({ page }) => {
   await openEditing(page, "Parity Indent", "- first\n- second");
   const outliner = page.locator(".vr-outliner").first();
 
-  // Put the caret in the SECOND block, then indent it under the first.
-  await outliner.locator(".vr-block-view").nth(1).click();
+  // Address by ROW: the first block is already in edit mode, so its `.vr-block-view` has been
+  // swapped for the surface host and `.vr-block-view` no longer indexes 1:1 with rows.
+  await outliner.locator(".vr-row").nth(1).locator(".vr-block-view").click();
   await expect(page.locator(".cm-content")).toBeFocused();
   await page.keyboard.press("Tab");
 
@@ -49,9 +53,9 @@ test("Tab indents and Shift+Tab outdents", async ({ page }) => {
     .poll(async () =>
       page.evaluate(
         () =>
-          (document.querySelectorAll(".vr-row")[1] as HTMLElement | undefined)?.style.getPropertyValue(
-            "--depth",
-          ) ?? "",
+          (document.querySelectorAll(".vr-row")[1] as HTMLElement | undefined)?.style
+            .getPropertyValue("--depth")
+            .trim() ?? "",
       ),
     )
     .toBe("1");
@@ -61,9 +65,9 @@ test("Tab indents and Shift+Tab outdents", async ({ page }) => {
     .poll(async () =>
       page.evaluate(
         () =>
-          (document.querySelectorAll(".vr-row")[1] as HTMLElement | undefined)?.style.getPropertyValue(
-            "--depth",
-          ) ?? "",
+          (document.querySelectorAll(".vr-row")[1] as HTMLElement | undefined)?.style
+            .getPropertyValue("--depth")
+            .trim() ?? "",
       ),
     )
     .toBe("0");
@@ -73,7 +77,7 @@ test("the slash menu opens and inserts", async ({ page }) => {
   await openEditing(page, "Parity Slash");
   await page.keyboard.type(" /");
   // The menu is a controlled overlay driven by `matchSlashTrigger` in CommandLayer.
-  await expect(page.locator(".slash-menu, [data-slash-menu]").first()).toBeVisible({
+  await expect(page.locator(".cmd-popup").first()).toBeVisible({
     timeout: 5_000,
   });
 });
@@ -81,7 +85,7 @@ test("the slash menu opens and inserts", async ({ page }) => {
 test("[[ opens page autocomplete", async ({ page }) => {
   await openEditing(page, "Parity Wikilink");
   await page.keyboard.type(" [[");
-  await expect(page.locator(".autocomplete-popup, [data-autocomplete]").first()).toBeVisible({
+  await expect(page.locator(".cmd-popup").first()).toBeVisible({
     timeout: 5_000,
   });
 });
