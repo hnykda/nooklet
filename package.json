@@ -16,7 +16,8 @@
     "e2e": "playwright test --config e2e/playwright.config.ts",
     "e2e:headed": "playwright test --config e2e/playwright.config.ts --headed",
     "desktop": "pnpm --filter @nooklet/desktop exec tauri dev",
-    "desktop:build": "pnpm --filter @nooklet/desktop exec tauri build"
+    "desktop:build": "pnpm --filter @nooklet/desktop run sidecar && pnpm --filter @nooklet/desktop exec tauri build",
+    "desktop:install": "pnpm desktop:build --bundles app && rm -rf /Applications/nooklet.app && cp -R apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app /Applications/"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
