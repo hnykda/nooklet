@@ -1,5 +1,6 @@
+import { parseJournalTitle } from "@nooklet/core";
 import { z } from "zod";
-import { boundsForPageEnd, journalDayFromWire } from "../data-api.js";
+import { boundsForPageEnd, isoFromJournalDay, journalDayFromWire } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
 import { prepareMarkdownInsert } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
@@ -36,11 +37,18 @@ export const pageCreate = defineOp({
   render: (out) => (out.existed ? `${out.page} already existed` : `created ${out.page}`),
   handler: async (input, ctx) => {
     return runWithDryRun(ctx, input.dry_run, async (ctx) => {
-      if (journalDayFromWire(input.name) !== null) {
+      // Recognise a journal day by ANY of its title formats, not just ISO. The guard used
+      // `journalDayFromWire`, which understands only `today`/`yesterday`/`tomorrow` and
+      // `YYYY-MM-DD` — so `page.create({name: "Tue, 08.09.2026"})` sailed past it and produced a
+      // page with `journal_day = NULL`: named like a journal, looking like one, and invisible to
+      // the journal stream forever. `parseJournalTitle` is the same parser the rest of the system
+      // resolves journals with, so the guard now matches what the system actually believes.
+      const asJournalDay = parseJournalTitle(input.name) ?? journalDayFromWire(input.name);
+      if (asJournalDay !== null) {
         throw new OpError(
           "invalid",
-          "page.create cannot target a journal day",
-          "use page_append to create/append a journal day",
+          `"${input.name}" is a journal day, and page.create cannot target one`,
+          `use page_append with page: "${isoFromJournalDay(asJournalDay)}" instead`,
         );
       }
       const existing = await ctx.data.pages.get({ name: input.name });

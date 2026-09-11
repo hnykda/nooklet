@@ -385,6 +385,34 @@ describe("search", () => {
   });
 });
 
+describe("page.create journal guard", () => {
+  // B-23: the guard used a parser that understood only ISO and today/yesterday/tomorrow, so a
+  // journal written in any other title format slipped through and became a page with
+  // `journal_day = NULL` — named like a journal, looking like one, and invisible to the journal
+  // stream forever.
+  it.each([
+    ["2026-09-08"],
+    ["Tue, 08.09.2026"],
+    ["Sep 8th, 2026"],
+    ["today"],
+  ])("refuses %s and names the ISO date to use instead", async (name) => {
+    const s2 = makeTestServer();
+    const { status, json } = await post(s2.app, "/api/v1/page.create", s2.writeToken, { name });
+    expect(status).toBe(400);
+    expect(json.error.code).toBe("invalid");
+    expect(json.error.hint).toMatch(/page_append/);
+    expect(json.error.hint).toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it("still accepts an ordinary page whose name merely contains digits", async () => {
+    const s2 = makeTestServer();
+    const { status } = await post(s2.app, "/api/v1/page.create", s2.writeToken, {
+      name: "97 poets of Revachol",
+    });
+    expect(status).toBe(200);
+  });
+});
+
 describe("page.backlinks", () => {
   it("lists linked references to a page (success)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Target" });
