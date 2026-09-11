@@ -13,17 +13,35 @@ edits inside a single bullet, not just whole-page replacement.
 
 ```sh
 pnpm install
+pnpm --filter @nooklet/web build          # the client; the server serves it from its own origin
 
-# Import an existing Logseq graph (the classic markdown file-graph format)
-pnpm --filter @nooklet/server exec tsx src/cli.ts import ~/path/to/logseq-graph --data ~/.nooklet
+# Optional: import an existing Logseq graph (the classic markdown file-graph format)
+pnpm nooklet import ~/path/to/logseq-graph --data ~/.nooklet
 
-# Mint a token for an agent, then run the server
-pnpm --filter @nooklet/server exec tsx src/cli.ts token create --label claude-code --scope write --data ~/.nooklet
-pnpm --filter @nooklet/server exec tsx src/cli.ts serve --data ~/.nooklet
+# Mint a token for an agent, then run it
+pnpm nooklet token create --label claude-code --scope write --sync --data ~/.nooklet
+pnpm nooklet serve --data ~/.nooklet
 ```
 
-That prints the HTTP API, MCP endpoint, and OpenAPI spec URLs. `--data` defaults to
+Open <http://127.0.0.1:6100>. The same process serves the app, the HTTP API, the MCP endpoint,
+the OpenAPI spec and the sync WebSockets — it prints all of them on startup. `--data` defaults to
 `$NOOKLET_DATA`, then `~/.nooklet/default`.
+
+The raw token is shown **once**, at creation. `--scope write` lets an agent edit the graph;
+`--sync` lets a device sync; add `--ui-control` to let an agent see and drive a live window.
+
+For hacking on the client, `pnpm --filter @nooklet/web dev` still gives you Vite with HMR against
+the same running server.
+
+### Reaching it from another device
+
+`serve` binds to `127.0.0.1`. To open your graph from a phone on the same network or over
+Tailscale, bind wider and allowlist the hostname you'll actually type — both are required, because
+the DNS-rebinding guard rejects any other `Host`:
+
+```sh
+pnpm nooklet serve --data ~/.nooklet --host 0.0.0.0 --allow-host 192.168.1.5,my-mac.tailnet.ts.net
+```
 
 ## Connecting an agent
 
@@ -43,7 +61,7 @@ Claude Desktop connects over stdio instead:
 nooklet mcp --stdio --token <your-token> --data ~/.nooklet
 ```
 
-An agent gets 18 tools. The ones that matter most: `graph_overview` to orient, `search`
+An agent gets 25 tools. The ones that matter most: `graph_overview` to orient, `search`
 (keyword, semantic, or hybrid), `page_read`, `page_append` (write nested markdown in one call and
 get back stable block ids), `block_update` (replace an exact substring inside one block),
 `batch` (atomic multi-step edits), and `batch_undo` (reverse any batch it just made).
@@ -52,12 +70,16 @@ get back stable block ids), `block_update` (replace an exact substring inside on
 
 | Command | What it does |
 |---|---|
-| `nooklet serve` | HTTP API, MCP endpoint, sync endpoints, asset serving |
+| `nooklet serve` | The app, HTTP API, MCP endpoint, sync endpoints, asset serving |
 | `nooklet import <dir>` | One-shot import of a Logseq file graph |
 | `nooklet export` | Write the markdown mirror to the data directory |
 | `nooklet mcp --stdio` | MCP over stdio, for Claude Desktop |
 | `nooklet token create/list/revoke` | Manage API tokens (`read`, `write`, `admin`) |
 | `nooklet embed status/run/model` | Embedding index status, indexing, model switching |
+| `nooklet backup` / `restore` | Consistent snapshot of the database plus assets, and its restore |
+| `nooklet verify` | Replay the whole op log and diff it against live state |
+
+In this repo, run any of them as `pnpm nooklet <command>`.
 
 ## How it works
 

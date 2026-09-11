@@ -7,6 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "nooklet": "pnpm --filter @nooklet/server exec tsx src/cli.ts",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
