@@ -47,6 +47,15 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-62 · `page_list({tag: "art"})` returned pages tagged `party`
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, code review · **Test:**
+`packages/server/src/ops/ops.http.test.ts` "filters by tag through the page_tag index"
+
+The filter was `tags:: LIKE '%art%'` on the raw property text: a substring match, so `art` found
+`party` and `smart`, and whether `#art` or `[[Art]]` matched depended on how the property had been
+typed. ADR 017's `page_tag` table exists for exactly this and is keyed the way every other
+reference is; `page.list` now uses it, and `art`, `Art`, `#art` and `[[Art]]` are one tag.
+
 ### B-60 · Any `/ui/live` socket could answer any window's request; a closed window kept callers waiting
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, code review · **Tests:**
 `packages/server/src/live/rpc.test.ts` "only the socket a request was sent to can answer it",

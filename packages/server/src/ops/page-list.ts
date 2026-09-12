@@ -1,4 +1,4 @@
-import { normalizePageName } from "@nooklet/core";
+import { canonicalRefName, normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { wirePageNameOf } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
@@ -80,10 +80,13 @@ export const pageList = defineOp({
       params.push(`${normalizePageName(input.prefix)}%`);
     }
     if (input.tag) {
+      // The derived `page_tag` index (ADR 017), keyed the way every other reference is, so
+      // `art`, `#Art` and `[[Art]]` are one tag and `art` never matches `party`. Substring
+      // matching on the raw `tags::` text did both of those wrong.
       conditions.push(
-        "EXISTS (SELECT 1 FROM page_prop pp WHERE pp.page_id = page.id AND pp.key = 'tags' AND pp.value IS NOT NULL AND pp.value LIKE ?)",
+        "EXISTS (SELECT 1 FROM page_tag pt WHERE pt.page_id = page.id AND pt.tag_key = ?)",
       );
-      params.push(`%${input.tag}%`);
+      params.push(normalizePageName(canonicalRefName(input.tag.replace(/^#|^\[\[|\]\]$/g, ""))));
     }
     const sortCol =
       input.sort === "updated" ? "updated_at" : input.sort === "created" ? "created_at" : "name";

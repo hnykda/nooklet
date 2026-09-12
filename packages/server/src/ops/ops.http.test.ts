@@ -372,6 +372,28 @@ describe("page.list", () => {
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
   });
+
+  it("filters by tag through the page_tag index, not a substring of tags:: (B-62)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Painting",
+      properties: { tags: "[[Art]], hobby" },
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Birthday",
+      properties: { tags: "party" }, // contains "art" as a substring
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Sculpture",
+      properties: { tags: "#art" },
+    });
+    for (const tag of ["art", "Art", "#art", "[[Art]]"]) {
+      const { json } = await post(s.app, "/api/v1/page.list", s.writeToken, { tag });
+      expect(json.items.map((p: { name: string }) => p.name).sort(), tag).toEqual([
+        "Painting",
+        "Sculpture",
+      ]);
+    }
+  });
 });
 
 describe("search", () => {
