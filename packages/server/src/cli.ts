@@ -53,6 +53,7 @@ import { importLogseqGraph } from "./importer/logseq.js";
 import { migrateJournalNames } from "./journal-names.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
+import { startLiveMirror } from "./mirror/live.js";
 import { buildRegistry } from "./ops/index.js";
 import type { ServerConfig } from "./ops/registry.js";
 import { createAppWithPlugins } from "./plugins/bootstrap.js";
@@ -222,6 +223,9 @@ async function main(): Promise<void> {
   switch (cmd) {
     case "serve": {
       const { ctx, config } = open(args, { migrate: true });
+      // ADR 002's continuous mirror — the half that never existed (B-95): pages/ and journals/
+      // followed commits only when someone ran `nooklet export`. `--no-mirror` turns it off.
+      if (config.mirror.enabled) startLiveMirror(ctx, config.dataDir);
 
       // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a scratch
       // database on every start and diff it against the live state tables." Dev-only (the replay

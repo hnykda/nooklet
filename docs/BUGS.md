@@ -15,7 +15,7 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 ## Open
 
 ### B-95 · `nooklet serve` never writes the markdown mirror
-**Status:** open · **Severity:** high · **Found:** 2026-09-12, exposure audit
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, exposure audit
 (`docs/review/2026-09-12-exposure-audit.md`, defect D1)
 
 Only `nooklet export` calls `exportAll` (`packages/server/src/cli.ts`); `config.mirror.enabled`
@@ -25,7 +25,16 @@ server produced no `pages/` directory. README and OPERATIONS §2 describe the mi
 nobody is told about. Fix: export each touched page after a commit, debounced, from the serve
 process (`sync/realtime.ts#onCommit` already exists for exactly this kind of listener).
 
+**Fixed 2026-09-12.** `mirror/live.ts`: `nooklet serve` subscribes to commits and, after a 500 ms
+quiet period, runs `exportAll(…, { onlyChanged: true })` — the already-tested path that writes
+changed pages, moves renamed ones and prunes deleted ones — plus one sweep on start to catch up
+whatever happened while the server was down. `--no-mirror` is honoured for the first time. Failures
+log and never throw: the mirror is a projection and must not take down the source of truth.
+`packages/server/src/mirror/live.test.ts`.
+
 ---
+
+
 
 ### B-96 · `/scheduled`, `/deadline` and the date commands do nothing
 **Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
@@ -693,6 +702,27 @@ previous day, because the fence re-runs only when `block`/`block_prop`/`page` ch
 pull, or navigation fixes it. A timer that bumps the version at local midnight (and on
 `visibilitychange`, for a phone that slept through it) is the fix; it belongs next to
 `stampedFor` in `data/store.ts` so the Tasks view's "today" grouping benefits too.
+
+### B-107 · Enter on a calendar-opened journal day drops the caret
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, `e2e/tests/templates.spec.ts`
+"a day started in the app begins with the journal template, the typed text after it" (the first
+test to type into a pinned day) · **Tests:** that e2e case, and
+`apps/web/src/views/VirtualJournalDay.test.tsx` "hands its focus request back if it is torn down
+while the caret is inside it"
+
+Open a day from the calendar (a virtual, not-yet-existing day), type into its placeholder, press
+Enter: the blocks are created but there is no editor anywhere — the same failure B-06/B-16's
+era had for today, on a different path. `VirtualJournalDay` asks for the caret in the new
+sibling and optimistically mounts its own `BlockTree`; that tree's single `getPageTree` resolves
+before `usePinnedJournalDay`'s two-step fetch, claims the request and attaches the editor — then
+the pinned resource resolves, `JournalStreamView` swaps in its own `BlockTree` for the now-real
+page, and the component holding the editor is unmounted. Today's day never showed it because
+`useJournalStream` resolves first, so the stream's tree is the one that claims the request.
+
+**Fixed 2026-09-12** (templates agent, in `VirtualJournalDay.tsx`): when the component is torn
+down while the caret is inside its optimistic tree, it re-issues the focus request for the block
+it had asked for, and the successor tree for the same page claims it. The race itself (two trees
+for one page during the swap) is the stream's to remove; the hand-back makes it harmless.
 
 ## Fixed
 
