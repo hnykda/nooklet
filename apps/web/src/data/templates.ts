@@ -300,19 +300,31 @@ export async function applyTemplateIntoBlock(
 }
 
 /**
- * The ops that start a NEW journal page `pageId` for `day` with the journal template, and the
- * order key of the last top-level block they create — so the caller (`VirtualJournalDay`) can
- * place what the person typed after it. Empty when no journal template is chosen. `mint` is the
- * caller's, so page and template land in one `applyOps` batch; size the clock's pool with
- * `journalTemplateOpCount()` first.
+ * The chosen journal template, loaded once, with the number of `block.create` ops inserting it
+ * will mint — so a caller can size its HLC pool (`getOpClock`) from the very node it is about to
+ * copy. `null` when no journal template is chosen.
  */
-export async function journalTemplateOps(
+export async function loadJournalTemplate(): Promise<{
+  node: TemplateNode;
+  count: number;
+} | null> {
+  const id = await journalTemplateId();
+  const node = id ? await loadTemplate(id) : null;
+  return node ? { node, count: countTemplateNodes(templateRoots(node)) } : null;
+}
+
+/**
+ * The ops that start a NEW journal page `pageId` for `day` with journal template `node`, and the
+ * order key of the last top-level block they create — so the caller (`VirtualJournalDay`) can
+ * place what the person typed after it. `mint` is the caller's, so page and template land in one
+ * `applyOps` batch. `<% today %>` here is the journal's own day.
+ */
+export function journalTemplateOpsFor(
+  node: TemplateNode,
   pageId: string,
   day: number,
   mint: OpMinter,
-): Promise<{ ops: Op[]; lastOrder: string | null }> {
-  const node = await loadJournalTemplate();
-  if (!node) return { ops: [], lastOrder: null };
+): { ops: Op[]; lastOrder: string | null } {
   const { ops, roots } = templateNodesOps(
     templateRoots(node),
     { pageId, parentId: null, lower: null, upper: null },
@@ -320,17 +332,6 @@ export async function journalTemplateOps(
     mint,
   );
   return { ops, lastOrder: roots[roots.length - 1]?.order ?? null };
-}
-
-/** How many ops `journalTemplateOps` will mint right now — for pre-fetching HLCs. */
-export async function journalTemplateOpCount(): Promise<number> {
-  const node = await loadJournalTemplate();
-  return node ? countTemplateNodes(templateRoots(node)) : 0;
-}
-
-async function loadJournalTemplate(): Promise<TemplateNode | null> {
-  const id = await journalTemplateId();
-  return id ? loadTemplate(id) : null;
 }
 
 /**

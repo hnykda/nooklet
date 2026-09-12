@@ -6,30 +6,32 @@ a restart, continue from "Next steps".
 
 ## 1. Done (commit hashes)
 
-- (nothing committed yet)
+- `78970b1` core `templates.ts` (+tests), client `data/templates.ts`, `/template` command +
+  picker, slash row, wiring. NOTE: this commit swept in the query agent's uncommitted
+  `export * from "./query.js"` line in `packages/core/src/index.ts` (it was in the working tree
+  when the file was staged) — HEAD references `query.ts`, which is still untracked until the
+  query agent commits it. Told the coordinator in the report.
 
 ## 2. In flight — files mid-edit and their state
 
 | File | State |
 |---|---|
-| `packages/core/src/templates.ts` | written, 9 unit tests green (`templates.test.ts`) |
-| `packages/core/src/index.ts` | one export line appended (`./templates.js`) |
-| `apps/web/src/data/templates.ts` | written, not yet typechecked |
-| `apps/web/src/commands/slash/TemplatePicker.tsx` + `template-picker.css` | written; must be imported lazily from the command (node-env tests fail on `window`) |
-| `apps/web/src/commands/registrations/templates.ts` + `.test.ts` | written; test fails only because of the eager picker import above |
-| `apps/web/src/commands/registrations/index.ts` | `createTemplateCommands` wired + re-exported (outside my file list — report it) |
-| `apps/web/src/commands/slash/items.ts` | "Template" row appended (shared file) |
-| `apps/web/src/commands/slash/SlashMenu.test.tsx` | needs item count 15 → 16 (not my file; minimal bump, report it) |
+| `packages/server/src/journal-template.ts` (new) + `.test.ts` | written; test seed fixed (marker via properties); rerun pending |
+| `packages/server/src/data-api.ts` | `journal()` inserts the journal template; 4 import lines added (outside "only that function" — report) |
+| `apps/web/src/views/VirtualJournalDay.tsx` + `.test.tsx` | rewritten: one `applyOps` batch, template first; 5 tests green |
+| `apps/web/src/data/templates.ts` | `loadJournalTemplate` / `journalTemplateOpsFor` shape (load once, size pool from it) |
+| `apps/web/src/views/SettingsPanel.tsx` | `TemplatesSection` appended + import + mounted after Appearance (shared file) |
+| `apps/web/src/commands/registrations/templates.ts` + `.test.ts` | picker path is fire-and-forget now (slash menu would otherwise linger); test rewritten |
+| `docs/adr/019-templates.md` | written |
+| `docs/BUGS.md` | B-87 (no client plugin host), B-88 (template insert not undoable) appended to Open |
+| `e2e/tests/templates.spec.ts` | written, NOT yet run |
 
 ## 3. Next steps, in order
 
-1. Make `registrations/templates.ts` import the picker with a dynamic `import()`; bump SlashMenu.test count; run `pnpm -r test` for core + web commands.
-2. `apps/web/src/views/VirtualJournalDay.tsx`: apply the journal template on materialize (one `applyOps` batch via `getOpClock`); update `VirtualJournalDay.test.tsx` mocks.
-3. Server: new `packages/server/src/journal-template.ts` (load the journal template node from `block_prop` + `block`); `data-api.ts#journal()` inserts it when creating a day (+ `journal-template.test.ts`).
-4. `apps/web/src/views/SettingsPanel.tsx`: append a "Templates" section (journal template `<select id="set-journal-template">`).
-5. `docs/adr/019-templates.md`; `docs/BUGS.md` entries (client plugin host absent → `/mermaid` never reaches the menu; template insertion not in editor undo history) — re-read BUGS.md for the next free number (another agent has appended since B-84).
-6. `e2e/tests/templates.spec.ts`; run on port 6351; fix; then `pnpm -r typecheck`, `pnpm -r test`, biome, full e2e on 6351.
-7. Commit in logical units (core → web data/commands → journal paths → settings → docs → e2e).
+1. Run: server `journal-template.test.ts`; web `templates.test.ts` + `VirtualJournalDay.test.tsx`; typecheck server + web (filter to my files — other agents' in-flight errors exist in `shelfOutline.test.ts`, `core/src/query.ts`); biome on my files.
+2. Commit unit 2 (journal paths + settings + ADR + BUGS + progress).
+3. `cd e2e && NOOKLET_E2E_PORT=6351 pnpm exec playwright test tests/templates.spec.ts`; fix; commit the spec.
+4. Full e2e on 6351, `pnpm -r typecheck`, `pnpm -r test`; final progress update; report.
 
 ## 4. Decisions made and why
 

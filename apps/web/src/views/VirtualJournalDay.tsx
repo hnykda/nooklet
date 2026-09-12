@@ -4,9 +4,17 @@
  * committing it (blur, or Enter) creates the page AND its first block together — nothing is
  * written before that. Once materialized, every further edit on this page is `BlockTree`'s job.
  */
-import { isoJournalName, newId, orderBetween } from "@nooklet/core";
+import {
+  isoJournalName,
+  makeOp,
+  newId,
+  type Op,
+  type OpPayload,
+  orderBetween,
+} from "@nooklet/core";
 import { createSignal, type JSX, Show } from "solid-js";
-import { applyOp } from "../data/store.js";
+import { applyOps, getOpClock } from "../data/store.js";
+import { journalTemplateOpsFor, loadJournalTemplate } from "../data/templates.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
@@ -35,7 +43,6 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
     const newPageId = newId();
     const firstBlockId = newId();
     const nextBlockId = continueEditing ? newId() : undefined;
-    const firstOrder = orderBetween(null, null);
 
     // Optimistic: swap to the real BlockTree immediately using the ids we just minted, rather than
     // waiting on the write + the reactive resource refetch round trip.
@@ -46,26 +53,51 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
     if (nextBlockId) requestBlockFocus(nextBlockId);
     setPageId(newPageId);
 
-    await applyOp(newPageId, {
-      kind: "page.create",
-      name: isoJournalName(props.day),
-      journalDay: props.day,
-      createdAt: Date.now(),
-    });
-    await applyOp(firstBlockId, {
-      kind: "block.create",
-      place: { pageId: newPageId, parentId: null, order: firstOrder },
-      content: value,
-      createdAt: Date.now(),
-    });
-    if (nextBlockId) {
-      await applyOp(nextBlockId, {
-        kind: "block.create",
-        place: { pageId: newPageId, parentId: null, order: orderBetween(firstOrder, null) },
-        content: "",
-        createdAt: Date.now(),
-      });
+    // ADR 019: a new day starts with the journal template, if one is chosen, and what was typed
+    // follows it — the same shape a day created through the API gets (`data-api.ts#journal`).
+    // One batch, one clock: page, template and typed block land together, and the stream sees one
+    // change rather than three. The template is loaded once and the HLC pool sized from that same
+    // node, so a template edited on another device mid-flight cannot leave the pool short.
+    const template = await loadJournalTemplate();
+    const clock = await getOpClock((template?.count ?? 0) + 3);
+    const mint = (entity: string, payload: OpPayload): Op =>
+      makeOp(clock.next(), clock.device, entity, payload);
+    const now = Date.now();
+
+    const ops: Op[] = [
+      mint(newPageId, {
+        kind: "page.create",
+        name: isoJournalName(props.day),
+        journalDay: props.day,
+        createdAt: now,
+      }),
+    ];
+    let lastOrder: string | null = null;
+    if (template) {
+      const inserted = journalTemplateOpsFor(template.node, newPageId, props.day, mint);
+      ops.push(...inserted.ops);
+      lastOrder = inserted.lastOrder;
     }
+    const firstOrder = orderBetween(lastOrder, null);
+    ops.push(
+      mint(firstBlockId, {
+        kind: "block.create",
+        place: { pageId: newPageId, parentId: null, order: firstOrder },
+        content: value,
+        createdAt: now,
+      }),
+    );
+    if (nextBlockId) {
+      ops.push(
+        mint(nextBlockId, {
+          kind: "block.create",
+          place: { pageId: newPageId, parentId: null, order: orderBetween(firstOrder, null) },
+          content: "",
+          createdAt: now,
+        }),
+      );
+    }
+    await applyOps(ops);
   }
 
   return (

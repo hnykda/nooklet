@@ -15,6 +15,7 @@ import {
   type Block,
   type BlockId,
   canonicalRefName,
+  DEFAULT_JOURNAL_TITLE_FORMAT,
   isoJournalName,
   isValidJournalDay,
   makeOp,
@@ -30,6 +31,7 @@ import {
   type Properties,
   splitList,
   type SqlDriver,
+  templateInsertOps,
   todayJournalDay,
 } from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
@@ -39,6 +41,8 @@ import {
   embedQueryVector,
   semanticCandidates,
 } from "./embeddings/semantic-search.js";
+import { suggestedJournalTitleFormat } from "./journal-format.js";
+import { journalTemplateNode } from "./journal-template.js";
 import { ftsPhrase } from "./ops/fts-query.js";
 import { pageLookupKeys, resolvePageIdForKey } from "./page-aliases.js";
 import {
@@ -582,7 +586,7 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
       if (row) return rowToPage(driver, row);
       if (!opts?.create) return null;
       const id = newId();
-      apply([
+      const ops: Op[] = [
         mint(id, {
           kind: "page.create",
           // Stored under the ISO name, never a display format (ADR 018).
@@ -590,7 +594,29 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
           journalDay: day,
           createdAt: Date.now(),
         }),
-      ]);
+      ];
+      // ADR 019: a day born through the API starts with the journal template, exactly as a day
+      // born on the client's first keystroke does (`views/VirtualJournalDay.tsx`) — same core
+      // builder, same blocks. The date tokens are written in the graph's own title format (the
+      // one an import brought, else the default): there is no reader here whose preference could
+      // be asked, and any format resolves (ADR 018). `today` means this page's day, not the wall
+      // clock's — an agent creating tomorrow's page gets tomorrow's date in it.
+      const template = journalTemplateNode(driver);
+      if (template) {
+        ops.push(
+          ...templateInsertOps(
+            template,
+            { pageId: id, parentId: null, lower: null, upper: null },
+            {
+              day,
+              dateFormat: suggestedJournalTitleFormat(driver) ?? DEFAULT_JOURNAL_TITLE_FORMAT,
+              now: new Date(),
+            },
+            mint,
+          ).ops,
+        );
+      }
+      apply(ops);
       const created = getPageRow(driver, id);
       if (!created) throw new Error("journal: failed to read back created page");
       return rowToPage(driver, created);

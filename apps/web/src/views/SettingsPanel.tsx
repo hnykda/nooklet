@@ -46,6 +46,7 @@ import {
   journalTitleOptions,
   setJournalTitleFormat,
 } from "../data/page-title.js";
+import { listTemplates, setJournalTemplate, type TemplateSummary } from "../data/templates.js";
 import { openDiagnostics } from "./DiagnosticsPanel.js";
 import "./settings.css";
 
@@ -572,6 +573,76 @@ function AboutSection(props: { onClose: () => void }): JSX.Element {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * ADR 019: the journal template is chosen by writing `journal-template:: true` on one template
+ * block. The setting IS that property — it syncs with the graph, the server reads it when an
+ * agent creates a day, and an agent can set it with `block_update` — so this is a picker over
+ * graph data, not a preference. `data/templates.ts` owns the read and the write; the list is
+ * fetched when the panel opens and again after a change, which is as live as a modal needs.
+ */
+function TemplatesSection(): JSX.Element {
+  const [templates, { refetch }] = createResource(listTemplates);
+  const [error, setError] = createSignal<string | null>(null);
+  // Reading an errored resource re-throws, so every read goes through this.
+  const list = (): TemplateSummary[] => (templates.error !== undefined ? [] : (templates() ?? []));
+  const currentId = (): string => list().find((t) => t.journal)?.id ?? "";
+
+  const choose = async (id: string): Promise<void> => {
+    setError(null);
+    try {
+      await setJournalTemplate(id === "" ? null : id);
+      await refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <section>
+      <h3>Templates</h3>
+      <Row label="Journal template">
+        <select
+          id="set-journal-template"
+          aria-label="Journal template"
+          onChange={(e) => void choose(e.currentTarget.value)}
+        >
+          <option value="" selected={currentId() === ""}>
+            None
+          </option>
+          <For each={list()}>
+            {(t) => (
+              <option value={t.id} selected={t.id === currentId()}>
+                {t.name}
+              </option>
+            )}
+          </For>
+        </select>
+      </Row>
+      <Show when={error()}>
+        {(message) => (
+          <p class="set-error" role="alert">
+            Could not change the journal template: {message()}
+          </p>
+        )}
+      </Show>
+      <p class="set-note">
+        Inserted at the top of every new journal day — one started here or one an agent creates
+        through the API. Any block with <code>template:: name</code> is a template; insert one
+        anywhere with <code>/template</code>. <code>&lt;% today %&gt;</code>,{" "}
+        <code>&lt;% yesterday %&gt;</code>, <code>&lt;% tomorrow %&gt;</code> and{" "}
+        <code>&lt;% time %&gt;</code> are filled in on insert.
+      </p>
+      <Show when={!templates.loading && templates.error === undefined && list().length === 0}>
+        <p class="set-muted">No templates in this graph yet.</p>
+      </Show>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
 
 export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
   return (
@@ -592,6 +663,7 @@ export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
           </button>
         </header>
         <AppearanceSection />
+        <TemplatesSection />
         <EmbeddingsSection />
         <AboutSection onClose={props.onClose} />
       </div>

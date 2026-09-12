@@ -111,8 +111,11 @@ export function createTemplateCommands(deps: TemplateCommandDeps): Command[] {
           if (template) await insert(template, opened);
           return;
         }
-        const chosen = await pick(await data.listTemplates());
-        if (chosen) await insert(chosen, opened);
+        // Not awaited: the slash menu stays mounted until this command's promise settles (it
+        // dismisses after `exec`), and a picker stacked on top of a lingering slash menu is two
+        // popups for one question. Open the picker, return, and let the pick do the work.
+        const templates = await data.listTemplates();
+        void pick(templates).then((chosen) => (chosen ? insert(chosen, opened) : undefined));
       },
     },
   ];

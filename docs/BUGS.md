@@ -433,6 +433,50 @@ rewrite (`data-api.ts#buildRefRewriteOps`) handles the pipe form when it meets o
 candidate blocks through `ref`, so a block whose only link to a page is a `[[Page|label]]` is not
 rewritten by a rename or a merge until this is fixed.
 
+### B-87 · No client plugin host: `/mermaid` and every `registerSlashCommand` are dead on arrival
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, deciding plugin-vs-core for
+templates (ADR 019) · **Test:** none (a test that loads `plugins/mermaid` in the web app and types
+`/mermaid` would catch it)
+
+`plugins/mermaid/src/client.ts` calls `ctx.registerSlashCommand({ id: "mermaid", … })` and
+`ctx.registerCodeBlockRenderer("mermaid", …)`. Type `/mermaid` in the app: nothing. Paste a
+```` ```mermaid ```` fence: plain code. Nothing under `apps/web/src` implements
+`ClientPluginContext` — `registerSlashCommand` exists only as a type in `@nooklet/plugin-api`,
+and `SlashMenu` ranks the static `SLASH_ITEMS` list, so there is no host to load a client half
+and nowhere for a contributed slash row to go. `PLAN.md` §15 marks M4 "loader for both halves"
+done; the server half's loader exists (`packages/server/src/plugins/`), the client half's does
+not. Until it does, "built-in optional features ship as internal plugins" (ADR 007) is only true
+server-side, which is why templates went into core (ADR 019).
+
+### B-88 · A template inserted with `/template` cannot be undone with Cmd/Ctrl+Z
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, building it (ADR 019) · **Test:**
+none yet (an `e2e/tests/templates.spec.ts` case pressing Cmd/Ctrl+Z after an insertion would
+catch it)
+
+Insert a template, press Cmd/Ctrl+Z: the blocks stay. The editor's undo history is
+`BlockTree`'s `commit` (`EditHistory.record`), which only sees ops that go through the tree's own
+`runStructural`; `block.insertTemplate` writes its `block.create` ops through `data/store.ts`
+directly, because a command outside the tree has no way to hand ops to its history. Fix is a
+structural delegate (`EditorHost.runStructuralCommand("block.insertOps", …)` or similar) that
+lets a command commit a batch through the tree — `BlockTree.tsx` is another agent's this
+session. The API side is unaffected: `batch_undo` reverses an API-created template as usual.
+
+### B-89 · `marker`/`priority`/`collapsed` in a `block.create` properties bag are silently dropped
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, seeding a server test for ADR 019 ·
+**Test:** none yet (a `packages/core/src/sync/apply-ops.test.ts` case creating a block with
+`properties: { marker: "TODO" }` and reading `marker` back would catch it)
+
+`data.blocks.insert({ content: "x", properties: { marker: "TODO" } })` creates the block with
+`marker = NULL`; the same bag with `scheduled` or `repeat` works. `applyBlockCreate` INSERTs the
+row with `marker_hlc = op.hlc`, then routes each bag entry through `writeBlockField`, whose
+`lwwSetColumns` refuses a write whose HLC is not newer than the column's — a tie with the very
+op that created the row. The columns the INSERT leaves `NULL` (`scheduled_hlc`, `deadline_hlc`,
+`repeat_hlc`, `done_hlc`) accept the write; the three it stamps do not. The top-level
+`marker`/`priority`/`collapsed` fields of `block.create` are the working path and every core
+caller uses them, so this only bites an API/plugin caller who puts a reserved key in the bag.
+Fix: in `applyBlockCreate`, fold bag values for those three keys into the INSERT itself (or
+stamp their `_hlc` columns `NULL` on insert and let `writeBlockField` set them).
+
 ## Fixed
 
 

@@ -27,6 +27,7 @@ function setup(opts: {
   const pick = opts.pick ?? vi.fn(async (list: TemplateSummary[]) => list[0]);
   const focusBlock = vi.fn();
   const [command] = createTemplateCommands({ editor, data, pick, focusBlock });
+  if (!command) throw new Error("no command registered");
   const ctx = (args?: unknown): CommandContext => ({
     ...DEFAULT_WHEN_CONTEXT,
     editorFocused: true,
@@ -37,8 +38,13 @@ function setup(opts: {
     exec: async () => {},
     args,
   });
-  if (!command) throw new Error("no command registered");
-  return { editor, data, pick, focusBlock, command, ctx };
+  // The picker path is fire-and-forget (see the command's `run`), so a test lets the pick settle
+  // before looking at what it did.
+  const run = async (args?: unknown): Promise<void> => {
+    await command.run(ctx(args));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+  return { editor, data, pick, focusBlock, command, run };
 }
 
 describe("block.insertTemplate", () => {
@@ -50,8 +56,8 @@ describe("block.insertTemplate", () => {
   });
 
   it("into an empty bullet: the template's first block becomes this block, written through the editor", async () => {
-    const { editor, data, command, ctx, focusBlock } = setup({ content: "" });
-    await command.run(ctx());
+    const { editor, data, run, focusBlock } = setup({ content: "" });
+    await run();
     expect(data.listTemplates).toHaveBeenCalledTimes(1);
     expect(data.applyTemplateIntoBlock).toHaveBeenCalledWith("tpl-daily", "b1");
     expect(data.insertTemplateAfter).not.toHaveBeenCalled();
@@ -62,8 +68,8 @@ describe("block.insertTemplate", () => {
   });
 
   it("after a bullet with text: inserted as siblings, caret moves to the first new block", async () => {
-    const { editor, data, command, ctx, focusBlock } = setup({ content: "already here" });
-    await command.run(ctx());
+    const { editor, data, run, focusBlock } = setup({ content: "already here" });
+    await run();
     expect(data.insertTemplateAfter).toHaveBeenCalledWith("tpl-daily", "b1");
     expect(data.applyTemplateIntoBlock).not.toHaveBeenCalled();
     expect(editor.state?.content).toBe("already here");
@@ -71,46 +77,46 @@ describe("block.insertTemplate", () => {
   });
 
   it("a whitespace-only bullet counts as empty", async () => {
-    const { data, command, ctx } = setup({ content: "   " });
-    await command.run(ctx());
+    const { data, run } = setup({ content: "   " });
+    await run();
     expect(data.applyTemplateIntoBlock).toHaveBeenCalled();
   });
 
   it("takes the template by name from args and skips the picker", async () => {
     const pick = vi.fn(async () => undefined);
-    const { data, command, ctx } = setup({ content: "x", pick });
-    await command.run(ctx("MEETING"));
+    const { data, run } = setup({ content: "x", pick });
+    await run("MEETING");
     expect(pick).not.toHaveBeenCalled();
     expect(data.insertTemplateAfter).toHaveBeenCalledWith("tpl-meeting", "b1");
-    await command.run(ctx({ name: "daily" }));
+    await run({ name: "daily" });
     expect(data.insertTemplateAfter).toHaveBeenLastCalledWith("tpl-daily", "b1");
   });
 
   it("does nothing for an unknown name or a cancelled picker", async () => {
     const pick = vi.fn(async () => undefined);
-    const { data, command, ctx } = setup({ content: "x", pick });
-    await command.run(ctx("nope"));
-    await command.run(ctx());
+    const { data, run } = setup({ content: "x", pick });
+    await run("nope");
+    await run();
     expect(pick).toHaveBeenCalledTimes(1);
     expect(data.insertTemplateAfter).not.toHaveBeenCalled();
     expect(data.applyTemplateIntoBlock).not.toHaveBeenCalled();
   });
 
   it("does nothing without a focused editor", async () => {
-    const { editor, data, command, ctx } = setup({});
+    const { editor, data, run } = setup({});
     editor.state = null;
-    await command.run(ctx());
+    await run();
     expect(data.listTemplates).not.toHaveBeenCalled();
   });
 
   it("does not write into a block that stopped being the focused one meanwhile", async () => {
-    const { editor, data, command, ctx } = setup({ content: "" });
+    const { editor, data, run } = setup({ content: "" });
     data.applyTemplateIntoBlock.mockImplementationOnce(async () => {
       // Focus moved to another block while the ops were being applied.
       editor.state = { blockId: "b2", content: "", start: 0, end: 0 };
       return { content: "late" };
     });
-    await command.run(ctx());
+    await run();
     expect(editor.state?.content).toBe("");
   });
 });
