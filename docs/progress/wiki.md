@@ -25,20 +25,17 @@ Never touch `~/.nooklet/default`.
 
 ## Pages
 
-Done (committed, e366708 — 17 pages, 301 blocks, clean import): README.md, logseq/config.edn,
-tools/generate-shortcuts.mjs, Home, Getting started, Concepts, guide, reference, concept,
-Keyboard shortcuts (generated), Journals, Tasks, References and tags, Search, Settings, Sync,
-Agents and MCP, Import from Logseq, Command line, Markdown format.
+All 21 pages done and committed: e366708 (17 pages), a08d492 (Troubleshooting, Architecture,
+Contributing, FAQ), 4797ca1 (mirror pages follow B-95; nested-fence fix on Markdown format).
 
-In flight (on disk, not yet import-checked/committed): Troubleshooting, Contributing, FAQ,
-Architecture.
+Final verification (2026-09-12, after 4797ca1): import 21 pages / 422 blocks, 0 warnings,
+0 errors, 0 dangling refs; `verify-wiki.mjs` against `serve --port 6363`: all 21 pages render
+blocks in Chromium with the right title, all 21 distinct [[link]] targets resolve, Keyboard
+shortcuts renders 5 tables. Server on 6363 stopped. Port 6362 was another agent's server
+(`audit-data-mirror`) and was never touched. Keyboard shortcuts regenerated before the final
+commit: 84 commands, 48 bound, identical to the committed page.
 
-Still to do, in order:
-1. Import all 21 pages; commit batch 4 if clean.
-2. Regenerate Keyboard shortcuts right before the final commit (other agents are adding commands
-   live; the page names the date).
-3. `pnpm nooklet serve --port 6363 …` in the background, run `verify-wiki.mjs`, kill the server.
-4. Final commit (regenerated shortcuts page + this file), then the report to the owner.
+In flight: nothing. Still to do: nothing — task complete; report delivered to the coordinator.
 
 ## Findings to report (code contradicts docs)
 
@@ -68,4 +65,5 @@ Still to do, in order:
 
 ## Next steps
 
-Import all 21 pages → commit batch 4 → serve → verify → regenerate shortcuts → final commit.
+None. If restarted: nothing to resume; `git log --oneline -3 -- docs/wiki` shows the three
+commits. To re-verify, run the commands above.
