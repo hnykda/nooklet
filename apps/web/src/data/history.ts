@@ -17,7 +17,7 @@
 import { type Accessor, createResource, createSignal, type Resource } from "solid-js";
 import { onChange, onSyncStatus } from "../db/client.js";
 import type { ChangedTable } from "../db/worker-api.js";
-import { apiBaseUrl, authToken } from "./bootstrap.js";
+import { callOp } from "./api-client.js";
 
 // ---------------------------------------------------------------------------------------------
 // Invalidation bus (see header)
@@ -56,53 +56,6 @@ function stamped<T>(value: T, tables: readonly ChangedTable[]): { value: T; vers
   let version = syncVersion();
   for (const table of tables) version += versionSignal(table)[0]();
   return { value, version };
-}
-
-// ---------------------------------------------------------------------------------------------
-// HTTP
-// ---------------------------------------------------------------------------------------------
-
-export class HistoryApiError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly hint?: string,
-  ) {
-    super(message);
-    this.name = "HistoryApiError";
-  }
-}
-
-async function callOp<T>(name: string, body: unknown): Promise<T> {
-  const token = authToken();
-  let res: Response;
-  try {
-    res = await fetch(`${apiBaseUrl()}/api/v1/${name}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    throw new HistoryApiError(
-      "network",
-      `could not reach ${apiBaseUrl() || location.origin} (${err instanceof Error ? err.message : String(err)})`,
-    );
-  }
-  const json = (await res.json().catch(() => undefined)) as
-    | { error?: { code?: string; message?: string; hint?: string } }
-    | undefined;
-  if (!res.ok || json?.error) {
-    const e = json?.error;
-    throw new HistoryApiError(
-      e?.code ?? "internal",
-      e?.message ?? `${res.status} ${res.statusText}`,
-      e?.hint,
-    );
-  }
-  return json as T;
 }
 
 // ---------------------------------------------------------------------------------------------

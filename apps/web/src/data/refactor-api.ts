@@ -8,40 +8,7 @@
  * on the next poke.
  */
 
-import { apiBaseUrl, authToken } from "./bootstrap.js";
-
-export class RefactorApiError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly hint?: string,
-  ) {
-    super(message);
-    this.name = "RefactorApiError";
-  }
-}
-
-async function post<TOut>(opName: string, body: unknown): Promise<TOut> {
-  const token = authToken();
-  const res = await fetch(`${apiBaseUrl()}/api/v1/${opName}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  const json = (await res.json().catch(() => undefined)) as
-    | TOut
-    | { error: { code: string; message: string; hint?: string } }
-    | undefined;
-  if (!res.ok || (json && typeof json === "object" && "error" in json)) {
-    const err = (json as { error?: { code: string; message: string; hint?: string } } | undefined)
-      ?.error;
-    throw new RefactorApiError(err?.code ?? "internal", err?.message ?? res.statusText, err?.hint);
-  }
-  return json as TOut;
-}
+import { callOp } from "./api-client.js";
 
 export interface BlockToPageResult {
   page: string;
@@ -93,7 +60,7 @@ export interface ReplaceResult {
 
 export const refactorApi = {
   async blockToPage(blockId: string): Promise<BlockToPageResult> {
-    const out = await post<{
+    const out = await callOp<{
       page: string;
       page_id: string;
       page_created: boolean;
@@ -110,7 +77,7 @@ export const refactorApi = {
   },
 
   async moveBlockToPage(blockId: string, page: string): Promise<MoveToPageResult> {
-    const out = await post<{
+    const out = await callOp<{
       page: string;
       page_created: boolean;
       moved: number;
@@ -125,7 +92,7 @@ export const refactorApi = {
   },
 
   async mergePage(source: string, target: string): Promise<MergeResult> {
-    const out = await post<{
+    const out = await callOp<{
       source: string;
       target: { name: string };
       blocks_moved: number;
@@ -142,7 +109,7 @@ export const refactorApi = {
   },
 
   async replace(input: ReplaceInput): Promise<ReplaceResult> {
-    const out = await post<{
+    const out = await callOp<{
       matches: Array<{
         block_id: string;
         page: string;
@@ -179,7 +146,7 @@ export const refactorApi = {
 
   /** Reverse a previous write by its `batch_id`. Returns the undo's own batch id. */
   async undoBatch(batchId: string): Promise<string | undefined> {
-    const out = await post<{ batch_id?: string }>("batch.undo", { batch_id: batchId });
+    const out = await callOp<{ batch_id?: string }>("batch.undo", { batch_id: batchId });
     return out.batch_id;
   },
 };

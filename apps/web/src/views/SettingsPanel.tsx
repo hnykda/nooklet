@@ -30,6 +30,7 @@ import {
   Switch as SolidSwitch,
 } from "solid-js";
 import { type ThemePreference, useTheme } from "../app/theme.js";
+import { callOp, describeError } from "../data/api-client.js";
 import {
   CONTENT_WIDTHS,
   contentWidth,
@@ -84,42 +85,6 @@ interface EmbeddingsStatus {
 
 interface Diagnostics {
   storage?: { data_dir: string; graph_id: string };
-}
-
-/**
- * POST one op and turn every failure into a sentence.
- *
- * The two failure shapes differ and both used to surface as nothing at all: a non-2xx carries the
- * server's `{error: {message, hint}}` (which is where `embeddings.configure` puts "Ollama isn't
- * running" and "pull that model first"), while a rejected fetch carries only "Failed to fetch" —
- * true but unactionable, so it gets the address it failed to reach attached to it.
- */
-async function callOp<T>(name: string, body: unknown): Promise<T> {
-  const config = bootstrapConfig();
-  let res: Response;
-  try {
-    res = await fetch(`${apiBaseUrl()}/api/v1/${name}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(config.token ? { authorization: `Bearer ${config.token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    throw new Error(
-      `could not reach ${apiBaseUrl() || location.origin} (${err instanceof Error ? err.message : String(err)})`,
-    );
-  }
-  const json = (await res.json().catch(() => undefined)) as
-    | { error?: { message?: string; hint?: string } }
-    | undefined;
-  if (!res.ok) {
-    const e = json?.error;
-    if (e?.message) throw new Error(e.hint ? `${e.message} ${e.hint}` : e.message);
-    throw new Error(`${res.status} ${res.statusText}`);
-  }
-  return json as T;
 }
 
 function Row(props: { label: string; children: JSX.Element }): JSX.Element {
@@ -287,7 +252,7 @@ function ProviderForm(props: {
     } catch (err) {
       // Whatever went wrong, it ends here as text on screen. The failure this replaces was a
       // button that stayed on "Testing…" forever.
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }
@@ -394,7 +359,7 @@ function EmbeddingsSection(): JSX.Element {
       void refetch();
     } catch (err) {
       setAction(null);
-      setActionError(err instanceof Error ? err.message : String(err));
+      setActionError(describeError(err));
     }
   };
 
@@ -596,7 +561,7 @@ function TemplatesSection(): JSX.Element {
       await setJournalTemplate(id === "" ? null : id);
       await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeError(err));
     }
   };
 

@@ -26,7 +26,7 @@
 import { normalizePageName } from "@nooklet/core";
 import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import { apiBaseUrl, authToken } from "../data/bootstrap.js";
+import { callOp, describeError } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { useLinkedReferences } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
@@ -59,39 +59,6 @@ export interface ReferencesPanelProps {
 interface Group {
   page: string;
   refs: ReadonlyArray<{ id: string; text: string }>;
-}
-
-/**
- * POST one op and turn every failure into a sentence — the same shape `SettingsPanel.tsx` uses.
- * `../data/api-client.ts` has no generic call yet; when a third caller appears this should move
- * there rather than be copied a third time.
- */
-async function callOp<T>(name: string, body: unknown): Promise<T> {
-  const token = authToken();
-  let res: Response;
-  try {
-    res = await fetch(`${apiBaseUrl()}/api/v1/${name}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    throw new Error(
-      `could not reach the server (${err instanceof Error ? err.message : String(err)})`,
-    );
-  }
-  const json = (await res.json().catch(() => undefined)) as
-    | { error?: { message?: string; hint?: string } }
-    | undefined;
-  if (!res.ok) {
-    const e = json?.error;
-    if (e?.message) throw new Error(e.hint ? `${e.message} ${e.hint}` : e.message);
-    throw new Error(`${res.status} ${res.statusText}`);
-  }
-  return json as T;
 }
 
 function ReferenceGroups(props: {
@@ -294,7 +261,7 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
       });
       refetch();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : String(err));
+      setLinkError(describeError(err));
     } finally {
       setLinkBusy(false);
     }
@@ -310,7 +277,7 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
       setLinkResult({ ...result, undone: true });
       refetch();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : String(err));
+      setLinkError(describeError(err));
     } finally {
       setLinkBusy(false);
     }

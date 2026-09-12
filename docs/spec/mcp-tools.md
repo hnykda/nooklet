@@ -1729,8 +1729,8 @@ export const uiHighlight = defineOp({
 
 M7's "link all unlinked references" (research/13 §4.2 item 10), behind the button on the page
 view's Unlinked references section. Named `mentions.link` rather than `page.link_unlinked`
-because rule §3.1.1 forbids underscores inside an op-name segment (the registry rejects them —
-`page.link_unlinked` and a hypothetical `page.link.unlinked` would collide on one MCP name).
+from before rule §3.1.1 was relaxed the same day (ADR 020: `_` allowed inside a segment, the
+registry refusing any op whose derived tool name is already taken); the name stays as it is.
 
 **Description**: "Rewrites every block that mentions a page's name in plain text but does not
 link to it (the unlinked references `page_backlinks` lists with `include_unlinked`) so that the

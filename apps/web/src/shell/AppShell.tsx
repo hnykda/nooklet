@@ -26,6 +26,9 @@ import { HelpMenu } from "./HelpMenu.js";
 import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
 import "../styles/shell.css";
+// Per-device appearance (text size, width, custom CSS) applies itself on load. Import it here,
+// where the shell is, rather than leaving that to whoever happens to import SettingsPanel first.
+import "../data/appearance.js";
 
 /** The sync state, doubling as the way into Diagnostics — "why does it say that?" is exactly
  * the question this indicator provokes, so the answer lives one click away from it. */

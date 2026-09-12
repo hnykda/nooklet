@@ -58,11 +58,14 @@ the glossary") — are listed here for whoever next edits `00-conventions.md` to
 
 ## Normative rules
 
-1. Op names MUST match `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$` — dotted segments, each starting
-   with a lowercase letter, **no underscores**. This is stricter than the illustrative regex in
-   `research/07-api-mcp.md` (which allowed `_` inside a segment) so that the MCP name derivation
-   (`.` → `_`, conventions.md §Naming) is injective: two distinct op names can never collapse to
-   the same tool name.
+1. Op names MUST match `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$` — dotted segments, each starting
+   with a lowercase letter; `_` MAY appear inside a segment (relaxed 2026-09-12 for ADR 020's
+   `block.to_page`, `block.move_to_page`). That makes the MCP name derivation (`.` → `_`,
+   conventions.md §Naming) non-injective on its own — `a.b_c` and `a.b.c` both become `a_b_c` —
+   so `OpRegistry.register` MUST also throw when the derived tool name is already taken by another
+   op. The guarantee that matters, two distinct op names never sharing one tool name, is kept by
+   that check rather than by the grammar; the mapping is one-way (the MCP server closes over the op),
+   so nothing ever has to turn a tool name back into an op name.
 2. `OpRegistry.register` MUST throw if `name` is already registered. The registry is one flat
    namespace shared by core and every plugin (ADR 008: "Plugins register ops through the same
    registry"); there is no reserved-prefix rule in v1 (see Open issues #9).
@@ -343,7 +346,7 @@ export interface OpContext {
 // packages/server/src/ops/registry.ts
 import type { OpDef } from "./define-op.js";
 
-const OP_NAME_RE = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/;
+const OP_NAME_RE = /^([a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+|search|batch)$/;
 
 export class OpRegistry {
   private ops = new Map<string, OpDef & { owner: string }>();

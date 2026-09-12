@@ -12,6 +12,7 @@
  */
 
 import { createResource, createSignal, type JSX, Show } from "solid-js";
+import { callOp } from "../data/api-client.js";
 import { apiBaseUrl, bootstrapConfig } from "../data/bootstrap.js";
 import { useSyncStatus } from "../data/store.js";
 import "./diagnostics.css";
@@ -28,18 +29,8 @@ interface Diagnostics {
   };
 }
 
-async function fetchDiagnostics(): Promise<Diagnostics> {
-  const config = bootstrapConfig();
-  const res = await fetch(`${apiBaseUrl()}/api/v1/system.diagnostics`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(config.token ? { authorization: `Bearer ${config.token}` } : {}),
-    },
-    body: "{}",
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as Diagnostics;
+function fetchDiagnostics(): Promise<Diagnostics> {
+  return callOp<Diagnostics>("system.diagnostics", {});
 }
 
 function Row(props: { label: string; children: JSX.Element }): JSX.Element {

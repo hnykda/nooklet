@@ -112,6 +112,20 @@ export class ApiError extends Error {
   }
 }
 
+/** What a `/api/v1/<op>` reply means: the body, or an `ApiError` built from `{error}` / status. */
+async function unwrap<TOut>(res: Response): Promise<TOut> {
+  const json = (await res.json().catch(() => undefined)) as
+    | TOut
+    | { error: { code: string; message: string; hint?: string } }
+    | undefined;
+  if (!res.ok || (json && typeof json === "object" && "error" in json)) {
+    const err = (json as { error?: { code: string; message: string; hint?: string } } | undefined)
+      ?.error;
+    throw new ApiError(err?.code ?? "internal", err?.message ?? res.statusText, err?.hint);
+  }
+  return json as TOut;
+}
+
 async function post<TOut>(
   base: string,
   opName: string,
@@ -123,16 +137,40 @@ async function post<TOut>(
     headers: { "content-type": "application/json", ...authHeaders(getToken) },
     body: JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => undefined)) as
-    | TOut
-    | { error: { code: string; message: string; hint?: string } }
-    | undefined;
-  if (!res.ok || (json && typeof json === "object" && "error" in json)) {
-    const err = (json as { error?: { code: string; message: string; hint?: string } } | undefined)
-      ?.error;
-    throw new ApiError(err?.code ?? "internal", err?.message ?? res.statusText, err?.hint);
+  return unwrap<TOut>(res);
+}
+
+/**
+ * POST one op with this device's token and turn every failure into an `ApiError`.
+ *
+ * The call every panel that needs the server had copied by the end of M7 — Settings, References,
+ * Diagnostics, history, the refactor ops — each with its own error class and its own wording.
+ * A rejected fetch carries only "Failed to fetch", true but unactionable, so it gets the address
+ * it failed to reach attached; a non-2xx carries the server's `{error: {code, message, hint}}`,
+ * which is where `embeddings.configure` puts "Ollama isn't running" and "pull that model first".
+ * Render one with `describeError` so the hint is not lost.
+ */
+export async function callOp<TOut>(name: string, body: unknown): Promise<TOut> {
+  let res: Response;
+  try {
+    res = await fetch(`${apiBaseUrl()}/api/v1/${name}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders(authToken) },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new ApiError(
+      "network",
+      `could not reach ${apiBaseUrl() || location.origin} (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
-  return json as TOut;
+  return unwrap<TOut>(res);
+}
+
+/** One sentence for a failure: the server's message with its hint, or whatever was thrown. */
+export function describeError(err: unknown): string {
+  if (err instanceof ApiError && err.hint) return `${err.message} ${err.hint}`;
+  return err instanceof Error ? err.message : String(err);
 }
 
 interface SearchWireHit {
