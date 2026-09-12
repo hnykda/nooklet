@@ -18,7 +18,4 @@ export function mountSync(app: Hono, serverCtx: ServerContext): void {
   registerSyncLive(app, serverCtx);
 }
 
-// Re-exported for the extension point documented in `./realtime.ts`'s file header: a future write
-// path outside `/sync/push` (e.g. the ops registry's API/MCP write path) can call `notifyCommit`
-// itself to poke connected devices after its own `serverApplyOps` call.
 export { type CommitEvent, type CommitListener, notifyCommit, onCommit } from "./realtime.js";

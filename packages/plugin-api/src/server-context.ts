@@ -1,7 +1,6 @@
 /**
- * Server `PluginContext` (`docs/spec/api-and-plugin-types.md` §4). Greenfield — no plugin host
- * exists in this repo yet, so this module follows the spec directly rather than reconciling
- * against an implementation (unlike `data.ts`/`op-def.ts`, which do have real code to match).
+ * Server `PluginContext` (`docs/spec/api-and-plugin-types.md` §4): what a plugin's server half
+ * receives in `activate(ctx)`. Implemented by `packages/server/src/plugins/server-context.ts`.
  */
 import type { Block, BlockId, Op, Page, PageId } from "@nooklet/core";
 import type { z } from "zod";

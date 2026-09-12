@@ -1,12 +1,11 @@
 /**
- * Plugin discovery (`docs/spec/api-and-plugin-types.md` §2, the loader design referenced from
- * `@nooklet/plugin-api`'s README: "packages/server/src/plugins/host.ts, not yet built"). Scans one
- * or more directories for `<dir>/<name>/package.json#nooklet` plugins (the primary, documented
- * form) and `<dir>/<name>.plugin.ts` single-file scripts, validating every manifest with
+ * Plugin discovery (`docs/spec/api-and-plugin-types.md` §2). Scans one or more directories for
+ * `<dir>/<name>/package.json#nooklet` plugins, validating every manifest with
  * `@nooklet/plugin-api`'s `validateManifest` before anything is bundled or `import()`ed — rule 9's
  * test case ("neither server nor client -> loader rejects at discovery time, before any import()")
  * and rule 15 ("an unsupported api major marks the plugin error, never aborts the server") both
- * live here, not in the bundler.
+ * live here, not in the bundler. (The spec's single-file `<name>.plugin.ts` form is not
+ * discovered; nothing ships or tests one.)
  *
  * A bad plugin (invalid manifest, unsupported `api`, duplicate id) is reported as a
  * `PluginDiscoveryError`, never thrown — the caller (`./host.ts`) decides what "safe mode" means
@@ -23,12 +22,11 @@ export interface PluginDescriptor {
   manifest: PluginManifest;
   /** Directory the manifest/entries are resolved relative to. */
   dir: string;
-  kind: "package" | "single-file";
   /** Absolute path to the server entry module, if `manifest.server` was set. */
   serverEntry?: string;
   /** Absolute path to the client entry module, if `manifest.client` was set. */
   clientEntry?: string;
-  /** `package.json#version`, or "0.0.0" for a single-file plugin (no package.json). */
+  /** `package.json#version`, or "0.0.0" when the manifest carries none. */
   version: string;
 }
 
@@ -89,7 +87,6 @@ function discoverPackagePlugin(
     id: manifest.id,
     manifest,
     dir,
-    kind: "package",
     serverEntry: manifest.server ? resolve(dir, manifest.server) : undefined,
     clientEntry: manifest.client ? resolve(dir, manifest.client) : undefined,
     version: typeof pkg.version === "string" ? pkg.version : "0.0.0",
@@ -122,12 +119,6 @@ export function discoverPlugins(dirs: readonly string[]): DiscoveryResult {
     }
   }
   return { found, errors };
-}
-
-/** Find one already-discovered plugin by id (for CLI `enable`/`disable`/`reload`, which take a
- * plugin id rather than a directory). */
-export function findPlugin(dirs: readonly string[], id: string): PluginDescriptor | undefined {
-  return discoverPlugins(dirs).found.find((p) => p.id === id);
 }
 
 export type { PluginManifest };

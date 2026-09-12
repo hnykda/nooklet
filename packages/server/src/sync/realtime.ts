@@ -2,19 +2,11 @@
  * The "commit -> poke" seam (ADR 003 §6.5 / research/03-sync.md §6.5: "pokes all other devices
  * over WS ... clients then pull").
  *
- * `serverApplyOps` (`../apply-ops.ts`) has no transport role and MUST NOT be edited to know about
- * HTTP/WebSocket concerns (task constraint). Instead, this module exposes a tiny subscribe/notify
- * pair:
- *
- *   - `onCommit(ctx, listener)` registers a listener; used today by `./live.ts` to wire the actual
- *     WebSocket broadcast (`wirePokeOnCommit`).
- *   - `notifyCommit(ctx, seq, originDeviceId?)` is called by whoever just committed something,
- *     right after their own `serverApplyOps` call returns. Today that is only `./push.ts` (the
- *     sync HTTP push route). It is exported from `./index.ts` so a FUTURE write path — most
- *     likely the ops registry's HTTP/MCP write path (`../ops/registry.ts`'s
- *     `buildOpContext().applyOps`, which also wraps `serverApplyOps`) — can opt into the same
- *     poke-on-write behavior later by calling `notifyCommit` itself. Nothing here requires that;
- *     it is a documented extension point, not a dependency.
+ * `serverApplyOps` (`../apply-ops.ts`) has no transport role and knows nothing about HTTP or
+ * WebSockets. It calls `notifyCommit` after every committed write — sync push, the op registry,
+ * `data-api.ts`, the importer, the mirror alike, since it is the one chokepoint they all go
+ * through — and this module fans that out to whoever subscribed with `onCommit`: `./live.ts`'s
+ * WebSocket poke (`wirePokeOnCommit`) and `../plugins/change-events.ts`'s plugin events.
  *
  * State is keyed by `ServerContext` via a `WeakMap` rather than a bare module-level singleton: in
  * production there is exactly one `ServerContext` per process (ADR: "one graph per server in
@@ -63,9 +55,8 @@ export function onCommit(ctx: ServerContext, listener: CommitListener): () => vo
   return () => s.listeners.delete(listener);
 }
 
-/** Announce that `ctx` just committed something through `serverApplyOps`, up to `seq`. See file
- * header: call this after your own `serverApplyOps` call, do not expect `apply-ops.ts` to call it
- * for you. */
+/** Announce that `ctx` just committed something through `serverApplyOps`, up to `seq`. Called by
+ * `serverApplyOps` itself, once per write with at least one applied op. */
 export function notifyCommit(ctx: ServerContext, seq: number, originDeviceId?: string): void {
   const s = stateFor(ctx);
   for (const listener of s.listeners) listener({ seq, deviceId: originDeviceId });

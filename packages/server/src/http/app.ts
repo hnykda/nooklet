@@ -62,7 +62,8 @@ function hostName(host: string | undefined): string {
   return host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : (host.split(":")[0] ?? "");
 }
 
-function isLoopbackName(name: string): boolean {
+/** A bind address or `Host` name that means this machine. */
+export function isLoopbackName(name: string): boolean {
   return name === "127.0.0.1" || name === "localhost" || name === "[::1]" || name === "::1";
 }
 

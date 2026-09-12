@@ -1,14 +1,13 @@
 /**
  * The real `SyncTransport` (ADR 003, research/03-sync.md §6.5): `POST /sync/push`,
  * `GET /sync/pull?since=`, `GET /sync/snapshot`, and a `/sync/live` WebSocket for the poke.
+ * The server side is `packages/server/src/sync/`.
  *
- * NOT unit tested — it needs a real fetch/WebSocket and a running server, and `packages/server`'s
- * `/sync/*` routes are being built concurrently against the same protocol (see this file's header
- * for the contract it assumes). `sync-client.test.ts` covers 100% of the *logic* that matters
- * (queueing, batching, cursor advancement, corrections, bootstrap, crash-safety) against a fake
- * `SyncTransport`, so this file is intentionally thin: it only shapes HTTP/WS calls to match
- * `./types.ts`, nothing else. See apps/web/README.md's "needs manual browser verification" list —
- * this file needs an end-to-end check against the real server once `/sync/*` exists.
+ * NOT unit tested — it needs a real fetch/WebSocket and a running server. `sync-client.test.ts`
+ * covers the *logic* that matters (queueing, batching, cursor advancement, corrections,
+ * bootstrap, crash-safety) against a fake `SyncTransport`, and the e2e suite (`e2e/tests/
+ * remote-device.spec.ts`, `connectivity.spec.ts`) exercises this file against the real server; so
+ * it stays deliberately thin — it only shapes HTTP/WS calls to match `./types.ts`.
  */
 
 import type {

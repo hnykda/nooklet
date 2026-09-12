@@ -14,6 +14,17 @@
  * (it is acquired once, at the top, for the whole handler). nooklet is a single-user local server,
  * not a high-concurrency service, so a simple FIFO queue — no fairness/priority/timeout logic — is
  * plenty.
+ *
+ * WHAT THE LOCK DOES NOT COVER, and the invariant that keeps it safe anyway: `/sync/pull`,
+ * `/sync/snapshot` and every read-only op run outside it, on the same connection. A read handled
+ * while a trial's savepoint is open would see (and hand a device) ops that are about to be rolled
+ * back. That cannot happen today because no write handler does real I/O inside a trial — every
+ * `await` in that path is a microtask, and an incoming request is a macrotask, which the event
+ * loop will not start until the current microtask chain drains. `serverApplyOps` also emits its
+ * WebSocket poke inside the savepoint for the same reason; a dry run therefore pokes clients about
+ * ops that never land, which costs one wasted pull and nothing else. If a write handler ever has
+ * to await a timer, the filesystem or the network inside a trial, this invariant is gone and the
+ * reads need the lock too.
  */
 export class AsyncMutex {
   private tail: Promise<void> = Promise.resolve();

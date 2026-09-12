@@ -1,13 +1,11 @@
 /**
  * `defineOp`, `OpDef`/`OpContext`/`OpRegistry`, and the HTTP + OpenAPI mount functions
- * (`docs/spec/api-and-plugin-types.md` §1). This is the reference-implementation sketch from that
- * spec adapted to the *installed* `hono@4.13.7`/`zod@4.6.1` APIs (verified against their `.d.ts`
- * files under `node_modules/.pnpm`) — see the summary of deviations at the bottom of this file's
- * header comment block in the task write-up.
+ * (`docs/spec/api-and-plugin-types.md` §1): one registry that every op is added to once, which
+ * the HTTP mount below, the OpenAPI document, and the MCP mount each read.
  *
- * `packages/plugin-api` does not exist yet in this repo, so — same accommodation as
- * `data-api.ts` — `OpDef`/`OpContext`/`OpError`/`Scope`/`OpAnnotations` live here (server-internal)
- * instead of being re-exported from a plugin-api package; move them out once that package exists.
+ * The types here are the server's own; `@nooklet/plugin-api` publishes the shapes plugin authors
+ * compile against and `packages/plugin-api/src/assignability.test.ts` proves the two agree, so a
+ * plugin's `defineOp` is registered through `../plugins/ops-bridge.ts` without a cast.
  *
  * The MCP mount (§1.7 of the spec) lives in `../mcp/server.ts` instead of this file: it needs
  * nooklet-specific wiring (server instructions text, bearer-auth-to-OpContext bridging via
@@ -211,8 +209,9 @@ export interface ServerConfig {
   host?: string;
   /**
    * Hostnames a request's `Host` header may carry, beyond the loopback names that are always
-   * allowed. Needed whenever `host` is not loopback: `@modelcontextprotocol/hono`'s guard is
-   * installed app-wide, so an un-allowlisted `Host` fails the web client and `/mcp` alike.
+   * allowed. Enforced by `../http/app.ts`'s own guard, registered before every route (and, for
+   * `/mcp`, by `@modelcontextprotocol/hono`'s as well), whenever `host` is not loopback: an
+   * un-allowlisted `Host` gets 403 on every path, web client and `/mcp` alike.
    */
   allowedHosts?: string[];
 }

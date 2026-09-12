@@ -47,6 +47,7 @@ import {
   setEmbeddingSettings,
 } from "./embeddings/index.js";
 import { runGc } from "./gc.js";
+import { isLoopbackName } from "./http/app.js";
 import { importLogseqGraph } from "./importer/logseq.js";
 import { migrateJournalNames } from "./journal-names.js";
 import { startStdioBridge } from "./mcp/stdio.js";
@@ -262,7 +263,7 @@ async function main(): Promise<void> {
       // Loopback by default (see ServerConfig.host): reaching this graph from another machine has
       // to be something you asked for.
       const hostname = config.host ?? "127.0.0.1";
-      const exposed = hostname !== "127.0.0.1" && hostname !== "localhost" && hostname !== "::1";
+      const exposed = !isLoopbackName(hostname);
       if (exposed && !config.allowedHosts?.length) {
         process.stderr.write(
           `nooklet: bound to ${hostname} with no --allow-host, so ONLY requests addressed to\n` +

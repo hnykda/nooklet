@@ -262,11 +262,11 @@ export function mountMcp(
   version?: string,
 ): void {
   const handler = buildMcp(reg, serverCtx, config, version);
-  // DNS-rebinding protection. Note this guard is installed by the library as a `use("*")`
-  // middleware and `createApp` merges this whole sub-app at `"/"`, so it governs EVERY path that
-  // has no earlier route — including the web client's SPA fallback (`../http/web-client.ts`).
-  // That is why binding to a LAN address without listing the hostname you reach it by fails the
-  // app itself, not just `/mcp`: the allowlist has to cover both.
+  // The library installs its own Host/Origin guard as a `use("*")` middleware on this sub-app,
+  // and `createApp` merges the sub-app at `"/"`, so it also runs for every path with no earlier
+  // route — the web client's SPA fallback included. It is fed the same allowlist as nooklet's own
+  // guard (`../http/app.ts`, registered before every route, which is the one that actually
+  // covers `/healthz`, `/api/*` and `/sync/*`), so the two can never disagree about a hostname.
   const mcpApp = createMcpHonoApp(
     config.allowedHosts?.length
       ? {

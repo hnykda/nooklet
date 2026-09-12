@@ -8,10 +8,9 @@
  * mirrors `../sync/http-transport.ts`'s style (same `baseUrl`/`getToken` shape) deliberately, so
  * it reads as "the same kind of thing" rather than a one-off fetch wrapper.
  *
- * Auth: device pairing (PLAN.md §6) isn't built yet, so there is no real per-device bearer token
- * to reach for. `VITE_NOOKLET_TOKEN` is a dev-only stand-in (see vite-env.d.ts) until that lands;
- * `getToken` is still a function (not a plain string) so swapping in a real token source later is
- * a one-line change here, not a call-site change.
+ * Auth: `getToken` reads `./bootstrap.ts`'s token — handed out by `/api/session` on loopback,
+ * pasted into the connect screen and kept in `localStorage` on any other device. It is a function
+ * rather than a captured string so a token that arrives after this module loads is still seen.
  */
 
 import { apiBaseUrl, authToken } from "./bootstrap.js";
