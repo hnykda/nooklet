@@ -433,6 +433,23 @@ rewrite (`data-api.ts#buildRefRewriteOps`) handles the pipe form when it meets o
 candidate blocks through `ref`, so a block whose only link to a page is a `[[Page|label]]` is not
 rewritten by a rename or a merge until this is fixed.
 
+### B-87 · A command registered under an unknown id area blanks the whole app
+**Status:** fixed (the ids; the failure mode stays) · **Severity:** high · **Found:** 2026-09-12,
+`e2e/tests/refactor.spec.ts` on first run · **Tests:**
+`apps/web/src/commands/registrations/refactor.test.ts` "every refactor command registers in the
+real registry", and every e2e spec (the app did not boot)
+
+Commit `c916c29` registered `page.mergeInto` and `search`-less `graph.findReplace`. The registry
+enforces R2's closed set of core areas and throws `CommandRegistrationError` at
+`createCoreCommands` time — inside the first render, so the page stayed a white `<div id="app">`
+with the error only in the console. Unit tests passed (they build commands, they never register
+them); typecheck passed (an id is a string). Fixed by naming them `edit.mergePage` and
+`search.findReplace`, and by a test that registers every refactor command in a real registry.
+
+Still open in spirit: one bad command id, from core or a plugin, is a blank screen with no
+message. `CommandLayer` could catch registration errors and render the shell without that
+command; not done here (shell/commands provider are not this task's files).
+
 ### B-87 · No client plugin host: `/mermaid` and every `registerSlashCommand` are dead on arrival
 **Status:** open · **Severity:** medium · **Found:** 2026-09-12, deciding plugin-vs-core for
 templates (ADR 019) · **Test:** none (a test that loads `plugins/mermaid` in the web app and types
@@ -507,9 +524,9 @@ exact case the grace period exists for. Fix: on dedupe, write the same `changes`
 upload writes — `planAssetGc` already treats a recent audit row as "touched".
 
 ### B-92 · Slash menu shows 16 items; `popups.spec.ts` pins 15
-**Status:** open · **Severity:** low · **Found:** 2026-09-12, full e2e run (views agent, M7) ·
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, full e2e run (views agent, M7) ·
 **Test:** `e2e/tests/popups.spec.ts` "opens at a run start with every item in R54 order" and
-"opens as the first character of an empty block" — both currently fail
+"opens as the first character of an empty block"
 
 Type `/` in a block: the popup lists sixteen items — the M7 `Template` entry (78970b1,
 `apps/web/src/commands/slash/items.ts`) is there — but `SLASH_ORDER` in `popups.spec.ts` still
@@ -517,6 +534,41 @@ lists the fifteen from R54, so the two count/order assertions fail on every full
 spec's list needs the new item in its R54 position or the keymap spec's R54 needs the item added;
 whichever way, the two should agree. Seen with the suite run from a worktree at `f1675df` +
 `81546e1`; not caused by, and not fixable from, the references/appearance/shelf work.
+
+**Fixed 2026-09-12** (templates agent): `SLASH_ORDER` now lists `Template` and `Query` after
+`Property`, matching `items.ts`; the two tests above pass again and pin the seventeen-item
+order. The spec's R54 table still lists fifteen — the coordinator owns that file.
+
+### B-93 · The app is a blank page since c916c29: `page.mergeInto` is rejected by the command registry
+**Status:** open · **Severity:** critical · **Found:** 2026-09-12, the templates e2e run on the
+shared tree (every spec failed with "element not found"; the screenshot is white) ·
+**Test:** any e2e spec; `e2e/tests/templates.spec.ts` was the first to see it
+
+Open the served production build at any route: nothing renders. The console has
+`CommandRegistrationError: cannot register command 'page.mergeInto': unrecognized core area
+'page' — core areas are block, task, nav, palette, search, format, edit, app, sync (R2)`, thrown
+from `CommandProvider`'s startup `registry.register` loop, so the whole app tree fails to mount.
+`apps/web/src/commands/registrations/refactor.ts` (c916c29) registers `page.mergeInto` and
+`graph.findReplace`; `registry.ts#CORE_AREAS` has neither `page` nor `graph`, and
+`validateCommandId` throws for an unknown area. The unit suite passes because nothing in it
+registers the full core set through a real provider against a real browser. Fix belongs to the
+refactors agent: either add `page`/`graph` to `CORE_AREAS` (and R2 in the keymap spec) or
+rename the two ids into an existing area. Until then no e2e spec can pass on the shared tree;
+the templates suite was verified in a worktree carrying that one-line `CORE_AREAS` patch.
+
+Also seen by the query/render agent at ~17:55: `e2e/tests/query.spec.ts` + `render.spec.ts`,
+14/14 "element not found" on the shared tree, 14/14 pass from a clean worktree of `dfaf3b9`.
+
+### B-94 · A ```query fence keeps yesterday's "today" after midnight until something else changes
+**Status:** open · **Severity:** low · **Found:** 2026-09-12 while building the fence (ADR 011
+amendment, "Deferred") · **Test:** none — a real clock would have to cross midnight
+
+Leave a page with `scheduled:<=today` open across midnight: the results still reflect the
+previous day, because the fence re-runs only when `block`/`block_prop`/`page` change
+(`data/queries.ts`, stamped on the change bus) and `today` is read at evaluation time. Any edit,
+pull, or navigation fixes it. A timer that bumps the version at local midnight (and on
+`visibilitychange`, for a phone that slept through it) is the fix; it belongs next to
+`stampedFor` in `data/store.ts` so the Tasks view's "today" grouping benefits too.
 
 ## Fixed
 
