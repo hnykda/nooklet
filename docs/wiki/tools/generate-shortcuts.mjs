@@ -29,7 +29,9 @@ async function loadVite() {
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
   const dot = pkg.exports?.["."];
   const entry =
-    (typeof dot === "string" ? dot : (dot?.import?.default ?? dot?.default)) ?? pkg.module ?? pkg.main;
+    (typeof dot === "string" ? dot : (dot?.import?.default ?? dot?.default)) ??
+    pkg.module ??
+    pkg.main;
   return import(pathToFileURL(join(dirname(pkgPath), entry)).href);
 }
 

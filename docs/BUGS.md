@@ -14,28 +14,6 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
-### B-95 · `nooklet serve` never writes the markdown mirror
-**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, exposure audit
-(`docs/review/2026-09-12-exposure-audit.md`, defect D1)
-
-Only `nooklet export` calls `exportAll` (`packages/server/src/cli.ts`); `config.mirror.enabled`
-is read by nothing. Verified live by the exposure audit: `page.create` against a mirror-default
-server produced no `pages/` directory. README and OPERATIONS §2 describe the mirror as continuous —
-"a greppable copy you can walk away with" — which today is only true after running a command
-nobody is told about. Fix: export each touched page after a commit, debounced, from the serve
-process (`sync/realtime.ts#onCommit` already exists for exactly this kind of listener).
-
-**Fixed 2026-09-12.** `mirror/live.ts`: `nooklet serve` subscribes to commits and, after a 500 ms
-quiet period, runs `exportAll(…, { onlyChanged: true })` — the already-tested path that writes
-changed pages, moves renamed ones and prunes deleted ones — plus one sweep on start to catch up
-whatever happened while the server was down. `--no-mirror` is honoured for the first time. Failures
-log and never throw: the mirror is a projection and must not take down the source of truth.
-`packages/server/src/mirror/live.test.ts`.
-
----
-
-
-
 ### B-96 · `/scheduled`, `/deadline` and the date commands do nothing
 **Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
 (`docs/review/2026-09-12-exposure-audit.md`, defect D2)
@@ -123,7 +101,6 @@ in here.
 
 ---
 
-
 ### B-104 · `/page/<alias>` says the page does not exist
 **Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
 (`docs/review/2026-09-12-exposure-audit.md`, defect D10)
@@ -186,6 +163,133 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ---
 
+### B-85 · Moving a block to another page makes its children vanish from both pages
+**Status:** open (fixed for the M7 refactor ops and `DataApi.blocks.move`; `block.move` itself
+still does it) · **Severity:** high · **Found:** 2026-09-12, probing for `block.move_to_page` ·
+**Tests:** `packages/server/src/ops/block-move-to-page.test.ts` "moves the whole subtree, not
+just the root",
+`packages/server/src/ops/page-merge.test.ts` "nested blocks survive the move"
+
+`block_move {id: <a block with children>, page: "Other"}`: the block appears on `Other`, its
+children appear nowhere. `page_read` of either page lists only what was already there, plus the
+moved block with `children: []`. In the database the children still say `page_id = <old page>`
+with `parent_id = <the moved block>`, so neither page's tree query finds them.
+
+Cause: `@nooklet/core`'s `applyBlockPlace` updates one row — the block the op names — and a
+`block.place` op that changes `pageId` carries nothing about descendants. The reducer is right to
+be one-op-one-row (that is what makes it replayable), so the fix is at the op layer: every
+cross-page move emits a `block.place` for each descendant too, keeping its parent and order and
+changing only the page (`data-api.ts#subtreePlaceOps`). The M7 ops (`block.to_page`,
+`block.move_to_page`, `page.merge`) and `DataApi.blocks.move` do this. **`ops/block-move.ts` does
+not yet** — its `page:` form needs the same two-line change; owned by another agent this session.
+
+---
+
+### B-86 · `[[Page|label]]` links are indexed under the key `page|label` and never resolve
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, probing the reference rewrite ·
+**Test:** none yet (a `refs.test.ts` case for the pipe form would catch it)
+
+Write `[[Target|the target]]` in a block: `Target`'s backlinks do not list it, the link is not a
+graph edge, and a rename of `Target` does not rewrite it. `ref.dst_page_key` for that block is
+`target|the target` with `dst_page_id = NULL`. `packages/core/src/refs.ts#addPageRef` takes the
+whole `[[…]]` interior as the page name; `tokens.ts#tryWikilink` already splits the top-level
+pipe (`target` + `alias`), so `extractRefs` is the one reader that does not. The M7 reference
+rewrite (`data-api.ts#buildRefRewriteOps`) handles the pipe form when it meets one, but it finds
+candidate blocks through `ref`, so a block whose only link to a page is a `[[Page|label]]` is not
+rewritten by a rename or a merge until this is fixed.
+
+---
+
+### B-88 · The row being edited stays on screen after its block leaves the page
+**Status:** open (worked around in the refactor commands) · **Severity:** low · **Found:**
+2026-09-12, `e2e/tests/refactor.spec.ts` "Move to page… asks for a page and moves the subtree to
+its end" · **Test:** none for the editor itself; the spec covers the workaround
+
+Right-click a block, *Move to page…*, pick a page: its children vanish from the source page at
+once (the pull lands and the tree refetches), but the block itself — the row holding the
+editor — stays, showing its old text, until you click elsewhere. Then it is gone. Same shape for
+a block another device moves or deletes while you have the caret in it. `BlockTree` renders rows
+from the tree but keeps the `editingId` row mounted regardless of whether that id is still in
+the tree. A first diagnosis blamed the worker's change event (`notifyFromOps` naming only the new
+page); a probe that read the rows after a click-away disproved it — `usePageTree` stamps on the
+`block` table and did refetch.
+
+Workaround in `commands/registrations/refactor.ts`: "Turn into page" and "Move to page…" end
+editing (`block.selectBlock`) before the server op, so the row re-renders from the tree. The
+proper fix is in `editor/BlockTree.tsx` (drop `editingId` when the tree no longer contains it),
+which belongs to another owner this session.
+
+---
+
+### B-108 · A template inserted with `/template` cannot be undone with Cmd/Ctrl+Z
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, building it (ADR 019) · **Test:**
+none yet (an `e2e/tests/templates.spec.ts` case pressing Cmd/Ctrl+Z after an insertion would
+catch it)
+
+Insert a template, press Cmd/Ctrl+Z: the blocks stay. The editor's undo history is
+`BlockTree`'s `commit` (`EditHistory.record`), which only sees ops that go through the tree's own
+`runStructural`; `block.insertTemplate` writes its `block.create` ops through `data/store.ts`
+directly, because a command outside the tree has no way to hand ops to its history. Fix is a
+structural delegate (`EditorHost.runStructuralCommand("block.insertOps", …)` or similar) that
+lets a command commit a batch through the tree — `BlockTree.tsx` is another agent's this
+session. The API side is unaffected: `batch_undo` reverses an API-created template as usual.
+
+---
+
+### B-89 · `marker`/`priority`/`collapsed` in a `block.create` properties bag are silently dropped
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, seeding a server test for ADR 019 ·
+**Test:** none yet (a `packages/core/src/sync/apply-ops.test.ts` case creating a block with
+`properties: { marker: "TODO" }` and reading `marker` back would catch it)
+
+`data.blocks.insert({ content: "x", properties: { marker: "TODO" } })` creates the block with
+`marker = NULL`; the same bag with `scheduled` or `repeat` works. `applyBlockCreate` INSERTs the
+row with `marker_hlc = op.hlc`, then routes each bag entry through `writeBlockField`, whose
+`lwwSetColumns` refuses a write whose HLC is not newer than the column's — a tie with the very
+op that created the row. The columns the INSERT leaves `NULL` (`scheduled_hlc`, `deadline_hlc`,
+`repeat_hlc`, `done_hlc`) accept the write; the three it stamps do not. The top-level
+`marker`/`priority`/`collapsed` fields of `block.create` are the working path and every core
+caller uses them, so this only bites an API/plugin caller who puts a reserved key in the bag.
+Fix: in `applyBlockCreate`, fold bag values for those three keys into the INSERT itself (or
+stamp their `_hlc` columns `NULL` on insert and let `writeBlockField` set them).
+
+---
+
+### B-94 · A ```query fence keeps yesterday's "today" after midnight until something else changes
+**Status:** open · **Severity:** low · **Found:** 2026-09-12 while building the fence (ADR 011
+amendment, "Deferred") · **Test:** none — a real clock would have to cross midnight
+
+Leave a page with `scheduled:<=today` open across midnight: the results still reflect the
+previous day, because the fence re-runs only when `block`/`block_prop`/`page` change
+(`data/queries.ts`, stamped on the change bus) and `today` is read at evaluation time. Any edit,
+pull, or navigation fixes it. A timer that bumps the version at local midnight (and on
+`visibilitychange`, for a phone that slept through it) is the fix; it belongs next to
+`stampedFor` in `data/store.ts` so the Tasks view's "today" grouping benefits too.
+
+---
+
+
+## Fixed
+
+### B-95 · `nooklet serve` never writes the markdown mirror
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D1)
+
+Only `nooklet export` calls `exportAll` (`packages/server/src/cli.ts`); `config.mirror.enabled`
+is read by nothing. Verified live by the exposure audit: `page.create` against a mirror-default
+server produced no `pages/` directory. README and OPERATIONS §2 describe the mirror as continuous —
+"a greppable copy you can walk away with" — which today is only true after running a command
+nobody is told about. Fix: export each touched page after a commit, debounced, from the serve
+process (`sync/realtime.ts#onCommit` already exists for exactly this kind of listener).
+
+**Fixed 2026-09-12.** `mirror/live.ts`: `nooklet serve` subscribes to commits and, after a 500 ms
+quiet period, runs `exportAll(…, { onlyChanged: true })` — the already-tested path that writes
+changed pages, moves renamed ones and prunes deleted ones — plus one sweep on start to catch up
+whatever happened while the server was down. `--no-mirror` is honoured for the first time. Failures
+log and never throw: the mirror is a projection and must not take down the source of truth.
+`packages/server/src/mirror/live.test.ts`.
+
+---
+
 ### B-64 · Block-selection mode is keyboard-dead
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/selection.spec.ts` (10 `fixme`), `e2e/tests/focus.spec.ts` "Escape while editing hands
@@ -211,6 +315,7 @@ the tree, which resolves it against the standing selection instead of returning 
 container's own handler ignores keys the editor already consumed, so the Escape that enters
 selection mode cannot clear it on the bounce. `focus.spec.ts` 30/30 with the fixmes lifted.
 
+---
 
 ### B-65 · The `[[` / `#` / `((` / `/` popups ignore the keyboard
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -238,6 +343,7 @@ worth recording: they read the DOM after the caret had left the token, and the l
 This is very likely what B-42 was reported as: Enter or Escape at the popup ended with the editor
 gone, which reads as "focus keeps deselecting and I have to click again".
 
+---
 
 ### B-66 · Delete-merge and undo change the block in the database but not in the editor
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -260,6 +366,7 @@ an external change. Instead the local operations that rewrite the edited block �
 nothing to guess; undo back into the block already being edited places the caret directly, since
 `attachEditing` to the same id is a no-op.
 
+---
 
 ### B-67 · Shift+Enter does nothing
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -271,6 +378,7 @@ editorFocused`), runs it — which is deliberately a no-op, "left to CM6" — an
 
 **Fixed 2026-09-12.** The handler inserts the newline itself through the editor view.
 
+---
 
 ### B-68 · Alt+Down drops editor focus
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -284,6 +392,7 @@ it, and the attach-time refocus in `surface.ts` only runs on attach.
 frame — the same two-stage dance `surface.attach` does), guarded so a genuine click-away is not
 fought.
 
+---
 
 ### B-69 · `#` autocomplete never lists an existing page
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -298,6 +407,7 @@ palette's tags mode, and set by nothing. A tag is a page (ADR 017), so `#` now o
 ranked by the query, exactly as `[[` does; the flag is gone. `popups.spec.ts` "lists a page that
 is already used as a tag".
 
+---
 
 ### B-70 · The keyboard toolbar never appears on a phone
 **Status:** fixed · **Severity:** high (phone) · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -317,6 +427,7 @@ and never ran again. The active context snapshot is a signal now, and the tree w
 neither editing nor a selection stands, so the toolbar shows while typing and hides after.
 `phone.spec.ts` on the iPhone 13 descriptor (WebKit, coarse pointer, iOS UA), both toolbar tests.
 
+---
 
 ### B-71 · Choosing a context-menu item or clicking an autocomplete row drops editor focus
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -333,6 +444,7 @@ toolbar already does this right (`preventDefault` on `pointerdown`, spec R61).
 `popups.spec.ts` "clicking a row leaves the editor focused", `context-menu.spec.ts` "…leaves the
 editor focused".
 
+---
 
 ### B-72 · While a block is in edit mode, Escape ends editing instead of closing what is on top
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -351,6 +463,7 @@ through the same `commands/popup-keys.ts` registry the autocomplete popups use (
 dispatchers know something is open and yield the key to it instead of running `block.selectBlock`
 underneath. `context-menu.spec.ts` Escape, `views.spec.ts` help Escape and palette focus.
 
+---
 
 ### B-73 · Right-clicking a selected block drops the selection
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -367,6 +480,7 @@ indent and move apply to all of it. The tree also publishes its command context 
 stands, not only while editing — a selection made by Cmd/Ctrl+click on a never-edited tree had no
 context at all. `selection.spec.ts` "right-clicking a selected block keeps the selection".
 
+---
 
 ### B-74 · Clicking away leaves the block in edit mode
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -386,6 +500,7 @@ belonged to. `popups.spec.ts` "clicking elsewhere dismisses the popup". Note for
 away now UNMOUNTS the editor, and `not.toBeFocused()` on a missing element fails — the shared
 `clickAway` helper polls `activeElement` instead.
 
+---
 
 ### B-75 · A page created from the UI is empty with nowhere to type
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -400,6 +515,7 @@ no `.vr-draft-input`, nothing to click. The only way to give such a page a first
 requests focus into it, the way a journal day's first block is made. `pages.spec.ts` "…can be
 typed into straight away".
 
+---
 
 ### B-76 · The sidebar's "Pages" list is the first twelve names alphabetically
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -412,6 +528,7 @@ query is `ORDER BY name`. With a few hundred pages a page you just made never ap
 is ordered by name. It sorts by `updatedAt`, newest first. `pages.spec.ts` "…most recently edited
 pages first".
 
+---
 
 ### B-77 · Creating a journal-titled page from the missing-page view makes an ordinary page
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -428,6 +545,7 @@ journal day (ISO name, `journalDay` set — ADR 018) instead of an ordinary page
 The server-side guard from B-23 could not help here: the op is minted on the client.
 `pages.spec.ts` "…makes a journal, not an ordinary page".
 
+---
 
 ### B-78 · Renaming a page from its title makes the view say the page doesn't exist
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -441,6 +559,7 @@ doesn't exist yet" with a Create button.
 does not lead to a URL that no longer resolves). Routes are name-addressed, so the old URL pointed
 at nothing the moment the rename applied. `pages.spec.ts` "renaming a page…".
 
+---
 
 ### B-79 · Ticking a task in the Tasks view marks it done but the list never updates
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -456,6 +575,7 @@ reducer into the block ROW's own columns, so nothing stamped on `block` ever hea
 ticked. A `block.prop` write now invalidates `block` too. `tasks.spec.ts` "…checkbox completes a
 task…".
 
+---
 
 ### B-80 · A failed search sits on Searching… forever
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -470,6 +590,7 @@ and "Searching…" stayed. Every read now goes through a guard that returns `und
 resource is errored; the error branch and Retry were already there and now actually get to show.
 `views.spec.ts` "a failed search shows an error with Retry, and Retry recovers".
 
+---
 
 ### B-81 · A second tab of the same graph never renders
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -488,7 +609,7 @@ nobody wonders which tab keeps the local copy. Taking the lock over live when th
 not attempted — a reload does it — because it would mean swapping storage under an open session.
 `views.spec.ts` "a second tab of the same graph renders the page".
 
-
+---
 
 ### B-82 · Picking a page in the command palette never opens it
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -507,6 +628,7 @@ takes a different path and works.
 which takes a BLOCK id and so found nothing. `store.ts#resolvePageName` looks a page up by its own
 id. `views.spec.ts` "Enter on a highlighted page…", `pages.spec.ts` "Cmd/Ctrl+O…".
 
+---
 
 ### B-83 · A tag page created right after typing the tag never shows the reference
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -526,6 +648,7 @@ later local change re-stamped it. The store now bumps a `syncVersion` when the p
 and the panel refetches on it. `pages.spec.ts` "a tag page created straight after typing the tag
 shows the reference without a reload".
 
+---
 
 ### B-84 · `block.copySelection` has no implementation
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -540,39 +663,7 @@ subtrees included, through the same `serializeOutline` the mirror uses (ids omit
 paste elsewhere is what a page file would say. A block whose ancestor is also selected is copied
 once, inside that ancestor. `selection.spec.ts` "Cmd/Ctrl+C copies the selection as markdown".
 
-
-### B-85 · Moving a block to another page makes its children vanish from both pages
-**Status:** open (fixed for the M7 refactor ops and `DataApi.blocks.move`; `block.move` itself
-still does it) · **Severity:** high · **Found:** 2026-09-12, probing for `block.move_to_page` ·
-**Tests:** `packages/server/src/ops/block-move-to-page.test.ts` "moves the whole subtree, not
-just the root",
-`packages/server/src/ops/page-merge.test.ts` "nested blocks survive the move"
-
-`block_move {id: <a block with children>, page: "Other"}`: the block appears on `Other`, its
-children appear nowhere. `page_read` of either page lists only what was already there, plus the
-moved block with `children: []`. In the database the children still say `page_id = <old page>`
-with `parent_id = <the moved block>`, so neither page's tree query finds them.
-
-Cause: `@nooklet/core`'s `applyBlockPlace` updates one row — the block the op names — and a
-`block.place` op that changes `pageId` carries nothing about descendants. The reducer is right to
-be one-op-one-row (that is what makes it replayable), so the fix is at the op layer: every
-cross-page move emits a `block.place` for each descendant too, keeping its parent and order and
-changing only the page (`data-api.ts#subtreePlaceOps`). The M7 ops (`block.to_page`,
-`block.move_to_page`, `page.merge`) and `DataApi.blocks.move` do this. **`ops/block-move.ts` does
-not yet** — its `page:` form needs the same two-line change; owned by another agent this session.
-
-### B-86 · `[[Page|label]]` links are indexed under the key `page|label` and never resolve
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, probing the reference rewrite ·
-**Test:** none yet (a `refs.test.ts` case for the pipe form would catch it)
-
-Write `[[Target|the target]]` in a block: `Target`'s backlinks do not list it, the link is not a
-graph edge, and a rename of `Target` does not rewrite it. `ref.dst_page_key` for that block is
-`target|the target` with `dst_page_id = NULL`. `packages/core/src/refs.ts#addPageRef` takes the
-whole `[[…]]` interior as the page name; `tokens.ts#tryWikilink` already splits the top-level
-pipe (`target` + `alias`), so `extractRefs` is the one reader that does not. The M7 reference
-rewrite (`data-api.ts#buildRefRewriteOps`) handles the pipe form when it meets one, but it finds
-candidate blocks through `ref`, so a block whose only link to a page is a `[[Page|label]]` is not
-rewritten by a rename or a merge until this is fixed.
+---
 
 ### B-87 · A command registered under an unknown id area blanks the whole app
 **Status:** fixed (the ids; the failure mode stays) · **Severity:** high · **Found:** 2026-09-12,
@@ -591,53 +682,7 @@ Still open in spirit: one bad command id, from core or a plugin, is a blank scre
 message. `CommandLayer` could catch registration errors and render the shell without that
 command; not done here (shell/commands provider are not this task's files).
 
-### B-88 · The row being edited stays on screen after its block leaves the page
-**Status:** open (worked around in the refactor commands) · **Severity:** low · **Found:**
-2026-09-12, `e2e/tests/refactor.spec.ts` "Move to page… asks for a page and moves the subtree to
-its end" · **Test:** none for the editor itself; the spec covers the workaround
-
-Right-click a block, *Move to page…*, pick a page: its children vanish from the source page at
-once (the pull lands and the tree refetches), but the block itself — the row holding the
-editor — stays, showing its old text, until you click elsewhere. Then it is gone. Same shape for
-a block another device moves or deletes while you have the caret in it. `BlockTree` renders rows
-from the tree but keeps the `editingId` row mounted regardless of whether that id is still in
-the tree. A first diagnosis blamed the worker's change event (`notifyFromOps` naming only the new
-page); a probe that read the rows after a click-away disproved it — `usePageTree` stamps on the
-`block` table and did refetch.
-
-Workaround in `commands/registrations/refactor.ts`: "Turn into page" and "Move to page…" end
-editing (`block.selectBlock`) before the server op, so the row re-renders from the tree. The
-proper fix is in `editor/BlockTree.tsx` (drop `editingId` when the tree no longer contains it),
-which belongs to another owner this session.
-
-### B-108 · A template inserted with `/template` cannot be undone with Cmd/Ctrl+Z
-**Status:** open · **Severity:** low · **Found:** 2026-09-12, building it (ADR 019) · **Test:**
-none yet (an `e2e/tests/templates.spec.ts` case pressing Cmd/Ctrl+Z after an insertion would
-catch it)
-
-Insert a template, press Cmd/Ctrl+Z: the blocks stay. The editor's undo history is
-`BlockTree`'s `commit` (`EditHistory.record`), which only sees ops that go through the tree's own
-`runStructural`; `block.insertTemplate` writes its `block.create` ops through `data/store.ts`
-directly, because a command outside the tree has no way to hand ops to its history. Fix is a
-structural delegate (`EditorHost.runStructuralCommand("block.insertOps", …)` or similar) that
-lets a command commit a batch through the tree — `BlockTree.tsx` is another agent's this
-session. The API side is unaffected: `batch_undo` reverses an API-created template as usual.
-
-### B-89 · `marker`/`priority`/`collapsed` in a `block.create` properties bag are silently dropped
-**Status:** open · **Severity:** low · **Found:** 2026-09-12, seeding a server test for ADR 019 ·
-**Test:** none yet (a `packages/core/src/sync/apply-ops.test.ts` case creating a block with
-`properties: { marker: "TODO" }` and reading `marker` back would catch it)
-
-`data.blocks.insert({ content: "x", properties: { marker: "TODO" } })` creates the block with
-`marker = NULL`; the same bag with `scheduled` or `repeat` works. `applyBlockCreate` INSERTs the
-row with `marker_hlc = op.hlc`, then routes each bag entry through `writeBlockField`, whose
-`lwwSetColumns` refuses a write whose HLC is not newer than the column's — a tie with the very
-op that created the row. The columns the INSERT leaves `NULL` (`scheduled_hlc`, `deadline_hlc`,
-`repeat_hlc`, `done_hlc`) accept the write; the three it stamps do not. The top-level
-`marker`/`priority`/`collapsed` fields of `block.create` are the working path and every core
-caller uses them, so this only bites an API/plugin caller who puts a reserved key in the bag.
-Fix: in `applyBlockCreate`, fold bag values for those three keys into the INSERT itself (or
-stamp their `_hlc` columns `NULL` on insert and let `writeBlockField` set them).
+---
 
 ### B-90 · Core accepts an un-delete whose page name is now taken by a live page
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, building `trash.restore` (ADR 022)
@@ -663,8 +708,6 @@ out is rename-then-restore, which the test also exercises.
 
 ---
 
-
-
 ### B-91 · A deduplicated re-upload of an orphaned asset leaves no trace, so asset GC can collect it
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, building orphan-asset GC (ADR 022 §5)
 · **Test:** `packages/server/src/gc.test.ts` "a recent audit row for the asset extends its grace"
@@ -686,7 +729,6 @@ reads it as "uploaded"), which `planAssetGc` already counts as "touched within t
 
 ---
 
-
 ### B-92 · Slash menu shows 16 items; `popups.spec.ts` pins 15
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, full e2e run (views agent, M7) ·
 **Test:** `e2e/tests/popups.spec.ts` "opens at a run start with every item in R54 order" and
@@ -703,16 +745,7 @@ whichever way, the two should agree. Seen with the suite run from a worktree at 
 `Property`, matching `items.ts`; the two tests above pass again and pin the seventeen-item
 order. The spec's R54 table still lists fifteen — the coordinator owns that file.
 
-### B-94 · A ```query fence keeps yesterday's "today" after midnight until something else changes
-**Status:** open · **Severity:** low · **Found:** 2026-09-12 while building the fence (ADR 011
-amendment, "Deferred") · **Test:** none — a real clock would have to cross midnight
-
-Leave a page with `scheduled:<=today` open across midnight: the results still reflect the
-previous day, because the fence re-runs only when `block`/`block_prop`/`page` change
-(`data/queries.ts`, stamped on the change bus) and `today` is read at evaluation time. Any edit,
-pull, or navigation fixes it. A timer that bumps the version at local midnight (and on
-`visibilitychange`, for a phone that slept through it) is the fix; it belongs next to
-`stampedFor` in `data/store.ts` so the Tasks view's "today" grouping benefits too.
+---
 
 ### B-107 · Enter on a calendar-opened journal day drops the caret
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, `e2e/tests/templates.spec.ts`
@@ -742,6 +775,8 @@ the teardown's blur is indistinguishable from a click on the page background, an
 away inside the swap's window. The race itself (two trees for one page during the swap) is the
 stream's to remove; the hand-back makes it harmless.
 
+---
+
 ### B-109 · `--no-mirror` never did anything
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, wiki workstream — served `docs/wiki`
 with the flag and found 21 files in `pages/` · **Test:** `packages/server/src/cli.test.ts`
@@ -765,9 +800,6 @@ so a missing *graph* looked like an empty one. `importLogseqGraph` now throws be
 database when the path is absent or not a directory, and the CLI exits non-zero with the message.
 
 ---
-
-## Fixed
-
 
 ### B-51 · Uploaded images were broken pictures on every route below the root
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, by the first test that ever rendered
