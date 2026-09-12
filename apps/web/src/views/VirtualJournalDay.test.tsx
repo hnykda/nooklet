@@ -2,6 +2,7 @@
 import type { Op, TemplateNode } from "@nooklet/core";
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { blockFocusRequest, clearBlockFocusRequest } from "../editor/focus-request.js";
 import { VirtualJournalDay } from "./VirtualJournalDay.js";
 
 const applyOps = vi.fn(async (_ops: Op[]) => ({
@@ -171,5 +172,44 @@ describe("VirtualJournalDay", () => {
     expect(root?.payload.properties).toBeUndefined();
     // The pool was sized for the template (2) plus page + typed + next (3).
     expect(getOpClock).toHaveBeenCalledWith(5);
+  });
+
+  async function materializeWithEnter() {
+    const rendered = render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "first" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await settle();
+    const nextId = blockFocusRequest();
+    expect(nextId).toBeDefined();
+    await screen.findByTestId("block-tree");
+    return { ...rendered, nextId: nextId as string };
+  }
+
+  it("hands its focus request back if it is torn down after the request was claimed (B-107)", async () => {
+    const { unmount, nextId } = await materializeWithEnter();
+    // Our optimistic tree claims the request (its editor has not necessarily taken focus yet) …
+    clearBlockFocusRequest();
+    // … then the stream swaps in its own tree for the page and unmounts us.
+    unmount();
+    expect(blockFocusRequest()).toBe(nextId);
+  });
+
+  it("leaves a still-pending request alone on teardown", async () => {
+    const { unmount, nextId } = await materializeWithEnter();
+    unmount();
+    expect(blockFocusRequest()).toBe(nextId);
+    clearBlockFocusRequest();
+  });
+
+  it("asks for nothing on teardown after a blur commit, which never asked for the caret", async () => {
+    const { unmount } = render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "first" } });
+    fireEvent.blur(textarea);
+    await settle();
+    expect(blockFocusRequest()).toBeUndefined();
+    unmount();
+    expect(blockFocusRequest()).toBeUndefined();
   });
 });

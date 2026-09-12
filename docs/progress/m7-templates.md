@@ -23,15 +23,38 @@ a restart, continue from "Next steps".
 | `apps/web/src/views/SettingsPanel.tsx` | `TemplatesSection` appended + import + mounted after Appearance (shared file) |
 | `apps/web/src/commands/registrations/templates.ts` + `.test.ts` | picker path is fire-and-forget now (slash menu would otherwise linger); test rewritten |
 | `docs/adr/019-templates.md` | written |
-| `docs/BUGS.md` | B-87 (no client plugin host), B-88 (template insert not undoable) appended to Open |
+| `docs/BUGS.md` | B-87/B-88 as filed collided with the refactors workstream's; coordinator folded the plugin-host one into B-103 and renumbered the undo one B-108 |
 | `e2e/tests/templates.spec.ts` | written, NOT yet run |
 
 ## 3. Next steps, in order
 
-1. Run: server `journal-template.test.ts`; web `templates.test.ts` + `VirtualJournalDay.test.tsx`; typecheck server + web (filter to my files — other agents' in-flight errors exist in `shelfOutline.test.ts`, `core/src/query.ts`); biome on my files.
-2. Commit unit 2 (journal paths + settings + ADR + BUGS + progress).
-3. `cd e2e && NOOKLET_E2E_PORT=6351 pnpm exec playwright test tests/templates.spec.ts`; fix; commit the spec.
-4. Full e2e on 6351, `pnpm -r typecheck`, `pnpm -r test`; final progress update; report.
+1. DONE: unit 2 committed as `e7e6b1f` (journal paths, Settings section, ADR 019, B-87..B-89).
+2. BLOCKER (not mine, being fixed): since `c916c29` the app was a blank page — `refactor.ts`
+   registered `page.mergeInto`/`graph.findReplace`, `registry.ts#CORE_AREAS` rejected them,
+   `CommandProvider` threw at mount. The refactors agent has the fix uncommitted in the shared
+   tree (ids renamed) and logged it as "B-87" — which COLLIDES with my committed B-87 (no client
+   plugin host). My duplicate B-93 entry was removed; the collision is for the coordinator.
+   `popups.spec.ts` (with `SLASH_ORDER` updated) is 43/43 in the worktree.
+   Workaround for MY verification only: worktree at
+   `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/wt`
+   (HEAD + copied `e2e/tests/popups.spec.ts` + a LOCAL `"page","graph"` line in
+   `apps/web/src/commands/registry.ts`, never committed). Run there:
+   `cd <wt>/e2e && NOOKLET_E2E_PORT=6351 pnpm exec playwright test tests/templates.spec.ts tests/popups.spec.ts`.
+3. Coordinator request: `popups.spec.ts` `SLASH_ORDER` lists `Template`, `Query` (uncommitted);
+   B-92 marked fixed (already in HEAD via another agent's sweep). `pnpm -r typecheck` clean,
+   `pnpm -r test` 1,539 green (main tree).
+4. templates e2e in the worktree: 7/8 → found **B-107** (Enter on a calendar-opened day drops
+   the caret; pre-existing race, exposed by my test). Measured with
+   `scratchpad/pinned-timeline-probe.mjs` (editor attached at 43 ms, torn down at 44 ms).
+   Fixed in `VirtualJournalDay.tsx` (hand the focus request back on teardown when it was
+   consumed; no focus heuristics — the teardown blur looks like a click-away) + unit tests;
+   8/8 unit green; e2e focus assertion now passes; last rerun failed only on the test's own API
+   poll racing the sync push (fixed: poll tolerates 404). Rerun pending.
+5. Commit unit 3: `VirtualJournalDay.tsx` + test, `e2e/tests/templates.spec.ts`,
+   `e2e/tests/popups.spec.ts`, BUGS.md (stage HEAD + my hunks: remove duplicate B-93, add
+   B-107 — other agents' uncommitted "B-88" duplicate must NOT be swept in), this file.
+6. Full e2e on 6351 in the FOREGROUND (main tree boots again: refactor ids renamed, uncommitted
+   by the refactors agent); final progress update; report — all in one message.
 
 ## 4. Decisions made and why
 

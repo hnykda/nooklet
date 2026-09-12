@@ -12,12 +12,12 @@ import {
   type OpPayload,
   orderBetween,
 } from "@nooklet/core";
-import { createSignal, type JSX, Show } from "solid-js";
+import { createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { applyOps, getOpClock } from "../data/store.js";
 import { journalTemplateOpsFor, loadJournalTemplate } from "../data/templates.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
-import { requestBlockFocus } from "../editor/focus-request.js";
+import { blockFocusRequest, requestBlockFocus } from "../editor/focus-request.js";
 
 export interface VirtualJournalDayProps {
   day: number;
@@ -27,6 +27,30 @@ export interface VirtualJournalDayProps {
 export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   const [pageId, setPageId] = createSignal<string | undefined>(undefined);
   const [draft, setDraft] = createSignal("");
+
+  // The block Enter asked to put the caret in.
+  let focusTarget: string | undefined;
+
+  /**
+   * Hand the focus request back if we are torn down after it was claimed (B-107).
+   *
+   * After Enter, this component mounts its own `BlockTree` for the page it just created, and the
+   * stream mounts another for the same page once its resource sees it — at which point this one
+   * is unmounted, always within a fraction of a second. Whichever tree's fetch resolves first
+   * claims the focus request: for today it is the stream's (one query); for a calendar-opened day
+   * it is ours (`usePinnedJournalDay` runs two), which attached its editor at ~43 ms and was
+   * torn down at ~44 ms (measured; docs/BUGS.md B-107). The request had been consumed, so the
+   * successor never attached an editor and the caret went nowhere. Re-issuing it on the way out
+   * lets the successor claim it; if the successor had already claimed it itself, the repeat is a
+   * no-op on the block it is editing.
+   *
+   * No attempt to tell "torn down while holding the caret" from "the caret left first": the
+   * teardown's own `surface.detach()` blurs the editor with no `relatedTarget`, exactly like a
+   * click on the page background does, and nobody clicks away inside the swap's window.
+   */
+  onCleanup(() => {
+    if (focusTarget && blockFocusRequest() !== focusTarget) requestBlockFocus(focusTarget);
+  });
 
   /**
    * Commit the placeholder row, creating the page and its first block.
@@ -51,6 +75,7 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
     // journal stream's own BlockTree the moment the page exists, so a prop on the tree rendered
     // below would be thrown away before the block it names ever appears.
     if (nextBlockId) requestBlockFocus(nextBlockId);
+    focusTarget = nextBlockId;
     setPageId(newPageId);
 
     // ADR 019: a new day starts with the journal template, if one is chosen, and what was typed

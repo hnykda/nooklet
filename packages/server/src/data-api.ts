@@ -29,8 +29,8 @@ import {
   type Page,
   type PageId,
   type Properties,
-  splitList,
   type SqlDriver,
+  splitList,
   templateInsertOps,
   todayJournalDay,
 } from "@nooklet/core";

@@ -424,6 +424,9 @@ const SLASH_ORDER = [
   "Tag",
   "Today's date",
   "Property",
+  // M7 appends, in `items.ts` order: templates (ADR 019) and the query fence (ADR 011).
+  "Template",
+  "Query",
 ];
 
 test.describe("/ slash menu", () => {
