@@ -166,10 +166,15 @@ export function BlockTree(props: {
     const editingBlockId = editingId();
     const flat = flattenBlockTreeNodes(data.blocks);
     if (editingBlockId && surface.currentId() === editingBlockId) {
-      // Never let a resource refetch clobber the live CM6 buffer for the block being typed into.
       const live = surface.content();
       const idx = flat.findIndex((b) => b.id === editingBlockId);
       if (idx !== -1) {
+        // Never let a resource refetch clobber the live CM6 buffer for the block being typed into.
+        // This is also NOT the place to notice an external change and push it in: a refetch that
+        // READ before one of our own writes and RESOLVED after it looks exactly like "the database
+        // disagrees", and doing that here reverted a split mid-keystroke (found fixing B-66).
+        // Local operations that change this block's text — undo, redo, a merge — update the
+        // editor themselves at commit time (`commit`), where there is nothing to guess.
         flat[idx] = { ...(flat[idx] as EditableBlock), content: live };
       } else {
         // The block being edited is not in this query result yet — it was just created
@@ -252,6 +257,17 @@ export function BlockTree(props: {
 
   const [editingId, setEditingId] = createSignal<BlockId | null>(null);
   const [selection, setSelection] = createSignal<SelectionState | null>(null);
+  let outlinerEl: HTMLDivElement | undefined;
+
+  /**
+   * Selection mode's keys (`onContainerKeyDown`) only arrive while the outliner root HAS focus.
+   * Entering selection detaches the CM6 surface, and removing the focused element sends focus to
+   * <body> — so Enter, Escape, Backspace and the arrows all went nowhere (B-44). Call this every
+   * time a selection is made.
+   */
+  function holdSelectionFocus(): void {
+    outlinerEl?.focus({ preventScroll: true });
+  }
   const [clockSig, setClockSig] = createSignal<Clock | undefined>(undefined);
   onMount(() => void getClock().then(setClockSig));
 
@@ -278,6 +294,21 @@ export function BlockTree(props: {
     setLocalBlocks((prev) => applyOptimistic(prev, ops as unknown as OptimisticOp[], deletedCache));
     history.record(ops, treeBefore, kind, before, after, blockId);
     void applyOps(ops);
+    syncSurfaceFromTree();
+  }
+
+  /**
+   * If the optimistic tree now holds different text for the block being edited — undo, redo, the
+   * next block merged into this one — the editor must show it. It used to keep the old buffer:
+   * the database changed and the screen did not (B-66). Done synchronously, right after the ops
+   * are applied to the local tree, rather than by reconciling against refetches, which cannot
+   * tell a stale read from an external change. Unflushed keystrokes still win: they are newer.
+   */
+  function syncSurfaceFromTree(): void {
+    const cur = editingId();
+    if (cur === null || surface.currentId() !== cur || pendingEdit !== null) return;
+    const next = untrack(editorTree).byId.get(cur)?.content;
+    if (next !== undefined && next !== surface.content()) surface.replaceContent(cur, next);
   }
 
   function flushPendingEdit(): void {
@@ -349,7 +380,19 @@ export function BlockTree(props: {
     const clock = clockSig();
     if (!clock) return;
     const r = moveBlock(editorTree(), id, direction, clock);
-    if (r) runStructural({ ops: r.ops });
+    if (!r) return;
+    runStructural({ ops: r.ops });
+    // Keyed `<For>` reorders by MOVING the row's DOM node, and a moved node loses focus — so after
+    // the move the editor was still attached to a block nobody was focused on (B-48). The move
+    // happens when Solid reconciles, after this function returns, so the refocus has to be
+    // deferred past it: a microtask for the common case and a frame later as the backstop, the
+    // same two-stage dance `surface.attach` does, guarded so a genuine click-away is not fought.
+    if (editingId() !== id) return;
+    const refocus = (): void => {
+      if (editingId() === id && !surface.view()?.hasFocus) surface.focus();
+    };
+    queueMicrotask(refocus);
+    requestAnimationFrame(refocus);
   }
 
   function runStructural(res: { ops: Op[]; focus?: FocusChange } | null): void {
@@ -379,10 +422,16 @@ export function BlockTree(props: {
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );
     void applyOps(res.ops);
-    if (res.focus) attachEditing(res.focus.id, res.focus.caret);
-    else {
+    syncSurfaceFromTree();
+    if (!res.focus) {
       surface.detach();
       setEditingId(null);
+    } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
+      // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
+      // the buffer was synced above and only the caret is left to place.
+      surface.setCaret(res.focus.caret);
+    } else {
+      attachEditing(res.focus.id, res.focus.caret);
     }
   }
 
@@ -396,10 +445,16 @@ export function BlockTree(props: {
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );
     void applyOps(res.ops);
-    if (res.focus) attachEditing(res.focus.id, res.focus.caret);
-    else {
+    syncSurfaceFromTree();
+    if (!res.focus) {
       surface.detach();
       setEditingId(null);
+    } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
+      // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
+      // the buffer was synced above and only the caret is left to place.
+      surface.setCaret(res.focus.caret);
+    } else {
+      attachEditing(res.focus.id, res.focus.caret);
     }
   }
 
@@ -437,7 +492,12 @@ export function BlockTree(props: {
         runStructural(splitBlock(tree, id, view.state.selection.main.head, clock));
         return true;
       case "block.newline":
-        return false; // R17: plain "\n" insertion, left to CM6 itself.
+        // R17: a newline inside the block. Not "return false and let CM6 insert it": the global
+        // dispatcher has already called preventDefault() by the time this runs (dispatch.ts does so
+        // for every matched binding), so CM6's own Enter handling never fires and the keystroke
+        // vanished — B-47. Insert it here, through the same view.
+        view.dispatch(view.state.replaceSelection("\n"));
+        return true;
       case "block.indent":
         doIndent(id);
         return true;
@@ -504,6 +564,7 @@ export function BlockTree(props: {
         flushPendingEdit();
         setEditingId(null);
         setSelection({ anchorId: id, focusId: id, ids: [id] });
+        holdSelectionFocus();
         return true;
       }
       case "block.extendSelectionUp":
@@ -639,7 +700,17 @@ export function BlockTree(props: {
     },
     runStructural: (id, commandId, _ctx) => {
       const view = surface.view();
-      if (view) runCommand(commandId as ReturnType<typeof resolveCommand>, id as BlockId, view);
+      const cmd = commandId as ReturnType<typeof resolveCommand>;
+      if (view && id) {
+        runCommand(cmd, id as BlockId, view);
+        return;
+      }
+      // No editor attached but a selection standing: this is a selection-mode key (Enter to edit,
+      // Backspace to delete, Alt+arrows to move…) that the global dispatcher matched through the
+      // context snapshot and has ALREADY preventDefault'ed. Dropping it here left the key doing
+      // nothing at all — Enter from selection mode never re-entered editing (B-44).
+      const sel = selection();
+      if (sel) runSelectionCommand(cmd, sel);
     },
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
   });
@@ -781,6 +852,11 @@ export function BlockTree(props: {
   function onContainerKeyDown(e: KeyboardEvent): void {
     if (props.readOnly) return;
     if (editingId()) return; // the CM6 surface's own keymap already handles this
+    // A key the editor already consumed must not be run again here. The Escape that ENTERS
+    // selection mode detaches the surface and focuses this container mid-dispatch, then bubbles
+    // up to it — where, with a selection now present, it read as "clear selection" and undid
+    // itself (B-44). CM6 calls preventDefault() on every key our keymap handles.
+    if (e.defaultPrevented) return;
     const sel = selection();
     const kd = toKeyDescriptor(e);
     const ctx: DispatchCtx = {
@@ -848,6 +924,7 @@ export function BlockTree(props: {
     flushPendingEdit();
     setEditingId(null);
     setSelection({ anchorId: id, focusId: id, ids: [id] });
+    holdSelectionFocus();
   }
 
   return (
@@ -876,6 +953,7 @@ export function BlockTree(props: {
         </nav>
       </Show>
       <div
+        ref={outlinerEl}
         class="vr-outliner"
         role="tree"
         tabindex={-1}

@@ -14,7 +14,7 @@ function backing(content = "hello world", anchor = 0, head = 0) {
     anchor,
     head,
     writes: [] as Array<{ id: string; text: string; caret: unknown }>,
-    structural: [] as Array<{ id: string; commandId: string }>,
+    structural: [] as Array<{ id: string | null; commandId: string }>,
   };
   const b: EditorHostBacking = {
     currentId: () => state.id,

@@ -45,6 +45,12 @@ export interface Surface {
   setCaret(spec: CaretSpec): void;
   currentId(): string | null;
   focus(): void;
+  /**
+   * Replace the whole document while attached to `id`, keeping the caret where it was (clamped).
+   * For changes that arrive from OUTSIDE the editor — undo, a merge, a pull from another device —
+   * which used to be silently discarded because the live buffer always won (B-46).
+   */
+  replaceContent(id: string, content: string): void;
   /** The live CM6 view, for callers that must dispatch through the real editor (the command
    * system's `EditorHost` bridge). `null` when nothing is attached. */
   view(): EditorView | null;
@@ -210,5 +216,15 @@ export function createSurface(deps: SurfaceDeps): Surface {
     currentId: () => current,
     view: () => (current === null ? null : view),
     focus: () => view.focus(),
+    replaceContent(id, content) {
+      if (current !== id) return;
+      const doc = view.state.doc;
+      if (doc.toString() === content) return;
+      const head = Math.min(view.state.selection.main.head, content.length);
+      view.dispatch({
+        changes: { from: 0, to: doc.length, insert: content },
+        selection: { anchor: head },
+      });
+    },
   };
 }

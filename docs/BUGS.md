@@ -45,6 +45,231 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ---
 
+### B-64 · Block-selection mode is keyboard-dead
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/selection.spec.ts` (10 `fixme`), `e2e/tests/focus.spec.ts` "Escape while editing hands
+the block to selection mode and Enter hands it back"
+
+Escape (or Cmd/Ctrl+click) selects a block. From then on nothing on the keyboard does anything:
+Enter does not re-enter editing, Shift+Up/Down does not extend, Backspace/Delete do not delete,
+Tab does not indent, Cmd/Ctrl+A does not select all, Cmd/Ctrl+C copies nothing, Alt+Up/Down
+does not move, and a second Escape does not clear. Two layers. After Escape, `surface.detach()`
+removes the focused element and nothing focuses the outliner (`tabindex="-1"`), so its own
+keydown handler never fires — `document.activeElement` is `<body>`. And on every route in, the
+document-level dispatcher (`CommandLayer`'s `KeyboardDispatch`) matches the `blockSelected`
+bindings first and runs them through `EditorHost.runStructuralCommand`, which returns early
+because `surface.currentId()` is null while selected — then `stopPropagation` keeps the key from
+the outliner's handler even when it does have focus (Cmd/Ctrl+click leaves focus on the
+`.vr-block-view`). `task.cycle` is the one key that works, because it writes through the store.
+`block.copySelection` additionally has no implementation anywhere (not in `keydown.ts`, no `copy`
+handler).
+
+**Fixed 2026-09-12.** Both layers: entering selection mode (Escape, or a Cmd/Ctrl+click) now
+focuses the outliner root; the editor host forwards a command that arrives with no edited block to
+the tree, which resolves it against the standing selection instead of returning early; and the
+container's own handler ignores keys the editor already consumed, so the Escape that enters
+selection mode cannot clear it on the bounce. `focus.spec.ts` 30/30 with the fixmes lifted.
+
+
+### B-65 · The `[[` / `#` / `((` / `/` popups ignore the keyboard
+**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/popups.spec.ts` (9 `fixme`)
+
+With a popup open: ArrowDown/ArrowUp do not move the highlight; Enter splits the block at the
+caret instead of selecting the row (`[[` + Enter leaves `[[` in one block and an empty block
+below); Tab indents the block; Escape drops the block into selection mode, and the popup only
+closes as a side effect of the editor detaching. Only the mouse works. The popup's `onKeyDown` is
+on the popup element, which never has focus, and both `BlockTree`'s dispatch context and the
+global dispatcher hardcode `popupOpen: false`, so R12 step 2 never applies. This is the class of
+thing B-42 was reported as.
+
+### B-66 · Delete-merge and undo change the block in the database but not in the editor
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/focus.spec.ts` "Delete at the end merges the next block in, keeping the caret",
+"Cmd/Ctrl+Z undoes typed text and Cmd/Ctrl+Shift+Z redoes it"
+
+Delete at the end of `ab` with `cd` below: the database now holds one block `abcd`, the editor
+still shows `ab`; keep typing and the two drift apart. Cmd/Ctrl+Z after typing ` typed`: the
+database reverts to `base`, the editor keeps `base typed`, and a reload shows the other text. An
+op that rewrites the content of the block being edited (`deleteForwardMerge`, a text transaction
+from `doUndo`/`doRedo`) goes through `commit`/`applyOptimistic` but never touches the mounted CM6
+buffer — and the refetch effect then prefers the live buffer, so the model quietly follows the
+stale editor.
+
+**Fixed 2026-09-12.** The rule "live buffer wins on refetch" stays — a first attempt to detect
+"the database disagrees" at refetch time reverted a split mid-keystroke inside the full suite,
+because a refetch that READ before our own write and RESOLVED after it is indistinguishable from
+an external change. Instead the local operations that rewrite the edited block — `commit`,
+`doUndo`, `doRedo` — sync the editor from the optimistic tree synchronously, where there is
+nothing to guess; undo back into the block already being edited places the caret directly, since
+`attachEditing` to the same id is a no-op.
+
+
+### B-67 · Shift+Enter does nothing
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/focus.spec.ts` "Shift+Enter inserts a newline inside the block, not a new block"
+
+R17's newline is never inserted. The global dispatcher matches `block.newline` (`when:
+editorFocused`), runs it — which is deliberately a no-op, "left to CM6" — and then
+`preventDefault` + `stopPropagation`, so CM6 never sees the key.
+
+**Fixed 2026-09-12.** The handler inserts the newline itself through the editor view.
+
+
+### B-68 · Alt+Down drops editor focus
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/focus.spec.ts` "Alt+Up/Down moves the block and keeps the editor in it"
+
+Alt+Up keeps the editor; Alt+Down moves the block and focus lands on `<body>` (the test records
+the `focusout` and its stack). The keyed `<For>` moves the focused row's DOM node, which blurs
+it, and the attach-time refocus in `surface.ts` only runs on attach.
+
+**Fixed 2026-09-12.** The refocus is deferred past Solid's reconciliation (a microtask, then a
+frame — the same two-stage dance `surface.attach` does), guarded so a genuine click-away is not
+fought.
+
+
+### B-69 · `#` autocomplete never lists an existing page
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/popups.spec.ts` "lists a page that is already used as a tag"
+
+Type `#` and a page's name: the only row is `New page "…"`. `createPageSource.listPages` never
+sets `isTag`, and the popup keeps only `p.isTag === true` in tag mode, so the candidate list is
+always empty.
+
+### B-70 · The keyboard toolbar never appears on a phone
+**Status:** open · **Severity:** high (phone) · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/phone.spec.ts` (2 `fixme`)
+
+Playwright's iPhone 13 descriptor on Chromium (iPhone user agent, `pointer: coarse`, no hover —
+`detectPlatformFromEnvironment` reports `platform: ios`, `mobile: true`): tap a block, type, and no
+`.cmd-toolbar` ever renders. `MobileKeyboardToolbar`'s `visible` memo reads `getContext()` →
+`activeContextSnapshot()`, which before any block is edited is a constant object with no reactive
+reads, so the memo computes `false` once and is never re-run; even afterwards `editorFocused` comes
+from `surface.currentId()`, a plain variable, not a signal.
+
+### B-71 · Choosing a context-menu item or clicking an autocomplete row drops editor focus
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/context-menu.spec.ts` "an item chosen from the menu leaves the editor focused and
+typeable", `e2e/tests/popups.spec.ts` "clicking a row leaves the editor focused"
+
+The command runs (Indent indents, the page link is inserted), but the item is focusable — a
+`<button>`, or a `tabIndex={-1}` row — so mousedown moves focus to it; the overlay then closes and
+focus lands on `<body>`. Typing afterwards goes nowhere until the block is clicked again. The mobile
+toolbar already does this right (`preventDefault` on `pointerdown`, spec R61).
+
+### B-72 · While a block is in edit mode, Escape ends editing instead of closing what is on top
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/context-menu.spec.ts` "Escape leaves focus and the caret exactly where right-click put
+them", `e2e/tests/views.spec.ts` "Escape closes the help menu while a block is being edited…",
+"opening the palette while editing and closing it hands focus back to the editor"
+
+Context menu: Escape closes it AND runs `block.selectBlock` — the menu's document listener does
+not stop propagation, and the global dispatcher's context still reports `editorFocused`. Help
+menu, shortcuts dialog and command palette: their Escape never arrives at all — the global
+capture handler runs first, matches `block.selectBlock`, and stops propagation — so the overlay
+stays open while the block behind it drops to selection mode.
+
+### B-73 · Right-clicking a selected block drops the selection
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/selection.spec.ts` "right-clicking a selected block keeps the selection",
+`e2e/tests/context-menu.spec.ts` "Delete appears for a selected block and deletes it"
+
+`onContextMenu` calls `attachEditing`, which clears the selection, so the menu's Delete entry —
+gated on `blockSelected` — can never appear. This is the "things keep selected when there are
+context menu shenanigans" the suite was asked for.
+
+### B-74 · Clicking away leaves the block in edit mode
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/popups.spec.ts` "clicking elsewhere dismisses the popup"
+
+Nothing clears `editingId` on blur, so the row keeps the CM6 surface after a click elsewhere: a
+`[[link]]` you just typed cannot be followed (clicking it re-focuses the editor), an open `[[`
+popup stays open, and the bullet stays accent. The rendered view only comes back when another
+block is clicked. `e2e/helpers/editor.ts`'s `clickAway` documents what tests have to do about it.
+
+### B-75 · A page created from the UI is empty with nowhere to type
+**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/pages.spec.ts` "a page created from the missing-page view can be typed into straight
+away"
+
+The missing-page view's Create and the palette's Create make the page, then `BlockTree` renders
+zero rows and there is no placeholder row like the virtual journal day's — no `.vr-block-view`,
+no `.vr-draft-input`, nothing to click. The only way to give such a page a first block is the API.
+
+### B-76 · The sidebar's "Pages" list is the first twelve names alphabetically
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/pages.spec.ts` "the sidebar's Pages list shows the most recently edited pages first"
+
+`Sidebar.tsx` says "most recently edited pages" and takes the first 12 of `useAllPages()`, whose
+query is `ORDER BY name`. With a few hundred pages a page you just made never appears there.
+
+### B-77 · Creating a journal-titled page from the missing-page view makes an ordinary page
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/pages.spec.ts` "creating a journal-titled page from the missing-page view makes a
+journal, not an ordinary page"
+
+Open `/page/2027-10-17` (a day with no page), press Create: `PageView.createThisPage` sends
+`page.create` with `journalDay: null`, so the graph gets an ordinary page named like a date —
+B-23's hole, reopened through the UI. `page.read` of that date then answers not found while the
+page exists under that name.
+
+### B-78 · Renaming a page from its title makes the view say the page doesn't exist
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/pages.spec.ts` "renaming a page from its title keeps you on the page under its new name"
+
+The rename commits (the new name reads back, the old one is gone), but the route still carries
+the old name, `usePageByName` resolves it to null, and the page you are on turns into "This page
+doesn't exist yet" with a Create button.
+
+### B-79 · Ticking a task in the Tasks view marks it done but the list never updates
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/tasks.spec.ts` "the Tasks view checkbox completes a task and removes it from the open
+list"
+
+The click writes `marker = DONE` (the API reads it back), and the row stays in the open list,
+unchecked, eight seconds later; a reload removes it. B-05's shape.
+
+### B-80 · A failed search sits on Searching… forever
+**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/views.spec.ts` "a failed search shows an error with Retry, and Retry recovers"
+
+Abort `/api/v1/search` and the view shows "Searching…" indefinitely: no `.search-error`, no
+Retry. B-10 lists search as fixed, but its only e2e test covered the references panel.
+
+### B-81 · A second tab of the same graph never renders
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/views.spec.ts` "a second tab of the same graph renders the page"
+
+Open a page in a second tab of the same browser context: "Loading…" for 20 s and counting, no
+outliner. Presumably the second tab is waiting on the writer election / OPFS pool and has no
+follower path.
+
+### B-82 · Picking a page in the command palette never opens it
+**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
+`e2e/tests/views.spec.ts` "Enter on a highlighted page in the palette opens it",
+`e2e/tests/pages.spec.ts` "Cmd/Ctrl+O switches pages by name with a click"
+
+Cmd/Ctrl+K or Cmd/Ctrl+O, type a page name until it is highlighted, press Enter or click the
+row: the palette closes and the URL does not change, with nothing in the console. `CommandLayer`
+wires `onSelectPage` to `navigation.openPage(p.id)`, whose `pageNameForId` is
+`resolveBlockPageName` — a lookup by BLOCK id, handed a page id, so it resolves to nothing and
+`openPage` silently does not navigate. (One earlier probe run saw a click navigate; two later runs
+and every Enter did not — treat the click path as broken too.) The palette's "Create page" row
+takes a different path and works.
+
+### B-83 · A tag page created right after typing the tag never shows the reference
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/pages.spec.ts` "a tag page created straight after typing the tag shows the reference
+without a reload"
+
+Type ` #NewTag ` in a block, click the rendered tag, press Create on the missing-page view: the
+new page shows no linked references, and keeps showing none (15 s) — although
+`page.backlinks` on the server lists the block within moments, and the same flow with a pause
+before clicking the tag shows it. The panel fetched its backlinks before the typed ref's op had
+been pushed, and nothing re-fetches when the push lands, because `useLinkedReferences` is
+server-backed and off the local change bus (B-09's shape, one step later).
+
 ## Fixed
 
 ### B-51 · Uploaded images were broken pictures on every route below the root

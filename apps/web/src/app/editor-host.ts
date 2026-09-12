@@ -66,7 +66,9 @@ export interface EditorHostBacking {
   head(): number;
   anchor(): number;
   setText(id: string, text: string, caret: number | { anchor: number; head: number }): void;
-  runStructural(id: string, commandId: string, ctx: CommandContext): void | Promise<void>;
+  /** `id` is null when no block is being edited — a selection-mode command arriving through the
+   *  global dispatcher, which the tree resolves against its own selection. */
+  runStructural(id: string | null, commandId: string, ctx: CommandContext): void | Promise<void>;
   linkAtCaret(): LinkAtCaret | null;
 }
 
@@ -102,9 +104,11 @@ export function createEditorHost(backing: EditorHostBacking): EditorHost {
     },
 
     runStructuralCommand(id: string, ctx: CommandContext): void | Promise<void> {
-      const blockId = backing.currentId();
-      if (blockId === null) return;
-      return backing.runStructural(blockId, id, ctx);
+      // No early return on a null id: after Escape the surface is detached but a selection stands,
+      // and `block.editSelected` / `block.deleteSelected` / Alt+arrows arrive here with the
+      // keydown already preventDefault'ed by the dispatcher. Returning early dropped them on the
+      // floor — Enter from selection mode did nothing (B-44). The tree decides what a null id means.
+      return backing.runStructural(backing.currentId(), id, ctx);
     },
 
     getLinkAtCaret(): LinkAtCaret | null {
