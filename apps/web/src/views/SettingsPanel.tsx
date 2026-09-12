@@ -30,6 +30,16 @@ import {
   Switch as SolidSwitch,
 } from "solid-js";
 import { type ThemePreference, useTheme } from "../app/theme.js";
+import {
+  CONTENT_WIDTHS,
+  contentWidth,
+  customCss,
+  setContentWidth,
+  setCustomCss,
+  setTextSize,
+  TEXT_SIZES,
+  textSize,
+} from "../data/appearance.js";
 import { apiBaseUrl, bootstrapConfig } from "../data/bootstrap.js";
 import {
   journalTitleFormat,
@@ -181,6 +191,60 @@ function AppearanceSection(): JSX.Element {
       <p class="set-note">
         How journal days are titled on screen. The stored name stays the ISO date, so links, search
         and the markdown mirror are unaffected.
+      </p>
+
+      {/* M7 appearance basics (research/13 §4.2 item 6). Values and storage belong to
+          `data/appearance.ts`; the tokens they move live in `styles/shell.css`. */}
+      <Row label="Text size">
+        <div class="set-segmented">
+          <For each={TEXT_SIZES}>
+            {(option) => (
+              <button
+                type="button"
+                class="set-segment"
+                aria-pressed={textSize() === option.value}
+                onClick={() => setTextSize(option.value)}
+              >
+                {option.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </Row>
+      <Row label="Content width">
+        <div class="set-segmented">
+          <For each={CONTENT_WIDTHS}>
+            {(option) => (
+              <button
+                type="button"
+                class="set-segment"
+                aria-pressed={contentWidth() === option.value}
+                onClick={() => setContentWidth(option.value)}
+              >
+                {option.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </Row>
+      <p class="set-note">
+        Reading sizes and the width of the page column. Stored per device, like the theme.
+      </p>
+      <label class="set-field set-field-block" for="set-custom-css">
+        <span>Custom CSS</span>
+        <textarea
+          id="set-custom-css"
+          rows={5}
+          spellcheck={false}
+          autocomplete="off"
+          placeholder={".vr-outliner { font-family: Georgia, serif; }"}
+          value={customCss()}
+          onInput={(e) => setCustomCss(e.currentTarget.value)}
+        />
+      </label>
+      <p class="set-note">
+        Applied as you type, on this device only. Whatever you write here is yours to break — clear
+        the box to undo it.
       </p>
     </section>
   );

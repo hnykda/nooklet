@@ -261,6 +261,48 @@
   --scrim: hsl(var(--shadow-color) / 55%);
 }
 
+/* ── Appearance settings (`data/appearance.ts`) ───────────────────────────────────────────── */
+/* The reader's text-size step and content width arrive as attributes on <html>, and the tokens
+   move here — so this file stays the only place a size is written, and a step is one edit rather
+   than a hunt through the views. Only the reading sizes move (body, outliner, headings, title):
+   the chrome — sidebar, shelf, counts, labels — is the frame around the text, and a bigger frame
+   is not what "bigger text" asks for. Whole pixels, same reason as the scale above. */
+
+:root[data-text-size="small"] {
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 24px;
+}
+
+:root[data-text-size="large"] {
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 19px;
+  --text-xl: 22px;
+  --text-2xl: 29px;
+}
+
+:root[data-text-size="larger"] {
+  --text-base: 17px;
+  --text-md: 19px;
+  --text-lg: 22px;
+  --text-xl: 25px;
+  --text-2xl: 33px;
+}
+
+/* ~58 and ~110 characters at --text-md. Narrow is a phone-width column on a desktop, for people
+   who read best in short lines; wide is for tables, code and deep outlines, and stops short of
+   "the whole window" because a 200-character line is unreadable on any screen. */
+:root[data-measure="narrow"] {
+  --measure: 36rem;
+}
+
+:root[data-measure="wide"] {
+  --measure: 68rem;
+}
+
 /* ── Base ─────────────────────────────────────────────────────────────────────────────────── */
 
 * {

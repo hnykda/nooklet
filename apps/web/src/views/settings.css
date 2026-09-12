@@ -271,3 +271,36 @@
     width: 100%;
   }
 }
+
+/* A multi-line field (the custom-CSS box, M7 appearance): label above, box below, monospace
+   because it is code. Kept out of `.set-field input, select` so the single-line fields do not
+   inherit the height. */
+.set-field-block {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.set-field-block > span {
+  flex: none;
+}
+
+.set-field-block textarea {
+  width: 100%;
+  min-height: 6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-md, 0.35rem);
+  border: 1px solid var(--border, rgb(0 0 0 / 18%));
+  background: var(--surface-1, #fff);
+  color: inherit;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs, 0.75rem);
+  line-height: var(--leading-snug);
+  resize: vertical;
+}
+
+.set-field-block textarea:focus-visible {
+  outline: 2px solid var(--focus, #2f55d4);
+  outline-offset: 1px;
+}
