@@ -5,8 +5,6 @@
  */
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { createNodeSqliteDriver } from "./sync/node-sqlite-driver.js";
-import { CORE_SCHEMA_STATEMENTS } from "./sync/schema.js";
 import {
   compareForQuery,
   matchQuery,
@@ -18,6 +16,8 @@ import {
   queryPrefilter,
   resolveQueryDate,
 } from "./query.js";
+import { createNodeSqliteDriver } from "./sync/node-sqlite-driver.js";
+import { CORE_SCHEMA_STATEMENTS } from "./sync/schema.js";
 
 const TODAY = 20260912; // a Saturday
 
@@ -79,14 +79,26 @@ describe("parseQuery — terms", () => {
   });
 
   it("marker: lists, open/closed, any/none, aliases, case", () => {
-    expect(term("marker:TODO,doing")).toEqual({ kind: "marker", values: ["TODO", "DOING"], mode: "list" });
+    expect(term("marker:TODO,doing")).toEqual({
+      kind: "marker",
+      values: ["TODO", "DOING"],
+      mode: "list",
+    });
     expect(term("marker:open")).toEqual({
       kind: "marker",
       values: ["TODO", "DOING", "LATER", "NOW", "WAITING"],
       mode: "list",
     });
-    expect(term("task:closed")).toEqual({ kind: "marker", values: ["DONE", "CANCELED"], mode: "list" });
-    expect(term("marker:cancelled")).toEqual({ kind: "marker", values: ["CANCELED"], mode: "list" });
+    expect(term("task:closed")).toEqual({
+      kind: "marker",
+      values: ["DONE", "CANCELED"],
+      mode: "list",
+    });
+    expect(term("marker:cancelled")).toEqual({
+      kind: "marker",
+      values: ["CANCELED"],
+      mode: "list",
+    });
     expect(term("marker:any")).toEqual({ kind: "marker", values: [], mode: "any" });
     expect(term("marker:none")).toEqual({ kind: "marker", values: [], mode: "none" });
     expect(fail("marker:")).toMatch(/expected a task state/);
@@ -159,11 +171,19 @@ describe("parseQuery — terms", () => {
     expect(term("scheduled:today..+7d")).toEqual({
       kind: "date",
       field: "scheduled",
-      cmp: { op: "between", from: { kind: "rel", n: 0, unit: "d" }, to: { kind: "rel", n: 7, unit: "d" } },
+      cmp: {
+        op: "between",
+        from: { kind: "rel", n: 0, unit: "d" },
+        to: { kind: "rel", n: 7, unit: "d" },
+      },
     });
     expect(term("scheduled:+1m")).toMatchObject({ cmp: { value: { unit: "m", n: 1 } } });
     expect(term("scheduled:-2y")).toMatchObject({ cmp: { value: { unit: "y", n: -2 } } });
-    expect(term("scheduled:none")).toEqual({ kind: "date", field: "scheduled", cmp: { op: "none" } });
+    expect(term("scheduled:none")).toEqual({
+      kind: "date",
+      field: "scheduled",
+      cmp: { op: "none" },
+    });
     expect(term("deadline:any")).toEqual({ kind: "date", field: "deadline", cmp: { op: "any" } });
     expect(fail("scheduled:")).toMatch(/expected a date/);
     expect(fail("scheduled:soon")).toMatch(/not a date/);
@@ -192,7 +212,11 @@ describe("parseQuery — terms", () => {
       key: "type",
       value: "science fiction",
     });
-    expect(term("property:Read_Status=done")).toEqual({ kind: "prop", key: "read-status", value: "done" });
+    expect(term("property:Read_Status=done")).toEqual({
+      kind: "prop",
+      key: "read-status",
+      value: "done",
+    });
     expect(fail("prop:")).toMatch(/expected a property key/);
     expect(fail("prop:=x")).toMatch(/expected a property key before =/);
   });
@@ -200,7 +224,9 @@ describe("parseQuery — terms", () => {
   it("sort: and limit: are modifiers, not filters", () => {
     expect(parse("TODO sort:deadline")).toMatchObject({ sort: { field: "deadline", dir: "asc" } });
     expect(parse("TODO sort:-due")).toMatchObject({ sort: { field: "due", dir: "desc" } });
-    expect(parse("TODO sort:updated:desc")).toMatchObject({ sort: { field: "updated", dir: "desc" } });
+    expect(parse("TODO sort:updated:desc")).toMatchObject({
+      sort: { field: "updated", dir: "desc" },
+    });
     expect(parse("sort:page TODO limit:5")).toMatchObject({
       sort: { field: "page", dir: "asc" },
       limit: 5,
@@ -266,7 +292,20 @@ describe("parseQuery — boolean structure", () => {
   });
 
   it("never throws on arbitrary input", () => {
-    const junk = ['"', "((", "))", ":::", "a:b:c", "-", "--", "#[[", "[[]]", "not not", "sort:", " "];
+    const junk = [
+      '"',
+      "((",
+      "))",
+      ":::",
+      "a:b:c",
+      "-",
+      "--",
+      "#[[",
+      "[[]]",
+      "not not",
+      "sort:",
+      " ",
+    ];
     for (const j of junk) expect(() => parseQuery(j)).not.toThrow();
   });
 });
@@ -301,8 +340,12 @@ describe("matchQuery", () => {
     expect(matches("#work", block({ content: "see [[Work]] later" }))).toBe(true);
     expect(matches("[[two words]]", block({ content: "x #[[Two Words]]" }))).toBe(true);
     expect(matches("tag:work", block({ content: "[label]([[work]])" }))).toBe(true);
-    expect(matches("tag:work", block({ content: "x", properties: { tags: "home, work" } }))).toBe(true);
-    expect(matches("tag:work", block({ content: "x", properties: { tags: "[[work]], home" } }))).toBe(true);
+    expect(matches("tag:work", block({ content: "x", properties: { tags: "home, work" } }))).toBe(
+      true,
+    );
+    expect(
+      matches("tag:work", block({ content: "x", properties: { tags: "[[work]], home" } })),
+    ).toBe(true);
     expect(matches("tag:work", block({ content: "workshop #working" }))).toBe(false);
     expect(matches("tag:work", block({ content: "`#work` in code" }))).toBe(false);
     expect(matches("tag:práce", block({ content: "úkol #Práce" }))).toBe(true);
@@ -382,8 +425,18 @@ describe("compareForQuery", () => {
     const ids = (xs: QueryBlock[], q: string) =>
       [...xs].sort(compareForQuery(parse(q).sort, env)).map((x) => x.pageName);
     expect(ids([a, b, j, j2], "x")).toEqual(["2026-09-05", "Beta", "Alpha", "2026-09-01"]);
-    expect(ids([a, b, j, j2], "x sort:-due")).toEqual(["Alpha", "2026-09-05", "Beta", "2026-09-01"]);
-    expect(ids([a, b, j, j2], "x sort:page")).toEqual(["2026-09-05", "2026-09-01", "Alpha", "Beta"]);
+    expect(ids([a, b, j, j2], "x sort:-due")).toEqual([
+      "Alpha",
+      "2026-09-05",
+      "Beta",
+      "2026-09-01",
+    ]);
+    expect(ids([a, b, j, j2], "x sort:page")).toEqual([
+      "2026-09-05",
+      "2026-09-01",
+      "Alpha",
+      "Beta",
+    ]);
     expect(ids([a, b, j], "x sort:priority")).toEqual(["Beta", "Alpha", "2026-09-01"]);
   });
 
@@ -431,13 +484,28 @@ describe("queryPrefilter is a sound over-approximation of matchQuery", () => {
     );
   }
   const rows: Row[] = [
-    { page: pages[0] as Row["page"], b: { content: "TODO one #work", marker: "TODO", scheduledDay: 20260912 } },
-    { page: pages[0] as Row["page"], b: { content: "two [[Work]]", marker: "DOING", deadlineDay: 20260901 } },
+    {
+      page: pages[0] as Row["page"],
+      b: { content: "TODO one #work", marker: "TODO", scheduledDay: 20260912 },
+    },
+    {
+      page: pages[0] as Row["page"],
+      b: { content: "two [[Work]]", marker: "DOING", deadlineDay: 20260901 },
+    },
     { page: pages[1] as Row["page"], b: { content: "`#work` in code only", marker: "TODO" } },
-    { page: pages[1] as Row["page"], b: { content: "done thing", marker: "DONE", doneAt: Date.UTC(2026, 8, 11) } },
-    { page: pages[2] as Row["page"], b: { content: "plain", props: { tags: "work", type: "Book" } } },
+    {
+      page: pages[1] as Row["page"],
+      b: { content: "done thing", marker: "DONE", doneAt: Date.UTC(2026, 8, 11) },
+    },
+    {
+      page: pages[2] as Row["page"],
+      b: { content: "plain", props: { tags: "work", type: "Book" } },
+    },
     { page: pages[2] as Row["page"], b: { content: "Řeka #práce", priority: "A" } },
-    { page: pages[2] as Row["page"], b: { content: "meeting notes", marker: "LATER", priority: "C" } },
+    {
+      page: pages[2] as Row["page"],
+      b: { content: "meeting notes", marker: "LATER", priority: "C" },
+    },
   ];
   const all: QueryBlock[] = [];
   rows.forEach((r, i) => {
@@ -462,7 +530,12 @@ describe("queryPrefilter is a sound over-approximation of matchQuery", () => {
       ],
     );
     for (const [k, v] of Object.entries(b.props ?? {})) {
-      driver.run("INSERT INTO block_prop (block_id, key, value, hlc) VALUES (?,?,?,?)", [id, k, v, "h"]);
+      driver.run("INSERT INTO block_prop (block_id, key, value, hlc) VALUES (?,?,?,?)", [
+        id,
+        k,
+        v,
+        "h",
+      ]);
     }
     all.push(
       block({
@@ -523,7 +596,8 @@ describe("queryPrefilter is a sound over-approximation of matchQuery", () => {
       );
       const sqlIds = new Set(sqlRows.map((r) => r.id));
       const jsIds = new Set(all.filter((b) => matchQuery(query.where, b, env)).map((b) => b.id));
-      for (const id of jsIds) expect(sqlIds, `SQL prefilter dropped ${id} for "${q}"`).toContain(id);
+      for (const id of jsIds)
+        expect(sqlIds, `SQL prefilter dropped ${id} for "${q}"`).toContain(id);
       if (pre.exact) expect([...sqlIds].sort()).toEqual([...jsIds].sort());
     });
   }

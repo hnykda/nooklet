@@ -5,45 +5,26 @@ Owner agent's working record. Updated after every meaningful step so a restart c
 
 ## Done
 
-- `40c054b` feat(ops): `trash.list` + `trash.restore` (+ 19 HTTP tests, `ops/index.ts`
-  registration, MCP pin list).
-- `fe1a197` feat(ops): `page.history` (+ 7 HTTP tests).
-- `163d3b9` feat(gc): orphan-asset GC (`planAssetGc`, second phase of `runGc`,
-  `DEFAULT_ASSET_GRACE_DAYS = 7`, `--asset-grace <days>` in `cli.ts`; 9 tests).
-- Commits go through a PRIVATE git index (`<scratch>/commit-mine.sh` + `craft-shared.mjs`):
-  other agents' ops are still untracked, so the shared `ops/index.ts` / `mcp/server.test.ts` are
-  committed as "HEAD + only my hunks". After each commit: `git reset -q -- <paths>` so the shared
-  index does not hold stale blobs that a bare `git commit` would revert.
+- (uncommitted, green) Server ops `trash.list`, `trash.restore`, `page.history` in
+  `packages/server/src/ops/{trash-list,trash-restore,page-history}.ts` with HTTP tests
+  (26 tests), registered in `ops/index.ts`, MCP pin list updated in `mcp/server.test.ts`.
+- (uncommitted, green) Orphan-asset GC: `packages/server/src/gc.ts` (`planAssetGc`, second phase
+  of `runGc`, `DEFAULT_ASSET_GRACE_DAYS = 7`), 9 new tests in `gc.test.ts`, `--asset-grace <days>`
+  in `cli.ts`'s `gc` case.
 - (uncommitted) Web data layer `apps/web/src/data/history.ts` (own `stamped` bus, `useTrash`,
   `usePageHistory`, `restoreFromTrash`, `undoBatch`), text helpers `views/historyText.ts` + test.
 
 ## In flight
 
-- Written, uncommitted, being typechecked/e2e'd: `apps/web/src/views/TrashView.tsx` +
-  `trash.css`, `views/HistoryView.tsx` + `history.css`, `views/historyText.ts` (+ test),
-  `data/history.ts`, route lines in `App.tsx` (`/trash`, `/history/*name`), `Trash` entry in
-  `shell/Sidebar.tsx`, `e2e/tests/trash.spec.ts`, `e2e/tests/history.spec.ts`.
-- Commit helper is now `<scratch>/th-commit.sh` + `th-craft.mjs` (unique names: the scratchpad
-  is shared and `commit-mine.sh` was overwritten by another agent).
-- Docs written, uncommitted: `docs/adr/022-trash-history-retention.md` (019 was taken by
-  templates after my first check — renamed), `docs/spec/mcp-tools.md` (§4.2 rows 30–32,
-  §4.3.29–31, the "trash.* … expose.mcp: false" sentence fixed), `docs/OPERATIONS.md` §6.1,
-  `docs/BUGS.md` B-90 (core `applyPageDelete(null)` ignores the live-name unique index) and B-91
-  (deduped re-upload of an orphaned asset records nothing). Bug numbers moved twice (85/86 →
-  89/90 → 90/91) as other agents logged theirs; every reference in my files was re-numbered.
-- First e2e run of my two specs: 8/9 — the one failure was cross-spec trash pollution (one server
-  per `playwright test` run, history.spec runs first); trash.spec now scopes rows to its page.
-  Second run in progress.
-- **Real-graph verification done** (`<scratch>/th-real-graph.sh`, copy of the 952-page graph,
-  server on 6355): page "TODO" (111 blocks, Czech text) `page.delete` → `page.read` not_found →
-  `trash.list` shows it with actor → `trash.restore {page}` un-deleted 112 entities → tree
-  byte-identical to before; then `block.delete` of its first subtree (3 blocks) → one trash
-  entry → `trash.restore {id}` → identical again; `page.history` reads 5 batches in words back to
-  the import. `pnpm nooklet verify` OK, 20,641 ops replayed. `gc --dry-run`: 0 asset rows on the
-  real graph (nothing to collect), op-log half refused (no device synced on the copy) — the asset
-  half ran anyway, as designed.
-- `pnpm -r typecheck` clean (repo-wide, at this moment); `pnpm -r test` 1,538 passing
-  (330 + 17 + 512 + 679).
+- `apps/web/src/views/TrashView.tsx` + `trash.css`: not started.
+- `apps/web/src/views/HistoryView.tsx` + `history.css`: not started.
+- `apps/web/src/App.tsx` route lines, `shell/Sidebar.tsx` Trash entry: not started.
+- `e2e/tests/{trash,history}.spec.ts`: not started.
+- Docs: ADR 019 (number confirmed free), `docs/spec/mcp-tools.md` (§4.2 rows + §4.3.24–26 + fix
+  the "trash.* … expose.mcp: false" sentence), `docs/OPERATIONS.md` §6 asset GC, `docs/BUGS.md`
+  B-85 (core `applyPageDelete(null)` ignores the live-name unique index) and B-86 (deduped
+  re-upload of an orphaned asset records nothing, so asset GC can collect it inside the offline
+  window): not started.
 
 ## Next steps (in order, one commit each)
 
@@ -52,11 +33,11 @@ Owner agent's working record. Updated after every meaningful step so a restart c
 3. Commit asset GC — `feat(gc): orphan-asset GC with a 7-day grace`.
 4. TrashView + route + sidebar entry + `e2e/tests/trash.spec.ts` → commit.
 5. HistoryView + route + `e2e/tests/history.spec.ts` → commit.
-6. ADR 022, spec, OPERATIONS, BUGS → commit.
+6. ADR 019, spec, OPERATIONS, BUGS → commit.
 7. Verify on the real-graph copy (see below); full e2e on port 6354; `pnpm -r typecheck`,
    `pnpm -r test`, biome. Report.
 
-## Decisions (why, in short — ADR 022 has the full text)
+## Decisions (why, in short — ADR 019 has the full text)
 
 - **Retention: none. The trash never expires.** `nooklet gc` never hard-deletes `page`/`block`
   tombstones (it never did; `gc.ts` only trims the `op` table). A purge would break `verify`'s
@@ -74,7 +55,7 @@ Owner agent's working record. Updated after every meaningful step so a restart c
   gain.
 - **Asset orphan = no reference from any block/property, live OR tombstoned**, and older than the
   grace (7 days, `--asset-grace`). Trash-only references keep the asset because the trash has no
-  expiry. A `changes` row for the asset newer than the cutoff also extends grace (hook for B-91).
+  expiry. A `changes` row for the asset newer than the cutoff also extends grace (hook for B-86).
 - Route for history is `/history/*name`, not `/page/*name/history` — the page route is a splat,
   so `/page/X/history` would resolve as page "X/history".
 

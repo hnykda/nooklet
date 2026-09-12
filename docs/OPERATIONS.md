@@ -187,13 +187,9 @@ database file (`docs/spec/sql-schema.md`'s sizing table). `nooklet gc` trims it,
 
 ```sh
 nooklet gc --dry-run          # report what would happen, change nothing
-nooklet gc                    # actually drop old ops and orphan assets (takes a backup first)
+nooklet gc                    # actually drop old ops (takes a backup first, see below)
 nooklet gc --no-backup        # skip the automatic pre-GC backup (not recommended)
-nooklet gc --asset-grace 30   # only count an asset as orphaned after 30 unreferenced days (default 7)
 ```
-
-`nooklet gc` does two independent things: trim the op log (this section) and remove orphan
-assets (§6.1). The asset half runs even when the op-log half is refused.
 
 **The floor**: an op is only ever deleted once *every* device has confirmed (by pulling past it)
 that it doesn't need it — concretely, `MIN(device.acked_seq)` across every device whose token
@@ -221,42 +217,6 @@ gc: floor=48213 (op.seq < floor) - dropped 40112 op(s), retaining 8101
 
 ("reclaimed" is a real, measured file-size delta — GC runs a `VACUUM` after deleting rows, since
 a bare `DELETE` doesn't shrink the SQLite file on its own.)
-
-### 6.1 Orphan assets
-
-Every pasted image and every file an agent uploads lands in `<data>/assets/<id>.<ext>` with an
-`asset` row, and is referenced from block text as `assets/<id>.<ext>` (the importer rewrites
-Logseq's links to that form). Delete the block, or edit the link out of it, and the file used to
-stay forever — Logseq's most-voted assets request (research/13 §3.1). `nooklet gc` now removes
-what nothing points at any more:
-
-- An asset is an **orphan** when no block text or property value mentions it — counting
-  **tombstoned** blocks and deleted pages as references too, because the trash never expires
-  (ADR 022) and a page restored from it must not come back with broken images — and the upload is
-  older than the **grace period**.
-- The grace period is **7 days** by default (`--asset-grace <days>`, `0` allowed). The one
-  legitimate reason an asset is briefly unreferenced is the gap between the upload and the write
-  that embeds it: an agent's `asset_upload` then `block_update`, or a paste in the editor whose
-  block op sits in that device's push queue until it next syncs. That queue can wait out a closed
-  laptop, so the grace is days, not seconds; a week covers a holiday and a monthly GC still
-  collects. Lower it only when you know every device has synced.
-- `--dry-run` lists every orphan with its file name, size and upload time. A real run tombstones
-  the row (so the same bytes can be uploaded again fresh) and unlinks the file, after the same
-  automatic backup as the op-log half — the archive includes `assets/`, so a removed file is
-  recoverable from it (§3).
-
-The report's asset line reads:
-
-```
-gc: assets - 214 on record, removed 3 orphan(s) (unreferenced for over 7 days); 1 unreferenced but within the grace period, 2 referenced only from the trash - both kept
-  removed: assets/1k7f3qa9m2xzr7.png ("Screenshot 2024-11-02.png", 184211 bytes, uploaded 2024-11-02T10:14:07.000Z)
-  reclaimed 184211 byte(s) of files
-```
-
-Known gap (docs/BUGS.md B-91): uploading bytes identical to an already-orphaned asset returns
-that asset without recording anything, so if the device then goes offline before pushing the
-block that embeds it, a GC run inside that window can remove it. Rare; the fix is one audit row
-on the deduplicated upload, which GC already honours as "recent".
 
 ## 7. When sync misbehaves
 

@@ -73,7 +73,15 @@ export type QueryExpr =
   | { kind: "not"; item: QueryExpr }
   | { kind: "term"; term: QueryTerm; start: number; end: number };
 
-export type SortField = "due" | "scheduled" | "deadline" | "done" | "created" | "updated" | "priority" | "page";
+export type SortField =
+  | "due"
+  | "scheduled"
+  | "deadline"
+  | "done"
+  | "created"
+  | "updated"
+  | "priority"
+  | "page";
 
 export interface Query {
   where: QueryExpr;
@@ -216,7 +224,7 @@ function lex(text: string): Tok[] {
       out += c;
       i++;
     }
-    throw new LexError("unterminated \" quote", open, n);
+    throw new LexError('unterminated " quote', open, n);
   };
 
   /** A `[[...]]` run starting at `i`. Returns the inner text, trimmed. */
@@ -318,7 +326,13 @@ function lex(text: string): Tok[] {
       toks.push({ kind: lower, start, end: i });
       continue;
     }
-    toks.push({ kind: "word", value: raw.value, form: raw.quoted ? "quoted" : "raw", start, end: i });
+    toks.push({
+      kind: "word",
+      value: raw.value,
+      form: raw.quoted ? "quoted" : "raw",
+      start,
+      end: i,
+    });
   }
   return toks;
 }
@@ -345,7 +359,8 @@ function parseDateExpr(raw: string): DateExpr {
   const abs = ISO_DATE_RE.exec(s);
   if (abs) {
     const day = Number(abs[1]) * 10000 + Number(abs[2]) * 100 + Number(abs[3]);
-    if (dateToJournalDay(journalDayToDate(day)) !== day) throw new TermError(`"${raw}" is not a real date`);
+    if (dateToJournalDay(journalDayToDate(day)) !== day)
+      throw new TermError(`"${raw}" is not a real date`);
     return { kind: "abs", day };
   }
   throw new TermError(
@@ -361,7 +376,11 @@ function parseDateCmp(raw: string): DateCmp {
   if (lower === "any") return { op: "any" };
   const range = s.split("..");
   if (range.length === 2) {
-    return { op: "between", from: parseDateExpr(range[0] as string), to: parseDateExpr(range[1] as string) };
+    return {
+      op: "between",
+      from: parseDateExpr(range[0] as string),
+      to: parseDateExpr(range[1] as string),
+    };
   }
   if (range.length > 2) throw new TermError(`"${raw}" has more than one ".."`);
   let op: "eq" | "lt" | "le" | "gt" | "ge" = "eq";
@@ -429,7 +448,8 @@ function parsePriorityList(raw: string): QueryTerm {
   for (const part of s.split(",")) {
     const p = part.trim().toUpperCase();
     if (p === "") continue;
-    if (p !== "A" && p !== "B" && p !== "C") throw new TermError(`"${part}" is not a priority — use A, B or C`);
+    if (p !== "A" && p !== "B" && p !== "C")
+      throw new TermError(`"${part}" is not a priority — use A, B or C`);
     values.push(p);
   }
   return { kind: "priority", values: [...new Set(values)], mode: "list" };
@@ -546,7 +566,8 @@ function parseWord(tok: Extract<Tok, { kind: "word" }>, mods: Modifiers): QueryT
     }
     case "limit": {
       const v = need("a number");
-      if (!/^[1-9]\d*$/.test(v)) throw new TermError(`limit: needs a positive whole number, not "${v}"`);
+      if (!/^[1-9]\d*$/.test(v))
+        throw new TermError(`limit: needs a positive whole number, not "${v}"`);
       mods.limit = Number(v);
       return null;
     }
@@ -586,7 +607,9 @@ class Parser {
 
   private eofSpan(): { start: number; end: number } {
     const last = this.toks[this.toks.length - 1];
-    return last ? { start: last.end, end: last.end } : { start: this.textLength, end: this.textLength };
+    return last
+      ? { start: last.end, end: last.end }
+      : { start: this.textLength, end: this.textLength };
   }
 
   parseOr(): QueryExpr | null {
@@ -616,7 +639,8 @@ class Parser {
       if (!t || t.kind === "rparen" || t.kind === "or") break;
       if (t.kind === "and") {
         this.pos++;
-        if (items.length === 0) throw new ParseError('"and" needs a filter before it', t.start, t.end);
+        if (items.length === 0)
+          throw new ParseError('"and" needs a filter before it', t.start, t.end);
         const rhs = this.parseUnary();
         if (!rhs) throw new ParseError('"and" needs a filter after it', t.start, t.end);
         items.push(rhs);
@@ -653,8 +677,8 @@ class Parser {
       if (!inner) throw new ParseError("empty parentheses", t.start, close.end);
       return inner;
     }
-    if (t.kind === "rparen") throw new ParseError("unexpected )", t.start, t.end);
-    if (t.kind === "and" || t.kind === "or") {
+    if (t.kind !== "word") {
+      if (t.kind === "rparen") throw new ParseError("unexpected )", t.start, t.end);
       throw new ParseError(`"${t.kind}" needs a filter before it`, t.start, t.end);
     }
     this.pos++;
@@ -684,7 +708,11 @@ export function parseQuery(text: string): ParseQueryResult {
     const where = parser.parseOr();
     if (!parser.atEnd()) {
       const t = parser.current() as Tok;
-      throw new ParseError(t.kind === "rparen" ? "unexpected )" : "unexpected input", t.start, t.end);
+      throw new ParseError(
+        t.kind === "rparen" ? "unexpected )" : "unexpected input",
+        t.start,
+        t.end,
+      );
     }
     if (!where) {
       return {
@@ -831,7 +859,12 @@ function refKeys(b: QueryBlock): Set<string> {
   return out;
 }
 
-function matchTerm(term: QueryTerm, b: QueryBlock, env: QueryEnv, refs: () => Set<string>): boolean {
+function matchTerm(
+  term: QueryTerm,
+  b: QueryBlock,
+  env: QueryEnv,
+  refs: () => Set<string>,
+): boolean {
   switch (term.kind) {
     case "marker":
       if (term.mode === "any") return b.marker !== null;
@@ -1084,9 +1117,15 @@ export function queryPrefilter(expr: QueryExpr, env: QueryEnv): QueryPrefilter {
     case "term":
       return termSql(expr.term, env.today);
     case "and":
-      return joinSql(expr.items.map((e) => queryPrefilter(e, env)), "AND");
+      return joinSql(
+        expr.items.map((e) => queryPrefilter(e, env)),
+        "AND",
+      );
     case "or":
-      return joinSql(expr.items.map((e) => queryPrefilter(e, env)), "OR");
+      return joinSql(
+        expr.items.map((e) => queryPrefilter(e, env)),
+        "OR",
+      );
     case "not": {
       // NOT of an over-approximation is an under-approximation — unsound. Only an exact child
       // can be negated in SQL; otherwise accept everything (and drop the child's params with

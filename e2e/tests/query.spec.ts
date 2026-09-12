@@ -113,13 +113,16 @@ test("a query block is never its own result", async ({ page }) => {
 });
 
 test("/query inserts a fence skeleton around what was typed", async ({ page }) => {
-  await openEditing(page, "Query Slash", "- TODO #work");
+  // A marker is block state, not text (tasks.spec.ts), so the editable content here is
+  // `marker:open #work` — exactly the query a person would type before reaching for /query.
+  await openEditing(page, "Query Slash", "- marker:open #work");
   await page.keyboard.type(" /query", { delay: 20 });
   const popup = page.locator(".cmd-popup").first();
   await expect(popup).toBeVisible();
   await popup.locator('[role="option"]').filter({ hasText: "Query" }).first().click();
-  expect(await editorText(page)).toBe("```query\nTODO #work\n```");
+  expect(await editorText(page)).toBe("```query\nmarker:open #work\n```");
   await clickAway(page);
   await expect(page.locator(".vr-query")).toBeVisible();
-  await expect(page.locator(".vr-query .vr-query-text")).toHaveText("TODO #work");
+  await expect(page.locator(".vr-query .vr-query-text")).toHaveText("marker:open #work");
+  await expect(page.locator(".vr-query .vr-query-count")).toContainText("block");
 });

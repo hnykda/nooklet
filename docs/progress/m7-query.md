@@ -12,19 +12,20 @@ reading this after a restart, continue from **Next steps**.
 - Baseline production bundle measured BEFORE any web change (HEAD c9a98f9, built into scratch):
   main chunk `index-*.js` 600.12 kB (gzip 191.11 kB), `index-*.css` 62.96 kB (gzip 10.79 kB),
   PWA precache 19 entries / 1996.78 KiB. Log: scratchpad `build-before.log`.
-- Web side written and unit-tested (67 tests green in `render/`, `data/queries.test.ts`,
-  `insert-logic.test.ts`); typecheck clean for my files (remaining web TS errors are other
-  agents' `refactor-host.tsx` / `VirtualJournalDay.test.tsx`).
+- `0b69dc0` feat(web): render seams — highlight.js (lazy, per-language chunks) + KaTeX (lazy),
+  `tokens.tsx`/`livePreview.ts` wired, `e2e/tests/render.spec.ts`, package.json + lockfile.
+- `dfaf3b9` feat(web): query fence UI — `data/queries.ts`, `store.ts` `stampedFor`,
+  `render/QueryFenceView.tsx`, `/query` command + slash item, `e2e/tests/query.spec.ts`.
+- Unit: 86 web tests + 55 core tests green; web typecheck clean for my files (remaining web TS
+  errors are other agents' `refactor-host.tsx` / `VirtualJournalDay.test.tsx`).
 
 ## In flight (file → state)
 
-- Commit A (render seams): `render/highlight.ts`, `highlighter-impl.ts`, `highlight.css`,
-  `math.ts`, `math-impl.ts`, `math.css`, `tokens.tsx`, `livePreview.ts`, `highlight.test.ts`,
-  `render-seams.test.tsx`, `apps/web/package.json`, `pnpm-lock.yaml`, `e2e/tests/render.spec.ts`.
-- Commit B (query fence UI): `data/queries.ts` + test, `data/store.ts` (append-only `stampedFor`),
-  `render/QueryFenceView.tsx`, `query.css`, `commands/registrations/insert-logic.ts` (+test),
-  `insert.ts`, `slash/items.ts`, `e2e/tests/query.spec.ts`.
-- e2e specs written, NOT yet run.
+- e2e specs committed but being run for the first time on 6350 (fixes, if any, go in a follow-up).
+- Bundle measurement: `scratch/measure.sh` builds commits b1d3679 (before) and dfaf3b9 (after) in
+  worktrees `scratch/wt-before`, `scratch/wt-after`; output `scratch/measure.log` (ends with
+  MEASURE_DONE). The scratch `dist-after` build of the working tree is confounded by other
+  agents' uncommitted files — use the worktree numbers.
 
 ## Next steps, in order
 
