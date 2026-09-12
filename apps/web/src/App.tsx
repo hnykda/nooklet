@@ -27,6 +27,8 @@ import { AppShell } from "./shell/AppShell.js";
 import { ConnectView } from "./views/ConnectView.js";
 import { FindReplaceView } from "./views/FindReplaceView.js";
 import { GraphMismatchView } from "./views/GraphMismatchView.js";
+import { HistoryRoute } from "./views/HistoryView.js";
+import { TrashView } from "./views/TrashView.js";
 
 function RouterRoot(routeProps: RouteSectionProps): JSX.Element {
   if (routeProps.location.pathname === "/capture") return <>{routeProps.children}</>;
@@ -71,6 +73,10 @@ export function App() {
         <Route path="/tasks" component={TasksRoute} />
         <Route path="/graph" component={GraphRoute} />
         <Route path="/replace" component={FindReplaceView} />
+        {/* M7 item 8 (ADR 022): the trash, and a page's history at `/history/*name` — not under
+            `/page/*name`, whose splat would swallow "/history" as part of the page name. */}
+        <Route path="/trash" component={TrashView} />
+        <Route path="/history/*name" component={HistoryRoute} />
         <Route path="/capture" component={CaptureRoute} />
       </Router>
     </Show>
