@@ -15,12 +15,18 @@ read "Next steps" and continue from there. Owner brief: research/13 §4.2 items 
   ADR 021, this progress file.
 - `551daa7` feat(web): appearance basics (feature 6).
 - `dab300f` feat(web): shelf page-outline mode (feature 7).
+- `81546e1` test(web): explicit type on the shelf outline test helper (TS7022 caught by the
+  worktree typecheck). biome: clean on all 22 of my files (17:50).
 
 All four features are committed with green unit tests. **The four e2e specs pass (8/8, 17:41)**
 in the HEAD worktree on port 6353 (see Blockers for why a worktree). `pnpm -r test` at HEAD
 (f1675df): all four packages green (17:44). `pnpm -r typecheck` fails in `packages/core/src/query.ts`
 (the query agent's commit f1675df, not mine) — server and web typecheck on their own.
-Remaining: full e2e suite (running in background at 17:44), final report.
+**Full e2e suite (18:05, foreground, port 6353, worktree at f1675df + cherry-picked 81546e1
+because HEAD `fe1a197` broke `ops/index.ts` with duplicate `trashList`/`trashRestore` exports):
+247 passed, 2 failed, 2 skipped.** The 2 failures are `popups.spec.ts` slash-menu counts (16
+items on screen vs the spec's 15) — the templates agent's `/template` item (78970b1) without a
+`SLASH_ORDER` update; none of my code. Remaining: log that in BUGS.md, final report.
 
 ## 2. In flight (on disk, uncommitted)
 

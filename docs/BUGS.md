@@ -477,6 +477,47 @@ caller uses them, so this only bites an API/plugin caller who puts a reserved ke
 Fix: in `applyBlockCreate`, fold bag values for those three keys into the INSERT itself (or
 stamp their `_hlc` columns `NULL` on insert and let `writeBlockField` set them).
 
+### B-90 · Core accepts an un-delete whose page name is now taken by a live page
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, building `trash.restore` (ADR 022)
+· **Test:** none yet (the guard in `trash.restore` is tested: `trash-restore.http.test.ts` "is
+conflict when a live page now has the name"); the core gap has no failing test
+
+Delete page "Dup", create a new live page "Dup", then apply `page.delete {deletedAt: null}` to the
+old one — through `batch_undo` of the deletion, or as an op arriving in a sync push from a device
+that undid it locally. `applyPageDelete` in `packages/core/src/sync/apply-ops.ts` clears the
+tombstone without re-checking the live-name unique index (`page_key … WHERE deleted_at IS NULL`),
+so SQLite raises a constraint error mid-transaction and the whole `serverApplyOps` call — the
+entire push, for a sync — fails. `applyPageRename` and `applyPageCreate` both reject with
+`page-key-collision`; the un-delete should too, so the client converges (the page stays deleted)
+instead of the push dying. `trash.restore` checks first and returns `conflict` with a `new_name`
+escape hatch, but that only covers its own door.
+
+### B-91 · A deduplicated re-upload of an orphaned asset leaves no trace, so asset GC can collect it
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, building orphan-asset GC (ADR 022 §5)
+· **Test:** `packages/server/src/gc.test.ts` "a recent audit row for the asset extends its grace"
+pins the GC side; the store side has no test
+
+`storeAssetBytes` (`packages/server/src/assets/store.ts`) returns the existing row when the same
+bytes are uploaded again and writes nothing — no `changes` row, no timestamp. If that asset was an
+orphan (its last block dropped the link months ago), it is still an orphan the moment the upload
+returns; the block op that embeds it again is on the device, not the server, until the next push.
+A `nooklet gc` inside that window removes the file, and the push then embeds a link to nothing.
+Narrow (identical bytes, previously orphaned, GC run while the device is offline), but it is the
+exact case the grace period exists for. Fix: on dedupe, write the same `changes` row a fresh
+upload writes — `planAssetGc` already treats a recent audit row as "touched".
+
+### B-90 · Slash menu shows 16 items; `popups.spec.ts` pins 15
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, full e2e run (views agent, M7) ·
+**Test:** `e2e/tests/popups.spec.ts` "opens at a run start with every item in R54 order" and
+"opens as the first character of an empty block" — both currently fail
+
+Type `/` in a block: the popup lists sixteen items — the M7 `Template` entry (78970b1,
+`apps/web/src/commands/slash/items.ts`) is there — but `SLASH_ORDER` in `popups.spec.ts` still
+lists the fifteen from R54, so the two count/order assertions fail on every full run. Either the
+spec's list needs the new item in its R54 position or the keymap spec's R54 needs the item added;
+whichever way, the two should agree. Seen with the suite run from a worktree at `f1675df` +
+`81546e1`; not caused by, and not fixable from, the references/appearance/shelf work.
+
 ## Fixed
 
 
