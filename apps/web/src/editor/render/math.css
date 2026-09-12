@@ -1,0 +1,15 @@
+/* A rendered formula is text, not code: undo the monospace/soft colour `.vr-math` gives the raw
+   `$…$` fallback (editor.css) once KaTeX has taken over. Loaded with the KaTeX chunk. */
+.vr-math-rendered {
+  font-family: inherit;
+  color: inherit;
+}
+
+.vr-math-rendered .katex {
+  font-size: 1.05em;
+}
+
+/* Inside the CodeMirror surface the widget sits inline with the source text. */
+.cm-line .vr-math-rendered {
+  vertical-align: baseline;
+}

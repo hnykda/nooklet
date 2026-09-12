@@ -1,0 +1,128 @@
+/**
+ * Token colours for highlight.js output inside `.vr-fence` — loaded with the highlighter chunk,
+ * never on a page without code. Eight roles, not highlight.js's forty classes: a note's code
+ * block is read at outline density next to prose, where a full IDE palette shouts. Every colour
+ * is a tint of the shell's own tokens (`../../styles/shell.css`) so light/dark follow the theme
+ * the same way the rest of the page does — `:root:not([data-theme="light"])` under the OS media
+ * query, `[data-theme="dark"]` for an explicit choice, mirroring shell.css exactly.
+ */
+
+:root {
+  --hl-keyword: #7b2cbf;
+  --hl-string: #1a7f37;
+  --hl-number: #b35c00;
+  --hl-comment: #7a7a86;
+  --hl-title: #1f5fd6;
+  --hl-attr: #8a4b00;
+  --hl-meta: #6a5acd;
+  --hl-deletion-bg: #ffe5e5;
+  --hl-addition-bg: #e2f5e6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --hl-keyword: #c792ea;
+    --hl-string: #8fd18b;
+    --hl-number: #f0a86a;
+    --hl-comment: #8b8b98;
+    --hl-title: #82aaff;
+    --hl-attr: #ffcb6b;
+    --hl-meta: #b0a4ff;
+    --hl-deletion-bg: #4a2020;
+    --hl-addition-bg: #1f3d26;
+  }
+}
+
+:root[data-theme="dark"] {
+  --hl-keyword: #c792ea;
+  --hl-string: #8fd18b;
+  --hl-number: #f0a86a;
+  --hl-comment: #8b8b98;
+  --hl-title: #82aaff;
+  --hl-attr: #ffcb6b;
+  --hl-meta: #b0a4ff;
+  --hl-deletion-bg: #4a2020;
+  --hl-addition-bg: #1f3d26;
+}
+
+.vr-fence code.hljs {
+  color: var(--fg);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-type,
+.hljs-literal,
+.hljs-doctag,
+.hljs-template-tag {
+  color: var(--hl-keyword);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-char.escape_,
+.hljs-quote,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-template-variable {
+  color: var(--hl-string);
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: var(--hl-number);
+}
+
+.hljs-comment {
+  color: var(--hl-comment);
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-title.function_.invoke__,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--hl-title);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-variable,
+.hljs-variable.language_,
+.hljs-variable.constant_,
+.hljs-params {
+  color: var(--hl-attr);
+}
+
+.hljs-meta,
+.hljs-meta .hljs-keyword,
+.hljs-meta .hljs-string,
+.hljs-tag,
+.hljs-operator,
+.hljs-punctuation {
+  color: var(--hl-meta);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: var(--weight-semibold);
+}
+
+.hljs-addition {
+  background: var(--hl-addition-bg);
+}
+
+.hljs-deletion {
+  background: var(--hl-deletion-bg);
+}

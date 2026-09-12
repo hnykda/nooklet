@@ -6,35 +6,74 @@
  * fidelity for a first pass; NOT implemented (documented, not silently skipped):
  * `blockRef`/`linkToBlock`'s "replace with the target's first line" widget and `embed`'s inline
  * editable widget (both need a cross-page block/page lookup this milestone's data seam doesn't
- * expose — same gap as `render/tokens.tsx`), and `math`'s KaTeX widget (no renderer is loaded in
- * this milestone, so it falls back to the contract's own "otherwise `Decoration.mark` only").
- * `checkbox` similarly stays a plain marked span rather than a live `<input>` widget here — the
- * rendered (non-editing) view's real checkbox (`render/tokens.tsx`) already covers "click to
- * toggle without entering edit mode"; a second interactive checkbox inside the editing surface
- * itself is deferred.
+ * expose — same gap as `render/tokens.tsx`). `checkbox` similarly stays a plain marked span
+ * rather than a live `<input>` widget here — the rendered (non-editing) view's real checkbox
+ * (`render/tokens.tsx`) already covers "click to toggle without entering edit mode"; a second
+ * interactive checkbox inside the editing surface itself is deferred.
  *
- * Only `Decoration.replace` ranges (the hidden syntax markers) are reported to
- * `EditorView.atomicRanges` — NOT the `Decoration.mark` style ranges — so arrow-key movement
+ * `math` (wired in M7): a `Decoration.widget` with KaTeX's output replaces the `$…$` token when
+ * the cursor is elsewhere, exactly the contract's row. KaTeX loads lazily (`render/math.ts`); the
+ * first block with math on a fresh session shows the contract's `Decoration.mark` fallback, and
+ * once the chunk lands the plugin dispatches a `mathReady` effect to re-decorate. A fence body is
+ * never inline-tokenized, so a ```` ```query ```` block shows its raw text while editing with
+ * nothing to hide — the rendered view (`render/QueryFenceView.tsx`) is the other half.
+ *
+ * Only `Decoration.replace` ranges (the hidden syntax markers and the math widget) are reported
+ * to `EditorView.atomicRanges` — NOT the `Decoration.mark` style ranges — so arrow-key movement
  * skips a hidden `**`/`[[`/`]]` in one step (the contract's requirement) without also making
  * ordinary styled text (a whole tag, a whole link) uneditable-in-the-middle.
  *
- * This file is CM6-only and cannot be unit-tested without a real `EditorView`/DOM — see the
- * package summary's "needs manual browser verification" list.
+ * This file is CM6-only and cannot be unit-tested without a real `EditorView`/DOM — the math
+ * widget is covered by `e2e/tests/render.spec.ts`; the rest by the editing specs.
  */
 
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, StateEffect } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
   EditorView,
   ViewPlugin,
   type ViewUpdate,
+  WidgetType,
 } from "@codemirror/view";
 import type { InlineToken } from "@nooklet/core";
 import { classifyBlockContent } from "@nooklet/core";
+import { isMathLoaded, loadMath, renderTexSync } from "./render/math.js";
 
 function cursorTouches(from: number, to: number, head: number): boolean {
   return head >= from && head <= to;
+}
+
+/** Dispatched once KaTeX has loaded so open editors re-decorate without a keystroke. */
+const mathReady = StateEffect.define<null>();
+
+class MathWidget extends WidgetType {
+  constructor(readonly tex: string) {
+    super();
+  }
+
+  override eq(other: MathWidget): boolean {
+    return other.tex === this.tex;
+  }
+
+  override toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    const html = renderTexSync(this.tex);
+    if (html === null) {
+      span.className = "vr-math";
+      span.textContent = `$${this.tex}$`;
+    } else {
+      span.className = "vr-math vr-math-rendered";
+      span.innerHTML = html; // KaTeX output with `trust: false` — see `render/math.ts`.
+    }
+    return span;
+  }
+
+  override ignoreEvent(): boolean {
+    // A click on the formula should place the cursor next to it (and so reveal the source),
+    // which is CodeMirror's default when events are not ignored.
+    return false;
+  }
 }
 
 /** Walk the token tree, calling `visit` for every token (parent before children). */
@@ -58,9 +97,17 @@ interface Range {
   deco: Decoration;
 }
 
-function buildRanges(doc: string, head: number): { hide: Range[]; style: Range[] } {
+interface Built {
+  hide: Range[];
+  style: Range[];
+  /** A math token was seen before KaTeX had loaded — the plugin should load it and re-run. */
+  wantsMath: boolean;
+}
+
+function buildRanges(doc: string, head: number): Built {
   const hide: Range[] = [];
   const style: Range[] = [];
+  let wantsMath = false;
 
   const bc = classifyBlockContent(doc);
   const lineTokenArrays: InlineToken[][] =
@@ -129,13 +176,35 @@ function buildRanges(doc: string, head: number): { hide: Range[]; style: Range[]
             deco: Decoration.mark({ class: "vr-link vr-autolink" }),
           });
           break;
+        case "math":
+          if (!isMathLoaded()) {
+            wantsMath = true;
+            style.push({
+              from: tok.start,
+              to: tok.end,
+              deco: Decoration.mark({ class: "vr-math" }),
+            });
+          } else if (touching) {
+            style.push({
+              from: tok.start,
+              to: tok.end,
+              deco: Decoration.mark({ class: "vr-math" }),
+            });
+          } else {
+            hide.push({
+              from: tok.start,
+              to: tok.end,
+              deco: Decoration.replace({ widget: new MathWidget(tok.tex) }),
+            });
+          }
+          break;
         default:
           break;
       }
     });
   }
 
-  return { hide, style };
+  return { hide, style, wantsMath };
 }
 
 function toSet(ranges: Range[]): DecorationSet {
@@ -148,21 +217,42 @@ function toSet(ranges: Range[]): DecorationSet {
 class LivePreviewPlugin {
   decorations: DecorationSet;
   atomic: DecorationSet;
+  private destroyed = false;
+  private mathRequested = false;
 
-  constructor(view: EditorView) {
-    const { hide, style } = buildRanges(view.state.doc.toString(), view.state.selection.main.head);
+  constructor(private readonly view: EditorView) {
+    this.decorations = Decoration.none;
+    this.atomic = Decoration.none;
+    this.rebuild(view.state.doc.toString(), view.state.selection.main.head);
+  }
+
+  private rebuild(doc: string, head: number): void {
+    const { hide, style, wantsMath } = buildRanges(doc, head);
     this.atomic = toSet(hide);
     this.decorations = toSet([...hide, ...style]);
+    if (wantsMath && !this.mathRequested) {
+      this.mathRequested = true;
+      void loadMath().then(
+        () => {
+          // Asynchronous, so never inside an update; and a surface that was torn down in the
+          // meantime must not be dispatched to.
+          if (!this.destroyed) this.view.dispatch({ effects: mathReady.of(null) });
+        },
+        () => {
+          this.mathRequested = false; // let a later edit retry the chunk
+        },
+      );
+    }
   }
 
   update(update: ViewUpdate): void {
-    if (!update.docChanged && !update.selectionSet) return;
-    const { hide, style } = buildRanges(
-      update.state.doc.toString(),
-      update.state.selection.main.head,
-    );
-    this.atomic = toSet(hide);
-    this.decorations = toSet([...hide, ...style]);
+    const ready = update.transactions.some((tr) => tr.effects.some((e) => e.is(mathReady)));
+    if (!update.docChanged && !update.selectionSet && !ready) return;
+    this.rebuild(update.state.doc.toString(), update.state.selection.main.head);
+  }
+
+  destroy(): void {
+    this.destroyed = true;
   }
 }
 

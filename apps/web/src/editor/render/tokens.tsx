@@ -25,6 +25,12 @@
  *    `((id))`-style placeholder unless the caller supplies `resolveBlockRef`.
  *  - `embed` renders a placeholder (not a live nested `BlockTree`) — same gap (needs a
  *    page-name/block-id -> page/tree resolver the data seam doesn't expose yet).
+ *
+ * Wired in M7 (research/13 §4.2 items 1 and 9), each behind a lazy import so a page without it
+ * pays nothing (numbers in docs/research/14-render-seams.md):
+ *  - `fence` with `lang === "query"` renders live results (`./QueryFenceView.tsx`, ADR 011).
+ *  - other fences are syntax-highlighted (`./highlight.ts`, highlight.js, per-language chunks).
+ *  - `math` renders through KaTeX (`./math.ts`); `$tex$` text until the chunk lands.
  */
 import {
   type Align,
@@ -33,8 +39,19 @@ import {
   tokenizeContent,
 } from "@nooklet/core";
 
-import { For, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  lazy,
+  onCleanup,
+  Show,
+  Suspense,
+} from "solid-js";
 import { assetUrl } from "./asset-url.js";
+import { canHighlight, highlightCode, highlightSync } from "./highlight.js";
+import { loadMath, renderTexSync } from "./math.js";
 
 export type NavigateTarget = { kind: "page"; name: string } | { kind: "block"; id: string };
 export type Navigate = (t: NavigateTarget) => void;
@@ -51,13 +68,113 @@ export interface RenderCtx {
    * 2"); defaults to 0 and increments on recursion — callers normally never set this. */
   refDepth?: number;
   resolveBlockRef?: (id: string) => { content: string } | undefined;
-  /** Deferred syntax-highlighting seam (BUILD item 1's "clearly-marked seam" option) — returns
-   * highlighted HTML for `code`/`lang`, or `null` to fall back to plain text. Not wired to any
-   * highlighter in this milestone; see `BlockTree.tsx`'s doc comment for why. */
+  /** Override for syntax highlighting (a plugin, or a test): returns highlighted HTML for
+   * `code`/`lang`, or `null` to defer to the default. The default is the bundled, lazily-loaded
+   * highlight.js (`./highlight.ts`); an override that returns non-null wins and is rendered as
+   * `innerHTML`, so it must produce escaped markup. */
   highlightCode?: (code: string, lang: string) => string | null;
 }
 
 const MAX_REF_DEPTH = 2;
+
+const QueryFenceView = lazy(() => import("./QueryFenceView.js"));
+
+/** A ```` ```query ```` fence: the lazily-loaded live view, with the raw fence as the Suspense
+ * fallback so the page never blanks while the chunk loads. Only at depth 0 — a query fence that
+ * is itself a query result renders as a plain fence (see `QueryFenceView`'s `refDepth`). */
+function QueryFence(props: { code: string; ctx: RenderCtx }) {
+  return (
+    <Suspense
+      fallback={
+        <pre class="vr-fence" data-lang="query">
+          <code class="language-query">{props.code}</code>
+        </pre>
+      }
+    >
+      <QueryFenceView code={props.code} ctx={props.ctx} />
+    </Suspense>
+  );
+}
+
+/** A code fence: plain text immediately, highlighted once the highlighter (and this language's
+ * grammar) has loaded — cached, so a re-mount of the same fence is synchronous. Not a
+ * `createResource` on purpose: a resource read would suspend any boundary above this row, and a
+ * plain signal keeps the swap local to the `<code>` element. */
+function CodeFence(props: { code: string; lang: string; ctx: RenderCtx }) {
+  const custom = createMemo(() => props.ctx.highlightCode?.(props.code, props.lang) ?? null);
+  const [auto, setAuto] = createSignal<string | null>(null);
+  createEffect(() => {
+    const code = props.code;
+    const lang = props.lang;
+    if (custom() !== null) return;
+    const cached = highlightSync(code, lang);
+    setAuto(cached);
+    if (cached !== null || !canHighlight(lang)) return;
+    let stale = false;
+    onCleanup(() => {
+      stale = true;
+    });
+    void highlightCode(code, lang).then((html) => {
+      if (!stale) setAuto(html);
+    });
+  });
+  const html = (): string | null => custom() ?? auto();
+  return (
+    <pre class="vr-fence" data-lang={props.lang}>
+      <Show when={html()} fallback={<code class={`language-${props.lang}`}>{props.code}</code>}>
+        {(h) => (
+          // Highlighter output only (escaped by highlight.js, or by the `highlightCode` override's
+          // contract) — never raw user text.
+          <code class={`language-${props.lang} hljs`} innerHTML={h()} />
+        )}
+      </Show>
+    </pre>
+  );
+}
+
+/** Inline `$tex$`: KaTeX HTML once loaded, the literal source until then (the contract's own
+ * fallback). Same signal-not-resource reasoning as `CodeFence`. */
+function MathView(props: { tex: string; from: number; to: number }) {
+  const [html, setHtml] = createSignal<string | null>(null);
+  createEffect(() => {
+    const tex = props.tex;
+    const now = renderTexSync(tex);
+    setHtml(now);
+    if (now !== null) return;
+    let stale = false;
+    onCleanup(() => {
+      stale = true;
+    });
+    void loadMath().then(
+      () => {
+        if (!stale) setHtml(renderTexSync(tex));
+      },
+      () => {
+        // Chunk failed to load (offline, first visit): stay on the source text.
+      },
+    );
+  });
+  return (
+    <Show
+      when={html()}
+      fallback={
+        <span class="vr-math" data-from={props.from} data-to={props.to}>
+          {`$${props.tex}$`}
+        </span>
+      }
+    >
+      {(h) => (
+        // KaTeX output with `trust: false` — see `./math.ts`.
+        <span
+          class="vr-math vr-math-rendered"
+          data-from={props.from}
+          data-to={props.to}
+          innerHTML={h()}
+        />
+      )}
+    </Show>
+  );
+}
 
 function stop(e: MouseEvent): void {
   e.preventDefault();
@@ -328,11 +445,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               </code>
             );
           case "math":
-            return (
-              <span class="vr-math" data-from={tok.start} data-to={tok.end}>
-                {`$${tok.tex}$`}
-              </span>
-            );
+            return <MathView tex={tok.tex} from={tok.start} to={tok.end} />;
           case "checkbox":
             return (
               <input
@@ -422,20 +535,10 @@ export function BlockContentView(props: { content: BlockContent; ctx: RenderCtx 
             );
           }
           case "fence": {
-            const highlighted = () => ctx.highlightCode?.(c.code, c.lang) ?? null;
-            return (
-              <pre class="vr-fence" data-lang={c.lang}>
-                <Show
-                  when={highlighted()}
-                  fallback={<code class={`language-${c.lang}`}>{c.code}</code>}
-                >
-                  {(html) => (
-                    // Highlighter output only (never raw user HTML) — see `RenderCtx.highlightCode`'s doc.
-                    <code class={`language-${c.lang}`} innerHTML={html()} />
-                  )}
-                </Show>
-              </pre>
-            );
+            if (c.lang === "query" && (ctx.refDepth ?? 0) === 0) {
+              return <QueryFence code={c.code} ctx={ctx} />;
+            }
+            return <CodeFence code={c.code} lang={c.lang} ctx={ctx} />;
           }
           case "quote":
             return (
