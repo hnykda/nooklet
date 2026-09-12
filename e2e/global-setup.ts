@@ -12,7 +12,11 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const PORT = Number(process.env.NOOKLET_E2E_PORT ?? 6188);
-const STATE = join(tmpdir(), "nooklet-e2e-state.json");
+// Keyed by port: several agents run this suite side by side on different ports, and a state file
+// shared between them meant one run's teardown read the OTHER run's pid and killed its server
+// mid-suite (seen as ECONNREFUSED halfway through a spec, with the orphaned server then refusing
+// the next run as "already serving").
+const STATE = join(tmpdir(), `nooklet-e2e-state-${PORT}.json`);
 
 function run(cmd: string, args: string[], label: string): Promise<void> {
   return new Promise((resolve, reject) => {

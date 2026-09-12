@@ -1,0 +1,83 @@
+/**
+ * A phone: Playwright's iPhone 13 descriptor (390 px viewport, touch, coarse pointer, no hover,
+ * iPhone user agent), kept on Chromium so it shares the suite's one browser. The sidebar becomes a
+ * drawer over the content, the editor has to stay typeable, and the keyboard toolbar (spec R60)
+ * is the only way to indent, outdent, or open `[[` without a hardware keyboard.
+ *
+ * `detectPlatformFromEnvironment` decides `mobile` from the user agent and
+ * `(pointer: coarse) and not (hover: hover)` — never from the viewport width — which is exactly
+ * what the descriptor emulates.
+ */
+
+import { devices, expect, test } from "@playwright/test";
+import { clickRow, editor, openEditing, openPage, rowDepths, rowTexts } from "../helpers/index.js";
+
+test.use({ ...devices["iPhone 13"], defaultBrowserType: "chromium" });
+
+test("the sidebar is a drawer over the content and closes again", async ({ page }) => {
+  await page.goto("/journals");
+  await page.locator("button[aria-label='Toggle sidebar']").click();
+  const sidebar = page.locator(".app-sidebar");
+  await expect(sidebar).toBeVisible();
+  const box = await sidebar.boundingBox();
+  expect(box?.x).toBe(0);
+  expect(box?.width ?? 0).toBeLessThan(390);
+  expect(await sidebar.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
+  await sidebar.locator(".sidebar-nav a[href='/pages']").click();
+  await expect(page).toHaveURL(/\/pages$/);
+  // The open drawer covers the toggle button, so close it with the command's key. The app
+  // resolves `Mod` from the (iPhone) user agent, so this is Cmd whatever the host OS.
+  await page.keyboard.press("Meta+\\");
+  await expect(sidebar).toHaveCount(0);
+});
+
+test("the page does not scroll sideways at phone width", async ({ page }) => {
+  await openPage(
+    page,
+    "Phone No Overflow",
+    "- a fairly long line of text that has to wrap rather than push the page wider than the screen\n  - nested child with more words in it",
+  );
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.querySelector(".page-scroll")?.scrollWidth ?? 0,
+    clientWidth: document.querySelector(".page-scroll")?.clientWidth ?? 0,
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+});
+
+test("tapping a block opens the editor and typing lands", async ({ page }) => {
+  const outliner = await openEditing(page, "Phone Typeable", "- start");
+  await page.keyboard.type(" on a phone");
+  await expect(editor(page)).toHaveText("start on a phone");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("second");
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["start on a phone", "second"]);
+});
+
+test("the keyboard toolbar appears while editing", async ({ page }) => {
+  test.fixme(true, "B-70: the keyboard toolbar never renders on a phone");
+  await openEditing(page, "Phone Toolbar Shows", "- start");
+  const toolbar = page.locator(".cmd-toolbar");
+  await expect(toolbar).toBeVisible();
+  await expect(toolbar.locator(".cmd-toolbar-button")).toHaveCount(12);
+});
+
+test("the toolbar's indent, outdent, [[ and undo buttons run their commands", async ({ page }) => {
+  test.fixme(true, "B-70: the keyboard toolbar never renders on a phone");
+  const outliner = await openEditing(page, "Phone Toolbar Buttons", "- first\n- second");
+  await clickRow(page, outliner, 1);
+  const toolbar = page.locator(".cmd-toolbar");
+  await expect(toolbar).toBeVisible();
+
+  await toolbar.locator("button[aria-label='block.indent']").click();
+  await expect.poll(() => rowDepths(page, outliner)).toEqual([0, 1]);
+  await expect(editor(page)).toBeFocused();
+  await toolbar.locator("button[aria-label='block.outdent']").click();
+  await expect.poll(() => rowDepths(page, outliner)).toEqual([0, 0]);
+
+  await toolbar.locator("button[aria-label='format.insertPageRef']").click();
+  await expect(editor(page)).toHaveText("second[[");
+  await expect(page.locator(".cmd-popup")).toBeVisible();
+
+  await toolbar.locator("button[aria-label='edit.undo']").click();
+  await expect(editor(page)).toHaveText("second");
+});

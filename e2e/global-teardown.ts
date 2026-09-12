@@ -2,7 +2,9 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const STATE = join(tmpdir(), "nooklet-e2e-state.json");
+// Same knob and the same per-port file as `global-setup.ts`.
+const PORT = Number(process.env.NOOKLET_E2E_PORT ?? 6188);
+const STATE = join(tmpdir(), `nooklet-e2e-state-${PORT}.json`);
 
 export default async function globalTeardown(): Promise<void> {
   if (!existsSync(STATE)) return;
