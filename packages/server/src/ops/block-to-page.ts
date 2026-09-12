@@ -118,7 +118,8 @@ export const blockToPage = defineOp({
         ops.push(...place);
       });
       const link = `[[${target.page.name}]]`;
-      if (row.content !== link) ops.push(ctx.mintOp(input.id, { kind: "block.text", content: link }));
+      if (row.content !== link)
+        ops.push(ctx.mintOp(input.id, { kind: "block.text", content: link }));
 
       const applyResult = await ctx.applyOps(ops);
       const rejected = applyResult.results.find((r) => r.status === "rejected");

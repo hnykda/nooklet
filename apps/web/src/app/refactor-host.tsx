@@ -96,8 +96,7 @@ function PagePicker(props: {
     // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-to-dismiss, as the palette does; keyboard users dismiss with Escape on the input.
     // biome-ignore lint/a11y/useKeyWithClickEvents: see above.
     <div class="cmd-overlay page-picker-overlay" onClick={() => props.onDone(null)}>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the backdrop's dismiss for clicks inside. */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: no keyboard action here, it only stops propagation. */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: no keyboard action here, it only stops the backdrop's click-to-dismiss for clicks inside. */}
       <div
         class="cmd-palette page-picker"
         role="dialog"

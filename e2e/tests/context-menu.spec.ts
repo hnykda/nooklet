@@ -233,6 +233,9 @@ test("every entry shown while editing has a working command behind it", async ({
     "Italic",
     "Highlight",
     "Duplicate",
+    // M7 refactors (ADR 020), `refactor.spec.ts` exercises them.
+    "Turn into page",
+    "Move to page…",
   ]);
   await closeMenuByClick(page);
 });

@@ -61,7 +61,10 @@ export async function resolveOrMintPage(
     journalDay: day,
     createdAt: Date.now(),
   });
-  return { page: { id, name: day === null ? name : isoJournalName(day), journalDay: day }, createOp };
+  return {
+    page: { id, name: day === null ? name : isoJournalName(day), journalDay: day },
+    createOp,
+  };
 }
 
 export const blockMoveToPage = defineOp({

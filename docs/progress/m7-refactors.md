@@ -28,23 +28,38 @@ you start, you were restarted: read it, then continue from "Next steps".
   the registry threw at boot, blank app. Ids renamed to `edit.mergePage`/`search.findReplace`;
   registry test added to `refactor.test.ts`; logged in BUGS.md. — uncommitted (C6 pending)
 
+- `095ee36` fix(web): B-87 ids + registry test, B-88 workaround, e2e specs (8/8 on 6352).
+  B-87/B-88 BUGS entries reached HEAD via another agent's whole-file commit `f3710b8`.
+- Real-graph verification (copy of `~/.nooklet/default`, 127 pages / 825 journals / 18,628
+  blocks): `page.merge` "trip/lisbon" -> "Lisbon": 1 block moved, 3 refs rewritten,
+  alias added, old name resolves to target, 22 backlinks intact; `graph.replace` dry run over
+  the whole graph in 39 ms; `pnpm nooklet verify --data <copy>`: replayed 20,417 ops, OK.
+- Full e2e on 6352: 281 passed, 2 skipped, 5 failed — `context-menu.spec.ts` pinned label
+  list (my two entries; being updated), `views.spec.ts` palette Enter (checking), page-icons
+  and 2× templates (other agents' features). `pnpm -r test`: only `VirtualJournalDay.test.tsx`
+  (2, another agent's) fails. `pnpm -r typecheck`: `mirror/live.ts`, `core/query.ts`,
+  `VirtualJournalDay.test.tsx` — none mine.
+
+- Last commit (C7): biome formatting of two op files, an unused suppression removed,
+  `e2e/tests/context-menu.spec.ts` pinned label list extended with the two new entries, this
+  file. Task complete; final report delivered to the owner.
+
 ## 2. In flight
 
-- B-87 fix on disk (ids, registry test, BUGS entry), uncommitted. e2e re-run: 5/8 pass.
-- B-88 (found by the "Move to page…" e2e): NOT the change bus (a probe disproved that) — the
-  editor row for `editingId` stays mounted after its block leaves the page (`BlockTree.tsx`,
-  not mine). Worked around in `refactor.ts`: the block commands `exec("block.selectBlock")`
-  when `editorFocused` before the op; unit test added; BUGS entry corrected. `replace.spec.ts`
-  test 3 reseeded with a unique word. All uncommitted — C6 pending the e2e re-run.
+- Nothing. Task complete.
 
-## 3. Next steps, in order
+## 3. Next steps (for whoever picks this up)
 
-1. `cd e2e && NOOKLET_E2E_PORT=6352 pnpm exec playwright test tests/refactor.spec.ts tests/replace.spec.ts`;
-   fix what fails; commit C6 (B-87 fix + e2e specs). BUGS.md has other agents' hunks now —
-   check `git diff HEAD -- docs/BUGS.md` and splice if needed.
-3. Real-graph check: copy, merge two pages over HTTP against a `serve` on the copy, then
-   `pnpm nooklet verify --data <scratch>`; record the result here.
-4. Full e2e on 6352 once; `pnpm -r typecheck`; `pnpm -r test`; biome on my files. Final report.
+1. `ops/block-move.ts`'s `page:` form still strands children (B-85's open half): use
+   `subtreePlaceOps` from `data-api.ts`.
+2. `refs.ts#addPageRef` should split the top-level pipe (B-86) so `[[Page|label]]` indexes
+   under `page`; then the rewrite reaches those blocks too.
+3. `BlockTree.tsx`: drop `editingId` when the tree no longer contains it (B-88); then the
+   `leaveEditing` workaround in `refactor.ts` can go.
+4. A sidebar entry for `/replace` (shell); a `Page` palette category is not an R2 area — the
+   merge command sits under `App`.
+5. `CommandLayer` could catch `CommandRegistrationError` and render the shell without the bad
+   command instead of a blank page (B-87's failure mode).
 
 ## 4. Decisions (why)
 
