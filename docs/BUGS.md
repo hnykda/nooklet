@@ -506,7 +506,7 @@ Narrow (identical bytes, previously orphaned, GC run while the device is offline
 exact case the grace period exists for. Fix: on dedupe, write the same `changes` row a fresh
 upload writes — `planAssetGc` already treats a recent audit row as "touched".
 
-### B-90 · Slash menu shows 16 items; `popups.spec.ts` pins 15
+### B-92 · Slash menu shows 16 items; `popups.spec.ts` pins 15
 **Status:** open · **Severity:** low · **Found:** 2026-09-12, full e2e run (views agent, M7) ·
 **Test:** `e2e/tests/popups.spec.ts` "opens at a run start with every item in R54 order" and
 "opens as the first character of an empty block" — both currently fail

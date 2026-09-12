@@ -26,7 +26,7 @@ in the HEAD worktree on port 6353 (see Blockers for why a worktree). `pnpm -r te
 because HEAD `fe1a197` broke `ops/index.ts` with duplicate `trashList`/`trashRestore` exports):
 247 passed, 2 failed, 2 skipped.** The 2 failures are `popups.spec.ts` slash-menu counts (16
 items on screen vs the spec's 15) — the templates agent's `/template` item (78970b1) without a
-`SLASH_ORDER` update; none of my code. Remaining: log that in BUGS.md, final report.
+`SLASH_ORDER` update; none of my code. Logged as B-92 (commit c1c150a wrote it as B-90; another agent took B-90 concurrently, renumbered). Remaining: final report.
 
 ## 2. In flight (on disk, uncommitted)
 
