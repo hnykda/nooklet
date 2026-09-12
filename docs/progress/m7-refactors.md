@@ -23,17 +23,25 @@ you start, you were restarted: read it, then continue from "Next steps".
   `find-replace.css`, `App.tsx` route `/replace`; e2e specs `e2e/tests/refactor.spec.ts`,
   `e2e/tests/replace.spec.ts` (written, not yet run).
 
+- `c916c29` feat(web): commands + host + wiring. `f6730c1` feat(web): `/replace` view.
+- **B-87 found by the first e2e run**: `page.mergeInto`/`graph.findReplace` are not R2 areas,
+  the registry threw at boot, blank app. Ids renamed to `edit.mergePage`/`search.findReplace`;
+  registry test added to `refactor.test.ts`; logged in BUGS.md. — uncommitted (C6 pending)
+
 ## 2. In flight
 
-- Nothing mid-edit. Next action is committing the client files (C4/C5) and running the e2e.
+- B-87 fix on disk (ids, registry test, BUGS entry), uncommitted. e2e re-run: 5/8 pass.
+- B-88 (found by the "Move to page…" e2e): NOT the change bus (a probe disproved that) — the
+  editor row for `editingId` stays mounted after its block leaves the page (`BlockTree.tsx`,
+  not mine). Worked around in `refactor.ts`: the block commands `exec("block.selectBlock")`
+  when `editorFocused` before the op; unit test added; BUGS entry corrected. `replace.spec.ts`
+  test 3 reseeded with a unique word. All uncommitted — C6 pending the e2e re-run.
 
 ## 3. Next steps, in order
 
-1. Commit C4 (client commands/host/wiring) and C5 (view + route). Shared client files
-   (`registrations/index.ts`, `CommandLayer.tsx`, `BlockContextMenu.tsx`, `App.tsx`) — check
-   `git diff HEAD` first; other agents' routes (`/trash`, `/history`) were already in HEAD.
-2. `cd e2e && NOOKLET_E2E_PORT=6352 pnpm exec playwright test tests/refactor.spec.ts tests/replace.spec.ts`;
-   fix what fails; commit C6 (e2e).
+1. `cd e2e && NOOKLET_E2E_PORT=6352 pnpm exec playwright test tests/refactor.spec.ts tests/replace.spec.ts`;
+   fix what fails; commit C6 (B-87 fix + e2e specs). BUGS.md has other agents' hunks now —
+   check `git diff HEAD -- docs/BUGS.md` and splice if needed.
 3. Real-graph check: copy, merge two pages over HTTP against a `serve` on the copy, then
    `pnpm nooklet verify --data <scratch>`; record the result here.
 4. Full e2e on 6352 once; `pnpm -r typecheck`; `pnpm -r test`; biome on my files. Final report.

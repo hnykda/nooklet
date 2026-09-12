@@ -30,6 +30,16 @@ function targetBlock(ctx: CommandContext): string | null {
   return ctx.focusedBlockId ?? ctx.selectedBlockIds[0] ?? null;
 }
 
+/**
+ * Leave edit mode before a block is moved away or rewritten under the caret: `BlockTree` keeps
+ * the row holding the editor mounted even once its block has left the page (B-88), so the old
+ * text would sit there until the next click. `block.selectBlock` detaches the surface and the
+ * row re-renders from the tree; the selection it leaves is cleared by the next click as usual.
+ */
+async function leaveEditing(ctx: CommandContext): Promise<void> {
+  if (ctx.editorFocused) await ctx.exec("block.selectBlock");
+}
+
 export function createRefactorCommands(deps: { refactor: RefactorHost }): Command[] {
   const { refactor } = deps;
   return [
@@ -42,7 +52,9 @@ export function createRefactorCommands(deps: { refactor: RefactorHost }): Comman
       when: "editorFocused || blockSelected",
       async run(ctx) {
         const id = targetBlock(ctx);
-        if (id) await refactor.turnBlockIntoPage(id);
+        if (!id) return;
+        await leaveEditing(ctx);
+        await refactor.turnBlockIntoPage(id);
       },
     },
     {
@@ -56,14 +68,19 @@ export function createRefactorCommands(deps: { refactor: RefactorHost }): Comman
         const id = targetBlock(ctx);
         if (!id) return;
         const page = await refactor.pickPage({ title: "Move to page", allowCreate: true });
-        if (page) await refactor.moveBlockToPage(id, page);
+        if (!page) return;
+        await leaveEditing(ctx);
+        await refactor.moveBlockToPage(id, page);
       },
     },
     {
-      id: "page.mergeInto",
+      // `edit.`, not `page.`: R2's core areas are a closed set the registry enforces at boot, and
+      // an unknown area is a thrown CommandRegistrationError before the first render — a blank
+      // app (B-87). Same for `search.findReplace` below.
+      id: "edit.mergePage",
       title: "Merge this page into…",
       description: "Move every block to another page, rewrite links, keep the name as an alias",
-      category: "Page",
+      category: "App",
       defaultKeys: {},
       when: "true",
       async run() {
@@ -79,7 +96,7 @@ export function createRefactorCommands(deps: { refactor: RefactorHost }): Comman
       },
     },
     {
-      id: "graph.findReplace",
+      id: "search.findReplace",
       title: "Find and replace…",
       description: "Search every block for text or a pattern and replace all, undoably",
       category: "Navigation",

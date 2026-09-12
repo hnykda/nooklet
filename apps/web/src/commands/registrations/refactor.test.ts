@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFakeStore } from "../hosts/store.js";
+import { createCommandRegistry } from "../registry.js";
 import { type CommandContext, DEFAULT_WHEN_CONTEXT } from "../types.js";
 import { matchesWhen } from "../when/index.js";
 import { createFakeRefactorHost, createRefactorCommands } from "./refactor.js";
@@ -23,6 +24,23 @@ function command(id: string, host: ReturnType<typeof createFakeRefactorHost>["ho
 }
 
 describe("refactor commands", () => {
+  it("every refactor command registers in the real registry", () => {
+    // Building a command does not validate its id; registering it does (R2's closed set of core
+    // areas), and the app registers at first render — so an id like `page.mergeInto` was a blank
+    // screen, not a failing test (B-87). This is the test that would have caught it.
+    const registry = createCommandRegistry();
+    const { host } = createFakeRefactorHost();
+    for (const command of createRefactorCommands({ refactor: host })) {
+      expect(() => registry.register(command)).not.toThrow();
+    }
+    expect(
+      registry
+        .list()
+        .map((c) => c.id)
+        .sort(),
+    ).toEqual(["block.moveToPage", "block.turnIntoPage", "edit.mergePage", "search.findReplace"]);
+  });
+
   it("Turn into page acts on the focused block, else the first selected one", async () => {
     const { host, calls } = createFakeRefactorHost();
     const c = command("block.turnIntoPage", host);
@@ -33,6 +51,36 @@ describe("refactor commands", () => {
       { method: "turnBlockIntoPage", args: ["b1"] },
       { method: "turnBlockIntoPage", args: ["b2"] },
     ]);
+  });
+
+  it("the block commands leave edit mode before the block goes (B-88), but not from selection mode", async () => {
+    const execs: string[] = [];
+    const editing = ctx({
+      editorFocused: true,
+      focusedBlockId: "b1",
+      exec: async (id) => {
+        execs.push(id);
+      },
+    });
+    const { host, calls } = createFakeRefactorHost({ pick: "Elsewhere" });
+    await command("block.turnIntoPage", host).run(editing);
+    await command("block.moveToPage", host).run(editing);
+    expect(execs).toEqual(["block.selectBlock", "block.selectBlock"]);
+    expect(calls.map((c) => c.method)).toEqual([
+      "turnBlockIntoPage",
+      "pickPage",
+      "moveBlockToPage",
+    ]);
+
+    const selected = ctx({
+      blockSelected: true,
+      selectedBlockIds: ["b2"],
+      exec: async (id) => {
+        execs.push(id);
+      },
+    });
+    await command("block.turnIntoPage", host).run(selected);
+    expect(execs).toHaveLength(2);
   });
 
   it("the block commands are offered only with a block to act on", () => {
@@ -64,7 +112,7 @@ describe("refactor commands", () => {
 
   it("Merge this page into… merges the current page into the picked one, existing pages only", async () => {
     const { host, calls } = createFakeRefactorHost({ pick: "Acme Supply", page: "Acme" });
-    await command("page.mergeInto", host).run(ctx());
+    await command("edit.mergePage", host).run(ctx());
     expect(calls).toEqual([
       { method: "pickPage", args: [{ title: 'Merge "Acme" into', allowCreate: false }] },
       { method: "mergePageInto", args: ["Acme", "Acme Supply"] },
@@ -73,13 +121,13 @@ describe("refactor commands", () => {
 
   it("Merge does nothing off a page route", async () => {
     const { host, calls } = createFakeRefactorHost({ pick: "Acme Supply", page: null });
-    await command("page.mergeInto", host).run(ctx());
+    await command("edit.mergePage", host).run(ctx());
     expect(calls).toEqual([]);
   });
 
   it("Find and replace… opens the view", async () => {
     const { host, calls } = createFakeRefactorHost();
-    await command("graph.findReplace", host).run(ctx());
+    await command("search.findReplace", host).run(ctx());
     expect(calls).toEqual([{ method: "openFindReplace", args: [] }]);
   });
 });
