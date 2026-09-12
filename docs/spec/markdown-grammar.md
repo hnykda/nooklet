@@ -239,15 +239,15 @@ conventions glossary — not added there because this task may only touch this f
 
 ### 2.6 `query`/`sql` fence reservation
 
-- **OUT-27.** A fenced code block (§2.7-F) whose info string is exactly `query` or `sql` is, in
-  v1, an **ordinary fenced code block**: parsed like any other fence, content stored verbatim,
-  no special grammar, no validation. This rule exists only to reserve the info-string spelling so
-  a future filter-language spec (ADR 011: one language for query blocks, the Tasks view, search
-  filters, and MCP `search`) can attach meaning to `lang === "query"` (read/write, live results)
-  and `lang === "sql"` (read-only) without any change to this grammar or to `packages/core`'s
-  parser. The renderer MAY give these two lang values distinct CSS classes now
-  (`.vr-fence[data-lang="query"]`) purely for future-proofing; it MUST NOT execute or validate
-  their contents in v1.
+- **OUT-27.** A fenced code block (§2.7-F) whose info string is exactly `query` or `sql` is, to
+  this grammar, an **ordinary fenced code block**: parsed like any other fence, content stored
+  verbatim, no special grammar, no validation *at parse time*. The rule reserves the info-string
+  spelling so the filter language (ADR 011, amended 2026-09-12: `packages/core/src/query.ts`) can
+  attach meaning to `lang === "query"` (read/write, live results) and `lang === "sql"` (read-only,
+  still deferred) without any change to this grammar or to `packages/core`'s outline parser. What
+  a renderer does with the stored text is its business: since M7 the web client evaluates a
+  `query` fence at render time (`.vr-fence[data-lang="query"]`, `render/QueryFenceView.tsx`) and
+  shows parse errors inline — the block's content is never rewritten or rejected by it.
 
 ### 2.7 Block content classification
 

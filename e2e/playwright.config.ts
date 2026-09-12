@@ -15,10 +15,17 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
+const port = process.env.NOOKLET_E2E_PORT ?? "6188";
+
 export default defineConfig({
   testDir: "./tests",
   globalSetup: "./global-setup.ts",
   globalTeardown: "./global-teardown.ts",
+  // Artifacts are keyed by port like the server's state file, because the port is what separates
+  // concurrent runs (several agents on one checkout). With one shared `test-results/`, run A's
+  // start-up wipe deleted run B's in-flight trace dir and B failed at `browserContext.close` with
+  // ENOENT — a spurious failure that cost real investigation time more than once.
+  outputDir: `./test-results/${port}`,
   // Each spec gets its own server + data dir (see global-setup), so tests within a file share
   // state; running files in parallel against one server would make assertions on "the journal"
   // order-dependent.
@@ -26,7 +33,9 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? "list" : [["list"], ["html", { open: "never" }]],
+  reporter: process.env.CI
+    ? "list"
+    : [["list"], ["html", { open: "never", outputFolder: `./playwright-report/${port}` }]],
   timeout: 30_000,
   expect: { timeout: 10_000 },
   use: {
@@ -34,8 +43,7 @@ export default defineConfig({
     // used to be independent: setting only the port moved the server and left the browser pointing
     // at 6188, where another agent's dev server was happily answering with last week's code. A
     // whole afternoon of "but it works when I curl it" lives in this line.
-    baseURL:
-      process.env.NOOKLET_E2E_URL ?? `http://127.0.0.1:${process.env.NOOKLET_E2E_PORT ?? 6188}`,
+    baseURL: process.env.NOOKLET_E2E_URL ?? `http://127.0.0.1:${port}`,
     trace: "retain-on-failure",
     video: "retain-on-failure",
     screenshot: "only-on-failure",
