@@ -4,8 +4,8 @@ tags:: guide
 
 - **Do I need a server?** One is always running — the desktop app starts it for you, or you run `nooklet serve`. You do not need one anywhere else unless you want a second device. [[Sync]]
 - **Is anything sent anywhere?** No. The server binds to localhost, semantic search uses a model on your own machine, and nothing phones home. Sync only goes to a server you run.
-- **Where are my notes?** `graph.sqlite` in the data directory (`~/.nooklet/default` by default), plus `assets/`. `nooklet export` writes them out as markdown next to it. [[Architecture]], [[Markdown format]]
-- **Can I edit the markdown files in another editor?** Not today: the export is a snapshot, not watched. Edit in the app or over the API. [[Markdown format]]
+- **Where are my notes?** `graph.sqlite` in the data directory (`~/.nooklet/default` by default), plus `assets/`. The server also keeps a markdown copy next to it, one file per page, current to within about half a second. [[Architecture]], [[Markdown format]]
+- **Can I edit the markdown files in another editor?** No: the copy is written, never read back, and the next write overwrites your edit. Edit in the app or over the API. [[Markdown format]]
 - **Can I open the export in Logseq or Obsidian?** Yes — it is outline markdown they both read, with Obsidian-style `^id` block ids. Importing back is for Logseq file graphs only. [[Import from Logseq]]
 - **Where did my `NOW` and `LATER` tasks go?** Nowhere: they are kept as their own markers and count as open. [[Tasks]]
 - **Why is a journal called 2026-09-07?** That is its stored name; pick a display format in Settings. [[Journals]]

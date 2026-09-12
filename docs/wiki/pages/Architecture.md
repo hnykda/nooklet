@@ -15,10 +15,10 @@ tags:: reference
   - A keystroke settles in the editor → the client turns it into ops and applies them to its local replica and its outbox in one transaction → the sync client pushes → `serverApplyOps` validates, numbers and applies them, rebuilds the derived rows (`ref`, `path_ref`, `page_tag`, `page_alias`, full-text), writes a `changes` row for attribution and undo, marks embedding units dirty, and pokes the other clients → they pull. An agent's `page_append` enters at `serverApplyOps` the same way; so does an import.
   - Derived tables — references, full-text, embeddings — live only on the server and are rebuildable; state tables are rebuildable from the op log, which `nooklet verify` proves by replaying it. The client has no reference index, which is why backlinks, search and the graph view are API calls.
 - ## The data directory
-  - `graph.sqlite` (WAL mode, with `-wal` and `-shm` beside it), `assets/` (uploaded and imported files, content-addressed), `pages/` and `journals/` (the markdown export, once you run `nooklet export`), `plugins/`, `backups/`. The database and `assets/` are the data; everything else is regenerable. Default `~/.nooklet/default`, or `$NOOKLET_DATA`, or `--data`.
+  - `graph.sqlite` (WAL mode, with `-wal` and `-shm` beside it), `assets/` (uploaded and imported files, content-addressed), `pages/` and `journals/` (the markdown mirror, kept current by `serve` and rewritten in full by `nooklet export`), `plugins/`, `plugin-data/`, `backups/`. The database and `assets/` are the data; everything else is regenerable. Default `~/.nooklet/default`, or `$NOOKLET_DATA`, or `--data`.
 - ## Decision records (`docs/adr/`)
   - 001 Stack and tooling — TypeScript end to end, Node 26, pnpm, Vite, Vitest, Biome; no legacy layers.
-  - 002 SQLite is the truth; markdown files are a lossless mirror — never the sync medium. (The continuous, watched mirror it describes is not built; see [[Markdown format]].)
+  - 002 SQLite is the truth; markdown files are a lossless mirror — never the sync medium. (The mirror follows commits while serving since B-95; the watcher that would read file edits back is not built — see [[Markdown format]].)
   - 003 Sync = op log + hybrid logical clocks + per-field last-writer-wins; the server validates the tree.
   - 004 Short time-ordered ids (14 characters, Crockford base32) and fractional-index ordering.
   - 005 Client packaging: PWA first, Capacitor for stores, Tauri for desktop.

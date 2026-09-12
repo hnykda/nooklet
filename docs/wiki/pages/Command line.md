@@ -31,10 +31,10 @@ tags:: reference
   - Runs the HTTP API, the MCP endpoint, sync and the web client in one Node process, port 6100 by default. Prints the URLs — `http` (`/api/v1`), `mcp` (`/mcp`), `spec` (`/openapi.json`), `sync` (`ws://…/sync/live`) and `app` — or, if the client is not built, says so (`pnpm --filter @nooklet/web build`, or point at a build with `--web <dir>`).
   - `--host 0.0.0.0` binds beyond loopback; from then on only requests addressed to a name in `--allow-host` are accepted and everything else is 403 ([[Sync]]).
   - Unless `NODE_ENV=production`, startup replays the whole op log into a scratch database and diffs it against live state — the same check as `verify` — and logs the result without ever refusing to start.
-  - There is no working mirror flag: `mirror.enabled` is set from a `--mirror` flag that nothing reads, and `--no-mirror` is not recognised at all (the parser knows only `--flag` and `--flag value`). The markdown files are written by `export`, below.
+  - `serve` also keeps the markdown mirror current: after each commit, and once on start, changed pages are rewritten under `<data>/pages/` and `<data>/journals/` (B-95). `--no-mirror` is meant to turn that off and does not, because the parser only understands `--flag` and `--flag value`, so it sets a `no-mirror` flag nothing reads ([[Markdown format]]).
 - ## import, export
   - `import` is [[Import from Logseq]]. It migrates the database first, imports, then prints the statistics as JSON.
-  - `export` writes the whole graph as markdown into `<data>/pages/` and `<data>/journals/` in the outline format ([[Markdown format]]) and prints what it wrote. It is one-shot: nothing writes those files while `serve` runs, and editing them changes nothing in the graph.
+  - `export` writes the whole graph as markdown into `<data>/pages/` and `<data>/journals/` in the outline format ([[Markdown format]]) and prints what it wrote. `serve` keeps the same files current on its own; `export` is for a full rewrite on demand. Editing the files changes nothing in the graph — there is no watcher in that direction.
 - ## mcp --stdio
   - The bridge Claude Desktop launches: MCP over stdin/stdout, opening the data directory's database directly ([[Agents and MCP]]). `--token` is the token it acts as; the `ui_*` tools are listed when that token has `--ui-control`.
 - ## token
