@@ -24,8 +24,9 @@
  */
 
 import { type StdioServerHandle, serveStdio } from "@modelcontextprotocol/server/stdio";
+import type { SqlDriver } from "@nooklet/core";
 import type { ServerContext } from "../apply-ops.js";
-import { scopesFor, verifyToken } from "../auth/tokens.js";
+import { allScopesFor, verifyToken } from "../auth/tokens.js";
 import type { OpRegistry, ServerConfig } from "../ops/registry.js";
 import { buildMcpServerInstance, type McpAuth } from "./server.js";
 
@@ -38,22 +39,31 @@ export interface StdioBridgeOptions {
   version?: string;
 }
 
-/** Verifies the fixed local token once, then serves stdio for as long as the process lives. */
-export function startStdioBridge(opts: StdioBridgeOptions): StdioServerHandle {
-  const rawToken = opts.token ?? process.env.NOOKLET_TOKEN;
+/**
+ * The bridge's one fixed identity, from `--token`/`NOOKLET_TOKEN`. Uses `allScopesFor`, the same
+ * function the HTTP mounts use, so a token minted with `--ui-control` gets the `ui:control`
+ * permission here too — this used `scopesFor` (the read/write/admin tier alone), which silently
+ * dropped the capability and hid the five `ui_*` tools from Claude Desktop.
+ */
+export function resolveStdioAuth(driver: SqlDriver, rawToken: string | undefined): McpAuth {
   if (!rawToken) {
     throw new Error(
       "nooklet mcp --stdio requires a token: pass --token <token> or set NOOKLET_TOKEN",
     );
   }
-  const verified = verifyToken(opts.serverCtx.driver, rawToken);
+  const verified = verifyToken(driver, rawToken);
   if (!verified) {
     throw new Error("nooklet mcp --stdio: token is invalid or revoked");
   }
-  const auth: McpAuth = {
-    scopes: scopesFor(verified.scope),
+  return {
+    scopes: allScopesFor(verified),
     actor: { label: verified.label, tokenId: verified.id },
   };
+}
+
+/** Verifies the fixed local token once, then serves stdio for as long as the process lives. */
+export function startStdioBridge(opts: StdioBridgeOptions): StdioServerHandle {
+  const auth = resolveStdioAuth(opts.serverCtx.driver, opts.token ?? process.env.NOOKLET_TOKEN);
   return serveStdio(
     () => buildMcpServerInstance(opts.registry, opts.serverCtx, opts.config, auth, opts.version),
     {

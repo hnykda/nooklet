@@ -47,6 +47,16 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-59 · The stdio bridge dropped `ui:control`, so Claude Desktop never saw the `ui_*` tools
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review · **Test:**
+`packages/server/src/mcp/stdio.test.ts`
+
+`nooklet mcp --stdio` resolved its one fixed token with `scopesFor(verified.scope)` — the
+read/write/admin tier alone — where the HTTP and MCP mounts use `allScopesFor(verified)`, which
+adds `ui:control` for a token minted with `--ui-control`. `tokens.ts` says in so many words that
+every caller building an `OpContext` must use `allScopesFor`; this one was missed. Over stdio the
+five `ui_*` tools were never listed, however the token had been created.
+
 ### B-58 · `idempotency_key` was accepted, documented, recommended — and ignored
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review · **Tests:**
 `packages/server/src/ops/ops.http.test.ts` `describe("idempotency_key (B-58)")` — replay,
