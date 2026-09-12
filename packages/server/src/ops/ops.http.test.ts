@@ -1234,3 +1234,99 @@ describe("changes.since restore classification (B-56)", () => {
     expect(dry.json.batch_id).toBeUndefined();
   });
 });
+
+describe("idempotency_key (B-58)", () => {
+  it("replays the stored response for the same key and body instead of writing twice", async () => {
+    const body = { page: "Retry", markdown: "- once only", idempotency_key: "k1" };
+    const first = await post(s.app, "/api/v1/page.append", s.writeToken, body);
+    expect(first.status).toBe(200);
+    const second = await post(s.app, "/api/v1/page.append", s.writeToken, body);
+    expect(second.status).toBe(200);
+    expect(second.json).toEqual(first.json); // same created ids, same seq, same batch_id
+
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Retry",
+      format: "json",
+    });
+    expect(read.json.tree).toHaveLength(1);
+  });
+
+  it("is a conflict to reuse a key with a different body", async () => {
+    await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "Retry",
+      markdown: "- a",
+      idempotency_key: "k2",
+    });
+    const { status, json } = await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "Retry",
+      markdown: "- b",
+      idempotency_key: "k2",
+    });
+    expect(status).toBe(409);
+    expect(json.error.code).toBe("conflict");
+    expect(json.error.message).toMatch(/idempotency key reused/);
+  });
+
+  it("scopes keys per token, ignores dry runs, and does not remember a failed write", async () => {
+    // Another token, same key: an independent write.
+    await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "Scoped",
+      markdown: "- from write token",
+      idempotency_key: "shared",
+    });
+    await post(s.app, "/api/v1/page.append", s.adminToken, {
+      page: "Scoped",
+      markdown: "- from admin token",
+      idempotency_key: "shared",
+    });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Scoped",
+      format: "json",
+    });
+    expect(read.json.tree).toHaveLength(2);
+
+    // A dry run records nothing, so the real call afterwards still runs.
+    await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "Scoped",
+      markdown: "- dry",
+      idempotency_key: "dry",
+      dry_run: true,
+    });
+    const real = await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "Scoped",
+      markdown: "- dry",
+      idempotency_key: "dry",
+    });
+    expect(real.json.created).toHaveLength(1);
+
+    // A failed write is not stored: fixing the request and retrying with the same key runs it.
+    const failed = await post(s.app, "/api/v1/block.update", s.writeToken, {
+      id: "1k7f3q9xz2hav4",
+      content: "nope",
+      idempotency_key: "fix-me",
+    });
+    expect(failed.status).toBe(404);
+    const fixed = await post(s.app, "/api/v1/block.update", s.writeToken, {
+      id: real.json.created[0],
+      content: "fixed",
+      idempotency_key: "fix-me",
+    });
+    expect(fixed.status).toBe(200);
+  });
+
+  it("forgets a key after 24 hours", async () => {
+    const body = { page: "Old", markdown: "- again", idempotency_key: "stale" };
+    await post(s.app, "/api/v1/page.append", s.writeToken, body);
+    s.serverCtx.driver.run("UPDATE idempotency SET created_at = created_at - 25 * 3600 * 1000");
+    await post(s.app, "/api/v1/page.append", s.writeToken, body);
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "Old",
+      format: "json",
+    });
+    expect(read.json.tree).toHaveLength(2);
+    // The stale row was purged when the new one was written.
+    expect(s.serverCtx.driver.get<{ n: number }>("SELECT count(*) AS n FROM idempotency")?.n).toBe(
+      1,
+    );
+  });
+});

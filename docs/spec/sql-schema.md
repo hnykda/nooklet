@@ -767,12 +767,24 @@ CREATE TABLE changes (
 CREATE INDEX changes_batch  ON changes(batch_id);
 CREATE INDEX changes_entity ON changes(entity_type, entity_id, seq);
 
+-- mcp-tools.md §3.6: a write's stored response, replayed for a retry carrying the same
+-- idempotency_key. Per token; rows older than 24 h are ignored on read and purged on write.
+CREATE TABLE idempotency (
+  token_id      TEXT NOT NULL,
+  key           TEXT NOT NULL,
+  request_hash  TEXT NOT NULL,     -- sha256 of the parsed input, keys sorted
+  response_json TEXT NOT NULL,
+  created_at    INTEGER NOT NULL,
+  PRIMARY KEY (token_id, key)
+) WITHOUT ROWID;
+
 CREATE TABLE token (
   id           TEXT PRIMARY KEY,
   graph_id     TEXT NOT NULL DEFAULT 'default',
   label        TEXT NOT NULL,
   scope        TEXT NOT NULL CHECK (scope IN ('read','write','admin')),
   can_sync     INTEGER NOT NULL DEFAULT 0,
+  ui_control   INTEGER NOT NULL DEFAULT 0,   -- ADR 015 §7: the ui:control capability, never implied by scope
   token_hash   TEXT NOT NULL UNIQUE,
   created_at   INTEGER NOT NULL,
   last_used_at INTEGER,
@@ -797,6 +809,26 @@ CREATE TABLE mirror_file (
   written_at   INTEGER NOT NULL
 );
 CREATE INDEX mirror_file_page ON mirror_file(page_id);
+
+-- ADR 017: page-level tags, derived from the page's `tags::` property plus the intrinsic
+-- `Journal` tag on every journal day. Rebuilt on every page write, like `ref`.
+CREATE TABLE page_tag (
+  page_id     TEXT NOT NULL REFERENCES page(id),
+  tag_key     TEXT NOT NULL,
+  tag_page_id TEXT,
+  source      TEXT NOT NULL CHECK (source IN ('property','intrinsic')),
+  PRIMARY KEY (page_id, tag_key)
+) WITHOUT ROWID;
+CREATE INDEX page_tag_key ON page_tag(tag_key);
+
+-- api-and-plugin-types.md §4: `ctx.kv`, one namespace per plugin.
+CREATE TABLE plugin_kv (
+  plugin_id  TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (plugin_id, key)
+) WITHOUT ROWID;
 
 CREATE TABLE asset (
   id         TEXT PRIMARY KEY,

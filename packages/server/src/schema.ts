@@ -156,6 +156,17 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE INDEX changes_batch ON changes(batch_id)`,
   `CREATE INDEX changes_entity ON changes(entity_type, entity_id, seq)`,
 
+  // mcp-tools.md §3.6: a write's stored response, replayed for a retry with the same
+  // `idempotency_key`. Per token, kept 24 h (`ops/idempotency.ts`). Added in SCHEMA_VERSION 6.
+  `CREATE TABLE idempotency (
+    token_id      TEXT NOT NULL,
+    key           TEXT NOT NULL,
+    request_hash  TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at    INTEGER NOT NULL,
+    PRIMARY KEY (token_id, key)
+  ) WITHOUT ROWID`,
+
   `CREATE TABLE token (
     id           TEXT PRIMARY KEY,
     graph_id     TEXT NOT NULL DEFAULT 'default',
@@ -333,9 +344,23 @@ export const MIGRATIONS: readonly Migration[] = [
       reresolveIndexTargets(driver);
     },
   },
+  {
+    version: 6,
+    description: "add idempotency (mcp-tools.md §3.6: replay a retried write, B-58)",
+    up: (driver) => {
+      driver.exec(`CREATE TABLE IF NOT EXISTS idempotency (
+        token_id      TEXT NOT NULL,
+        key           TEXT NOT NULL,
+        request_hash  TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at    INTEGER NOT NULL,
+        PRIMARY KEY (token_id, key)
+      ) WITHOUT ROWID`);
+    },
+  },
 ];
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {

@@ -47,6 +47,24 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-58 · `idempotency_key` was accepted, documented, recommended — and ignored
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review · **Tests:**
+`packages/server/src/ops/ops.http.test.ts` `describe("idempotency_key (B-58)")` — replay,
+conflict on a different body, per-token scope, dry runs ignored, failed writes not remembered,
+24-hour expiry
+
+Every write op took `idempotency_key`, its description said "repeating a call with the same key
+and body returns the original result instead of applying it twice (stored 24h)", and
+`page_append`'s description told agents to "pass idempotency_key if you might retry after a
+timeout, or you may get duplicate blocks". Nothing read the field. A retried `page_append`
+duplicated the blocks — the one outcome the field exists to prevent, on the one call whose
+description promised otherwise.
+
+Implemented as mcp-tools.md §3.6 specifies (`ops/idempotency.ts`, table `idempotency`, migration
+v6), wrapped around every write in `runOpHandler` so HTTP, MCP and the stdio bridge behave the
+same. The request identity is the parsed input with defaults applied and keys sorted; a
+`dry_run` is never recorded.
+
 ### B-57 · `batch_undo` said "a batch_id returned by any write"; no write returned one
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review · **Tests:**
 `packages/server/src/ops/batch-undo.http.test.ts` (uses the returned id), `ops.http.test.ts`

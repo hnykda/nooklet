@@ -24,6 +24,7 @@ import { z } from "zod";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import type { DataApi } from "../data-api.js";
 import { createDataApi } from "../data-api.js";
+import { withIdempotency } from "./idempotency.js";
 import { writeLock } from "./trial-lock.js";
 
 // -------------------------------------------------------------------------------------------
@@ -354,6 +355,9 @@ export class OpRegistry {
  * `ctx.applyOps` call, so a handler that calls `applyOps` more than once (or `batch`, which runs
  * every step of a trial) never re-enters the lock it is already holding. Both mounts (HTTP below,
  * MCP in `../mcp/server.ts`) call this instead of `op.handler` directly.
+ *
+ * Writes also honour `idempotency_key` here (`./idempotency.ts`), inside the lock, so a retry that
+ * races its original cannot run twice either.
  */
 export async function runOpHandler(
   op: Pick<OpDef, "annotations" | "handler">,
@@ -361,7 +365,16 @@ export async function runOpHandler(
   ctx: OpContext,
 ): Promise<unknown> {
   if (op.annotations.readOnlyHint) return op.handler(input, ctx);
-  return writeLock.run(() => op.handler(input, ctx));
+  const fields = (input ?? {}) as { idempotency_key?: unknown; dry_run?: unknown };
+  const key =
+    typeof fields.idempotency_key === "string" && fields.dry_run !== true
+      ? fields.idempotency_key
+      : undefined;
+  return writeLock.run(() =>
+    withIdempotency(ctx.db, { tokenId: ctx.actor.tokenId, key, input }, () =>
+      Promise.resolve(op.handler(input, ctx)),
+    ),
+  );
 }
 
 export function httpExpose(op: OpDef): Required<OpExpose>["http"] {

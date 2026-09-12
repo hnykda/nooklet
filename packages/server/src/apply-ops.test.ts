@@ -80,6 +80,9 @@ describe("db + schema", () => {
       "embedding",
       "embed_dirty",
       "schema_migration",
+      "page_tag",
+      "plugin_kv",
+      "idempotency",
     ]) {
       expect(tables, `missing table ${t}`).toContain(t);
     }
