@@ -48,6 +48,10 @@ export function SearchView(): JSX.Element {
   });
 
   const [results, { refetch }] = useSearchResults(input);
+  // Reading an errored resource RE-THROWS. Every read below goes through this, or the first
+  // failed request threw inside the loading branch's own `when`, the reactive computation died
+  // with it, and "Searching…" stayed on screen forever — B-10's symptom, back for search (B-80).
+  const safeResults = () => (results.error === undefined ? results() : undefined);
 
   function openHit(hit: SearchHit): void {
     navigate(hit.kind === "page" ? pageRoutePath(hit.page) : pageZoomRoutePath(hit.page, hit.id));
@@ -118,7 +122,7 @@ export function SearchView(): JSX.Element {
       <Show when={input() === undefined}>
         <p class="search-hint">Type to search.</p>
       </Show>
-      <Show when={results.loading && results() === undefined}>
+      <Show when={results.loading && safeResults() === undefined}>
         <p class="search-loading">Searching…</p>
       </Show>
       {/* Without this, a failed request left "Searching…" on screen forever — which is exactly
@@ -131,7 +135,7 @@ export function SearchView(): JSX.Element {
           </button>
         </p>
       </Show>
-      <Show when={results()}>
+      <Show when={safeResults()}>
         {(r) => (
           <>
             <p class="search-summary">

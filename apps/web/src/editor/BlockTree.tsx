@@ -761,7 +761,10 @@ export function BlockTree(props: {
     // and never registered the host at all. Everything routed through `EditorHost` was therefore
     // talking to the inert no-op host forever: the slash menu and `[[`/`#`/`((` autocomplete never
     // saw a selection to trigger on, and the formatting commands had nothing to act on.
-    if (editingId() !== null) {
+    // A standing selection needs the context published too: the context menu asks it which
+    // entries apply, and a selection made by Cmd/Ctrl+click on a tree that was never edited had
+    // no snapshot registered at all (B-73).
+    if (editingId() !== null || selection() !== null) {
       setActiveEditorHost(editorHost);
       // The command context is recomputed on every read (before each keydown dispatch and each
       // palette/menu render), never cached — the spec's Definitions section requires exactly that.
@@ -1038,7 +1041,11 @@ export function BlockTree(props: {
                           // Put the caret in the right-clicked block first, so the menu's entries
                           // resolve their `when` clauses against THAT block rather than whatever
                           // happened to be focused before.
-                          if (!props.readOnly && editingId() !== id)
+                          // …unless the block is part of a standing selection: then the menu is
+                          // about the selection (Delete, indent, move), and entering edit mode
+                          // would throw it away (B-73).
+                          const inSelection = selection()?.ids.includes(id) ?? false;
+                          if (!props.readOnly && editingId() !== id && !inSelection)
                             attachEditing(id, { at: "end" });
                           // A microtask, so the menu is built AFTER Solid's effects have run and
                           // registered this tree as the active editor host. Opening it in the same

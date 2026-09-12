@@ -5,7 +5,7 @@
  * it. Resolves the page by name, case-insensitively (`normalizePageName`, via
  * `../data/store.ts#usePageByName`), since that is what refs navigate to (PLAN.md §4).
  */
-import { newId, orderBetween } from "@nooklet/core";
+import { isoJournalName, newId, orderBetween, parseJournalTitle } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
@@ -57,6 +57,10 @@ export function PageView(props: PageViewProps): JSX.Element {
       return;
     }
     await applyOp(p.id, { kind: "page.rename", name: value });
+    // Routes are name-addressed, so the page has just moved out from under its own URL: left
+    // there, this view resolved the OLD name, found nothing, and said the page did not exist
+    // (B-78). Follow it. `replace`, so Back does not lead to a name that no longer resolves.
+    navigate(pageRoutePath(value), { replace: true });
   }
 
   async function createThisPage(): Promise<void> {
@@ -66,10 +70,15 @@ export function PageView(props: PageViewProps): JSX.Element {
     // title with nowhere to type (B-75). Give it one empty block and put the caret there, the way
     // a journal day's first block is made.
     requestBlockFocus(firstBlockId);
+    // A URL that names a date is a journal day, and gets created as one — stored under its ISO
+    // name (ADR 018) with the day set. Creating an ordinary page called "Sep 8th, 2026" here made a
+    // page that shadowed the journal forever (B-77): the guard `page.create` has server-side
+    // (B-23) does not apply to a client-minted op.
+    const day = parseJournalTitle(props.name());
     await applyOp(id, {
       kind: "page.create",
-      name: props.name(),
-      journalDay: null,
+      name: day === null ? props.name() : isoJournalName(day),
+      journalDay: day,
       createdAt: Date.now(),
     });
     await applyOp(firstBlockId, {

@@ -201,7 +201,6 @@ test("hybrid search says so when it fell back to keyword", async ({ page }) => {
 });
 
 test("a failed search shows an error with Retry, and Retry recovers", async ({ page }) => {
-  test.fixme(true, "B-80: a failed search sits on Searching… forever (B-10 is back for search)");
   await seedPage(page, "Views Search Retry", "- recoverable pangolin");
   let fail = true;
   await page.route("**/api/v1/search", (route) =>

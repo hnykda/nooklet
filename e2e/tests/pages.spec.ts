@@ -174,7 +174,6 @@ test("a page created through the API appears in the open sidebar without a reloa
 });
 
 test("the sidebar's Pages list shows the most recently edited pages first", async ({ page }) => {
-  test.fixme(true, "B-76: the sidebar lists the first twelve page names alphabetically");
   await page.goto("/journals");
   await openSidebar(page);
   await api(page, "page.create", { name: "Zz Pages Recent", markdown: "- just made" });
@@ -217,7 +216,6 @@ test("a journal day opened from the calendar becomes a real journal page once ty
 test("creating a journal-titled page from the missing-page view makes a journal, not an ordinary page", async ({
   page,
 }) => {
-  test.fixme(true, "B-77: the missing-page Create button makes an ordinary page named like a date");
   const future = isoOffset(400);
   await page.goto(pagePath(future));
   await expect(page.locator(".page-view-missing")).toBeVisible();
@@ -230,7 +228,6 @@ test("creating a journal-titled page from the missing-page view makes a journal,
 test("renaming a page from its title keeps you on the page under its new name", async ({
   page,
 }) => {
-  test.fixme(true, "B-78: after a rename the view says its own page doesn't exist");
   await openPage(page, "Pages Rename Before", "- body text");
   const title = page.locator(".page-title-input");
   await title.fill("Pages Rename After");

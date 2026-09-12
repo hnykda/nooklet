@@ -9,6 +9,7 @@
  * `<body>`; this component reads that rather than owning a second source of truth.
  */
 
+import type { PageRow } from "@nooklet/core";
 import { A } from "@solidjs/router";
 import { CalendarDays, CircleCheck, FileText, Network, Search, Star } from "lucide-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
@@ -31,9 +32,11 @@ function useBodyClass(name: string): () => boolean {
   return on;
 }
 
-/** Most recently edited pages, journals excluded — the journal stream is its own view. */
-function recentPages(all: ReturnType<typeof useAllPages>): ReturnType<typeof useAllPages> {
-  return all;
+/** Most recently edited pages, journals excluded — the journal stream is its own view. The list
+ * used to be the first twelve names alphabetically: `useAllPages` orders by name and this
+ * function returned it untouched (B-76). */
+function recentPages(all: ReturnType<typeof useAllPages>): () => PageRow[] {
+  return () => [...all()].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 }
 
 export function Sidebar(): JSX.Element {

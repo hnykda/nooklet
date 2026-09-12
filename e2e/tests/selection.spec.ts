@@ -197,7 +197,6 @@ test("the keyboard works from a click-made selection too", async ({ page }) => {
 });
 
 test("right-clicking a selected block keeps the selection", async ({ page }) => {
-  test.fixme(true, "B-73: right-clicking a selected block drops the selection");
   const outliner = await openEditing(page, "Sel Right Click", "- one\n- two");
   await clickRow(page, outliner, 1);
   await page.keyboard.press("Escape");

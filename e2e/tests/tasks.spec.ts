@@ -131,7 +131,6 @@ test("the Tasks view lists open tasks grouped by page and filters by state", asy
 test("the Tasks view checkbox completes a task and removes it from the open list", async ({
   page,
 }) => {
-  test.fixme(true, "B-79: the Tasks view marks the task done but its list never updates");
   await seedPage(page, "Tasks View Done", "- TODO tick me");
   await page.goto("/tasks");
   const group = page.locator(".task-group", { hasText: "Tasks View Done" });

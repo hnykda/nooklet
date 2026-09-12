@@ -250,6 +250,12 @@ export class WorkerDb {
         }
         case "block.prop": {
           tables.add("block_prop");
+          // Reserved keys — marker, priority, scheduled, deadline, repeat, done, collapsed — are
+          // routed by the reducer into the block ROW's own columns, not block_prop. A consumer
+          // stamped on `block` (the Tasks view, the tree) therefore never heard about a task
+          // being ticked (B-79). Over-invalidating one table on a property write is cheap;
+          // missing the write is a list that never updates.
+          tables.add("block");
           const row = getBlock(this.driver, op.entity);
           if (row) pageIds.add(row.pageId);
           break;

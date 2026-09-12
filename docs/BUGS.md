@@ -199,13 +199,20 @@ underneath. `context-menu.spec.ts` Escape, `views.spec.ts` help Escape and palet
 
 
 ### B-73 · Right-clicking a selected block drops the selection
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/selection.spec.ts` "right-clicking a selected block keeps the selection",
 `e2e/tests/context-menu.spec.ts` "Delete appears for a selected block and deletes it"
 
 `onContextMenu` calls `attachEditing`, which clears the selection, so the menu's Delete entry —
 gated on `blockSelected` — can never appear. This is the "things keep selected when there are
 context menu shenanigans" the suite was asked for.
+
+**Fixed 2026-09-12.** A right-click on a block that is part of a standing selection no longer
+enters edit mode (which discarded the selection); the menu opens against the selection, so Delete,
+indent and move apply to all of it. The tree also publishes its command context while a selection
+stands, not only while editing — a selection made by Cmd/Ctrl+click on a never-edited tree had no
+context at all. `selection.spec.ts` "right-clicking a selected block keeps the selection".
+
 
 ### B-74 · Clicking away leaves the block in edit mode
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -241,14 +248,19 @@ typed into straight away".
 
 
 ### B-76 · The sidebar's "Pages" list is the first twelve names alphabetically
-**Status:** open · **Severity:** low · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/pages.spec.ts` "the sidebar's Pages list shows the most recently edited pages first"
 
 `Sidebar.tsx` says "most recently edited pages" and takes the first 12 of `useAllPages()`, whose
 query is `ORDER BY name`. With a few hundred pages a page you just made never appears there.
 
+**Fixed 2026-09-12.** `recentPages` was a stub that returned `useAllPages()` untouched — which
+is ordered by name. It sorts by `updatedAt`, newest first. `pages.spec.ts` "…most recently edited
+pages first".
+
+
 ### B-77 · Creating a journal-titled page from the missing-page view makes an ordinary page
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/pages.spec.ts` "creating a journal-titled page from the missing-page view makes a
 journal, not an ordinary page"
 
@@ -257,28 +269,53 @@ Open `/page/2027-10-17` (a day with no page), press Create: `PageView.createThis
 B-23's hole, reopened through the UI. `page.read` of that date then answers not found while the
 page exists under that name.
 
+**Fixed 2026-09-12.** Create parses the URL's name with `parseJournalTitle`; a date makes a
+journal day (ISO name, `journalDay` set — ADR 018) instead of an ordinary page that would shadow it.
+The server-side guard from B-23 could not help here: the op is minted on the client.
+`pages.spec.ts` "…makes a journal, not an ordinary page".
+
+
 ### B-78 · Renaming a page from its title makes the view say the page doesn't exist
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/pages.spec.ts` "renaming a page from its title keeps you on the page under its new name"
 
 The rename commits (the new name reads back, the old one is gone), but the route still carries
 the old name, `usePageByName` resolves it to null, and the page you are on turns into "This page
 doesn't exist yet" with a Create button.
 
+**Fixed 2026-09-12.** After `page.rename` the view navigates to the new name (`replace`, so Back
+does not lead to a URL that no longer resolves). Routes are name-addressed, so the old URL pointed
+at nothing the moment the rename applied. `pages.spec.ts` "renaming a page…".
+
+
 ### B-79 · Ticking a task in the Tasks view marks it done but the list never updates
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/tasks.spec.ts` "the Tasks view checkbox completes a task and removes it from the open
 list"
 
 The click writes `marker = DONE` (the API reads it back), and the row stays in the open list,
 unchecked, eight seconds later; a reload removes it. B-05's shape.
 
+**Fixed 2026-09-12.** The worker's change event mapped a `block.prop` op to `block_prop` only —
+but reserved keys (marker, priority, scheduled, deadline, repeat, done, collapsed) are routed by the
+reducer into the block ROW's own columns, so nothing stamped on `block` ever heard a task was
+ticked. A `block.prop` write now invalidates `block` too. `tasks.spec.ts` "…checkbox completes a
+task…".
+
+
 ### B-80 · A failed search sits on Searching… forever
-**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/views.spec.ts` "a failed search shows an error with Retry, and Retry recovers"
 
 Abort `/api/v1/search` and the view shows "Searching…" indefinitely: no `.search-error`, no
 Retry. B-10 lists search as fixed, but its only e2e test covered the references panel.
+
+**Fixed 2026-09-12.** Reading an errored resource re-throws, and the loading branch's own
+`when` read `results()` — so the first failed request threw inside render, the computation died,
+and "Searching…" stayed. Every read now goes through a guard that returns `undefined` while the
+resource is errored; the error branch and Retry were already there and now actually get to show.
+`views.spec.ts` "a failed search shows an error with Retry, and Retry recovers".
+
 
 ### B-81 · A second tab of the same graph never renders
 **Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
