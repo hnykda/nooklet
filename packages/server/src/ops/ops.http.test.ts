@@ -396,6 +396,76 @@ describe("search", () => {
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
   });
+
+  it("survives punctuation FTS5 would choke on, and finds the block (B-53)", async () => {
+    // Every one of these was an HTTP 500 when the raw string reached `MATCH`. `e-mail` is the
+    // everyday one: FTS5 read `-mail` as a column filter and answered "no such column".
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Punct",
+      markdown: "- learning c++ today\n- send an e-mail to bob\n- what's up",
+    });
+    // The snippet is not asserted on: FTS5 highlights the matched TOKEN, and `+` is not a token
+    // character, so `c++` comes back as `**c**++`. The page is the stable thing to check.
+    for (const [query, expectHit] of [
+      ["c++", true],
+      ["e-mail", true],
+      ["what's", true],
+      ['"unbalanced', false],
+      ["a.b", false],
+      ["(", false],
+      ["AND", false],
+    ] as const) {
+      const { status, json } = await post(s.app, "/api/v1/search", s.writeToken, {
+        query,
+        mode: "keyword",
+      });
+      expect(status, query).toBe(200);
+      if (expectHit) {
+        expect(
+          json.hits.some((h: { page: string }) => h.page === "Punct"),
+          query,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("honours -exclusions and quoted phrases as its description promises", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Ex",
+      markdown: "- apples and pears\n- apples and plums",
+    });
+    const excluded = await post(s.app, "/api/v1/search", s.writeToken, {
+      query: "apples -plums",
+      mode: "keyword",
+      scope: "blocks",
+    });
+    expect(excluded.json.hits.map((h: { snippet: string }) => h.snippet)).toEqual([
+      "**apples** and pears",
+    ]);
+    const phrase = await post(s.app, "/api/v1/search", s.writeToken, {
+      query: '"and plums"',
+      mode: "keyword",
+      scope: "blocks",
+    });
+    expect(phrase.json.hits).toHaveLength(1);
+    // Exclusions alone have nothing to match: no hits, not an error.
+    const onlyNegative = await post(s.app, "/api/v1/search", s.writeToken, {
+      query: "-apples",
+      mode: "keyword",
+    });
+    expect(onlyNegative.status).toBe(200);
+    expect(onlyNegative.json.hits).toEqual([]);
+  });
+
+  it("rejects an unparseable updated_after instead of silently matching nothing", async () => {
+    const { status, json } = await post(s.app, "/api/v1/search", s.writeToken, {
+      query: "x",
+      updated_after: "yesterday",
+    });
+    expect(status).toBe(400);
+    expect(json.error.code).toBe("invalid");
+    expect(json.error.message).toMatch(/updated_after/);
+  });
 });
 
 describe("page.create journal guard", () => {

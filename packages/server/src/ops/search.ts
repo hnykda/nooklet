@@ -9,9 +9,24 @@ import {
   semanticCandidates,
 } from "../embeddings/index.js";
 import { wirePageNameOf } from "../rows.js";
+import { toFtsQuery } from "./fts-query.js";
 import { defineOp, OpError } from "./registry.js";
 import { resolvePageIds } from "./resolve.js";
 import { Cursor, Limit, PageRef, PropertyKey } from "./schemas.js";
+
+/** `updated_after`/`updated_before` as epoch ms, or `invalid` — a silently-NaN bound would compare
+ * every row as false and return nothing, which reads as "no results" rather than "bad input". */
+function parseWhen(field: string, value: string): number {
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) {
+    throw new OpError(
+      "invalid",
+      `${field} is not a date: "${value}"`,
+      "use an ISO date or date-time, e.g. 2026-09-01 or 2026-09-01T12:00:00Z",
+    );
+  }
+  return ms;
+}
 
 interface Candidate {
   kind: "block" | "page";
@@ -128,15 +143,20 @@ export const search = defineOp({
   expose: { mcp: { alwaysLoad: true } },
   render: (out) => `${out.hits.length} hit(s) (${out.mode_used})`,
   handler: async (input, ctx) => {
-    if (input.pages && input.pages.length > 20) {
-      throw new OpError("invalid", "at most 20 pages allowed");
-    }
     const driver = ctx.db;
+    const updatedAfter =
+      input.updated_after !== undefined ? parseWhen("updated_after", input.updated_after) : null;
+    const updatedBefore =
+      input.updated_before !== undefined ? parseWhen("updated_before", input.updated_before) : null;
     const pageIds = input.pages ? await resolvePageIds(ctx, input.pages) : undefined;
     if (input.pages && input.pages.length > 0 && pageIds && pageIds.length === 0) {
       return { hits: [], mode_used: "keyword" as const };
     }
 
+    // Built once, never the raw string: FTS5's query language throws on ordinary punctuation
+    // (`c++`, `what's`, `e-mail`), and a throw here was an HTTP 500. `null` means the query had
+    // nothing positive to match — exclusions only — which is "no keyword hits", not an error.
+    const ftsQuery = toFtsQuery(input.query);
     const snippetTokens = Math.max(4, Math.round(input.snippet_chars / 8));
     const candidates: Candidate[] = [];
 
@@ -164,13 +184,13 @@ export const search = defineOp({
         conditions.push(
           "EXISTS (SELECT 1 FROM page p WHERE p.id = b.page_id AND p.journal_day IS NOT NULL)",
         );
-      if (input.updated_after) {
+      if (updatedAfter !== null) {
         conditions.push("b.updated_at > ?");
-        params.push(Date.parse(input.updated_after));
+        params.push(updatedAfter);
       }
-      if (input.updated_before) {
+      if (updatedBefore !== null) {
         conditions.push("b.updated_at < ?");
-        params.push(Date.parse(input.updated_before));
+        params.push(updatedBefore);
       }
       if (pageIds && pageIds.length > 0) {
         conditions.push(`b.page_id IN (${pageIds.map(() => "?").join(",")})`);
@@ -191,12 +211,12 @@ export const search = defineOp({
 
       const ftsRanked: string[] = [];
       const ftsMeta = new Map<string, { snip: string; rank: number }>();
-      if (modeUsed !== "semantic") {
+      if (modeUsed !== "semantic" && ftsQuery !== null) {
         const sql = `SELECT b.id AS id, bm25(block_fts) AS rank, snippet(block_fts, 0, '**', '**', '...', ${snippetTokens}) AS snip
                      FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
                      WHERE block_fts MATCH ? AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
         const rows = driver.all<{ id: string; rank: number; snip: string }>(sql, [
-          input.query,
+          ftsQuery,
           ...params,
         ]);
         for (const r of rows) {
@@ -278,11 +298,11 @@ export const search = defineOp({
 
       const ftsRanked: string[] = [];
       const ftsMeta = new Map<string, number>();
-      if (modeUsed !== "semantic") {
+      if (modeUsed !== "semantic" && ftsQuery !== null) {
         const sql = `SELECT p.id AS id, bm25(page_fts) AS rank
                      FROM page_fts JOIN page p ON p.rowid = page_fts.rowid
                      WHERE page_fts MATCH ? AND ${conditions.join(" AND ")} ORDER BY rank LIMIT 500`;
-        const rows = driver.all<{ id: string; rank: number }>(sql, [input.query, ...params]);
+        const rows = driver.all<{ id: string; rank: number }>(sql, [ftsQuery, ...params]);
         for (const r of rows) {
           ftsRanked.push(r.id);
           ftsMeta.set(r.id, r.rank);

@@ -1,6 +1,7 @@
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { pageWireNameById } from "../rows.js";
+import { ftsPhrase } from "./fts-query.js";
 import { defineOp } from "./registry.js";
 import { resolvePageRef, wirePageName } from "./resolve.js";
 import { BlockId, Cursor, Limit, PageRef } from "./schemas.js";
@@ -69,7 +70,7 @@ export const pageBacklinks = defineOp({
       if (input.include_unlinked) {
         const plainName = asPage.name.split("/").pop() ?? asPage.name;
         if (plainName.length >= 3) {
-          const ftsQuery = `"${plainName.replace(/"/g, '""')}"`;
+          const ftsQuery = ftsPhrase(plainName);
           unlinkedRows = driver.all(
             `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
              FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
@@ -113,7 +114,7 @@ export const pageBacklinks = defineOp({
         if (input.include_unlinked) {
           const plainName = input.target.split("/").pop() ?? input.target;
           if (plainName.length >= 3) {
-            const ftsQuery = `"${plainName.replace(/"/g, '""')}"`;
+            const ftsQuery = ftsPhrase(plainName);
             unlinkedRows = driver.all(
               `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
                FROM block_fts JOIN block b ON b.rowid = block_fts.rowid

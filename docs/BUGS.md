@@ -47,6 +47,27 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-53 · Searching for `c++`, `e-mail` or `what's` was an HTTP 500
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, code review; reproduced with
+`tools/probes/fts5-query-syntax.mjs` · **Tests:** `packages/server/src/ops/fts-query.test.ts`
+(every probe string against a real FTS5 table), `ops.http.test.ts` "survives punctuation FTS5
+would choke on" and "honours -exclusions and quoted phrases"
+
+The raw query string went straight into `block_fts MATCH ?`. FTS5's query language is not a search
+box: `c++`, `what's`, `a.b`, `(`, a lone `AND` and an unbalanced `"` are syntax errors, and
+`e-mail` / `foo -bar` are read as *column filters* ("no such column: mail"). Each of those came
+back as `internal` — to the search view as "Couldn't search", to an agent as a broken tool. An
+e-mail address is not an edge case in a notes app.
+
+Worse, the description promised `-exclusions`, and the one thing a `-` could never do in raw FTS5
+was exclude. `ops/fts-query.ts` now compiles the documented grammar — words, `"phrases"`,
+`-exclusions`, `prefix*` — into string literals only, so nothing typed can reach the query
+language. Exclusions with no positive term give no hits rather than an error.
+
+Also fixed alongside: `updated_after: "yesterday"` (anything `Date.parse` rejects) became `NaN`,
+which compared false against every row and returned nothing — indistinguishable from "no
+matches". It is `invalid` now, with the format in the hint.
+
 ### B-43 · Without OPFS the client died silently — no message, nothing rendered
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, running the B-42 probe in WebKit ·
 **Tests:** `e2e/tests/storage.spec.ts` (runs under a new `webkit` Playwright project scoped to
