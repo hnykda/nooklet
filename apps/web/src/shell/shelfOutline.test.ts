@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { blockTitle, outlineEntries } from "./shelfOutline.js";
+import { blockTitle, type OutlineSource, outlineEntries } from "./shelfOutline.js";
 
-const node = (id: string, content: string, children: ReturnType<typeof node>[] = []) => ({
+const node = (id: string, content: string, children: OutlineSource[] = []): OutlineSource => ({
   id,
   content,
   children,

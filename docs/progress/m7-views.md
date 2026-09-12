@@ -11,10 +11,22 @@ read "Next steps" and continue from there. Owner brief: research/13 §4.2 items 
   in `docs/spec/mcp-tools.md`. Named `mentions.link`, NOT `page.link_unlinked`: the registry's
   `OP_NAME_RE` (spec §3.1 rule 1) rejects underscores inside a segment.
 
+- `7e2ec53` feat(web): references filters/sort + Link all with undo (feature 5 + 10b client),
+  ADR 021, this progress file.
+- `551daa7` feat(web): appearance basics (feature 6).
+- `dab300f` feat(web): shelf page-outline mode (feature 7).
+
+All four features are committed with green unit tests. **The four e2e specs pass (8/8, 17:41)**
+in the HEAD worktree on port 6353 (see Blockers for why a worktree). `pnpm -r test` at HEAD
+(f1675df): all four packages green (17:44). `pnpm -r typecheck` fails in `packages/core/src/query.ts`
+(the query agent's commit f1675df, not mine) — server and web typecheck on their own.
+Remaining: full e2e suite (running in background at 17:44), final report.
+
 ## 2. In flight (on disk, uncommitted)
 
-- **References filters/sort + Link all (client)** — code complete, unit tests green, e2e written
-  but NOT yet run (see "Blockers"):
+- Nothing uncommitted of mine at 17:36. The details below describe what each commit contains, for
+  orientation after a restart.
+- **References filters/sort + Link all (client)** — in `7e2ec53`:
   - `apps/web/src/views/referenceGrouping.ts` (+ `.test.ts`): sort param, `filterCandidates`,
     `applyReferenceFilter`, `cycleFilterKey`, `referencedKeys`.
   - `apps/web/src/views/referenceFilters.ts` (+ `.test.ts`, new): localStorage persistence.
@@ -67,10 +79,15 @@ read "Next steps" and continue from there. Owner brief: research/13 §4.2 items 
 
 ## 5. Blockers / notes
 
-- e2e cannot boot on this tree right now: another agent's `packages/server/src/ops/block-to-page.ts`
-  registers `name: "block.to_page"`, which the registry rejects at startup (same rule that renamed
-  my op). Retry once they rename it. `pnpm -r typecheck` also fails in `packages/core/src/query.ts`
-  (another agent's in-progress work).
+- e2e cannot boot on the WORKING TREE right now: another agent's untracked
+  `packages/server/src/ops/block-to-page.ts` registers `name: "block.to_page"`, which the registry
+  rejects at startup (same rule that renamed my op). `pnpm -r typecheck` also fails in their
+  untracked `packages/core/src/query.ts`. Neither is committed, so HEAD boots.
+  **Workaround in use:** a detached git worktree at HEAD in
+  `<scratchpad>/wt` (`git worktree add --detach <scratchpad>/wt HEAD && pnpm install
+  --frozen-lockfile --prefer-offline`), e2e run from `<scratchpad>/wt/e2e` on port 6353. Fixes
+  are made in the main tree, committed, and the worktree moved with `git -C <wt> checkout --detach
+  <hash>`. Remove with `git worktree remove --force <wt>` when done.
 - Uncommitted changes by other agents are present in the tree (package.json, BUGS.md, core, server,
   commands/…). Commit only the files listed above.
 
