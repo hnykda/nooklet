@@ -22,8 +22,36 @@
  *     (`touchDeviceOnPush`), so 0 means either "never pulled" or "genuinely caught up to nothing
  *     yet" -- both cases make its true position unknown/zero, and either way GC must not proceed
  *     while *any* live device's floor can't be confirmed above zero.
+ *
+ * ORPHAN ASSETS (M7 item 10a, research/13 §3.1: Logseq's most-voted assets request is "view and
+ * delete orphan assets"): the second thing this command collects. An asset is a file under
+ * `<dataDir>/assets/<id>.<ext>` plus an `asset` row, referenced from block text (and, rarely, a
+ * property value) as `assets/<id>.<ext>` -- the importer rewrites every Logseq link to that form
+ * and `asset.upload` hands it out, so that string is the only way anything points at an asset.
+ * Nothing ever removed one before this; a picture pasted and then deleted from the block stayed
+ * on disk forever.
+ *
+ *   - **Referenced** by a live block/property: kept, obviously.
+ *   - **Referenced only from the trash** (a tombstoned block, or a block on a deleted page):
+ *     kept. The trash has no expiry (ADR 019), and a page restored from it must not come back
+ *     with broken images.
+ *   - **Unreferenced but younger than the grace period**: left alone this run. The one legitimate
+ *     way an asset is briefly unreferenced is between the upload and the write that embeds it --
+ *     an agent's `asset_upload` followed by `block_update`, or the editor's paste, whose block op
+ *     sits in the device's push queue until it next syncs. That queue can wait out a closed laptop,
+ *     so the grace is DAYS, not seconds: 7 by default (`--asset-grace`), long enough for a week
+ *     away, short enough that a monthly `nooklet gc` still collects. A `changes` row for the asset
+ *     newer than the cutoff also counts as recent, so a future "touched on re-upload" audit row
+ *     (docs/BUGS.md B-86: a deduplicated re-upload of an orphan currently records nothing) will
+ *     extend the grace without this file changing.
+ *   - **Otherwise**: an orphan. Reported by `--dry-run`; removed by a real run -- the row is
+ *     tombstoned (`deleted_at`, so the same bytes can be uploaded again fresh) and the file
+ *     unlinked, after the same automatic backup the op-log half takes (the backup archive
+ *     includes `assets/`, so the file is recoverable from it).
  */
 
+import { unlinkSync } from "node:fs";
+import { join } from "node:path";
 import type { LoggedOp, Op, OpPayload, SqlDriver } from "@nooklet/core";
 import { planOpLogGc } from "@nooklet/core";
 import type { ServerContext } from "./apply-ops.js";
@@ -120,18 +148,173 @@ function loadFullLog(driver: SqlDriver): LoggedOp[] {
   }));
 }
 
+// ---------------------------------------------------------------------------------------------
+// Orphan assets (see file header)
+// ---------------------------------------------------------------------------------------------
+
+export const DEFAULT_ASSET_GRACE_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface OrphanAsset {
+  id: string;
+  ext: string;
+  fileName: string;
+  byteSize: number;
+  createdAt: number;
+}
+
+export interface AssetGcPlan {
+  graceDays: number;
+  /** Live `asset` rows in total. */
+  total: number;
+  /** Unreferenced anywhere and older than the grace period: what a real run removes. */
+  orphans: OrphanAsset[];
+  /** Unreferenced but younger than the grace period (or touched by a recent audit row). */
+  inGrace: number;
+  /** Referenced only from tombstoned blocks or deleted pages: kept for the trash. */
+  keptByTrashOnly: number;
+}
+
+/** `assets/<id>.<ext>` wherever it appears in text. Ids are `newId()` strings; the character
+ * class is deliberately loose (the asset table, not this regex, decides what is an asset id). */
+const ASSET_REF_RE = /assets\/([0-9a-z]{8,32})\.[a-z0-9]{1,8}/gi;
+
+interface RefRow {
+  text: string;
+  live: number;
+}
+
+/** Every asset id mentioned anywhere, split by whether the mention is live. One pass over the few
+ * rows that contain `assets/` at all, rather than a full scan per asset. */
+function referencedAssetIds(driver: SqlDriver): { live: Set<string>; any: Set<string> } {
+  const rows: RefRow[] = [
+    ...driver.all<RefRow>(
+      `SELECT b.content AS text, (b.deleted_at IS NULL AND p.deleted_at IS NULL) AS live
+       FROM block b JOIN page p ON p.id = b.page_id
+       WHERE instr(b.content, 'assets/') > 0`,
+    ),
+    ...driver.all<RefRow>(
+      `SELECT bp.value AS text, (b.deleted_at IS NULL AND p.deleted_at IS NULL) AS live
+       FROM block_prop bp JOIN block b ON b.id = bp.block_id JOIN page p ON p.id = b.page_id
+       WHERE bp.value IS NOT NULL AND instr(bp.value, 'assets/') > 0`,
+    ),
+    ...driver.all<RefRow>(
+      `SELECT pp.value AS text, (p.deleted_at IS NULL) AS live
+       FROM page_prop pp JOIN page p ON p.id = pp.page_id
+       WHERE pp.value IS NOT NULL AND instr(pp.value, 'assets/') > 0`,
+    ),
+  ];
+  const live = new Set<string>();
+  const any = new Set<string>();
+  for (const r of rows) {
+    for (const m of r.text.matchAll(ASSET_REF_RE)) {
+      const id = m[1] as string;
+      any.add(id);
+      if (r.live) live.add(id);
+    }
+  }
+  return { live, any };
+}
+
+interface AssetRow {
+  id: string;
+  ext: string;
+  file_name: string;
+  byte_size: number;
+  created_at: number;
+}
+
+/** Classify every live asset without touching anything -- what `--dry-run` reports. */
+export function planAssetGc(
+  driver: SqlDriver,
+  opts: { graceDays?: number; now?: number } = {},
+): AssetGcPlan {
+  const graceDays = opts.graceDays ?? DEFAULT_ASSET_GRACE_DAYS;
+  const now = opts.now ?? Date.now();
+  const cutoff = now - graceDays * DAY_MS;
+  const refs = referencedAssetIds(driver);
+  const assets = driver.all<AssetRow>(
+    "SELECT id, ext, file_name, byte_size, created_at FROM asset WHERE deleted_at IS NULL ORDER BY created_at, id",
+  );
+  const plan: AssetGcPlan = {
+    graceDays,
+    total: assets.length,
+    orphans: [],
+    inGrace: 0,
+    keptByTrashOnly: 0,
+  };
+  for (const a of assets) {
+    if (refs.live.has(a.id)) continue;
+    if (refs.any.has(a.id)) {
+      plan.keptByTrashOnly++;
+      continue;
+    }
+    const touchedRecently =
+      a.created_at > cutoff ||
+      driver.get(
+        "SELECT 1 FROM changes WHERE entity_type = 'asset' AND entity_id = ? AND created_at > ? LIMIT 1",
+        [a.id, cutoff],
+      ) !== undefined;
+    if (touchedRecently) {
+      plan.inGrace++;
+      continue;
+    }
+    plan.orphans.push({
+      id: a.id,
+      ext: a.ext,
+      fileName: a.file_name,
+      byteSize: a.byte_size,
+      createdAt: a.created_at,
+    });
+  }
+  return plan;
+}
+
+/** Tombstone each orphan's row and unlink its file. A file already missing on disk is not an
+ * error -- the row was the stale part, and it is gone now too. */
+function removeOrphanAssets(
+  driver: SqlDriver,
+  dataDir: string,
+  orphans: readonly OrphanAsset[],
+  now: number,
+): { removed: number; reclaimedBytes: number } {
+  let reclaimedBytes = 0;
+  for (const a of orphans) {
+    const path = join(dataDir, "assets", `${a.id}.${a.ext}`);
+    const size = fileSizeOf(path);
+    driver.run("UPDATE asset SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", [now, a.id]);
+    try {
+      unlinkSync(path);
+      reclaimedBytes += size ?? a.byteSize;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  }
+  return { removed: orphans.length, reclaimedBytes };
+}
+
+export interface AssetGcReport extends AssetGcPlan {
+  /** Orphans actually removed (0 on a dry run). */
+  removed: number;
+  /** Bytes of asset files unlinked. */
+  reclaimedBytes: number;
+}
+
 export interface GcReport {
   dryRun: boolean;
+  /** The op-log half was refused (`reason` says why). Asset GC does not depend on devices and
+   * runs regardless. */
   refused: boolean;
   reason?: string;
   blockingDevices: GcBlockingDevice[];
   floor: number | null;
   dropCount: number;
   retainCount: number;
-  /** Set only on a real (non-dry-run) run that actually dropped rows and wasn't `--no-backup`. */
+  /** Set only on a real (non-dry-run) run that removed something and wasn't `--no-backup`. */
   backupPath?: string;
-  /** Bytes reclaimed on disk (post-`VACUUM`), when the database is file-backed. */
+  /** Bytes reclaimed in the database file (post-`VACUUM`), when it is file-backed. */
   reclaimedBytes?: number;
+  assets: AssetGcReport;
 }
 
 export interface RunGcOptions {
@@ -139,6 +322,8 @@ export interface RunGcOptions {
   dryRun?: boolean;
   /** Skip the automatic pre-GC backup. Only meaningful when `dryRun` is false. */
   noBackup?: boolean;
+  /** Days an unreferenced asset must have existed before it counts as an orphan (default 7). */
+  assetGraceDays?: number;
 }
 
 /** Compute the GC plan without mutating anything -- used by both `runGc` (dry or real) and
@@ -165,7 +350,9 @@ export function planGc(driver: SqlDriver): {
  */
 export function runGc(ctx: ServerContext, opts: RunGcOptions): GcReport {
   const dryRun = opts.dryRun ?? false;
+  const now = Date.now();
   const { floor, drop, retain } = planGc(ctx.driver);
+  const assetPlan = planAssetGc(ctx.driver, { graceDays: opts.assetGraceDays, now });
 
   const base: GcReport = {
     dryRun,
@@ -175,25 +362,35 @@ export function runGc(ctx: ServerContext, opts: RunGcOptions): GcReport {
     floor: floor.floor,
     dropCount: drop.length,
     retainCount: retain.length,
+    assets: { ...assetPlan, removed: 0, reclaimedBytes: 0 },
   };
-  if (floor.floor === null || dryRun || drop.length === 0) return base;
+  const willDropOps = floor.floor !== null && drop.length > 0;
+  const willRemoveAssets = assetPlan.orphans.length > 0;
+  if (dryRun || (!willDropOps && !willRemoveAssets)) return base;
 
+  // One backup covers both halves: the archive holds the database (with the ops about to be
+  // dropped) AND `assets/` (with the files about to be unlinked).
   let backupPath: string | undefined;
   if (!opts.noBackup) {
     backupPath = createBackup(ctx.driver, { dataDir: opts.dataDir }).path;
   }
 
-  const dbFile = graphDbPath(opts.dataDir);
-  const sizeBefore = fileSizeOf(dbFile);
+  let reclaimedBytes: number | undefined;
+  if (willDropOps) {
+    const dbFile = graphDbPath(opts.dataDir);
+    const sizeBefore = fileSizeOf(dbFile);
+    ctx.driver.run("DELETE FROM op WHERE seq < ?", [floor.floor]);
+    ctx.driver.exec("VACUUM");
+    const sizeAfter = fileSizeOf(dbFile);
+    reclaimedBytes =
+      sizeBefore !== undefined && sizeAfter !== undefined ? sizeBefore - sizeAfter : undefined;
+  }
 
-  ctx.driver.run("DELETE FROM op WHERE seq < ?", [floor.floor]);
-  ctx.driver.exec("VACUUM");
+  const assets = willRemoveAssets
+    ? { ...assetPlan, ...removeOrphanAssets(ctx.driver, opts.dataDir, assetPlan.orphans, now) }
+    : base.assets;
 
-  const sizeAfter = fileSizeOf(dbFile);
-  const reclaimedBytes =
-    sizeBefore !== undefined && sizeAfter !== undefined ? sizeBefore - sizeAfter : undefined;
-
-  return { ...base, backupPath, reclaimedBytes };
+  return { ...base, backupPath, reclaimedBytes, assets };
 }
 
 /** Re-exported so callers/tests that already have `Op`/`LoggedOp` types in scope don't need a

@@ -14,8 +14,9 @@
  *                   as a single .tar.gz archive (M6, docs/OPERATIONS.md)
  *   nooklet restore <archive> [--data <dir>] [--force]  restore a backup (refuses to clobber an
  *                   existing database unless --force; refuses an archive newer than this build)
- *   nooklet gc      [--dry-run] [--no-backup] [--data <dir>]  op-log GC down to
- *                   min(device.acked_seq) across live devices (M6, ./gc.ts)
+ *   nooklet gc      [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
+ *                   op-log GC down to min(device.acked_seq) across live devices (M6), and
+ *                   removal of assets nothing references any more (M7, ./gc.ts)
  *   nooklet verify  [--data <dir>]  rebuild()-vs-live-state parity check (ADR 003, ./verify.ts);
  *                   also runs automatically at "nooklet serve" startup when NODE_ENV != production
  *
@@ -210,7 +211,7 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet plugin reload <plugin-id>
   nooklet backup [--out <path>] [--data <dir>]
   nooklet restore <archive> [--data <dir>] [--force]
-  nooklet gc [--dry-run] [--no-backup] [--data <dir>]
+  nooklet gc [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
   nooklet verify [--data <dir>]
 `;
 
@@ -598,29 +599,55 @@ async function main(): Promise<void> {
 
     case "gc": {
       const { ctx, config } = open(args);
+      const graceFlag = args.flags.get("asset-grace");
+      const assetGraceDays = typeof graceFlag === "string" ? Number(graceFlag) : undefined;
+      if (
+        assetGraceDays !== undefined &&
+        !(Number.isFinite(assetGraceDays) && assetGraceDays >= 0)
+      ) {
+        die("--asset-grace takes a number of days (0 or more)");
+      }
       const report = runGc(ctx, {
         dataDir: config.dataDir,
         dryRun: args.flags.get("dry-run") === true,
         noBackup: args.flags.get("no-backup") === true,
+        assetGraceDays,
       });
+      // The op-log half can be refused (no device has synced yet); the asset half never is, so
+      // both are always reported.
       if (report.refused) {
-        process.stdout.write(`gc: refused to run - ${report.reason}\n`);
+        process.stdout.write(`gc: op log - refused to run - ${report.reason}\n`);
         for (const d of report.blockingDevices) {
           process.stdout.write(
             `  blocked by device "${d.name}" (${d.id}), acked_seq=${d.ackedSeq}\n`,
           );
         }
-        return;
+      } else {
+        const verb = report.dryRun ? "would drop" : "dropped";
+        process.stdout.write(
+          `gc: op log - floor=${report.floor} (op.seq < floor) - ${verb} ${report.dropCount} ` +
+            `op(s), retaining ${report.retainCount}\n`,
+        );
+        if (report.reclaimedBytes !== undefined) {
+          process.stdout.write(`  reclaimed ${report.reclaimedBytes} byte(s) in the database\n`);
+        }
       }
-      const verb = report.dryRun ? "would drop" : "dropped";
+      const a = report.assets;
+      const assetVerb = report.dryRun ? "would remove" : "removed";
       process.stdout.write(
-        `gc: floor=${report.floor} (op.seq < floor) - ${verb} ${report.dropCount} op(s), ` +
-          `retaining ${report.retainCount}\n`,
+        `gc: assets - ${a.total} on record, ${assetVerb} ${a.orphans.length} orphan(s) ` +
+          `(unreferenced for over ${a.graceDays} day${a.graceDays === 1 ? "" : "s"}); ` +
+          `${a.inGrace} unreferenced but within the grace period, ${a.keptByTrashOnly} ` +
+          `referenced only from the trash - both kept\n`,
       );
-      if (report.backupPath) process.stdout.write(`  backup taken first: ${report.backupPath}\n`);
-      if (report.reclaimedBytes !== undefined) {
-        process.stdout.write(`  reclaimed ${report.reclaimedBytes} byte(s) on disk\n`);
+      for (const o of a.orphans) {
+        process.stdout.write(
+          `  ${report.dryRun ? "orphan" : "removed"}: assets/${o.id}.${o.ext} ` +
+            `("${o.fileName}", ${o.byteSize} bytes, uploaded ${new Date(o.createdAt).toISOString()})\n`,
+        );
       }
+      if (a.removed > 0) process.stdout.write(`  reclaimed ${a.reclaimedBytes} byte(s) of files\n`);
+      if (report.backupPath) process.stdout.write(`  backup taken first: ${report.backupPath}\n`);
       return;
     }
 

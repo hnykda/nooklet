@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SqlDriver } from "@nooklet/core";
@@ -6,10 +6,11 @@ import { applyOps, initSchema, newId, rebuild } from "@nooklet/core";
 import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "./apply-ops.js";
+import { assetMarkdownPath, storeAssetBytes } from "./assets/store.js";
 import { createToken } from "./auth/tokens.js";
-import { graphDbPath } from "./backup/index.js";
+import { graphDbPath, restoreBackup } from "./backup/index.js";
 import { openDb } from "./db.js";
-import { computeGcFloor, planGc, runGc } from "./gc.js";
+import { computeGcFloor, DEFAULT_ASSET_GRACE_DAYS, planAssetGc, planGc, runGc } from "./gc.js";
 import { advanceAckedSeq, touchDeviceOnPush } from "./sync/device.js";
 
 let dataDir: string;
@@ -206,6 +207,232 @@ describe("runGc", () => {
     expect(report.refused).toBe(false);
     expect(report.dropCount).toBe(0);
     expect(report.backupPath).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Orphan assets (M7 item 10a) -- against a real temp data dir with real files under assets/.
+// ---------------------------------------------------------------------------------------------
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Store distinct bytes as an asset and, optionally, back-date it past the grace period the way
+ * a long-forgotten upload would be. Returns the markdown path a block would embed. */
+function storeAsset(name: string, ageDays = 0): { id: string; ext: string; path: string } {
+  const stored = storeAssetBytes(ctx.driver, dataDir, {
+    bytes: Buffer.from(`file:${name}:${Math.random()}`),
+    fileName: name,
+    mimeType: "text/plain",
+    origin: "api",
+    actor: "test",
+  });
+  if (ageDays > 0) {
+    // Upload time is what the grace period is measured from; the audit row for the upload has
+    // to move with it, or `planAssetGc` counts the row as a recent touch.
+    const at = Date.now() - ageDays * DAY;
+    ctx.driver.run("UPDATE asset SET created_at = ? WHERE id = ?", [at, stored.id]);
+    ctx.driver.run(
+      "UPDATE changes SET created_at = ? WHERE entity_type = 'asset' AND entity_id = ?",
+      [at, stored.id],
+    );
+  }
+  return { id: stored.id, ext: stored.ext, path: assetMarkdownPath(stored) };
+}
+
+function tombstoneBlock(id: string): void {
+  const hlc = ctx.hlc.next();
+  serverApplyOps(
+    ctx,
+    [
+      {
+        id: hlc,
+        hlc,
+        device: "aaaaaaaa",
+        entity: id,
+        payload: { kind: "block.delete", deletedAt: Date.now() },
+      },
+    ],
+    { origin: "user", actor: "test" },
+  );
+}
+
+function tombstonePage(id: string): void {
+  const hlc = ctx.hlc.next();
+  serverApplyOps(
+    ctx,
+    [
+      {
+        id: hlc,
+        hlc,
+        device: "aaaaaaaa",
+        entity: id,
+        payload: { kind: "page.delete", deletedAt: Date.now() },
+      },
+    ],
+    { origin: "user", actor: "test" },
+  );
+}
+
+function assetFiles(): string[] {
+  return existsSync(join(dataDir, "assets")) ? readdirSync(join(dataDir, "assets")).sort() : [];
+}
+
+function liveAssetIds(): string[] {
+  return ctx.driver
+    .all<{ id: string }>("SELECT id FROM asset WHERE deleted_at IS NULL ORDER BY id")
+    .map((r) => r.id);
+}
+
+describe("planAssetGc", () => {
+  it("keeps an asset a live block references, however old", () => {
+    const page = createPage("Pics");
+    const old = storeAsset("kept.png", 400);
+    createBlock(page, `![kept](${old.path})`);
+    const plan = planAssetGc(ctx.driver);
+    expect(plan).toMatchObject({ total: 1, orphans: [], inGrace: 0, keptByTrashOnly: 0 });
+    expect(plan.graceDays).toBe(DEFAULT_ASSET_GRACE_DAYS);
+  });
+
+  it("finds references in block and page properties too, not only block text", () => {
+    const page = createPage("Props");
+    const inBlockProp = storeAsset("bp.png", 400);
+    const inPageProp = storeAsset("pp.png", 400);
+    const block = createBlock(page, "has a property");
+    const h1 = ctx.hlc.next();
+    const h2 = ctx.hlc.next();
+    serverApplyOps(
+      ctx,
+      [
+        {
+          id: h1,
+          hlc: h1,
+          device: "aaaaaaaa",
+          entity: block,
+          payload: { kind: "block.prop", key: "cover", value: inBlockProp.path },
+        },
+        {
+          id: h2,
+          hlc: h2,
+          device: "aaaaaaaa",
+          entity: page,
+          payload: { kind: "page.prop", key: "banner", value: `![](${inPageProp.path})` },
+        },
+      ],
+      { origin: "user", actor: "test" },
+    );
+    expect(planAssetGc(ctx.driver).orphans).toEqual([]);
+  });
+
+  it("classifies an unreferenced asset by age: in grace when young, orphan when past it", () => {
+    const young = storeAsset("young.png");
+    const old = storeAsset("old.png", DEFAULT_ASSET_GRACE_DAYS + 1);
+    const plan = planAssetGc(ctx.driver);
+    expect(plan.total).toBe(2);
+    expect(plan.inGrace).toBe(1);
+    expect(plan.orphans.map((o) => o.id)).toEqual([old.id]);
+    expect(plan.orphans[0]).toMatchObject({ ext: "png", fileName: "old.png" });
+    // The boundary is the grace setting, not a constant: with no grace the young one goes too.
+    expect(
+      planAssetGc(ctx.driver, { graceDays: 0 })
+        .orphans.map((o) => o.id)
+        .sort(),
+    ).toEqual([young.id, old.id].sort());
+  });
+
+  it("a recent audit row for the asset extends its grace (the B-86 re-upload hook)", () => {
+    const old = storeAsset("touched.png", 400);
+    ctx.driver.run(
+      `INSERT INTO changes(graph_id, batch_id, origin, actor, entity_type, entity_id, op_ids_json, before_json, after_json, created_at)
+       VALUES ('default', ?, 'api', 'test', 'asset', ?, '[]', NULL, '{}', ?)`,
+      [newId(), old.id, Date.now()],
+    );
+    const plan = planAssetGc(ctx.driver);
+    expect(plan.orphans).toEqual([]);
+    expect(plan.inGrace).toBe(1);
+  });
+
+  it("keeps an asset referenced only from the trash (a tombstoned block, or a deleted page)", () => {
+    const livePage = createPage("Live");
+    const gonePage = createPage("Gone");
+    const fromBlock = storeAsset("in-deleted-block.png", 400);
+    const fromPage = storeAsset("on-deleted-page.png", 400);
+    const block = createBlock(livePage, `![](${fromBlock.path})`);
+    createBlock(gonePage, `![](${fromPage.path})`);
+    tombstoneBlock(block);
+    tombstonePage(gonePage);
+    const plan = planAssetGc(ctx.driver);
+    expect(plan.orphans).toEqual([]);
+    expect(plan.keptByTrashOnly).toBe(2);
+  });
+});
+
+describe("runGc — assets", () => {
+  it("dry-run lists the orphans and removes nothing", () => {
+    const page = createPage("Dry");
+    const kept = storeAsset("kept.png", 400);
+    createBlock(page, `![](${kept.path})`);
+    const orphan = storeAsset("orphan.png", 400);
+    const filesBefore = assetFiles();
+
+    const report = runGc(ctx, { dataDir, dryRun: true });
+    expect(report.assets.orphans.map((o) => o.id)).toEqual([orphan.id]);
+    expect(report.assets.removed).toBe(0);
+    expect(report.backupPath).toBeUndefined();
+    expect(assetFiles()).toEqual(filesBefore);
+    expect(liveAssetIds().sort()).toEqual([kept.id, orphan.id].sort());
+  });
+
+  it("a real run unlinks the file, tombstones the row, and takes a backup that still has the file", () => {
+    const page = createPage("Real");
+    const kept = storeAsset("kept.png", 400);
+    createBlock(page, `![](${kept.path})`);
+    const orphan = storeAsset("orphan.png", 400);
+    expect(assetFiles()).toContain(`${orphan.id}.${orphan.ext}`);
+
+    // No device has synced, so the op-log half refuses -- and the asset half must run anyway.
+    const report = runGc(ctx, { dataDir });
+    expect(report.refused).toBe(true);
+    expect(report.assets.removed).toBe(1);
+    expect(report.assets.reclaimedBytes).toBeGreaterThan(0);
+    expect(report.backupPath).toBeDefined();
+
+    expect(assetFiles()).toEqual([`${kept.id}.${kept.ext}`]);
+    expect(liveAssetIds()).toEqual([kept.id]);
+    // Tombstoned, not hard-deleted: the row is still there to explain the missing file.
+    expect(
+      ctx.driver.get<{ deleted_at: number | null }>("SELECT deleted_at FROM asset WHERE id = ?", [
+        orphan.id,
+      ])?.deleted_at,
+    ).not.toBeNull();
+
+    // The safety net actually holds the removed file.
+    const restoreDir = mkdtempSync(join(tmpdir(), "nooklet-gc-restore-"));
+    try {
+      restoreBackup(report.backupPath as string, { dataDir: restoreDir });
+      expect(existsSync(join(restoreDir, "assets", `${orphan.id}.${orphan.ext}`))).toBe(true);
+    } finally {
+      rmSync(restoreDir, { recursive: true, force: true });
+    }
+  });
+
+  it("removes nothing, and takes no backup, when every asset is referenced or in grace", () => {
+    const page = createPage("Quiet");
+    const kept = storeAsset("kept.png", 400);
+    createBlock(page, `![](${kept.path})`);
+    storeAsset("fresh.png");
+    const report = runGc(ctx, { dataDir });
+    expect(report.assets.removed).toBe(0);
+    expect(report.assets.inGrace).toBe(1);
+    expect(report.backupPath).toBeUndefined();
+    expect(assetFiles()).toHaveLength(2);
+  });
+
+  it("copes with a row whose file is already missing on disk", () => {
+    const orphan = storeAsset("ghost.png", 400);
+    rmSync(join(dataDir, "assets", `${orphan.id}.${orphan.ext}`));
+    const report = runGc(ctx, { dataDir, noBackup: true });
+    expect(report.assets.removed).toBe(1);
+    expect(liveAssetIds()).toEqual([]);
   });
 });
 
