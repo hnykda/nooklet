@@ -113,3 +113,17 @@ test("a deleted page still has a history, with the deletion on top", async ({ pa
   );
   await expect(page.locator(".history-batch")).toHaveCount(4);
 });
+
+test("the page title row links to the page's history, including namespaced names", async ({
+  page,
+}) => {
+  await seedThreeBatches(page, "History Link/Child");
+  await page.goto(pagePath("History Link/Child"));
+  // Revealed on hover like the empty icon slot; the link is in the DOM regardless.
+  const link = page.locator(".page-history-link");
+  await expect(link).toHaveAttribute("href", historyPath("History Link/Child"));
+  await link.click();
+  await expect(page.locator(".history-view h1")).toHaveText("History");
+  await expect(page.locator(".history-back")).toContainText("History Link/Child");
+  await expect(page.locator(".history-batch")).toHaveCount(3);
+});

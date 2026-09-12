@@ -6,7 +6,7 @@
  * `../data/store.ts#usePageByName`), since that is what refs navigate to (PLAN.md §4).
  */
 import { isoJournalName, newId, orderBetween, parseJournalTitle } from "@nooklet/core";
-import { useNavigate } from "@solidjs/router";
+import { A, useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
 import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
@@ -14,7 +14,7 @@ import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
-import { goToTarget, pageRoutePath } from "./navigateTarget.js";
+import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
 import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
@@ -141,6 +141,16 @@ export function PageView(props: PageViewProps): JSX.Element {
                   aria-label="Page title"
                 />
               </Show>
+              {/* ADR 022: the page's timeline lives at `/history/<name>` (a splat under `/page/`
+                  would read "/history" as part of the name). Muted until the row is hovered, like
+                  the empty icon slot — a control every page has but few visits need. */}
+              <A
+                class="page-history-link"
+                href={`/history/${pageNameToPath(p().name)}`}
+                aria-label="Page history"
+              >
+                History
+              </A>
             </div>
             <PageProperties pageId={p().id} properties={properties()} />
             <BlockTree pageId={p().id} rootBlockId={blockId()} onNavigate={onNavigate} />

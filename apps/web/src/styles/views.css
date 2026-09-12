@@ -439,6 +439,30 @@
   opacity: 1;
 }
 
+/* The page's timeline link (ADR 022). Same reveal rule as the empty icon slot: present on every
+   page, wanted on few visits, so it stays out of the title's way until the row is hovered. */
+.page-history-link {
+  flex: none;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.page-title-row:hover .page-history-link,
+.page-history-link:focus-visible {
+  opacity: 1;
+}
+
+.page-history-link:hover,
+.page-history-link:focus-visible {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
 .page-icon-input {
   flex: none;
   width: 2.2em;
