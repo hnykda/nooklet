@@ -1,0 +1,9 @@
+{:meta/version 1
+
+ ;; The three keys nooklet's importer reads (packages/server/src/importer/logseq.ts,
+ ;; parseLogseqConfigEdn). All three are at Logseq's documented defaults on purpose: a different
+ ;; :journal/page-title-format would make the import print a note about it, and this wiki has no
+ ;; journals anyway (journal titles are display-only in nooklet since ADR 018).
+ :journal/page-title-format "MMM do, yyyy"
+ :journal/file-name-format "yyyy_MM_dd"
+ :file/name-format :triple-lowbar}
