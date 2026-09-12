@@ -52,6 +52,7 @@ import {
   setActiveEditorHost,
 } from "../app/editor-host.js";
 import { openOnShelf } from "../app/shelf.js";
+import { dispatchPopupKey, isPopupOpen } from "../commands/popup-keys.js";
 import { displayPageName } from "../data/page-title.js";
 import { applyOps, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
@@ -475,7 +476,7 @@ export function BlockTree(props: {
       isCollapsed: block?.collapsed ?? false,
       zoomed: effectiveRoot() !== undefined,
       composing: view.composing,
-      popupOpen: false,
+      popupOpen: isPopupOpen(),
     };
   }
 
@@ -607,6 +608,11 @@ export function BlockTree(props: {
   }
 
   function dispatchKey(id: BlockId, kd: KeyDescriptor, view: EditorView): boolean {
+    // R12 step 2, made real: while a `[[` / `#` / `((` / `/` popup is open it owns Escape, Enter,
+    // Tab and the arrows. The editor keeps focus, so the key arrives here first; the popup's
+    // handler consumes it and CM6 preventDefaults. Before this, Enter split the block and Escape
+    // dropped into selection mode with the popup still open (B-65).
+    if (!kd.mod && !kd.alt && dispatchPopupKey(kd.key)) return true;
     const ctx = buildDispatchCtx(id, view);
     return runCommand(resolveCommand(kd, ctx), id, view);
   }
@@ -745,7 +751,7 @@ export function BlockTree(props: {
           onFirstVisualLine: geom.onFirstLine,
           onLastVisualLine: geom.onLastLine,
           caretInLink: linkAtCaret(content, head) !== null,
-          popupOpen: false,
+          popupOpen: isPopupOpen(),
           composing: surface.isComposing(),
           zoomed: effectiveRoot() !== undefined,
           focusedBlockId: id,

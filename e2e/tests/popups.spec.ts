@@ -27,8 +27,6 @@ import {
   typeWatchingFocus,
 } from "../helpers/index.js";
 
-const B45 = "B-65: the popups ignore the keyboard — arrows, Enter, Tab and Escape reach the editor";
-
 function popup(page: Page): Locator {
   return page.locator(".cmd-popup");
 }
@@ -81,7 +79,6 @@ test.describe("[[ page autocomplete", () => {
   test("ArrowDown and ArrowUp move the highlight without moving the caret or losing focus", async ({
     page,
   }) => {
-    test.fixme(true, B45);
     await openEditing(page, "Popup Wiki Arrows", "- x");
     await page.keyboard.type(" [[");
     await expect(popup(page)).toBeVisible();
@@ -106,7 +103,6 @@ test.describe("[[ page autocomplete", () => {
   test("Enter inserts the highlighted page as [[Title]] with the caret after ]]", async ({
     page,
   }) => {
-    test.fixme(true, B45);
     await seedPage(page, "Popup Wiki Target", "- t");
     await openEditing(page, "Popup Wiki Enter", "- link");
     await page.keyboard.type(" [[Popup Wiki Targ");
@@ -120,11 +116,13 @@ test.describe("[[ page autocomplete", () => {
     // Still exactly one block: Enter selected, it did not split (R12 step 2).
     await expect(page.locator(".vr-outliner").first().locator(".vr-row")).toHaveCount(1);
     await page.keyboard.type(" after");
-    await expect(editor(page)).toHaveText("link [[Popup Wiki Target]] after");
+    // The live preview hides `[[`/`]]` once the caret leaves the link, so read what is stored.
+    await expect
+      .poll(async () => (await readBlocks(page, "Popup Wiki Enter")).map((b) => b.content))
+      .toEqual(["link [[Popup Wiki Target]] after"]);
   });
 
   test("Tab also accepts the highlighted item (R59)", async ({ page }) => {
-    test.fixme(true, B45);
     await seedPage(page, "Popup Wiki TabTarget", "- t");
     await openEditing(page, "Popup Wiki Tab", "- x");
     await page.keyboard.type(" [[Popup Wiki TabTar");
@@ -164,7 +162,6 @@ test.describe("[[ page autocomplete", () => {
   test("Escape closes the popup, keeps the typed text and keeps the editor focused", async ({
     page,
   }) => {
-    test.fixme(true, B45);
     await openEditing(page, "Popup Wiki Escape", "- x");
     await page.keyboard.type(" [[quer");
     await expect(popup(page)).toBeVisible();
@@ -307,7 +304,6 @@ test.describe("# tag autocomplete", () => {
   });
 
   test("Escape closes it and leaves #query in place", async ({ page }) => {
-    test.fixme(true, B45);
     await openEditing(page, "Popup Tag Escape", "- x");
     await page.keyboard.type(" #abc");
     await page.keyboard.press("Escape");
@@ -362,7 +358,6 @@ test.describe("(( block autocomplete", () => {
   });
 
   test("Enter inserts ((id)) with the caret after it (R58)", async ({ page }) => {
-    test.fixme(true, B45);
     await seedPage(page, "Popup Ref EnterSrc", "- unique wombat sentence");
     const [src] = await readBlocks(page, "Popup Ref EnterSrc");
     await openEditing(page, "Popup Ref Enter", "- see");
@@ -405,7 +400,6 @@ test.describe("(( block autocomplete", () => {
   });
 
   test("Escape closes it leaving the text", async ({ page }) => {
-    test.fixme(true, B45);
     await openEditing(page, "Popup Ref Escape", "- x");
     await page.keyboard.type(" ((cd");
     await expect(popup(page)).toBeVisible();
@@ -497,27 +491,30 @@ test.describe("/ slash menu", () => {
   });
 
   test("ArrowDown then Enter runs the item and removes the trigger text", async ({ page }) => {
-    test.fixme(true, B45);
     await openEditing(page, "Popup Slash Enter", "- my title");
     await page.keyboard.type(" /");
     await page.keyboard.press("ArrowDown");
     await expect(activeRow(page)).toHaveText("Heading 1");
     await page.keyboard.press("Enter");
     await expect(popup(page)).toHaveCount(0);
-    await expect(editor(page)).toHaveText("# my title ");
+    // The live preview hides the `# ` marker unless the caret touches it, so read what is stored.
+    await expect
+      .poll(async () => (await readBlocks(page, "Popup Slash Enter")).map((b) => b.content))
+      .toEqual(["# my title "]);
     await expect(page.locator(".vr-outliner").first().locator(".vr-row")).toHaveCount(1);
     await expectEditorFocusedNow(page, "after running a slash item");
   });
 
   test("Tab accepts the highlighted item and does not indent (R55)", async ({ page }) => {
-    test.fixme(true, B45);
     const outliner = await openEditing(page, "Popup Slash Tab", "- first\n- second");
     await clickRow(page, outliner, 1);
     await page.keyboard.press("End");
     await page.keyboard.type(" /h3");
     await expect(activeRow(page)).toHaveText("Heading 3");
     await page.keyboard.press("Tab");
-    await expect(editor(page)).toHaveText("### second ");
+    await expect
+      .poll(async () => (await readBlocks(page, "Popup Slash Tab")).map((b) => b.content))
+      .toEqual(["first", "### second "]);
     const depth = await outliner
       .locator(".vr-row")
       .nth(1)
@@ -526,7 +523,6 @@ test.describe("/ slash menu", () => {
   });
 
   test("Escape closes the menu and leaves the / in place", async ({ page }) => {
-    test.fixme(true, B45);
     await openEditing(page, "Popup Slash Escape", "- x");
     await page.keyboard.type(" /he");
     await page.keyboard.press("Escape");

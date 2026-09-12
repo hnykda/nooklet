@@ -5,8 +5,9 @@
  * `props.trigger` (`null` = closed). This component only does filtering/ranking/keyboard nav and,
  * on selection, removes the triggering text and runs the chosen command via `EditorHost`.
  */
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { EditorHost } from "../hosts/editor-host.js";
+import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import type { CommandContext } from "../types.js";
@@ -50,27 +51,40 @@ export function SlashMenu(props: SlashMenuProps) {
     props.onDismiss();
   }
 
-  function onKeyDown(e: KeyboardEvent) {
+  /** The menu's keymap (R53/R12 step 2). Reached from the editor's key dispatch via
+   * `claimPopupKeys` while the menu is open — the editor keeps focus — and from this element's
+   * own `onKeyDown` if a row has been clicked and holds focus itself. */
+  function handleKey(key: string): boolean {
     const list = results();
-    if (e.key === "Escape") {
-      e.preventDefault();
+    if (key === "Escape") {
       props.onDismiss();
-      return;
+      return true;
     }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
+    if (key === "ArrowDown") {
       setHighlight((h) => Math.min(h + 1, Math.max(list.length - 1, 0)));
-      return;
+      return true;
     }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
+    if (key === "ArrowUp") {
       setHighlight((h) => Math.max(h - 1, 0));
-      return;
+      return true;
     }
-    if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
+    if (key === "Enter" || key === "Tab") {
       void selectIndex(highlight());
+      return true;
     }
+    return false;
+  }
+
+  // Own the popup keys for exactly as long as there is a trigger (B-65); released on close and
+  // on unmount alike.
+  createEffect(() => {
+    if (props.trigger === null) return;
+    const release = claimPopupKeys(handleKey);
+    onCleanup(release);
+  });
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (handleKey(e.key)) e.preventDefault();
   }
 
   return (

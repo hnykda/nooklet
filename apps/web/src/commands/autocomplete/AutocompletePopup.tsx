@@ -6,10 +6,19 @@
  */
 
 import { formatJournalTitle } from "@nooklet/core";
-import { createMemo, createResource, createSignal, For, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+} from "solid-js";
 import { journalTitleFormat } from "../../data/page-title.js";
 import type { EditorHost } from "../hosts/editor-host.js";
 import type { BlockSource, BlockSummary, PageSource, PageSummary } from "../hosts/page-source.js";
+import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import { dateShortcuts } from "./dates.js";
@@ -181,28 +190,42 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     props.editor.replaceRange({ from, to, text, caretOffset: text.length });
   }
 
-  function onKeyDown(e: KeyboardEvent) {
+  /** The popup's keymap (R12 step 2). Reached two ways: from the editor's own key dispatch via
+   * `claimPopupKeys` — the normal case, since the editor keeps focus while the popup is open —
+   * and from this element's `onKeyDown` when a row has been clicked and holds focus itself. */
+  function handleKey(key: string): boolean {
     const list = rows();
-    if (e.key === "Escape") {
-      e.preventDefault();
+    if (key === "Escape") {
       props.onDismiss();
-      return;
+      return true;
     }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
+    if (key === "ArrowDown") {
       setHighlight((h) => Math.min(h + 1, Math.max(list.length - 1, 0)));
-      return;
+      return true;
     }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
+    if (key === "ArrowUp") {
       setHighlight((h) => Math.max(h - 1, 0));
-      return;
+      return true;
     }
-    if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
+    if (key === "Enter" || key === "Tab") {
       const row = list[highlight()];
       if (row) void selectRow(row);
+      return true;
     }
+    return false;
+  }
+
+  // Own the popup keys for exactly as long as there is a trigger (B-65). The release runs both
+  // when the trigger goes null and when the component unmounts, so a popup can never leave the
+  // editor believing it is still open.
+  createEffect(() => {
+    if (props.trigger === null) return;
+    const release = claimPopupKeys(handleKey);
+    onCleanup(release);
+  });
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (handleKey(e.key)) e.preventDefault();
   }
 
   return (

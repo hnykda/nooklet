@@ -226,7 +226,18 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
 
   const [triggers, setTriggers] = createSignal<Triggers>(NO_TRIGGERS);
   const [caretPos, setCaretPos] = createSignal({ top: 0, left: 0 });
+  // Escape closes a popup but leaves the text that opened it, and the next keyup re-detects that
+  // text and reopens it — so Escape did nothing you could see (part of B-65). A dismissal is
+  // therefore remembered per trigger kind by the offset it was opened at, and a re-detection at
+  // the same offset stays closed until the trigger moves or goes away: type `[[` again and it
+  // opens again, keep typing inside the old one and it stays shut, as in Logseq.
+  const dismissedAt: Partial<Record<keyof Triggers, number>> = {};
   const dismiss = (): void => {
+    const t = triggers();
+    for (const kind of ["slash", "page", "tag", "block"] as const) {
+      const match = t[kind];
+      if (match) dismissedAt[kind] = match.from;
+    }
     setTriggers(NO_TRIGGERS);
   };
 
@@ -240,12 +251,20 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
         return;
       }
       const before = sel.content.slice(0, sel.start);
-      setTriggers({
+      const next: Triggers = {
         slash: matchSlashTrigger(before),
         page: matchPageRefTrigger(before),
         tag: matchTagTrigger(before),
         block: matchBlockRefTrigger(before),
-      });
+      };
+      for (const kind of ["slash", "page", "tag", "block"] as const) {
+        const match = next[kind];
+        const at = dismissedAt[kind];
+        if (at === undefined) continue;
+        if (match && match.from === at) next[kind] = null;
+        else delete dismissedAt[kind];
+      }
+      setTriggers(next);
       const rect = window.getSelection()?.getRangeAt(0)?.getBoundingClientRect();
       if (rect && (rect.top || rect.left)) setCaretPos({ top: rect.bottom, left: rect.left });
     };

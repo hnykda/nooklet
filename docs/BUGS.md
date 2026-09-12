@@ -72,7 +72,7 @@ selection mode cannot clear it on the bounce. `focus.spec.ts` 30/30 with the fix
 
 
 ### B-65 · The `[[` / `#` / `((` / `/` popups ignore the keyboard
-**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/popups.spec.ts` (9 `fixme`)
 
 With a popup open: ArrowDown/ArrowUp do not move the highlight; Enter splits the block at the
@@ -82,6 +82,21 @@ closes as a side effect of the editor detaching. Only the mouse works. The popup
 on the popup element, which never has focus, and both `BlockTree`'s dispatch context and the
 global dispatcher hardcode `popupOpen: false`, so R12 step 2 never applies. This is the class of
 thing B-42 was reported as.
+
+**Fixed 2026-09-12.** Two halves. `commands/popup-keys.ts`: a popup claims Escape / Enter / Tab /
+ArrowUp / ArrowDown for exactly as long as it has a trigger, both dispatch contexts read
+`popupOpen` from that claim instead of a hard-coded `false`, and the editor's keymap offers the
+key to the popup before resolving it as a block command — so Enter selects a row instead of
+splitting the block and Escape closes the popup instead of entering selection mode. And in
+`CommandLayer`, a dismissal is remembered by the offset the trigger opened at: before, Escape
+closed the popup and the very next keyup re-detected the `[[` still in the text and reopened it,
+so Escape did nothing you could see. Three of the lifted tests then failed for a test-side reason
+worth recording: they read the DOM after the caret had left the token, and the live preview hides
+`[[`, `]]` and `# ` there by design — they now read the stored block. `popups.spec.ts` 40/40.
+
+This is very likely what B-42 was reported as: Enter or Escape at the popup ended with the editor
+gone, which reads as "focus keeps deselecting and I have to click again".
+
 
 ### B-66 · Delete-merge and undo change the block in the database but not in the editor
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -141,8 +156,9 @@ always empty.
 **Status:** open · **Severity:** high (phone) · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/phone.spec.ts` (2 `fixme`)
 
-Playwright's iPhone 13 descriptor on Chromium (iPhone user agent, `pointer: coarse`, no hover —
-`detectPlatformFromEnvironment` reports `platform: ios`, `mobile: true`): tap a block, type, and no
+Playwright's plain `devices["iPhone 13"]` descriptor — WebKit, iPhone user agent, `pointer:
+coarse`, no hover, so `detectPlatformFromEnvironment` reports `platform: ios`, `mobile: true` —
+and the same under Chromium emulation: tap a block, type with the editor focused, and no
 `.cmd-toolbar` ever renders. `MobileKeyboardToolbar`'s `visible` memo reads `getContext()` →
 `activeContextSnapshot()`, which before any block is edited is a constant object with no reactive
 reads, so the memo computes `false` once and is never re-run; even afterwards `editorFocused` comes
@@ -269,6 +285,14 @@ new page shows no linked references, and keeps showing none (15 s) — although
 before clicking the tag shows it. The panel fetched its backlinks before the typed ref's op had
 been pushed, and nothing re-fetches when the push lands, because `useLinkedReferences` is
 server-backed and off the local change bus (B-09's shape, one step later).
+
+### B-84 · `block.copySelection` has no implementation
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+`e2e/tests/selection.spec.ts` "Cmd/Ctrl+C copies the selection as markdown"
+
+Select a block, press Cmd/Ctrl+C: the clipboard is unchanged. The command is registered (it shows
+in the shortcuts dialog as Cmd+C) and spec R31 says the trigger is the outliner's native `copy`
+event, but `BlockTree` installs no `copy` handler and `keydown.ts` does not know the command.
 
 ## Fixed
 
