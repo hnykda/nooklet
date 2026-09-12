@@ -1,16 +1,11 @@
 import { z } from "zod";
 import type { ServerBlockNode } from "../data-api.js";
-import {
-  boundsForPageEnd,
-  getBlockRow,
-  newOrderKeys,
-  resolveInsertionBounds,
-  wouldCycle,
-} from "../data-api.js";
+import { boundsForPageEnd, newOrderKeys, resolveInsertionBounds, wouldCycle } from "../data-api.js";
+import { getBlockRow, pageWireNameById } from "../rows.js";
 import { runWithDryRun } from "./dry-run.js";
 import { renderOutlineText } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
-import { checkIfVersion, requirePage, wirePageName } from "./resolve.js";
+import { checkIfVersion, requirePage } from "./resolve.js";
 import { BlockId, IdempotencyKey, IfVersion, PageRef, Position, WriteResult } from "./schemas.js";
 
 /** Pre-`.refine()` plain object schema — see `blockUpdateInputShape`'s comment for why `batch.ts`
@@ -92,23 +87,9 @@ export const blockMove = defineOp({
       if (rejected) throw new OpError("invalid", `move rejected: ${rejected.reason}`);
 
       const [subtree] = await ctx.data.blocks.tree(input.id);
-      const pageRow = ctx.db.get<{ name: string; journal_day: number | null }>(
-        "SELECT name, journal_day FROM page WHERE id = ?",
-        [bounds.pageId],
-      );
       const outline = renderOutlineText(subtree ? [subtree as ServerBlockNode] : [], "all");
       return {
-        page: pageRow
-          ? wirePageName({
-              id: bounds.pageId,
-              name: pageRow.name,
-              key: "",
-              journalDay: pageRow.journal_day,
-              properties: {},
-              createdAt: 0,
-              updatedAt: 0,
-            })
-          : bounds.pageId,
+        page: pageWireNameById(ctx.db, bounds.pageId),
         created: [],
         updated: [input.id],
         deleted: [],

@@ -19,4 +19,5 @@ export * from "./sync/queries.js";
 export * from "./sync/schema.js";
 export * from "./sync/text-merge.js";
 export * from "./sync/types.js";
+export * from "./task-dates.js";
 export * from "./tokens.js";

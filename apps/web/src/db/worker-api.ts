@@ -39,10 +39,19 @@ export interface WorkerInitOptions {
   getToken?: () => string | undefined;
 }
 
+export interface InitResult {
+  deviceId: string;
+  /** Where the replica lives. `"memory"` means OPFS was unavailable and nothing is saved locally
+   * this session (B-43) — the UI must say so rather than letting someone type for an hour into a
+   * database that vanishes on reload. */
+  storage: "opfs" | "memory";
+  storageError?: string;
+}
+
 export interface WorkerApi {
   /** Open (or reuse) the OPFS-backed replica, apply schema if needed, start the sync client.
    * Safe to call once per worker lifetime; the client wrapper (`client.ts`) does this at startup. */
-  init(opts: WorkerInitOptions): Promise<{ deviceId: string }>;
+  init(opts: WorkerInitOptions): Promise<InitResult>;
 
   /** The ONLY way to mutate local state (editor/UI code never writes SQL directly): applies `ops`
    * and enqueues them for push, atomically. */

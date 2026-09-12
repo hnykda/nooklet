@@ -3,7 +3,7 @@
  * level marker pill's click-to-cycle behavior (BUILD item 1) and by `Cmd/Ctrl+Enter`. Pure and
  * DOM-free, same seam as `commands.ts` — see `task.test.ts`.
  */
-import { makeOp, type Op, type TaskMarker } from "@nooklet/core";
+import { formatDoneIso, makeOp, type Op, type TaskMarker } from "@nooklet/core";
 import type { BlockId, Clock, EditableBlock } from "./types.js";
 
 function op(clock: Clock, entity: BlockId, payload: Parameters<typeof makeOp>[3]): Op {
@@ -54,17 +54,13 @@ function advanceField(
   return timePart ? `${advanced} ${timePart}` : advanced;
 }
 
-function doneTimestamp(nowMs: number): string {
-  return new Date(nowMs).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
 /** R35: completing a task (any transition to `DONE`). Always stamps `done`; if the block has a
  * `repeat` property, does NOT set `marker = DONE` — instead advances `scheduled`/`deadline`
  * (whichever is present, both if both) from their original value (or from `done` if the repeater
  * has "from done") and resets `marker = TODO`, leaving the task open for its next occurrence. */
 export function completeTask(block: EditableBlock, clock: Clock, now: number = Date.now()): Op[] {
   const ops: Op[] = [
-    op(clock, block.id, { kind: "block.prop", key: "done", value: doneTimestamp(now) }),
+    op(clock, block.id, { kind: "block.prop", key: "done", value: formatDoneIso(now) }),
   ];
   const repeat = block.repeat ? parseRepeat(block.repeat) : null;
 
@@ -73,7 +69,7 @@ export function completeTask(block: EditableBlock, clock: Clock, now: number = D
     return ops;
   }
 
-  const doneDateOnly = repeat.fromDone ? doneTimestamp(now).slice(0, 10) : null;
+  const doneDateOnly = repeat.fromDone ? formatDoneIso(now).slice(0, 10) : null;
   if (block.scheduled) {
     ops.push(
       op(clock, block.id, {

@@ -6,14 +6,25 @@
  */
 import type { ApplyOpsResult, Op } from "@nooklet/core";
 import * as Comlink from "comlink";
+import { createSignal } from "solid-js";
 import { platform } from "../platform/index.js";
 import type { SyncStatus } from "../sync/types.js";
-import type { ChangeEvent, WorkerApi, WorkerInitOptions } from "./worker-api.js";
+import type { ChangeEvent, InitResult, WorkerApi, WorkerInitOptions } from "./worker-api.js";
 
 export type { ChangedTable, ChangeEvent, LifecycleKind } from "./worker-api.js";
 
 let workerApi: Comlink.Remote<WorkerApi> | undefined;
-let initPromise: Promise<{ deviceId: string }> | undefined;
+let initPromise: Promise<InitResult> | undefined;
+
+/**
+ * Where this device's replica lives, once `initDb` has resolved (`undefined` before). Read by the
+ * shell's sync indicator so an in-memory session says "not saved" where "synced" would otherwise
+ * be — the one place someone glances at to know their notes are safe.
+ */
+const [storageState, setStorageState] = createSignal<
+  { storage: InitResult["storage"]; error?: string } | undefined
+>(undefined);
+export const storageInfo = storageState;
 
 function getWorker(): Comlink.Remote<WorkerApi> {
   if (!workerApi) {
@@ -26,10 +37,13 @@ function getWorker(): Comlink.Remote<WorkerApi> {
 /** Start the DB worker, bootstrap/pull as needed, and wire platform lifecycle events to the sync
  * loop (ADR 005: "pending ops are flushed on pause/resume/online"). Call once at app startup
  * (`main.tsx`); safe to call again (returns the same promise). */
-export function initDb(opts: WorkerInitOptions = {}): Promise<{ deviceId: string }> {
+export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
   if (!initPromise) {
     const api = getWorker();
-    initPromise = api.init(opts);
+    initPromise = api.init(opts).then((r) => {
+      setStorageState({ storage: r.storage, error: r.storageError });
+      return r;
+    });
     for (const event of ["online", "offline", "visible", "hidden", "pause", "resume"] as const) {
       platform.lifecycle.on(event, () => void api.notifyLifecycle(event));
     }

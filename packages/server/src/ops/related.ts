@@ -6,13 +6,13 @@
 
 import { isId } from "@nooklet/core";
 import { z } from "zod";
-import { isoFromJournalDay } from "../data-api.js";
 import {
   checkSemanticAvailability,
   distanceToScore,
   knnPointLookup,
   knnQuery,
 } from "../embeddings/index.js";
+import { wirePageNameOf } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
 import { resolvePageRef, wirePageName } from "./resolve.js";
 import { BlockId, Limit, PageRef } from "./schemas.js";
@@ -141,7 +141,7 @@ export const relatedFind = defineOp({
           deleted_at: number | null;
         }>("SELECT id, name, journal_day, deleted_at FROM page WHERE id = ?", [row.page_id]);
         if (!page || page.deleted_at !== null) continue;
-        const name = page.journal_day !== null ? isoFromJournalDay(page.journal_day) : page.name;
+        const name = wirePageNameOf(page);
         items.push({
           kind: "page",
           id: page.id,
@@ -163,8 +163,7 @@ export const relatedFind = defineOp({
           [b.page_id],
         );
         if (!page) continue;
-        const pageName =
-          page.journal_day !== null ? isoFromJournalDay(page.journal_day) : page.name;
+        const pageName = wirePageNameOf(page);
         const snippet = b.content.length > 200 ? `${b.content.slice(0, 200)}…` : b.content;
         items.push({
           kind: "block",

@@ -24,15 +24,16 @@
  *    into thinking an asset upload was undone.
  */
 
-import type { Op, SqlDriver } from "@nooklet/core";
+import type { Op } from "@nooklet/core";
 import { z } from "zod";
 import {
   type BlockChangeSnapshot,
   type PageChangeSnapshot,
+  pageWireNameById,
   snapshotBlock,
   snapshotPage,
-} from "../apply-ops.js";
-import { isoFromJournalDay } from "../data-api.js";
+  wirePageNameOf,
+} from "../rows.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { currentHeadSeq } from "./resolve.js";
@@ -49,15 +50,6 @@ interface ChangeRow {
   entity_type: string;
   entity_id: string;
   before_json: string | null;
-}
-
-function pageWireNameForId(driver: SqlDriver, pageId: string): string {
-  const row = driver.get<{ name: string; journal_day: number | null }>(
-    "SELECT name, journal_day FROM page WHERE id = ?",
-    [pageId],
-  );
-  if (!row) return pageId;
-  return row.journal_day !== null ? isoFromJournalDay(row.journal_day) : row.name;
 }
 
 function summarizePages(touched: ReadonlySet<string>): string {
@@ -145,9 +137,7 @@ export const batchUndo = defineOp({
           const pageId = row.entity_id;
           const current = snapshotPage(ctx.db, pageId);
           if (!current) continue; // pages are never hard-deleted; defensive only
-          touchedPages.add(
-            current.journal_day !== null ? isoFromJournalDay(current.journal_day) : current.name,
-          );
+          touchedPages.add(wirePageNameOf(current));
           if (row.before_json === null) {
             ops.push(ctx.mintOp(pageId, { kind: "page.delete", deletedAt: now }));
             removed.push(pageId);
@@ -176,7 +166,7 @@ export const batchUndo = defineOp({
           const blockId = row.entity_id;
           const current = snapshotBlock(ctx.db, blockId);
           if (!current) continue; // blocks are never hard-deleted; defensive only
-          touchedPages.add(pageWireNameForId(ctx.db, current.place.pageId));
+          touchedPages.add(pageWireNameById(ctx.db, current.place.pageId));
           if (row.before_json === null) {
             ops.push(ctx.mintOp(blockId, { kind: "block.delete", deletedAt: now }));
             removed.push(blockId);
@@ -184,7 +174,7 @@ export const batchUndo = defineOp({
             continue;
           }
           const before = JSON.parse(row.before_json) as BlockChangeSnapshot;
-          touchedPages.add(pageWireNameForId(ctx.db, before.place.pageId));
+          touchedPages.add(pageWireNameById(ctx.db, before.place.pageId));
           ops.push(ctx.mintOp(blockId, { kind: "block.place", place: before.place }));
           ops.push(ctx.mintOp(blockId, { kind: "block.text", content: before.content }));
           ops.push(

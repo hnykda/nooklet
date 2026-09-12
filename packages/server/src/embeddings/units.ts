@@ -5,7 +5,7 @@
  */
 
 import type { SqlDriver } from "@nooklet/core";
-import { isoFromJournalDay } from "../data-api.js";
+import { wirePageNameOf } from "../rows.js";
 import {
   cleanBlockText,
   firstLine,
@@ -27,7 +27,7 @@ function pageTitle(driver: SqlDriver, pageId: string): { name: string; key: stri
     [pageId],
   );
   if (!p) return undefined;
-  return { name: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : p.name, key: p.key };
+  return { name: wirePageNameOf(p), key: p.key };
 }
 
 /** Page title, then ancestor blocks' first lines, oldest (nearest the page root) to nearest-parent. */
@@ -113,7 +113,7 @@ export function buildPageUnit(driver: SqlDriver, pageId: string): UnitText | und
     deleted_at: number | null;
   }>("SELECT id, name, key, journal_day, deleted_at FROM page WHERE id = ?", [pageId]);
   if (!page || page.deleted_at !== null) return undefined;
-  const title = page.journal_day !== null ? isoFromJournalDay(page.journal_day) : page.name;
+  const title = wirePageNameOf(page);
   const topLevel = driver.all<{ content: string }>(
     "SELECT content FROM block WHERE page_id = ? AND parent_id IS NULL AND deleted_at IS NULL ORDER BY order_key",
     [pageId],

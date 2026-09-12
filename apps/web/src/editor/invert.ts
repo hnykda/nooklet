@@ -18,16 +18,12 @@
  *    back out of `treeBefore` (each is a last-writer-wins field, so "set it back to what it was"
  *    is always a valid, order-independent op).
  */
-import type { OpPayload } from "@nooklet/core";
+import { formatDoneIso, type OpPayload } from "@nooklet/core";
 import type { EditableBlock, EditorTree } from "./types.js";
 
 export interface OpRecipe {
   entity: string;
   payload: OpPayload;
-}
-
-function doneTimestamp(epochMs: number): string {
-  return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 /** The `block.prop` value `key` held on `block` (used as the inverse's `value`). Every reserved
@@ -52,7 +48,7 @@ function propValueBefore(block: EditableBlock | undefined, key: string): string 
     case "repeat":
       return block.repeat;
     case "done":
-      return block.doneAt !== null ? doneTimestamp(block.doneAt) : null;
+      return block.doneAt !== null ? formatDoneIso(block.doneAt) : null;
     default:
       return null;
   }

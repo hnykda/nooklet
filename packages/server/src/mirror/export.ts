@@ -8,34 +8,29 @@
  * `mirror_file` (`docs/spec/sql-schema.md` rule 23) so a future file watcher can tell its own
  * writes apart from a real external edit (`isOwnWrite`, below).
  *
- * Deliberately independent of `packages/server/src/data-api.ts` (concurrently developed
- * elsewhere): this file queries `SqlDriver` directly, the same pattern `apply-ops.ts`'s own
- * internal queries and `apply-ops.test.ts`'s fixtures use.
+ * Queries `SqlDriver` directly rather than going through `data-api.ts`: it needs a whole page's
+ * blocks and properties in three queries, not one round trip per block.
  *
  * Reserved block columns (`scheduled_day`/`scheduled_time`, `deadline_day`/`deadline_time`,
  * `repeat`, `done_at` — sql-schema.md rule 10, ADR 011) were pulled OUT of ordinary `key:: value`
  * property lines and into dedicated columns by `applyOps`/`serverApplyOps` on write. The mirror
  * must reconstitute them as ordinary property lines to match the canonical grammar and
  * `outline.ts`'s importer (`parseOutline` has no notion of these columns — it only ever produces
- * a plain `properties` bag):
+ * a plain `properties` bag). `@nooklet/core`'s `formatDayTime`/`formatDoneIso` produce exactly the
+ * strings the reducer's `SCHEDULED_RE`/`DONE_RE` accept on the way back in.
  *
- *   - `scheduled`/`deadline`: `scheduled_day` (`INTEGER YYYYMMDD`) + `scheduled_time`
- *     (`TEXT 'HH:MM'`, nullable) -> `"YYYY-MM-DD"` or `"YYYY-MM-DD HH:MM"`.
- *   - `repeat`: opaque `TEXT`, copied through verbatim.
- *   - `done`: `done_at` (`INTEGER` epoch ms) -> full ISO 8601 UTC with seconds, no milliseconds
- *     (`YYYY-MM-DDTHH:MM:SSZ`), matching the exact string shape core's `sync/apply-ops.ts`
- *     `DONE_RE` requires on the way back in.
- *
- * TODO (future, separate piece, NOT this file's job): a live `chokidar` watcher that turns
- * external file edits back into ops, using `isOwnWrite` below to skip echoes of our own writes,
- * plus whatever debounce (ADR 002: ~500ms after a write) decides WHEN to call `exportPage`. Both
- * are caller concerns; this file only provides the render/write/hash primitives.
+ * Not here: a live `chokidar` watcher that turns external file edits back into ops, using
+ * `isOwnWrite` below to skip echoes of our own writes, plus whatever debounce (ADR 002: ~500ms
+ * after a write) decides WHEN to call `exportPage`. Both are caller concerns; this file only
+ * provides the render/write/hash primitives.
  */
 
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  formatDayTime,
+  formatDoneIso,
   journalDayToFileName,
   type OutlineNode,
   type ParsedPage,
@@ -91,18 +86,6 @@ interface BlockRow {
   deadline_time: string | null;
   repeat: string | null;
   done_at: number | null;
-}
-
-/** `YYYYMMDD` + optional `HH:MM` -> `YYYY-MM-DD` / `YYYY-MM-DD HH:MM` (ADR 011 wire format). */
-function formatDayTime(day: number, time: string | null): string {
-  const s = String(day);
-  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  return time ? `${iso} ${time}` : iso;
-}
-
-/** Epoch ms -> `YYYY-MM-DDTHH:MM:SSZ` (full ISO 8601 UTC, seconds precision, no milliseconds). */
-function formatDoneIso(epochMs: number): string {
-  return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 function sha256Hex(data: string | Buffer): string {

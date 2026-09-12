@@ -40,5 +40,12 @@ export default defineConfig({
     video: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // WebKit runs ONE spec: the storage fallback (B-43). Its build has no OPFS inside workers, so
+    // the whole suite would run against an in-memory replica — a different app from the one
+    // shipped — and the Mac app's WKWebView, which does have OPFS, is what WebKit coverage would
+    // be for anyway. This keeps the engine exercised without pretending it is a faithful stand-in.
+    { name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /storage\.spec\.ts/ },
+  ],
 });

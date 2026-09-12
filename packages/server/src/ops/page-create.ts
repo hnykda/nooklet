@@ -1,6 +1,6 @@
-import { parseJournalTitle } from "@nooklet/core";
+import { isoJournalName, parseJournalTitle } from "@nooklet/core";
 import { z } from "zod";
-import { boundsForPageEnd, isoFromJournalDay, journalDayFromWire } from "../data-api.js";
+import { boundsForPageEnd, journalDayFromWire } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
 import { prepareMarkdownInsert } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
@@ -48,7 +48,7 @@ export const pageCreate = defineOp({
         throw new OpError(
           "invalid",
           `"${input.name}" is a journal day, and page.create cannot target one`,
-          `use page_append with page: "${isoFromJournalDay(asJournalDay)}" instead`,
+          `use page_append with page: "${isoJournalName(asJournalDay)}" instead`,
         );
       }
       const existing = await ctx.data.pages.get({ name: input.name });

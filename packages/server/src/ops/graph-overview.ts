@@ -1,6 +1,5 @@
-import { todayJournalDay } from "@nooklet/core";
+import { isoJournalName, todayJournalDay } from "@nooklet/core";
 import { z } from "zod";
-import { isoFromJournalDay } from "../data-api.js";
 import { defineOp, type OriginKind } from "./registry.js";
 import { OriginEnum } from "./schemas.js";
 
@@ -72,7 +71,7 @@ export const graphOverview = defineOp({
         [r.id],
       );
       return {
-        date: isoFromJournalDay(r.journal_day),
+        date: isoJournalName(r.journal_day),
         first_line: (first?.content ?? "").split("\n")[0] ?? "",
         block_count: count?.n ?? 0,
       };
@@ -133,7 +132,7 @@ export const graphOverview = defineOp({
     const seq = driver.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes")?.n ?? 0;
 
     return {
-      today: isoFromJournalDay(todayJournalDay()),
+      today: isoJournalName(todayJournalDay()),
       timezone: ctx.config.timezone,
       counts: { pages, journals, blocks },
       recent_journals: recentJournals,

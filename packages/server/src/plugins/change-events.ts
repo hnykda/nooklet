@@ -21,7 +21,14 @@ import type { Block, BlockId, Op, PageId } from "@nooklet/core";
 import { normalizePageName } from "@nooklet/core";
 import type { Origin, ServerChangeEvents } from "@nooklet/plugin-api";
 import type { ServerContext } from "../apply-ops.js";
-import { getBlockRowAny, type PageRow, rowToBlock, rowToPage } from "../data-api.js";
+import {
+  type BlockChangeSnapshot,
+  getBlockRowAny,
+  type PageChangeSnapshot,
+  type PageRow,
+  rowToBlock,
+  rowToPage,
+} from "../rows.js";
 import { onCommit } from "../sync/realtime.js";
 
 type EventName = keyof ServerChangeEvents;
@@ -160,26 +167,14 @@ function opsFrom(ctx: ServerContext, opIds: string[]): Op[] {
     }));
 }
 
-/** Fields `BlockChangeSnapshot` (`../apply-ops.ts`) carries, reconstructed into a full `Block` for
- * event payloads. `createdAt` is immutable so the live row's value is always correct even for a
- * snapshot taken moments ago; `updatedAt` for a "before" snapshot is approximated from the
- * previous `changes` row for this entity (its `created_at`) since snapshots don't carry their own
- * timestamp — good enough for plugins, which look at content/property/place diffs, not timestamps. */
-interface BlockSnapshotJson {
-  place: { pageId: string; parentId: string | null; order: string };
-  content: string;
-  marker: string | null;
-  priority: string | null;
-  collapsed: boolean;
-  properties: Record<string, string>;
-  deleted_at: number | null;
-}
-interface PageSnapshotJson {
-  name: string;
-  journal_day: number | null;
-  properties: Record<string, string>;
-  deleted_at: number | null;
-}
+/** A "before" snapshot (`../rows.ts`'s `BlockChangeSnapshot`/`PageChangeSnapshot`, as stored in
+ * `changes.before_json`) reconstructed into a full `Block`/`Page` for event payloads. `createdAt`
+ * is immutable so the live row's value is always correct even for a snapshot taken moments ago;
+ * `updatedAt` for a "before" snapshot is approximated from the previous `changes` row for this
+ * entity (its `created_at`) since snapshots don't carry their own timestamp — good enough for
+ * plugins, which look at content/property/place diffs, not timestamps. */
+type BlockSnapshotJson = BlockChangeSnapshot;
+type PageSnapshotJson = PageChangeSnapshot;
 
 function previousChangeTimestamp(
   ctx: ServerContext,
@@ -194,8 +189,8 @@ function previousChangeTimestamp(
   return row?.created_at;
 }
 
-/** Builds a `Block` directly from a `BlockChangeSnapshot` (never via `rowToBlock`/`block_prop`,
- * which would read the CURRENT, post-write properties — a "before" object must not leak those). */
+/** Builds a `Block` directly from the snapshot (never via `rowToBlock`/`block_prop`, which would
+ * read the CURRENT, post-write properties — a "before" object must not leak those). */
 function blockFromSnapshot(
   id: BlockId,
   snap: BlockSnapshotJson,

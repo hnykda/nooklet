@@ -1,6 +1,6 @@
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
-import { isoFromJournalDay } from "../data-api.js";
+import { pageWireNameById } from "../rows.js";
 import { defineOp } from "./registry.js";
 import { resolvePageRef, wirePageName } from "./resolve.js";
 import { BlockId, Cursor, Limit, PageRef } from "./schemas.js";
@@ -128,25 +128,18 @@ export const pageBacklinks = defineOp({
     }
 
     const hasMore = linkedRows.length > offset + input.limit;
-    const pageOf = (pageId: string): string => {
-      const p = driver.get<{ name: string; journal_day: number | null }>(
-        "SELECT name, journal_day FROM page WHERE id = ?",
-        [pageId],
-      );
-      return p ? (p.journal_day !== null ? isoFromJournalDay(p.journal_day) : p.name) : pageId;
-    };
 
     return {
       target: targetWire,
       linked: linkedRows.slice(offset, offset + input.limit).map((r) => ({
         id: r.block_id,
-        page: pageOf(r.page_id),
+        page: pageWireNameById(driver, r.page_id),
         text: (r.content.split("\n")[0] ?? "").trim(),
         updated_at: new Date(r.updated_at).toISOString(),
       })),
       unlinked: unlinkedRows.map((r) => ({
         id: r.block_id,
-        page: pageOf(r.page_id),
+        page: pageWireNameById(driver, r.page_id),
         text: (r.content.split("\n")[0] ?? "").trim(),
       })),
       cursor: hasMore ? Buffer.from(String(offset + input.limit)).toString("base64") : undefined,

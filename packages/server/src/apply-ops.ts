@@ -22,10 +22,15 @@ import {
   makeOp,
   newId,
   normalizePageName,
-  tokenizeContent,
 } from "@nooklet/core";
 import { rebuildPageTags } from "./page-tags.js";
 import { runBeforeWrite } from "./plugins/before-write.js";
+import {
+  type BlockChangeSnapshot,
+  type PageChangeSnapshot,
+  snapshotBlock,
+  snapshotPage,
+} from "./rows.js";
 import { notifyCommit } from "./sync/realtime.js";
 
 /** Reserved device id for ops the server itself authors (corrective moves). Never a real device. */
@@ -252,11 +257,6 @@ function rebuildRefRows(driver: SqlDriver, blockId: string, pageId: string, cont
       [blockId, pageId, dstPage?.key ?? null, target?.page_id ?? null, blockRefId],
     );
   }
-  // tokenizeContent also surfaces embed targets that extractRefs's simpler scan may not fully
-  // resolve to a block id (e.g. {{embed ((id))}}); reuse the same targets already collected above
-  // via extractRefs's blockRefs/pageRefs (per REF-1, an embed's ((id))/[[page]] argument already
-  // matches the ((...))/[[...]] token rules, so no separate embed-specific extraction is needed).
-  void tokenizeContent; // reserved for a future richer embed/kind distinction; not needed for v1 refs.
 }
 
 /**
@@ -366,109 +366,6 @@ function recordChanges(
       ],
     );
   }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Change-audit snapshots (ADR 013): a full pre/post image per touched page/block, cheap (one row
-// query + one small property-rows query per entity), used only by `recordChanges` above and by
-// `batch.undo` (`./ops/batch-undo.ts`) to reconstruct compensating ops. Kept local to this file
-// (small duplication of `data-api.ts`'s `formatDayTime`/`formatDoneIso`/property-flattening logic)
-// rather than imported, since `data-api.ts` itself imports from this file — importing back would
-// be circular.
-// ---------------------------------------------------------------------------------------------
-
-export interface PageChangeSnapshot {
-  name: string;
-  journal_day: number | null;
-  properties: Record<string, string>;
-  deleted_at: number | null;
-}
-
-export interface BlockChangeSnapshot {
-  place: { pageId: string; parentId: string | null; order: string };
-  content: string;
-  marker: string | null;
-  priority: string | null;
-  collapsed: boolean;
-  properties: Record<string, string>;
-  deleted_at: number | null;
-}
-
-/** `YYYYMMDD` + optional `HH:MM` -> `YYYY-MM-DD` / `YYYY-MM-DD HH:MM` (ADR 011 wire format) —
- *  duplicated from `data-api.ts`'s `formatDayTime` to avoid a circular import (see header above). */
-function snapshotFormatDayTime(day: number, time: string | null): string {
-  const s = String(day);
-  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  return time ? `${iso} ${time}` : iso;
-}
-
-/** Epoch ms -> `YYYY-MM-DDTHH:MM:SSZ`, duplicated from `data-api.ts`'s `formatDoneIso` (same
- *  circular-import reason as `snapshotFormatDayTime` above). */
-function snapshotFormatDoneIso(epochMs: number): string {
-  return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
-export function snapshotPage(driver: SqlDriver, id: string): PageChangeSnapshot | null {
-  const row = driver.get<{ name: string; journal_day: number | null; deleted_at: number | null }>(
-    "SELECT name, journal_day, deleted_at FROM page WHERE id = ?",
-    [id],
-  );
-  if (!row) return null;
-  const propRows = driver.all<{ key: string; value: string | null }>(
-    "SELECT key, value FROM page_prop WHERE page_id = ? AND value IS NOT NULL",
-    [id],
-  );
-  const properties: Record<string, string> = {};
-  for (const p of propRows) if (p.value !== null) properties[p.key] = p.value;
-  return { name: row.name, journal_day: row.journal_day, properties, deleted_at: row.deleted_at };
-}
-
-export function snapshotBlock(driver: SqlDriver, id: string): BlockChangeSnapshot | null {
-  const row = driver.get<{
-    page_id: string;
-    parent_id: string | null;
-    order_key: string;
-    content: string;
-    marker: string | null;
-    priority: string | null;
-    collapsed: number;
-    scheduled_day: number | null;
-    scheduled_time: string | null;
-    deadline_day: number | null;
-    deadline_time: string | null;
-    repeat: string | null;
-    done_at: number | null;
-    deleted_at: number | null;
-  }>(
-    `SELECT page_id, parent_id, order_key, content, marker, priority, collapsed,
-            scheduled_day, scheduled_time, deadline_day, deadline_time, repeat, done_at, deleted_at
-     FROM block WHERE id = ?`,
-    [id],
-  );
-  if (!row) return null;
-  const propRows = driver.all<{ key: string; value: string | null }>(
-    "SELECT key, value FROM block_prop WHERE block_id = ? AND value IS NOT NULL",
-    [id],
-  );
-  const properties: Record<string, string> = {};
-  for (const p of propRows) if (p.value !== null) properties[p.key] = p.value;
-  if (row.scheduled_day !== null) {
-    properties.scheduled = snapshotFormatDayTime(row.scheduled_day, row.scheduled_time);
-  }
-  if (row.deadline_day !== null) {
-    properties.deadline = snapshotFormatDayTime(row.deadline_day, row.deadline_time);
-  }
-  if (row.repeat !== null) properties.repeat = row.repeat;
-  if (row.done_at !== null) properties.done = snapshotFormatDoneIso(row.done_at);
-  return {
-    place: { pageId: row.page_id, parentId: row.parent_id, order: row.order_key },
-    content: row.content,
-    marker: row.marker,
-    priority: row.priority,
-    collapsed: row.collapsed !== 0,
-    properties,
-    deleted_at: row.deleted_at,
-  };
 }
 
 /** Snapshot every entity `ops` targets (page.* -> page id, block.* -> block id), deduped. Called

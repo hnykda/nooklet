@@ -1,6 +1,8 @@
+import type { SqlDriver } from "@nooklet/core";
 import { z } from "zod";
+import { pageWireNameById } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
-import { currentHeadSeq, requirePage, wirePageName } from "./resolve.js";
+import { currentHeadSeq, requirePage } from "./resolve.js";
 import { Limit, OriginEnum } from "./schemas.js";
 
 interface ChangeRow {
@@ -25,7 +27,7 @@ function firstLine(content: string): string {
   return (content.split("\n")[0] ?? "").trim();
 }
 
-function opsForRow(driver: import("@nooklet/core").SqlDriver, opIdsJson: string): OpRow[] {
+function opsForRow(driver: SqlDriver, opIdsJson: string): OpRow[] {
   let ids: string[] = [];
   try {
     ids = JSON.parse(opIdsJson) as string[];
@@ -190,43 +192,13 @@ export const changesSince = defineOp({
       if (r.entity_type === "asset") {
         pageWire = ""; // assets aren't attached to a page
       } else if (r.entity_type === "page") {
-        const p = driver.get<{ name: string; journal_day: number | null }>(
-          "SELECT name, journal_day FROM page WHERE id = ?",
-          [r.entity_id],
-        );
-        pageWire = p
-          ? wirePageName({
-              id: r.entity_id,
-              name: p.name,
-              key: "",
-              journalDay: p.journal_day,
-              properties: {},
-              createdAt: 0,
-              updatedAt: 0,
-            })
-          : r.entity_id;
+        pageWire = pageWireNameById(driver, r.entity_id);
       } else {
         blockId = r.entity_id;
         const b = driver.get<{ page_id: string }>("SELECT page_id FROM block WHERE id = ?", [
           r.entity_id,
         ]);
-        const p = b
-          ? driver.get<{ name: string; journal_day: number | null }>(
-              "SELECT name, journal_day FROM page WHERE id = ?",
-              [b.page_id],
-            )
-          : undefined;
-        pageWire = p
-          ? wirePageName({
-              id: b?.page_id ?? "",
-              name: p.name,
-              key: "",
-              journalDay: p.journal_day,
-              properties: {},
-              createdAt: 0,
-              updatedAt: 0,
-            })
-          : (b?.page_id ?? "");
+        pageWire = b ? pageWireNameById(driver, b.page_id) : "";
       }
       return {
         seq: r.seq,

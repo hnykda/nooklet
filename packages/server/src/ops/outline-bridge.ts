@@ -21,12 +21,8 @@
 
 import type { Op, OpPayload, OutlineNode, ParsedPage, SqlDriver } from "@nooklet/core";
 import { isId, newId, parseOutline, serializeOutline } from "@nooklet/core";
-import {
-  getBlockRowAny,
-  newOrderKeys,
-  type OrderBounds,
-  type ServerBlockNode,
-} from "../data-api.js";
+import { newOrderKeys, type OrderBounds, type ServerBlockNode } from "../data-api.js";
+import { getBlockRowAny } from "../rows.js";
 import { type OpContext, OpError } from "./registry.js";
 import type { BlockNodeT } from "./schemas.js";
 

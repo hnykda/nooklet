@@ -21,6 +21,7 @@
  */
 import {
   type BlockPlace,
+  formatDoneIso,
   makeOp,
   newId,
   type Op,
@@ -318,10 +319,6 @@ export function setCollapsed(id: BlockId, collapsed: boolean, clock: Clock): Op 
 // R32 — duplicate
 // -------------------------------------------------------------------------------------------
 
-function doneTimestamp(epochMs: number): string {
-  return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
 /** `block.duplicate`: a deep copy of `id`'s subtree as its own next sibling, with fresh ids for
  * every copied block (never reusing an id, R32) and every task/schedule field copied verbatim
  * (duplication does not clear task state). Focus moves to the copy's top block at the original
@@ -360,7 +357,7 @@ export function duplicateBlock(
       ops.push(op(clock, nid, { kind: "block.prop", key: "repeat", value: src.repeat }));
     if (src.doneAt !== null) {
       ops.push(
-        op(clock, nid, { kind: "block.prop", key: "done", value: doneTimestamp(src.doneAt) }),
+        op(clock, nid, { kind: "block.prop", key: "done", value: formatDoneIso(src.doneAt) }),
       );
     }
     const kids = childrenIds(tree, srcId);

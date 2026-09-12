@@ -1,6 +1,6 @@
-import type { Op } from "@nooklet/core";
+import { formatDoneIso, type Op } from "@nooklet/core";
 import { z } from "zod";
-import { getBlockRow, isoFromJournalDay } from "../data-api.js";
+import { getBlockRow, pageWireNameById } from "../rows.js";
 import { runWithDryRun } from "./dry-run.js";
 import {
   parseSingleBlockGrammar,
@@ -140,7 +140,7 @@ export const blockUpdate = defineOp({
             ctx.mintOp(input.id, {
               kind: "block.prop",
               key: "done",
-              value: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+              value: formatDoneIso(Date.now()),
             }),
           );
         } else if (before.marker === "DONE") {
@@ -166,18 +166,8 @@ export const blockUpdate = defineOp({
           children: [],
         },
       ]);
-      const pageRow = ctx.db.get<{ name: string; journal_day: number | null }>(
-        "SELECT name, journal_day FROM page WHERE id = ?",
-        [row.page_id],
-      );
-      const pageWire = pageRow
-        ? pageRow.journal_day !== null
-          ? isoFromJournalDay(pageRow.journal_day)
-          : pageRow.name
-        : row.page_id;
-
       return {
-        page: pageWire,
+        page: pageWireNameById(ctx.db, row.page_id),
         created: [],
         updated: [input.id],
         deleted: [],

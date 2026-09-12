@@ -33,7 +33,7 @@
  * all three are called out where they bite in `render/tokens.tsx`/`numbering.ts`.
  */
 import type { EditorView } from "@codemirror/view";
-import { makeOp, type Op } from "@nooklet/core";
+import { formatDayTime, makeOp, type Op } from "@nooklet/core";
 import "./editor.css";
 import {
   createEffect,
@@ -90,20 +90,11 @@ interface SelectionState {
   ids: BlockId[];
 }
 
-function dayToIso(day: number): string {
-  const s = String(day).padStart(8, "0");
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-}
-
 function toEditableBlock(row: BlockTreeNode): EditableBlock {
   const scheduled =
-    row.scheduledDay !== null
-      ? dayToIso(row.scheduledDay) + (row.scheduledTime ? ` ${row.scheduledTime}` : "")
-      : null;
+    row.scheduledDay !== null ? formatDayTime(row.scheduledDay, row.scheduledTime) : null;
   const deadline =
-    row.deadlineDay !== null
-      ? dayToIso(row.deadlineDay) + (row.deadlineTime ? ` ${row.deadlineTime}` : "")
-      : null;
+    row.deadlineDay !== null ? formatDayTime(row.deadlineDay, row.deadlineTime) : null;
   return {
     id: row.id,
     parentId: row.parentId,

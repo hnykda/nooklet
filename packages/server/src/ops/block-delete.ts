@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { getBlockRow, type ServerBlockNode } from "../data-api.js";
+import type { ServerBlockNode } from "../data-api.js";
+import { getBlockRow, pageWireNameById } from "../rows.js";
 import { runWithDryRun } from "./dry-run.js";
 import { renderOutlineText } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
@@ -69,11 +70,8 @@ export const blockDelete = defineOp({
         ids.map((id) => ctx.mintOp(id, { kind: "block.delete", deletedAt: now })),
       );
 
-      const pageRow = ctx.db.get<{ name: string }>("SELECT name FROM page WHERE id = ?", [
-        row.page_id,
-      ]);
       return {
-        page: pageRow?.name ?? row.page_id,
+        page: pageWireNameById(ctx.db, row.page_id),
         created: [],
         updated: [],
         deleted: ids,

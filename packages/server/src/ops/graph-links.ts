@@ -17,7 +17,7 @@
  */
 
 import { z } from "zod";
-import { isoFromJournalDay } from "../data-api.js";
+import { wirePageNameOf } from "../rows.js";
 import { defineOp } from "./registry.js";
 
 /** Nodes returned at most. Not `schemas.ts`'s shared `Limit` (max 500): a graph is useless cut to
@@ -135,7 +135,7 @@ export const graphLinks = defineOp({
     const ranked = pageRows
       .map((p) => ({
         id: p.id,
-        name: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : p.name,
+        name: wirePageNameOf(p),
         is_journal: p.journal_day !== null,
         ref_count: degree.get(p.id) ?? 0,
       }))

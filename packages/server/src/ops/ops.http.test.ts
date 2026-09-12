@@ -466,6 +466,23 @@ describe("page.append page resolution", () => {
     expect(json.text).toContain("human-shaped date");
   });
 
+  it("rejects a date-shaped ref that is not a real day instead of minting a page for it", async () => {
+    // `2026-13-45` matched the wire-date regex, became journal day 20261345, and page.append
+    // created a page under that name — a typo turned into a permanent shadow journal.
+    const s2 = makeTestServer();
+    for (const bad of ["2026-13-45", "2026-02-30"]) {
+      const { status, json } = await post(s2.app, "/api/v1/page.append", s2.writeToken, {
+        page: bad,
+        markdown: "- x",
+      });
+      expect(status, bad).toBe(400);
+      expect(json.error.code).toBe("invalid");
+      expect(json.error.message).toMatch(/not a valid calendar day/);
+    }
+    const list = await post(s2.app, "/api/v1/page.list", s2.writeToken, { kind: "all" });
+    expect(list.json.items).toHaveLength(0);
+  });
+
   it("prefers an existing page over reading its name as a date", async () => {
     // A page named "11.12.2024" cannot be made through `page.create` (B-23 reads any parseable
     // date as a journal), but a graph imported from Logseq can contain one. When it does, the

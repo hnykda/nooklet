@@ -1,21 +1,21 @@
 /**
  * Server-side `DataApi` (`docs/spec/api-and-plugin-types.md` §3): the isomorphic block/page/
- * query/transact facade op handlers and (eventually) plugins are written against. `@nooklet/plugin-
- * api` does not exist yet in this repo (only `packages/core` and `packages/server` do), so the
- * `BlockNode`/`PropertyPatch`/`BlocksApi`/`PagesApi`/`QueryApi`/`DataApi` interfaces that spec
- * places in `packages/plugin-api/src/data.ts` are defined here instead, byte-compatible with the
- * spec's shapes; move them verbatim into `@nooklet/plugin-api` once that package exists.
+ * query/transact facade that op handlers and plugins (`ServerPluginContext.data`) are written
+ * against. The interfaces here are the server's own copy of the shapes `@nooklet/plugin-api`
+ * publishes in `data.ts`; `packages/plugin-api/src/assignability.test.ts` keeps the two in step.
  *
  * Every write method goes through `serverApplyOps` (ADR 003/008: "every write is an op") — never
  * a raw INSERT/UPDATE of `page`/`block`/`block_prop`/`page_prop`. Reads query the state tables
  * directly (`ctx.db` in op handlers is the same escape hatch for cross-table queries this file
- * itself does not expose, e.g. `search`, `page.backlinks`).
+ * itself does not expose, e.g. `search`, `page.backlinks`). Row shapes and the row → `Page`/`Block`
+ * mappers live in `./rows.ts`, shared with `apply-ops.ts`.
  */
 
 import {
   type Block,
   type BlockId,
   isoJournalName,
+  isValidJournalDay,
   makeOp,
   namespaceParent,
   newId,
@@ -31,6 +31,15 @@ import {
   todayJournalDay,
 } from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
+import {
+  BLOCK_COLUMNS,
+  type BlockRow,
+  getBlockRow,
+  getPageRow,
+  type PageRow,
+  rowToBlock,
+  rowToPage,
+} from "./rows.js";
 
 // ---------------------------------------------------------------------------------------------
 // Shared types (api-and-plugin-types.md §3)
@@ -125,131 +134,6 @@ export interface DataApi {
 export interface WriteMeta {
   origin: "user" | "api" | "mcp" | "sync" | "plugin" | "import" | "mirror" | "system";
   actor: string;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Row shapes
-// ---------------------------------------------------------------------------------------------
-
-interface PageRow {
-  id: string;
-  name: string;
-  key: string;
-  journal_day: number | null;
-  created_at: number;
-  updated_at: number;
-  deleted_at: number | null;
-}
-
-interface BlockRow {
-  id: string;
-  page_id: string;
-  parent_id: string | null;
-  order_key: string;
-  content: string;
-  marker: Block["marker"];
-  priority: Block["priority"];
-  collapsed: number;
-  scheduled_day: number | null;
-  scheduled_time: string | null;
-  deadline_day: number | null;
-  deadline_time: string | null;
-  repeat: string | null;
-  done_at: number | null;
-  created_at: number;
-  updated_at: number;
-  deleted_at: number | null;
-}
-
-const BLOCK_COLUMNS =
-  "id, page_id, parent_id, order_key, content, marker, priority, collapsed, " +
-  "scheduled_day, scheduled_time, deadline_day, deadline_time, repeat, done_at, " +
-  "created_at, updated_at, deleted_at";
-
-/** `YYYYMMDD` + optional `HH:MM` -> `YYYY-MM-DD` / `YYYY-MM-DD HH:MM` (ADR 011 wire format). */
-export function formatDayTime(day: number, time: string | null): string {
-  const s = String(day);
-  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  return time ? `${iso} ${time}` : iso;
-}
-
-/** Epoch ms -> `YYYY-MM-DDTHH:MM:SSZ` (full ISO 8601 UTC, seconds precision, no milliseconds). */
-export function formatDoneIso(epochMs: number): string {
-  return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
-/**
- * `YYYYMMDD` -> `YYYY-MM-DD` (rule 18: journal pages are addressed by ISO date on the wire).
- *
- * Since ADR 018 this is also the name the page is STORED under, so the wire form and the stored
- * form are the same string — kept as a separate name here because the two are different ideas
- * that merely happen to agree.
- */
-export const isoFromJournalDay = isoJournalName;
-
-function rowToPage(driver: SqlDriver, row: PageRow): Page {
-  const propRows = driver.all<{ key: string; value: string | null }>(
-    "SELECT key, value FROM page_prop WHERE page_id = ? AND value IS NOT NULL",
-    [row.id],
-  );
-  const properties: Properties = {};
-  for (const p of propRows) if (p.value !== null) properties[p.key] = p.value;
-  return {
-    id: row.id,
-    name: row.name,
-    key: row.key,
-    journalDay: row.journal_day,
-    properties,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function blockPropertiesOf(driver: SqlDriver, row: BlockRow): Properties {
-  const propRows = driver.all<{ key: string; value: string | null }>(
-    "SELECT key, value FROM block_prop WHERE block_id = ? AND value IS NOT NULL",
-    [row.id],
-  );
-  const properties: Properties = {};
-  for (const p of propRows) if (p.value !== null) properties[p.key] = p.value;
-  if (row.scheduled_day !== null)
-    properties.scheduled = formatDayTime(row.scheduled_day, row.scheduled_time);
-  if (row.deadline_day !== null)
-    properties.deadline = formatDayTime(row.deadline_day, row.deadline_time);
-  if (row.repeat !== null) properties.repeat = row.repeat;
-  if (row.done_at !== null) properties.done = formatDoneIso(row.done_at);
-  return properties;
-}
-
-function rowToBlock(driver: SqlDriver, row: BlockRow): Block {
-  return {
-    id: row.id,
-    pageId: row.page_id,
-    parentId: row.parent_id,
-    order: row.order_key,
-    content: row.content,
-    marker: row.marker,
-    priority: row.priority,
-    properties: blockPropertiesOf(driver, row),
-    collapsed: row.collapsed !== 0,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function getBlockRow(driver: SqlDriver, id: string): BlockRow | undefined {
-  return driver.get<BlockRow>(
-    `SELECT ${BLOCK_COLUMNS} FROM block WHERE id = ? AND deleted_at IS NULL`,
-    [id],
-  );
-}
-
-function getBlockRowAny(driver: SqlDriver, id: string): BlockRow | undefined {
-  return driver.get<BlockRow>(`SELECT ${BLOCK_COLUMNS} FROM block WHERE id = ?`, [id]);
-}
-
-function getPageRow(driver: SqlDriver, id: string): PageRow | undefined {
-  return driver.get<PageRow>("SELECT * FROM page WHERE id = ? AND deleted_at IS NULL", [id]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -558,26 +442,29 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
 
     async create(spec) {
       const id = newId();
-      apply([
+      const now = Date.now();
+      const ops: Op[] = [
         mint(id, {
           kind: "page.create",
           name: spec.name,
           journalDay: null,
           properties: spec.properties,
-          createdAt: Date.now(),
+          createdAt: now,
         }),
-      ]);
+      ];
+      // One batch, so the page and its first block land (and are audited, and can be undone)
+      // together rather than as two writes the second of which could fail alone.
       if (spec.firstBlock) {
-        const bid = newId();
-        apply([
-          mint(bid, {
+        ops.push(
+          mint(newId(), {
             kind: "block.create",
             place: { pageId: id, parentId: null, order: orderBetween(null, null) },
             content: spec.firstBlock,
-            createdAt: Date.now(),
+            createdAt: now,
           }),
-        ]);
+        );
       }
+      apply(ops);
       const row = getPageRow(driver, id);
       if (!row) throw new Error("page.create: failed to read back created page");
       return rowToPage(driver, row);
@@ -759,7 +646,14 @@ function groupByPage(
   return out;
 }
 
-/** `YYYY-MM-DD` or `today`/`yesterday`/`tomorrow` -> internal `YYYYMMDD` int, or `null` if neither. */
+/** Shape of a wire date, whether or not it names a real day. */
+export const WIRE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * `YYYY-MM-DD` or `today`/`yesterday`/`tomorrow` -> internal `YYYYMMDD` int, or `null` if neither.
+ * A string shaped like a date that is not one (`2026-13-45`) is also `null` — the caller decides
+ * whether that is an error (`ops/resolve.ts`) or simply "not a journal".
+ */
 export function journalDayFromWire(ref: string): number | null {
   const lower = ref.trim().toLowerCase();
   const now = new Date();
@@ -774,9 +668,10 @@ export function journalDayFromWire(ref: string): number | null {
     d.setDate(d.getDate() + 1);
     return todayJournalDay(d);
   }
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ref.trim());
+  const m = WIRE_DATE_RE.exec(ref.trim());
   if (!m) return null;
-  return Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);
+  const day = Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);
+  return isValidJournalDay(day) ? day : null;
 }
 
 /**
@@ -819,6 +714,3 @@ export function buildWikilinkRewriteOps(
   }
   return ops;
 }
-
-export type { BlockRow, PageRow };
-export { getBlockRow, getBlockRowAny, getPageRow, rowToBlock, rowToPage };

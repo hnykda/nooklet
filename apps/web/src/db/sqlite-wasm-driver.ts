@@ -40,6 +40,8 @@ interface Sqlite3OpfsSAHPoolUtil {
 
 interface Sqlite3Namespace {
   installOpfsSAHPoolVfs(opts: { name?: string }): Promise<Sqlite3OpfsSAHPoolUtil>;
+  /** The plain OO1 API; `new DB()` with no filename is an in-memory database. */
+  oo1: { DB: new (filename?: string) => Sqlite3Db };
 }
 
 type Sqlite3InitModuleFn = (opts?: Record<string, unknown>) => Promise<Sqlite3Namespace>;
@@ -130,22 +132,52 @@ export function createSqliteWasmDriver(db: Sqlite3Db): SqlDriver {
 export interface OpenedSqliteWasm {
   driver: SqlDriver;
   close(): void;
+  /**
+   * `"opfs"` is the normal case: the replica lives in the origin's private file system and
+   * survives reloads. `"memory"` means OPFS could not be opened and the database exists only for
+   * this session — everything still works, nothing is saved locally, and the UI must say so.
+   */
+  storage: "opfs" | "memory";
+  /** Why OPFS was unavailable, when it was. */
+  storageError?: string;
 }
 
-/** Open (creating on first run) the OPFS-backed replica and apply nooklet's server PRAGMAs where
+/**
+ * Open (creating on first run) the OPFS-backed replica and apply nooklet's server PRAGMAs where
  * sahpool supports them. One connection only (sahpool's constraint) — the caller (`db.worker.ts`)
- * must ensure only the elected leader tab ever calls this. */
+ * must ensure only the elected leader tab ever calls this.
+ *
+ * Falls back to an in-memory database when OPFS is unavailable (B-43). Before this, an OPFS
+ * failure left every worker RPC rejecting with WebKit's `UnknownError: The operation failed for
+ * an unknown transient reason` and the app rendered nothing — no message, no way in. A browser
+ * without OPFS-in-workers (Playwright's WebKit, some privacy modes, some embedded webviews) now
+ * gets a working app whose local copy simply does not persist; with sync configured, the server
+ * still has everything, so the loss is a re-bootstrap on the next load, not data.
+ */
 export async function openSqliteWasmDriver(
   filename = "/nooklet.sqlite3",
 ): Promise<OpenedSqliteWasm> {
   const sqlite3 = await sqlite3InitModule();
-  const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: "nooklet-opfs-sahpool" });
-  const db = new poolUtil.OpfsSAHPoolDb(filename);
+  let db: Sqlite3Db;
+  let storage: OpenedSqliteWasm["storage"] = "opfs";
+  let storageError: string | undefined;
+  try {
+    const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: "nooklet-opfs-sahpool" });
+    db = new poolUtil.OpfsSAHPoolDb(filename);
+  } catch (err) {
+    storage = "memory";
+    storageError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.warn(
+      `[nooklet] OPFS is unavailable (${storageError}); running on an in-memory database. ` +
+        "Nothing is saved locally this session.",
+    );
+    db = new sqlite3.oo1.DB();
+  }
   const driver = createSqliteWasmDriver(db);
   // docs/spec/sql-schema.md rule 29's client PRAGMAs, scaled for mobile memory; journal_mode is
   // left at sahpool's default (it manages its own durability model, not a real WAL file on OPFS).
   driver.exec("PRAGMA foreign_keys = ON");
   driver.exec("PRAGMA cache_size = -8000");
   driver.exec("PRAGMA temp_store = MEMORY");
-  return { driver, close: () => db.close() };
+  return { driver, close: () => db.close(), storage, storageError };
 }

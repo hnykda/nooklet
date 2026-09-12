@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { getBlockRow, resolveInsertionBounds } from "../data-api.js";
+import { resolveInsertionBounds } from "../data-api.js";
+import { getBlockRow, pageWireNameById } from "../rows.js";
 import { runWithDryRun } from "./dry-run.js";
 import { prepareMarkdownInsert } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
-import { checkIfVersion, currentHeadSeq, wirePageName } from "./resolve.js";
+import { checkIfVersion, currentHeadSeq } from "./resolve.js";
 import {
   BlockId,
   IdempotencyKey,
@@ -50,24 +51,9 @@ export const blockInsert = defineOp({
       if (!bounds) throw new OpError("not_found", `no block with id ${input.ref}`);
       const { ops, created, outline } = prepareMarkdownInsert(ctx, input.markdown, bounds);
       const applyResult = ops.length > 0 ? await ctx.applyOps(ops) : undefined;
-      const pageRow = ctx.db.get<{ name: string; journal_day: number | null }>(
-        "SELECT name, journal_day FROM page WHERE id = ?",
-        [refRow.page_id],
-      );
-      const pageWire = pageRow
-        ? wirePageName({
-            id: refRow.page_id,
-            name: pageRow.name,
-            key: "",
-            journalDay: pageRow.journal_day,
-            properties: {},
-            createdAt: 0,
-            updatedAt: 0,
-          })
-        : refRow.page_id;
       const seq = applyResult?.seq ?? currentHeadSeq(ctx.db);
       return {
-        page: pageWire,
+        page: pageWireNameById(ctx.db, refRow.page_id),
         created,
         updated: [],
         deleted: [],

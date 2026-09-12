@@ -11,6 +11,7 @@ import { useNavigate } from "@solidjs/router";
 import { ChevronLeft, ChevronRight, PanelLeft } from "lucide-solid";
 import { type JSX, onCleanup, onMount, Show } from "solid-js";
 import { useSyncStatus } from "../data/store.js";
+import { storageInfo } from "../db/client.js";
 // ADR 015 §2.6: the persistent live-UI-control consent badge — see ../live/ConsentBadge.tsx.
 import { ConsentBadge } from "../live/index.js";
 import { platform } from "../platform/index.js";
@@ -38,6 +39,9 @@ function SyncIndicator() {
       onClick={() => openDiagnostics()}
     >
       {(() => {
+        // Storage first: "synced" would be true and still the wrong thing to say about a
+        // session whose local copy evaporates on reload (B-43).
+        if (storageInfo()?.storage === "memory") return "not saved locally";
         const s = status();
         if (!s) return "";
         if (s.state === "offline") return "offline";

@@ -1,7 +1,7 @@
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
+import { wirePageNameOf } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
-import { wirePageName } from "./resolve.js";
 import { Cursor, Limit } from "./schemas.js";
 
 function encodeCursor(offset: number): string {
@@ -106,15 +106,7 @@ export const pageList = defineOp({
       );
       return {
         id: r.id,
-        name: wirePageName({
-          id: r.id,
-          name: r.name,
-          key: "",
-          journalDay: r.journal_day,
-          properties: {},
-          createdAt: 0,
-          updatedAt: r.updated_at,
-        }),
+        name: wirePageNameOf(r),
         kind: r.journal_day !== null ? ("journal" as const) : ("page" as const),
         updated_at: new Date(r.updated_at).toISOString(),
         block_count: count?.n ?? 0,

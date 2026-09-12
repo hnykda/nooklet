@@ -14,12 +14,69 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
-Nothing open. When something is reported or noticed, it goes here first — before the fix, not
-after.
+### B-42 · Typing into the `[[` popup keeps dropping editor focus
+**Status:** needs-repro · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
+[[new/page` → then context window open → but when I keep typing then the edit focus keeps
+deselecting and I have to click again to type")
+
+Type `[[` in a block, the page autocomplete opens, keep typing the query — and the editor loses
+focus, repeatedly, so every few characters need another click.
+
+**Not reproduced, in any of these** (all with a synchronous `document.activeElement` check after
+*every* keystroke plus a `focusout` recorder that captures the JS stack of whatever moved focus —
+an auto-retrying `toBeFocused()` would wait out a transient loss and pass):
+
+- `e2e/tests/autocomplete.spec.ts`, Chromium, small graph, page view — 0 losses.
+- The same string typed into today's journal on a **copy of the real 952-page graph** — 0/19.
+- With another "device" appending to that journal every 150 ms while typing — 0/19.
+- Imitating a Czech Mac layout (`[` as an Option-modified keydown, `/` as Shift) — 0/19.
+- Mouse parked where the popup opens, so its rows get `mouseenter` on every re-render — 0/19.
+- 10 ms between keystrokes — 0/19.
+- **WebKit** (the Mac app's engine), once B-43's fallback let the app run there — 0/19.
+
+Ruled out by reading: the `/` cannot wake the slash menu (`TRIGGER_RE` requires whitespace before
+it); `surface.ts`'s deferred refocus is guarded against stale attaches; the popup never calls
+`.focus()`.
+
+What remains is the reporter's runtime: a stale desktop bundle (this is B-15's exact symptom, fixed
+on 2026-09-11 and only delivered by a rebuild — see the delivery-path lesson under B-20), or
+something about the real WKWebView that Playwright's WebKit does not share. Needs: which app,
+which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ---
 
 ## Fixed
+
+### B-43 · Without OPFS the client died silently — no message, nothing rendered
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, running the B-42 probe in WebKit ·
+**Tests:** `e2e/tests/storage.spec.ts` (runs under a new `webkit` Playwright project scoped to
+that one file) · **Probe:** `tools/probes/playwright-webkit-opfs.mjs`
+
+The replica is `opfs-sahpool`, which needs OPFS sync access handles inside a worker. Where those
+are missing — Playwright's WebKit build, some privacy modes, some embedded webviews — every worker
+RPC rejected with `UnknownError: The operation failed for an unknown transient reason (e.g. out of
+memory)`, the console filled with unhandled rejections, and the app showed a blank journal
+forever. Nothing said why.
+
+`openSqliteWasmDriver` now falls back to an in-memory database, warns once, and reports
+`storage: "memory"` through `WorkerApi.init()`; the shell's sync indicator then says **"not saved
+locally"** where it would otherwise say "synced" — which would also have been true, and exactly
+the wrong thing to tell someone typing into a database that evaporates on reload. With sync
+configured the server still has everything, so the cost is a re-bootstrap next load, not data.
+
+The probe settled a fact worth keeping: Playwright's WebKit cannot open OPFS from a worker at all
+(`navigator.storage.getDirectory()` itself rejects), so it is not a stand-in for the Mac app's
+WKWebView on storage — `wkwebview-opfs.swift` shows the real thing writes 1.2 GB happily.
+
+### B-52 · A date-shaped typo became a page
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, code review · **Test:**
+`packages/server/src/ops/ops.http.test.ts`, "rejects a date-shaped ref that is not a real day"
+
+`page_append({page: "2026-13-45"})` passed the wire-date regex, turned into journal day `20261345`,
+and — because the reducer refuses to derive a name from an impossible day — created an ordinary
+page called `2026-13-45`. No date format ever resolves to it, so it sat there as a shadow journal.
+`journalDayFromWire` now returns `null` for an impossible day and `resolvePageRef` answers
+`invalid` for anything date-shaped that is not a date.
 
 ### B-40 · Five CSS variables were used in eight stylesheets and defined nowhere
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-11, during the design pass · **Test:**

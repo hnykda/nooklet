@@ -1,6 +1,7 @@
 import type { SqlDriver } from "@nooklet/core";
 import { z } from "zod";
-import { getBlockRow, isoFromJournalDay, type ServerBlockNode } from "../data-api.js";
+import type { ServerBlockNode } from "../data-api.js";
+import { getBlockRow, pageWireNameById } from "../rows.js";
 import { renderRootTruncated, toWireBlockNode } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
 import { BlockId, BlockNode, Format } from "./schemas.js";
@@ -66,17 +67,8 @@ export const blockRead = defineOp({
     const [rootNode] = await ctx.data.blocks.tree(input.id, { depth: input.depth });
     const node = rootNode as ServerBlockNode;
     const rendered = renderRootTruncated(node, input.ids, input.max_chars);
-    const pageRow = driver.get<{ name: string; journal_day: number | null }>(
-      "SELECT name, journal_day FROM page WHERE id = ?",
-      [row.page_id],
-    );
-    const pageWire = pageRow
-      ? pageRow.journal_day !== null
-        ? isoFromJournalDay(pageRow.journal_day)
-        : pageRow.name
-      : row.page_id;
     return {
-      page: pageWire,
+      page: pageWireNameById(driver, row.page_id),
       breadcrumb: breadcrumbFor(driver, row.parent_id),
       block: toWireBlockNode(driver, node),
       text: rendered.text,

@@ -1,7 +1,6 @@
 import type { SqlDriver } from "@nooklet/core";
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
-import { isoFromJournalDay } from "../data-api.js";
 import {
   checkSemanticAvailability,
   distanceToScore,
@@ -9,6 +8,7 @@ import {
   rrfFuse,
   semanticCandidates,
 } from "../embeddings/index.js";
+import { wirePageNameOf } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
 import { resolvePageIds } from "./resolve.js";
 import { Cursor, Limit, PageRef, PropertyKey } from "./schemas.js";
@@ -257,8 +257,8 @@ export const search = defineOp({
           kind: "block",
           id: b.id,
           pageId: b.page_id,
-          pageName: page.journal_day !== null ? isoFromJournalDay(page.journal_day) : page.name,
-          journalDate: page.journal_day !== null ? isoFromJournalDay(page.journal_day) : undefined,
+          pageName: wirePageNameOf(page),
+          journalDate: page.journal_day !== null ? wirePageNameOf(page) : undefined,
           snippet: ftsMeta.get(id)?.snip ?? naiveSnippet(b.content, input.snippet_chars),
           breadcrumb: breadcrumbForBlock(driver, b.parent_id),
           score,
@@ -338,9 +338,9 @@ export const search = defineOp({
           kind: "page",
           id: p.id,
           pageId: p.id,
-          pageName: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : p.name,
-          journalDate: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : undefined,
-          snippet: p.journal_day !== null ? isoFromJournalDay(p.journal_day) : p.name,
+          pageName: wirePageNameOf(p),
+          journalDate: p.journal_day !== null ? wirePageNameOf(p) : undefined,
+          snippet: wirePageNameOf(p),
           breadcrumb: [],
           score,
           updatedAt: p.updated_at,

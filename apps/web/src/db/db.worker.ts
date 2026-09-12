@@ -26,7 +26,7 @@ import * as Comlink from "comlink";
 import { createHttpTransport } from "../sync/http-transport.js";
 import type { SyncStatus } from "../sync/types.js";
 import { openSqliteWasmDriver } from "./sqlite-wasm-driver.js";
-import type { ChangeEvent, WorkerApi, WorkerInitOptions } from "./worker-api.js";
+import type { ChangeEvent, InitResult, WorkerApi, WorkerInitOptions } from "./worker-api.js";
 import { WorkerDb } from "./worker-core.js";
 
 const LEADER_LOCK_NAME = "nooklet-db-writer";
@@ -59,11 +59,17 @@ function safeCall<A extends unknown[]>(
   }
 }
 
-let dbPromise: Promise<WorkerDb> | undefined;
+interface OpenedDb {
+  db: WorkerDb;
+  storage: InitResult["storage"];
+  storageError?: string;
+}
 
-async function openDb(opts: WorkerInitOptions): Promise<WorkerDb> {
+let dbPromise: Promise<OpenedDb> | undefined;
+
+async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
   await becomeLeader();
-  const { driver } = await openSqliteWasmDriver();
+  const { driver, storage, storageError } = await openSqliteWasmDriver();
   const transport = createHttpTransport({
     baseUrl: opts.syncBaseUrl,
     getToken: opts.getToken ?? (() => opts.token),
@@ -75,19 +81,19 @@ async function openDb(opts: WorkerInitOptions): Promise<WorkerDb> {
     onSyncStatus: (s) => safeCall(statusListener, s),
   });
   await db.start();
-  return db;
+  return { db, storage, storageError };
 }
 
 function requireDb(): Promise<WorkerDb> {
   if (!dbPromise) throw new Error("WorkerApi.init() must be called before any other method");
-  return dbPromise;
+  return dbPromise.then((o) => o.db);
 }
 
 const api: WorkerApi = {
   async init(opts) {
     if (!dbPromise) dbPromise = openDb(opts);
-    const db = await dbPromise;
-    return { deviceId: db.getDeviceId() };
+    const { db, storage, storageError } = await dbPromise;
+    return { deviceId: db.getDeviceId(), storage, storageError };
   },
 
   async nextHlc() {

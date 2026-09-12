@@ -6,9 +6,9 @@
  */
 
 import type { Page, SqlDriver } from "@nooklet/core";
-import { isId, parseJournalTitle } from "@nooklet/core";
+import { isId, isoJournalName, parseJournalTitle } from "@nooklet/core";
 import type { z } from "zod";
-import { isoFromJournalDay, journalDayFromWire } from "../data-api.js";
+import { journalDayFromWire, WIRE_DATE_RE } from "../data-api.js";
 import { type OpContext, OpError } from "./registry.js";
 import type { PageMeta as PageMetaSchema } from "./schemas.js";
 
@@ -39,6 +39,16 @@ export async function resolvePageRef(
   if (journalDayFromWire(ref) !== null) {
     return ctx.data.pages.journal(ref, { create });
   }
+  // Shaped like a wire date but not a real day (`2026-13-45`): almost certainly a typo, and
+  // falling through would mint an ordinary page under that name — a shadow journal that no date
+  // format resolves to. Say so instead.
+  if (WIRE_DATE_RE.test(ref.trim())) {
+    throw new OpError(
+      "invalid",
+      `"${ref}" looks like a date but is not a valid calendar day`,
+      "use YYYY-MM-DD with a real month and day, or today/yesterday/tomorrow",
+    );
+  }
   if (isId(ref)) {
     const byId = await ctx.data.pages.get(ref);
     if (byId) return byId;
@@ -48,7 +58,7 @@ export async function resolvePageRef(
 
   const asJournalDay = parseJournalTitle(ref);
   if (asJournalDay !== null) {
-    return ctx.data.pages.journal(isoFromJournalDay(asJournalDay), { create });
+    return ctx.data.pages.journal(isoJournalName(asJournalDay), { create });
   }
   if (!create) return null;
   return ctx.data.pages.create({ name: ref });
@@ -72,7 +82,7 @@ export async function requirePage(
 
 /** rule 18: a journal page's wire `page` field is its ISO date, never the display title. */
 export function wirePageName(page: Page): string {
-  return page.journalDay !== null ? isoFromJournalDay(page.journalDay) : page.name;
+  return page.journalDay !== null ? isoJournalName(page.journalDay) : page.name;
 }
 
 export function pageMetaWire(
@@ -89,7 +99,7 @@ export function pageMetaWire(
     id: page.id,
     name: page.name,
     kind: page.journalDay !== null ? "journal" : "page",
-    journal_date: page.journalDay !== null ? isoFromJournalDay(page.journalDay) : undefined,
+    journal_date: page.journalDay !== null ? isoJournalName(page.journalDay) : undefined,
     properties: Object.keys(page.properties).length > 0 ? page.properties : undefined,
     version: new Date(page.updatedAt).toISOString(),
     block_count: blockCount,
