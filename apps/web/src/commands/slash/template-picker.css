@@ -1,0 +1,27 @@
+/* The `/template` picker (`TemplatePicker.tsx`). Everything structural comes from `.cmd-popup`
+   and `.cmd-row` in `../styles.css`; this only adds the typed-filter line above the rows. */
+
+.tpl-picker-query {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm, 8px);
+  padding: var(--space-xs, 4px) var(--space-lg, 12px) var(--space-sm, 8px);
+  border-bottom: 1px solid var(--cmd-border, #e2e2e2);
+  margin-bottom: var(--space-xs, 4px);
+  font-size: var(--text-xs, 12px);
+}
+
+.tpl-picker-label {
+  color: var(--muted, #6a6a76);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tpl-picker-hint {
+  color: var(--muted, #6a6a76);
+  font-style: italic;
+}
+
+.tpl-picker-text {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}

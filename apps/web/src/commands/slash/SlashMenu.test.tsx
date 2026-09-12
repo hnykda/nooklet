@@ -5,6 +5,7 @@ import { createFakeEditorHost } from "../hosts/editor-host.js";
 import { createFakeStore } from "../hosts/store.js";
 import { CommandProvider } from "../provider/CommandProvider.js";
 import { type Command, type CommandContext, DEFAULT_WHEN_CONTEXT } from "../types.js";
+import { SLASH_ITEMS } from "./items.js";
 import { SlashMenu } from "./SlashMenu.js";
 
 afterEach(cleanup);
@@ -52,7 +53,9 @@ describe("<SlashMenu>", () => {
     ));
     const options = screen.getAllByRole("option");
     expect(options[0]?.textContent).toBe("TODO / task");
-    expect(options).toHaveLength(15);
+    // Every row of the shared list, whatever its current length — M7 appends to it from more
+    // than one feature, so a literal count here would break on each append.
+    expect(options).toHaveLength(SLASH_ITEMS.length);
   });
 
   it("filters items by query", () => {

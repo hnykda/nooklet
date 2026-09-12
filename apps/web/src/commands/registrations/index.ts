@@ -10,6 +10,7 @@ import { createInsertCommands } from "./insert.js";
 import { createNavCommands } from "./nav.js";
 import { createStructuralCommands } from "./structural.js";
 import { createTaskCommands } from "./task.js";
+import { createTemplateCommands } from "./templates.js";
 
 export interface CoreCommandDeps {
   editor: EditorHost;
@@ -34,6 +35,7 @@ export function createCoreCommands(deps: CoreCommandDeps): Command[] {
     }),
     ...createFormatCommands({ editor: deps.editor }),
     ...createInsertCommands({ editor: deps.editor, now: deps.now }),
+    ...createTemplateCommands({ editor: deps.editor }),
     ...createAppCommands({ app: deps.app }),
   ];
 }
@@ -51,3 +53,4 @@ export {
   nextCycleMarker,
   type TaskSnapshot,
 } from "./task-logic.js";
+export { createTemplateCommands } from "./templates.js";

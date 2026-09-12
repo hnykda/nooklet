@@ -21,4 +21,6 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
   { label: "Tag", command: "format.insertTag", keywords: ["#"] },
   { label: "Today's date", command: "block.insertToday", keywords: ["journal", "now"] },
   { label: "Property", command: "block.insertProperty", keywords: ["metadata", "::"] },
+  // ADR 019: core, not a plugin — opens a second-level picker for which template.
+  { label: "Template", command: "block.insertTemplate", keywords: ["snippet", "insert", "tpl"] },
 ];

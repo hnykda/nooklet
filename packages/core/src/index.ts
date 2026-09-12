@@ -7,6 +7,7 @@ export * from "./ops.js";
 export * from "./order.js";
 export * from "./outline.js";
 export * from "./page-name.js";
+export * from "./query.js";
 export * from "./refs.js";
 // Sync core (page/block/block_prop/page_prop/op state machine). Driver-agnostic only — the
 // Node-only `node:sqlite` adapter lives at the separate "@nooklet/core/node-sqlite" subpath
@@ -20,4 +21,5 @@ export * from "./sync/schema.js";
 export * from "./sync/text-merge.js";
 export * from "./sync/types.js";
 export * from "./task-dates.js";
+export * from "./templates.js";
 export * from "./tokens.js";
