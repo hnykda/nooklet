@@ -31,7 +31,14 @@ import {
   todayJournalDay,
 } from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
-import { resolvePageIdForKey } from "./page-aliases.js";
+import {
+  checkSemanticAvailability,
+  distanceToScore,
+  embedQueryVector,
+  semanticCandidates,
+} from "./embeddings/semantic-search.js";
+import { ftsPhrase } from "./ops/fts-query.js";
+import { pageLookupKeys, resolvePageIdForKey } from "./page-aliases.js";
 import {
   BLOCK_COLUMNS,
   type BlockRow,
@@ -117,8 +124,10 @@ export interface QueryApi {
     order?: "updated" | "created" | "page";
   }): Promise<{ items: Block[]; cursor?: string }>;
   linkedRefs(target: PageId | BlockId): Promise<Array<{ page: Page; blocks: Block[] }>>;
+  /** Blocks on other pages that mention the page's name in plain text without linking to it. */
   unlinkedRefs(page: PageId): Promise<Array<{ page: Page; blocks: Block[] }>>;
-  /** Embeddings ship in M3 (ADR 010); until then this always resolves to `[]`. */
+  /** Nearest blocks by embedding (ADR 010). Empty when no embedding model is active, the query
+   * could not be embedded (provider down), or nothing is indexed yet — never an error. */
   semantic(
     text: string,
     opts?: { limit?: number; page?: PageId },
@@ -588,13 +597,29 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
       return groupByPage(driver, rows);
     },
 
-    async unlinkedRefs(_page) {
-      return [];
+    async unlinkedRefs(pageId) {
+      const page = getPageRow(driver, pageId);
+      if (!page) return [];
+      return groupByPage(driver, unlinkedMentionRows(driver, page, 200));
     },
 
-    async semantic() {
-      // Embeddings ship in M3 (ADR 010); v1 always returns no semantic hits.
-      return [];
+    async semantic(text, opts) {
+      const limit = opts?.limit ?? 20;
+      const availability = checkSemanticAvailability(driver);
+      if (!availability.available || !availability.model) return [];
+      const vec = await embedQueryVector(driver, availability.model, text);
+      if (!vec) return [];
+      // Over-fetch when filtering to one page: the KNN cannot filter itself, and a page's blocks
+      // are a small share of the graph's vectors.
+      const k = opts?.page ? Math.min(limit * 10, 500) : limit;
+      const out: Array<{ block: Block; score: number }> = [];
+      for (const hit of semanticCandidates(driver, availability.model, vec, "block", k)) {
+        const row = getBlockRow(driver, hit.unitId);
+        if (!row || (opts?.page && row.page_id !== opts.page)) continue;
+        out.push({ block: rowToBlock(driver, row), score: distanceToScore(hit.distance) });
+        if (out.length >= limit) break;
+      }
+      return out;
     },
   };
 
@@ -610,6 +635,31 @@ function requireBlockPage(driver: SqlDriver, id: string): PageRow {
   const row = getPageRow(driver, id);
   if (!row) throw new Error(`no such page: ${id}`);
   return row;
+}
+
+/**
+ * Unlinked mentions of a page (PLAN §4: "full-text hits for the page name in blocks that do not
+ * already reference P"): blocks on OTHER pages whose text contains the page's short name as a
+ * phrase and whose path refs do not already reach the page by its key or any alias. Shared by
+ * `QueryApi.unlinkedRefs` and `page.backlinks`. Names shorter than three characters produce
+ * nothing: a two-letter phrase matches half the graph and none of it is a mention.
+ */
+export function unlinkedMentionRows(
+  driver: SqlDriver,
+  page: { id: string; name: string; key: string },
+  limit: number,
+): Array<{ block_id: string; page_id: string; content: string }> {
+  const plainName = page.name.split("/").pop() ?? page.name;
+  if (plainName.length < 3) return [];
+  const keys = pageLookupKeys(driver, page);
+  return driver.all(
+    `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
+     FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
+     WHERE block_fts MATCH ? AND b.deleted_at IS NULL AND b.page_id != ?
+       AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key IN (${keys.map(() => "?").join(",")}))
+     LIMIT ?`,
+    [ftsPhrase(plainName), page.id, ...keys, limit],
+  );
 }
 
 function groupByPage(

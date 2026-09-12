@@ -1,5 +1,6 @@
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
+import { unlinkedMentionRows } from "../data-api.js";
 import { pageLookupKeys } from "../page-aliases.js";
 import { pageWireNameById } from "../rows.js";
 import { ftsPhrase } from "./fts-query.js";
@@ -72,20 +73,7 @@ export const pageBacklinks = defineOp({
          ORDER BY b.updated_at DESC`,
         [...keys, asPage.id],
       );
-      if (input.include_unlinked) {
-        const plainName = asPage.name.split("/").pop() ?? asPage.name;
-        if (plainName.length >= 3) {
-          const ftsQuery = ftsPhrase(plainName);
-          unlinkedRows = driver.all(
-            `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
-             FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
-             WHERE block_fts MATCH ? AND b.deleted_at IS NULL AND b.page_id != ?
-               AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key IN (${keyList}))
-             LIMIT 50`,
-            [ftsQuery, asPage.id, ...keys],
-          );
-        }
-      }
+      if (input.include_unlinked) unlinkedRows = unlinkedMentionRows(driver, asPage, 50);
     } else {
       const asBlock = await ctx.data.blocks.get(input.target);
       if (asBlock) {

@@ -82,8 +82,10 @@ export interface QueryApi {
     order?: "updated" | "created" | "page";
   }): Promise<{ items: Block[]; cursor?: string }>;
   linkedRefs(target: PageId | BlockId): Promise<Array<{ page: Page; blocks: Block[] }>>;
+  /** Blocks on other pages that mention the page's name in plain text without linking to it. */
   unlinkedRefs(page: PageId): Promise<Array<{ page: Page; blocks: Block[] }>>;
-  /** Embeddings ship in M3 (ADR 010); until then this always resolves to `[]`. */
+  /** Nearest blocks by embedding (ADR 010). Empty when no embedding model is active, the query
+   * could not be embedded, or nothing is indexed yet — never an error. */
   semantic(
     text: string,
     opts?: { limit?: number; page?: PageId },
