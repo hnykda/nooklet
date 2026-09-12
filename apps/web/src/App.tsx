@@ -25,6 +25,7 @@ import { SearchRoute } from "./routes/SearchRoute.js";
 import { TasksRoute } from "./routes/TasksRoute.js";
 import { AppShell } from "./shell/AppShell.js";
 import { ConnectView } from "./views/ConnectView.js";
+import { FindReplaceView } from "./views/FindReplaceView.js";
 import { GraphMismatchView } from "./views/GraphMismatchView.js";
 
 function RouterRoot(routeProps: RouteSectionProps): JSX.Element {
@@ -69,6 +70,7 @@ export function App() {
         <Route path="/search" component={SearchRoute} />
         <Route path="/tasks" component={TasksRoute} />
         <Route path="/graph" component={GraphRoute} />
+        <Route path="/replace" component={FindReplaceView} />
         <Route path="/capture" component={CaptureRoute} />
       </Router>
     </Show>

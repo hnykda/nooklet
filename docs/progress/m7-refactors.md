@@ -7,47 +7,36 @@ you start, you were restarted: read it, then continue from "Next steps".
 
 ## 1. Done
 
-- Server helpers in `packages/server/src/data-api.ts`: `subtreePlaceOps`/`subtreeBlockIds`
-  (B-85 fix at the op layer), `buildRefRewriteOps` + `rewriteRefsInText` (alias/case-aware
-  reference rewrite; `buildWikilinkRewriteOps` is now a wrapper so `page.update` inherits it),
-  `DataApi.blocks.move` moves subtrees. — uncommitted
-- `docs/BUGS.md`: B-85 (cross-page move strands children), B-86 (`[[Page|label]]` indexed
-  under `page|label`). — uncommitted
-- `packages/server/src/ops/registry.ts`: op-name segments may contain `_`; registration refuses
-  an MCP tool-name collision. — uncommitted
-- Four ops + tests, all green (`pnpm --filter @nooklet/server test`: 506/506 after the last
-  expectation fix): `ops/block-to-page.ts`, `ops/block-move-to-page.ts` (exports
-  `resolveOrMintPage`), `ops/page-merge.ts`, `ops/graph-replace.ts`, each with `*.test.ts`.
-  Registered in `ops/index.ts`; names in `mcp/server.test.ts`. — uncommitted
-- `docs/adr/020-refactor-ops-merge-semantics.md`; `docs/spec/mcp-tools.md` rule 3.1.1 text,
-  catalog rows 26–29, §4.3.25–28. — uncommitted
-- Client, host-agnostic half: `apps/web/src/data/refactor-api.ts`,
-  `apps/web/src/commands/registrations/refactor.ts` (+ `refactor.test.ts`, not yet run). —
-  uncommitted
+- `7b1aad0` fix(server): `subtreePlaceOps`/`subtreeBlockIds` (B-85 fix at the op layer),
+  `buildRefRewriteOps` + `rewriteRefsInText` (alias/case-aware rewrite; `buildWikilinkRewriteOps`
+  is a wrapper so `page.update` inherits it), `DataApi.blocks.move` moves subtrees; B-85/B-86
+  logged in `docs/BUGS.md`; this file.
+- `d06661b` feat(ops): the four ops + tests (`ops/block-to-page.ts`, `ops/block-move-to-page.ts`
+  with `resolveOrMintPage`, `ops/page-merge.ts`, `ops/graph-replace.ts`), registry grammar
+  widened (`_` in a segment) with a tool-name collision check, registered in `ops/index.ts`,
+  names in `mcp/server.test.ts`. Server suite green for my files.
+- `b1d3679` docs: ADR 020; `docs/spec/mcp-tools.md` rule 3.1.1, catalog rows 26–29, §4.3.25–28.
+- On disk, uncommitted, typecheck/biome/unit green: `apps/web/src/data/refactor-api.ts`,
+  `commands/registrations/refactor.ts` (+ `.test.ts`, 6 pass), `app/refactor-host.tsx` (host +
+  page picker, `closePalette` hook), wiring in `commands/registrations/index.ts`,
+  `app/CommandLayer.tsx`, `app/BlockContextMenu.tsx` (ENTRIES), `views/FindReplaceView.tsx` +
+  `find-replace.css`, `App.tsx` route `/replace`; e2e specs `e2e/tests/refactor.spec.ts`,
+  `e2e/tests/replace.spec.ts` (written, not yet run).
 
 ## 2. In flight
 
-- Nothing mid-edit right now. All files above are complete on disk.
+- Nothing mid-edit. Next action is committing the client files (C4/C5) and running the e2e.
 
 ## 3. Next steps, in order
 
-1. Commit server work in three commits (see §5 for the partial-stage recipe for shared files):
-   (a) data-api + BUGS + this file; (b) registry + 4 ops + tests + index/mcp-test hunks;
-   (c) ADR 020 + spec.
-2. Client real half: `apps/web/src/app/refactor-host.tsx` (RefactorHost impl: API calls,
-   `forceSync()` after each write, page picker rendered on demand with `render()` from
-   `solid-js/web`, reusing `.cmd-overlay/.cmd-palette/.cmd-input/.cmd-row` classes and
-   `views/pageSearch.ts#fuzzyFindPages`, `claimPopupKeys` for Escape).
-3. Wire: `commands/registrations/index.ts` (append `createRefactorCommands` when
-   `deps.refactor` given; export), `app/CommandLayer.tsx` (one dep line), `app/BlockContextMenu.tsx`
-   ENTRIES (append "Turn into page", "Move to page…" after a separator).
-4. `apps/web/src/views/FindReplaceView.tsx` + `find-replace.css`; `App.tsx` route `/replace`
-   (+ import line). Run `pnpm --filter @nooklet/web test`, typecheck, biome.
-5. e2e: `e2e/tests/refactor.spec.ts`, `e2e/tests/replace.spec.ts`;
-   `cd e2e && NOOKLET_E2E_PORT=6352 pnpm exec playwright test tests/refactor.spec.ts tests/replace.spec.ts`.
-6. Real-graph check: copy, merge two pages over HTTP against a `serve` on the copy, then
-   `pnpm nooklet verify --data <scratch>`.
-7. Full e2e on 6352 once; `pnpm -r typecheck`; `pnpm -r test`; biome on my files. Final report.
+1. Commit C4 (client commands/host/wiring) and C5 (view + route). Shared client files
+   (`registrations/index.ts`, `CommandLayer.tsx`, `BlockContextMenu.tsx`, `App.tsx`) — check
+   `git diff HEAD` first; other agents' routes (`/trash`, `/history`) were already in HEAD.
+2. `cd e2e && NOOKLET_E2E_PORT=6352 pnpm exec playwright test tests/refactor.spec.ts tests/replace.spec.ts`;
+   fix what fails; commit C6 (e2e).
+3. Real-graph check: copy, merge two pages over HTTP against a `serve` on the copy, then
+   `pnpm nooklet verify --data <scratch>`; record the result here.
+4. Full e2e on 6352 once; `pnpm -r typecheck`; `pnpm -r test`; biome on my files. Final report.
 
 ## 4. Decisions (why)
 
