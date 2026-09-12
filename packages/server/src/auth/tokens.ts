@@ -82,6 +82,26 @@ export function createToken(driver: SqlDriver, opts: CreateTokenOptions): Create
   return { id, token: raw };
 }
 
+/**
+ * Mint a token that is the ONLY live one carrying its label: every earlier unrevoked token with
+ * the same label is revoked first, in the same transaction.
+ *
+ * For credentials that belong to a process rather than a person — the served web client's
+ * per-boot token (`../http/app.ts#webClientToken`). Minting those with plain `createToken` left
+ * one live `write` + `can_sync` token per server start, none ever revoked: the owner's real graph
+ * had three. A process that has exited cannot be asked for its token back, so revoking on the
+ * next mint is the only place the old one can be retired.
+ */
+export function createSoleToken(driver: SqlDriver, opts: CreateTokenOptions): CreatedToken {
+  return driver.transaction(() => {
+    driver.run("UPDATE token SET revoked_at = ? WHERE label = ? AND revoked_at IS NULL", [
+      Date.now(),
+      opts.label,
+    ]);
+    return createToken(driver, opts);
+  });
+}
+
 export function verifyToken(driver: SqlDriver, rawToken: string): VerifiedToken | null {
   const hash = sha256Hex(rawToken);
   const row = driver.get<TokenRow>("SELECT * FROM token WHERE token_hash = ?", [hash]);

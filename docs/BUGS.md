@@ -47,6 +47,22 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-54 · Every server start left one more live write token behind
+**Status:** fixed · **Severity:** medium (security) · **Found:** 2026-09-12, code review; confirmed
+on the owner's graph (three live `web-client (auto)` rows) · **Tests:**
+`packages/server/src/auth/tokens.test.ts` "createSoleToken revokes every earlier live token",
+`packages/server/src/http/host-guard.test.ts` "a restart retires the previous process's auto token"
+
+The served client's credential is minted per process on the first `/api/session` and — the
+comment said — "lives only in memory ... so a restart invalidates old sessions". The raw string
+did; the row did not. Its hash sat in the `token` table as a live `write` + `can_sync` token, and
+nothing ever revoked it, so a graph accumulated one usable credential per `nooklet serve`, each
+one invisible to `nooklet token list`'s reader as anything but "active, last used <date>".
+
+A process that has exited cannot retire its own token, so its successor does: `createSoleToken`
+revokes every live token with the same label in the transaction that mints the new one. A
+long-running server still keeps its single token for its whole life.
+
 ### B-53 · Searching for `c++`, `e-mail` or `what's` was an HTTP 500
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, code review; reproduced with
 `tools/probes/fts5-query-syntax.mjs` · **Tests:** `packages/server/src/ops/fts-query.test.ts`

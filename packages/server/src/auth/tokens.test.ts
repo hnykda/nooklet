@@ -4,6 +4,7 @@ import { openDb } from "../db.js";
 import { makeTestServer, post, type TestServer } from "../test-helpers.js";
 import {
   allScopesFor,
+  createSoleToken,
   createToken,
   getToken,
   revokeToken,
@@ -37,6 +38,19 @@ describe("createToken / verifyToken / revokeToken", () => {
 
   it("rejects an unknown token", () => {
     expect(verifyToken(driver, "nk_does-not-exist")).toBeNull();
+  });
+
+  it("createSoleToken revokes every earlier live token with the same label, and nothing else", () => {
+    const first = createSoleToken(driver, { label: "auto", scope: "write", canSync: true });
+    const other = createToken(driver, { label: "other", scope: "write" });
+    const second = createSoleToken(driver, { label: "auto", scope: "write", canSync: true });
+    expect(verifyToken(driver, first.token)).toBeNull();
+    expect(verifyToken(driver, second.token)?.id).toBe(second.id);
+    expect(verifyToken(driver, other.token)?.id).toBe(other.id);
+    const live = driver.get<{ n: number }>(
+      "SELECT count(*) AS n FROM token WHERE label = 'auto' AND revoked_at IS NULL",
+    );
+    expect(live?.n).toBe(1);
   });
 
   it("rejects a revoked token", () => {

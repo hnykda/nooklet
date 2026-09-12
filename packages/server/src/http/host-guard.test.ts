@@ -11,8 +11,13 @@ import { request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { afterEach, describe, expect, it } from "vitest";
+import { createServerContext } from "../apply-ops.js";
+import { verifyToken } from "../auth/tokens.js";
+import { openDb } from "../db.js";
 import { setSuggestedJournalTitleFormat } from "../journal-format.js";
+import { buildRegistry } from "../ops/index.js";
 import { makeTestServer } from "../test-helpers.js";
+import { createApp, WEB_CLIENT_TOKEN_LABEL } from "./app.js";
 
 let running: Server | undefined;
 
@@ -76,6 +81,41 @@ describe("loopback detection", () => {
       journalTitleFormat?: string;
     };
     expect(body.journalTitleFormat).toBe("E, dd.MM.yyyy");
+  });
+
+  it("a restart retires the previous process's auto token instead of leaving it live (B-54)", async () => {
+    // Two `ServerContext`s over one database stand in for two server processes: the raw token
+    // lives in process memory, so only the next mint can revoke the row the last one left behind.
+    const driver = openDb({ path: ":memory:" });
+    const config = {
+      dataDir: "/nonexistent",
+      graphId: "default",
+      timezone: "UTC",
+      port: 0,
+      mirror: { enabled: false },
+    };
+    const boot = async (): Promise<string> => {
+      const app = createApp({
+        serverCtx: createServerContext(driver),
+        registry: buildRegistry(),
+        config,
+      });
+      const port = await listen(app);
+      const body = JSON.parse((await get(port, "/api/session")).body) as { token: string };
+      await new Promise<void>((resolve) => running?.close(() => resolve()));
+      running = undefined;
+      return body.token;
+    };
+    const first = await boot();
+    expect(verifyToken(driver, first)).not.toBeNull();
+    const second = await boot();
+    expect(verifyToken(driver, first)).toBeNull();
+    expect(verifyToken(driver, second)?.canSync).toBe(true);
+    const live = driver.get<{ n: number }>(
+      "SELECT count(*) AS n FROM token WHERE label = ? AND revoked_at IS NULL",
+      [WEB_CLIENT_TOKEN_LABEL],
+    );
+    expect(live?.n).toBe(1);
   });
 
   it("refuses a token when the Host header does not name loopback, even from a loopback peer", async () => {

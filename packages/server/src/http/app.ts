@@ -8,7 +8,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
-import { bearerAuth, createToken } from "../auth/tokens.js";
+import { bearerAuth, createSoleToken } from "../auth/tokens.js";
 import { graphInstanceId } from "../graph-identity.js";
 import { suggestedJournalTitleFormat } from "../journal-format.js";
 import { mountUiLive } from "../live/index.js";
@@ -105,8 +105,8 @@ function isLoopbackRequest(c: Context): boolean {
  * right trade. Over a LAN or tailnet it would hand a write credential to anyone who loads the
  * page, so there the client gets a bootstrap with no token and must be given one explicitly.
  *
- * The token is minted once per server process (see `webClientToken`) rather than persisted: it
- * lives only in memory and in the HTML it is injected into, so a restart invalidates old sessions.
+ * The raw token is minted once per server process (see `webClientToken`) and held only in memory;
+ * its hash is in the `token` table like any other, and the next process to mint one revokes it.
  */
 function buildClientBootstrap(ctx: ServerContext, c: Context): object {
   // The graph's identity goes to every client, credential or not: a client needs it to notice
@@ -123,13 +123,18 @@ function buildClientBootstrap(ctx: ServerContext, c: Context): object {
 
 /** Per-process web-client token, minted lazily on the first page load. `write` + `can_sync` is
  * what the app itself does; `ui_control` is deliberately NOT granted — that capability is for an
- * agent driving this window, and `/ui/live` only needs `can_sync` to expose one (ADR 015 §2.1). */
+ * agent driving this window, and `/ui/live` only needs `can_sync` to expose one (ADR 015 §2.1).
+ *
+ * `createSoleToken`, not `createToken`: the previous process's token cannot be retired by the
+ * process that minted it (it is gone), so it is retired here, by its successor. Without that,
+ * every `nooklet serve` left one more live write credential in the table forever. */
+export const WEB_CLIENT_TOKEN_LABEL = "web-client (auto)";
 const webClientTokens = new WeakMap<ServerContext, string>();
 function webClientToken(ctx: ServerContext): string {
   let token = webClientTokens.get(ctx);
   if (!token) {
-    token = createToken(ctx.driver, {
-      label: "web-client (auto)",
+    token = createSoleToken(ctx.driver, {
+      label: WEB_CLIENT_TOKEN_LABEL,
       scope: "write",
       canSync: true,
     }).token;
