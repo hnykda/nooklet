@@ -47,6 +47,20 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-63 · A plugin's mounted sub-app and its RPC routes were unauthenticated
+**Status:** fixed · **Severity:** low (security) · **Found:** 2026-09-12, code review · **Test:**
+`packages/server/src/plugins/host.test.ts` "guards a mounted sub-app and rpc.expose"
+
+`registerRoute(method, path, handler)` defaulted to `auth: "required"`, but the other two shapes
+did not: `registerRoute(app)` forwarded every request under `/api/plugins/<id>/` to the sub-app
+with no check at all, and `rpc.expose` mounted an unauthenticated POST on the reasoning that only
+the plugin's own client half calls it "over localhost". With `--host` set, both are reachable by
+anyone on the network — and the client half holds the app's token, so nothing was gained.
+
+Both now require a valid bearer token (scope is the plugin's own business; `RouteInfo.origin`
+carries the token id); `registerRoute(app, { auth: "none" })` opts a sub-app out explicitly, as
+the handler form already could. `@nooklet/plugin-api` documents the rule.
+
 ### B-61 · An uploaded `.html` asset ran in the app's origin; a bad `mime_type` made every fetch a 500
 **Status:** fixed · **Severity:** low (security) · **Found:** 2026-09-12, code review · **Tests:**
 `packages/server/src/ops/asset-upload.http.test.ts` "serves hostile content as an inert document",

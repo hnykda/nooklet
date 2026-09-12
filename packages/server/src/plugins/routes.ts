@@ -15,16 +15,25 @@ import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { verifyToken } from "../auth/tokens.js";
 
+export type RouteAuth = "required" | "none";
+
 export type HandlerRouteSource = {
   kind: "handler";
   method: HttpMethod;
   path: string;
   handler: (req: Request, info: RouteInfo) => Response | Promise<Response>;
-  auth: "required" | "none";
+  auth: RouteAuth;
 };
-export type AppRouteSource = { kind: "app"; app: Hono };
+export type AppRouteSource = { kind: "app"; app: Hono; auth: RouteAuth };
 export type RouteSource = HandlerRouteSource | AppRouteSource;
 
+/**
+ * Any valid, unrevoked token — scope is not checked here. A plugin route is the plugin's own
+ * API; what a `read` token may do inside it is the plugin's decision (`RouteInfo.origin` carries
+ * the token id for that). The check exists so that a plugin's whole surface is not open to
+ * whoever can reach the port once `--host` is set, which is what an unauthenticated sub-app or
+ * RPC route used to be.
+ */
 function authOrigin(ctx: ServerContext, req: Request): Origin | Response {
   const raw = req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   const verified = raw ? verifyToken(ctx.driver, raw) : null;
@@ -53,6 +62,10 @@ export function mountPluginRoute(
   if (source.kind === "app") {
     app.all(`${base}/*`, async (c) => {
       if (!active) return c.notFound();
+      if (source.auth === "required") {
+        const result = authOrigin(ctx, c.req.raw);
+        if (result instanceof Response) return result;
+      }
       const url = new URL(c.req.url);
       url.pathname = url.pathname.slice(base.length) || "/";
       const forwarded = new Request(url, c.req.raw);

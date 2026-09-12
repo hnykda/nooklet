@@ -90,10 +90,12 @@ export function createPluginServerContext(
   const data = createDataApi(serverCtx, { origin: "plugin", actor: `plugin:${pluginId}` });
 
   const registerRouteImpl = ((...args: unknown[]): Disposable => {
-    if (args.length === 1) {
+    if (args.length <= 2 && typeof args[1] !== "string") {
+      const [subApp, opts] = args as [Hono, { auth?: "required" | "none" } | undefined];
       const dispose = mountPluginRoute(app, serverCtx, pluginId, {
         kind: "app",
-        app: args[0] as Hono,
+        app: subApp,
+        auth: opts?.auth ?? "required",
       });
       return tracker.track({ dispose });
     }
@@ -178,13 +180,14 @@ export function createPluginServerContext(
     rpc: {
       expose(name, fn) {
         // A plugin's own client<->server bridge (distinct from ctx.data, per api-and-plugin-
-        // types.md §5): mounted as an unauthenticated POST route since it's a private,
-        // plugin-owned channel the client half calls over localhost, never a public API surface.
+        // types.md §5). It was mounted unauthenticated on the reasoning that only the plugin's own
+        // client half calls it "over localhost" — but with `--host` set it is reachable by anyone
+        // on the network, and the client half holds the app's token anyway. Bearer required.
         const dispose = mountPluginRoute(app, serverCtx, pluginId, {
           kind: "handler",
           method: "POST",
           path: `/rpc/${name}`,
-          auth: "none",
+          auth: "required",
           async handler(req) {
             let args: Json[] = [];
             try {

@@ -275,3 +275,57 @@ describe("deactivating a plugin disposes every registration", () => {
     expect(kvValue(setup, "before-count")).toBe(beforeCountBefore);
   });
 });
+
+const AUTHY_PLUGIN = `
+import { Hono } from "hono";
+
+export default {
+  async activate(ctx) {
+    ctx.rpc.expose("double", (n) => n * 2);
+    ctx.registerRoute("GET", "/public", async () => new Response("public"), { auth: "none" });
+    const sub = new Hono();
+    sub.get("/secret", (c) => c.text("secret"));
+    ctx.registerRoute(sub);
+  },
+};
+`;
+
+describe("plugin routes require a bearer token unless opted out (B-63)", () => {
+  it("guards a mounted sub-app and rpc.expose; auth: 'none' stays open", async () => {
+    const root = tmpDir("nooklet-host-test-authy-");
+    writePluginFixture(
+      root,
+      "authy",
+      { id: "authy", api: "1", server: "./src/server.ts" },
+      { "src/server.ts": AUTHY_PLUGIN },
+    );
+    const setup = await makePluginTestSetup([root]);
+    expect(setup.host.list().find((p) => p.id === "authy")?.status).toBe("active");
+    const bearer = { authorization: `Bearer ${setup.readToken}` };
+
+    // The sub-app: 401 without a token, the plugin's own response with one.
+    expect((await setup.app.request("/api/plugins/authy/secret")).status).toBe(401);
+    const secret = await setup.app.request("/api/plugins/authy/secret", { headers: bearer });
+    expect(secret.status).toBe(200);
+    expect(await secret.text()).toBe("secret");
+
+    // RPC: the same rule — the client half holds the app's token, so nothing is lost.
+    const rpcInit = {
+      method: "POST",
+      body: JSON.stringify([21]),
+      headers: { "content-type": "application/json" },
+    };
+    expect((await setup.app.request("/api/plugins/authy/rpc/double", rpcInit)).status).toBe(401);
+    const doubled = await setup.app.request("/api/plugins/authy/rpc/double", {
+      ...rpcInit,
+      headers: { ...rpcInit.headers, ...bearer },
+    });
+    expect(doubled.status).toBe(200);
+    expect(await doubled.json()).toBe(42);
+
+    // Explicitly public stays public.
+    const pub = await setup.app.request("/api/plugins/authy/public");
+    expect(pub.status).toBe(200);
+    expect(await pub.text()).toBe("public");
+  });
+});

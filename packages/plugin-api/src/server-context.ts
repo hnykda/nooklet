@@ -132,10 +132,21 @@ export interface ServerPluginContext {
   beforeWrite(handler: BeforeWriteHandler, opts?: { priority?: number }): Disposable;
 
   registerCommand(cmd: PluginCommand): Disposable;
+  /** Server side of `ClientPluginContext.rpc.call`: `POST /api/plugins/<id>/rpc/<name>` with a
+   * JSON array of arguments. Requires a bearer token like every plugin route; the client half
+   * sends the app's own. */
   readonly rpc: { expose(name: string, fn: RpcFn): Disposable };
 
-  /** Mount a Hono sub-app, or a single (method, path, handler) route, under `/api/plugins/<id>/`. */
-  registerRoute(app: import("hono").Hono): Disposable;
+  /**
+   * Mount a Hono sub-app, or a single (method, path, handler) route, under `/api/plugins/<id>/`.
+   *
+   * Both forms require a valid bearer token by default (`auth: "required"`): the route is
+   * reachable by anything that can reach the server, which with `--host` set is the whole
+   * network. Scope is NOT checked — a plugin route is the plugin's own API, and `RouteInfo.origin`
+   * carries the token id for the plugin to decide with. `auth: "none"` opts a route out, for
+   * things like an `<img>`/`<script>` source that cannot carry a header.
+   */
+  registerRoute(app: import("hono").Hono, opts?: { auth?: "required" | "none" }): Disposable;
   registerRoute(
     method: HttpMethod,
     path: string,
