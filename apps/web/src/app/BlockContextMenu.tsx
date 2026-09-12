@@ -39,6 +39,9 @@ const ENTRIES: ReadonlyArray<{ id: string; label: string } | null> = [
   null,
   { id: "block.duplicate", label: "Duplicate" },
   { id: "block.deleteSelected", label: "Delete" },
+  null,
+  { id: "block.turnIntoPage", label: "Turn into page" },
+  { id: "block.moveToPage", label: "Move to page…" },
 ];
 
 export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.Element {

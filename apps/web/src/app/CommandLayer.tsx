@@ -74,6 +74,7 @@ import {
   createStore,
   pagePath,
 } from "./hosts.js";
+import { createRefactorHost } from "./refactor-host.js";
 import { useTheme } from "./theme.js";
 
 type ContextBase = Omit<CommandContext, "exec" | "args">;
@@ -300,6 +301,11 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     palette,
     datePicker: createFakeDatePickerHost(),
     now: () => Date.now(),
+    // M7 refactors (ADR 020): server ops behind the context menu and the palette.
+    refactor: createRefactorHost({
+      navigate: (path) => navigate(path),
+      closePalette: () => palette.close(),
+    }),
   });
 
   const anyAutocomplete = createMemo(() => {
