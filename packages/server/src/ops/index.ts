@@ -5,7 +5,7 @@
  * live-UI-control channel, `system.diagnostics` for backend health, `graph.links` for the
  * graph view — `ref` is server-only, so only the server can answer "what links to what" — the
  * three `embeddings.*` ops that let the settings panel turn semantic search on without a terminal,
- * and the M7/ADR 019 trio `trash.list`/`trash.restore`/`page.history` over the audit log).
+ * and the M7/ADR 022 trio `trash.list`/`trash.restore`/`page.history` over the audit log).
  *
  * Not all of them are MCP tools: the `ui.*` ops need the `ui:control` capability, and the three
  * `embeddings.*` ops are HTTP-only by design (see `./embeddings.ts`'s header). `../mcp/server.test.ts`

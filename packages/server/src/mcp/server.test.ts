@@ -75,7 +75,7 @@ const CORE_TOOL_NAMES = [
   "block_move_to_page",
   "page_merge",
   "graph_replace",
-  // M7 (research/13 §4.2 item 8, ADR 019): the trash and a page's history, over the audit log.
+  // M7 (research/13 §4.2 item 8, ADR 022): the trash and a page's history, over the audit log.
   "trash_list",
   "trash_restore",
   "page_history",

@@ -1,5 +1,5 @@
 /**
- * `trash.list` (M7 item 8, ADR 019): what is in the trash — every soft-deleted page, and every
+ * `trash.list` (M7 item 8, ADR 022): what is in the trash — every soft-deleted page, and every
  * soft-deleted block that is the *root* of a delete action on a live page — newest first, with
  * who deleted it, read from the `changes` audit row the deletion wrote.
  *
@@ -8,7 +8,7 @@
  * the parent's entry, not its own. A block deleted separately, at a different instant, is its own
  * entry even if its parent is deleted too. Blocks on a deleted page are part of the page's entry.
  *
- * Nothing here expires: the trash is kept indefinitely (ADR 019), so this is the full list.
+ * Nothing here expires: the trash is kept indefinitely (ADR 022), so this is the full list.
  */
 
 import type { SqlDriver } from "@nooklet/core";
@@ -113,7 +113,7 @@ export const trashList = defineOp({
     "deleted page is part of the page's entry). Newest deletion first, each with who deleted it " +
     "(origin, actor, batch_id) when the audit log knows. Restore an item with trash_restore " +
     "and its id, or reverse the whole deleting write with batch_undo and its batch_id. The " +
-    "trash never expires (ADR 019), so an item stays restorable until someone restores it. " +
+    "trash never expires (ADR 022), so an item stays restorable until someone restores it. " +
     "Paginate with cursor; has_more: false means you have seen it all.",
   input: z
     .object({

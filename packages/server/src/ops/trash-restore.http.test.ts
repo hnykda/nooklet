@@ -47,7 +47,7 @@ async function trash(): Promise<
   return r.json.items;
 }
 
-/** One delete action = one tombstone instant (ADR 019). Two actions in the same millisecond
+/** One delete action = one tombstone instant (ADR 022). Two actions in the same millisecond
  * would share it, so tests space them out the way real deletions are. */
 function tick(): Promise<void> {
   return new Promise((r) => setTimeout(r, 2));
@@ -206,7 +206,7 @@ describe("trash.restore — blocks", () => {
     const aId = await blockIdByContent("Chain", "a");
     const cId = await blockIdByContent("Chain", "c");
     await post(s.app, "/api/v1/block.delete", s.writeToken, { id: cId }); // first: c alone
-    await tick(); // a separate action is a separate instant (ADR 019's grouping key)
+    await tick(); // a separate action is a separate instant (ADR 022's grouping key)
     await post(s.app, "/api/v1/block.delete", s.writeToken, { id: aId }); // then: a, b, sibling
 
     const items = await trash();

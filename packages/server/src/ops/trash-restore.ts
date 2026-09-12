@@ -1,5 +1,5 @@
 /**
- * `trash.restore` (M7 item 8, ADR 019): bring a soft-deleted page or block back, through
+ * `trash.restore` (M7 item 8, ADR 022): bring a soft-deleted page or block back, through
  * `serverApplyOps` like every other write — it mints `page.delete {deletedAt: null}` /
  * `block.delete {deletedAt: null}` exactly the way `batch.undo` does, never a raw UPDATE, so the
  * restore replicates to every device and is itself a batch `batch.undo` can reverse.
@@ -20,7 +20,7 @@
  *
  * Two things are refused rather than guessed at. A page whose name is now taken by a live page
  * cannot be restored as-is: core's `applyPageDelete` does not re-check the live-name unique index
- * (docs/BUGS.md B-85), so the write would fail on a SQL constraint mid-transaction; this op checks
+ * (docs/BUGS.md B-90), so the write would fail on a SQL constraint mid-transaction; this op checks
  * first and asks for `new_name`. And a block whose page is itself in the trash is refused with a
  * pointer at the page — restoring one block onto a deleted page would "succeed" invisibly.
  */
@@ -123,7 +123,7 @@ export const trashRestore = defineOp({
     "deleted page). If a live page now has the restored page's name, this fails with conflict - " +
     "pass new_name to restore it under another name instead. A block whose whole page is in the " +
     "trash is refused with conflict: restore the page. The restore is itself a normal write " +
-    "with its own batch_id, so batch_undo reverses it. The trash has no expiry (ADR 019): " +
+    "with its own batch_id, so batch_undo reverses it. The trash has no expiry (ADR 022): " +
     "nothing is ever purged, so anything trash_list shows can be restored. Use dry_run to see " +
     "what would come back without writing anything.",
   input: z

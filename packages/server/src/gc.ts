@@ -33,7 +33,7 @@
  *
  *   - **Referenced** by a live block/property: kept, obviously.
  *   - **Referenced only from the trash** (a tombstoned block, or a block on a deleted page):
- *     kept. The trash has no expiry (ADR 019), and a page restored from it must not come back
+ *     kept. The trash has no expiry (ADR 022), and a page restored from it must not come back
  *     with broken images.
  *   - **Unreferenced but younger than the grace period**: left alone this run. The one legitimate
  *     way an asset is briefly unreferenced is between the upload and the write that embeds it --
@@ -42,7 +42,7 @@
  *     so the grace is DAYS, not seconds: 7 by default (`--asset-grace`), long enough for a week
  *     away, short enough that a monthly `nooklet gc` still collects. A `changes` row for the asset
  *     newer than the cutoff also counts as recent, so a future "touched on re-upload" audit row
- *     (docs/BUGS.md B-86: a deduplicated re-upload of an orphan currently records nothing) will
+ *     (docs/BUGS.md B-91: a deduplicated re-upload of an orphan currently records nothing) will
  *     extend the grace without this file changing.
  *   - **Otherwise**: an orphan. Reported by `--dry-run`; removed by a real run -- the row is
  *     tombstoned (`deleted_at`, so the same bytes can be uploaded again fresh) and the file

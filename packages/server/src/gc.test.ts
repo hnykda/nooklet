@@ -339,7 +339,7 @@ describe("planAssetGc", () => {
     ).toEqual([young.id, old.id].sort());
   });
 
-  it("a recent audit row for the asset extends its grace (the B-86 re-upload hook)", () => {
+  it("a recent audit row for the asset extends its grace (the B-91 re-upload hook)", () => {
     const old = storeAsset("touched.png", 400);
     ctx.driver.run(
       `INSERT INTO changes(graph_id, batch_id, origin, actor, entity_type, entity_id, op_ids_json, before_json, after_json, created_at)

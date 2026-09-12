@@ -1,5 +1,5 @@
 /**
- * `page.history` (M7 item 8, ADR 019): a page's timeline, read straight from the `changes` audit
+ * `page.history` (M7 item 8, ADR 022): a page's timeline, read straight from the `changes` audit
  * rows (sql-schema.md rule 21) that every write already records with a full before/after image per
  * entity (ADR 013). Rows are grouped by `batch_id` — one batch is one write call, sync push, or
  * undo — newest first, and each batch says what happened in words ("3 blocks edited, 1 deleted")
@@ -10,7 +10,7 @@
  * complete, audited write — and composing those on the server would only mean re-implementing or
  * re-exporting `batch.undo`'s compensation logic for an operation that is not atomic across pages
  * either way (a batch that also touched another page reverts there too). The client walks the
- * `batch_id`s this op returns and calls `batch.undo` for each; ADR 019 records the trade-off.
+ * `batch_id`s this op returns and calls `batch.undo` for each; ADR 022 records the trade-off.
  *
  * Which rows are "this page's": the page entity itself, and every block entity whose CURRENT
  * `page_id` is this page. A block moved here from elsewhere brings its earlier history along; one
