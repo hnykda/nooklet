@@ -14,6 +14,7 @@
 import {
   type Block,
   type BlockId,
+  canonicalRefName,
   isoJournalName,
   isValidJournalDay,
   makeOp,
@@ -27,6 +28,7 @@ import {
   type Page,
   type PageId,
   type Properties,
+  splitList,
   type SqlDriver,
   todayJournalDay,
 } from "@nooklet/core";
@@ -233,6 +235,60 @@ export function newOrderKeys(bounds: OrderBounds, n: number): string[] {
   return ordersBetween(bounds.lower, bounds.upper, n);
 }
 
+/**
+ * The `block.place` ops that move a whole subtree: the root to `place`, and — only when the page
+ * changes — every descendant to the same page with its parent and order untouched.
+ *
+ * `@nooklet/core`'s `applyBlockPlace` updates exactly the row the op names, so a cross-page
+ * `block.place` on a parent alone leaves its children with the OLD `page_id` and a parent on
+ * another page: neither page's tree query finds them and they vanish (docs/BUGS.md B-85). The
+ * reducer is right to stay one-op-one-row (that is what keeps replay trivial), so the subtree is
+ * spelled out here, at the op layer. Descendants are emitted parent-first because the reducer
+ * nulls a `parentId` whose block is not (yet) on the same page (rule 24's fallback) — a child
+ * placed before its parent would land at the new page's top level.
+ */
+export function subtreePlaceOps(
+  driver: SqlDriver,
+  mint: (entity: string, payload: OpPayload) => Op,
+  rootId: string,
+  place: { pageId: string; parentId: string | null; order: string },
+): Op[] {
+  const root = getBlockRow(driver, rootId);
+  if (!root) throw new Error(`no such block: ${rootId}`);
+  const ops: Op[] = [mint(rootId, { kind: "block.place", place })];
+  if (root.page_id === place.pageId) return ops;
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const parentId = queue.shift() as string;
+    for (const child of siblingRows(driver, root.page_id, parentId)) {
+      ops.push(
+        mint(child.id, {
+          kind: "block.place",
+          place: { pageId: place.pageId, parentId, order: child.order_key },
+        }),
+      );
+      queue.push(child.id);
+    }
+  }
+  return ops;
+}
+
+/** Every live block id in a subtree, root first — the count a move reports. */
+export function subtreeBlockIds(driver: SqlDriver, rootId: string): string[] {
+  const root = getBlockRow(driver, rootId);
+  if (!root) return [];
+  const ids = [rootId];
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const parentId = queue.shift() as string;
+    for (const child of siblingRows(driver, root.page_id, parentId)) {
+      ids.push(child.id);
+      queue.push(child.id);
+    }
+  }
+  return ids;
+}
+
 export function wouldCycle(driver: SqlDriver, movedId: string, newParentId: string): boolean {
   let cur: string | null = newParentId;
   let guard = 0;
@@ -373,7 +429,8 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
       const pageId = to.page ?? (to.parent ? requireBlock(to.parent).page_id : row.page_id);
       const parentId = to.parent ?? (to.page ? null : row.parent_id);
       const order = orderForAfter(driver, pageId, parentId, to.after ?? "last");
-      apply([mint(id, { kind: "block.place", place: { pageId, parentId, order } })]);
+      // The whole subtree, not just the root — see `subtreePlaceOps` (B-85).
+      apply(subtreePlaceOps(driver, mint, id, { pageId, parentId, order }));
     },
 
     async delete(id, opts) {
@@ -715,16 +772,314 @@ export function journalDayFromWire(ref: string): number | null {
   return isValidJournalDay(day) ? day : null;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Reference rewriting (page rename, page merge)
+// ---------------------------------------------------------------------------------------------
+
+/** The key a reference to `name` is indexed under — `apply-ops.ts`'s `normalizeKey`, which folds
+ * case/whitespace and collapses any recognised journal title to its ISO name (ADR 018). */
+function refKey(name: string): string {
+  return normalizePageName(canonicalRefName(name));
+}
+
+const FENCE_RE = /^\s*(`{3,}|~{3,})/;
+/** `refs.ts`'s tag delimiters, mirrored: a `#tag` runs until one of these. */
+const TAG_STOP = new Set([" ", "\t", "\n", ",", ";", ")", "]", "}", "'", '"']);
+const TAG_PRECEDER = new Set([" ", "\t", "\n", "(", ",", ";", "[", "{", '"', "'"]);
+const TAG_TRAILING = /[.!?:]+$/;
+
+/** Whether `name` can be written as a bare `#tag` and still be read back as exactly that name. */
+function isBareTagSafe(name: string): boolean {
+  if (name === "" || name.startsWith("[") || name.startsWith("#") || name.startsWith("+"))
+    return false;
+  for (const ch of name) if (TAG_STOP.has(ch)) return false;
+  return !TAG_TRAILING.test(name);
+}
+
+function findClosingBrackets(line: string, from: number): number {
+  let depth = 1;
+  for (let i = from; i < line.length - 1; i++) {
+    if (line[i] === "[" && line[i + 1] === "[") {
+      depth++;
+      i++;
+    } else if (line[i] === "]" && line[i + 1] === "]") {
+      depth--;
+      if (depth === 0) return i;
+      i++;
+    }
+  }
+  return -1;
+}
+
+function findBacktickRun(line: string, from: number, len: number): number {
+  let i = from;
+  while (i < line.length) {
+    if (line[i] === "`") {
+      let run = 1;
+      while (line[i + run] === "`") run++;
+      if (run === len) return i;
+      i += run;
+    } else i++;
+  }
+  return -1;
+}
+
+/** Index of the first `|` at bracket depth 0 inside a wikilink's interior, or -1. */
+function findTopLevelPipe(inner: string): number {
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "[" && inner[i + 1] === "[") {
+      depth++;
+      i++;
+    } else if (inner[i] === "]" && inner[i + 1] === "]") {
+      depth = Math.max(0, depth - 1);
+      i++;
+    } else if (inner[i] === "|" && depth === 0) return i;
+  }
+  return -1;
+}
+
 /**
- * `page.update`/`page.rename`'s ref-rewrite (api-and-plugin-types.md §3, `PagesApi.rename`'s doc
- * comment: "rewrites [[refs]] in content in the same tx"). v1 SIMPLIFICATION (explicitly allowed
- * by the task): a case-sensitive substring replace of the literal `[[OldName]]` and `[[OldName|`
- * occurrences, found via the `ref` table's already-indexed `dst_page_key` (so we only scan blocks
- * that actually reference the old name) rather than a fully alias/case-aware wikilink parser. Good
- * enough for v1; a real rename that also needs to handle `#OldName`/casing variants can follow up.
- * Returns the `block.text` ops to apply (does not apply them itself), so a caller — `PagesApi.rename`
- * here, or `page.update`'s op handler, which also needs the rewritten-count — can fold them into
- * one atomic `applyOps` call alongside the `page.rename` op itself.
+ * Rewrite every `[[X]]`, `[[X|label]]`, `#X` and `#[[X]]` in one line whose `refKey(X)` is in
+ * `keys`, to name `toName` instead. The scan mirrors `refs.ts#scanLine` — the reader that built
+ * the `ref` index this rewrite is answering for — so it skips inline code and honours the same
+ * tag delimiters, and it rewrites exactly what that reader would have indexed. A label after a
+ * pipe is kept (`[[Old|the old one]]` -> `[[New|the old one]]`): it is the person's wording. A
+ * bare `#old` becomes `#[[New Name]]` when the new name cannot be written bare.
+ */
+function rewriteRefsInLine(
+  line: string,
+  keys: ReadonlySet<string>,
+  toName: string,
+): { text: string; count: number } {
+  let out = "";
+  let count = 0;
+  let i = 0;
+  const n = line.length;
+  const matches = (name: string): boolean => name.trim() !== "" && keys.has(refKey(name));
+
+  while (i < n) {
+    const ch = line[i] as string;
+
+    if (ch === "`") {
+      let run = 1;
+      while (line[i + run] === "`") run++;
+      const close = findBacktickRun(line, i + run, run);
+      const end = close === -1 ? i + run : close + run;
+      out += line.slice(i, end);
+      i = end;
+      continue;
+    }
+
+    if (ch === "[" && line[i + 1] === "[") {
+      const end = findClosingBrackets(line, i + 2);
+      if (end !== -1) {
+        const inner = line.slice(i + 2, end);
+        const pipe = findTopLevelPipe(inner);
+        const target = pipe === -1 ? inner : inner.slice(0, pipe);
+        const label = pipe === -1 ? "" : inner.slice(pipe);
+        if (matches(target)) {
+          out += `[[${toName}${label}]]`;
+          count++;
+        } else if (target.includes("[[")) {
+          // Nested `[[a [[b]]]]`: the outer name is not ours, but an inner one may be.
+          const nested = rewriteRefsInLine(target, keys, toName);
+          out += `[[${nested.text}${label}]]`;
+          count += nested.count;
+        } else {
+          out += line.slice(i, end + 2);
+        }
+        i = end + 2;
+        continue;
+      }
+    }
+
+    if (ch === "#" && (i === 0 || TAG_PRECEDER.has(line[i - 1] as string))) {
+      const next = line[i + 1];
+      if (next === "[" && line[i + 2] === "[") {
+        const end = findClosingBrackets(line, i + 3);
+        if (end !== -1) {
+          const inner = line.slice(i + 3, end);
+          if (matches(inner)) {
+            out += `#[[${toName}]]`;
+            count++;
+          } else {
+            out += line.slice(i, end + 2);
+          }
+          i = end + 2;
+          continue;
+        }
+      } else if (next !== undefined && next !== "#" && next !== "+" && !TAG_STOP.has(next)) {
+        let j = i + 1;
+        while (j < n && !TAG_STOP.has(line[j] as string)) j++;
+        const raw = line.slice(i + 1, j);
+        const tag = raw.replace(TAG_TRAILING, "");
+        const trailing = raw.slice(tag.length);
+        if (matches(tag)) {
+          out += isBareTagSafe(toName) ? `#${toName}${trailing}` : `#[[${toName}]]${trailing}`;
+          count++;
+        } else {
+          out += line.slice(i, j);
+        }
+        i = j;
+        continue;
+      }
+    }
+
+    out += ch;
+    i++;
+  }
+  return { text: out, count };
+}
+
+/** `rewriteRefsInLine` over a whole text, skipping fenced code blocks (`fences` true for block
+ * content; a property value has no fences). */
+export function rewriteRefsInText(
+  text: string,
+  keys: ReadonlySet<string>,
+  toName: string,
+  fences = true,
+): { text: string; count: number } {
+  let fence: string | null = null;
+  let count = 0;
+  const lines = text.split("\n").map((line) => {
+    if (fence !== null) {
+      if (line.trimStart().startsWith(fence)) fence = null;
+      return line;
+    }
+    if (fences) {
+      const fm = FENCE_RE.exec(line);
+      if (fm) {
+        fence = fm[1] as string;
+        return line;
+      }
+    }
+    const r = rewriteRefsInLine(line, keys, toName);
+    count += r.count;
+    return r.text;
+  });
+  return { text: lines.join("\n"), count };
+}
+
+/** `tags::` / `alias::` are comma lists whose items may be bare, `[[wrapped]]` or `#tagged`
+ * (`refs.ts#extractRefs`); an item naming one of `keys` is replaced by `toName` in the same form. */
+function rewriteRefList(
+  value: string,
+  keys: ReadonlySet<string>,
+  toName: string,
+): { text: string; count: number } {
+  let count = 0;
+  const items = splitList(value).map((item) => {
+    const trimmed = item.trim();
+    const wrapped = trimmed.startsWith("[[") && trimmed.endsWith("]]");
+    const hashed = !wrapped && trimmed.startsWith("#");
+    const bare = wrapped ? trimmed.slice(2, -2).trim() : hashed ? trimmed.slice(1).trim() : trimmed;
+    if (bare === "" || !keys.has(refKey(bare))) return trimmed;
+    count++;
+    return wrapped ? `[[${toName}]]` : hashed ? `#${toName}` : toName;
+  });
+  if (count === 0) return { text: value, count };
+  // Dedupe (by key) what the rewrite may have made equal — `tags:: a, b` merged into `b` must
+  // not become `tags:: b, b`. Only after a rewrite: an untouched list is returned verbatim.
+  const seen = new Set<string>();
+  const distinct = items.filter((item) => {
+    const key = refKey(item.replace(/^#|^\[\[|\]\]$/g, ""));
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { text: distinct.join(", "), count };
+}
+
+export interface RefRewriteResult {
+  ops: Op[];
+  /** Blocks (and pages, for page-level `tags::`) whose text or properties changed. */
+  entities: number;
+  /** Individual references rewritten. */
+  occurrences: number;
+}
+
+/**
+ * The ops that make every reference to any of `fromKeys` name `toName` instead — `page.update`'s
+ * rename and `page.merge`'s consolidation both need exactly this, so it lives once, here.
+ *
+ * Candidates come from the `ref` index (`dst_page_key IN fromKeys`), never a scan of every block,
+ * so this costs what the rename touches. Within each candidate the rewrite is alias- and
+ * case-aware: `fromKeys` is whatever set the caller means (a page's own key plus its alias keys,
+ * `page-aliases.ts#pageLookupKeys`, for a merge; just the old key for a rename), and the match
+ * is on `refKey` so `[[old name]]`, `[[Old Name]]` and a journal date in any title format all
+ * count. Block text, block `tags::`/`alias::` lists and other block properties are rewritten
+ * with `block.text`/`block.prop` ops; the `tags::` of pages that tag the old page (`page_tag`) with
+ * `page.prop` ops. Returns the ops without applying them, so a caller folds them into the one
+ * batch that also renames/merges the page. Known gap: a block whose only link is `[[Page|label]]`
+ * is not a candidate until B-86 is fixed in `refs.ts`.
+ */
+export function buildRefRewriteOps(
+  driver: SqlDriver,
+  mint: (entity: string, payload: OpPayload) => Op,
+  fromKeys: readonly string[],
+  toName: string,
+): RefRewriteResult {
+  const keys = new Set(fromKeys.filter((k) => k !== refKey(toName)));
+  const result: RefRewriteResult = { ops: [], entities: 0, occurrences: 0 };
+  if (keys.size === 0) return result;
+  const placeholders = [...keys].map(() => "?").join(",");
+
+  const blocks = driver.all<{ block_id: string; content: string }>(
+    `SELECT DISTINCT b.id AS block_id, b.content AS content
+     FROM ref r JOIN block b ON b.id = r.src_block_id AND b.deleted_at IS NULL
+     WHERE r.dst_page_key IN (${placeholders}) AND r.kind IN ('page', 'tag')
+     ORDER BY b.id`,
+    [...keys],
+  );
+  for (const row of blocks) {
+    let touched = false;
+    const text = rewriteRefsInText(row.content, keys, toName);
+    if (text.text !== row.content) {
+      result.ops.push(mint(row.block_id, { kind: "block.text", content: text.text }));
+      result.occurrences += text.count;
+      touched = true;
+    }
+    for (const prop of driver.all<{ key: string; value: string }>(
+      "SELECT key, value FROM block_prop WHERE block_id = ? AND value IS NOT NULL",
+      [row.block_id],
+    )) {
+      const r =
+        prop.key === "tags" || prop.key === "alias"
+          ? rewriteRefList(prop.value, keys, toName)
+          : rewriteRefsInText(prop.value, keys, toName, false);
+      if (r.text === prop.value) continue;
+      result.ops.push(mint(row.block_id, { kind: "block.prop", key: prop.key, value: r.text }));
+      result.occurrences += r.count;
+      touched = true;
+    }
+    if (touched) result.entities++;
+  }
+
+  const pages = driver.all<{ page_id: string; value: string }>(
+    `SELECT DISTINCT pt.page_id AS page_id, pp.value AS value
+     FROM page_tag pt
+     JOIN page p ON p.id = pt.page_id AND p.deleted_at IS NULL
+     JOIN page_prop pp ON pp.page_id = pt.page_id AND pp.key = 'tags' AND pp.value IS NOT NULL
+     WHERE pt.tag_key IN (${placeholders})
+     ORDER BY pt.page_id`,
+    [...keys],
+  );
+  for (const row of pages) {
+    const r = rewriteRefList(row.value, keys, toName);
+    if (r.text === row.value) continue;
+    result.ops.push(mint(row.page_id, { kind: "page.prop", key: "tags", value: r.text }));
+    result.occurrences += r.count;
+    result.entities++;
+  }
+  return result;
+}
+
+/**
+ * `page.update`/`PagesApi.rename`'s ref-rewrite (api-and-plugin-types.md §3, `PagesApi.rename`'s
+ * doc comment: "rewrites [[refs]] in content in the same tx"): `buildRefRewriteOps` for one old
+ * name. Returns the ops (not applied), one per changed block/property/page, so the caller folds
+ * them into the same `applyOps` call as the `page.rename` op itself.
  */
 export function buildWikilinkRewriteOps(
   driver: SqlDriver,
@@ -733,25 +1088,5 @@ export function buildWikilinkRewriteOps(
   newName: string,
 ): Op[] {
   if (oldName === newName) return [];
-  const oldKey = normalizePageName(oldName);
-  const candidates = driver.all<{ block_id: string; content: string }>(
-    `SELECT DISTINCT b.id AS block_id, b.content AS content
-     FROM ref r JOIN block b ON b.id = r.src_block_id AND b.deleted_at IS NULL
-     WHERE r.dst_page_key = ? AND r.kind = 'page'`,
-    [oldKey],
-  );
-  const bracket = `[[${oldName}]]`;
-  const aliasOpen = `[[${oldName}|`;
-  const ops: Op[] = [];
-  for (const row of candidates) {
-    if (!row.content.includes(bracket) && !row.content.includes(aliasOpen)) continue;
-    const next = row.content
-      .split(aliasOpen)
-      .join(`[[${newName}|`)
-      .split(bracket)
-      .join(`[[${newName}]]`);
-    if (next === row.content) continue;
-    ops.push(mint(row.block_id, { kind: "block.text", content: next }));
-  }
-  return ops;
+  return buildRefRewriteOps(driver, mint, [refKey(oldName)], newName).ops;
 }

@@ -394,12 +394,46 @@ Select a block, press Cmd/Ctrl+C: the clipboard is unchanged. The command is reg
 in the shortcuts dialog as Cmd+C) and spec R31 says the trigger is the outliner's native `copy`
 event, but `BlockTree` installs no `copy` handler and `keydown.ts` does not know the command.
 
-## Fixed
-
 **Fixed 2026-09-12.** `block.copySelection` is implemented: the selection as outline markdown,
 subtrees included, through the same `serializeOutline` the mirror uses (ids omitted), so what you
 paste elsewhere is what a page file would say. A block whose ancestor is also selected is copied
 once, inside that ancestor. `selection.spec.ts` "Cmd/Ctrl+C copies the selection as markdown".
+
+
+### B-85 · Moving a block to another page makes its children vanish from both pages
+**Status:** open (fixed for the M7 refactor ops and `DataApi.blocks.move`; `block.move` itself
+still does it) · **Severity:** high · **Found:** 2026-09-12, probing for `block.move_to_page` ·
+**Tests:** `packages/server/src/ops/block-move-to-page.test.ts` "moves the whole subtree, not
+just the root",
+`packages/server/src/ops/page-merge.test.ts` "nested blocks survive the move"
+
+`block_move {id: <a block with children>, page: "Other"}`: the block appears on `Other`, its
+children appear nowhere. `page_read` of either page lists only what was already there, plus the
+moved block with `children: []`. In the database the children still say `page_id = <old page>`
+with `parent_id = <the moved block>`, so neither page's tree query finds them.
+
+Cause: `@nooklet/core`'s `applyBlockPlace` updates one row — the block the op names — and a
+`block.place` op that changes `pageId` carries nothing about descendants. The reducer is right to
+be one-op-one-row (that is what makes it replayable), so the fix is at the op layer: every
+cross-page move emits a `block.place` for each descendant too, keeping its parent and order and
+changing only the page (`data-api.ts#subtreePlaceOps`). The M7 ops (`block.to_page`,
+`block.move_to_page`, `page.merge`) and `DataApi.blocks.move` do this. **`ops/block-move.ts` does
+not yet** — its `page:` form needs the same two-line change; owned by another agent this session.
+
+### B-86 · `[[Page|label]]` links are indexed under the key `page|label` and never resolve
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, probing the reference rewrite ·
+**Test:** none yet (a `refs.test.ts` case for the pipe form would catch it)
+
+Write `[[Target|the target]]` in a block: `Target`'s backlinks do not list it, the link is not a
+graph edge, and a rename of `Target` does not rewrite it. `ref.dst_page_key` for that block is
+`target|the target` with `dst_page_id = NULL`. `packages/core/src/refs.ts#addPageRef` takes the
+whole `[[…]]` interior as the page name; `tokens.ts#tryWikilink` already splits the top-level
+pipe (`target` + `alias`), so `extractRefs` is the one reader that does not. The M7 reference
+rewrite (`data-api.ts#buildRefRewriteOps`) handles the pipe form when it meets one, but it finds
+candidate blocks through `ref`, so a block whose only link to a page is a `[[Page|label]]` is not
+rewritten by a rename or a merge until this is fixed.
+
+## Fixed
 
 
 ### B-51 · Uploaded images were broken pictures on every route below the root
