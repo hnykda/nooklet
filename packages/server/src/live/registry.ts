@@ -58,7 +58,11 @@ export interface LiveWindowRecord {
 }
 
 export interface PendingRequest {
+  /** The socket the request went to — the only one allowed to answer it. */
+  ws: WSContext;
   resolve: (data: unknown) => void;
+  /** Settle as "did not answer" without waiting out the timeout (the window went away). */
+  fail: () => void;
 }
 
 interface LiveState {
@@ -106,6 +110,16 @@ export function registerWindow(driver: SqlDriver, ws: WSContext, hello: HelloInf
 export function unregisterWindow(driver: SqlDriver, ws: WSContext): void {
   const s = stateFor(driver);
   s.windows.delete(ws);
+  for (const [requestId, pending] of s.pending) {
+    if (pending.ws !== ws) continue;
+    s.pending.delete(requestId);
+    pending.fail();
+  }
+}
+
+/** Whether `ws` has announced itself with a valid `hello` and is still connected. */
+export function isRegisteredWindow(driver: SqlDriver, ws: WSContext): boolean {
+  return stateFor(driver).windows.has(ws);
 }
 
 export function listWindows(driver: SqlDriver): LiveWindowRecord[] {
@@ -134,24 +148,34 @@ export function mostRecentlyActive(driver: SqlDriver): LiveWindowRecord | undefi
 
 export function registerPending(
   driver: SqlDriver,
+  ws: WSContext,
   requestId: string,
-  resolve: (data: unknown) => void,
+  handlers: { resolve: (data: unknown) => void; fail: () => void },
 ): void {
-  stateFor(driver).pending.set(requestId, { resolve });
+  stateFor(driver).pending.set(requestId, { ws, ...handlers });
 }
 
 export function clearPending(driver: SqlDriver, requestId: string): void {
   stateFor(driver).pending.delete(requestId);
 }
 
-/** Called by `./live.ts`'s `onMessage` when a `state.result`/`command.result` frame arrives.
- * Returns `true` if a pending request was found (and resolved), `false` for an unknown/already-
- * settled `request_id` (e.g. a reply that arrived just after its own timeout fired) — the caller
- * ignores a `false` result rather than treating it as an error, since this race is expected. */
-export function resolvePending(driver: SqlDriver, requestId: string, data: unknown): boolean {
+/**
+ * Called by `./live.ts`'s `onMessage` when a `state.result`/`command.result` frame arrives on
+ * `ws`. Returns `true` if a pending request was found (and resolved), `false` for an unknown or
+ * already-settled `request_id` (a reply just after its own timeout — an expected race, not an
+ * error) — and `false` when the request exists but was sent to a DIFFERENT socket: a window may
+ * only answer what it was asked. `request_id`s are random UUIDs, so guessing one is not practical,
+ * but a socket that never completed `hello` should not be able to answer anything at all.
+ */
+export function resolvePending(
+  driver: SqlDriver,
+  ws: WSContext,
+  requestId: string,
+  data: unknown,
+): boolean {
   const s = stateFor(driver);
   const p = s.pending.get(requestId);
-  if (!p) return false;
+  if (!p || p.ws !== ws) return false;
   s.pending.delete(requestId);
   p.resolve(data);
   return true;

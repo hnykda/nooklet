@@ -55,7 +55,7 @@ export function autoRespondingWindow(
     originalSend(data);
     const frame = conn.sent.at(-1) as Record<string, unknown>;
     const requestId = frame.request_id as string;
-    resolvePending(driver, requestId, respond(frame));
+    resolvePending(driver, conn.ws, requestId, respond(frame));
   }) as typeof conn.ws.send;
   return conn;
 }

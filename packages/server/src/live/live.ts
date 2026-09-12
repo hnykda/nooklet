@@ -85,7 +85,8 @@ export function registerUiLive(app: Hono, serverCtx: ServerContext): void {
           return;
         }
         if (isResultMessage(parsed)) {
-          resolvePending(serverCtx.driver, parsed.request_id, parsed);
+          // Only the socket a request went to can answer it (`registry.ts#resolvePending`).
+          resolvePending(serverCtx.driver, ws, parsed.request_id, parsed);
         }
         // Anything else (unrecognized `type`) is ignored, same tolerance as ../sync/live.ts.
       },

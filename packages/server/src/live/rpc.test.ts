@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "../db.js";
-import { resolvePending } from "./registry.js";
+import { registerWindow, resolvePending, unregisterWindow } from "./registry.js";
 import { sendRequest } from "./rpc.js";
 import { fakeWindowConnection, lastRequestId } from "./test-helpers.js";
 
@@ -19,7 +19,7 @@ describe("/ui/live request/response correlation (ADR 015 §2)", () => {
     expect(conn.sent[0]?.type).toBe("state.get");
     const requestId = lastRequestId(conn);
 
-    const resolved = resolvePending(c, requestId, { state: { window_id: "win-1" } });
+    const resolved = resolvePending(c, conn.ws, requestId, { state: { window_id: "win-1" } });
     expect(resolved).toBe(true);
 
     const result = await pending;
@@ -41,7 +41,7 @@ describe("/ui/live request/response correlation (ADR 015 §2)", () => {
     const requestId = lastRequestId(conn);
     // The late reply finds nothing pending (already cleared by the timeout) — resolvePending
     // reports that honestly rather than throwing.
-    expect(resolvePending(c, requestId, { state: {} })).toBe(false);
+    expect(resolvePending(c, conn.ws, requestId, { state: {} })).toBe(false);
   });
 
   it("two concurrent requests to the same window resolve independently by request_id", async () => {
@@ -52,8 +52,8 @@ describe("/ui/live request/response correlation (ADR 015 §2)", () => {
     expect(conn.sent).toHaveLength(2);
     const [id1, id2] = conn.sent.map((f) => f.request_id as string);
     // Resolve out of order to prove they are not matched positionally.
-    resolvePending(c, id2 as string, { tag: "second" });
-    resolvePending(c, id1 as string, { tag: "first" });
+    resolvePending(c, conn.ws, id2 as string, { tag: "second" });
+    resolvePending(c, conn.ws, id1 as string, { tag: "first" });
     expect(await p1).toEqual({ timedOut: false, data: { tag: "first" } });
     expect(await p2).toEqual({ timedOut: false, data: { tag: "second" } });
   });
@@ -69,5 +69,27 @@ describe("/ui/live request/response correlation (ADR 015 §2)", () => {
     ).resolves.toEqual({
       timedOut: true,
     });
+  });
+
+  it("only the socket a request was sent to can answer it (B-60)", async () => {
+    const c = ctx();
+    const asked = fakeWindowConnection();
+    const other = fakeWindowConnection(); // e.g. a connection that never completed `hello`
+    const pending = sendRequest(c, asked.ws, { type: "state.get" }, { timeoutMs: 30 });
+    const requestId = lastRequestId(asked);
+    expect(resolvePending(c, other.ws, requestId, { state: { forged: true } })).toBe(false);
+    expect(resolvePending(c, asked.ws, requestId, { state: { ok: true } })).toBe(true);
+    expect(await pending).toEqual({ timedOut: false, data: { state: { ok: true } } });
+  });
+
+  it("closing the window fails its in-flight requests at once instead of after the timeout (B-60)", async () => {
+    const c = ctx();
+    const conn = fakeWindowConnection();
+    registerWindow(c, conn.ws, { deviceId: "d1", windowId: "w1", controlEnabled: true });
+    const started = Date.now();
+    const pending = sendRequest(c, conn.ws, { type: "command.run" }, { timeoutMs: 2000 });
+    unregisterWindow(c, conn.ws);
+    expect(await pending).toEqual({ timedOut: true });
+    expect(Date.now() - started).toBeLessThan(500);
   });
 });

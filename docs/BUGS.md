@@ -47,6 +47,21 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-60 · Any `/ui/live` socket could answer any window's request; a closed window kept callers waiting
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, code review · **Tests:**
+`packages/server/src/live/rpc.test.ts` "only the socket a request was sent to can answer it",
+"closing the window fails its in-flight requests at once"
+
+A `state.result`/`command.result` frame resolved whichever pending request carried its
+`request_id`, regardless of which socket sent it — including a socket that had never completed
+`hello`. `request_id`s are random UUIDs, so guessing one is impractical, but an unauthenticated
+connection should not be able to answer anything. And `unregisterWindow`'s doc said it failed the
+window's in-flight requests immediately; it did not, so a tool call to a window that had just
+closed waited out the full 2 s timeout.
+
+A pending request now remembers the socket it went to and only that socket can settle it; closing
+the socket settles its requests as "did not answer" at once.
+
 ### B-59 · The stdio bridge dropped `ui:control`, so Claude Desktop never saw the `ui_*` tools
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review · **Test:**
 `packages/server/src/mcp/stdio.test.ts`

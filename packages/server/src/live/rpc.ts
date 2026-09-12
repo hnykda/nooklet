@@ -43,11 +43,21 @@ export function sendRequest<T = unknown>(
     // serve` shutting down) never waits out an in-flight request's timeout to exit.
     timer.unref?.();
 
-    registerPending(driver, requestId, (data) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ timedOut: false, data: data as T });
+    registerPending(driver, ws, requestId, {
+      resolve: (data) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ timedOut: false, data: data as T });
+      },
+      // The window closed mid-request (`registry.ts#unregisterWindow`): same outcome as a
+      // timeout, just without the wait.
+      fail: () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ timedOut: true });
+      },
     });
 
     try {
