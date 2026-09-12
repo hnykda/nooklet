@@ -250,7 +250,9 @@ test("a day started in the app begins with the journal template, the typed text 
 test("a day created through the API begins with the journal template, before what was appended", async ({
   page,
 }) => {
-  const iso = isoOffset(400);
+  // Not 400: pages.spec.ts creates that day earlier in a full run, and a day that already exists
+  // has no birth for the journal template to attach to. Every spec shares one server.
+  const iso = isoOffset(407);
   await api(page, "page.append", { page: iso, markdown: "- appended by an agent" });
   const tree = await readTree(page, iso);
   expect(tree.map((n) => n.content)).toEqual([
