@@ -23,6 +23,7 @@ import {
   newId,
   normalizePageName,
 } from "@nooklet/core";
+import { reindexPageIdentity, resolvePageIdForKey } from "./page-aliases.js";
 import { rebuildPageTags } from "./page-tags.js";
 import { runBeforeWrite } from "./plugins/before-write.js";
 import {
@@ -173,6 +174,11 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
     // Page-level tags are derived from the page's `tags` property and its journal day, so any
     // page write can change them (ADR 017) — the page equivalent of `rebuildRefRows` above.
     rebuildPageTags(driver, pageId);
+    // Likewise its aliases (`alias::`), and — because a page write can change what its name
+    // resolves to (create, rename, delete) — every reference addressed by any name this page
+    // answered to before or answers to now. Runs AFTER the block loop above so a batch that
+    // creates a page and a block referencing it in one go ends up resolved either way.
+    reindexPageIdentity(driver, pageId);
     driver.run(
       "INSERT OR IGNORE INTO embed_dirty(unit_kind, unit_id, enqueued_at) VALUES ('page', ?, ?)",
       [pageId, Date.now()],
@@ -218,13 +224,9 @@ function rebuildRefRows(driver: SqlDriver, blockId: string, pageId: string, cont
 
   const insert = (kind: "page" | "tag", key: string): void => {
     const pageKey = normalizeKey(key);
-    const target = driver.get<{ id: string }>(
-      "SELECT id FROM page WHERE key = ? AND deleted_at IS NULL",
-      [pageKey],
-    );
     driver.run(
       "INSERT INTO ref(src_block_id, src_page_id, kind, dst_page_key, dst_page_id, dst_block_id) VALUES (?, ?, ?, ?, ?, NULL)",
-      [blockId, pageId, kind, pageKey, target?.id ?? null],
+      [blockId, pageId, kind, pageKey, resolvePageIdForKey(driver, pageKey)],
     );
   };
   for (const p of extracted.pageRefs) insert("page", p);

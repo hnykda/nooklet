@@ -50,6 +50,10 @@ describe("openDb", () => {
         "INSERT INTO page(id, name, key, journal_day, created_at, updated_at, name_hlc) " +
           "VALUES ('p1', 'Existing Page', 'existing page', NULL, 1, 1, '0000000000001-0000000001-00000000')",
       );
+      // An imported `alias::` that no version before 5 ever indexed (B-55).
+      driver.run(
+        "INSERT INTO page_prop(page_id, key, value, hlc) VALUES ('p1', 'alias', '[[Nick]], garden', '0000000000001-0000000001-00000000')",
+      );
     }
 
     // Re-opening through the real db.ts path should now run the v1 -> v2 migration.
@@ -76,6 +80,13 @@ describe("openDb", () => {
     // Pre-existing data survived the migration untouched.
     const page = driver.get<{ name: string }>("SELECT name FROM page WHERE id = 'p1'");
     expect(page?.name).toBe("Existing Page");
+
+    // Version 5 derived page_alias from the property that was already there.
+    expect(
+      driver
+        .all<{ alias_key: string }>("SELECT alias_key FROM page_alias ORDER BY alias_key")
+        .map((r) => r.alias_key),
+    ).toEqual(["garden", "nick"]);
 
     const migrations = driver.all<{ version: number }>(
       "SELECT version FROM schema_migration ORDER BY version",

@@ -1,6 +1,7 @@
-import { normalizePageName } from "@nooklet/core";
+import { normalizePageName, splitList } from "@nooklet/core";
 import { z } from "zod";
 import { buildWikilinkRewriteOps } from "../data-api.js";
+import { aliasKeysOf } from "../page-aliases.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { checkIfVersion, currentHeadSeq, pageMetaWire, requirePage } from "./resolve.js";
@@ -62,10 +63,30 @@ export const pageUpdate = defineOp({
         refsRewritten = rewriteOps.length;
         ops.push(...rewriteOps);
         if (input.keep_alias) {
-          ctx.db.run("INSERT OR IGNORE INTO page_alias(page_id, alias_key) VALUES (?, ?)", [
-            page.id,
-            normalizePageName(page.name),
-          ]);
+          // The old name becomes an entry in the page's `alias::` property — an ordinary
+          // `page.prop` op, so it syncs, replays, and shows up in the mirror like any other
+          // property. `page_alias` is derived from that property on write (`../page-aliases.ts`);
+          // writing the index directly, as this once did, produced a row no other device and no
+          // `rebuild()` would ever reproduce.
+          const newKey = normalizePageName(input.new_name);
+          const oldKey = normalizePageName(page.name);
+          // Drop the name the page is taking (renaming back to a former alias must not leave a
+          // page listed as its own alias), add the one it is giving up unless already there.
+          const kept = splitList(page.properties.alias ?? "").filter(
+            (item) => !aliasKeysOf(item, "").includes(newKey),
+          );
+          const next = aliasKeysOf(kept.join(", "), newKey).includes(oldKey)
+            ? kept
+            : [...kept, page.name];
+          if (next.join(", ") !== (page.properties.alias ?? "")) {
+            ops.push(
+              ctx.mintOp(page.id, {
+                kind: "page.prop",
+                key: "alias",
+                value: next.length > 0 ? next.join(", ") : null,
+              }),
+            );
+          }
         }
       }
       if (input.properties) {

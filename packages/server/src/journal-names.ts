@@ -26,6 +26,7 @@ import {
   type SqlDriver,
 } from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
+import { reresolveIndexTargets } from "./page-aliases.js";
 
 const DONE_KEY = "journal.iso_names";
 
@@ -136,16 +137,9 @@ function recanonicaliseIndexKeys(driver: SqlDriver): number {
     rekeyed++;
   }
 
-  driver.run(
-    `UPDATE ref SET dst_page_id = (SELECT id FROM page WHERE page.key = ref.dst_page_key AND page.deleted_at IS NULL)
-     WHERE dst_page_key IS NOT NULL`,
-  );
-  driver.run(
-    `UPDATE path_ref SET page_id = (SELECT id FROM page WHERE page.key = path_ref.page_key AND page.deleted_at IS NULL)`,
-  );
-  driver.run(
-    `UPDATE page_tag SET tag_page_id = (SELECT id FROM page WHERE page.key = page_tag.tag_key AND page.deleted_at IS NULL)`,
-  );
+  // Own key first, then alias (`page-aliases.ts`) — the same rule every write uses, so this one-off
+  // sweep cannot un-resolve a reference that reaches its page through an `alias::`.
+  reresolveIndexTargets(driver);
 
   return rekeyed;
 }

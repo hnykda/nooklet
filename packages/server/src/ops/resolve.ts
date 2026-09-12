@@ -9,6 +9,7 @@ import type { Page, SqlDriver } from "@nooklet/core";
 import { isId, isoJournalName, parseJournalTitle } from "@nooklet/core";
 import type { z } from "zod";
 import { journalDayFromWire, WIRE_DATE_RE } from "../data-api.js";
+import { pageLookupKeys } from "../page-aliases.js";
 import { type OpContext, OpError } from "./registry.js";
 import type { PageMeta as PageMetaSchema } from "./schemas.js";
 
@@ -107,6 +108,19 @@ export function pageMetaWire(
     updated_at: new Date(page.updatedAt).toISOString(),
     backlink_count: opts?.backlinkCount,
   };
+}
+
+/** Blocks on OTHER pages whose path refs reach `page` by its own key or any alias (sql-schema.md
+ * rule 13) — the number `page.read` reports and `page.delete` warns with. */
+export function backlinkCount(driver: SqlDriver, page: Page): number {
+  const keys = pageLookupKeys(driver, page);
+  return (
+    driver.get<{ n: number }>(
+      `SELECT count(*) AS n FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL
+       WHERE pr.page_key IN (${keys.map(() => "?").join(",")}) AND b.page_id != ?`,
+      [...keys, page.id],
+    )?.n ?? 0
+  );
 }
 
 /** The current changes-log head (`graph_overview.seq`'s definition), used as a write's `seq` when

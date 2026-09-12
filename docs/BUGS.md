@@ -47,6 +47,36 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-55 · `alias::` never worked, and `keep_alias` wrote an index row no other device would ever see
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review; confirmed on the
+owner's graph (three pages with `alias::`, `page_alias` empty) · **Tests:**
+`packages/server/src/apply-ops.test.ts` "derives page_alias from alias::" and "re-resolves
+references by the old name on rename", `ops.http.test.ts` `describe("aliases (B-55)")`,
+`db.test.ts` (migration v5 fills the table from an existing property)
+
+Two halves of one omission. Nothing ever populated `page_alias` from a page's `alias::` property —
+the spec (sql-schema.md rule 6) says a change to `alias::` MUST refresh it, and the importer
+brought the property across, but no code derived the table, so `page_read("garden")` on a page
+called `Zahrada` with `alias:: garden` was `not_found`. The one thing that did write the table
+was `page.update keep_alias`, with a raw `INSERT` outside `serverApplyOps` — a row that no other
+device, no `rebuild()`, and no `nooklet verify` would ever reproduce.
+
+Now `page_alias` is derived on every page write, like `page_tag` (`packages/server/src/
+page-aliases.ts`); `keep_alias` appends the old name to the `alias::` property with an ordinary
+`page.prop` op and the index follows; a reference to an alias resolves to the page
+(`ref.dst_page_id`), and backlinks are computed over the page's own key plus its aliases (rule 13).
+Renaming back to a former alias removes that name from the list rather than leaving a page listed
+as its own alias. Migration v5 rebuilds the table for existing graphs.
+
+Fixed alongside, because the same re-resolution covers it: a `[[Page]]` written before `Page`
+existed stayed unresolved (`dst_page_id NULL`) until the referencing block happened to be edited
+again; creating, renaming or deleting a page now re-resolves every reference addressed by any
+name it answered to before or answers to now.
+
+Not done here: the web client's `usePageByName` looks up `page.key` only, so opening
+`/page/garden` in the app still says the page does not exist even though the API resolves it.
+`page_alias` is a server-only table; the client would need to scan `page_prop.alias`.
+
 ### B-54 · Every server start left one more live write token behind
 **Status:** fixed · **Severity:** medium (security) · **Found:** 2026-09-12, code review; confirmed
 on the owner's graph (three live `web-client (auto)` rows) · **Tests:**

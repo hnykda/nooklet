@@ -2,7 +2,7 @@ import { z } from "zod";
 import { loadBlockTree } from "../data-api.js";
 import { renderTruncated, toWireBlockNode } from "./outline-bridge.js";
 import { defineOp } from "./registry.js";
-import { pageMetaWire, requirePage } from "./resolve.js";
+import { backlinkCount, pageMetaWire, requirePage } from "./resolve.js";
 import { BlockNode, Format, PageMeta } from "./schemas.js";
 
 export const pageRead = defineOp({
@@ -67,15 +67,9 @@ export const pageRead = defineOp({
     const page = await requirePage(ctx, input.page);
     const driver = ctx.db;
 
-    let backlinkCount: number | undefined;
-    if (input.include_backlink_count) {
-      backlinkCount =
-        driver.get<{ n: number }>(
-          "SELECT count(*) AS n FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL WHERE pr.page_key = ? AND b.page_id != ?",
-          [page.key, page.id],
-        )?.n ?? 0;
-    }
-    const meta = pageMetaWire(driver, page, { backlinkCount });
+    const meta = pageMetaWire(driver, page, {
+      backlinkCount: input.include_backlink_count ? backlinkCount(driver, page) : undefined,
+    });
 
     if (input.format === "json") {
       const nodes = loadBlockTree(driver, null, page.id, input.depth);

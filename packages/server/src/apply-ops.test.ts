@@ -103,24 +103,10 @@ describe("serverApplyOps: refs and path_ref indexing", () => {
       { kind: "tag", dst_page_key: "tag", dst_page_id: null },
     ]);
 
+    // Creating the target page resolves the reference the moment it exists (`reindexPageIdentity`
+    // re-resolves the new page's own key) — it used to stay NULL until the referencing block
+    // happened to be edited again.
     const p2 = createPage("Page Two");
-    // Creating the target page does not retroactively backfill dst_page_id (rule 11 says a
-    // future write must refresh it; page.create alone doesn't touch existing ref rows) — but a
-    // subsequent edit to the referencing block does re-resolve it.
-    const hlc = ctx.hlc.next();
-    serverApplyOps(
-      ctx,
-      [
-        {
-          id: hlc,
-          hlc,
-          device: "aaaaaaaa",
-          entity: b1,
-          payload: { kind: "block.text", content: "See [[Page Two]] and #tag" },
-        },
-      ],
-      { origin: "user", actor: "test" },
-    );
     refs = ctx.driver.all(
       "SELECT kind, dst_page_key, dst_page_id FROM ref WHERE src_block_id = ? ORDER BY kind",
       [b1],
@@ -129,6 +115,89 @@ describe("serverApplyOps: refs and path_ref indexing", () => {
       { kind: "page", dst_page_key: "page two", dst_page_id: p2 },
       { kind: "tag", dst_page_key: "tag", dst_page_id: null },
     ]);
+    expect(
+      ctx.driver.get<{ page_id: string | null }>(
+        "SELECT page_id FROM path_ref WHERE block_id = ? AND page_key = 'page two'",
+        [b1],
+      )?.page_id,
+    ).toBe(p2);
+  });
+
+  it("derives page_alias from alias:: and resolves [[alias]] references through it (B-55)", () => {
+    const real = createPage("Real Name");
+    const b = createBlock(createPage("Elsewhere"), "see [[Nick]] and #Nickname");
+    const dstOf = () =>
+      ctx.driver.all<{ dst_page_key: string; dst_page_id: string | null }>(
+        "SELECT dst_page_key, dst_page_id FROM ref WHERE src_block_id = ? ORDER BY dst_page_key",
+        [b],
+      );
+    expect(dstOf().map((r) => r.dst_page_id)).toEqual([null, null]);
+
+    // Setting the property is what populates the index — never a direct write to page_alias.
+    const setAlias = (value: string | null) => {
+      const hlc = ctx.hlc.next();
+      serverApplyOps(
+        ctx,
+        [
+          {
+            id: hlc,
+            hlc,
+            device: "aaaaaaaa",
+            entity: real,
+            payload: { kind: "page.prop", key: "alias", value },
+          },
+        ],
+        { origin: "user", actor: "test" },
+      );
+    };
+    setAlias("[[Nick]], #Nickname, Real Name");
+    expect(
+      ctx.driver.all<{ alias_key: string }>(
+        "SELECT alias_key FROM page_alias WHERE page_id = ? ORDER BY alias_key",
+        [real],
+      ),
+    ).toEqual([{ alias_key: "nick" }, { alias_key: "nickname" }]); // never its own key
+    expect(dstOf().map((r) => r.dst_page_id)).toEqual([real, real]);
+
+    // Removing an alias un-resolves the references that reached the page through it.
+    setAlias("Nickname");
+    expect(dstOf()).toEqual([
+      { dst_page_key: "nick", dst_page_id: null },
+      { dst_page_key: "nickname", dst_page_id: real },
+    ]);
+
+    // A real page with that name outranks the alias.
+    const nick = createPage("Nickname");
+    expect(dstOf().find((r) => r.dst_page_key === "nickname")?.dst_page_id).toBe(nick);
+  });
+
+  it("re-resolves references by the old name on rename and clears them on delete", () => {
+    const p = createPage("Before");
+    const b = createBlock(createPage("Other"), "[[Before]]");
+    const target = () =>
+      ctx.driver.get<{ dst_page_id: string | null }>(
+        "SELECT dst_page_id FROM ref WHERE src_block_id = ?",
+        [b],
+      )?.dst_page_id;
+    expect(target()).toBe(p);
+
+    const apply = (payload: import("@nooklet/core").OpPayload) => {
+      const hlc = ctx.hlc.next();
+      serverApplyOps(ctx, [{ id: hlc, hlc, device: "aaaaaaaa", entity: p, payload }], {
+        origin: "user",
+        actor: "test",
+      });
+    };
+    apply({ kind: "page.rename", name: "After" });
+    expect(target()).toBeNull(); // `[[Before]]` no longer names a page
+    apply({ kind: "page.prop", key: "alias", value: "Before" });
+    expect(target()).toBe(p); // ...until the old name is kept as an alias
+    apply({ kind: "page.delete", deletedAt: Date.now() });
+    expect(target()).toBeNull();
+    expect(
+      ctx.driver.get<{ n: number }>("SELECT count(*) AS n FROM page_alias WHERE page_id = ?", [p])
+        ?.n,
+    ).toBe(0);
   });
 
   it("computes path_ref as the closure of a block's own refs plus every ancestor's", () => {

@@ -13,6 +13,7 @@
 
 import type { SqlDriver } from "@nooklet/core";
 import { CORE_SCHEMA_STATEMENTS } from "@nooklet/core";
+import { rebuildPageAliases, reresolveIndexTargets } from "./page-aliases.js";
 import { rebuildPageTags } from "./page-tags.js";
 
 export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
@@ -317,9 +318,24 @@ export const MIGRATIONS: readonly Migration[] = [
       }
     },
   },
+  {
+    version: 5,
+    description: "derive page_alias from alias:: and resolve references through aliases (B-55)",
+    up: (driver) => {
+      // The table existed from the start but nothing ever filled it from an `alias::` property;
+      // the only writer was a raw INSERT in `page.update`. Derived, so this is a rebuild: every
+      // live page's aliases, then every reference re-pointed through the own-key-then-alias rule.
+      for (const row of driver.all<{ id: string }>(
+        "SELECT id FROM page WHERE deleted_at IS NULL",
+      )) {
+        rebuildPageAliases(driver, row.id);
+      }
+      reresolveIndexTargets(driver);
+    },
+  },
 ];
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {

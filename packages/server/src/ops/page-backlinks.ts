@@ -1,5 +1,6 @@
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
+import { pageLookupKeys } from "../page-aliases.js";
 import { pageWireNameById } from "../rows.js";
 import { ftsPhrase } from "./fts-query.js";
 import { defineOp } from "./registry.js";
@@ -60,12 +61,16 @@ export const pageBacklinks = defineOp({
 
     if (asPage) {
       targetWire = wirePageName(asPage);
+      // The page's own key plus its aliases (sql-schema.md rule 13): `[[Nick]]` is a link to
+      // `Real` when `Real` lists `alias:: Nick`.
+      const keys = pageLookupKeys(driver, asPage);
+      const keyList = keys.map(() => "?").join(",");
       linkedRows = driver.all(
         `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
          FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL
-         WHERE pr.page_key = ? AND b.page_id != ?
+         WHERE pr.page_key IN (${keyList}) AND b.page_id != ?
          ORDER BY b.updated_at DESC`,
-        [asPage.key, asPage.id],
+        [...keys, asPage.id],
       );
       if (input.include_unlinked) {
         const plainName = asPage.name.split("/").pop() ?? asPage.name;
@@ -75,9 +80,9 @@ export const pageBacklinks = defineOp({
             `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
              FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
              WHERE block_fts MATCH ? AND b.deleted_at IS NULL AND b.page_id != ?
-               AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key = ?)
+               AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key IN (${keyList}))
              LIMIT 50`,
-            [ftsQuery, asPage.id, asPage.key],
+            [ftsQuery, asPage.id, ...keys],
           );
         }
       }

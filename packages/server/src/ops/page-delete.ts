@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
-import { checkIfVersion, requirePage, wirePageName } from "./resolve.js";
+import { backlinkCount, checkIfVersion, requirePage, wirePageName } from "./resolve.js";
 import { IdempotencyKey, IfVersion, PageRef } from "./schemas.js";
 
 export const pageDelete = defineOp({
@@ -52,11 +52,7 @@ export const pageDelete = defineOp({
           page.id,
         ])
         .map((r) => r.id);
-      const backlinksAffected =
-        ctx.db.get<{ n: number }>(
-          "SELECT count(*) AS n FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL WHERE pr.page_key = ? AND b.page_id != ?",
-          [page.key, page.id],
-        )?.n ?? 0;
+      const backlinksAffected = backlinkCount(ctx.db, page);
       const now = Date.now();
       const ops = [
         ctx.mintOp(page.id, { kind: "page.delete", deletedAt: now }),

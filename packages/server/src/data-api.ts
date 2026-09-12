@@ -31,6 +31,7 @@ import {
   todayJournalDay,
 } from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
+import { resolvePageIdForKey } from "./page-aliases.js";
 import {
   BLOCK_COLUMNS,
   type BlockRow,
@@ -395,21 +396,11 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
 
   const pages: PagesApi = {
     async get(ref) {
-      if (typeof ref === "string") {
-        const row = getPageRow(driver, ref);
-        return row ? rowToPage(driver, row) : null;
-      }
-      const key = normalizePageName(ref.name);
-      let row = driver.get<PageRow>("SELECT * FROM page WHERE key = ? AND deleted_at IS NULL", [
-        key,
-      ]);
-      if (!row) {
-        row = driver.get<PageRow>(
-          `SELECT p.* FROM page_alias pa JOIN page p ON p.id = pa.page_id
-           WHERE pa.alias_key = ? AND p.deleted_at IS NULL`,
-          [key],
-        );
-      }
+      // By id, or by name — where "name" includes any alias the page lists (`alias::`), through
+      // the same own-key-then-alias rule references resolve with (`../page-aliases.ts`).
+      const id =
+        typeof ref === "string" ? ref : resolvePageIdForKey(driver, normalizePageName(ref.name));
+      const row = id ? getPageRow(driver, id) : undefined;
       return row ? rowToPage(driver, row) : null;
     },
 

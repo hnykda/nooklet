@@ -13,6 +13,7 @@ import {
   setEmbeddingSettings,
 } from "../embeddings/index.js";
 import { type JsonAny, makeTestServer, post, type TestServer } from "../test-helpers.js";
+import { verifyRebuildParity } from "../verify.js";
 
 let s: TestServer;
 
@@ -465,6 +466,65 @@ describe("search", () => {
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
     expect(json.error.message).toMatch(/updated_after/);
+  });
+});
+
+describe("aliases (B-55)", () => {
+  it("page.update keep_alias keeps the old name through the op log, not a raw index write", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Old Name" });
+    const { status, json } = await post(s.app, "/api/v1/page.update", s.writeToken, {
+      page: "Old Name",
+      new_name: "New Name",
+    });
+    expect(status).toBe(200);
+    expect(json.page.properties.alias).toBe("Old Name");
+
+    // The old name still resolves, to the renamed page.
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Old Name" });
+    expect(read.status).toBe(200);
+    expect(read.json.page.name).toBe("New Name");
+
+    // The alias came from an op, so a replay of the log reproduces the index exactly.
+    expect(verifyRebuildParity(s.serverCtx.driver).ok).toBe(true);
+    expect(
+      s.serverCtx.driver.all<{ alias_key: string }>("SELECT alias_key FROM page_alias"),
+    ).toEqual([{ alias_key: "old name" }]);
+  });
+
+  it("renaming back to a former alias does not leave a page listed as its own alias", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "A" });
+    await post(s.app, "/api/v1/page.update", s.writeToken, { page: "A", new_name: "B" });
+    const back = await post(s.app, "/api/v1/page.update", s.writeToken, {
+      page: "B",
+      new_name: "A",
+    });
+    expect(back.json.page.properties.alias).toBe("B");
+    const again = await post(s.app, "/api/v1/page.update", s.writeToken, {
+      page: "A",
+      new_name: "B",
+    });
+    expect(again.json.page.properties.alias).toBe("A");
+  });
+
+  it("a reference to an alias is a backlink of the page, and the alias reads as the page", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Zahrada",
+      properties: { alias: "garden, [[Garten]]" },
+    });
+    await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "Notes",
+      markdown: "- watering the [[garden]]\n- #Garten again",
+    });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Garten" });
+    expect(read.json.page.name).toBe("Zahrada");
+    expect(read.json.page.backlink_count).toBe(2);
+    const backlinks = await post(s.app, "/api/v1/page.backlinks", s.writeToken, {
+      target: "zahrada",
+    });
+    expect(backlinks.json.linked.map((l: { text: string }) => l.text).sort()).toEqual([
+      "#Garten again",
+      "watering the [[garden]]",
+    ]);
   });
 });
 
