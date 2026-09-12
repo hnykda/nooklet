@@ -53,7 +53,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 
 ### Explicit non-goals (v1)
 
-Flashcards, whiteboards, kanban boards, real-time cursors/co-editing, multi-user
+Flashcards, whiteboards, kanban boards, real-time cursors/co-editing (research/15 §8 ranks what a first step would be — presence over the existing live channel, then read-only share links — if and when wanted; neither is scheduled), multi-user
 permissions (one user, many devices; the design leaves room for graph membership later),
 end-to-end encryption (transport TLS + tokens; E2EE would block server-side embeddings and
 MCP), PDF annotation, Logseq's `{{query}}`/Datalog blocks, org-mode, LOGBOOK/time tracking

@@ -23,7 +23,7 @@ Resume file. If you are reading this because the previous session was cut off, s
 | m7-views | reference filters/sort, appearance basics, shelf outline card, link-all-unlinked | `views/ReferencesPanel.tsx`, `referenceGrouping.ts`, `shell/Shelf.tsx`, `data/appearance.ts`, `styles/shell.css` tokens, `ops/page-link-unlinked.ts` | 6353 |
 | m7-trash-history | trash list/restore, page history timeline, orphan-asset GC | new `ops/{trash-list,trash-restore,page-history}.ts`, `views/TrashView.tsx`, `views/HistoryView.tsx`, `data/history.ts`, `gc.ts`, `cli.ts` gc case | 6354 |
 | exposure-audit | read-only: what is built vs reachable; cheap wins below the top ten; publish-a-graph scoping | `docs/review/2026-09-12-exposure-audit.md` only | 6360/6361 |
-| research-collab | sharing, membership, co-editing, presence, hosting for friends, prior art | `docs/research/15-collaboration-and-sharing.md` only | — |
+| research-collab | **done** — `docs/research/15` committed; shortlist: presence → share links → conflicts UI → host via Tailscale → membership → OT last; CRDT-as-truth and E2EE stay out | — | — |
 | wiki | `docs/wiki/` as a nooklet file graph; must import with zero errors | `docs/wiki/**` only | 6362 |
 
 Shared, append-only files (re-read before edit): `commands/slash/items.ts` (query, templates),
