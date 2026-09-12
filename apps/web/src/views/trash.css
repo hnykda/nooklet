@@ -1,0 +1,170 @@
+/* The trash (`TrashView.tsx`). Tokens from `../styles/shell.css`; the row rhythm matches
+   `all-pages.css` so the two lists read as siblings. */
+
+.trash-header {
+  margin-bottom: var(--space-xl);
+}
+
+.trash-header h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+
+.trash-count {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+}
+
+.trash-note,
+.trash-empty {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  margin: var(--space-sm) 0 0;
+}
+
+.trash-notice {
+  margin: 0 0 var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--fg);
+  font-size: var(--text-sm);
+}
+
+.trash-notice-link,
+.trash-page-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.trash-notice-link:hover,
+.trash-page-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.trash-error {
+  margin: 0 0 var(--space-lg);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+.trash-retry {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+  cursor: pointer;
+  padding: 0;
+}
+
+.trash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trash-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-sm);
+  margin-inline: calc(-1 * var(--space-sm));
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.trash-row:not(:last-child) {
+  box-shadow: inset 0 -1px 0 var(--hairline);
+}
+
+.trash-row:hover {
+  background: var(--surface-2);
+}
+
+/* A small label rather than an icon: "page" and "block" are the two words a reader needs, and a
+   glyph for either would have to be learned. */
+.trash-kind {
+  flex: none;
+  min-width: 3.2em;
+  text-align: center;
+  padding: 1px var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.trash-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.trash-title {
+  color: var(--fg);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trash-meta {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  margin-top: var(--space-2xs);
+}
+
+.trash-actor {
+  color: var(--fg-soft);
+}
+
+.trash-origin {
+  margin-left: var(--space-xs);
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-size: var(--text-2xs);
+}
+
+.trash-restore {
+  flex: none;
+  min-height: 30px;
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.trash-restore:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.trash-restore:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .trash-restore {
+    min-height: var(--touch);
+  }
+}

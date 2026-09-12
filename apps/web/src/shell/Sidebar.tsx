@@ -11,7 +11,7 @@
 
 import type { PageRow } from "@nooklet/core";
 import { A } from "@solidjs/router";
-import { CalendarDays, CircleCheck, FileText, Network, Search, Star } from "lucide-solid";
+import { CalendarDays, CircleCheck, FileText, Network, Search, Star, Trash2 } from "lucide-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { displayPageName } from "../data/page-title.js";
 import { useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
@@ -68,6 +68,9 @@ export function Sidebar(): JSX.Element {
           </A>
           <A href="/graph">
             <Network size={15} /> Graph
+          </A>
+          <A href="/trash">
+            <Trash2 size={15} /> Trash
           </A>
         </nav>
 
