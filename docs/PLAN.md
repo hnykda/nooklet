@@ -20,7 +20,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
    Devices work fully offline and reconcile through a small op log. Nothing bypasses that log.
 2. **Markdown stays transparent.** The graph is mirrored to plain markdown files that Logseq and
    Obsidian can open, and imported from them losslessly, but files are never the sync medium.
-3. **Small scope, steady releases.** No flashcards, whiteboards, boards, graph view, or
+3. **Small scope, steady releases.** No flashcards, whiteboards, boards, or
    real-time co-editing. Every feature must serve outliner + refs + sync + API/MCP + embeddings
    + plugins.
 4. **Every operation is a named command** with an id, a description, a default keybinding, and a
@@ -35,7 +35,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 
 | Area | What ships |
 |---|---|
-| Outliner | Nested bullets, one markdown block per bullet, Enter/Tab/Shift-Tab/Alt-Up-Down semantics, collapse, zoom into block, multi-select, drag by bullet, numbered blocks, headings inside blocks, code fences with highlighting, tables and images as block content |
+| Outliner | Nested bullets, one markdown block per bullet, Enter/Tab/Shift-Tab/Alt-Up-Down semantics, collapse, zoom into block, multi-select, drag by bullet, numbered blocks, headings inside blocks, code fences (syntax highlighting is an open seam — research/13 §4.2), tables and images as block content |
 | References | `[[page]]`, `#tag`, `#[[multi word]]`, `((block))`, `{{embed}}` of page or block, aliases; linked references grouped by page and unlinked references per page |
 | Namespaces | `A/B/C` page names; hierarchy view on the namespace page; short-form display; create with implied parents |
 | Journals | A stream: today is always open at the top, older non-empty days below; a calendar to open any day; empty days do not exist as pages |
@@ -53,7 +53,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 
 ### Explicit non-goals (v1)
 
-Flashcards, whiteboards, kanban boards, graph view, real-time cursors/co-editing, multi-user
+Flashcards, whiteboards, kanban boards, real-time cursors/co-editing, multi-user
 permissions (one user, many devices; the design leaves room for graph membership later),
 end-to-end encryption (transport TLS + tokens; E2EE would block server-side embeddings and
 MCP), PDF annotation, Logseq's `{{query}}`/Datalog blocks, org-mode, LOGBOOK/time tracking
@@ -233,6 +233,8 @@ Tasks:
   `repeat::` value (ADR 011: `1w` shifting from the date, or `1w from done` shifting from
   completion — no org repeater dialects). Slash commands `/scheduled` and `/deadline` open a date
   picker; the journal page for a day shows a "Scheduled and deadline" section listing blocks
+  (**not yet built** as of 2026-09-12 — the Tasks view filters by date, but no journal day shows
+  the section; research/13 §4.1 marks it missing)
   scheduled for or due on that day plus overdue ones; the Tasks view sorts by these dates.
   Marking a repeating task DONE advances the date, resets the marker, and stamps `done::` with
   the completion time. Logseq's `SCHEDULED: <2026-09-12 Sat .+1w>` / `DEADLINE:` lines and
@@ -383,7 +385,7 @@ Status is tracked in the first column. Effort assumed one developer directing co
 | M2 | Web client | **done** | Solid app, SQLite WASM replica, sync client, page/journal views, CM6 editor surface, references panels, search, palette/keymap/slash menu, tasks, properties, PWA shell, live-UI-control channel (ADR 015) |
 | M3 | Embeddings | **done** | Provider interface, Ollama + OpenAI-compatible, worker queue, hybrid search, related |
 | M4 | Plugins | **done** | `@nooklet/plugin-api` package and docs (done); loader for both halves, extension points, built-ins as plugins |
-| M5 | Mobile polish | **done** | Keyboard toolbar, gestures, quick capture route, Capacitor shell |
+| M5 | Mobile polish | **partial** | Keyboard toolbar, gestures and the quick-capture route are done in the PWA. The "Capacitor shell" is a `capacitor.config.ts` with no build pipeline and has never run on a device; macOS is the shipping target (ADR 016) and phone is a stated later bet |
 | M6 | Hardening | **done** | Multi-device simulation tests, rebuild parity, 3-way text merge, op GC, backups/restore, docs |
 
 Milestone exit criteria: M1 imports the user's real graph and answers MCP queries from Claude
