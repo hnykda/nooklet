@@ -51,11 +51,14 @@ Adds to `00-conventions.md`'s glossary (not yet appended there — see Open issu
    `.` replaced by `_`; for `search` and `batch` this is a no-op, giving exactly the 16 MCP tool
    names required by PLAN §11, plus `batch_undo`/`asset_upload` (ADR 013, M1.5), `related_find`
    (M3/ADR 010), and `ui_windows`/`ui_state`/`ui_run`/`ui_navigate`/`ui_highlight` (ADR 015's
-   live-UI-control channel), for 24 total. This mechanical `.`→`_` derivation is why every op name
-   segment is restricted to `[a-z][a-z0-9]*` (no underscores) — an op name with an underscore in a
-   segment would make two different op names collide on one MCP tool name (e.g. a hypothetical
-   `ui.list_windows` and `ui.list.windows` would both become `ui_list_windows`); ADR 015's ops use
-   single-word verbs (`ui.windows`, `ui.state`, `ui.run`) for exactly this reason.
+   live-UI-control channel), for 24 total — and, since M7, `block_to_page`, `block_move_to_page`,
+   `page_merge` and `graph_replace` (§4.3.24–27). Because of this mechanical `.`→`_` derivation two
+   op names must never collide on one tool name (a hypothetical `ui.list_windows` and
+   `ui.list.windows` would both become `ui_list_windows`). Segments were therefore restricted to
+   `[a-z][a-z0-9]*` until M7; a multi-word verb such as `block.to_page` may now carry `_` inside a
+   segment, and `OpRegistry.register` refuses any op whose derived tool name an already-registered
+   op has, which is the invariant the grammar was standing in for. Prefer a single-word verb
+   (`ui.windows`, `page.merge`) whenever one reads naturally.
 2. HTTP mounts every op at `POST /api/v1/<op-name>` (e.g. `/api/v1/page.read`, `/api/v1/search`,
    `/api/v1/batch`) with a JSON body and the error envelope of `00-conventions.md`. Every
    `readOnlyHint: true` op additionally accepts `GET /api/v1/<op-name>?input=<urlencoded JSON>`.
@@ -445,6 +448,10 @@ export class OpError extends Error {
 | 23 | `ui.navigate` / `ui_navigate` | A I | read, ui:control | deferred | Open a page (and optionally zoom to a block) in a live window |
 | 24 | `ui.highlight` / `ui_highlight` | A I | read, ui:control | deferred | Scroll to and flash a block in a live window, without changing focus/navigation |
 | 25 | `mentions.link` / `mentions_link` | D I | write | deferred | Turn a page's plain-text mentions into `[[links]]`, one undoable batch (M7) |
+| 26 | `block.to_page` / `block_to_page` | D I | write | deferred | Turn a block into a page: first line names it, children become its blocks, the block becomes a `[[link]]` (M7, ADR 020) |
+| 27 | `block.move_to_page` / `block_move_to_page` | D I | write | deferred | Move a subtree to the end/start of a page, creating it if needed (M7) |
+| 28 | `page.merge` / `page_merge` | D | write | requiresUserInteraction | Merge one page into another: move, rewrite every reference, alias, delete (M7, ADR 020) |
+| 29 | `graph.replace` / `graph_replace` | D | write | deferred | Find and replace across every block's text, previewable, one undoable batch (M7) |
 
 R = readOnlyHint, A = additive (destructiveHint:false), D = destructiveHint:true, I =
 idempotentHint:true. `openWorldHint:false` on every tool (omitted from the column). Rows 17-18
@@ -1782,6 +1789,267 @@ absent when nothing was rewritten.
 ```
 
 **Errors**: `not_found` — `page` resolves to no page; `forbidden` — token lacks `write`.
+
+---
+
+#### 4.3.25 `block.to_page` / `block_to_page`
+
+**Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }`. **Loading** deferred.
+
+M7's "turn block into page" (research/13 §4.2 item 3; ADR 020), behind the bullet context menu's
+*Turn into page*. Idempotent in effect: a second call on the same block finds its first line is
+already `[[Name]]`, resolves that page, has no children left to move, and changes nothing.
+
+**Description**: "Turns a block into a page: the block's first line becomes the page name (or
+pass `name` to choose one; a first line that is already a single `[[link]]` names that page),
+every block nested under it becomes a top-level block of that page in the same order and nesting
+(appended after any existing blocks if the page already exists), and the block itself is replaced
+by a `[[link]]` to the page — keeping its id, task marker, priority and properties, so references
+to it still work. Continuation lines under the first line become the page's first block. The page
+is created if it does not exist. One batch: `batch_undo` with the returned `batch_id` puts
+everything back. Use `dry_run` to preview the page name and how many blocks would move."
+
+```ts
+export const blockToPage = defineOp({
+  name: 'block.to_page', summary: 'Turn a block into a page',
+  input: z.object({
+    id: BlockId,
+    name: z.string().min(1).max(512).optional().describe("Page name to use instead of the block's first line"),
+    if_version: IfVersion, dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
+  }).strict(),
+  output: z.object({
+    page: z.string(), page_id: z.string(), page_created: z.boolean(),
+    block_id: BlockId, link: z.string().describe("The block's new text"),
+    moved: z.number().int().describe('Blocks moved onto the page (children and their subtrees)'),
+    seq: z.number().int(), batch_id: BatchIdOut, dry_run: z.boolean(),
+  }),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  scopes: ['write'], render: renderBlockToPage, handler: /* packages/server/src/ops/block-to-page.ts */,
+});
+```
+
+A date-shaped first line (`Sep 8th, 2026`) names that journal day, stored under its ISO name
+(ADR 018), the same way `page_append` would. The page is minted as a `page.create` op inside the
+same batch (`resolveOrMintPage`), never through `DataApi.pages.create` — see ADR 020 §3 for why.
+Every descendant of every child gets its own `block.place` so nothing is stranded on the old page
+(B-85).
+
+**HTTP**: `POST /api/v1/block.to_page`.
+
+**Example**
+
+```json
+// request
+{ "id": "1k7f3qb1h7mtv3" }
+```
+```json
+// response
+{
+  "page": "Vendor evaluation", "page_id": "1k7f3qk4d2mxr8", "page_created": true,
+  "block_id": "1k7f3qb1h7mtv3", "link": "[[Vendor evaluation]]", "moved": 7,
+  "seq": 48240, "batch_id": "1k7f3qk4d2mxr9", "dry_run": false
+}
+```
+
+**Errors**: `not_found` — `id` unknown; `invalid` — the block has no first line and no `name`
+was given, or the name exceeds 512 chars; `conflict` — stale `if_version`.
+
+---
+
+#### 4.3.26 `block.move_to_page` / `block_move_to_page`
+
+**Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }`. **Loading** deferred.
+
+Behind the context menu's *Move to page…* (the picker reuses the page switcher's fuzzy match).
+Overlaps `block_move`'s `page:` form on purpose: this one creates the page, offers `start`, and —
+until B-85's other half lands — is the one that moves the subtree rather than the root alone.
+
+**Description**: "Moves a block and every block nested under it to the top level of another
+page, at the end (default) or the start. Ids are kept, so `((block refs))` to any of them keep
+working, and the page is created if it does not exist (`create_page: false` to fail instead).
+One batch: `batch_undo` with the returned `batch_id` puts the subtree back where it was. To place
+a block relative to another block rather than at a page's edge, use `block_move`."
+
+```ts
+export const blockMoveToPage = defineOp({
+  name: 'block.move_to_page', summary: 'Move a block subtree to the end (or start) of a page',
+  input: z.object({
+    id: BlockId, page: PageRef,
+    position: z.enum(['start', 'end']).default('end'),
+    create_page: z.boolean().default(true),
+    if_version: IfVersion, dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
+  }).strict(),
+  output: WriteResult.extend({ page_created: z.boolean(), moved: z.number().int() }),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  scopes: ['write'], render: renderBlockMoveToPage, handler: /* packages/server/src/ops/block-move-to-page.ts */,
+});
+```
+
+`updated` lists every moved block, root first; `outline` is the subtree in its new place.
+
+**HTTP**: `POST /api/v1/block.move_to_page`.
+
+**Example**
+
+```json
+// request
+{ "id": "1k7f3qb1h7mtv3", "page": "Projects/Aurora/Archive" }
+```
+```json
+// response
+{
+  "page": "Projects/Aurora/Archive", "created": [],
+  "updated": ["1k7f3qb1h7mtv3", "1k7f3qb2s4xnp9"], "deleted": [],
+  "outline": "- Open risks ^1k7f3qb1h7mtv3\n  - Vendor lead time ^1k7f3qb2s4xnp9\n",
+  "page_created": true, "moved": 2, "seq": 48241, "batch_id": "1k7f3qk5g1pwz2", "dry_run": false
+}
+```
+
+**Errors**: `not_found` — `id` unknown, or `page` unknown with `create_page: false`; `conflict` —
+stale `if_version`; `invalid` — the reducer rejected the placement.
+
+---
+
+#### 4.3.27 `page.merge` / `page_merge`
+
+**Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }`. **Loading** `requiresUserInteraction` (it deletes a page; hosts confirm, as for `page_delete`).
+
+The semantics — move, rewrite, alias, fill, delete, one batch — and the rejected alternatives are
+in ADR 020 §2. Behind the palette's *Merge this page into…*.
+
+**Description**: "Merges page `source` into page `target` and deletes `source`: every block of
+`source` moves to the end of `target` (order, nesting and ids kept); every `[[link]]` and `#tag`
+to `source` — by its name or any of its aliases, in any casing — anywhere in the graph is
+rewritten to name `target`; `source`'s aliases and tags are added to `target`'s and its other
+properties fill in any `target` lacks; `source`'s own name becomes an alias of `target`
+(`keep_alias: false` to skip), so anything the rewrite could not reach still resolves; then
+`source` is soft-deleted. Cannot merge a journal day (move its blocks with `block_move_to_page`
+instead) or a page into itself. One batch: `batch_undo` with the returned `batch_id` restores
+`source`, its blocks, every rewritten reference and `target`'s properties. Call with `dry_run:
+true` first to see how many blocks would move and how many references would change."
+
+```ts
+export const pageMerge = defineOp({
+  name: 'page.merge', summary: 'Merge one page into another',
+  input: z.object({
+    source: PageRef, target: PageRef,
+    keep_alias: z.boolean().default(true),
+    if_version: IfVersion.describe('Version of source'), dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
+  }).strict(),
+  output: z.object({
+    source: z.string(), target: PageMeta,
+    blocks_moved: z.number().int(),
+    refs_rewritten: z.number().int().describe('Individual [[links]]/#tags/list items rewritten'),
+    entities_rewritten: z.number().int().describe('Blocks and pages whose text or tags changed'),
+    alias_added: z.boolean(),
+    seq: z.number().int(), batch_id: BatchIdOut, dry_run: z.boolean(),
+  }),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  scopes: ['write'], expose: { mcp: { requiresUserInteraction: true } },
+  render: renderPageMerge, handler: /* packages/server/src/ops/page-merge.ts */,
+});
+```
+
+The rewrite is `data-api.ts#buildRefRewriteOps` over the `ref` index (`dst_page_key IN` the
+source's own key plus its alias keys, `page-aliases.ts#pageLookupKeys`): `[[X]]`, `[[X|label]]`
+(label kept), `#x`, `#[[X]]` in block text outside code, block `tags::`/`alias::` items, other
+block property values, and the `tags::` of pages in `page_tag`. A bare `#x` becomes `#[[Two
+Words]]` when the target name cannot be written bare. `page_update`'s rename shares the same
+function, so a rename now rewrites tags and casing variants too. Known gap: a block whose only
+link is `[[X|label]]` is not in `ref` until B-86 is fixed; the alias covers it meanwhile.
+
+**HTTP**: `POST /api/v1/page.merge`.
+
+**Example**
+
+```json
+// request
+{ "source": "Acme", "target": "Vendors/Acme Supply", "dry_run": true }
+```
+```json
+// response
+{
+  "source": "Acme",
+  "target": { "id": "1k7f3qe2h8ntv1", "name": "Vendors/Acme Supply", "kind": "page",
+              "properties": { "tags": "vendor", "alias": "Acme" }, "version": "…", "block_count": 9,
+              "created_at": "…", "updated_at": "…" },
+  "blocks_moved": 7, "refs_rewritten": 23, "entities_rewritten": 19, "alias_added": true,
+  "seq": 48241, "dry_run": true
+}
+```
+
+**Errors**: `not_found` — either page unknown; `invalid` — same page (also via an alias), or
+`source` is a journal day; `conflict` — stale `if_version`.
+
+---
+
+#### 4.3.28 `graph.replace` / `graph_replace`
+
+**Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }`. **Loading** deferred; `maxResultSizeChars: 60000`.
+
+The op behind the `/replace` view (research/13 §4.2 item 4). The preview is the op: `dry_run`
+runs the same matcher over the same rows and returns exactly the blocks the real run would
+change. Matching is done in JavaScript over a plain `SELECT`, not with SQL `LIKE`/`lower()` —
+SQLite's `lower()` folds ASCII only and a regex needs the scan anyway.
+
+**Description**: "Finds `query` in the text of every block (or only blocks on `pages`, if given)
+and replaces each occurrence with `replacement`. Literal text by default, case-insensitive unless
+`case_sensitive`; `regex: true` reads `query` as a JavaScript regular expression, in which case
+`replacement` may use `$1`-style group references. ALWAYS call with `dry_run: true` first: it
+returns every block that would change with its text before and after, and writes nothing. Then
+call again without `dry_run` to apply. The real run changes every matched block in ONE batch and
+returns its `batch_id`, so `batch_undo` reverses the whole replacement at once. Only block text is
+touched — not page names, not properties. Refuses to change more than `max_blocks` blocks
+(default 2000) so a loose pattern cannot rewrite the graph by accident; `matches` lists at most
+`limit` blocks, with `truncated: true` and the full counts when there are more."
+
+```ts
+export const graphReplace = defineOp({
+  name: 'graph.replace', summary: 'Find and replace text across every block',
+  input: z.object({
+    query: z.string().min(1).max(500), replacement: z.string().max(2000).default(''),
+    regex: z.boolean().default(false), case_sensitive: z.boolean().default(false),
+    pages: z.array(PageRef).max(20).optional(),
+    max_blocks: z.number().int().min(1).max(20_000).default(2000),
+    limit: z.number().int().min(1).max(500).default(100),
+    dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
+  }).strict(),
+  output: z.object({
+    matches: z.array(z.object({ block_id: BlockId, page: z.string(), before: z.string(), after: z.string(), count: z.number().int() })),
+    blocks_matched: z.number().int(), occurrences: z.number().int(), truncated: z.boolean(),
+    seq: z.number().int(), batch_id: BatchIdOut, dry_run: z.boolean(),
+  }),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  scopes: ['write'], expose: { mcp: { maxResultSizeChars: 60_000 } },
+  render: renderGraphReplace, handler: /* packages/server/src/ops/graph-replace.ts */,
+});
+```
+
+A literal `replacement` is inserted verbatim (`$1` stays `$1`); only `regex: true` interprets
+it. A pattern that is invalid, or that matches the empty string, is `invalid`. `batch_id` is
+absent on `dry_run` and when nothing matched. `matches` is ordered by page name.
+
+**HTTP**: `POST /api/v1/graph.replace`.
+
+**Example**
+
+```json
+// request
+{ "query": "colour", "replacement": "color", "dry_run": true }
+```
+```json
+// response
+{
+  "matches": [
+    { "block_id": "1k7f3qc59mgxr4", "page": "Style guide", "before": "Use colour, not color", "after": "Use color, not color", "count": 1 }
+  ],
+  "blocks_matched": 1, "occurrences": 1, "truncated": false, "seq": 48241, "dry_run": true
+}
+```
+
+**Errors**: `invalid` — bad or empty-matching pattern; `too_large` — more than `max_blocks`
+blocks would change (`details.blocks_matched`, `details.occurrences`); `forbidden` — token lacks
+`write` (a read token cannot even preview).
 
 ## 5. Example agent session
 
