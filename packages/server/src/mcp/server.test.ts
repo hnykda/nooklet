@@ -70,9 +70,11 @@ const CORE_TOOL_NAMES = [
   "graph_links",
   // M7 (research/13 §4.2 item 10): "link all unlinked references", one undoable batch.
   "mentions_link",
-  // M7 (research/13 §4.2 item 8, ADR 019): the trash and a page's history, over the audit log.
-  "trash_list",
-  "trash_restore",
+  // M7 (research/13 §4.2 items 3-4): block/page refactors and graph-wide find & replace.
+  "block_to_page",
+  "block_move_to_page",
+  "page_merge",
+  "graph_replace",
   // M7 (research/13 §4.2 item 8, ADR 019): the trash and a page's history, over the audit log.
   "trash_list",
   "trash_restore",

@@ -313,18 +313,35 @@ export function buildOpContext(
 // 1.4 The registry
 // -------------------------------------------------------------------------------------------
 
-const OP_NAME_RE = /^([a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+|search|batch)$/;
+/** `noun.verb`, lowercase, dotted; a segment may carry `_` for a multi-word verb (`block.to_page`,
+ * `block.move_to_page`), which the MCP tool name (`block_to_page`) already reads that way. The
+ * mapping to a tool name is one-way (`../mcp/server.ts` closes over the op), so `_` in a segment
+ * is never mistaken for a dot on the way back. */
+const OP_NAME_RE = /^([a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+|search|batch)$/;
 
 export class OpRegistry {
   private ops = new Map<string, OpDef & { owner: string }>();
 
   register(op: OpDef, owner: "core" | string = "core"): void {
     if (!OP_NAME_RE.test(op.name)) {
-      throw new Error(`op name "${op.name}" must be dotted lower-case segments, e.g. "page.read"`);
+      throw new Error(
+        `op name "${op.name}" must be dotted lower-case segments, e.g. "page.read" or "block.to_page"`,
+      );
     }
     const existing = this.ops.get(op.name);
     if (existing) {
       throw new Error(`op "${op.name}" is already registered (by "${existing.owner}")`);
+    }
+    // Two op names must never share one MCP tool name (mcp-tools.md §3.1 rule 1): with `_`
+    // allowed inside a segment, `a.b_c` and `a.b.c` would both become `a_b_c`, so the uniqueness
+    // the name grammar used to guarantee is checked here instead.
+    const toolName = op.name.replace(/\./g, "_");
+    for (const other of this.ops.values()) {
+      if (other.name.replace(/\./g, "_") === toolName) {
+        throw new Error(
+          `op "${op.name}" would share MCP tool name "${toolName}" with "${other.name}" (by "${other.owner}")`,
+        );
+      }
     }
     if ((op.expose?.mcp ?? owner === "core") !== false && !op.render) {
       throw new Error(`op "${op.name}" is exposed to MCP but has no render()`);
