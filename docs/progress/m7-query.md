@@ -20,19 +20,27 @@ reading this after a restart, continue from **Next steps**.
 - Bundle numbers (clean worktrees, exact commits) in `docs/research/14-render-seams.md`.
 - ADR 011 amended (language as shipped, semantics, deferrals).
 
+- `28fcb7c` docs: ADR 011 amendment + `docs/research/14-render-seams.md`.
+- `a2d5c13` docs(bugs): B-94 (midnight staleness), B-93 cross-reference.
+- `pnpm -r typecheck` exit 0; `pnpm -r test` 1,539 tests green (shared tree, 2026-09-12 ~18:10).
+- Full e2e on the shared tree, port 6350, in three shards (`scratch/e2e-shard1b.log`, `-shard2.log`,
+  `-shard3.log`): 280 passed, 6 failed, 3 skipped. Failures: `context-menu:219` (refactors
+  agent's uncommitted menu entries), `templates:202` (templates agent), `journals:73` and
+  `render:36` (`browserContext.close: ENOENT …/test-results/.playwright-artifacts-*` — the
+  repo-root artifacts dir is shared by every agent's concurrent Playwright run; assertions had
+  passed), `navigation:38` (401 from `window.__NOOKLET__.token`), `selection:121`
+  (`toBeFocused`). Re-check of render/query/navigation/selection: `scratch/e2e-recheck.log`.
+- Lesson recorded: never `kill` port 6350 while a background run may still own it — the state
+  file is keyed by port, so two runs on one port kill each other's server (that is what produced
+  the connection-refused walls in `e2e-full.log` and `e2e-shard1.log`).
+
 ## In flight (file → state)
 
-- Docs commit pending: `docs/research/14-render-seams.md` (new), `docs/adr/011-*.md` (amended),
-  this file.
-- Background: full e2e suite in `scratch/wt-after` on 6350 → `scratch/e2e-full.log`
-  (ends with `E2E_FULL_EXIT=`); `pnpm -r typecheck` → `scratch/typecheck.log`; `pnpm -r test`
-  → `scratch/unit.log`.
+- Nothing mid-edit. All owned files committed.
 
 ## Next steps, in order
 
-1. Commit the docs. Log the midnight-staleness limitation in `docs/BUGS.md` (re-read first).
-2. Read the three background logs; report failures faithfully (other agents' files vs mine).
-3. Final report to the owner (see the task text for the required sections).
+1. Final report to the owner (see the task text for the required sections).
 
 ## Decisions and why
 
