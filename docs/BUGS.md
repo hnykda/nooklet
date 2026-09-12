@@ -145,15 +145,21 @@ fought.
 
 
 ### B-69 · `#` autocomplete never lists an existing page
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/popups.spec.ts` "lists a page that is already used as a tag"
 
 Type `#` and a page's name: the only row is `New page "…"`. `createPageSource.listPages` never
 sets `isTag`, and the popup keeps only `p.isTag === true` in tag mode, so the candidate list is
 always empty.
 
+**Fixed 2026-09-12.** `isTag` was declared on `PageSummary`, filtered on by the `#` popup and the
+palette's tags mode, and set by nothing. A tag is a page (ADR 017), so `#` now offers every page,
+ranked by the query, exactly as `[[` does; the flag is gone. `popups.spec.ts` "lists a page that
+is already used as a tag".
+
+
 ### B-70 · The keyboard toolbar never appears on a phone
-**Status:** open · **Severity:** high (phone) · **Found:** 2026-09-12, e2e suite · **Tests:**
+**Status:** fixed · **Severity:** high (phone) · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/phone.spec.ts` (2 `fixme`)
 
 Playwright's plain `devices["iPhone 13"]` descriptor — WebKit, iPhone user agent, `pointer:
@@ -163,6 +169,13 @@ and the same under Chromium emulation: tap a block, type with the editor focused
 `activeContextSnapshot()`, which before any block is edited is a constant object with no reactive
 reads, so the memo computes `false` once and is never re-run; even afterwards `editorFocused` comes
 from `surface.currentId()`, a plain variable, not a signal.
+
+**Fixed 2026-09-12.** The toolbar's `visible` memo read the command context through a plain
+module variable — nothing for Solid to track — so it evaluated once at mount, saw nothing focused,
+and never ran again. The active context snapshot is a signal now, and the tree withdraws it when
+neither editing nor a selection stands, so the toolbar shows while typing and hides after.
+`phone.spec.ts` on the iPhone 13 descriptor (WebKit, coarse pointer, iOS UA), both toolbar tests.
+
 
 ### B-71 · Choosing a context-menu item or clicking an autocomplete row drops editor focus
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -344,7 +357,7 @@ id. `views.spec.ts` "Enter on a highlighted page…", `pages.spec.ts` "Cmd/Ctrl+
 
 
 ### B-83 · A tag page created right after typing the tag never shows the reference
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/pages.spec.ts` "a tag page created straight after typing the tag shows the reference
 without a reload"
 
@@ -355,8 +368,15 @@ before clicking the tag shows it. The panel fetched its backlinks before the typ
 been pushed, and nothing re-fetches when the push lands, because `useLinkedReferences` is
 server-backed and off the local change bus (B-09's shape, one step later).
 
+**Fixed 2026-09-12.** The references panel is a server-computed view stamped on local writes —
+but the write it needed the server to see was still in the push queue when it fetched, and no
+later local change re-stamped it. The store now bumps a `syncVersion` when the push queue drains,
+and the panel refetches on it. `pages.spec.ts` "a tag page created straight after typing the tag
+shows the reference without a reload".
+
+
 ### B-84 · `block.copySelection` has no implementation
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/selection.spec.ts` "Cmd/Ctrl+C copies the selection as markdown"
 
 Select a block, press Cmd/Ctrl+C: the clipboard is unchanged. The command is registered (it shows
@@ -364,6 +384,12 @@ in the shortcuts dialog as Cmd+C) and spec R31 says the trigger is the outliner'
 event, but `BlockTree` installs no `copy` handler and `keydown.ts` does not know the command.
 
 ## Fixed
+
+**Fixed 2026-09-12.** `block.copySelection` is implemented: the selection as outline markdown,
+subtrees included, through the same `serializeOutline` the mirror uses (ids omitted), so what you
+paste elsewhere is what a page file would say. A block whose ancestor is also selected is copied
+once, inside that ancestor. `selection.spec.ts` "Cmd/Ctrl+C copies the selection as markdown".
+
 
 ### B-51 · Uploaded images were broken pictures on every route below the root
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, by the first test that ever rendered

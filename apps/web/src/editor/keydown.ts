@@ -28,6 +28,7 @@ export type CommandId =
   | "block.zoomIn"
   | "block.zoomOut"
   | "block.selectBlock"
+  | "block.copySelection"
   | "block.editSelected"
   | "block.clearSelection"
   | "block.extendSelectionUp"

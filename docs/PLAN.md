@@ -387,6 +387,7 @@ Status is tracked in the first column. Effort assumed one developer directing co
 | M4 | Plugins | **done** | `@nooklet/plugin-api` package and docs (done); loader for both halves, extension points, built-ins as plugins |
 | M5 | Mobile polish | **partial** | Keyboard toolbar, gestures and the quick-capture route are done in the PWA. The "Capacitor shell" is a `capacitor.config.ts` with no build pipeline and has never run on a device; macOS is the shipping target (ADR 016) and phone is a stated later bet |
 | M6 | Hardening | **done** | Multi-device simulation tests, rebuild parity, 3-way text merge, op GC, backups/restore, docs |
+| M7 | What Logseq users use most and ask for most (research/13 §4.2) | **in progress** (2026-09-12) | 1. ```` ```query ```` fence (ADR 011) · 2. templates: journal template + `/template` · 3. turn block into page, move block to page, merge pages · 4. find and replace across the graph · 5. linked-reference filters and sort · 6. appearance basics: font size, width, custom CSS · 7. page outline card in the shelf · 8. trash/restore and a history viewer over the op log · 9. code highlighting and KaTeX wired into the seams · 10. orphan-asset GC and "link all unlinked references". Ordered by evidence, not by size; each lands with its own tests and, where a choice was made, an ADR. |
 
 Milestone exit criteria: M1 imports the user's real graph and answers MCP queries from Claude
 Code; M2 replaces Logseq for daily journaling on desktop and phone; M3 finds notes by meaning in

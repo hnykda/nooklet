@@ -126,7 +126,6 @@ test("Cmd/Ctrl+A selects every visible block (R31)", async ({ page }) => {
 });
 
 test("Cmd/Ctrl+C copies the selection as markdown (R31)", async ({ page, context }) => {
-  test.fixme(true, "B-84: block.copySelection has no implementation");
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const outliner = await openEditing(page, "Sel Copy", "- parent\n  - child\n- other");
   await clickRow(page, outliner, 0);

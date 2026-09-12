@@ -56,7 +56,6 @@ test("tapping a block opens the editor and typing lands", async ({ page }) => {
 // B-70 was checked under the plain `devices["iPhone 13"]` descriptor (WebKit, iPhone user agent,
 // `pointer: coarse`, no hover, the editor focused): `.cmd-toolbar` count stayed 0.
 test("the keyboard toolbar appears while editing", async ({ page }) => {
-  test.fixme(true, "B-70: the keyboard toolbar never renders on a phone");
   await openEditing(page, "Phone Toolbar Shows", "- start");
   const toolbar = page.locator(".cmd-toolbar");
   await expect(toolbar).toBeVisible();
@@ -64,7 +63,6 @@ test("the keyboard toolbar appears while editing", async ({ page }) => {
 });
 
 test("the toolbar's indent, outdent, [[ and undo buttons run their commands", async ({ page }) => {
-  test.fixme(true, "B-70: the keyboard toolbar never renders on a phone");
   const outliner = await openEditing(page, "Phone Toolbar Buttons", "- first\n- second");
   await clickRow(page, outliner, 1);
   const toolbar = page.locator(".cmd-toolbar");

@@ -124,7 +124,6 @@ test("a #tag typed on a block makes the tag page reachable, and it lists the blo
 test("a tag page created straight after typing the tag shows the reference without a reload", async ({
   page,
 }) => {
-  test.fixme(true, "B-83: the references panel never picks up a ref that was still being pushed");
   const outliner = await openEditing(page, "Pages Tag Quick Source", "- about\n- other");
   await page.keyboard.type(" #PagesTagQuick ");
   await clickRow(page, outliner, 1);

@@ -89,6 +89,12 @@ function versionSignal(map: Map<string, VersionSignal>, key: string): VersionSig
  * Returning a fresh object makes "something changed" observable to Solid, while reading the
  * version signals here is what subscribes the source in the first place.
  */
+/** Bumped when the push queue drains — the moment the server catches up with local writes. */
+const [syncVersion, setSyncVersion] = createSignal(0);
+function bumpSync(): void {
+  setSyncVersion((v) => v + 1);
+}
+
 function stamped<T>(
   value: T,
   tables: readonly ChangedTable[],
@@ -200,7 +206,14 @@ export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
 export function useSyncStatus(): Accessor<SyncStatus | undefined> {
   const [status, setStatus] = createSignal<SyncStatus | undefined>(undefined);
   void getSyncStatus().then(setStatus);
-  onSyncStatus(setStatus);
+  onSyncStatus((s) => {
+    // A push landing is a change the SERVER can now see. Server-computed views (backlinks) that
+    // were fetched while a local write was still queued must ask again once it is there — or a
+    // tag page created straight after typing the tag showed no reference until a reload (B-83).
+    const prev = status();
+    if (prev && prev.pendingCount > 0 && s.pendingCount === 0) bumpSync();
+    setStatus(s);
+  });
   return status;
 }
 
@@ -603,6 +616,9 @@ export function useLinkedReferences(
       // same version signals local writes already bump makes this refetch when the graph changes.
       // Text edits are coalesced into one op per ~500 ms pause upstream (`editor/BlockTree.tsx`),
       // so this costs roughly one request per pause rather than one per keystroke.
+      // …and on `syncVersion`: a push landing means the server can see a write it could not
+      // when this was last fetched (B-83).
+      syncVersion();
       return stamped(t, ["block", "page"]);
     },
     ({ value: t }) => apiClient.pageBacklinks(t),

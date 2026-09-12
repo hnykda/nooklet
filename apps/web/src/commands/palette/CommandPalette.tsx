@@ -75,8 +75,7 @@ export function CommandPalette(props: CommandPaletteProps) {
       mode === "pages" || mode === "tags"
         ? []
         : registry.list().filter((c) => matchesWhen(c.when, ctxBase));
-    const pageCandidates =
-      mode === "commands" ? [] : pages().filter((p) => (mode === "tags" ? p.isTag === true : true));
+    const pageCandidates = mode === "commands" ? [] : pages(); // a tag is a page (ADR 017); see B-69
 
     const rankedCommands = rankItems({ query, items: commandCandidates, mru, kind: "command" });
     const rankedPages = rankItems({ query, items: pageCandidates, mru, kind: "page" });

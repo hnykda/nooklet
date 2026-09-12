@@ -93,9 +93,10 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       );
     }
 
-    const candidates = (pages() ?? []).filter((p) =>
-      props.variant === "tag" ? p.isTag === true : true,
-    );
+    // Every page is a candidate for `#` as much as for `[[`: a tag IS a page (ADR 017), and the
+    // `isTag` flag this used to filter on was declared and never set anywhere, so `#` offered
+    // nothing but "New page" for pages that were already in use as tags (B-69).
+    const candidates = pages() ?? [];
     const ranked = rankItems({ query: trig.query, items: candidates, mru, kind: "page" });
     const pageRows: Row[] = ranked.map((r) => ({
       id: r.item.id,

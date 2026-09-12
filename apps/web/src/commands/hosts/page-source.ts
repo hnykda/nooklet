@@ -13,7 +13,6 @@ export interface PageSummary {
   title: string;
   aliases: string[];
   updatedAt: number;
-  isTag?: boolean;
 }
 
 export interface PageSource {

@@ -13,6 +13,7 @@
  * commands do not fire at all — this is just belt and braces).
  */
 
+import { createSignal } from "solid-js";
 import type {
   EditorHost,
   EditorSelection,
@@ -127,11 +128,15 @@ export type ContextBase = Omit<CommandContext, "exec" | "args">;
 /** The parts only the focused editor can know. The app layer supplies `store` and `platform`. */
 export type EditorContextSnapshot = Omit<ContextBase, "store" | "platform" | "mobile">;
 
-let snapshotFn: (() => EditorContextSnapshot) | null = null;
+// A signal, not a plain variable: `activeContextSnapshot()` is read inside memos (the mobile
+// keyboard toolbar's `visible`, for one), and a plain `let` gave them nothing to track — the memo
+// ran once at mount, saw nothing focused, and never ran again, so the toolbar never appeared on a
+// phone at all (B-70).
+const [snapshotFn, setSnapshotFn] = createSignal<(() => EditorContextSnapshot) | null>(null);
 
 /** Called by the focused `BlockTree`; pass `null` on blur/unmount. */
 export function setActiveContextSnapshot(fn: (() => EditorContextSnapshot) | null): void {
-  snapshotFn = fn;
+  setSnapshotFn(() => fn);
 }
 
 const NOTHING_FOCUSED: EditorContextSnapshot = {
@@ -159,7 +164,7 @@ const NOTHING_FOCUSED: EditorContextSnapshot = {
  * which is exactly what makes every editor-scoped `when` clause evaluate false, so those commands
  * simply do not fire outside the editor. */
 export function activeContextSnapshot(): EditorContextSnapshot {
-  return snapshotFn?.() ?? NOTHING_FOCUSED;
+  return snapshotFn()?.() ?? NOTHING_FOCUSED;
 }
 
 /** Assemble the full base a `CommandProvider` consumer needs. */

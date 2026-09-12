@@ -110,11 +110,11 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
 });
 
 describe("<AutocompletePopup> — tag variant (R57)", () => {
-  it("only lists pages flagged as tags", async () => {
+  it("lists every page matching the query — a tag is a page (ADR 017, B-69)", async () => {
     const editor = createFakeEditorHost({ content: "#pro", start: 4, end: 4 });
     const pages = createFakePageSource([
-      { id: "t1", title: "project", aliases: [], updatedAt: 1, isTag: true },
-      { id: "p1", title: "projector-notes", aliases: [], updatedAt: 1, isTag: false },
+      { id: "t1", title: "project", aliases: [], updatedAt: 1 },
+      { id: "p1", title: "projector-notes", aliases: [], updatedAt: 1 },
     ]);
     render(() => (
       <CommandProvider commands={[]} platform="mac">
@@ -129,7 +129,9 @@ describe("<AutocompletePopup> — tag variant (R57)", () => {
       </CommandProvider>
     ));
     expect(await screen.findByText("project")).toBeTruthy();
-    expect(screen.queryByText("projector-notes")).toBeNull();
+    // The old contract filtered on an `isTag` flag that nothing ever set, so `#` offered only
+    // "New page" for pages already in use as tags. Every page is a candidate now.
+    expect(await screen.findByText("projector-notes")).toBeTruthy();
   });
 });
 

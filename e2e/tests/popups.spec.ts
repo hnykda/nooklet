@@ -330,7 +330,6 @@ test.describe("# tag autocomplete", () => {
   });
 
   test("lists a page that is already used as a tag", async ({ page }) => {
-    test.fixme(true, "B-69: the # popup never lists an existing page, only New page");
     // A page becomes a tag by being referenced as one (PLAN.md: tags are pages).
     await seedPage(page, "PopupTagKnown", "- the tag page");
     await seedPage(page, "Popup Tag Known User", "- tagged #PopupTagKnown");
