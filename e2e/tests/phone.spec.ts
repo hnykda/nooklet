@@ -1,6 +1,6 @@
 /**
  * A phone: Playwright's iPhone 13 descriptor (390 px viewport, touch, coarse pointer, no hover,
- * iPhone user agent), kept on Chromium so it shares the suite's one browser. The sidebar becomes a
+ * iPhone user agent, WebKit — the descriptor's own browser). The sidebar becomes a
  * drawer over the content, the editor has to stay typeable, and the keyboard toolbar (spec R60)
  * is the only way to indent, outdent, or open `[[` without a hardware keyboard.
  *
@@ -12,7 +12,7 @@
 import { devices, expect, test } from "@playwright/test";
 import { clickRow, editor, openEditing, openPage, rowDepths, rowTexts } from "../helpers/index.js";
 
-test.use({ ...devices["iPhone 13"], defaultBrowserType: "chromium" });
+test.use({ ...devices["iPhone 13"] });
 
 test("the sidebar is a drawer over the content and closes again", async ({ page }) => {
   await page.goto("/journals");
@@ -53,6 +53,8 @@ test("tapping a block opens the editor and typing lands", async ({ page }) => {
   await expect.poll(() => rowTexts(page, outliner)).toEqual(["start on a phone", "second"]);
 });
 
+// B-70 was checked under the plain `devices["iPhone 13"]` descriptor (WebKit, iPhone user agent,
+// `pointer: coarse`, no hover, the editor focused): `.cmd-toolbar` count stayed 0.
 test("the keyboard toolbar appears while editing", async ({ page }) => {
   test.fixme(true, "B-70: the keyboard toolbar never renders on a phone");
   await openEditing(page, "Phone Toolbar Shows", "- start");

@@ -101,10 +101,6 @@ test("Enter on an empty block keeps making empty siblings, each one focused", as
 });
 
 test("Shift+Enter inserts a newline inside the block, not a new block (R17)", async ({ page }) => {
-  test.fixme(
-    true,
-    "B-67: Shift+Enter is swallowed by the global dispatcher; no newline is inserted",
-  );
   const outliner = await openEditing(page, "Focus Shift Enter", "- line one");
   await page.keyboard.press("Shift+Enter");
   await page.keyboard.type("line two");
@@ -222,10 +218,6 @@ test("Backspace at the start of the first block does nothing destructive", async
 });
 
 test("Delete at the end merges the next block in, keeping the caret (R21)", async ({ page }) => {
-  test.fixme(
-    true,
-    "B-66: the merge reaches the database but the editor keeps showing the old text",
-  );
   const outliner = await openEditing(page, "Focus Delete Merge", "- ab\n- cd");
   await page.keyboard.press("Delete");
   await expect(outliner.locator(".vr-row")).toHaveCount(1);
@@ -288,7 +280,6 @@ test("Cmd/Ctrl+A selects exactly the block's text", async ({ page }) => {
 });
 
 test("Alt+Up/Down moves the block and keeps the editor in it (R22)", async ({ page }) => {
-  test.fixme(true, "B-68: Alt+Down drops editor focus to <body> after the block moves");
   const outliner = await openEditing(page, "Focus Move", "- one\n- two");
   await clickRow(page, outliner, 1);
   await page.keyboard.press("End");
@@ -352,7 +343,6 @@ test("Cmd/Ctrl+. zooms into the block and Cmd/Ctrl+Shift+. zooms back out (R27)"
 });
 
 test("Cmd/Ctrl+Z undoes typed text and Cmd/Ctrl+Shift+Z redoes it", async ({ page }) => {
-  test.fixme(true, "B-66: undo reverts the database but the editor keeps the typed text");
   await openEditing(page, "Focus Undo", "- base");
   await page.keyboard.type(" typed");
   await expect(editor(page)).toHaveText("base typed");
@@ -423,7 +413,6 @@ test("a keystroke-by-keystroke trace of plain typing records no focusout at all"
 test("Escape while editing hands the block to selection mode and Enter hands it back", async ({
   page,
 }) => {
-  test.fixme(true, "B-64: after Escape nothing holds focus and Enter never re-enters editing");
   const outliner = await openEditing(page, "Focus Escape Enter", "- pick me");
   await page.keyboard.press("Escape");
   await expect(outliner.locator(".vr-row-selected")).toHaveCount(1);
