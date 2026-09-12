@@ -19,6 +19,7 @@ beyond the next few minutes, it goes in a file, in the same commit as the work i
 | `docs/spec/*.md` | Behaviour precise enough to implement or test against (grammar, SQL schema, API/plugin types, MCP tools, keymap). |
 | `docs/research/NN-*.md` | Findings with sources, dated. Kept as written rather than updated in place — it's a record of what was known when. |
 | `docs/proposals/NNN-*.md` | A worked-through "should we do X" that isn't a decision yet. |
+| `docs/progress/<slug>.md` | Where a long task stands *right now*: done (commit hashes), in flight (which files, what state), next steps in order, decisions, how to resume. Updated after every meaningful step, not at the end — a session or agent can be cut off mid-task, and what is only in its head is gone. |
 | `tools/probes/` | Throwaway programs that settled a factual question. Keep them — a claim you can re-run beats a claim you remember. |
 
 Non-goals are as load-bearing as goals: **no flashcards, no kanban boards, nothing fancy.**
