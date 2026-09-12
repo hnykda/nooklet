@@ -444,6 +444,7 @@ export class OpError extends Error {
 | 22 | `ui.run` / `ui_run` | D | ui:control | deferred | Invoke any core/plugin command by id, exactly as a keybinding would |
 | 23 | `ui.navigate` / `ui_navigate` | A I | read, ui:control | deferred | Open a page (and optionally zoom to a block) in a live window |
 | 24 | `ui.highlight` / `ui_highlight` | A I | read, ui:control | deferred | Scroll to and flash a block in a live window, without changing focus/navigation |
+| 25 | `mentions.link` / `mentions_link` | D I | write | deferred | Turn a page's plain-text mentions into `[[links]]`, one undoable batch (M7) |
 
 R = readOnlyHint, A = additive (destructiveHint:false), D = destructiveHint:true, I =
 idempotentHint:true. `openWorldHint:false` on every tool (omitted from the column). Rows 17-18
@@ -1711,6 +1712,76 @@ export const uiHighlight = defineOp({
 ```
 
 **HTTP**: `POST /api/v1/ui.highlight`. **Errors**: shares `ui_run`'s error cases (see §4.3.21).
+
+#### 4.3.24 `mentions.link` / `mentions_link`
+
+**Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }`. **Loading** deferred.
+
+M7's "link all unlinked references" (research/13 §4.2 item 10), behind the button on the page
+view's Unlinked references section. Named `mentions.link` rather than `page.link_unlinked`
+because rule §3.1.1 forbids underscores inside an op-name segment (the registry rejects them —
+`page.link_unlinked` and a hypothetical `page.link.unlinked` would collide on one MCP name).
+
+**Description**: "Rewrites every block that mentions a page's name in plain text but does not
+link to it (the unlinked references `page_backlinks` lists with `include_unlinked`) so that the
+first mention becomes a `[[link]]`. Whole-word, case-insensitive; the author's own spelling is
+kept inside the brackets when it resolves to the page, and a namespaced page gets its full name.
+Mentions inside code, existing links, tags, URLs or property lines are left alone and listed in
+`skipped` with the reason. Give `block_ids` to link only some of the candidates. Every rewrite
+lands in one batch: pass the returned `batch_id` to `batch_undo` to put all of them back.
+Idempotent: a second call finds nothing left to link. Use `dry_run` to preview."
+
+```ts
+export const pageLinkUnlinked = defineOp({
+  name: 'mentions.link', summary: 'Turn plain-text mentions of a page into [[links]], in one undoable batch',
+  input: z.object({
+    page: PageRef,
+    block_ids: z.array(BlockId).max(500).optional().describe('Link only these blocks (each must currently be an unlinked mention of the page); omit to link every candidate'),
+    dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
+  }).strict(),
+  output: WriteResult.extend({
+    skipped: z.array(z.object({ id: BlockId, reason: z.string() })).describe('Candidate blocks left unchanged, with why'),
+  }),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  scopes: ['write'],
+  render: (out) => out.outline || '(nothing to link)', handler: /* packages/server/src/ops/page-link-unlinked.ts */,
+});
+```
+
+The candidate set is exactly `page_backlinks`'s `unlinked` list (`unlinkedMentionRows`, capped at
+500 per call). FTS is looser than a rewrite may be — it folds case and diacritics and tokenizes
+through punctuation — so the rewrite is a second, stricter pass per block (`linkFirstMention`,
+unit-tested): a whole-word (`\p{L}\p{N}_` boundaries), case-insensitive, literal match, skipping
+fenced and inline code, anything inside `[…]`/`((…))`/`{{…}}`, a `#tag`, a URL (`://`, `www.`,
+or a markdown link's `(url)`), and `key:: value` lines. Only the first safe mention per block is
+wrapped — one link is what makes the block a linked reference, and the smaller rewrite is the
+easier one to read back. The wrapped text is the author's own spelling when
+`normalizePageName(text) === page.key` (`aurora` → `[[aurora]]`, which resolves by key, ADR 004);
+a namespaced page gets `[[Projects/Aurora]]` since its short name alone would link elsewhere.
+
+`updated` lists the rewritten block ids; `outline` is a plain-text summary, one
+`^id (page): first line` per rewritten block, spanning pages like `batch_undo`'s. `batch_id` is
+absent when nothing was rewritten.
+
+**HTTP**: `POST /api/v1/mentions.link`.
+
+**Example**
+
+```json
+// request
+{ "page": "Aurora" }
+```
+```json
+// response
+{
+  "page": "Aurora", "created": [], "updated": ["1k7f3qc59mgxr4"], "deleted": [],
+  "outline": "^1k7f3qc59mgxr4 (Vendors/Acme Supply): Quoted pricing for the [[Aurora]] launch",
+  "skipped": [{ "id": "1k7f3qc5b2nvt8", "reason": "part of a URL" }],
+  "seq": 48231, "dry_run": false, "batch_id": "1k7f3qj2m8wxq1"
+}
+```
+
+**Errors**: `not_found` — `page` resolves to no page; `forbidden` — token lacks `write`.
 
 ## 5. Example agent session
 

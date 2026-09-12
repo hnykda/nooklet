@@ -68,6 +68,8 @@ const CORE_TOOL_NAMES = [
   // The page-to-page link graph, behind the graph view. Server-side because `ref` is a
   // server-only derived table (sql-schema.md rule 1), so no client can compute an edge.
   "graph_links",
+  // M7 (research/13 §4.2 item 10): "link all unlinked references", one undoable batch.
+  "mentions_link",
 ].sort();
 
 const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();
@@ -92,11 +94,11 @@ describe("MCP tools/list", () => {
       name: string;
       annotations: Record<string, unknown>;
     }>;
-    // 29 core ops -> 21 tools here: minus the 5 ui_* ones (a plain write-scoped token has no
+    // 30 core ops -> 22 tools here: minus the 5 ui_* ones (a plain write-scoped token has no
     // ui:control, ADR 015 §7 rule 10 — "not even listed for this token") and minus the 3
     // HTTP-only embeddings.* ones.
     expect(tools).toHaveLength(CORE_OPS.length - UI_TOOL_NAMES.length - HTTP_ONLY_OP_NAMES.length);
-    expect(tools).toHaveLength(21);
+    expect(tools).toHaveLength(CORE_TOOL_NAMES.length);
     expect(CORE_OPS.filter((op) => op.expose?.mcp === false).map((op) => op.name)).toEqual(
       HTTP_ONLY_OP_NAMES,
     );

@@ -31,6 +31,7 @@ import { pageAppend } from "./page-append.js";
 import { pageBacklinks } from "./page-backlinks.js";
 import { pageCreate } from "./page-create.js";
 import { pageDelete } from "./page-delete.js";
+import { pageLinkUnlinked } from "./page-link-unlinked.js";
 import { pageList } from "./page-list.js";
 import { pageRead } from "./page-read.js";
 import { pageUpdate } from "./page-update.js";
@@ -50,6 +51,7 @@ export const CORE_OPS = [
   search,
   relatedFind,
   pageBacklinks,
+  pageLinkUnlinked,
   graphLinks,
   changesSince,
   pageCreate,
@@ -96,6 +98,7 @@ export {
   pageBacklinks,
   pageCreate,
   pageDelete,
+  pageLinkUnlinked,
   pageList,
   pageRead,
   pageUpdate,
