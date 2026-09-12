@@ -70,6 +70,9 @@ const CORE_TOOL_NAMES = [
   "graph_links",
   // M7 (research/13 §4.2 item 10): "link all unlinked references", one undoable batch.
   "mentions_link",
+  // M7 (research/13 §4.2 item 8, ADR 019): the trash and a page's history, over the audit log.
+  "trash_list",
+  "trash_restore",
 ].sort();
 
 const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();

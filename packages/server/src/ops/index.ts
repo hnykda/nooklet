@@ -38,6 +38,8 @@ import { pageUpdate } from "./page-update.js";
 import { OpRegistry } from "./registry.js";
 import { relatedFind } from "./related.js";
 import { search } from "./search.js";
+import { trashList } from "./trash-list.js";
+import { trashRestore } from "./trash-restore.js";
 
 export const CORE_OPS = [
   graphOverview,
@@ -65,6 +67,8 @@ export const CORE_OPS = [
   pageDelete,
   batchUndo,
   assetUpload,
+  trashList,
+  trashRestore,
   uiWindows,
   uiState,
   uiRun,
@@ -104,6 +108,8 @@ export {
   pageUpdate,
   relatedFind,
   search,
+  trashList,
+  trashRestore,
   uiHighlight,
   uiNavigate,
   uiRun,
