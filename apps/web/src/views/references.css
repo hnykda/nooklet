@@ -1,0 +1,202 @@
+/* The references panel's M7 controls (`ReferencesPanel.tsx`): the head row that carries the
+   collapse toggle plus its tools, the filter popover and its chips, the "Link all" status line.
+   The panel's base rules — `.references-panel`, `.references-toggle`, `.reference-group`,
+   `.reference-count` — stay in `../styles/views.css`; this file only adds to them, in the same
+   register: quiet, tokens only, the accent spent on state rather than chrome. */
+
+/* Toggle on the left, tools on the right, popover anchored to the row. */
+.references-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.references-head .references-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+.references-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  flex: none;
+}
+
+/* Text-and-icon buttons at chrome size. Not `app-icon-button`: the word matters here ("Recent",
+   "Filter", "Link all") — an icon alone would make three near-identical glyphs at the end of a
+   row nobody can tell apart. */
+.references-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 26px;
+  padding: 0 var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.references-tool:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.references-tool:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* An active filter is a state the reader must be able to see from across the room: the count
+   pill on the button plus a tinted border, not just a different icon. */
+.references-tool[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.references-tool .reference-count {
+  margin-left: 0;
+}
+
+/* Popover ----------------------------------------------------------------------------------- */
+
+.references-filter-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  width: min(22rem, 100%);
+  max-height: 22rem;
+  overflow-y: auto;
+  padding: var(--space-md) var(--space-md) var(--space-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-md);
+}
+
+.references-filter-hint {
+  margin: 0 0 var(--space-md);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.references-filter-list {
+  list-style: none;
+  margin: 0 0 var(--space-md);
+  padding: 0;
+}
+
+.references-filter-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: 30px;
+  padding: var(--space-xs) var(--space-sm);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.references-filter-option:hover {
+  background: var(--surface-2);
+}
+
+.references-filter-mark {
+  flex: none;
+  width: 1em;
+  text-align: center;
+  font-weight: var(--weight-semibold);
+}
+
+.references-filter-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.references-filter-option[data-state="include"] {
+  color: var(--accent);
+  font-weight: var(--weight-medium);
+}
+
+.references-filter-option[data-state="exclude"] {
+  color: var(--danger);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, currentcolor 45%, transparent);
+}
+
+/* Chips ------------------------------------------------------------------------------------- */
+
+.references-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-md);
+}
+
+.references-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 24px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--fg-soft);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.references-chip:hover {
+  color: var(--fg);
+}
+
+.references-chip[data-state="include"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.references-chip[data-state="exclude"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+/* "Link all" result ------------------------------------------------------------------------- */
+
+.references-status {
+  margin: var(--space-sm) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.references-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
