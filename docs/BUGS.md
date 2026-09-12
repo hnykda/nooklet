@@ -47,6 +47,38 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-57 · `batch_undo` said "a batch_id returned by any write"; no write returned one
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review · **Tests:**
+`packages/server/src/ops/batch-undo.http.test.ts` (uses the returned id), `ops.http.test.ts`
+"page_create with markdown is one batch" and "a dry run or a no-op write carries no batch_id"
+
+The README promises an agent can "undo any batch it just made". `batch_undo`'s input said its
+`batch_id` comes "from a previous write's response" — but `WriteResult` had no such field, so the
+only way to undo your own `page_append` was to call `changes_since` and fish the id out of the
+first item, which is what the undo tests themselves did.
+
+Every write now returns `batch_id` (absent for a `dry_run` or a no-op, when nothing was written),
+and `batch_undo`'s own result uses the same field rather than a one-off `undo_batch_id`.
+
+Fixed alongside: `page_create` with `markdown` was two batches — the page through `DataApi`, the
+blocks through a second `applyOps` — so undoing "the batch it just made" emptied the page and left
+the page. It is one batch now; undoing it removes the page too.
+
+### B-56 · `changes_since` reported an undone deletion as another deletion
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review · **Test:**
+`packages/server/src/ops/ops.http.test.ts` "reports an undone delete as a restore"
+
+`batch_undo` of a delete mints `block.delete { deletedAt: null }` — a restore, by ADR 003's
+tombstone model. `changes_since`'s classifier only looked at the op *kind*, so the restore came
+back as `block.deleted` (and a page as `page.deleted`): an agent catching up on history was told
+the thing it had just brought back was gone again. The `block.restored`/`page.restored` kinds in
+the output schema had never been produced by anything.
+
+Fixed alongside: three tool descriptions promised a trash "restorable for 30 days" and `block_read`
+hinted "ask the user to restore it". There is no trash view and no 30-day window; deletes are
+tombstones and the one restore mechanism is `batch_undo` on the write's `batch_id`. The
+descriptions and `docs/spec/mcp-tools.md` now say that.
+
 ### B-55 · `alias::` never worked, and `keep_alias` wrote an index row no other device would ever see
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, code review; confirmed on the
 owner's graph (three pages with `alias::`, `page_alias` empty) · **Tests:**

@@ -67,7 +67,7 @@ export const batchUndo = defineOp({
     "that batch, or deleting it (soft-delete, restorable) if the batch created it. Works from the " +
     "before/after snapshot every write already records for audit purposes - it never re-parses " +
     "Markdown or guesses. This call is itself a brand-new, separately-audited batch: to undo the " +
-    "undo, call batch_undo again with THIS call's seq/batch (there is no separate redo concept). " +
+    "undo, call batch_undo again with THIS call's batch_id (there is no separate redo concept). " +
     "It does NOT check whether the entity changed again after the original batch - it applies the " +
     "restore unconditionally, and since every field is last-writer-wins by a fresh timestamp, the " +
     "undo always wins over anything in between. Cannot undo asset_upload (assets are not in the " +
@@ -80,13 +80,9 @@ export const batchUndo = defineOp({
       idempotency_key: IdempotencyKey,
     })
     .strict(),
-  output: WriteResult.extend({
-    undo_batch_id: z
-      .string()
-      .describe(
-        "The id of this undo itself, as a fresh batch_id; pass it to batch_undo again to undo the undo",
-      ),
-  }),
+  // `batch_id` in the result is this undo's OWN batch, like every other write's — pass it back to
+  // batch_undo to undo the undo.
+  output: WriteResult,
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
@@ -217,8 +213,8 @@ export const batchUndo = defineOp({
         deleted: removed,
         outline: summaryLines.join("\n"),
         seq: applyResult?.seq ?? currentHeadSeq(ctx.db),
+        batch_id: input.dry_run ? undefined : applyResult?.batchId,
         dry_run: input.dry_run,
-        undo_batch_id: applyResult?.batchId ?? input.batch_id,
       };
     });
   },

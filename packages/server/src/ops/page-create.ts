@@ -1,4 +1,4 @@
-import { isoJournalName, parseJournalTitle } from "@nooklet/core";
+import { isoJournalName, newId, type Op, parseJournalTitle } from "@nooklet/core";
 import { z } from "zod";
 import { boundsForPageEnd, journalDayFromWire } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
@@ -83,24 +83,41 @@ export const pageCreate = defineOp({
           deleted: [],
           outline,
           seq: applyResult?.seq ?? currentHeadSeq(ctx.db),
+          batch_id: input.dry_run ? undefined : applyResult?.batchId,
           dry_run: input.dry_run,
         };
       }
 
-      const page = await ctx.data.pages.create({ name: input.name, properties: input.properties });
+      // The page and its initial blocks go in ONE batch: they are audited together, and one
+      // batch_undo removes all of it. As two writes (page via DataApi, then blocks) the response
+      // could only name the second batch, and undoing it left an empty page behind.
+      const pageId = newId();
+      const ops: Op[] = [
+        ctx.mintOp(pageId, {
+          kind: "page.create",
+          name: input.name,
+          journalDay: null,
+          properties: input.properties,
+          createdAt: Date.now(),
+        }),
+      ];
       let created: string[] = [];
       let outline = "";
-      let seq = currentHeadSeq(ctx.db);
       if (input.markdown) {
-        const bounds = boundsForPageEnd(ctx.db, page.id, "end");
-        const res = prepareMarkdownInsert(ctx, input.markdown, bounds);
+        // No siblings exist yet, so the bounds are the open interval — no query needed.
+        const res = prepareMarkdownInsert(ctx, input.markdown, {
+          pageId,
+          parentId: null,
+          lower: null,
+          upper: null,
+        });
         created = res.created;
         outline = res.outline;
-        if (res.ops.length > 0) {
-          const applyResult = await ctx.applyOps(res.ops);
-          seq = applyResult.seq;
-        }
+        ops.push(...res.ops);
       }
+      const applyResult = await ctx.applyOps(ops);
+      const page = await ctx.data.pages.get(pageId);
+      if (!page) throw new OpError("internal", "page.create: failed to read back created page");
       return {
         page: wirePageName(page),
         existed: false,
@@ -109,7 +126,8 @@ export const pageCreate = defineOp({
         updated: [],
         deleted: [],
         outline,
-        seq,
+        seq: applyResult.seq,
+        batch_id: input.dry_run ? undefined : applyResult.batchId,
         dry_run: input.dry_run,
       };
     });

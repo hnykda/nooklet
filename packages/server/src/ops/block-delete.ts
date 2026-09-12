@@ -9,12 +9,13 @@ import { BlockId, IdempotencyKey, IfVersion, WriteResult } from "./schemas.js";
 
 export const blockDelete = defineOp({
   name: "block.delete",
-  summary: "Delete a block subtree (to trash)",
+  summary: "Delete a block subtree (undoable)",
   description:
-    "Moves a block and all its children to the trash (restorable for 30 days); ((block refs)) " +
-    "elsewhere show as broken until restored. Returns the deleted outline so you can confirm what " +
-    "was removed. Use dry_run: true first if you are not sure how large the subtree is - it " +
-    "returns the same outline and counts without deleting anything.",
+    "Soft-deletes a block and all its children: they stop appearing anywhere, ((block refs)) to " +
+    "them show as broken, and batch_undo with this call's batch_id brings them back. Returns the " +
+    "deleted outline so you can confirm what was removed. Use dry_run: true first if you are not " +
+    "sure how large the subtree is - it returns the same outline and counts without deleting " +
+    "anything.",
   input: z
     .object({
       id: BlockId,
@@ -77,6 +78,7 @@ export const blockDelete = defineOp({
         deleted: ids,
         outline,
         seq: applyResult.seq,
+        batch_id: input.dry_run ? undefined : applyResult.batchId,
         dry_run: input.dry_run,
         deleted_count: ids.length,
         refs_broken: refsBroken,

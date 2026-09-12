@@ -5,7 +5,14 @@ import { aliasKeysOf } from "../page-aliases.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { checkIfVersion, currentHeadSeq, pageMetaWire, requirePage } from "./resolve.js";
-import { IdempotencyKey, IfVersion, PageMeta, PageRef, PropertiesPatch } from "./schemas.js";
+import {
+  BatchIdOut,
+  IdempotencyKey,
+  IfVersion,
+  PageMeta,
+  PageRef,
+  PropertiesPatch,
+} from "./schemas.js";
 
 export const pageUpdate = defineOp({
   name: "page.update",
@@ -29,6 +36,7 @@ export const pageUpdate = defineOp({
     page: PageMeta,
     refs_rewritten: z.number().int(),
     seq: z.number().int(),
+    batch_id: BatchIdOut,
     dry_run: z.boolean(),
   }),
   annotations: {
@@ -97,11 +105,11 @@ export const pageUpdate = defineOp({
       const applyResult = ops.length > 0 ? await ctx.applyOps(ops) : undefined;
       const after = await ctx.data.pages.get(page.id);
       if (!after) throw new OpError("internal", "page disappeared during update");
-      const seq = applyResult?.seq ?? currentHeadSeq(ctx.db);
       return {
         page: pageMetaWire(ctx.db, after),
         refs_rewritten: refsRewritten,
-        seq,
+        seq: applyResult?.seq ?? currentHeadSeq(ctx.db),
+        batch_id: input.dry_run ? undefined : applyResult?.batchId,
         dry_run: input.dry_run,
       };
     });

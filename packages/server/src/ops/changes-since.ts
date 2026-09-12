@@ -41,11 +41,33 @@ function opsForRow(driver: SqlDriver, opIdsJson: string): OpRow[] {
   );
 }
 
+const ChangeKind = z.enum([
+  "block.created",
+  "block.updated",
+  "block.moved",
+  "block.deleted",
+  "block.restored",
+  "page.created",
+  "page.renamed",
+  "page.updated",
+  "page.deleted",
+  "page.restored",
+  "asset.uploaded",
+]);
+type ChangeKind = z.infer<typeof ChangeKind>;
+
+/** A `*.delete` op is a restore when it carries `deletedAt: null` — the tombstone model (ADR 003)
+ * has no separate "undelete" op, and `batch_undo` of a deletion mints exactly this. Reading only
+ * the op kind reported an undone deletion as a second deletion. */
+function isRestore(op: OpRow): boolean {
+  return (JSON.parse(op.payload_json) as { deletedAt: number | null }).deletedAt === null;
+}
+
 function classify(
   entityType: string,
   ops: OpRow[],
   afterJson: string | null,
-): { kind: string; summary: string } {
+): { kind: ChangeKind; summary: string } {
   // asset.upload (ADR 013) never produces `op` rows (ADR 003: "assets are not in the op log"), so
   // there is nothing in `ops` to classify from; its `changes` row's own after_json carries what we
   // need instead.
@@ -67,7 +89,12 @@ function classify(
       const p = JSON.parse(create.payload_json) as { content: string };
       return { kind: "block.created", summary: `created: "${firstLine(p.content)}"` };
     }
-    if (byKind.get("block.delete")) return { kind: "block.deleted", summary: "deleted" };
+    const del = byKind.get("block.delete");
+    if (del) {
+      return isRestore(del)
+        ? { kind: "block.restored", summary: "restored" }
+        : { kind: "block.deleted", summary: "deleted" };
+    }
     const text = byKind.get("block.text");
     if (text) {
       const p = JSON.parse(text.payload_json) as { content: string };
@@ -81,7 +108,12 @@ function classify(
     const p = JSON.parse(create.payload_json) as { name: string };
     return { kind: "page.created", summary: `created "${p.name}"` };
   }
-  if (byKind.get("page.delete")) return { kind: "page.deleted", summary: "deleted" };
+  const del = byKind.get("page.delete");
+  if (del) {
+    return isRestore(del)
+      ? { kind: "page.restored", summary: "restored" }
+      : { kind: "page.deleted", summary: "deleted" };
+  }
   const rename = byKind.get("page.rename");
   if (rename) {
     const p = JSON.parse(rename.payload_json) as { name: string };
@@ -95,7 +127,8 @@ export const changesSince = defineOp({
   summary: "What changed since a cursor",
   description:
     "Returns what changed since a cursor: blocks/pages created, updated, moved, deleted, " +
-    "restored, or renamed, oldest first, with who did it (origin, actor) and a one-line summary. " +
+    "restored (a batch_undo of a deletion), or renamed, oldest first, with who did it (origin, " +
+    "actor) and a one-line summary. " +
     "Get a starting cursor from graph_overview.seq or from any write's seq. Use this to catch up " +
     "after the user or another agent edited the graph, to build a changelog, or to find what your " +
     "own last batch changed. has_more: true means call again immediately with the returned cursor " +
@@ -119,19 +152,7 @@ export const changesSince = defineOp({
         actor: z.string(),
         client: z.string().optional(),
         batch_id: z.string(),
-        kind: z.enum([
-          "block.created",
-          "block.updated",
-          "block.moved",
-          "block.deleted",
-          "block.restored",
-          "page.created",
-          "page.renamed",
-          "page.updated",
-          "page.deleted",
-          "page.restored",
-          "asset.uploaded",
-        ]),
+        kind: ChangeKind,
         page: z.string(),
         block_id: z.string().optional(),
         summary: z.string(),
@@ -206,18 +227,7 @@ export const changesSince = defineOp({
         origin: r.origin as z.infer<typeof OriginEnum>,
         actor: r.actor,
         batch_id: r.batch_id,
-        kind: kind as
-          | "block.created"
-          | "block.updated"
-          | "block.moved"
-          | "block.deleted"
-          | "block.restored"
-          | "page.created"
-          | "page.renamed"
-          | "page.updated"
-          | "page.deleted"
-          | "page.restored"
-          | "asset.uploaded",
+        kind,
         page: pageWire,
         block_id: blockId,
         summary,

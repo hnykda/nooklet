@@ -35,7 +35,10 @@ describe("batch.undo", () => {
       markdown: "- c\n- d",
     });
     expect(append.status).toBe(200);
-    const appendBatchId = await batchIdSince(cursorAfterCreate);
+    // Every write returns the batch_id that groups its changes (B-57); changes_since agrees.
+    const appendBatchId = append.json.batch_id as string;
+    expect(typeof appendBatchId).toBe("string");
+    expect(await batchIdSince(cursorAfterCreate)).toBe(appendBatchId);
 
     const afterAppend = await post(s.app, "/api/v1/page.read", s.writeToken, {
       page: "UndoPage",
@@ -49,8 +52,8 @@ describe("batch.undo", () => {
     expect(undo.status).toBe(200);
     expect(undo.json.dry_run).toBe(false);
     expect(undo.json.deleted).toHaveLength(2); // c and d were created by the undone batch
-    expect(typeof undo.json.undo_batch_id).toBe("string");
-    expect(undo.json.undo_batch_id).not.toBe(appendBatchId);
+    expect(typeof undo.json.batch_id).toBe("string");
+    expect(undo.json.batch_id).not.toBe(appendBatchId);
 
     const restored = await post(s.app, "/api/v1/page.read", s.writeToken, {
       page: "UndoPage",
@@ -154,7 +157,7 @@ describe("batch.undo", () => {
     expect(contents(read.json.tree)).toEqual(["a"]);
 
     const undo2 = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
-      batch_id: undo1.json.undo_batch_id,
+      batch_id: undo1.json.batch_id,
     });
     expect(undo2.status).toBe(200);
     read = await post(s.app, "/api/v1/page.read", s.writeToken, {

@@ -131,6 +131,13 @@ export const Format = z
     "outline: outline Markdown with ^ids, bounded by depth/max_chars (cheapest); json: a typed block tree",
   );
 
+export const BatchIdOut = z
+  .string()
+  .optional()
+  .describe(
+    "Groups every change this call made (mcp-tools.md §3.7); pass to batch_undo to reverse them all. Absent when nothing was written (a no-op, or dry_run)",
+  );
+
 export const WriteResult = z.object({
   page: z.string(),
   created: z.array(BlockId).describe("Ids of blocks created, in document order"),
@@ -141,6 +148,7 @@ export const WriteResult = z.object({
     .number()
     .int()
     .describe("Highest changes-log seq written by this call; pass to changes_since"),
+  batch_id: BatchIdOut,
   dry_run: z.boolean().default(false),
 });
 

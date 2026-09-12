@@ -2,16 +2,16 @@ import { z } from "zod";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { backlinkCount, checkIfVersion, requirePage, wirePageName } from "./resolve.js";
-import { IdempotencyKey, IfVersion, PageRef } from "./schemas.js";
+import { BatchIdOut, IdempotencyKey, IfVersion, PageRef } from "./schemas.js";
 
 export const pageDelete = defineOp({
   name: "page.delete",
-  summary: "Delete a page (to trash)",
+  summary: "Delete a page (undoable)",
   description:
-    "Moves an entire page and its blocks to the trash (restorable for 30 days). Links to it " +
-    "become unresolved until restored. Prefer editing or renaming a page over deleting it; use " +
-    "this only when the user has explicitly asked to delete the page - most hosts will prompt for " +
-    "confirmation before running it.",
+    "Soft-deletes an entire page and its blocks: they stop appearing anywhere, links to the page " +
+    "become unresolved, and batch_undo with this call's batch_id brings all of it back. Prefer " +
+    "editing or renaming a page over deleting it; use this only when the user has explicitly " +
+    "asked to delete the page - most hosts will prompt for confirmation before running it.",
   input: z
     .object({
       page: PageRef,
@@ -25,6 +25,7 @@ export const pageDelete = defineOp({
     deleted_blocks: z.number().int(),
     backlinks_affected: z.number().int(),
     seq: z.number().int(),
+    batch_id: BatchIdOut,
     dry_run: z.boolean(),
   }),
   annotations: {
@@ -64,6 +65,7 @@ export const pageDelete = defineOp({
         deleted_blocks: blockIds.length,
         backlinks_affected: backlinksAffected,
         seq: applyResult.seq,
+        batch_id: input.dry_run ? undefined : applyResult.batchId,
         dry_run: input.dry_run,
       };
     });

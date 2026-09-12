@@ -1163,3 +1163,74 @@ describe("embeddings.reindex", () => {
     expect(json.queued).toBe(3); // 1 page + 2 blocks
   });
 });
+
+describe("changes.since restore classification (B-56)", () => {
+  it("reports an undone delete as a restore, not a second delete", async () => {
+    const create = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Undoable",
+      markdown: "- keep me",
+    });
+    const blockId = create.json.created[0] as string;
+    const del = await post(s.app, "/api/v1/block.delete", s.writeToken, { id: blockId });
+    expect(del.status).toBe(200);
+    expect(typeof del.json.batch_id).toBe("string");
+
+    const undo = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: del.json.batch_id,
+    });
+    expect(undo.status).toBe(200);
+
+    const { json } = await post(s.app, "/api/v1/changes.since", s.writeToken, {
+      cursor: String(create.json.seq),
+    });
+    const kinds = json.items
+      .filter((i: { block_id?: string }) => i.block_id === blockId)
+      .map((i: { kind: string; summary: string }) => [i.kind, i.summary]);
+    expect(kinds).toEqual([
+      ["block.deleted", "deleted"],
+      ["block.restored", "restored"],
+    ]);
+  });
+
+  it("reports an undone page delete as page.restored", async () => {
+    const create = await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Gone" });
+    const del = await post(s.app, "/api/v1/page.delete", s.writeToken, { page: "Gone" });
+    await post(s.app, "/api/v1/batch.undo", s.writeToken, { batch_id: del.json.batch_id });
+    const { json } = await post(s.app, "/api/v1/changes.since", s.writeToken, {
+      cursor: String(create.json.seq),
+    });
+    const pageKinds = json.items
+      .filter((i: { block_id?: string }) => i.block_id === undefined)
+      .map((i: { kind: string }) => i.kind);
+    expect(pageKinds).toEqual(["page.deleted", "page.restored"]);
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "Gone" });
+    expect(read.status).toBe(200);
+  });
+
+  it("page_create with markdown is one batch: undoing it removes the page too (B-57)", async () => {
+    const create = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "OneBatch",
+      markdown: "- a\n- b",
+    });
+    expect(typeof create.json.batch_id).toBe("string");
+    const undo = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: create.json.batch_id,
+    });
+    expect(undo.status).toBe(200);
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "OneBatch" });
+    expect(read.status).toBe(404);
+  });
+
+  it("a dry run or a no-op write carries no batch_id", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Same" });
+    const again = await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Same" });
+    expect(again.json.existed).toBe(true);
+    expect(again.json.batch_id).toBeUndefined();
+    const dry = await post(s.app, "/api/v1/page.append", s.writeToken, {
+      page: "Same",
+      markdown: "- x",
+      dry_run: true,
+    });
+    expect(dry.json.batch_id).toBeUndefined();
+  });
+});

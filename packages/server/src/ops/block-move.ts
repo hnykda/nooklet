@@ -95,6 +95,7 @@ export const blockMove = defineOp({
         deleted: [],
         outline,
         seq: applyResult.seq,
+        batch_id: input.dry_run ? undefined : applyResult.batchId,
         dry_run: input.dry_run,
       };
     });

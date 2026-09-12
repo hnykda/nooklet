@@ -68,14 +68,14 @@ export const pageAppend = defineOp({
       }
       const { ops, created, outline } = prepareMarkdownInsert(ctx, input.markdown, bounds);
       const applyResult = ops.length > 0 ? await ctx.applyOps(ops) : undefined;
-      const seq = applyResult?.seq ?? currentHeadSeq(ctx.db);
       return {
         page: wirePageName(page),
         created,
         updated: [],
         deleted: [],
         outline,
-        seq,
+        seq: applyResult?.seq ?? currentHeadSeq(ctx.db),
+        batch_id: input.dry_run ? undefined : applyResult?.batchId,
         dry_run: input.dry_run,
       };
     });

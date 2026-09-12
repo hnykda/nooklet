@@ -61,7 +61,7 @@ export const blockRead = defineOp({
       throw new OpError(
         "not_found",
         `no block with id ${input.id}`,
-        "this block may be in the trash; ask the user to restore it",
+        "it may have been deleted; changes_since shows the deletion and the batch_id that batch_undo would reverse",
       );
     }
     const [rootNode] = await ctx.data.blocks.tree(input.id, { depth: input.depth });

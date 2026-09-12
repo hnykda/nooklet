@@ -398,6 +398,7 @@ export const WriteResult = z.object({
   updated: z.array(BlockId).default([]), deleted: z.array(BlockId).default([]),
   outline: z.string().describe('Outline Markdown of the affected subtree with ^ids'),
   seq: z.number().int().describe('Highest changes-log seq written by this call; pass to changes_since'),
+  batch_id: z.string().optional().describe('Groups every change this call made (§3.7); pass to batch_undo to reverse them all. Absent when nothing was written (a no-op, or dry_run)'),
   dry_run: z.boolean().default(false),
 });
 
@@ -704,8 +705,8 @@ export const blockRead = defineOp({
 ```
 
 **Errors**: `not_found` — no block with that id (never confuse this with an id that once existed
-and was deleted: deleted blocks are also `not_found`, with `hint`: "this block may be in the
-trash; ask the user to restore it").
+and was deleted: deleted blocks are also `not_found`, with `hint`: "it may have been deleted;
+`changes_since` shows the deletion and the `batch_id` that `batch_undo` would reverse").
 
 ---
 
@@ -1151,14 +1152,15 @@ descendant of `id` (would create a cycle), or neither/both of `ref+position`/`pa
 
 **Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: true }`. **Loading** deferred.
 
-**Description**: "Moves a block and all its children to the trash (restorable for 30 days);
-`((block refs))` elsewhere show as broken until restored. Returns the deleted outline so you can
-confirm what was removed. Use `dry_run: true` first if you are not sure how large the subtree is —
-it returns the same outline and counts without deleting anything."
+**Description**: "Soft-deletes a block and all its children: they stop appearing anywhere,
+`((block refs))` to them show as broken, and `batch_undo` with this call's `batch_id` brings them
+back. Returns the deleted outline so you can confirm what was removed. Use `dry_run: true` first if
+you are not sure how large the subtree is — it returns the same outline and counts without
+deleting anything."
 
 ```ts
 export const blockDelete = defineOp({
-  name: 'block.delete', summary: 'Delete a block subtree (to trash)',
+  name: 'block.delete', summary: 'Delete a block subtree (undoable)',
   input: z.object({ id: BlockId, if_version: IfVersion, dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey }).strict(),
   output: WriteResult.extend({
     deleted_count: z.number().int(),
@@ -1316,18 +1318,18 @@ than 100 ops.
 
 **Scope** write. **Annotations** `{ readOnlyHint: false, destructiveHint: true, idempotentHint: true }`. **Loading** `requiresUserInteraction: true`, never alwaysLoad.
 
-**Description**: "Moves an entire page and its blocks to the trash (restorable for 30 days).
-Links to it become unresolved until restored. Prefer editing or renaming a page over deleting it;
-use this only when the user has explicitly asked to delete the page — most hosts will prompt for
-confirmation before running it."
+**Description**: "Soft-deletes an entire page and its blocks: they stop appearing anywhere, links
+to the page become unresolved, and `batch_undo` with this call's `batch_id` brings all of it back.
+Prefer editing or renaming a page over deleting it; use this only when the user has explicitly
+asked to delete the page — most hosts will prompt for confirmation before running it."
 
 ```ts
 export const pageDelete = defineOp({
-  name: 'page.delete', summary: 'Delete a page (to trash)',
+  name: 'page.delete', summary: 'Delete a page (undoable)',
   input: z.object({ page: PageRef, if_version: IfVersion, dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey }).strict(),
   output: z.object({
     page: z.string(), deleted_blocks: z.number().int(), backlinks_affected: z.number().int(),
-    seq: z.number().int(), dry_run: z.boolean(),
+    seq: z.number().int(), batch_id: WriteResult.shape.batch_id, dry_run: z.boolean(),
   }),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, scopes: ['write'],
   mcp: { requiresUserInteraction: true },
@@ -1361,11 +1363,11 @@ to a `read`-only token at all, so this case is HTTP-only).
 
 **Description**: "Reverses every page/block change recorded under `batch_id` (a value returned by
 any write, or by `changes_since`'s `items[].batch_id`), restoring each entity to its state
-immediately before that batch, or deleting it (soft-delete, restorable) if the batch created it.
+immediately before that batch, or soft-deleting it (undoable in turn) if the batch created it.
 Works from the before/after snapshot every write already records for audit purposes (ADR 013) — it
 never re-parses Markdown or guesses at the reverse edit. This call is itself a brand-new,
 separately-audited batch: to undo the undo, call `batch_undo` again with THIS call's
-`undo_batch_id` (there is no separate redo concept). It does NOT check whether the entity changed
+`batch_id` (there is no separate redo concept). It does NOT check whether the entity changed
 again after the original batch — it applies the restore unconditionally, and since every field is
 last-writer-wins by a fresh timestamp (ADR 003), the undo always wins over anything in between.
 Cannot undo `asset_upload` (assets are not in the op log); such a `batch_id` fails with an
@@ -1378,9 +1380,9 @@ export const batchUndo = defineOp({
     batch_id: z.string().min(1).max(64).describe('A batch_id from a previous write\'s response or a changes_since item\'s batch_id field'),
     dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
   }).strict(),
-  output: WriteResult.extend({
-    undo_batch_id: z.string().describe('The id of this undo itself, as a fresh batch_id; pass it to batch_undo again to undo the undo'),
-  }),
+  // `batch_id` in the result is this undo's OWN batch, like every other write's — pass it back to
+  // batch_undo to undo the undo.
+  output: WriteResult,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, scopes: ['write'],
   render: renderBatchUndo, handler: (i, ctx) => ctx.graph.undoBatch(i, ctx),
 });
@@ -1410,7 +1412,7 @@ page `Projects/Comet`, two blocks under it, and one block on today's journal, al
   "page": "2026-09-10, Projects/Comet", "created": [], "updated": [],
   "deleted": ["1k7f3qh1m6xzr3", "1k7f3qh2p9nzk4", "1k7f3qh3t3xgv7", "1k7f3qh4w6ktp2"],
   "outline": "deleted page \"Projects/Comet\" (created by the undone batch)\ndeleted block ^1k7f3qh2p9nzk4 (created by the undone batch)\ndeleted block ^1k7f3qh3t3xgv7 (created by the undone batch)\ndeleted block ^1k7f3qh4w6ktp2 (created by the undone batch)",
-  "seq": 48223, "dry_run": false, "undo_batch_id": "1k7f3qi1n4wxr5"
+  "seq": 48223, "dry_run": false, "batch_id": "1k7f3qi1n4wxr5"
 }
 ```
 

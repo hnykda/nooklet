@@ -51,14 +51,14 @@ export const blockInsert = defineOp({
       if (!bounds) throw new OpError("not_found", `no block with id ${input.ref}`);
       const { ops, created, outline } = prepareMarkdownInsert(ctx, input.markdown, bounds);
       const applyResult = ops.length > 0 ? await ctx.applyOps(ops) : undefined;
-      const seq = applyResult?.seq ?? currentHeadSeq(ctx.db);
       return {
         page: pageWireNameById(ctx.db, refRow.page_id),
         created,
         updated: [],
         deleted: [],
         outline,
-        seq,
+        seq: applyResult?.seq ?? currentHeadSeq(ctx.db),
+        batch_id: input.dry_run ? undefined : applyResult?.batchId,
         dry_run: input.dry_run,
       };
     });
