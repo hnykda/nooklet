@@ -115,4 +115,35 @@ describe("GET /assets/:id", () => {
     const res = await s.app.request("/assets/1k7f3q9xz2hav4.png");
     expect(res.status).toBe(404);
   });
+
+  it("serves hostile content as an inert document: nosniff + CSP sandbox (B-61)", async () => {
+    // An uploaded HTML file (or a scripted SVG) opened in a tab must not run in the app's origin,
+    // where it could read localStorage — the device token included.
+    const html = Buffer.from("<script>alert(document.cookie)</script>").toString("base64");
+    const upload = await post(s.app, "/api/v1/asset.upload", s.writeToken, {
+      filename: "page.html",
+      mime_type: "text/html",
+      data_base64: html,
+    });
+    expect(upload.status).toBe(200);
+    const res = await s.app.request(upload.json.url as string);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+    expect(res.headers.get("content-length")).toBe(String(upload.json.byte_size));
+  });
+
+  it("rejects a mime_type that is not a well-formed media type (B-61)", async () => {
+    // A newline in the recorded type made `new Response` throw on every later GET: a 500.
+    for (const mime_type of ["text/html\r\nx-evil: 1", "image", "image/png; charset=x", ""]) {
+      const { status, json } = await post(s.app, "/api/v1/asset.upload", s.writeToken, {
+        filename: "x.bin",
+        mime_type,
+        data_base64: PNG_1PX_BASE64,
+      });
+      expect(status, JSON.stringify(mime_type)).toBe(400);
+      expect(json.error.code).toBe("invalid");
+    }
+  });
 });

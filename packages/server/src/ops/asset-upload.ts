@@ -28,6 +28,11 @@ const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
+/** `type/subtype` in RFC 6838's token characters, no parameters. The value is echoed back as the
+ * `Content-Type` of every later `GET /assets/:id`, so it must be a well-formed header value: a
+ * newline in it made `new Response` throw, which surfaced as a 500 on every fetch of that asset. */
+const MIME_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
+
 /** Maps a handful of common types to a sane extension when `filename` has none usable. Falls back
  *  to `bin` — the file is still stored and served correctly via its recorded `mime_type`, an
  *  extension is only a filesystem/URL nicety. */
@@ -123,6 +128,13 @@ export const assetUpload = defineOp({
   scopes: ["write"],
   render: (out) => out.markdown,
   handler: (input, ctx) => {
+    if (!MIME_TYPE_RE.test(input.mime_type)) {
+      throw new OpError(
+        "invalid",
+        `mime_type "${input.mime_type}" is not a type/subtype media type`,
+        "e.g. image/png or application/pdf, without parameters",
+      );
+    }
     if (!BASE64_RE.test(input.data_base64) || input.data_base64.length % 4 !== 0) {
       throw new OpError("invalid", "data_base64 is not valid base64");
     }

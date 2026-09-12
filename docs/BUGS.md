@@ -47,6 +47,24 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-61 · An uploaded `.html` asset ran in the app's origin; a bad `mime_type` made every fetch a 500
+**Status:** fixed · **Severity:** low (security) · **Found:** 2026-09-12, code review · **Tests:**
+`packages/server/src/ops/asset-upload.http.test.ts` "serves hostile content as an inert document",
+"rejects a mime_type that is not a well-formed media type"
+
+`GET /assets/:id` echoed the uploader's `mime_type` as `Content-Type` with no
+`X-Content-Type-Options` and no CSP. Upload `text/html` (or an SVG with a `<script>`), open it in a
+tab, and it executes on the app's origin — with `localStorage`, the device token included, in
+reach. On loopback that token is handed out freely anyway; behind a tailnet it is the credential.
+Separately, a `mime_type` containing a newline was stored as given, and `new Response` threw on
+every later fetch of that asset: a permanent 500 for one bad upload.
+
+Responses now carry `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`
+(any document built from the response runs in an opaque origin with no script — `<img>`,
+`<video>` and `<audio>` subresources are unaffected), `mime_type` must be a `type/subtype` in RFC
+6838's token characters, and the file is streamed instead of `readFileSync`-ing up to 25 MB on
+the event loop per request.
+
 ### B-62 · `page_list({tag: "art"})` returned pages tagged `party`
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, code review · **Test:**
 `packages/server/src/ops/ops.http.test.ts` "filters by tag through the page_tag index"
