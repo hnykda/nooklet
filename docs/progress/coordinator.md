@@ -22,7 +22,7 @@ Resume file. If you are reading this because the previous session was cut off, s
 | m7-refactors | block→page, move to page, page merge, find & replace; ops + MCP + UI | new `ops/{block-to-page,block-move-to-page,page-merge,graph-replace}.ts`, `commands/registrations/refactor.ts`, `views/FindReplaceView.tsx`, `data-api.ts` (not `journal()`) | 6352 |
 | m7-views | **done** — `750cc25` `mentions.link` (renamed: no `_` inside an op segment), `7e2ec53` filters/sort + Link all/Undo (ADR 021: per-device), `551daa7` appearance, `dab300f` shelf outline. Hand-backs: `callOp` duplicated in ReferencesPanel/SettingsPanel → generic POST in api-client; explicit `import "../data/appearance.js"` in AppShell. B-92 (slash count 15→16) delegated to templates agent. | — | — |
 | m7-trash-history | trash list/restore, page history timeline, orphan-asset GC | new `ops/{trash-list,trash-restore,page-history}.ts`, `views/TrashView.tsx`, `views/HistoryView.tsx`, `data/history.ts`, `gc.ts`, `cli.ts` gc case | 6354 |
-| exposure-audit | read-only: what is built vs reachable; cheap wins below the top ten; publish-a-graph scoping | `docs/review/2026-09-12-exposure-audit.md` only | 6360/6361 |
+| exposure-audit | **done** — `docs/review/2026-09-12-exposure-audit.md`: 5 gaps (mirror never written by `serve`; no page delete in UI; fake date picker; client plugin host absent; 5 dead palette rows), 5 cheap wins, publish = 2–3 days; defects D1–D13 to log | — | — |
 | research-collab | **done** — `docs/research/15` committed; shortlist: presence → share links → conflicts UI → host via Tailscale → membership → OT last; CRDT-as-truth and E2EE stay out | — | — |
 | wiki | `docs/wiki/` as a nooklet file graph; must import with zero errors | `docs/wiki/**` only | 6362 |
 
