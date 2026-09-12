@@ -294,8 +294,8 @@ async function main(): Promise<void> {
     case "import": {
       const graphDir = args._[1];
       if (!graphDir) die("import needs a Logseq graph directory");
-      const { ctx } = open(args, { migrate: true });
-      const stats = await importLogseqGraph(ctx, resolve(graphDir));
+      const { ctx, config } = open(args, { migrate: true });
+      const stats = await importLogseqGraph(ctx, resolve(graphDir), { dataDir: config.dataDir });
       process.stdout.write(`${JSON.stringify(stats, null, 2)}\n`);
       return;
     }

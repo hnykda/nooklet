@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isId, newId } from "@nooklet/core";
@@ -295,5 +295,105 @@ describe("importLogseqGraph: per-page failure isolation", () => {
       "SELECT id FROM block WHERE page_id = (SELECT id FROM page WHERE key = 'colliding')",
     );
     expect(collidingBlocks).toHaveLength(0);
+  });
+});
+
+describe("importLogseqGraph: assets", () => {
+  let dataDir: string;
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), "nooklet-import-data-"));
+  });
+  afterEach(() => {
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it("copies assets/ into the data directory and re-points every link at them", async () => {
+    writeGraphFile("assets/photo_1715428076165_0.png", "PNGBYTES");
+    writeGraphFile("assets/Cool report.pdf", "PDFBYTES");
+    writeGraphFile(
+      "pages/Trip.md",
+      "- ![photo](../assets/photo_1715428076165_0.png)\n- [the report](../assets/Cool%20report.pdf)\n",
+    );
+    // Journals write the same `../assets/` prefix; a hand-edited graph may omit the `../`.
+    writeGraphFile("journals/2026_09_10.md", "- ![again](assets/photo_1715428076165_0.png)\n");
+
+    const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+
+    expect(stats.errors).toEqual([]);
+    expect(stats.assetsImported).toBe(2);
+    expect(stats.danglingAssetLinks).toBe(0);
+
+    const rows = ctx.driver.all<{ id: string; file_name: string; ext: string; mime_type: string }>(
+      "SELECT id, file_name, ext, mime_type FROM asset ORDER BY file_name",
+    );
+    expect(rows.map((r) => [r.file_name, r.ext, r.mime_type])).toEqual([
+      ["Cool report.pdf", "pdf", "application/pdf"],
+      ["photo_1715428076165_0.png", "png", "image/png"],
+    ]);
+    for (const r of rows)
+      expect(existsSync(join(dataDir, "assets", `${r.id}.${r.ext}`))).toBe(true);
+
+    // The block now carries exactly what asset.upload would have returned, so the client renders
+    // it through the same path as an uploaded picture.
+    const photo = rows.find((r) => r.ext === "png") as (typeof rows)[number];
+    const pdf = rows.find((r) => r.ext === "pdf") as (typeof rows)[number];
+    const contents = ctx.driver
+      .all<{ content: string }>("SELECT content FROM block ORDER BY content")
+      .map((b) => b.content);
+    expect(contents).toEqual([
+      `![again](assets/${photo.id}.png)`,
+      `![photo](assets/${photo.id}.png)`,
+      `[the report](assets/${pdf.id}.pdf)`,
+    ]);
+  });
+
+  it("leaves a link alone and counts it when the file is not in assets/", async () => {
+    writeGraphFile("pages/Lost.md", "- ![gone](../assets/never_existed.png)\n");
+    const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+    expect(stats.assetsImported).toBe(0);
+    expect(stats.danglingAssetLinks).toBe(1);
+    expect(ctx.driver.get<{ content: string }>("SELECT content FROM block")?.content).toBe(
+      "![gone](../assets/never_existed.png)",
+    );
+  });
+
+  it("does not copy the same bytes twice across re-runs", async () => {
+    writeGraphFile("assets/a.png", "SAME");
+    writeGraphFile("pages/One.md", "- ![a](../assets/a.png)\n");
+    await importLogseqGraph(ctx, graphDir, { dataDir });
+    const again = await importLogseqGraph(ctx, graphDir, { dataDir });
+    expect(again.assetsImported).toBe(0);
+    expect(ctx.driver.get<{ n: number }>("SELECT count(*) AS n FROM asset")?.n).toBe(1);
+  });
+
+  it("copies a file larger than the API's 25 MB cap — it is the person's own file", async () => {
+    // The two PDFs that stayed dangling on the real graph were 67 MB and 75 MB.
+    writeGraphFile("assets/big.pdf", "x".repeat(26 * 1024 * 1024));
+    writeGraphFile("pages/Big.md", "- [big](../assets/big.pdf)\n");
+    const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+    expect(stats.assetsImported).toBe(1);
+    expect(stats.danglingAssetLinks).toBe(0);
+    expect(stats.warnings.filter((w) => w.includes("over the"))).toEqual([]);
+  });
+
+  it("matches a link to a file whose on-disk name is NFD (macOS) when the link is NFC", async () => {
+    const nfc = "Zelený_byznys.pdf";
+    const nfd = nfc.normalize("NFD");
+    expect(nfd).not.toBe(nfc);
+    writeGraphFile(`assets/${nfd}`, "PDF");
+    writeGraphFile("pages/Cz.md", `- [zeleny](../assets/${nfc})\n`);
+    const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+    expect(stats.danglingAssetLinks).toBe(0);
+    expect(ctx.driver.get<{ content: string }>("SELECT content FROM block")?.content).toMatch(
+      /^\[zeleny\]\(assets\/[a-z0-9]+\.pdf\)$/,
+    );
+  });
+
+  it("says so, loudly, when there is nowhere to put the assets", async () => {
+    writeGraphFile("assets/a.png", "BYTES");
+    writeGraphFile("pages/One.md", "- ![a](../assets/a.png)\n");
+    const stats = await importLogseqGraph(ctx, graphDir);
+    expect(stats.assetsImported).toBe(0);
+    expect(stats.warnings.some((w) => w.includes("assets/ was not imported"))).toBe(true);
   });
 });

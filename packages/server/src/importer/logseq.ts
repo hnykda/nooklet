@@ -44,6 +44,7 @@ import {
   parseOutline,
 } from "@nooklet/core";
 import { type ServerContext, serverApplyOps } from "../apply-ops.js";
+import { assetMarkdownPath, mimeFromFilename, storeAssetBytes } from "../assets/store.js";
 import { setSuggestedJournalTitleFormat } from "../journal-format.js";
 
 // -------------------------------------------------------------------------------------------
@@ -332,6 +333,75 @@ function assignIds(entries: readonly FileEntry[], warnings: string[]): IdAssignm
  *  these over time per `docs/research/01-logseq.md`). */
 const BLOCK_REF_CANDIDATE_RE = /\(\(([0-9a-f-]{36})\)\)/g;
 
+// -------------------------------------------------------------------------------------------
+// Assets: copy `assets/*` into the data directory and re-point the links
+// -------------------------------------------------------------------------------------------
+
+/** `](../assets/name.png)` or `](assets/name.png)` — Logseq writes the former from pages/ and
+ *  journals/; the latter turns up in graphs edited by hand. The name may be percent-encoded. */
+const ASSET_LINK_RE = /\]\((?:\.\.\/)?assets\/([^)\s]+)\)/g;
+
+/**
+ * Bring every file in `<graphDir>/assets/` across through the same writer `asset.upload` uses,
+ * so an imported picture is indistinguishable from an uploaded one. Returns the map from the
+ * original file name to the markdown path blocks should now carry. Content-addressed, so a
+ * re-run after a partial failure copies nothing twice.
+ */
+function importAssets(
+  ctx: ServerContext,
+  graphDir: string,
+  dataDir: string,
+  warnings: string[],
+): { paths: Map<string, string>; imported: number } {
+  const dir = join(graphDir, "assets");
+  const paths = new Map<string, string>();
+  let imported = 0;
+  if (!existsSync(dir)) return { paths, imported };
+  for (const name of readdirSync(dir)) {
+    if (name.startsWith(".")) continue;
+    const filePath = join(dir, name);
+    if (!statSync(filePath).isFile()) continue;
+    try {
+      const stored = storeAssetBytes(ctx.driver, dataDir, {
+        bytes: readFileSync(filePath),
+        fileName: name,
+        mimeType: mimeFromFilename(name),
+        origin: "import",
+        actor: IMPORTER_ACTOR,
+        maxBytes: Number.POSITIVE_INFINITY,
+      });
+      // macOS's filesystem hands back names in NFD (`ý` as `y` + combining acute) while the
+      // markdown Logseq wrote is NFC — the same name, two byte sequences. Key on NFC, look up in
+      // NFC, or every asset with a diacritic in its name is "missing".
+      paths.set(name.normalize("NFC"), assetMarkdownPath(stored));
+      if (!stored.deduped) imported++;
+    } catch (err) {
+      warnings.push(`assets/${name}: not imported (${errMsg(err)})`);
+    }
+  }
+  return { paths, imported };
+}
+
+function rewriteAssetLinks(
+  content: string,
+  paths: ReadonlyMap<string, string>,
+): { text: string; dangling: number } {
+  let dangling = 0;
+  const text = content.replace(ASSET_LINK_RE, (whole, rawName: string) => {
+    let name = rawName;
+    try {
+      name = decodeURIComponent(rawName);
+    } catch {
+      // Not percent-encoded after all; use it as written.
+    }
+    const mapped = paths.get(name.normalize("NFC")) ?? paths.get(rawName.normalize("NFC"));
+    if (mapped !== undefined) return `](${mapped})`;
+    dangling++;
+    return whole;
+  });
+  return { text, dangling };
+}
+
 function rewriteBlockRefs(
   content: string,
   idMap: ReadonlyMap<string, string>,
@@ -365,12 +435,14 @@ const CHUNK_SIZE = 500;
 function buildPageOps(
   entry: FileEntry,
   ids: IdAssignment,
+  assetPaths: ReadonlyMap<string, string>,
   hlc: ServerContext["hlc"],
   createdAt: number,
-): { pageId: string; ops: Op[]; dangling: number } {
+): { pageId: string; ops: Op[]; dangling: number; danglingAssets: number } {
   const pageId = newId();
   const ops: Op[] = [];
   let dangling = 0;
+  let danglingAssets = 0;
 
   const pageProperties =
     Object.keys(entry.parsed.properties).length > 0 ? entry.parsed.properties : undefined;
@@ -387,7 +459,9 @@ function buildPageOps(
   const addBlock = (node: OutlineNode, parentId: string | null, order: string): void => {
     // biome-ignore lint/style/noNonNullAssertion: every node was assigned an id in pass 1
     const entityId = ids.nodeIds.get(node)!;
-    const rewritten = rewriteBlockRefs(node.content, ids.idMap);
+    const withAssets = rewriteAssetLinks(node.content, assetPaths);
+    danglingAssets += withAssets.dangling;
+    const rewritten = rewriteBlockRefs(withAssets.text, ids.idMap);
     dangling += rewritten.dangling;
     const properties = Object.keys(node.properties).length > 0 ? node.properties : undefined;
     ops.push(
@@ -414,7 +488,7 @@ function buildPageOps(
     addBlock(node, null, rootOrders[i] as string);
   });
 
-  return { pageId, ops, dangling };
+  return { pageId, ops, dangling, danglingAssets };
 }
 
 function applyChunked(ctx: ServerContext, ops: readonly Op[]): AppliedOpResult[] {
@@ -435,6 +509,9 @@ export interface ImportLogseqOptions {
   /** Override individual `config.edn` values (mainly for tests); anything not given still comes
    *  from the graph's own `logseq/config.edn` (or Logseq's documented defaults). */
   config?: Partial<LogseqConfig>;
+  /** The nooklet data directory, where `assets/` lives. Without it the graph's `assets/*` are
+   *  left behind and every `![](../assets/…)` stays a dead link — reported as a warning. */
+  dataDir?: string;
 }
 
 export interface ImportStats {
@@ -448,6 +525,10 @@ export interface ImportStats {
   pagesSkipped: number;
   /** `((uuid))` occurrences left unrewritten because their target isn't in this graph. */
   danglingBlockRefs: number;
+  /** Files copied out of the graph's `assets/` (deduplicated by content). */
+  assetsImported: number;
+  /** `assets/…` links whose file was not in the graph's `assets/` directory. */
+  danglingAssetLinks: number;
   /** Non-fatal notices: duplicate names/ids, unparseable config.edn, unrecognized journal file
    *  names, individual block ops rejected on an otherwise-successful page. */
   warnings: string[];
@@ -496,16 +577,35 @@ export async function importLogseqGraph(
   const entries = resolveFileEntries(graphDir, warnings);
   const ids = assignIds(entries, warnings);
 
+  let assetsImported = 0;
+  let assetPaths: Map<string, string> = new Map();
+  if (opts.dataDir) {
+    const assets = importAssets(ctx, graphDir, opts.dataDir, warnings);
+    assetPaths = assets.paths;
+    assetsImported = assets.imported;
+  } else if (existsSync(join(graphDir, "assets"))) {
+    warnings.push(
+      "assets/ was not imported: no dataDir was given, so there is nowhere to copy the files",
+    );
+  }
+
   let pagesImported = 0;
   let journalsImported = 0;
   let blocksImported = 0;
   let pagesSkipped = 0;
   let danglingBlockRefs = 0;
+  let danglingAssetLinks = 0;
 
   for (const entry of entries) {
     try {
       const createdAt = Math.round(statSync(entry.filePath).mtimeMs);
-      const { ops, dangling } = buildPageOps(entry, ids, ctx.hlc, createdAt);
+      const { ops, dangling, danglingAssets } = buildPageOps(
+        entry,
+        ids,
+        assetPaths,
+        ctx.hlc,
+        createdAt,
+      );
       const results = applyChunked(ctx, ops);
       const pageResult = results[0];
 
@@ -528,6 +628,7 @@ export async function importLogseqGraph(
 
       blocksImported += appliedBlocks;
       danglingBlockRefs += dangling;
+      danglingAssetLinks += danglingAssets;
       if (entry.isJournal) journalsImported++;
       else pagesImported++;
     } catch (err) {
@@ -542,6 +643,8 @@ export async function importLogseqGraph(
     blocksImported,
     pagesSkipped,
     danglingBlockRefs,
+    assetsImported,
+    danglingAssetLinks,
     warnings,
     errors,
     durationMs: Date.now() - start,

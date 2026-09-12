@@ -32,7 +32,9 @@ import {
   type InlineToken as Tok,
   tokenizeContent,
 } from "@nooklet/core";
+
 import { For, Show } from "solid-js";
+import { assetUrl } from "./asset-url.js";
 
 export type NavigateTarget = { kind: "page"; name: string } | { kind: "block"; id: string };
 export type Navigate = (t: NavigateTarget) => void;
@@ -262,7 +264,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
             return (
               <a
                 class="vr-link"
-                href={tok.href}
+                href={assetUrl(tok.href)}
                 target="_blank"
                 rel="noopener"
                 data-from={tok.start}
@@ -289,7 +291,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               <img
                 class="vr-image"
                 alt={tok.alt}
-                src={tok.src}
+                src={assetUrl(tok.src)}
                 loading="lazy"
                 data-from={tok.start}
                 data-to={tok.end}

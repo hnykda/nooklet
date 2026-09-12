@@ -16,15 +16,11 @@
  * UI's attribution story cover assets too, just without an `op` to point at.
  */
 
-import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { newId } from "@nooklet/core";
 import { z } from "zod";
+import { assetMarkdownPath, MAX_ASSET_BYTES, storeAssetBytes } from "../assets/store.js";
 import { defineOp, OpError } from "./registry.js";
 
 /** 25 MB decoded, per the task's size cap recommendation. */
-const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -36,39 +32,6 @@ const MIME_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i
 /** Maps a handful of common types to a sane extension when `filename` has none usable. Falls back
  *  to `bin` — the file is still stored and served correctly via its recorded `mime_type`, an
  *  extension is only a filesystem/URL nicety. */
-const EXT_BY_MIME: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "image/bmp": "bmp",
-  "application/pdf": "pdf",
-  "text/plain": "txt",
-  "text/markdown": "md",
-  "text/csv": "csv",
-  "application/json": "json",
-  "video/mp4": "mp4",
-  "audio/mpeg": "mp3",
-  "audio/mp3": "mp3",
-  "audio/wav": "wav",
-  "application/zip": "zip",
-};
-
-function extFromFilenameOrMime(filename: string, mimeType: string): string {
-  const m = /\.([a-zA-Z0-9]{1,8})$/.exec(filename);
-  if (m) return (m[1] as string).toLowerCase();
-  return EXT_BY_MIME[mimeType.toLowerCase()] ?? "bin";
-}
-
-interface ExistingAssetRow {
-  id: string;
-  ext: string;
-  mime_type: string;
-  byte_size: number;
-}
-
 export const assetUpload = defineOp({
   name: "asset.upload",
   summary: "Upload a file (image, PDF, etc.) as a graph asset",
@@ -150,67 +113,20 @@ export const assetUpload = defineOp({
       );
     }
 
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const existing = ctx.db.get<ExistingAssetRow>(
-      "SELECT id, ext, mime_type, byte_size FROM asset WHERE sha256 = ? AND deleted_at IS NULL",
-      [sha256],
-    );
-    if (existing) {
-      return {
-        id: existing.id,
-        url: `/assets/${existing.id}.${existing.ext}`,
-        markdown: `![${input.alt ?? ""}](assets/${existing.id}.${existing.ext})`,
-        mime_type: existing.mime_type,
-        byte_size: existing.byte_size,
-        deduped: true,
-      };
-    }
-
-    const id = newId();
-    const ext = extFromFilenameOrMime(input.filename, input.mime_type);
-    const dir = join(ctx.config.dataDir, "assets");
-    mkdirSync(dir, { recursive: true });
-    const finalPath = join(dir, `${id}.${ext}`);
-    const tmpPath = join(dir, `.${randomBytes(8).toString("hex")}.tmp`);
-    writeFileSync(tmpPath, bytes);
-    renameSync(tmpPath, finalPath);
-
-    const now = Date.now();
-    ctx.db.run(
-      `INSERT INTO asset(id, graph_id, file_name, ext, mime_type, byte_size, sha256, created_at)
-       VALUES (?, 'default', ?, ?, ?, ?, ?, ?)`,
-      [id, input.filename, ext, input.mime_type, bytes.length, sha256, now],
-    );
-
-    // Not in the op log (ADR 003) -> op_ids_json is '[]' (sql-schema.md rule 21's one documented
-    // exception), but still one fully-audited `changes` row under its own fresh batch_id.
-    const batchId = newId();
-    ctx.db.run(
-      `INSERT INTO changes(graph_id, batch_id, origin, actor, entity_type, entity_id, op_ids_json, before_json, after_json, created_at)
-       VALUES ('default', ?, ?, ?, 'asset', ?, '[]', NULL, ?, ?)`,
-      [
-        batchId,
-        ctx.origin.kind,
-        ctx.actor.label,
-        id,
-        JSON.stringify({
-          file_name: input.filename,
-          ext,
-          mime_type: input.mime_type,
-          byte_size: bytes.length,
-          sha256,
-        }),
-        now,
-      ],
-    );
-
+    const stored = storeAssetBytes(ctx.db, ctx.config.dataDir, {
+      bytes,
+      fileName: input.filename,
+      mimeType: input.mime_type,
+      origin: ctx.origin.kind,
+      actor: ctx.actor.label,
+    });
     return {
-      id,
-      url: `/assets/${id}.${ext}`,
-      markdown: `![${input.alt ?? ""}](assets/${id}.${ext})`,
-      mime_type: input.mime_type,
-      byte_size: bytes.length,
-      deduped: false,
+      id: stored.id,
+      url: `/assets/${stored.id}.${stored.ext}`,
+      markdown: `![${input.alt ?? ""}](${assetMarkdownPath(stored)})`,
+      mime_type: stored.mimeType,
+      byte_size: stored.byteSize,
+      deduped: stored.deduped,
     };
   },
 });

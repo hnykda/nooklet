@@ -47,6 +47,22 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ## Fixed
 
+### B-51 · Uploaded images were broken pictures on every route below the root
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, by the first test that ever rendered
+one · **Test:** `e2e/tests/assets.spec.ts`
+
+`asset.upload` hands back `![alt](assets/<id>.png)` — a relative path — and the renderer put it
+into `<img src>` untouched. At `/journals` that resolves to `/assets/<id>.png` and works. At
+`/page/Some Page`, where most images are actually looked at, it resolved to
+`/page/assets/<id>.png`, the SPA fallback answered with `index.html`, and the picture was broken.
+`naturalWidth` was 0; nothing in the console said so.
+
+The stored form stays relative on purpose — it is what the mirror writes and what a Logseq graph
+already uses. `editor/render/asset-url.ts` now resolves `assets/…`, `./assets/…` and
+`../assets/…` to the server's `/assets/:id` route at render time, for images and for links (a
+PDF is a link). No e2e test had ever rendered an asset; found on the way to importing the Logseq
+graph's `assets/`, which would have produced 153 broken pictures the moment it worked.
+
 ### B-63 · A plugin's mounted sub-app and its RPC routes were unauthenticated
 **Status:** fixed · **Severity:** low (security) · **Found:** 2026-09-12, code review · **Test:**
 `packages/server/src/plugins/host.test.ts` "guards a mounted sub-app and rpc.expose"

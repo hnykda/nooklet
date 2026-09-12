@@ -163,8 +163,22 @@ describe("BlockContentView — inline tokens (markdown-grammar.md §4 rendering 
     const { container } = renderContent("![a diagram](assets/1.png)");
     const img = container.querySelector("img.vr-image") as HTMLImageElement;
     expect(img.alt).toBe("a diagram");
-    expect(img.getAttribute("src")).toBe("assets/1.png");
+    // The stored path is relative; the rendered one is rooted at the server's /assets route, so
+    // the picture loads from /page/Some Page as well as from / (B-51).
+    expect(img.getAttribute("src")).toBe("/assets/1.png");
     expect(img.getAttribute("loading")).toBe("lazy");
+  });
+
+  it("image with an absolute URL is left exactly as written", () => {
+    const { container } = renderContent("![x](https://example.com/x.png)");
+    const img = container.querySelector("img.vr-image") as HTMLImageElement;
+    expect(img.getAttribute("src")).toBe("https://example.com/x.png");
+  });
+
+  it("a link to an asset (a PDF, say) is rooted the same way", () => {
+    const { container } = renderContent("[the report](../assets/r.pdf)");
+    const a = container.querySelector("a.vr-link") as HTMLAnchorElement;
+    expect(a.getAttribute("href")).toBe("/assets/r.pdf");
   });
 
   it("strong/em/strike/highlight/code render their native/marked elements", () => {
