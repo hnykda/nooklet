@@ -44,6 +44,33 @@ Owner agent's working record. Updated after every meaningful step so a restart c
   half ran anyway, as designed.
 - `pnpm -r typecheck` clean (repo-wide, at this moment); `pnpm -r test` 1,538 passing
   (330 + 17 + 512 + 679).
+- Docs landed as `59f1b89`, were REVERTED by a concurrent agent's `36bc2cb` (its tree was built
+  from a stale HEAD and parented on mine), and re-landed as `cdab2dc`. Comment renumbering in the
+  server files: `6cb8845`. `th-commit.sh` now does a compare-and-swap on HEAD (`git update-ref
+  HEAD <new> <old>`, retry on a moved HEAD) so this cannot happen from my side and I notice it
+  from theirs. **If you resume: check `git diff HEAD -- <my files>` is empty before anything
+  else; a non-empty diff on a committed file means another revert.**
+- e2e run 2 of my two specs failed all 9 with no server-side reason visible (my `tail` cut the
+  log); run 3: 8/9 with the one failure a `browserContext.close: ENOENT` on a trace file under
+  the shared `e2e/test-results/` (another agent's concurrent Playwright run cleaning it — the
+  same artefact `docs/review/2026-09-12-review.md` recorded); run 4 with
+  `--output <scratch>/th-test-results` (a private artifacts dir): **9/9 passed**. Always pass
+  `--output` to a private dir while other agents run Playwright.
+- Web committed: `f13044a` (Trash view, data layer, text helpers, sidebar entry, trash.spec),
+  `1c200eb` (History view, both route lines, history.spec).
+- **Full e2e suite on 6354** (`<scratch>/th-e2e-full.log`, private `--output`): 281 passed,
+  2 skipped, 5 failed — all five in other workstreams' in-flight specs (`context-menu.spec.ts:219`,
+  `refactor.spec.ts:74/:91` "Move to page…", `templates.spec.ts:202/:240` journal template); none
+  mention trash/history, and both of my specs passed inside the same run.
+
+## Status: complete. Final report delivered to the coordinator.
+
+Needed elsewhere (not this workstream's files): a "History" link in `views/PageView.tsx`'s title
+row, e.g. `<A href={\`/history/${pageNameToPath(p().name)}\`}>History</A>`; core `applyPageDelete`
+should reject a colliding un-delete (B-90); `assets/store.ts` should write a `changes` row on a
+deduplicated re-upload (B-91); `changes-since.ts`'s `classify` reports every `asset` row as
+"uploaded", so an asset-GC audit row cannot be added there until it distinguishes deletions
+(asset GC therefore writes no `changes` row today — the CLI report is the record).
 
 ## Next steps (in order, one commit each)
 
