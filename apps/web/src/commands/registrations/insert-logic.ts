@@ -26,6 +26,16 @@ export function insertCodeFence(content: string): ReplaceRangeSpec {
   return { from: 0, to: content.length, text, caretOffset: text.length };
 }
 
+/** M7 (ADR 011): a ```` ```query ```` fence skeleton. Whatever the block already says becomes the
+ * query — typing `TODO #work` and then `/query` is the natural order — with the caret at the end
+ * of that line; an empty block gets an empty query line to type into. */
+export function insertQueryFence(content: string): ReplaceRangeSpec {
+  const query = content.trim();
+  const head = "```query\n";
+  const text = `${head}${query}\n\`\`\``;
+  return { from: 0, to: content.length, text, caretOffset: head.length + query.length };
+}
+
 /** R48: a 2x2 GitHub-flavored-markdown table skeleton (header row + separator + one body row). */
 export function insertTable(): ReplaceRangeSpec {
   const text = "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |";

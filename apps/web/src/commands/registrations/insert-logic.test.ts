@@ -4,6 +4,7 @@ import {
   embedPage,
   insertCodeFence,
   insertProperty,
+  insertQueryFence,
   insertTable,
   insertToday,
   setHeading,
@@ -82,5 +83,22 @@ describe("insertProperty (R49)", () => {
   it("does not double a trailing newline", () => {
     const result = insertProperty("line1\n", "status");
     expect(result.text).toBe("status:: ");
+  });
+});
+
+describe("insertQueryFence (M7, ADR 011)", () => {
+  it("inserts an empty query skeleton with the caret on the query line", () => {
+    expect(insertQueryFence("")).toEqual({
+      from: 0,
+      to: 0,
+      text: "```query\n\n```",
+      caretOffset: "```query\n".length,
+    });
+  });
+
+  it("turns the block's existing text into the query, caret at its end", () => {
+    const r = insertQueryFence("TODO #work ");
+    expect(r.text).toBe("```query\nTODO #work\n```");
+    expect(r).toMatchObject({ from: 0, to: 11, caretOffset: "```query\nTODO #work".length });
   });
 });

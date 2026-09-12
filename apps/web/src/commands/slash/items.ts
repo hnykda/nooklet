@@ -23,4 +23,10 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
   { label: "Property", command: "block.insertProperty", keywords: ["metadata", "::"] },
   // ADR 019: core, not a plugin — opens a second-level picker for which template.
   { label: "Template", command: "block.insertTemplate", keywords: ["snippet", "insert", "tpl"] },
+  // ADR 011: a ```query fence skeleton; the block's existing text becomes the query.
+  {
+    label: "Query",
+    command: "block.insertQueryFence",
+    keywords: ["query", "filter", "tasks", "search", "```query"],
+  },
 ];

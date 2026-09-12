@@ -681,3 +681,22 @@ export async function resolveBlockPageName(blockId: string): Promise<string | un
   );
   return rows[0]?.name;
 }
+
+// ---------------------------------------------------------------------------------------------
+// The stamping idiom, for resources that live outside this file (`./queries.ts`, the ```query
+// fence evaluator). The worker's change bus takes exactly ONE listener (`db/worker-core.ts`
+// `onChange` is a single slot), so a second module must not subscribe itself — it would replace
+// this file's listener and every view above would silently stop refreshing. It reads the same
+// version signals through here instead.
+// ---------------------------------------------------------------------------------------------
+
+/** `stamped(value, tables, pageId)` for callers outside this module, wiring the bus on first use
+ * the way every `use*` above does. Use as a `createResource` source. */
+export function stampedFor<T>(
+  value: T,
+  tables: readonly ChangedTable[],
+  pageId?: string,
+): { value: T; version: number } {
+  ensureWired();
+  return stamped(value, tables, pageId);
+}

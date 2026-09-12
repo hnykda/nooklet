@@ -8,6 +8,7 @@ import {
   embedPage,
   insertCodeFence,
   insertProperty,
+  insertQueryFence,
   insertTable,
   insertToday,
   setHeading,
@@ -44,6 +45,17 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       run() {
         const sel = editor.getSelection();
         if (sel) editor.replaceRange(insertCodeFence(sel.content));
+      },
+    },
+    {
+      id: "block.insertQueryFence",
+      title: "Query",
+      category: "Insert",
+      defaultKeys: {},
+      when: "editorFocused",
+      run() {
+        const sel = editor.getSelection();
+        if (sel) editor.replaceRange(insertQueryFence(sel.content));
       },
     },
     {
