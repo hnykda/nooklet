@@ -14,6 +14,131 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
+### B-95 · `nooklet serve` never writes the markdown mirror
+**Status:** open · **Severity:** high · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D1)
+
+Only `nooklet export` calls `exportAll` (`packages/server/src/cli.ts`); `config.mirror.enabled`
+is read by nothing. Verified live by the exposure audit: `page.create` against a mirror-default
+server produced no `pages/` directory. README and OPERATIONS §2 describe the mirror as continuous —
+"a greppable copy you can walk away with" — which today is only true after running a command
+nobody is told about. Fix: export each touched page after a commit, debounced, from the serve
+process (`sync/realtime.ts#onCommit` already exists for exactly this kind of listener).
+
+---
+
+### B-96 · `/scheduled`, `/deadline` and the date commands do nothing
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D2)
+
+`app/CommandLayer.tsx` passes `createFakeDatePickerHost()` — a test double — to the real command
+set, so the trigger text is removed and nothing else happens; no picker element exists. Fix: a real
+popover writing `setBlockProp` for `scheduled`/`deadline`.
+
+---
+
+### B-97 · "Collapse all" and "Expand all" do nothing
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D3)
+
+Registered with `when` clauses and shown in the palette, but `BlockTree.tsx` has no `case` for
+either id. Audit: on a 3-level page, Collapse all left 5 rows at 5. Fix: the two cases, over every
+block with children (or the visible subtree when zoomed).
+
+---
+
+### B-98 · "Open plugin manager" leads to a blank page
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D4)
+
+`app/hosts.ts` navigates to `/settings/plugins`, which is not a route; the main area is empty.
+Fix: open the settings panel's plugins section, or drop the command until one exists.
+
+---
+
+### B-99 · `/image` does nothing
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D5)
+
+`block.insertImage` is registered and delegated to the editor host, but `BlockTree.tsx` has no
+case for it — no file chooser, text unchanged. The paste path (`editor/paste.ts#uploadImageAsset`)
+already uploads; the slash item should open a file picker and reuse it.
+
+---
+
+### B-100 · Numbered lists never render
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D6)
+
+`list:: number` is parsed and stored, but `BlockTree.tsx` hard-codes `listNumber: false` and the
+client `BlockRow` carries no generic properties, so `numbering.ts` always has nothing to number.
+Fix: project the property through the client row shape.
+
+---
+
+### B-101 · Block properties are invisible in the UI, and `/property` writes literal text
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D7)
+
+A block with `foo:: bar` renders only its first line; the editor buffer has no property; and
+`/property` inserts `key:: bar` into the CONTENT, which never becomes a property (`page.read`
+shows it inside `content`, `properties` empty). Two halves: render property chips on the row and
+make the editor's flush route `key:: value` lines through the outline parser's property handling.
+
+---
+
+### B-102 · A task's scheduled/deadline date is not shown on its row
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D8)
+
+`scheduled`/`deadline` are on `EditableBlock` and shown in the Tasks view, but `BlockRowView`
+never renders them — a `TODO call mom` with `scheduled:: 2026-09-20` is just "☐ call mom" on the
+page. Fix: a small date chip after the marker (a cheap win the audit ranks #2).
+
+---
+
+### B-103 · Client plugin halves never load
+**Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D9)
+
+`apps/web` has no plugin host: the browser makes zero requests to `/plugins/*` or
+`/api/v1/plugins`, so the client halves of the built-in plugins (Mermaid, Word count) are
+unreachable even though the server lists them with a `client_url`. research/13 §4.1 marks both as
+"have"; they are not. Fix: build the host (a day) or move mermaid rendering into core (an hour).
+
+---
+
+### B-104 · `/page/<alias>` says the page does not exist
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D10)
+
+`alias::` is indexed server-side since B-55, but `usePageByName` resolves by `page.key` only, so
+a route naming an alias 404s in the UI while `page_read` resolves it. Fix: fall back to
+`page_alias` in the client lookup (the table exists in the replica).
+
+---
+
+### B-105 · Argument-only commands show as palette rows that do nothing
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D11)
+
+`nav.openPage` and `nav.revealBlock` take arguments (they are agent primitives for the live UI
+channel) but appear in the palette as "Open page" / "Reveal block" and do nothing when chosen. Fix:
+a `hidden`/`argsOnly` flag the palette respects.
+
+---
+
+### B-106 · Comment and spec drift around commands
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D12)
+
+`DiagnosticsPanel.tsx` refers to an `app.diagnostics` command that does not exist;
+`docs/spec/commands-and-keymap.md`'s table lacks the nine `format.*` and four `task.setMarker*`
+commands and does not list `nav.openPage`/`nav.revealBlock`. Fix: regenerate the table from the
+registrations (the wiki's shortcuts page already does this) and delete the stale comment.
+
+---
+
 ### B-42 · Typing into the `[[` popup keeps dropping editor focus
 **Status:** needs-repro · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
 [[new/page` → then context window open → but when I keep typing then the edit focus keeps
@@ -450,6 +575,25 @@ Still open in spirit: one bad command id, from core or a plugin, is a blank scre
 message. `CommandLayer` could catch registration errors and render the shell without that
 command; not done here (shell/commands provider are not this task's files).
 
+### B-88 · The row being edited stays on screen after its block leaves the page
+**Status:** open (worked around in the refactor commands) · **Severity:** low · **Found:**
+2026-09-12, `e2e/tests/refactor.spec.ts` "Move to page… asks for a page and moves the subtree to
+its end" · **Test:** none for the editor itself; the spec covers the workaround
+
+Right-click a block, *Move to page…*, pick a page: its children vanish from the source page at
+once (the pull lands and the tree refetches), but the block itself — the row holding the
+editor — stays, showing its old text, until you click elsewhere. Then it is gone. Same shape for
+a block another device moves or deletes while you have the caret in it. `BlockTree` renders rows
+from the tree but keeps the `editingId` row mounted regardless of whether that id is still in
+the tree. A first diagnosis blamed the worker's change event (`notifyFromOps` naming only the new
+page); a probe that read the rows after a click-away disproved it — `usePageTree` stamps on the
+`block` table and did refetch.
+
+Workaround in `commands/registrations/refactor.ts`: "Turn into page" and "Move to page…" end
+editing (`block.selectBlock`) before the server op, so the row re-renders from the tree. The
+proper fix is in `editor/BlockTree.tsx` (drop `editingId` when the tree no longer contains it),
+which belongs to another owner this session.
+
 ### B-87 · No client plugin host: `/mermaid` and every `registerSlashCommand` are dead on arrival
 **Status:** open · **Severity:** medium · **Found:** 2026-09-12, deciding plugin-vs-core for
 templates (ADR 019) · **Test:** none (a test that loads `plugins/mermaid` in the web app and types
@@ -538,26 +682,6 @@ whichever way, the two should agree. Seen with the suite run from a worktree at 
 **Fixed 2026-09-12** (templates agent): `SLASH_ORDER` now lists `Template` and `Query` after
 `Property`, matching `items.ts`; the two tests above pass again and pin the seventeen-item
 order. The spec's R54 table still lists fifteen — the coordinator owns that file.
-
-### B-93 · The app is a blank page since c916c29: `page.mergeInto` is rejected by the command registry
-**Status:** open · **Severity:** critical · **Found:** 2026-09-12, the templates e2e run on the
-shared tree (every spec failed with "element not found"; the screenshot is white) ·
-**Test:** any e2e spec; `e2e/tests/templates.spec.ts` was the first to see it
-
-Open the served production build at any route: nothing renders. The console has
-`CommandRegistrationError: cannot register command 'page.mergeInto': unrecognized core area
-'page' — core areas are block, task, nav, palette, search, format, edit, app, sync (R2)`, thrown
-from `CommandProvider`'s startup `registry.register` loop, so the whole app tree fails to mount.
-`apps/web/src/commands/registrations/refactor.ts` (c916c29) registers `page.mergeInto` and
-`graph.findReplace`; `registry.ts#CORE_AREAS` has neither `page` nor `graph`, and
-`validateCommandId` throws for an unknown area. The unit suite passes because nothing in it
-registers the full core set through a real provider against a real browser. Fix belongs to the
-refactors agent: either add `page`/`graph` to `CORE_AREAS` (and R2 in the keymap spec) or
-rename the two ids into an existing area. Until then no e2e spec can pass on the shared tree;
-the templates suite was verified in a worktree carrying that one-line `CORE_AREAS` patch.
-
-Also seen by the query/render agent at ~17:55: `e2e/tests/query.spec.ts` + `render.spec.ts`,
-14/14 "element not found" on the shared tree, 14/14 pass from a clean worktree of `dfaf3b9`.
 
 ### B-94 · A ```query fence keeps yesterday's "today" after midnight until something else changes
 **Status:** open · **Severity:** low · **Found:** 2026-09-12 while building the fence (ADR 011
