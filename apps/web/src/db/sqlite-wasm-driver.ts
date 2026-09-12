@@ -156,21 +156,27 @@ export interface OpenedSqliteWasm {
  */
 export async function openSqliteWasmDriver(
   filename = "/nooklet.sqlite3",
+  opts: { memory?: boolean } = {},
 ): Promise<OpenedSqliteWasm> {
   const sqlite3 = await sqlite3InitModule();
   let db: Sqlite3Db;
   let storage: OpenedSqliteWasm["storage"] = "opfs";
   let storageError: string | undefined;
   try {
+    // A follower tab (B-81) asks for memory outright: sahpool allows one connection per file, and
+    // the leader tab holds it.
+    if (opts.memory) throw new Error("memory requested by the caller");
     const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: "nooklet-opfs-sahpool" });
     db = new poolUtil.OpfsSAHPoolDb(filename);
   } catch (err) {
     storage = "memory";
     storageError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    console.warn(
-      `[nooklet] OPFS is unavailable (${storageError}); running on an in-memory database. ` +
-        "Nothing is saved locally this session.",
-    );
+    if (!opts.memory) {
+      console.warn(
+        `[nooklet] OPFS is unavailable (${storageError}); running on an in-memory database. ` +
+          "Nothing is saved locally this session.",
+      );
+    }
     db = new sqlite3.oo1.DB();
   }
   const driver = createSqliteWasmDriver(db);

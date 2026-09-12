@@ -150,7 +150,6 @@ test("a reference's page name opens that page, and the item opens the block zoom
 });
 
 test("a second tab of the same graph renders the page", async ({ page }) => {
-  test.fixme(true, "B-81: a second tab sits on Loading… and never renders");
   await seedPage(page, "Views Second Tab", "- hello from tab one");
   await page.goto(pagePath("Views Second Tab"));
   await expect(page.locator(".vr-outliner .vr-row")).toHaveCount(1);
@@ -158,6 +157,8 @@ test("a second tab of the same graph renders the page", async ({ page }) => {
   await other.goto(pagePath("Views Second Tab"));
   await expect(other.locator(".vr-outliner .vr-row")).toHaveCount(1, { timeout: 20_000 });
   await expect(other.locator(".vr-outliner").first()).toContainText("hello from tab one");
+  // It is a follower: the first tab keeps the local copy, this one works through the server.
+  await expect(other.locator(".app-sync-indicator")).toHaveText("synced via another tab");
   await other.close();
 });
 

@@ -331,12 +331,23 @@ resource is errored; the error branch and Retry were already there and now actua
 
 
 ### B-81 · A second tab of the same graph never renders
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/views.spec.ts` "a second tab of the same graph renders the page"
 
 Open a page in a second tab of the same browser context: "Loading…" for 20 s and counting, no
 outliner. Presumably the second tab is waiting on the writer election / OPFS pool and has no
 follower path.
+
+**Fixed 2026-09-12.** The worker's leader election waited on the writer lock unconditionally
+(`opfs-sahpool` allows one connection per file), so a second tab's worker queued behind the first
+until it closed — "Loading…" forever. It now asks for the lock with `ifAvailable`; a tab that does
+not get it becomes a **follower**: an in-memory replica bootstrapped from the server, fully usable,
+its writes reaching the leader through sync. The sync indicator says "synced via another tab" so
+nobody wonders which tab keeps the local copy. Taking the lock over live when the leader closes is
+not attempted — a reload does it — because it would mean swapping storage under an open session.
+`views.spec.ts` "a second tab of the same graph renders the page".
+
+
 
 ### B-82 · Picking a page in the command palette never opens it
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**

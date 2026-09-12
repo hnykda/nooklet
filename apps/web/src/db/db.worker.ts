@@ -31,10 +31,22 @@ import { WorkerDb } from "./worker-core.js";
 
 const LEADER_LOCK_NAME = "nooklet-db-writer";
 
-function becomeLeader(): Promise<void> {
+/**
+ * Take the writer lock if nobody holds it, and say so. The original version waited on the lock
+ * unconditionally, so a second tab of the same graph sat on "Loading…" forever (B-81): its worker
+ * was queued behind the first tab's, which holds the lock until it closes. A tab that does not
+ * get the lock now becomes a FOLLOWER — it opens an in-memory replica bootstrapped from the
+ * server, works normally, and reaches the leader through sync. If the leader closes, a reload
+ * makes this tab the leader; taking over live would mean swapping storage under an open session.
+ */
+function tryBecomeLeader(): Promise<boolean> {
   return new Promise((resolve) => {
-    void navigator.locks.request(LEADER_LOCK_NAME, () => {
-      resolve();
+    void navigator.locks.request(LEADER_LOCK_NAME, { ifAvailable: true }, (lock) => {
+      if (!lock) {
+        resolve(false);
+        return;
+      }
+      resolve(true);
       // Hold the lock for the worker's entire lifetime (until the tab closes); never resolves.
       return new Promise<void>(() => {});
     });
@@ -68,8 +80,11 @@ interface OpenedDb {
 let dbPromise: Promise<OpenedDb> | undefined;
 
 async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
-  await becomeLeader();
-  const { driver, storage, storageError } = await openSqliteWasmDriver();
+  const leader = await tryBecomeLeader();
+  const opened = await openSqliteWasmDriver(undefined, { memory: !leader });
+  const { driver } = opened;
+  const storage: OpenedDb["storage"] = leader ? opened.storage : "follower";
+  const storageError = leader ? opened.storageError : "another tab of this graph holds the lock";
   const transport = createHttpTransport({
     baseUrl: opts.syncBaseUrl,
     getToken: opts.getToken ?? (() => opts.token),

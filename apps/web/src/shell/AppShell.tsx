@@ -42,6 +42,8 @@ function SyncIndicator() {
         // Storage first: "synced" would be true and still the wrong thing to say about a
         // session whose local copy evaporates on reload (B-43).
         if (storageInfo()?.storage === "memory") return "not saved locally";
+        // A second tab: usable, syncing through the server, but the other tab keeps the local copy.
+        if (storageInfo()?.storage === "follower") return "synced via another tab";
         const s = status();
         if (!s) return "";
         if (s.state === "offline") return "offline";

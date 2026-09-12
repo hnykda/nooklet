@@ -43,8 +43,10 @@ export interface InitResult {
   deviceId: string;
   /** Where the replica lives. `"memory"` means OPFS was unavailable and nothing is saved locally
    * this session (B-43) — the UI must say so rather than letting someone type for an hour into a
-   * database that vanishes on reload. */
-  storage: "opfs" | "memory";
+   * database that vanishes on reload. `"follower"` means another tab of this graph holds the
+   * local copy (B-81): this tab works from an in-memory replica of the server and its writes
+   * reach the other tab through sync, so nothing is lost — it just is not the tab that persists. */
+  storage: "opfs" | "memory" | "follower";
   storageError?: string;
 }
 
