@@ -73,6 +73,10 @@ const CORE_TOOL_NAMES = [
   // M7 (research/13 §4.2 item 8, ADR 019): the trash and a page's history, over the audit log.
   "trash_list",
   "trash_restore",
+  // M7 (research/13 §4.2 item 8, ADR 019): the trash and a page's history, over the audit log.
+  "trash_list",
+  "trash_restore",
+  "page_history",
 ].sort();
 
 const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();

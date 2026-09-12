@@ -31,6 +31,7 @@ import { pageAppend } from "./page-append.js";
 import { pageBacklinks } from "./page-backlinks.js";
 import { pageCreate } from "./page-create.js";
 import { pageDelete } from "./page-delete.js";
+import { pageHistory } from "./page-history.js";
 import { pageLinkUnlinked } from "./page-link-unlinked.js";
 import { pageList } from "./page-list.js";
 import { pageRead } from "./page-read.js";
@@ -38,6 +39,8 @@ import { pageUpdate } from "./page-update.js";
 import { OpRegistry } from "./registry.js";
 import { relatedFind } from "./related.js";
 import { search } from "./search.js";
+import { trashList } from "./trash-list.js";
+import { trashRestore } from "./trash-restore.js";
 import { trashList } from "./trash-list.js";
 import { trashRestore } from "./trash-restore.js";
 
@@ -67,6 +70,9 @@ export const CORE_OPS = [
   pageDelete,
   batchUndo,
   assetUpload,
+  trashList,
+  trashRestore,
+  pageHistory,
   trashList,
   trashRestore,
   uiWindows,
@@ -102,12 +108,15 @@ export {
   pageBacklinks,
   pageCreate,
   pageDelete,
+  pageHistory,
   pageLinkUnlinked,
   pageList,
   pageRead,
   pageUpdate,
   relatedFind,
   search,
+  trashList,
+  trashRestore,
   trashList,
   trashRestore,
   uiHighlight,
