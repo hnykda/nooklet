@@ -13,7 +13,8 @@ import { A } from "@solidjs/router";
 import { CalendarDays, CircleCheck, FileText, Network, Search, Star } from "lucide-solid";
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { displayPageName } from "../data/page-title.js";
-import { useAllPages, useFavoritePages } from "../data/store.js";
+import { useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
+import { PageIconBadge } from "../views/PageIcon.js";
 import "./sidebar.css";
 
 function useBodyClass(name: string): () => boolean {
@@ -38,6 +39,7 @@ function recentPages(all: ReturnType<typeof useAllPages>): ReturnType<typeof use
 export function Sidebar(): JSX.Element {
   const open = useBodyClass("sidebar-open");
   const favorites = useFavoritePages();
+  const icons = usePageIcons();
   const allPages = useAllPages();
 
   const recent = () =>
@@ -76,6 +78,7 @@ export function Sidebar(): JSX.Element {
                 {(page) => (
                   <li>
                     <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
+                      <PageIconBadge icon={icons().get(page.id)} />
                       {displayPageName(page)}
                     </A>
                   </li>
@@ -93,6 +96,7 @@ export function Sidebar(): JSX.Element {
                 {(page) => (
                   <li>
                     <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
+                      <PageIconBadge icon={icons().get(page.id)} />
                       {displayPageName(page)}
                     </A>
                   </li>

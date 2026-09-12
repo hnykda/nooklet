@@ -14,6 +14,7 @@ import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageRoutePath } from "./navigateTarget.js";
+import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
 
@@ -105,18 +106,21 @@ export function PageView(props: PageViewProps): JSX.Element {
             {/* `.page-title-input` zeroes its own margins, so the heading and the input occupy
                 the same space — moving between a journal and an ordinary page does not shift the
                 content below. */}
-            <Show when={!isJournal()} fallback={<h1 class="page-title-input">{title()}</h1>}>
-              <input
-                class="page-title-input"
-                value={titleDraft()}
-                onInput={(e) => setTitleDraft(e.currentTarget.value)}
-                onBlur={() => void commitTitle()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
-                aria-label="Page title"
-              />
-            </Show>
+            <div class="page-title-row">
+              <PageIconEditor pageId={p().id} icon={properties().icon} />
+              <Show when={!isJournal()} fallback={<h1 class="page-title-input">{title()}</h1>}>
+                <input
+                  class="page-title-input"
+                  value={titleDraft()}
+                  onInput={(e) => setTitleDraft(e.currentTarget.value)}
+                  onBlur={() => void commitTitle()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  aria-label="Page title"
+                />
+              </Show>
+            </div>
             <PageProperties pageId={p().id} properties={properties()} />
             <BlockTree pageId={p().id} rootBlockId={blockId()} onNavigate={onNavigate} />
 

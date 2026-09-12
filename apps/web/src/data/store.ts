@@ -499,6 +499,31 @@ export async function setPageFavorite(pageId: string, favorite: boolean): Promis
   await applyOp(pageId, { kind: "page.prop", key: "favorite", value: favorite ? "true" : null });
 }
 
+/**
+ * Every page's icon at once, keyed by page id — one query for the sidebar and All Pages rather
+ * than a `usePageProperties` per row. The `icon` property is the same one Logseq writes, so an
+ * imported graph's icons appear without any migration.
+ */
+export function usePageIcons(): InitializedResource<Map<string, string>> {
+  ensureWired();
+  const [resource] = createResource(
+    () => stamped(true, ["page_prop"]),
+    async () => {
+      const rows = await queryAs<{ page_id: string; value: string }>(
+        "SELECT page_id, value FROM page_prop WHERE key = 'icon' AND value IS NOT NULL AND value != ''",
+      );
+      return new Map(rows.map((r) => [r.page_id, r.value]));
+    },
+    { initialValue: new Map<string, string>() },
+  );
+  return resource;
+}
+
+/** `null` clears the property rather than storing an empty string, so the mirror stays clean. */
+export async function setPageIcon(pageId: string, icon: string | null): Promise<void> {
+  await applyOp(pageId, { kind: "page.prop", key: "icon", value: icon });
+}
+
 export function useOpenTasks(): InitializedResource<TaskRow[]> {
   ensureWired();
   const [resource] = createResource(

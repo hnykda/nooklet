@@ -9,9 +9,10 @@
 
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { displayPageName } from "../data/page-title.js";
-import { setPageFavorite, useAllPages, useFavoritePages } from "../data/store.js";
+import { setPageFavorite, useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { pageRoutePath } from "./navigateTarget.js";
+import { PageIconBadge } from "./PageIcon.js";
 import "./all-pages.css";
 
 type SortKey = "name" | "updated";
@@ -19,6 +20,7 @@ type SortKey = "name" | "updated";
 export function AllPagesView(_props: { onNavigate?: (t: NavigateTarget) => void }): JSX.Element {
   const pages = useAllPages();
   const favorites = useFavoritePages();
+  const icons = usePageIcons();
   const [query, setQuery] = createSignal("");
   const [sort, setSort] = createSignal<SortKey>("updated");
   const [showJournals, setShowJournals] = createSignal(false);
@@ -90,6 +92,7 @@ export function AllPagesView(_props: { onNavigate?: (t: NavigateTarget) => void 
                 {favoriteIds().has(page.id) ? "★" : "☆"}
               </button>
               <a class="all-pages-name" href={pageRoutePath(page.name)}>
+                <PageIconBadge icon={icons().get(page.id)} />
                 {displayPageName(page)}
               </a>
             </li>

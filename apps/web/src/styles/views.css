@@ -383,6 +383,76 @@
   border-radius: var(--radius-xs);
 }
 
+/* Icon + title share one row; the title keeps its own margins so the row adds no height. */
+.page-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.page-title-row .page-title-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The mark itself, wherever a page name is listed. Sized to the surrounding text so it reads as
+   part of the name, not a decoration next to it. */
+.page-icon {
+  display: inline-block;
+  flex: none;
+  margin-right: var(--space-xs);
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+/* In the title row the icon is a button: large, and — when there is no icon yet — a faint plus
+   that only asks for attention on hover, so a page without an icon does not look unfinished. */
+.page-icon-button {
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--text-2xl);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    opacity var(--dur-fast) var(--ease);
+}
+
+.page-icon-button:hover,
+.page-icon-button:focus-visible {
+  background: var(--surface-2);
+}
+
+.page-icon-button-empty {
+  color: var(--muted);
+  opacity: 0;
+}
+
+.page-title-row:hover .page-icon-button-empty,
+.page-icon-button-empty:focus-visible {
+  opacity: 1;
+}
+
+.page-icon-input {
+  flex: none;
+  width: 2.2em;
+  height: 1.5em;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: var(--text-2xl);
+  line-height: 1;
+  text-align: center;
+}
+
 .page-view-loading,
 .page-view-missing {
   color: var(--muted);
