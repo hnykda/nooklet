@@ -8,8 +8,9 @@
  * closed and portals-in-place via `position: fixed` while open) — see this package's summary for
  * exactly where the integrator should mount it.
  */
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { PageSource, PageSummary } from "../hosts/page-source.js";
+import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import type { CommandContext } from "../types.js";
@@ -45,6 +46,19 @@ export function CommandPalette(props: CommandPaletteProps) {
 
   onMount(() => {
     void props.pages.listPages().then(setPages);
+  });
+  // Own Escape in the popup registry while open. The palette's own input has focus, so the
+  // editor's keymap is not involved — but the global dispatcher still read the context snapshot's
+  // `editorFocused` (the surface is still attached underneath) and ran `block.selectBlock` on the
+  // same Escape that closed the palette (B-72). With the claim it yields.
+  createEffect(() => {
+    if (!palette.isOpen()) return;
+    const release = claimPopupKeys((key) => {
+      if (key !== "Escape") return false;
+      palette.close();
+      return true;
+    });
+    onCleanup(release);
   });
 
   function refreshPages() {

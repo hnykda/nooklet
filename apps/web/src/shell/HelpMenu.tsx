@@ -19,8 +19,18 @@ import {
   Settings,
   X,
 } from "lucide-solid";
-import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { useCommands } from "../commands/index.js";
+import { claimPopupKeys } from "../commands/popup-keys.js";
 import { openSettings } from "../views/SettingsPanel.js";
 import "./help-menu.css";
 
@@ -69,14 +79,25 @@ export function HelpMenu(): JSX.Element {
     return [...groups.entries()];
   });
 
+  const closeTop = (): boolean => {
+    if (showKeys()) setShowKeys(false);
+    else if (open()) setOpen(false);
+    else return false;
+    return true;
+  };
   onMount(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== "Escape") return;
-      if (showKeys()) setShowKeys(false);
-      else if (open()) setOpen(false);
+      if (e.key === "Escape") closeTop();
     };
     document.addEventListener("keydown", onKey);
     onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+  // While either layer is up, own Escape in the popup registry too, so an editor that still has
+  // focus underneath does not read the same key as "leave editing" (B-72).
+  createEffect(() => {
+    if (!open() && !showKeys()) return;
+    const release = claimPopupKeys((key) => key === "Escape" && closeTop());
+    onCleanup(release);
   });
 
   return (

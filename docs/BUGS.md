@@ -165,7 +165,7 @@ reads, so the memo computes `false` once and is never re-run; even afterwards `e
 from `surface.currentId()`, a plain variable, not a signal.
 
 ### B-71 · Choosing a context-menu item or clicking an autocomplete row drops editor focus
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/context-menu.spec.ts` "an item chosen from the menu leaves the editor focused and
 typeable", `e2e/tests/popups.spec.ts` "clicking a row leaves the editor focused"
 
@@ -174,8 +174,14 @@ The command runs (Indent indents, the page link is inserted), but the item is fo
 focus lands on `<body>`. Typing afterwards goes nowhere until the block is clicked again. The mobile
 toolbar already does this right (`preventDefault` on `pointerdown`, spec R61).
 
+**Fixed 2026-09-12.** Rows in the `[[`/`#`/`((`/`/` popups and the context menu's items now
+`preventDefault` on mousedown, so a click runs the item without ever moving focus off the editor.
+`popups.spec.ts` "clicking a row leaves the editor focused", `context-menu.spec.ts` "…leaves the
+editor focused".
+
+
 ### B-72 · While a block is in edit mode, Escape ends editing instead of closing what is on top
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/context-menu.spec.ts` "Escape leaves focus and the caret exactly where right-click put
 them", `e2e/tests/views.spec.ts` "Escape closes the help menu while a block is being edited…",
 "opening the palette while editing and closing it hands focus back to the editor"
@@ -185,6 +191,12 @@ not stop propagation, and the global dispatcher's context still reports `editorF
 menu, shortcuts dialog and command palette: their Escape never arrives at all — the global
 capture handler runs first, matches `block.selectBlock`, and stops propagation — so the overlay
 stays open while the block behind it drops to selection mode.
+
+**Fixed 2026-09-12.** The context menu, the help menu and the command palette now claim Escape
+through the same `commands/popup-keys.ts` registry the autocomplete popups use (B-65), so both
+dispatchers know something is open and yield the key to it instead of running `block.selectBlock`
+underneath. `context-menu.spec.ts` Escape, `views.spec.ts` help Escape and palette focus.
+
 
 ### B-73 · Right-clicking a selected block drops the selection
 **Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Tests:**
@@ -196,7 +208,7 @@ gated on `blockSelected` — can never appear. This is the "things keep selected
 context menu shenanigans" the suite was asked for.
 
 ### B-74 · Clicking away leaves the block in edit mode
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/popups.spec.ts` "clicking elsewhere dismisses the popup"
 
 Nothing clears `editingId` on blur, so the row keeps the CM6 surface after a click elsewhere: a
@@ -204,14 +216,29 @@ Nothing clears `editingId` on blur, so the row keeps the CM6 surface after a cli
 popup stays open, and the bullet stays accent. The rendered view only comes back when another
 block is clicked. `e2e/helpers/editor.ts`'s `clickAway` documents what tests have to do about it.
 
+**Fixed 2026-09-12.** A `pointerdown` outside the outliner ends editing (flush, detach), except
+for clicks that belong to the session — a popup, the context menu, the palette, the mobile toolbar,
+the help layers, the shelf, the zoom breadcrumb, or a click that is closing the context menu.
+`CommandLayer` also re-detects triggers after a pointer, deferred a macrotask so a click on a
+popup row still lands on the row it aimed at; before, the `[[` popup outlived the editor it
+belonged to. `popups.spec.ts` "clicking elsewhere dismisses the popup". Note for tests: a click
+away now UNMOUNTS the editor, and `not.toBeFocused()` on a missing element fails — the shared
+`clickAway` helper polls `activeElement` instead.
+
+
 ### B-75 · A page created from the UI is empty with nowhere to type
-**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Test:**
 `e2e/tests/pages.spec.ts` "a page created from the missing-page view can be typed into straight
 away"
 
 The missing-page view's Create and the palette's Create make the page, then `BlockTree` renders
 zero rows and there is no placeholder row like the virtual journal day's — no `.vr-block-view`,
 no `.vr-draft-input`, nothing to click. The only way to give such a page a first block is the API.
+
+**Fixed 2026-09-12.** Create now makes the page's first empty block along with the page and
+requests focus into it, the way a journal day's first block is made. `pages.spec.ts` "…can be
+typed into straight away".
+
 
 ### B-76 · The sidebar's "Pages" list is the first twelve names alphabetically
 **Status:** open · **Severity:** low · **Found:** 2026-09-12, e2e suite · **Test:**
@@ -262,7 +289,7 @@ outliner. Presumably the second tab is waiting on the writer election / OPFS poo
 follower path.
 
 ### B-82 · Picking a page in the command palette never opens it
-**Status:** open · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, e2e suite · **Tests:**
 `e2e/tests/views.spec.ts` "Enter on a highlighted page in the palette opens it",
 `e2e/tests/pages.spec.ts` "Cmd/Ctrl+O switches pages by name with a click"
 
@@ -273,6 +300,11 @@ wires `onSelectPage` to `navigation.openPage(p.id)`, whose `pageNameForId` is
 `openPage` silently does not navigate. (One earlier probe run saw a click navigate; two later runs
 and every Enter did not — treat the click path as broken too.) The palette's "Create page" row
 takes a different path and works.
+
+**Fixed 2026-09-12.** `nav.openPage(id)` resolved the page's name with `resolveBlockPageName`,
+which takes a BLOCK id and so found nothing. `store.ts#resolvePageName` looks a page up by its own
+id. `views.spec.ts` "Enter on a highlighted page…", `pages.spec.ts` "Cmd/Ctrl+O…".
+
 
 ### B-83 · A tag page created right after typing the tag never shows the reference
 **Status:** open · **Severity:** medium · **Found:** 2026-09-12, e2e suite · **Test:**

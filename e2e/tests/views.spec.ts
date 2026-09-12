@@ -355,7 +355,6 @@ test("the shortcuts dialog shows this platform's modifier and every category", a
 test("Escape closes the help menu while a block is being edited, without selecting the block", async ({
   page,
 }) => {
-  test.fixme(true, "B-72: with a block in edit mode, Escape runs block.selectBlock instead");
   const outliner = await openEditing(page, "Views Help Escape", "- typing here");
   await page.locator(".help-fab").click();
   await expect(page.locator(".help-menu")).toBeVisible();
@@ -435,7 +434,6 @@ test("the palette runs a command from the keyboard, > scopes it to commands, and
 });
 
 test("Enter on a highlighted page in the palette opens it", async ({ page }) => {
-  test.fixme(true, "B-82: picking a page in the palette never opens it");
   await seedPage(page, "Views Palette Enter", "- reached by Enter");
   await page.goto("/journals");
   await page.keyboard.press(`${MOD}+k`);
@@ -463,7 +461,6 @@ test("Escape and a backdrop click both close the palette", async ({ page }) => {
 test("opening the palette while editing and closing it hands focus back to the editor", async ({
   page,
 }) => {
-  test.fixme(true, "B-72: with a block in edit mode, Escape runs block.selectBlock instead");
   await openEditing(page, "Views Palette Focus", "- keep typing");
   await page.keyboard.press(`${MOD}+k`);
   await expect(page.locator(".cmd-palette")).toBeVisible();

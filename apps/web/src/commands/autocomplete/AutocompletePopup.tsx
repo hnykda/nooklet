@@ -242,6 +242,9 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
             <div
               role="option"
               tabIndex={-1}
+              // Focus stays in the editor: a row that took focus on mousedown left the caret
+              // nowhere after the click (B-71).
+              onMouseDown={(e) => e.preventDefault()}
               aria-selected={i() === highlight()}
               classList={{ "cmd-row": true, "cmd-row--active": i() === highlight() }}
               onMouseEnter={() => setHighlight(i())}

@@ -175,7 +175,11 @@ export async function expectEditorFocusedNow(page: Page, when: string): Promise<
  */
 export async function clickAway(page: Page): Promise<void> {
   await page.locator("body").click({ position: { x: 5, y: 5 } });
-  await expect(editor(page)).not.toBeFocused();
+  // A click away ENDS editing (B-74), which unmounts the editor — so "not focused" has to allow
+  // for "not there at all". `not.toBeFocused()` on a missing element fails instead.
+  await expect
+    .poll(() => page.evaluate(() => !document.activeElement?.closest(".cm-content")))
+    .toBe(true);
 }
 
 /** The platform's `Mod` key for `page.keyboard.press`. The app resolves `Mod` from `navigator`,

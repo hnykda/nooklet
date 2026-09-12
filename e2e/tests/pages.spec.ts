@@ -65,7 +65,6 @@ test("a typed [[Parent/Nested]] link, clicked, offers to create the page, and th
 test("a page created from the missing-page view can be typed into straight away", async ({
   page,
 }) => {
-  test.fixme(true, "B-75: a page created from the UI is empty and offers nowhere to type");
   await page.goto(pagePath("Pages Fresh Typeable"));
   await expect(page.locator(".page-view-missing")).toBeVisible();
   await page.locator(".page-view-missing button").click();
@@ -78,10 +77,17 @@ test("a page created from the missing-page view can be typed into straight away"
   await somewhereToType.click();
   await page.keyboard.type("first words");
   await clickAway(page);
+  // Created on the client, so the server only has the page once sync has pushed it: a 404 in the
+  // first polls is expected, not a failure — `api` throws on it, and a thrown error would end the
+  // poll instead of retrying.
   await expect
     .poll(async () => {
-      const r = await api<{ text: string }>(page, "page.read", { page: "Pages Fresh Typeable" });
-      return r.text;
+      try {
+        const r = await api<{ text: string }>(page, "page.read", { page: "Pages Fresh Typeable" });
+        return r.text;
+      } catch {
+        return "";
+      }
     })
     .toContain("first words");
 });
@@ -252,7 +258,6 @@ test("a rename really renames: the new name reads back and the old one is gone",
 });
 
 test("Cmd/Ctrl+O switches pages by name with a click", async ({ page }) => {
-  test.fixme(true, "B-82: picking a page in the palette never opens it");
   await seedPage(page, "Pages Switch Target", "- reached");
   await page.goto("/journals");
   await page.keyboard.press(`${MOD}+o`);

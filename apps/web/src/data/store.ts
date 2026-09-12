@@ -644,6 +644,17 @@ export function useSearchResults(
 // block's page name too. Block/page are both in the client-only schema, so this stays local.
 // ---------------------------------------------------------------------------------------------
 
+/** A page's name from its id — what `nav.openPage(id)` needs to build a name-addressed route.
+ * Not `resolveBlockPageName`: that takes a BLOCK id, and handing it a page id resolved nothing, so
+ * picking a page in the palette silently went nowhere (B-82). */
+export async function resolvePageName(pageId: string): Promise<string | undefined> {
+  const rows = await queryAs<{ name: string }>(
+    "SELECT name FROM page WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+    [pageId],
+  );
+  return rows[0]?.name;
+}
+
 export async function resolveBlockPageName(blockId: string): Promise<string | undefined> {
   const rows = await queryAs<{ name: string; journal_day: number | null }>(
     `SELECT p.name AS name, p.journal_day AS journal_day

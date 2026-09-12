@@ -45,7 +45,7 @@ import {
   Show,
   untrack,
 } from "solid-js";
-import { openBlockMenu } from "../app/context-menu.js";
+import { blockMenuRequest, openBlockMenu } from "../app/context-menu.js";
 import {
   createEditorHost,
   setActiveContextSnapshot,
@@ -269,6 +269,40 @@ export function BlockTree(props: {
   function holdSelectionFocus(): void {
     outlinerEl?.focus({ preventScroll: true });
   }
+
+  /**
+   * Clicking somewhere else ends editing. Before this the block stayed in edit mode after a click
+   * on the page background — its typed `[[link]]` was not followable, the `[[` popup lingered —
+   * because the only thing a blur did was flush (B-74). `pointerdown` in the capture phase, not
+   * `focusout`: a click on the body is not a focus change (nothing there is focusable), and a
+   * click into a popup, menu or the palette must NOT end editing — those belong to the session.
+   */
+  createEffect(() => {
+    if (editingId() === null || props.readOnly) return;
+    const onPointerDown = (e: PointerEvent): void => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      if (outlinerEl?.contains(target)) return;
+      // A click that closes the context menu is spent on closing it — the block stays in edit
+      // mode, caret where the right-click put it. (The menu dismisses itself on this same
+      // pointerdown, so by the time a click handler ran it would already be gone; hence the check
+      // here, at capture time.)
+      if (blockMenuRequest()) return;
+      // The zoom breadcrumb is this tree's own chrome, rendered beside the outliner rather than
+      // inside it; a click there navigates within the same editing session.
+      if (
+        target.closest(
+          ".cmd-popup, .ctx-menu, .cmd-palette, .cmd-toolbar, .help-menu, .help-keys, .shelf, .vr-zoom-trail",
+        )
+      )
+        return;
+      flushPendingEdit();
+      surface.detach();
+      setEditingId(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    onCleanup(() => document.removeEventListener("pointerdown", onPointerDown, true));
+  });
   const [clockSig, setClockSig] = createSignal<Clock | undefined>(undefined);
   onMount(() => void getClock().then(setClockSig));
 

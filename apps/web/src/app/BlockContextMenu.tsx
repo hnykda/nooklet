@@ -12,6 +12,7 @@
 
 import { createEffect, createMemo, For, type JSX, onCleanup, Show } from "solid-js";
 import { useCommands } from "../commands/index.js";
+import { claimPopupKeys } from "../commands/popup-keys.js";
 import type { CommandContext } from "../commands/types.js";
 import { matchesWhen } from "../commands/when/index.js";
 import "./context-menu.css";
@@ -82,10 +83,19 @@ export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.
     // `pointerdown` rather than `click`: dismiss before the click lands on whatever is beneath.
     document.addEventListener("pointerdown", dismiss, true);
     document.addEventListener("keydown", onKey, true);
+    // Also claim Escape through the popup registry: otherwise the editor's keymap read the same
+    // keydown as "leave editing" and dropped the block into selection mode while the menu closed
+    // (B-72). With the claim, both dispatchers know something is open and yield.
+    const release = claimPopupKeys((key) => {
+      if (key !== "Escape") return false;
+      closeBlockMenu();
+      return true;
+    });
     const dismissAlways = (): void => closeBlockMenu();
     window.addEventListener("blur", dismissAlways);
     window.addEventListener("resize", dismissAlways);
     onCleanup(() => {
+      release();
       document.removeEventListener("pointerdown", dismiss, true);
       document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", dismissAlways);
@@ -123,6 +133,9 @@ export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.
                   type="button"
                   class="ctx-item"
                   role="menuitem"
+                  // Focus stays where it was: an item that took focus on mousedown left the
+                  // editor with no caret after the click (B-71).
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => void run(entry.id)}
                 >
                   {entry.label}

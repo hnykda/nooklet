@@ -42,7 +42,6 @@ async function closeMenuByClick(page: Page): Promise<void> {
 }
 
 test("Escape leaves focus and the caret exactly where right-click put them", async ({ page }) => {
-  test.fixme(true, "B-72: Escape on the menu also runs block.selectBlock, ending editing");
   const outliner = await openEditing(page, "Menu Escape Focus", "- first\n- second");
   await openMenuOn(page, outliner, 1);
   await page.keyboard.press("Escape");
@@ -164,7 +163,6 @@ test("Move up and Move down reorder the clicked block", async ({ page }) => {
 });
 
 test("an item chosen from the menu leaves the editor focused and typeable", async ({ page }) => {
-  test.fixme(true, "B-71: clicking a menu item moves focus to the item, and it never comes back");
   const outliner = await openEditing(page, "Menu Keeps Focus", "- one\n- two");
   await openMenuOn(page, outliner, 1);
   await runItem(page, "Indent");

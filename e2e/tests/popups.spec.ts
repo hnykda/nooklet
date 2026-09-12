@@ -148,7 +148,6 @@ test.describe("[[ page autocomplete", () => {
   });
 
   test("clicking a row leaves the editor focused", async ({ page }) => {
-    test.fixme(true, "B-71: clicking a popup row moves focus to the row, and it never comes back");
     await seedPage(page, "Popup Wiki FocusTarget", "- t");
     await openEditing(page, "Popup Wiki ClickFocus", "- x");
     await page.keyboard.type(" [[Popup Wiki FocusTar");
@@ -156,7 +155,10 @@ test.describe("[[ page autocomplete", () => {
     await expect(popup(page)).toHaveCount(0);
     await expectEditorFocusedNow(page, "after clicking a popup row");
     await page.keyboard.type("!");
-    await expect(editor(page)).toHaveText("x [[Popup Wiki FocusTarget]]!");
+    // The live preview hides `[[`/`]]` once the caret is past the link, so read what is stored.
+    await expect
+      .poll(async () => (await readBlocks(page, "Popup Wiki ClickFocus")).map((b) => b.content))
+      .toEqual(["x [[Popup Wiki FocusTarget]]!"]);
   });
 
   test("Escape closes the popup, keeps the typed text and keeps the editor focused", async ({
@@ -197,10 +199,6 @@ test.describe("[[ page autocomplete", () => {
   });
 
   test("clicking elsewhere dismisses the popup", async ({ page }) => {
-    test.fixme(
-      true,
-      "B-74: the block stays in edit mode after a click away, and the popup with it",
-    );
     await openEditing(page, "Popup Wiki Click Away", "- x");
     await page.keyboard.type(" [[abc");
     await expect(popup(page)).toBeVisible();

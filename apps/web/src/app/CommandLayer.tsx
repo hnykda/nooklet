@@ -51,7 +51,7 @@ import {
   useCommands,
 } from "../commands/index.js";
 import { apiBaseUrl, authToken } from "../data/bootstrap.js";
-import { applyOp, resolveBlockPageName } from "../data/store.js";
+import { applyOp, resolvePageName } from "../data/store.js";
 import { forceSync, initDb } from "../db/client.js";
 import {
   buildUiWindowState,
@@ -205,7 +205,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
 
   const navigation = createNavigationHost({
     navigate: (path) => navigate(path),
-    pageNameForId: resolveBlockPageName,
+    pageNameForId: resolvePageName,
   });
 
   const app = createAppHost({
@@ -269,7 +269,26 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       if (rect && (rect.top || rect.left)) setCaretPos({ top: rect.bottom, left: rect.left });
     };
     document.addEventListener("keyup", onKeyUp, true);
-    onCleanup(() => document.removeEventListener("keyup", onKeyUp, true));
+    // A pointer can also change what is under the caret — most importantly a click away, which
+    // ends editing (B-74): with no editor there is no trigger, and the popup must go with it.
+    // Re-detecting only on keyup left it hanging over the page until the next keystroke.
+    //
+    // Two things this must not do. It must not run for a click INSIDE the popup — the caret has
+    // not moved, and re-detecting rebuilds the trigger object, which re-renders every row between
+    // `pointerup` and `click`, so the row that was clicked no longer exists when the click
+    // arrives and nothing is inserted. And it must not run synchronously even for a click
+    // elsewhere: `click` fires after `pointerup` in the same task, so the re-detection is
+    // deferred a macrotask, by which time whatever the click did to the editor has happened.
+    const onPointerUp = (e: PointerEvent): void => {
+      const target = e.target as Element | null;
+      if (target?.closest(".cmd-popup, .ctx-menu")) return;
+      setTimeout(onKeyUp, 0);
+    };
+    document.addEventListener("pointerup", onPointerUp, true);
+    onCleanup(() => {
+      document.removeEventListener("keyup", onKeyUp, true);
+      document.removeEventListener("pointerup", onPointerUp, true);
+    });
   });
 
   const commands = createCoreCommands({

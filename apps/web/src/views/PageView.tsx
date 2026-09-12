@@ -5,13 +5,14 @@
  * it. Resolves the page by name, case-insensitively (`normalizePageName`, via
  * `../data/store.ts#usePageByName`), since that is what refs navigate to (PLAN.md §4).
  */
-import { newId } from "@nooklet/core";
+import { newId, orderBetween } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
 import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
+import { requestBlockFocus } from "../editor/focus-request.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageRoutePath } from "./navigateTarget.js";
 import { PageIconEditor } from "./PageIcon.js";
@@ -60,10 +61,21 @@ export function PageView(props: PageViewProps): JSX.Element {
 
   async function createThisPage(): Promise<void> {
     const id = newId();
+    const firstBlockId = newId();
+    // A page with no blocks has nothing to click into — Create used to leave you staring at a
+    // title with nowhere to type (B-75). Give it one empty block and put the caret there, the way
+    // a journal day's first block is made.
+    requestBlockFocus(firstBlockId);
     await applyOp(id, {
       kind: "page.create",
       name: props.name(),
       journalDay: null,
+      createdAt: Date.now(),
+    });
+    await applyOp(firstBlockId, {
+      kind: "block.create",
+      place: { pageId: id, parentId: null, order: orderBetween(null, null) },
+      content: "",
       createdAt: Date.now(),
     });
   }
