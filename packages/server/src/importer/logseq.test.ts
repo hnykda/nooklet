@@ -397,3 +397,10 @@ describe("importLogseqGraph: assets", () => {
     expect(stats.warnings.some((w) => w.includes("assets/ was not imported"))).toBe(true);
   });
 });
+
+describe("importLogseqGraph guards", () => {
+  it("refuses a graph directory that does not exist (B-110)", async () => {
+    const missing = join(tmpdir(), `nooklet-missing-${newId()}`);
+    await expect(importLogseqGraph(ctx, missing)).rejects.toThrow(/not a directory/);
+  });
+});

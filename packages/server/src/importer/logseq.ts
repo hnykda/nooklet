@@ -558,6 +558,12 @@ export async function importLogseqGraph(
   graphDir: string,
   opts: ImportLogseqOptions = {},
 ): Promise<ImportStats> {
+  // A missing graph looked like an empty one (B-110): `listMdFiles` answers `[]` for an absent
+  // directory on purpose, since a graph may have no journals/ — but that leniency has to stop at
+  // the graph itself, or a mistyped path imports nothing and reports success.
+  if (!existsSync(graphDir) || !statSync(graphDir).isDirectory()) {
+    throw new Error(`not a directory: ${graphDir}`);
+  }
   const start = Date.now();
   const warnings: string[] = [];
   const errors: string[] = [];

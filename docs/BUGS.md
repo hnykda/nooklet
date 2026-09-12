@@ -115,7 +115,14 @@ page. Fix: a small date chip after the marker (a cheap win the audit ranks #2).
 unreachable even though the server lists them with a `client_url`. research/13 §4.1 marks both as
 "have"; they are not. Fix: build the host (a day) or move mermaid rendering into core (an hour).
 
+Found independently the same day by the templates workstream while deciding plugin-vs-core (ADR 019
+§"Core, not plugin"): `/mermaid` and every `registerSlashCommand` are dead on arrival because
+nothing in `apps/web` implements `ClientPluginContext` and `SlashMenu` ranks a static list. Its
+duplicate entry (briefly numbered B-87, colliding with the refactors workstream's B-87) was folded
+in here.
+
 ---
+
 
 ### B-104 · `/page/<alias>` says the page does not exist
 **Status:** open · **Severity:** low · **Found:** 2026-09-12, exposure audit
@@ -603,22 +610,7 @@ editing (`block.selectBlock`) before the server op, so the row re-renders from t
 proper fix is in `editor/BlockTree.tsx` (drop `editingId` when the tree no longer contains it),
 which belongs to another owner this session.
 
-### B-87 · No client plugin host: `/mermaid` and every `registerSlashCommand` are dead on arrival
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, deciding plugin-vs-core for
-templates (ADR 019) · **Test:** none (a test that loads `plugins/mermaid` in the web app and types
-`/mermaid` would catch it)
-
-`plugins/mermaid/src/client.ts` calls `ctx.registerSlashCommand({ id: "mermaid", … })` and
-`ctx.registerCodeBlockRenderer("mermaid", …)`. Type `/mermaid` in the app: nothing. Paste a
-```` ```mermaid ```` fence: plain code. Nothing under `apps/web/src` implements
-`ClientPluginContext` — `registerSlashCommand` exists only as a type in `@nooklet/plugin-api`,
-and `SlashMenu` ranks the static `SLASH_ITEMS` list, so there is no host to load a client half
-and nowhere for a contributed slash row to go. `PLAN.md` §15 marks M4 "loader for both halves"
-done; the server half's loader exists (`packages/server/src/plugins/`), the client half's does
-not. Until it does, "built-in optional features ship as internal plugins" (ADR 007) is only true
-server-side, which is why templates went into core (ADR 019).
-
-### B-88 · A template inserted with `/template` cannot be undone with Cmd/Ctrl+Z
+### B-108 · A template inserted with `/template` cannot be undone with Cmd/Ctrl+Z
 **Status:** open · **Severity:** low · **Found:** 2026-09-12, building it (ADR 019) · **Test:**
 none yet (an `e2e/tests/templates.spec.ts` case pressing Cmd/Ctrl+Z after an insertion would
 catch it)
@@ -674,9 +666,10 @@ out is rename-then-restore, which the test also exercises.
 
 
 ### B-91 · A deduplicated re-upload of an orphaned asset leaves no trace, so asset GC can collect it
-**Status:** open · **Severity:** low · **Found:** 2026-09-12, building orphan-asset GC (ADR 022 §5)
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, building orphan-asset GC (ADR 022 §5)
 · **Test:** `packages/server/src/gc.test.ts` "a recent audit row for the asset extends its grace"
-pins the GC side; the store side has no test
+pins the GC side; the store side: `packages/server/src/ops/asset-upload.http.test.ts` "dedups identical
+bytes: a second upload returns the same asset and leaves an audit row"
 
 `storeAssetBytes` (`packages/server/src/assets/store.ts`) returns the existing row when the same
 bytes are uploaded again and writes nothing — no `changes` row, no timestamp. If that asset was an
@@ -686,6 +679,13 @@ A `nooklet gc` inside that window removes the file, and the push then embeds a l
 Narrow (identical bytes, previously orphaned, GC run while the device is offline), but it is the
 exact case the grace period exists for. Fix: on dedupe, write the same `changes` row a fresh
 upload writes — `planAssetGc` already treats a recent audit row as "touched".
+
+**Fixed 2026-09-12.** The dedupe branch of `storeAssetBytes` writes the same kind of `changes` row a
+fresh upload writes (before = after = the stored asset's descriptor, so `changes_since` still
+reads it as "uploaded"), which `planAssetGc` already counts as "touched within the grace".
+
+---
+
 
 ### B-92 · Slash menu shows 16 items; `popups.spec.ts` pins 15
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, full e2e run (views agent, M7) ·
@@ -741,6 +741,30 @@ for, and the successor tree for the same page claims it. No heuristic about wher
 the teardown's blur is indistinguishable from a click on the page background, and nobody clicks
 away inside the swap's window. The race itself (two trees for one page during the swap) is the
 stream's to remove; the hand-back makes it harmless.
+
+### B-109 · `--no-mirror` never did anything
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, wiki workstream — served `docs/wiki`
+with the flag and found 21 files in `pages/` · **Test:** `packages/server/src/cli.test.ts`
+"parseArgs: --no-<flag> sets <flag> to false"
+
+`parseArgs` knew `--flag` and `--flag value`; `--no-mirror` became a key called `no-mirror` that
+nothing read, while `config.mirror.enabled` tested `flags.get("mirror") !== false`. Harmless while
+`serve` never wrote the mirror; the moment B-95 made it write, the documented way to turn it off
+was a no-op. `--no-<x>` now sets `x` to `false`.
+
+---
+
+### B-110 · `nooklet import <missing dir>` reports success with zero pages
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, wiki workstream — `pnpm nooklet import
+docs/wiki` from the repo root (`pnpm nooklet` runs with cwd `packages/server`, so the relative path
+pointed at nothing) printed `pagesImported: 0`, no warning, no error · **Test:**
+`packages/server/src/importer/logseq.test.ts` "refuses a graph directory that does not exist"
+
+`listMdFiles` answers `[]` for a missing directory on purpose — a graph may have no `journals/` —
+so a missing *graph* looked like an empty one. `importLogseqGraph` now throws before touching the
+database when the path is absent or not a directory, and the CLI exits non-zero with the message.
+
+---
 
 ## Fixed
 

@@ -52,7 +52,7 @@ describe("asset.upload", () => {
     expect(json.markdown).toBe(`![](assets/${json.id}.png)`);
   });
 
-  it("dedups identical bytes: a second upload returns the same asset (idempotent)", async () => {
+  it("dedups identical bytes: a second upload returns the same asset and leaves an audit row", async () => {
     const first = await post(s.app, "/api/v1/asset.upload", s.writeToken, {
       filename: "pixel.png",
       mime_type: "image/png",
@@ -72,7 +72,13 @@ describe("asset.upload", () => {
     const changesCount = s.serverCtx.driver.get<{ n: number }>(
       "SELECT count(*) AS n FROM changes WHERE entity_type = 'asset'",
     );
-    expect(changesCount?.n).toBe(1); // the dedup hit is not a new write, so no second audit row
+    // B-91: the dedupe hit is not a new write, but it IS a recent touch — asset GC's grace period
+    // reads `changes`, and the block that re-embeds this asset may still be on an offline device.
+    expect(changesCount?.n).toBe(2);
+    const touch = s.serverCtx.driver.get<{ before_json: string | null; after_json: string }>(
+      "SELECT before_json, after_json FROM changes WHERE entity_type = 'asset' ORDER BY seq DESC LIMIT 1",
+    );
+    expect(touch?.before_json).toBe(touch?.after_json); // nothing changed, and it says so
   });
 
   it("is invalid for malformed base64", async () => {

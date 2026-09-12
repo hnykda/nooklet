@@ -33,6 +33,7 @@ import { WebSocketServer } from "ws";
 import { createServerContext, type ServerContext } from "./apply-ops.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
 import { createBackup, restoreBackup } from "./backup/index.js";
+import { type Args, parseArgs } from "./cli-args.js";
 import { openDb } from "./db.js";
 import {
   activateModel,
@@ -60,32 +61,6 @@ import { createAppWithPlugins } from "./plugins/bootstrap.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
-
-interface Args {
-  _: string[];
-  flags: Map<string, string | boolean>;
-}
-
-function parseArgs(argv: string[]): Args {
-  const _: string[] = [];
-  const flags = new Map<string, string | boolean>();
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i] as string;
-    if (!a.startsWith("--")) {
-      _.push(a);
-      continue;
-    }
-    const key = a.slice(2);
-    const next = argv[i + 1];
-    if (next !== undefined && !next.startsWith("--")) {
-      flags.set(key, next);
-      i++;
-    } else {
-      flags.set(key, true);
-    }
-  }
-  return { _, flags };
-}
 
 function dataDir(args: Args): string {
   const flag = args.flags.get("data");

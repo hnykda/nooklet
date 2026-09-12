@@ -16,7 +16,7 @@ Three facts about the code as it stands decide the shape:
 
 1. **There is no client plugin host.** `@nooklet/plugin-api` declares `registerSlashCommand`, but
    nothing in `apps/web` implements `ClientPluginContext`; `SlashMenu` ranks a static `SLASH_ITEMS`
-   list. The built-in `mermaid` plugin's `/mermaid` has never reached the menu (B-87).
+   list. The built-in `mermaid` plugin's `/mermaid` has never reached the menu (B-103).
 2. **A journal day is born in two places** — `views/VirtualJournalDay.tsx` on the first keystroke
    and `packages/server/src/data-api.ts#journal()` when an agent's `page_append` names a day that
    does not exist — and neither has a hook a plugin could attach to.
@@ -89,7 +89,7 @@ by ops.
   focused and takes the characters typed to filter at the document's capture phase, the way the
   slash menu keeps its query out of the block.
 - Inserting a template from `/template` bypasses the editor's undo history (`BlockTree`'s
-  `commit`), so Cmd/Ctrl+Z does not remove it (B-88). The ops are ordinary and `batch_undo`
+  `commit`), so Cmd/Ctrl+Z does not remove it (B-108). The ops are ordinary and `batch_undo`
   reverses an API-side insertion as usual.
 - A template's `properties` are copied to the copy, including `scheduled`/`deadline`/`repeat`;
   `template`, `journal-template` and `template-including-parent` are dropped from every copied

@@ -82,6 +82,7 @@ export interface StoredAsset {
 }
 
 interface ExistingAssetRow {
+  file_name: string;
   id: string;
   ext: string;
   mime_type: string;
@@ -104,10 +105,26 @@ export function storeAssetBytes(
 
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const existing = driver.get<ExistingAssetRow>(
-    "SELECT id, ext, mime_type, byte_size FROM asset WHERE sha256 = ? AND deleted_at IS NULL",
+    "SELECT id, ext, mime_type, byte_size, file_name FROM asset WHERE sha256 = ? AND deleted_at IS NULL",
     [sha256],
   );
   if (existing) {
+    // Not a new write, but still an event worth a row (B-91): asset GC counts a recent `changes`
+    // row as "touched", and the block op that embeds this asset again may sit in an offline
+    // device's push queue for days. Without the row, a gc run inside that window would collect
+    // the file of an asset that is about to be referenced again. before = after: nothing changed.
+    const described = JSON.stringify({
+      file_name: existing.file_name,
+      ext: existing.ext,
+      mime_type: existing.mime_type,
+      byte_size: existing.byte_size,
+      sha256,
+    });
+    driver.run(
+      `INSERT INTO changes(graph_id, batch_id, origin, actor, entity_type, entity_id, op_ids_json, before_json, after_json, created_at)
+       VALUES ('default', ?, ?, ?, 'asset', ?, '[]', ?, ?, ?)`,
+      [newId(), input.origin, input.actor, existing.id, described, described, Date.now()],
+    );
     return {
       id: existing.id,
       ext: existing.ext,
