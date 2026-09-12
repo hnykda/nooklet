@@ -11,6 +11,11 @@
  * the normal reactive seam (`../data/store.ts`), so editing a block in the main view updates its
  * card, and deleting it makes the card say so rather than showing a ghost.
  *
+ * A page card has two modes (M7, research/13 §4.2 item 7): its content, as before, or its
+ * OUTLINE — the headings and top-level blocks as a table of contents whose entries scroll the main
+ * view to the block. Two TOC plugins with ~60k downloads exist because a long page in a 20rem
+ * column is a wall; the outline is the map of it.
+ *
  * Mirrors `./Sidebar.tsx` in structure and `./sidebar.css` in conventions — including the
  * independent scroll region, which is the one documented exception to research/08 §3.1's
  * single-scroll-container rule that the left sidebar already takes.
@@ -18,8 +23,16 @@
 
 import { classifyBlockContent } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
-import { FileText, PanelRight, PanelRightClose, Trash2, X } from "lucide-solid";
-import { createMemo, For, type JSX, Show } from "solid-js";
+import {
+  FileText,
+  ListTree,
+  PanelRight,
+  PanelRightClose,
+  TableOfContents,
+  Trash2,
+  X,
+} from "lucide-solid";
+import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import {
   clearShelf,
   dismissShelfItem,
@@ -34,8 +47,9 @@ import { usePageByName, usePageTree } from "../data/store.js";
 import type { BlockTreeNode, NavigateTarget } from "../data/types.js";
 import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { BlockContentView } from "../editor/render/tokens.js";
-import { goToTarget } from "../views/navigateTarget.js";
+import { goToTarget, pageRoutePath } from "../views/navigateTarget.js";
 import "./shelf.css";
+import { outlineEntries, type TocEntry } from "./shelfOutline.js";
 
 type Navigate = (t: NavigateTarget) => void;
 
@@ -105,10 +119,73 @@ function ShelfOutline(props: {
   );
 }
 
+// ---------------------------------------------------------------------------------------------
+// Page outline (table of contents)
+// ---------------------------------------------------------------------------------------------
+
+const REVEAL_CLASS = "shelf-reveal-target";
+const REVEAL_MS = 1400;
+const POLL_INTERVAL_MS = 100;
+const POLL_ATTEMPTS = 15; // ~1.5s, enough for a route change to render
+
+/**
+ * Scroll the main view to `blockId` on `pageName`, navigating there first if a different page is
+ * showing. Not `nav.revealBlock` (`../app/hosts.ts`), whose flash carries an "Agent" tag by design
+ * (ADR 015 §2.6) — this is the human's own click. Same poll-until-mounted loop as
+ * `../live/RemoteFlashOverlay.tsx`, since the page's rows may still be mounting after a navigate;
+ * gives up quietly if the block never appears, as that one does.
+ */
+function revealOnPage(navigate: (path: string) => void, pageName: string, blockId: string): void {
+  const target = pageRoutePath(pageName);
+  if (decodeURIComponent(window.location.pathname) !== decodeURIComponent(target)) {
+    navigate(target);
+  }
+  let attempts = 0;
+  const tryNow = (): void => {
+    const el = document.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(blockId)}"]`);
+    if (el) {
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+      el.classList.add(REVEAL_CLASS);
+      setTimeout(() => el.classList.remove(REVEAL_CLASS), REVEAL_MS);
+      return;
+    }
+    attempts++;
+    if (attempts < POLL_ATTEMPTS) setTimeout(tryNow, POLL_INTERVAL_MS);
+  };
+  tryNow();
+}
+
+function PageToc(props: { entries: TocEntry[]; onReveal: (id: string) => void }): JSX.Element {
+  return (
+    <ol class="shelf-toc">
+      <For each={props.entries}>
+        {(entry) => (
+          <li
+            class="shelf-toc-item"
+            classList={{ "shelf-toc-heading": entry.level !== undefined }}
+            style={{ "--toc-depth": entry.depth }}
+            data-level={entry.level}
+          >
+            <button type="button" class="shelf-toc-link" onClick={() => props.onReveal(entry.id)}>
+              {entry.text}
+            </button>
+          </li>
+        )}
+      </For>
+    </ol>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cards
+// ---------------------------------------------------------------------------------------------
+
 function ShelfCardFrame(props: {
   title: string;
   itemKey: string;
   onOpenTitle: () => void;
+  /** Extra controls between the crumb and the dismiss button (the page card's mode toggle). */
+  tools?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
   return (
@@ -117,6 +194,7 @@ function ShelfCardFrame(props: {
         <button type="button" class="shelf-crumb" onClick={props.onOpenTitle}>
           <FileText size={12} /> {props.title}
         </button>
+        {props.tools}
         <button
           type="button"
           class="app-icon-button shelf-dismiss"
@@ -168,9 +246,16 @@ function BlockCard(props: {
 function PageCard(props: {
   item: Extract<ShelfItem, { kind: "page" }>;
   onNavigate: Navigate;
+  navigate: (path: string) => void;
 }): JSX.Element {
   const page = usePageByName(() => props.item.pageName);
   const tree = usePageTree(() => page()?.id);
+  // Per card, for as long as it is on the shelf: re-shelving keeps the same item object, so the
+  // card (and its mode) survives; dismissing it forgets the mode, which is the right default —
+  // the next time this page is shelved is a new question.
+  const [mode, setMode] = createSignal<"content" | "outline">("content");
+  const entries = createMemo(() => outlineEntries(tree()?.blocks ?? []));
+  const storedName = createMemo(() => page()?.name ?? props.item.pageName);
 
   return (
     <ShelfCardFrame
@@ -180,6 +265,22 @@ function PageCard(props: {
       })()}
       itemKey={props.item.key}
       onOpenTitle={() => props.onNavigate({ kind: "page", name: props.item.pageName })}
+      tools={
+        <Show when={page() !== null}>
+          <button
+            type="button"
+            class="app-icon-button shelf-mode"
+            aria-pressed={mode() === "outline"}
+            aria-label={mode() === "outline" ? "Show page content" : "Show page outline"}
+            title={mode() === "outline" ? "Content" : "Outline"}
+            onClick={() => setMode((m) => (m === "outline" ? "content" : "outline"))}
+          >
+            <Show when={mode() === "outline"} fallback={<TableOfContents size={14} />}>
+              <ListTree size={14} />
+            </Show>
+          </button>
+        </Show>
+      }
     >
       <Show
         when={page() !== null}
@@ -189,7 +290,15 @@ function PageCard(props: {
           when={(tree()?.blocks.length ?? 0) > 0}
           fallback={<p class="shelf-empty">{tree() === undefined ? "Loading…" : "Empty page."}</p>}
         >
-          <ShelfOutline nodes={tree()?.blocks ?? []} onNavigate={props.onNavigate} />
+          <Show
+            when={mode() === "outline"}
+            fallback={<ShelfOutline nodes={tree()?.blocks ?? []} onNavigate={props.onNavigate} />}
+          >
+            <PageToc
+              entries={entries()}
+              onReveal={(id) => revealOnPage(props.navigate, storedName(), id)}
+            />
+          </Show>
         </Show>
       </Show>
     </ShelfCardFrame>
@@ -255,7 +364,7 @@ export function Shelf(): JSX.Element {
               item.kind === "block" ? (
                 <BlockCard item={item} onNavigate={onNavigate} />
               ) : (
-                <PageCard item={item} onNavigate={onNavigate} />
+                <PageCard item={item} onNavigate={onNavigate} navigate={navigate} />
               )
             }
           </For>

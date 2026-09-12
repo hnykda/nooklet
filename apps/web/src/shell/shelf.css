@@ -224,3 +224,80 @@
     box-shadow: var(--shadow-lg);
   }
 }
+
+/* Page outline (table of contents) mode ---------------------------------------------------- */
+
+/* The mode toggle sits between the crumb and the dismiss button; pressed = outline showing. */
+.shelf-mode[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.shelf-toc {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Indent by tree depth, not by heading level: a `##` nested under a plain bullet should sit
+   under that bullet, the way it does on the page. */
+.shelf-toc-item {
+  padding-left: calc(var(--toc-depth, 0) * var(--space-lg));
+}
+
+.shelf-toc-link {
+  display: block;
+  width: 100%;
+  min-height: 26px;
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-soft);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.shelf-toc-link:hover {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+/* Headings read as headings — weight and ink, with the top level a touch larger — while plain
+   top-level bullets stay quiet, so a page's structure is legible at a glance in the column. */
+.shelf-toc-heading .shelf-toc-link {
+  color: var(--fg);
+  font-weight: var(--weight-semibold);
+}
+
+.shelf-toc-heading[data-level="1"] .shelf-toc-link {
+  font-size: var(--text-base);
+}
+
+/* The block a TOC entry just scrolled to, in the MAIN view (`Shelf.tsx#revealOnPage`). The
+   human's own accent — the agent flash in `../live/live.css` is deliberately a different colour
+   and carries a tag; this one must not be mistaken for it. */
+.shelf-reveal-target {
+  border-radius: var(--radius-sm);
+  animation: shelf-reveal-pulse 1.4s var(--ease);
+}
+
+@keyframes shelf-reveal-pulse {
+  0% {
+    background-color: var(--accent-soft);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
