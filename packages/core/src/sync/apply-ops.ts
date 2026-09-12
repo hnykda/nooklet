@@ -280,13 +280,20 @@ function applyPageDelete(
   entity: string,
   payload: Extract<OpPayload, { kind: "page.delete" }>,
 ): OpOutcome {
-  const row = driver.get<{ deleted_hlc: string | null }>(
-    "SELECT deleted_hlc FROM page WHERE id = ?",
+  const row = driver.get<{ deleted_hlc: string | null; key: string }>(
+    "SELECT deleted_hlc, key FROM page WHERE id = ?",
     [entity],
   );
   if (!row) return { status: "noop", reason: "no-such-page" };
   if (row.deleted_hlc !== null && compareHlc(hlc, row.deleted_hlc) <= 0)
     return { status: "noop", reason: "stale" };
+  // An un-delete re-enters the live-name unique index, which create and rename both guard but
+  // this path did not (B-90): delete "Dup", create a new "Dup", then undo the deletion — SQLite
+  // raised the constraint mid-transaction and the whole push died, so a device that undid it
+  // locally could never sync again. Rejecting converges instead: the page stays deleted here,
+  // the server tells the client so, and `trash.restore` offers `new_name` for the human case.
+  if (payload.deletedAt === null && pageKeyCollision(driver, row.key, entity))
+    return { status: "rejected", reason: "page-key-collision" };
   driver.run("UPDATE page SET deleted_at = ?, deleted_hlc = ? WHERE id = ?", [
     payload.deletedAt,
     hlc,

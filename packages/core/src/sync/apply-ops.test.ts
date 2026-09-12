@@ -179,6 +179,42 @@ describe("page.create / rename / prop / delete", () => {
     ]);
     expect(getPage(driver, pageId)?.deletedAt).toBeNull();
   });
+
+  it("rejects an un-delete whose name a live page has taken meanwhile (B-90)", () => {
+    const oldId = newId();
+    const newId2 = newId();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE, DEV_A), DEV_A, oldId, {
+        kind: "page.create",
+        name: "Dup",
+        journalDay: null,
+        createdAt: BASE,
+      }),
+      makeOp(hlcAt(BASE + 1, DEV_A), DEV_A, oldId, { kind: "page.delete", deletedAt: BASE + 1 }),
+      makeOp(hlcAt(BASE + 2, DEV_A), DEV_A, newId2, {
+        kind: "page.create",
+        name: "dup", // same key, different case
+        journalDay: null,
+        createdAt: BASE + 2,
+      }),
+    ]);
+    // The un-delete (an undo, or a late-syncing device) must not blow up the transaction on the
+    // unique index; it must be rejected like a colliding create or rename, and change nothing.
+    const res = applyOps(driver, [
+      makeOp(hlcAt(BASE + 3, DEV_B), DEV_B, oldId, { kind: "page.delete", deletedAt: null }),
+    ]);
+    expect(res.rejected).toBe(1);
+    expect(res.applied).toBe(0);
+    expect(getPage(driver, oldId)?.deletedAt).toBe(BASE + 1);
+    expect(getPage(driver, newId2)?.deletedAt).toBeNull();
+    // A restore under a fresh name is the sanctioned way out: rename the tombstoned page first.
+    const out = applyOps(driver, [
+      makeOp(hlcAt(BASE + 4, DEV_B), DEV_B, oldId, { kind: "page.rename", name: "Dup (restored)" }),
+      makeOp(hlcAt(BASE + 5, DEV_B), DEV_B, oldId, { kind: "page.delete", deletedAt: null }),
+    ]);
+    expect(out.applied).toBe(2);
+    expect(getPage(driver, oldId)?.deletedAt).toBeNull();
+  });
 });
 
 // -------------------------------------------------------------------------------------------

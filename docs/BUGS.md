@@ -648,9 +648,10 @@ Fix: in `applyBlockCreate`, fold bag values for those three keys into the INSERT
 stamp their `_hlc` columns `NULL` on insert and let `writeBlockField` set them).
 
 ### B-90 · Core accepts an un-delete whose page name is now taken by a live page
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, building `trash.restore` (ADR 022)
-· **Test:** none yet (the guard in `trash.restore` is tested: `trash-restore.http.test.ts` "is
-conflict when a live page now has the name"); the core gap has no failing test
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, building `trash.restore` (ADR 022)
+· **Test:** `packages/core/src/sync/apply-ops.test.ts` "rejects an un-delete whose name a live
+page has taken meanwhile (B-90)"; `trash.restore`'s own guard: `trash-restore.http.test.ts` "is
+conflict when a live page now has the name"
 
 Delete page "Dup", create a new live page "Dup", then apply `page.delete {deletedAt: null}` to the
 old one — through `batch_undo` of the deletion, or as an op arriving in a sync push from a device
@@ -661,6 +662,16 @@ entire push, for a sync — fails. `applyPageRename` and `applyPageCreate` both 
 `page-key-collision`; the un-delete should too, so the client converges (the page stays deleted)
 instead of the push dying. `trash.restore` checks first and returns `conflict` with a `new_name`
 escape hatch, but that only covers its own door.
+
+**Fixed 2026-09-12.** `applyPageDelete` now runs the same `pageKeyCollision` check as create and
+rename when `deletedAt` is `null`, and answers `rejected / page-key-collision` instead of letting
+SQLite raise mid-transaction. A device that undid the deletion locally converges (the server's
+rejection tells it the page stays deleted) rather than losing every later push; the sanctioned way
+out is rename-then-restore, which the test also exercises.
+
+---
+
+
 
 ### B-91 · A deduplicated re-upload of an orphaned asset leaves no trace, so asset GC can collect it
 **Status:** open · **Severity:** low · **Found:** 2026-09-12, building orphan-asset GC (ADR 022 §5)
@@ -719,10 +730,17 @@ the pinned resource resolves, `JournalStreamView` swaps in its own `BlockTree` f
 page, and the component holding the editor is unmounted. Today's day never showed it because
 `useJournalStream` resolves first, so the stream's tree is the one that claims the request.
 
+Measured with a MutationObserver/focus probe on the pinned flow: the optimistic tree's editor
+appears and takes focus at 43 ms, the teardown's `surface.detach()` blurs it at 43.9 ms, the
+successor outliner appears at 44.6 ms, and no editor exists afterwards. On today the successor
+appears at 132 ms and attaches its editor at 136 ms.
+
 **Fixed 2026-09-12** (templates agent, in `VirtualJournalDay.tsx`): when the component is torn
-down while the caret is inside its optimistic tree, it re-issues the focus request for the block
-it had asked for, and the successor tree for the same page claims it. The race itself (two trees
-for one page during the swap) is the stream's to remove; the hand-back makes it harmless.
+down after its focus request was consumed, it re-issues the request for the block it had asked
+for, and the successor tree for the same page claims it. No heuristic about where the caret was:
+the teardown's blur is indistinguishable from a click on the page background, and nobody clicks
+away inside the swap's window. The race itself (two trees for one page during the swap) is the
+stream's to remove; the hand-back makes it harmless.
 
 ## Fixed
 
