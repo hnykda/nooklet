@@ -198,7 +198,7 @@ export async function runQuery(
 
   const limit = query.limit ?? QUERY_DEFAULT_LIMIT;
   const shown = matched.slice(0, limit);
-  const tree =
+  const tree: Map<string, Subtree> =
     shown.length > 0
       ? await fetchChildren(
           sql,
@@ -208,29 +208,52 @@ export async function runQuery(
 
   // A hit whose ancestor is also a hit is shown once, nested under that ancestor, rather than
   // listed twice — a project TODO with TODO subtasks is the common case.
+  const inSubtreeOf = (ancestor: string, id: string): boolean =>
+    tree.get(ancestor)?.rows.some((row) => row.id === id) ?? false;
   const nestedIds = new Set<string>();
   for (const [root, sub] of tree) {
     for (const row of sub.rows)
       if (row.id !== root && sub.hitIds.has(row.id)) nestedIds.add(row.id);
   }
 
+  // Being in an ancestor hit's subtree is not the same as being rendered there: `toResultBlock`
+  // stops at `QUERY_CHILD_CAP` descendants. A TODO subtask after the first 60 notes of a TODO
+  // project was folded under the project, cut from it, and so listed nowhere while the header
+  // still counted it (B-133). Render the outermost hits first, then list on its own any hit that
+  // none of them actually emitted — outermost of those first, since each one rendered can bring
+  // its own nested hits back into view.
+  const emitted = new Set<string>();
+  const listed = new Map<string, QueryResultBlock>();
+  const list = (b: Candidate): void => {
+    listed.set(b.id, toResultBlock(b, tree.get(b.id)?.rows ?? [], emitted));
+  };
+  for (const b of shown) if (!nestedIds.has(b.id)) list(b);
+  let cut = shown.filter((b) => !listed.has(b.id) && !emitted.has(b.id));
+  while (cut.length > 0) {
+    // Never empty: the subtree relation is a tree, so some cut hit is inside no other cut hit's.
+    const outermost = cut.filter((b) => !cut.some((a) => a !== b && inSubtreeOf(a.id, b.id)));
+    for (const b of outermost) list(b);
+    cut = cut.filter((b) => !listed.has(b.id) && !emitted.has(b.id));
+  }
+
   const groups: QueryPageGroup[] = [];
   const byPage = new Map<string, QueryPageGroup>();
   for (const b of shown) {
-    if (nestedIds.has(b.id)) continue;
+    const hit = listed.get(b.id);
+    if (!hit) continue;
     let g = byPage.get(b.pageId);
     if (!g) {
       g = { pageId: b.pageId, pageName: b.pageName, pageJournalDay: b.pageJournalDay, hits: [] };
       byPage.set(b.pageId, g);
       groups.push(g);
     }
-    g.hits.push(toResultBlock(b, tree.get(b.id)?.rows ?? []));
+    g.hits.push(hit);
   }
 
   return {
     matched: matched.length,
     shown: shown.length,
-    nested: nestedIds.size,
+    nested: shown.length - listed.size,
     groups,
     truncated,
   };
@@ -277,6 +300,8 @@ function toResultBlock(
     priority: Priority | null;
   },
   descendants: ChildRow[],
+  /** Every descendant id actually emitted is added here (the cap may cut the rest). */
+  emitted: Set<string>,
 ): QueryResultBlock {
   const byParent = new Map<string, ChildRow[]>();
   for (const r of descendants) {
@@ -293,6 +318,7 @@ function toResultBlock(
     for (const r of rows) {
       if (budget <= 0) break;
       budget--;
+      emitted.add(r.id);
       out.push({
         id: r.id,
         pageId: r.page_id,

@@ -5,11 +5,13 @@
  * client replica does not carry (docs/spec/sql-schema.md rule 1) — so these go over HTTP to
  * `/api/v1/*`, the same way `./store.ts`'s backlinks and search do.
  *
- * Invalidation follows `./store.ts`'s `stamped` idiom, re-implemented here rather than imported
- * because that module keeps its version signals private: a resource's source reads one version
- * counter per table it depends on (bumped by the worker's `ChangeEvent`, which fires for local
- * writes and for pulled ones alike) and returns a fresh object, so Solid sees "something changed"
- * and refetches. A restore or an undo is a SERVER write; it reaches this replica as a pulled
+ * Invalidation follows `./store.ts`'s `stamped` idiom with its own counters, because it also
+ * bumps on the push queue draining (`onSyncStatus` below) where `store.ts`'s `stampedFor` does
+ * not: a resource's source reads one version counter per table it depends on (bumped by the
+ * worker's `ChangeEvent`, which fires for local writes and for pulled ones alike) and returns a
+ * fresh object, so Solid sees "something changed" and refetches. Subscribing here is safe only
+ * because `db/client.ts` fans the worker's single listener slot out — before it did, this module's
+ * subscription replaced `store.ts`'s and every other view stopped refreshing (B-130). A restore or an undo is a SERVER write; it reaches this replica as a pulled
  * change moments later and bumps the same counters — plus each write here calls `refetch` on
  * completion so the view does not wait for the round trip.
  */
@@ -316,8 +318,10 @@ export async function undoBatch(
 
 export interface PageHistoryStore {
   /** The first page of batches, refetched whenever the graph changes; `undefined` while loading
-   * for the first time. */
+   * for the first time. Calling it while `first.error` is set THROWS — read `firstPage` instead. */
   first: Resource<HistoryPage | undefined>;
+  /** `first()`, or `undefined` while loading or errored; safe to read anywhere. */
+  firstPage: Accessor<HistoryPage | undefined>;
   /** Every batch loaded so far, newest first (the first page plus any "older" pages). */
   batches: Accessor<HistoryBatch[]>;
   hasMore: Accessor<boolean>;
@@ -338,6 +342,10 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
   const [tailCursor, setTailCursor] = createSignal<string | undefined>(undefined);
   const [tailHasMore, setTailHasMore] = createSignal<boolean | undefined>(undefined);
   const [loadingMore, setLoadingMore] = createSignal(false);
+  // Which first page the appended older pages belong to. Bumped whenever a first page lands and
+  // the appended ones are dropped, so a `loadMore` that was already in flight can tell that its
+  // page no longer lines up (B-132, below).
+  let generation = 0;
 
   const [first, { refetch }] = createResource(
     () => {
@@ -348,6 +356,7 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
     async ({ value: n }) => {
       const page = await fetchPageHistory(n);
       // A fresh first page invalidates whatever older pages were appended under the previous one.
+      generation++;
       setExtra([]);
       setTailCursor(undefined);
       setTailHasMore(undefined);
@@ -355,16 +364,27 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
     },
   );
 
-  const batches = (): HistoryBatch[] => [...(first()?.batches ?? []), ...extra()];
-  const hasMore = (): boolean => tailHasMore() ?? first()?.hasMore ?? false;
+  // Reading an errored resource re-throws, so an unguarded `first()` here threw inside the view's
+  // render and a failed load stayed on "Loading…" (B-131). Every read of `first` goes through this.
+  const firstPage = (): HistoryPage | undefined =>
+    first.error !== undefined ? undefined : first();
+  const batches = (): HistoryBatch[] => [...(firstPage()?.batches ?? []), ...extra()];
+  const hasMore = (): boolean => tailHasMore() ?? firstPage()?.hasMore ?? false;
 
   async function loadMore(): Promise<void> {
     const n = name();
-    const cursor = tailCursor() ?? first()?.cursor;
+    const cursor = tailCursor() ?? firstPage()?.cursor;
     if (n === undefined || cursor === undefined || loadingMore()) return;
     setLoadingMore(true);
+    const requestedFor = generation;
     try {
       const page = await fetchPageHistory(n, cursor);
+      // The first page reloaded while this was in flight. Its cursor ("older than seq X") was taken
+      // from the previous first page; appending under the new one — which ends higher, because it
+      // refetched precisely because batches were added — leaves the batches in between listed
+      // nowhere, and Restore this version would silently skip undoing them (B-132). Drop it; the
+      // next click pages on from the new first page.
+      if (requestedFor !== generation) return;
       setExtra((prev) => [...prev, ...page.batches]);
       setTailCursor(page.cursor);
       setTailHasMore(page.hasMore);
@@ -373,5 +393,13 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
     }
   }
 
-  return { first, batches, hasMore, loadingMore, loadMore, refetch: () => void refetch() };
+  return {
+    first,
+    firstPage,
+    batches,
+    hasMore,
+    loadingMore,
+    loadMore,
+    refetch: () => void refetch(),
+  };
 }

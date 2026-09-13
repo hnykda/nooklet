@@ -30,7 +30,9 @@ import {
   type Accessor,
   createResource,
   createSignal,
+  getOwner,
   type InitializedResource,
+  onCleanup,
   type Resource,
 } from "solid-js";
 import {
@@ -206,7 +208,7 @@ export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
 export function useSyncStatus(): Accessor<SyncStatus | undefined> {
   const [status, setStatus] = createSignal<SyncStatus | undefined>(undefined);
   void getSyncStatus().then(setStatus);
-  onSyncStatus((s) => {
+  const unsubscribe = onSyncStatus((s) => {
     // A push landing is a change the SERVER can now see. Server-computed views (backlinks) that
     // were fetched while a local write was still queued must ask again once it is there — or a
     // tag page created straight after typing the tag showed no reference until a reload (B-83).
@@ -214,6 +216,9 @@ export function useSyncStatus(): Accessor<SyncStatus | undefined> {
     if (prev && prev.pendingCount > 0 && s.pendingCount === 0) bumpSync();
     setStatus(s);
   });
+  // Every caller subscribes separately (the shell's indicator, the diagnostics panel), so a
+  // panel that closes must let go of its subscription.
+  if (getOwner()) onCleanup(unsubscribe);
   return status;
 }
 
@@ -684,10 +689,9 @@ export async function resolveBlockPageName(blockId: string): Promise<string | un
 
 // ---------------------------------------------------------------------------------------------
 // The stamping idiom, for resources that live outside this file (`./queries.ts`, the ```query
-// fence evaluator). The worker's change bus takes exactly ONE listener (`db/worker-core.ts`
-// `onChange` is a single slot), so a second module must not subscribe itself — it would replace
-// this file's listener and every view above would silently stop refreshing. It reads the same
-// version signals through here instead.
+// fence evaluator). `db/client.ts` fans the worker's single change listener out to any number of
+// subscribers (B-130), so another module may subscribe itself; reading the version signals
+// through here is still the simpler way to get the same invalidation as every view above.
 // ---------------------------------------------------------------------------------------------
 
 /** `stamped(value, tables, pageId)` for callers outside this module, wiring the bus on first use

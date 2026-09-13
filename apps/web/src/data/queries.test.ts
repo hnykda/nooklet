@@ -14,7 +14,7 @@ vi.mock("./store.js", () => ({
   stampedFor: <T>(value: T) => ({ value, version: 0 }),
 }));
 
-import { QUERY_CANDIDATE_CAP, runQuery, type SqlRunner } from "./queries.js";
+import { QUERY_CANDIDATE_CAP, QUERY_CHILD_CAP, runQuery, type SqlRunner } from "./queries.js";
 
 const TODAY = 20260912;
 
@@ -142,5 +142,84 @@ describe("runQuery", () => {
     const r = await runQuery(q("haystack"), { today: TODAY, sql });
     expect(r.truncated).toBe(true);
     expect(r.matched).toBe(QUERY_CANDIDATE_CAP);
+  });
+});
+
+/**
+ * A hit nested under another hit is folded into that hit's rendered subtree — but the subtree is
+ * capped at `QUERY_CHILD_CAP` descendants, so a nested hit past the cap used to be counted in the
+ * header and rendered nowhere (B-133). A project TODO with many notes and a late TODO subtask is
+ * the owner's graph's shape.
+ */
+describe("runQuery: nested hits past the descendant cap (B-133)", () => {
+  interface Row {
+    id: string;
+    parent: string | null;
+    order: string;
+    content: string;
+    marker?: string;
+  }
+
+  /** Page "Proj" with a TODO project block, more plain child notes than the cap, then `extra`. */
+  async function projectWith(extra: Row[]): Promise<Awaited<ReturnType<typeof runQuery>>> {
+    const db = new DatabaseSync(":memory:");
+    for (const s of CORE_SCHEMA_STATEMENTS) db.exec(s);
+    db.prepare(
+      "INSERT INTO page (id, name, key, journal_day, created_at, updated_at, name_hlc) VALUES ('P','Proj','proj',NULL,1,1,'h')",
+    ).run();
+    const stmt = db.prepare(
+      `INSERT INTO block (id, page_id, parent_id, order_key, content, marker, created_at, updated_at, place_hlc, content_hlc)
+       VALUES (?,'P',?,?,?,?,1,1,'h','h')`,
+    );
+    const rows: Row[] = [
+      { id: "root", parent: null, order: "a000", content: "Project", marker: "TODO" },
+    ];
+    for (let i = 0; i < QUERY_CHILD_CAP + 10; i++) {
+      rows.push({
+        id: `n${i}`,
+        parent: "root",
+        order: `b${String(i).padStart(3, "0")}`,
+        content: `note ${i}`,
+      });
+    }
+    for (const r of [...rows, ...extra])
+      stmt.run(r.id, r.parent, r.order, r.content, r.marker ?? null);
+    const sql: SqlRunner = async <T>(s: string, params: unknown[] = []) =>
+      db.prepare(s).all(...(params as never[])) as T[];
+    return runQuery(q("TODO"), { today: TODAY, sql });
+  }
+
+  function renderedIds(r: Awaited<ReturnType<typeof runQuery>>): string[] {
+    const out: string[] = [];
+    const walk = (b: { id: string; children: Array<{ id: string; children: never[] }> }): void => {
+      out.push(b.id);
+      for (const c of b.children) walk(c);
+    };
+    for (const g of r.groups) for (const h of g.hits) walk(h as never);
+    return out;
+  }
+
+  it("lists a nested hit on its own when its ancestor's rendered subtree was cut before it", async () => {
+    const r = await projectWith([
+      { id: "late", parent: "root", order: "c000", content: "late subtask", marker: "TODO" },
+    ]);
+    expect(r.matched).toBe(2);
+    const ids = renderedIds(r);
+    expect(ids.filter((id) => id === "late")).toHaveLength(1);
+    expect(r.groups[0]?.hits.map((h) => h.id)).toEqual(["root", "late"]);
+    expect(r.nested).toBe(0);
+  });
+
+  it("a cut-off hit brings its own nested hits back with it, each listed once", async () => {
+    const r = await projectWith([
+      { id: "late", parent: "root", order: "c000", content: "late subtask", marker: "TODO" },
+      { id: "under", parent: "late", order: "a000", content: "its subtask", marker: "TODO" },
+    ]);
+    expect(r.matched).toBe(3);
+    const ids = renderedIds(r);
+    for (const id of ["root", "late", "under"]) expect(ids.filter((x) => x === id)).toHaveLength(1);
+    // "under" fits inside "late"'s rendered subtree, so it stays folded there.
+    expect(r.groups[0]?.hits.map((h) => h.id)).toEqual(["root", "late"]);
+    expect(r.nested).toBe(1);
   });
 });

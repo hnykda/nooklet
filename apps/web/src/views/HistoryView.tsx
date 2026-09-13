@@ -23,6 +23,7 @@
 
 import { A, useParams } from "@solidjs/router";
 import { type Accessor, createSignal, For, type JSX, Show } from "solid-js";
+import { describeError } from "../data/api-client.js";
 import {
   type HistoryBatch,
   type HistoryEntry,
@@ -221,6 +222,17 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
     }
   }
 
+  /** A failed older page used to re-enable the button with no word and an unhandled rejection, so
+   * a failure looked like "nothing older" (B-131). */
+  async function loadOlder(): Promise<void> {
+    setError(null);
+    try {
+      await history.loadMore();
+    } catch (err) {
+      setError(`Could not load older changes: ${describeError(err)}`);
+    }
+  }
+
   return (
     <div class="history-view">
       <header class="history-header">
@@ -250,18 +262,17 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
       </Show>
       <Show when={history.first.error}>
         <p class="history-error" role="alert">
-          Could not load the history:{" "}
-          {String((history.first.error as Error).message ?? history.first.error)}{" "}
+          Could not load the history: {describeError(history.first.error)}{" "}
           <button type="button" class="history-retry" onClick={() => history.refetch()}>
             Retry
           </button>
         </p>
       </Show>
 
-      <Show when={history.first.loading && history.first() === undefined}>
+      <Show when={history.first.loading && history.firstPage() === undefined}>
         <p class="history-empty">Loading…</p>
       </Show>
-      <Show when={history.first() && history.batches().length === 0}>
+      <Show when={history.firstPage() && history.batches().length === 0}>
         <p class="history-empty">No recorded changes.</p>
       </Show>
 
@@ -310,7 +321,7 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
           type="button"
           class="history-more"
           disabled={history.loadingMore()}
-          onClick={() => void history.loadMore()}
+          onClick={() => void loadOlder()}
         >
           {history.loadingMore() ? "Loading…" : "Older changes"}
         </button>

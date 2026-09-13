@@ -84,10 +84,11 @@ export interface WorkerApi {
    * the call site — see `../data/store.ts`/`client.ts`'s typed wrapper around this method. */
   query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
 
-  /** Register the (sole) change listener. Call with `Comlink.proxy(cb)`. */
+  /** Register the (sole) change listener — a single slot; a second call replaces the first.
+   * Call with `Comlink.proxy(cb)`. Only `client.ts` calls this, once, and fans out (B-130). */
   onChange(cb: (e: ChangeEvent) => void): Promise<void>;
 
-  /** Register the (sole) sync-status listener. Call with `Comlink.proxy(cb)`. */
+  /** Register the (sole) sync-status listener; same single slot and fan-out as `onChange`. */
   onSyncStatus(cb: (s: SyncStatus) => void): Promise<void>;
 
   getSyncStatus(): Promise<SyncStatus>;

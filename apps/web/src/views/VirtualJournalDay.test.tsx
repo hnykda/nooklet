@@ -273,4 +273,49 @@ describe("VirtualJournalDay torn down with text nobody committed (B-243)", () =>
     expect(appendToJournalDay).not.toHaveBeenCalled();
     expect(applyOps).not.toHaveBeenCalled();
   });
+
+  // B-131: the placeholder was swapped for the real tree before anything was written, so a failure
+  // on the way left an empty outline for a page that did not exist and the typed line was gone.
+  it("keeps the typed line and says why when the journal template cannot be loaded (B-131)", async () => {
+    loadJournalTemplate.mockRejectedValue(new Error("worker gone"));
+    render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "Reviewed launch checklist" } });
+    fireEvent.blur(textarea);
+    await settle();
+
+    expect(applyOps).not.toHaveBeenCalled();
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Could not start this day: worker gone",
+    );
+    expect(screen.queryByTestId("block-tree")).toBeNull();
+    const back = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    expect(back.value).toBe("Reviewed launch checklist");
+  });
+
+  it("keeps the typed line, drops its caret request, and can try again when the write fails (B-131)", async () => {
+    applyOps.mockRejectedValueOnce(new Error("disk full"));
+    render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "first" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await settle();
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Could not start this day: disk full",
+    );
+    expect(screen.queryByTestId("block-tree")).toBeNull();
+    // No caret request left behind for a block that was never created.
+    expect(blockFocusRequest()).toBeUndefined();
+    const back = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    expect(back.value).toBe("first");
+
+    // The next commit goes through, and the error line goes away.
+    fireEvent.keyDown(back, { key: "Enter" });
+    await settle();
+    expect(applyOps).toHaveBeenCalledTimes(2);
+    expect(await screen.findByTestId("block-tree")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    clearBlockFocusRequest();
+  });
 });

@@ -91,12 +91,56 @@ export function forceSync(): Promise<void> {
   return getWorker().forceSync();
 }
 
-/** Register the sole change listener (`../data/store.ts` is the only intended caller). Comlink
- * requires callbacks crossing the worker boundary to be explicitly wrapped as proxies. */
-export function onChange(cb: (e: ChangeEvent) => void): void {
-  void getWorker().onChange(Comlink.proxy(cb));
+// ---------------------------------------------------------------------------------------------
+// Change and sync-status listeners
+//
+// The worker holds ONE change listener and ONE status listener (`db.worker.ts` assigns a single
+// slot), but several modules here need them: `../data/store.ts`'s invalidation bus,
+// `../data/history.ts`'s, and every `useSyncStatus()` caller. Forwarding each subscription to the
+// worker made the last subscriber the only one — opening Trash silently stopped every other view
+// from refreshing until a reload (B-130). So this module registers exactly one Comlink proxy per
+// kind, on first use, and fans out to however many callbacks are subscribed.
+// ---------------------------------------------------------------------------------------------
+
+function fanOut<T>(
+  register: (cb: (value: T) => void) => void,
+): (cb: (value: T) => void) => () => void {
+  const subscribers = new Set<(value: T) => void>();
+  let registered = false;
+  return (cb) => {
+    // A wrapper per subscription, so subscribing the same function twice gives two independent
+    // subscriptions and each unsubscribe removes only its own.
+    const entry = (value: T): void => cb(value);
+    subscribers.add(entry);
+    if (!registered) {
+      registered = true;
+      register((value) => {
+        // Snapshot: a callback that unsubscribes (or subscribes) while being notified must not
+        // change who receives THIS event.
+        for (const s of [...subscribers]) {
+          try {
+            s(value);
+          } catch (err) {
+            // One broken subscriber must not starve the rest of the app of change events.
+            console.error("nooklet: a change listener threw", err);
+          }
+        }
+      });
+    }
+    return () => {
+      subscribers.delete(entry);
+    };
+  };
 }
 
-export function onSyncStatus(cb: (s: SyncStatus) => void): void {
-  void getWorker().onSyncStatus(Comlink.proxy(cb));
-}
+/** Subscribe to the worker's change events (local, pulled, corrected or bootstrapped writes).
+ * Returns an unsubscribe. Comlink requires callbacks crossing the worker boundary to be wrapped
+ * as proxies; that happens once, in `fanOut`. */
+export const onChange: (cb: (e: ChangeEvent) => void) => () => void = fanOut<ChangeEvent>(
+  (cb) => void getWorker().onChange(Comlink.proxy(cb)),
+);
+
+/** Subscribe to sync-status changes. Returns an unsubscribe. */
+export const onSyncStatus: (cb: (s: SyncStatus) => void) => () => void = fanOut<SyncStatus>(
+  (cb) => void getWorker().onSyncStatus(Comlink.proxy(cb)),
+);
