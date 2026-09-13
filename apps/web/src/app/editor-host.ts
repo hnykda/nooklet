@@ -27,6 +27,8 @@ import { runOnOutlines } from "../editor/outline-registry.js";
 let active: EditorHost | null = null;
 /** The host that was active last, kept after its session ends, for undo/redo only. */
 let recent: EditorHost | null = null;
+/** Every mounted tree's host, focused or not, for `commitOps` (B-142). */
+const mounted = new Set<EditorHost>();
 
 /** Called by the focused `BlockTree`; pass `null` on blur/unmount. */
 export function setActiveEditorHost(host: EditorHost | null): void {
@@ -34,11 +36,42 @@ export function setActiveEditorHost(host: EditorHost | null): void {
   if (host) recent = host;
 }
 
+/** Called by a `BlockTree` once, at mount: its host may take a command's op batch even while
+ * nothing in it is edited or selected (`commitThroughEditor`). */
+export function registerEditorHost(host: EditorHost): void {
+  mounted.add(host);
+}
+
 /** Called by a `BlockTree` that unmounts: its history goes with it, so it must stop being the
  * undo target (and the active host, if it still is). */
 export function releaseEditorHost(host: EditorHost): void {
+  mounted.delete(host);
   if (recent === host) recent = null;
   if (active === host) active = null;
+}
+
+/**
+ * `EditorHost.commitOps` for a command that does not know which tree shows its block: the active
+ * tree, else the one whose session ended last, else any mounted tree — the first that takes it.
+ *
+ * Not just the active host. A date picked from a chip (B-142) is written with nothing edited or
+ * selected, so no tree is active, and the write went past every history: Cmd/Ctrl+Z could not take
+ * it back. The tree that takes a batch becomes the undo target (`historyEditorHost`), because the
+ * step just landed in ITS history — undo going to a tree that never saw the write does nothing.
+ * A tree only takes a batch for a block it shows (`../editor/external-batch.ts`), so trying every
+ * mounted one never lands a write on the wrong page.
+ */
+function commitThroughEditor(batch: OpBatch): boolean {
+  const candidates = new Set<EditorHost>();
+  if (active) candidates.add(active);
+  if (recent) candidates.add(recent);
+  for (const host of mounted) candidates.add(host);
+  for (const host of candidates) {
+    if (!host.commitOps(batch)) continue;
+    recent = host;
+    return true;
+  }
+  return false;
 }
 
 /** Focus is in a plain text field (search, page title, journal draft), not in the outliner. */
@@ -104,7 +137,7 @@ export const liveEditorHost: EditorHost = {
       ? historyEditorHost()
       : activeEditorHost()
     ).runStructuralCommand(id, ctx),
-  commitOps: (batch) => activeEditorHost().commitOps(batch),
+  commitOps: (batch) => commitThroughEditor(batch),
   getLinkAtCaret: () => activeEditorHost().getLinkAtCaret(),
 };
 

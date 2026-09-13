@@ -51,6 +51,7 @@ import {
 import { blockMenuRequest, openBlockMenu } from "../app/context-menu.js";
 import {
   createEditorHost,
+  registerEditorHost,
   releaseEditorHost,
   setActiveContextSnapshot,
   setActiveEditorHost,
@@ -1030,6 +1031,9 @@ export function BlockTree(props: {
     },
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
   });
+  // Mounted, not only focused: a date picked from a chip is written with nothing here edited or
+  // selected, and still belongs in this tree's undo history (B-142). Released in the cleanup below.
+  registerEditorHost(editorHost);
   createEffect(() => {
     // Depend on `editingId()`, a real signal. The original condition read
     // `surface.currentId()` — a plain closure variable inside `surface.ts`, not anything

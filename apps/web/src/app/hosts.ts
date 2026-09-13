@@ -9,7 +9,7 @@
  */
 
 import { makeOp, normalizePageName, type Op, type OpPayload } from "@nooklet/core";
-import type { LinkAtCaret } from "../commands/hosts/editor-host.js";
+import type { EditorHost, LinkAtCaret } from "../commands/hosts/editor-host.js";
 import type { AppHost, NavigationHost } from "../commands/hosts/nav-host.js";
 import type {
   BlockSource,
@@ -18,13 +18,15 @@ import type {
   PageSummary,
 } from "../commands/hosts/page-source.js";
 import type { BlockTaskSnapshot, Store } from "../commands/types.js";
-import { applyOp, applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
+import { applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
 import { forceSync, queryAs } from "../db/client.js";
 import { assetUrl } from "../editor/render/asset-url.js";
 import { isSafeHref } from "../editor/render/safe-href.js";
+import type { Clock } from "../editor/types.js";
 import { flashRemoteTouch } from "../live/flash-bus.js";
 import type { PageRefQuery } from "../live/resolve-page-ref.js";
 import { resolvePageRef } from "../live/resolve-page-ref.js";
+import { liveEditorHost } from "./editor-host.js";
 
 // ---------------------------------------------------------------------------------------------
 // Store
@@ -39,7 +41,43 @@ interface BlockPropRow {
   repeat: string | null;
 }
 
-export function createStore(): Store {
+export interface StoreDeps {
+  /** Where a block-property write is committed first: `liveEditorHost` unless a test says so. */
+  editor?: Pick<EditorHost, "commitOps">;
+  applyOps?: (ops: Op[]) => Promise<unknown>;
+  getOpClock?: (poolSize: number) => Promise<Clock>;
+}
+
+export function createStore(deps: StoreDeps = {}): Store {
+  const editor = deps.editor ?? liveEditorHost;
+  const write = deps.applyOps ?? applyOps;
+  const opClock = deps.getOpClock ?? getOpClock;
+
+  /**
+   * Every task command (marker, priority, done) and the date picker write block properties here.
+   * The batch goes to the editor tree that shows the block, as one step of its undo history; only
+   * when no tree shows it (an agent's `ui_run` on a page nobody has open) straight to `applyOps`.
+   * Written straight to `applyOps` every time, Cmd/Ctrl+Z could not take back a picked date, or a
+   * priority or marker set from the palette: the history only sees what the tree commits (B-142).
+   *
+   * The tree re-mints the ops with its own clock, so the HLCs minted here then go unused (harmless:
+   * HLCs are monotonic, not gapless), and it writes them without being awaited — as it does every
+   * edit — so this resolves once the tree has the change, not once the replica does.
+   */
+  async function writeBlockProps(
+    blockId: string,
+    props: Record<string, string | null>,
+  ): Promise<void> {
+    const entries = Object.entries(props);
+    if (entries.length === 0) return;
+    const clock = await opClock(entries.length);
+    const ops: Op[] = entries.map(([key, value]) =>
+      makeOp(clock.next(), clock.device, blockId, { kind: "block.prop", key, value } as OpPayload),
+    );
+    if (editor.commitOps({ ops, anchorId: blockId })) return;
+    await write(ops);
+  }
+
   return {
     async getBlockTaskState(blockId: string): Promise<BlockTaskSnapshot | undefined> {
       // The reserved scheduling keys live in dedicated columns (ADR 011/sql-schema.md rule 10),
@@ -67,22 +105,12 @@ export function createStore(): Store {
       } as BlockTaskSnapshot;
     },
 
-    async setBlockProp(blockId, key, value) {
-      await applyOp(blockId, { kind: "block.prop", key, value } as OpPayload);
+    setBlockProp(blockId, key, value) {
+      return writeBlockProps(blockId, { [key]: value });
     },
 
-    async setBlockProps(blockId, props) {
-      // One atomic batch: R35's "stamp done AND reset marker" must not be observable half-applied.
-      const clock = await getOpClock(Math.max(8, Object.keys(props).length));
-      const ops: Op[] = Object.entries(props).map(([key, value]) =>
-        makeOp(clock.next(), clock.device, blockId, {
-          kind: "block.prop",
-          key,
-          value,
-        } as OpPayload),
-      );
-      await applyOps(ops);
-    },
+    // One atomic batch: R35's "stamp done AND reset marker" must not be observable half-applied.
+    setBlockProps: writeBlockProps,
 
     async applyOps(ops) {
       return applyOps(ops);
