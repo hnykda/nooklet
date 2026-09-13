@@ -5,8 +5,9 @@ M7 server/sync code review (findings F1–F10, each confirmed by an independent 
 branch `m8/rv-server-sync`. Record: `docs/review/2026-09-13-m7-rv-server-sync.md`.
 
 Numbering: this branch had B-120..B-124. F1 and F2 share B-120 (one mechanism, one fix); F4, F6
-and F10 are follow-ups to B-90, B-86 and B-91; F8 and a slowness found in passing are notes under
-B-85 (existing), since the range ran out.
+and F10 are follow-ups to B-90, B-86 and B-91; F8 and the slowness found in passing while measuring
+B-120 are a note under B-85 (existing), since the range ran out — the coordinator may want to give
+that note its own number.
 
 ---
 
@@ -199,8 +200,7 @@ Big batches stall the server (F8, plus one found in passing while measuring B-12
   the batch. `graph.replace` allows 20,000 blocks in one `applyOps`; a big `page.merge` or sync
   push is one batch too. The skeptic measured the `find` alone at about 0.25 s at 8k ops and 1.1 s
   at 20k.
-- **Open, not fixed here:** a cross-page move of a large subtree is slow on the code as it stands,
-  before this branch. Moving the owner's largest subtree (961 blocks) with `subtreePlaceOps`
+- **A cross-page move of a large subtree was slow** on the code as it stood before this branch. Moving the owner's largest subtree (961 blocks) with `subtreePlaceOps`
   through `serverApplyOps` took 23 s at `da85cfb` (load average ~24 on a shared machine).
   `reindexTouchedEntities` calls `reindexBlockAndSubtree` for every placed block, which walks that
   block's whole subtree with `SELECT id FROM block WHERE parent_id = ?` — no `deleted_at` filter,
@@ -214,6 +214,20 @@ test — a timing assertion is not a signal on a machine shared by a dozen agent
 believed fixed and measured instead: `tools/probes/apply-ops-batch-scaling.ts` times the lookup
 shapes side by side — at 16,000 ops, 1,364 ms of `find` against 2 ms of `Map` — and one
 `serverApplyOps` of N `block.text` ops (2k / 8k / 16k: 266 / 2,419 / 8,243 ms before, 239 / 2,256 /
-7,687 ms after, load average 5–13). The batch is still quadratic after this; the remaining cost is
-the reindex walk in the second bullet (every `block.text` reindexes its block's subtree through
+7,687 ms after, load average 5–13). The batch was still quadratic after that; the remaining cost
+was the reindex walk in the second bullet (every `block.text` reindexed its block's subtree through
 the unindexed `parent_id = ?` query — a full scan per block).
+
+**Reindex walk fixed 2026-09-13.** `packages/server/src/block-children.ts#childLookup` reads live
+children through `block_children` and tombstoned ones from one scan per pass;
+`reindexTouchedEntities` rebuilds `ref` for every touched block first and then `path_ref` once for
+the union of their subtrees (it rebuilt each touched block's whole subtree, per block). The subtree
+page repair (B-120) and the B-86 re-index share the lookup. Test:
+`packages/server/src/block-children.test.ts` "reads live children through the block_children index,
+never a table scan per parent" (an `EXPLAIN QUERY PLAN` assertion — deterministic, unlike a timing).
+Equivalence on real data: `tools/probes/reindex-parity-real-graph.ts` rebuilt every `ref` and
+`path_ref` row of the owner's graph copy through the new walk — 2,185 and 32,671 rows, identical
+to what the old walk had built. Measured (load average ~20, i.e. against the machine, not for it):
+16,000 `block.text` ops in one batch 7.7 s → 1.8 s (8,000: 1.0 s, now linear); the owner's
+961-block subtree moved by the server-planned path 23 s → 0.46 s, and by a device op (with the
+B-120 repair) 18.8 s → 1.0 s.

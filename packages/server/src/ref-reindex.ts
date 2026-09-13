@@ -16,6 +16,7 @@
  */
 
 import { reindexBlockAndSubtree, type ServerContext } from "./apply-ops.js";
+import { childLookup } from "./block-children.js";
 
 const DONE_KEY = "refs.pipe_alias.path_ref";
 
@@ -31,7 +32,8 @@ export function reindexPipeAliasRefs(ctx: ServerContext): number {
       WHERE pr.page_key LIKE '%|%'`,
   );
   driver.transaction(() => {
-    for (const b of blocks) reindexBlockAndSubtree(driver, b.id);
+    const children = childLookup(driver);
+    for (const b of blocks) reindexBlockAndSubtree(driver, b.id, children);
     driver.run(
       `INSERT INTO setting(key, graph_id, value_json, updated_at, hlc) VALUES (?, 'default', 'true', ?, ?)`,
       [DONE_KEY, Date.now(), ctx.hlc.next()],

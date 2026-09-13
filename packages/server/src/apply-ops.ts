@@ -25,6 +25,7 @@ import {
   newId,
   normalizePageName,
 } from "@nooklet/core";
+import { type ChildRow, childLookup } from "./block-children.js";
 import { reindexPageIdentity, resolvePageIdForKey } from "./page-aliases.js";
 import { rebuildPageTags } from "./page-tags.js";
 import { runBeforeWrite } from "./plugins/before-write.js";
@@ -194,7 +195,17 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
     if (op.payload.kind.startsWith("block.")) touchedBlocks.add(op.entity);
     else if (op.payload.kind.startsWith("page.")) touchedPages.add(op.entity);
   }
-  for (const blockId of touchedBlocks) reindexBlockAndSubtree(driver, blockId);
+  // `ref` for every touched block first, then `path_ref` once for the union of their subtrees:
+  // a descendant's path reads its ancestors' `ref` rows, and a batch that moves a subtree touches
+  // every block in it — rebuilding each block's whole subtree per block was O(n·depth) walks.
+  const children = childLookup(driver);
+  const pathBlocks = new Set<string>();
+  for (const blockId of touchedBlocks) indexBlockRefs(driver, blockId);
+  for (const blockId of touchedBlocks) {
+    if (pathBlocks.has(blockId)) continue; // reached from an ancestor's walk, subtree included
+    for (const id of subtreeIds(blockId, children)) pathBlocks.add(id);
+  }
+  for (const id of pathBlocks) rebuildPathRef(driver, id);
   for (const pageId of touchedPages) {
     // Page-level tags are derived from the page's `tags` property and its journal day, so any
     // page write can change them (ADR 017) — the page equivalent of `rebuildRefRows` above.
@@ -213,25 +224,34 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
 
 /** Recompute `ref` for one block and `path_ref` for it and every descendant (sql-schema.md rule 12).
  * Exported for the one-time re-index in `./ref-reindex.ts`, which must rebuild both. */
-export function reindexBlockAndSubtree(driver: SqlDriver, blockId: string): void {
-  const block = driver.get<{
-    id: string;
-    page_id: string;
-    content: string;
-    deleted_at: number | null;
-  }>("SELECT id, page_id, content, deleted_at FROM block WHERE id = ?", [blockId]);
+export function reindexBlockAndSubtree(
+  driver: SqlDriver,
+  blockId: string,
+  children: (parentId: string) => ChildRow[] = childLookup(driver),
+): void {
+  if (!indexBlockRefs(driver, blockId)) return;
+  for (const id of subtreeIds(blockId, children)) rebuildPathRef(driver, id);
+}
+
+/** `ref` rows and `embed_dirty` for one block; false (and its derived rows gone) when the block
+ * does not exist. `path_ref` is the caller's, because it spans the subtree. */
+function indexBlockRefs(driver: SqlDriver, blockId: string): boolean {
+  const block = driver.get<{ id: string; page_id: string; content: string }>(
+    "SELECT id, page_id, content FROM block WHERE id = ?",
+    [blockId],
+  );
   if (!block) {
     // Block never existed (a rejected create) or was hard-deleted: nothing to index.
     driver.run("DELETE FROM ref WHERE src_block_id = ?", [blockId]);
     driver.run("DELETE FROM path_ref WHERE block_id = ?", [blockId]);
-    return;
+    return false;
   }
   rebuildRefRows(driver, block.id, block.page_id, block.content);
-  for (const id of subtreeIds(driver, blockId)) rebuildPathRef(driver, id);
   driver.run(
     "INSERT OR IGNORE INTO embed_dirty(unit_kind, unit_id, enqueued_at) VALUES ('block', ?, ?)",
     [blockId, Date.now()],
   );
+  return true;
 }
 
 /** The page every task block references. Capitalised because it is a page name people will see
@@ -302,15 +322,15 @@ function normalizeKey(name: string): string {
   return normalizePageName(canonicalRefName(name));
 }
 
-function subtreeIds(driver: SqlDriver, rootId: string): string[] {
+/** The block and every descendant, tombstoned ones included. Through `childLookup`, not a bare
+ * `WHERE parent_id = ?`: that cannot use the partial `block_children` index and scanned the whole
+ * table once per visited block (`./block-children.ts`). */
+function subtreeIds(rootId: string, children: (parentId: string) => ChildRow[]): string[] {
   const ids: string[] = [rootId];
   const queue = [rootId];
   while (queue.length > 0) {
     const parent = queue.shift() as string;
-    const children = driver.all<{ id: string }>("SELECT id FROM block WHERE parent_id = ?", [
-      parent,
-    ]);
-    for (const c of children) {
+    for (const c of children(parent)) {
       ids.push(c.id);
       queue.push(c.id);
     }

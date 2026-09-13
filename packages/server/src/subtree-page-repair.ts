@@ -28,16 +28,10 @@
  */
 
 import type { AppliedOpResult, BlockPlace, Op, SqlDriver } from "@nooklet/core";
+import { childLookup } from "./block-children.js";
 import type { BlockChangeSnapshot, PageChangeSnapshot } from "./rows.js";
 
 type Snapshots = ReadonlyMap<string, PageChangeSnapshot | BlockChangeSnapshot | null>;
-
-interface ChildRow {
-  id: string;
-  parent_id: string;
-  page_id: string;
-  order_key: string;
-}
 
 /**
  * The `block.place` ops that bring every descendant of a page-changing block onto its parent's
@@ -70,6 +64,10 @@ export function planSubtreePageRepair(
   }
   if (moved.size === 0) return [];
 
+  // Tombstoned children included: a deleted child left on the old page kept `parent_id` pointing
+  // at a block on the new one, so `trash.list` offered it and `trash.restore` brought it back onto
+  // neither page (B-120, F2). Core keeps its possibly-deleted parent because the repair op names
+  // the parent it already has.
   const children = childLookup(driver);
   const depth = new Map([...moved].map((id) => [id, depthOf(driver, id)]));
   const ordered = [...moved].sort((a, b) => (depth.get(a) ?? 0) - (depth.get(b) ?? 0));
@@ -96,40 +94,6 @@ export function planSubtreePageRepair(
     }
   }
   return repairs;
-}
-
-/**
- * Children of a block, tombstoned ones included (B-120: a deleted child left on the old page kept
- * `parent_id` pointing at a block on the new one, so `trash.list` still offered it and
- * `trash.restore` brought it back onto neither page; core keeps its possibly-deleted parent because
- * the repair op names the parent it already has).
- *
- * Two sources, because the only index on `parent_id` (`block_children`) is partial on
- * `deleted_at IS NULL`: live children through the index, per parent; tombstoned children from ONE
- * scan, taken only when a batch has a page-changing move at all. A per-parent query without the
- * `deleted_at` filter cannot use the index — on the owner's graph, walking a 961-block subtree
- * that way spent 6.4 s in full-table scans (tools/probes/subtree-page-repair-real-graph.ts).
- */
-function childLookup(driver: SqlDriver): (parentId: string) => ChildRow[] {
-  const tombstoned = new Map<string, ChildRow[]>();
-  for (const row of driver.all<ChildRow>(
-    "SELECT id, parent_id, page_id, order_key FROM block WHERE deleted_at IS NOT NULL AND parent_id IS NOT NULL",
-  )) {
-    const list = tombstoned.get(row.parent_id);
-    if (list) list.push(row);
-    else tombstoned.set(row.parent_id, [row]);
-  }
-  return (parentId) => {
-    const live = driver.all<ChildRow>(
-      "SELECT id, parent_id, page_id, order_key FROM block WHERE parent_id = ? AND deleted_at IS NULL ORDER BY order_key",
-      [parentId],
-    );
-    const dead = tombstoned.get(parentId);
-    if (!dead) return live;
-    return [...live, ...dead].sort((a, b) =>
-      a.order_key === b.order_key ? (a.id < b.id ? -1 : 1) : a.order_key < b.order_key ? -1 : 1,
-    );
-  };
 }
 
 function depthOf(driver: SqlDriver, id: string): number {
