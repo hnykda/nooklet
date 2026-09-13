@@ -8,6 +8,7 @@
  */
 
 import { cleanup, fireEvent, render } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgendaTask } from "../data/agenda.js";
 import type { NavigateTarget } from "../data/types.js";
@@ -142,6 +143,72 @@ describe("JournalAgenda", () => {
         onNavigate={() => {}}
       />
     ));
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("a web link inside a task opens the link, not the task (B-175)", () => {
+    const seen: NavigateTarget[] = [];
+    const { container } = render(() => (
+      <JournalAgenda
+        day={TODAY}
+        today={TODAY}
+        tasks={resource([task({ content: "read https://example.com/x", scheduledDay: TODAY })])}
+        onNavigate={(t) => seen.push(t)}
+      />
+    ));
+    const link = container.querySelector(".journal-agenda-content a.vr-autolink") as Element;
+    expect(link.getAttribute("href")).toBe("https://example.com/x");
+    // `dispatchEvent` answers false when a handler called preventDefault — the browser would then
+    // not follow the link.
+    expect(fireEvent.click(link)).toBe(true);
+    expect(fireEvent.keyDown(link, { key: "Enter" })).toBe(true);
+    expect(seen).toEqual([]);
+  });
+
+  it("keeps every row across a refetch, updating a changed one in place (B-176)", () => {
+    // Fresh objects on every call — what each refetch of the real resource hands back.
+    const snapshot = (secondContent: string, withThird = false): AgendaTask[] => [
+      task({ id: "a", content: "first", scheduledDay: TODAY }),
+      task({ id: "b", order: "b", content: secondContent, scheduledDay: TODAY }),
+      task({ id: "c", pageId: "p2", pageName: "Home", content: "third", deadlineDay: 20260901 }),
+      ...(withThird
+        ? [task({ id: "d", pageId: "p2", pageName: "Home", content: "new", deadlineDay: TODAY })]
+        : []),
+    ];
+    const [rows, setRows] = createSignal(snapshot("second"));
+    const tasks = Object.assign(() => rows(), { error: undefined });
+    const { container } = render(() => (
+      <JournalAgenda day={TODAY} today={TODAY} tasks={tasks} onNavigate={() => {}} />
+    ));
+    const rowEls = () => [...container.querySelectorAll<HTMLElement>(".journal-agenda-row")];
+    const before = rowEls();
+    expect(before.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("third"),
+      expect.stringContaining("first"),
+      expect.stringContaining("second"),
+    ]);
+    before[2]?.focus();
+    expect(document.activeElement).toBe(before[2]);
+
+    setRows(snapshot("second"));
+    expect(rowEls().every((el, i) => el === before[i])).toBe(true);
+    // A keyboard user on a row keeps their place when an unrelated write lands.
+    expect(document.activeElement).toBe(before[2]);
+
+    setRows(snapshot("second, edited", true));
+    const after = rowEls();
+    expect(after).toHaveLength(4);
+    expect(after[0]).toBe(before[0]);
+    expect(after.includes(before[1] as HTMLElement)).toBe(true);
+    expect(after.includes(before[2] as HTMLElement)).toBe(true);
+    expect(before[2]?.textContent).toContain("second, edited");
+    expect(document.activeElement).toBe(before[2]);
+
+    // A whole group and a row of the other one go away; what is left stays put.
+    setRows(snapshot("second, edited").filter((t) => t.id === "b"));
+    expect(rowEls()).toEqual([before[2]]);
+    expect(container.querySelectorAll(".journal-agenda-group")).toHaveLength(1);
+    setRows([]);
     expect(container.innerHTML).toBe("");
   });
 });

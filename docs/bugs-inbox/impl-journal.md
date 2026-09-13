@@ -126,9 +126,10 @@ refetches the stream (B-174)" (old view: 13 `BlockTree` mounts after three refet
 ---
 
 ### B-175 · A web link inside a "Scheduled and deadline" row opens the task instead of the link
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal (real
-Chromium against `nooklet serve` on a copy of the owner's graph plus seeded dated tasks) ·
-**Test:** none yet
+**Status:** fixed (agenda) / open (query fence, unverified) · **Severity:** low · **Found:**
+2026-09-13, verifying impl-journal (real Chromium against `nooklet serve` on a copy of the owner's
+graph plus seeded dated tasks) · **Test:** `apps/web/src/views/JournalAgenda.test.tsx` "a web link
+inside a task opens the link, not the task (B-175)"
 
 A task `TODO zavolat [[@Robin]] kvůli dárku https://example.com/darek` scheduled for today: in
 today's agenda, clicking the `https://…` link opened no tab; the app navigated to
@@ -139,11 +140,16 @@ every click that bubbles up to it, and plain web links (`link`/`autolink` tokens
 and the row navigates. `QueryFenceView.tsx`'s hit rows have the same shape (`stop(e)` on the row)
 and so very likely the same defect — not reproduced, not touched here.
 
+**Fixed 2026-09-13 (agenda only).** The row's click/Enter handler returns early when the event came
+from an `a[href]` inside the row, so the browser follows the link. The test fails without the fix
+(`dispatchEvent` answers false: the click was cancelled).
+
 ---
 
 ### B-176 · Any write rebuilds every "Scheduled and deadline" row, dropping keyboard focus on one
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal · **Test:**
-none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal · **Test:**
+`apps/web/src/views/JournalAgenda.test.tsx` "keeps every row across a refetch, updating a changed
+one in place (B-176)"
 
 Reproduced in real Chromium on a copy of the owner's graph: Tab-focus an agenda row on today's
 journal, then let any write land (here `page.append` to an unrelated page through the API — a sync
@@ -154,6 +160,11 @@ DOM nodes and typing one character anywhere in the stream replaced 5 of 5 rows; 
 resource refetches on every `block` write and `agendaForDay` builds new group and entry objects;
 `<For>` is keyed by reference, so each row is torn down and rebuilt — the B-174 pattern, one level
 down.
+
+**Fixed 2026-09-13.** `JournalAgenda` iterates page ids and, per group, task ids (string-array memos
+with an element-wise `equals`), reading each group and entry from a map; a row lives as long as its
+task is listed and updates in place when the task changes. The test fails without the fix (new row
+elements after a refetch of equal data, focus lost).
 
 ---
 

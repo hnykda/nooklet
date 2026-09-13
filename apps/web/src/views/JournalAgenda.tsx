@@ -17,7 +17,7 @@ import { displayPageName, journalTitleFormat } from "../data/page-title.js";
 import type { NavigateTarget } from "../data/types.js";
 import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { InlineContent } from "../editor/InlineContent.js";
-import { type AgendaDate, type AgendaEntry, agendaForDay } from "./agendaDay.js";
+import { type AgendaDate, type AgendaEntry, type AgendaGroup, agendaForDay } from "./agendaDay.js";
 import { pageRoutePath } from "./navigateTarget.js";
 import "./journal-agenda.css";
 
@@ -42,6 +42,12 @@ function dateLabel(d: AgendaDate): string {
 
 function EntryRow(props: { entry: AgendaEntry; onNavigate: (t: NavigateTarget) => void }) {
   const go = (e: Event): void => {
+    // A web link in the task's text has no click handler of its own (a [[page]] link does, and
+    // stops the event): cancelling here would swallow "open in a new tab" and open the task
+    // instead (B-175). Let the link have its click, or its Enter.
+    const target = e.target instanceof Element ? e.target : null;
+    const link = target?.closest("a[href]");
+    if (link && (e.currentTarget as Element | null)?.contains(link)) return;
     e.preventDefault();
     props.onNavigate({ kind: "block", id: props.entry.task.id });
   };
@@ -91,34 +97,65 @@ function EntryRow(props: { entry: AgendaEntry; onNavigate: (t: NavigateTarget) =
   );
 }
 
+const sameKeys = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((k, i) => k === b[i]);
+
 export function JournalAgenda(props: JournalAgendaProps): JSX.Element {
   const groups = createMemo(() =>
     props.tasks.error ? [] : agendaForDay(props.tasks(), props.day, props.today),
   );
+  // The lists below iterate KEYS — page ids, then task ids — never the group and entry objects.
+  // Every write refetches the tasks and `agendaForDay` builds brand-new objects, and `<For>` is
+  // keyed by reference: iterating objects tore down and rebuilt every row on every keystroke's
+  // write anywhere in the graph, dropping keyboard focus or a text selection on a row (B-176, the
+  // B-174 pattern). A row now lives as long as its task is listed, and reads its entry through a
+  // map, so a changed task updates in place.
+  const groupByPage = createMemo(() => new Map(groups().map((g) => [g.pageId, g])));
+  const pageIds = createMemo(() => groups().map((g) => g.pageId), [], { equals: sameKeys });
   return (
-    <Show when={groups().length > 0}>
+    <Show when={pageIds().length > 0}>
       <div class="journal-agenda" data-day={props.day}>
         <h3 class="journal-agenda-title">Scheduled and deadline</h3>
-        <For each={groups()}>
-          {(group) => (
-            <div class="journal-agenda-group" data-page-id={group.pageId}>
-              <a
-                class="journal-agenda-page"
-                href={pageRoutePath(group.pageName)}
-                onClick={(e) => {
-                  e.preventDefault();
-                  props.onNavigate({ kind: "page", name: group.pageName });
-                }}
-              >
-                {displayPageName({ name: group.pageName, journalDay: group.pageJournalDay })}
-              </a>
-              <ul class="journal-agenda-list">
-                <For each={group.entries}>
-                  {(entry) => <EntryRow entry={entry} onNavigate={props.onNavigate} />}
-                </For>
-              </ul>
-            </div>
-          )}
+        <For each={pageIds()}>
+          {(pageId) => {
+            // The last group seen for this key: a row can be asked once more while `<For>` is
+            // removing it, after the map has already dropped its key.
+            let lastGroup = groupByPage().get(pageId) as AgendaGroup;
+            const group = (): AgendaGroup => {
+              lastGroup = groupByPage().get(pageId) ?? lastGroup;
+              return lastGroup;
+            };
+            const entryById = createMemo(() => new Map(group().entries.map((e) => [e.task.id, e])));
+            const taskIds = createMemo(() => group().entries.map((e) => e.task.id), [], {
+              equals: sameKeys,
+            });
+            return (
+              <div class="journal-agenda-group" data-page-id={pageId}>
+                <a
+                  class="journal-agenda-page"
+                  href={pageRoutePath(group().pageName)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    props.onNavigate({ kind: "page", name: group().pageName });
+                  }}
+                >
+                  {displayPageName({ name: group().pageName, journalDay: group().pageJournalDay })}
+                </a>
+                <ul class="journal-agenda-list">
+                  <For each={taskIds()}>
+                    {(taskId) => {
+                      let lastEntry = entryById().get(taskId) as AgendaEntry;
+                      const entry = (): AgendaEntry => {
+                        lastEntry = entryById().get(taskId) ?? lastEntry;
+                        return lastEntry;
+                      };
+                      return <EntryRow entry={entry()} onNavigate={props.onNavigate} />;
+                    }}
+                  </For>
+                </ul>
+              </div>
+            );
+          }}
         </For>
       </div>
     </Show>
