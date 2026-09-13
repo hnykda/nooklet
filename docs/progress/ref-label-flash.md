@@ -117,8 +117,34 @@ After the row-memo equality (same probe, `<scratch>/after-rows.json`): `rowBlock
 
 ## In flight
 
-- Final checks: full e2e in batches (chromium).
-  `nooklet verify` not run: nothing in sync, ops or schema changed.
+Nothing. Task complete; see "Not done" below.
+
+## Final state (HEAD after the last commit)
+
+- Web unit (`apps/web`): 1151/1151 on `935d1fb`; nothing in `apps/web/src` changed after it.
+- Typecheck (`pnpm -r typecheck`): clean.
+- e2e Chromium, full suite in 4 batches on `52ac1a6` (each batch its own server): 148 + 1 skipped;
+  110 + 1 failed → rerun 111/111; 143; 137 + 1 skipped. The one failure was `pages.spec.ts:175`
+  "the sidebar's Recent list shows the most recently edited pages first" (15 s wait for the page in
+  the sidebar) — passed alone (`pages.spec.ts` 14/14) and on the batch rerun; the same batch on
+  the `52e5d20` client failed a different test instead (`page-find.spec.ts:181`), and
+  `docs/progress/qafix-render-sync.md` records the same sidebar test failing once then passing. The
+  Sidebar and its data are untouched here. Treated as a pre-existing flake, not investigated.
+- e2e WebKit project (storage + ref-label-flash): 7/7.
+- `nooklet verify`: not run — no sync, op or schema code changed.
+
+## Not done
+
+- B-512 (logged, open): tasks view, search hits, property values (and very likely the journal
+  agenda) still show `((id))`.
+- When a query result or a reference really changes, its lists are still rebuilt whole (keyed by
+  object). Only the no-change refresh is free now.
+- The change bus still names tables, not block ids, so every block write re-reads every ref label
+  on screen (one `IN` query, ~50 ids on the heaviest page measured). Narrowing it means widening
+  `ChangeEvent` in the worker; not needed at these numbers.
+- Not verified in the Tauri desktop app (WKWebView), where the owner saw it: Playwright's WebKit is
+  not WKWebView. The fix is engine-independent logic (a cache no longer emptied), and WebKit and
+  Chromium recorded identical before/after behaviour.
 
 ## How to resume
 

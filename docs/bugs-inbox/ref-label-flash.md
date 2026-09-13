@@ -77,3 +77,19 @@ page, and the synchronous tree update 3.3 → 2.2 ms (201 rows 2.9 → 1.5, 150 
 `apps/web/src/editor/same-fields.test.ts` (the comparator); the saving itself is measured, not
 asserted by a test. e2e editing/parity/selection/tasks/dates/block-properties/merge/redo/focus/
 journal-stream/embeds/page-find/read-only/context-menu + this spec: 156/156.
+
+---
+
+### B-512 · The tasks view, search hits and property values show `((id))` for a block reference
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, ref-label-flash (after fixing B-510)
+· **Test:** none yet
+
+A block whose text contains `((some-block))` reads `wombatprobe task quoting ((1m2dv7va6w5hxr))` in
+the Tasks view and in a search hit, and a property `source:: ((…))` reads `source((1m2d…))` under
+its row — where the outliner row shows the referenced block's text. Seen with
+`tools/probes/ref-placeholders-elsewhere.spec.ts` on `52ac1a6` (Chromium). Same cause as B-510:
+these render through `InlineContent` without a resolver. The journal agenda renders its tasks the
+same way, so it very likely shows the placeholder too (by reading the code; not run). Not fixed
+here: B-510's `resolveBlockRef` prop is the way in — pass it from each of these callers
+(`BlockProperties` would get it from `BlockRowView`, which already imports the cache).
+
