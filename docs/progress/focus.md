@@ -49,8 +49,8 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
   every Enter to it, Alt+Enter included, and the editor never offers the popup modified keys.
 
   Diagnosis commit `6d5fff7`.
-- **B-203 fix** — commit "fix(web): Alt+Enter follows a link while the autocomplete is open
-  (B-203)" (hash in the next update). `commands/popup-keys.ts` (`editorFed` claims,
+- **B-203 fix** — `990d14e` "fix(web): Alt+Enter follows a link while the autocomplete is open
+  (B-203)". `commands/popup-keys.ts` (`editorFed` claims,
   `popupTakesKey`), `keymap/dispatch.ts` step 2, `provider/CommandProvider.tsx`,
   `AutocompletePopup.tsx`/`SlashMenu.tsx` claim `editorFed`, spec R12 step 2 note. e2e
   `follow-link-popup.spec.ts` (2), unit `popup-keys.test.ts` (4) + a dispatch test. Commands unit
@@ -58,13 +58,31 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
   after Enter" at load ≈16-30; passed on rerun of the same spec sequence (112/112), and a late-frames
   copy of it under 16 busy loops passed 5/5. Logged B-292 (that spec cannot `--repeat-each`).
 
+- **Final verification (on `990d14e`)** — web unit 1022/1022 (126 files); `pnpm -r typecheck`
+  clean. Full Chromium e2e, all 79 specs in three runs on port 6401 (one server per run, the
+  spec order of a full run): 146 passed + 1 skipped + 2 failed / 163 passed / 141 passed + 1
+  skipped. The 2 failures were `editing.spec.ts` "types a whole sentence…" (`openJournal`'s
+  `virtualDraft.blur()` timed out on a textarea that had already detached) and "Enter creates a
+  second bullet…" (row count, B-233's journal-state shape); the same 15-spec sequence re-run
+  straight after: 70 passed, 1 skipped. So 452 of 452 non-skipped tests passed on first run or
+  its one rerun (439 at base + 13 new). WebKit project (storage.spec) not run — nothing here
+  touches storage.
+
 ## 2. In flight
 
 (nothing)
 
-## 3. Next steps
+## 3. Next steps / left for others
 
-1. Final: full web unit suite, typecheck, a last broad e2e run, return summary.
+1. B-291 (composed text into the block behind the date picker): owner's call — keep "editor keeps
+   focus", or have the picker own focus with a hidden input and give it back on close.
+2. B-292: give `editing.spec.ts` "typing immediately after Enter" a page per repeat (not this
+   branch's spec).
+3. Not asked, noticed: walking the caret into an existing `[[link]]`/`#tag` opens the
+   autocomplete at all — whether it should is a UX question, not logged as a bug.
+4. `biome check .` reports pre-existing errors at `cf08d19` (e.g. `BlockContextMenu.tsx`
+   `useSemanticElements` on `.ctx-sep`, `BlockRowView.tsx`, `DiagnosticsPanel.tsx`,
+   `packages/plugin-api` `noConfusingVoidType`) — untouched.
 
 ## 4. Decisions
 
