@@ -17,20 +17,25 @@ const [clockDay, setClockDay] = createSignal(today);
 vi.mock("../data/day-clock.js", () => ({ currentDay: () => clockDay() }));
 
 let streamValue: JournalDayEntry[] | undefined;
+// A signal on top, for tests that refetch: the stream hands back NEW entry objects on every write.
+const [refetched, setRefetched] = createSignal<JournalDayEntry[] | undefined>(undefined);
+let blockTreeMounts = 0;
 const usePinnedJournalDay = vi.fn((..._args: unknown[]) =>
   Object.assign(() => undefined, { loading: false, error: undefined }),
 );
 
 vi.mock("../data/store.js", () => ({
-  useJournalStream: () => Object.assign(() => streamValue, { loading: false, error: undefined }),
+  useJournalStream: () =>
+    Object.assign(() => refetched() ?? streamValue, { loading: false, error: undefined }),
   usePinnedJournalDay: (...args: unknown[]) => usePinnedJournalDay(...args),
   useAllPages: () => Object.assign(() => [], { loading: false, error: undefined }),
 }));
 
 vi.mock("../editor/BlockTree.js", () => ({
-  BlockTree: (props: { pageId: string }) => (
-    <div data-testid="block-tree">block-tree:{props.pageId}</div>
-  ),
+  BlockTree: (props: { pageId: string }) => {
+    blockTreeMounts++;
+    return <div data-testid="block-tree">block-tree:{props.pageId}</div>;
+  },
 }));
 
 // One agenda read for the whole stream; the section itself is `JournalAgenda.test.tsx`'s subject.
@@ -61,6 +66,8 @@ vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 
 afterEach(() => {
   cleanup();
+  setRefetched(undefined);
+  blockTreeMounts = 0;
   setClockDay(today);
   useAgendaTasks.mockClear();
 });
@@ -207,5 +214,41 @@ describe("JournalStreamView", () => {
     setClockDay(tomorrow);
     expect(screen.getByTestId("virtual-day").textContent).toBe(`virtual:${tomorrow}`);
     expect(screen.getAllByTestId("agenda")[0]?.textContent).toBe(`agenda:${tomorrow}/${tomorrow}`);
+  });
+
+  it("keeps every day's outline mounted when a write refetches the stream (B-174)", async () => {
+    const page = (id: string, day: number) => ({
+      id,
+      graphId: "default",
+      name: String(day),
+      key: String(day),
+      journalDay: day,
+      createdAt: 0,
+      updatedAt: 0,
+      deletedAt: null,
+      nameHlc: "",
+      deletedHlc: null,
+    });
+    // Fresh objects every call — exactly what each refetch of the real resource returns.
+    const snapshot = (): JournalDayEntry[] => [
+      { day: today + 1, page: page("p-up", today + 1), blocks: [] },
+      { day: today, page: page("p-today", today), blocks: [] },
+      { day: 20260909, page: page("p-909", 20260909), blocks: [] },
+      { day: 20260908, page: page("p-908", 20260908), blocks: [] },
+    ];
+    setRefetched(snapshot());
+    await renderStream();
+    const trees = screen.getAllByTestId("block-tree");
+    expect(trees).toHaveLength(4);
+    expect(blockTreeMounts).toBe(4);
+
+    // Three writes' worth of refetches.
+    setRefetched(snapshot());
+    setRefetched(snapshot());
+    setRefetched(snapshot());
+
+    expect(blockTreeMounts).toBe(4);
+    // The very same DOM nodes, not look-alikes: an editor inside them would have survived.
+    expect(screen.getAllByTestId("block-tree")).toEqual(trees);
   });
 });

@@ -54,20 +54,29 @@ export function JournalStreamView(): JSX.Element {
     stream()?.find((e) => e.day === today()),
   );
 
+  const entryByDay = createMemo(
+    () => new Map<number, JournalDayEntry>((stream() ?? []).map((e) => [e.day, e])),
+  );
+
+  // The lists below are DAY NUMBERS, never `JournalDayEntry` objects. `<For>` is keyed by
+  // reference, and every write refetches the stream into brand-new entry objects — so iterating
+  // entries tore down and rebuilt every day section, with its `BlockTree` and the editor inside
+  // it, on each debounced keystroke write: typing in any day below Today dropped out of editing
+  // half a second in (B-174). Numbers compare by value, so a section lives as long as its day is
+  // in the stream, and reads its entry through `entryByDay`.
+  const days = (keep: (day: number) => boolean) =>
+    createMemo<number[]>(() => [...entryByDay().keys()].filter(keep), [], {
+      equals: (a, b) => a.length === b.length && a.every((d, i) => d === b[i]),
+    });
+
   // Journal days AHEAD of today, rendered above it so the whole stream reads newest-first. These
   // exist only because something was deliberately written or scheduled there, so unlike empty past
   // days they are never hidden (`worker-core.ts#getJournalStream`).
-  const laterDays = createMemo<JournalDayEntry[]>(() => {
-    const all = stream() ?? [];
-    return all.filter((e) => e.day > today() && e.day !== pinnedDay());
-  });
+  const laterDays = days((d) => d > today() && d !== pinnedDay());
 
   // "Earlier non-empty days" per PLAN.md §8, minus the pinned day if the calendar jump duplicates
   // one already in that window.
-  const earlierDays = createMemo<JournalDayEntry[]>(() => {
-    const all = stream() ?? [];
-    return all.filter((e) => e.day < today() && e.day !== pinnedDay());
-  });
+  const earlierDays = days((d) => d < today() && d !== pinnedDay());
 
   let sentinel: HTMLDivElement | undefined;
   onMount(() => {
@@ -104,13 +113,13 @@ export function JournalStreamView(): JSX.Element {
       </Show>
 
       <For each={laterDays()}>
-        {(entry) => (
-          <section class="journal-day journal-day-upcoming" aria-label={dayTitle(entry.day)}>
-            <h2 class="journal-day-title">{dayTitle(entry.day)} · Upcoming</h2>
-            <Show when={entry.page}>
+        {(day) => (
+          <section class="journal-day journal-day-upcoming" aria-label={dayTitle(day)}>
+            <h2 class="journal-day-title">{dayTitle(day)} · Upcoming</h2>
+            <Show when={entryByDay().get(day)?.page}>
               {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
             </Show>
-            {agendaFor(entry.day)}
+            {agendaFor(day)}
           </section>
         )}
       </For>
@@ -145,13 +154,13 @@ export function JournalStreamView(): JSX.Element {
       </Show>
 
       <For each={earlierDays()}>
-        {(entry) => (
-          <section class="journal-day" aria-label={dayTitle(entry.day)}>
-            <h2 class="journal-day-title">{dayTitle(entry.day)}</h2>
-            <Show when={entry.page}>
+        {(day) => (
+          <section class="journal-day" aria-label={dayTitle(day)}>
+            <h2 class="journal-day-title">{dayTitle(day)}</h2>
+            <Show when={entryByDay().get(day)?.page}>
               {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
             </Show>
-            {agendaFor(entry.day)}
+            {agendaFor(day)}
           </section>
         )}
       </For>

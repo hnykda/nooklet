@@ -65,9 +65,19 @@ Updated after every meaningful step. If you are reading this after a restart, co
   a-fresh-journal, templates: 68 passed, 1 failed — `views.spec.ts:461` palette focus, which also
   fails on a clean `git archive da85cfb` checkout (B-173), so not this branch.
 
+- `docs(bugs): log B-174` — found by the perf probe's typing step: on a clean `da85cfb` build
+  against the owner's graph, one typed character in an earlier stream day replaced 28 of 29 day
+  sections and the editor with them.
+- `fix(web): journal-stream sections are keyed by day, so editing an earlier day survives its own
+  write (B-174)` — `JournalStreamView.tsx` iterates day numbers; `JournalStreamView.test.tsx` +1
+  (fails on the old view: 13 mounts vs 4); `e2e/tests/journal-stream-editing.spec.ts` (fails on
+  base, passes here). Web unit 715/715; typecheck exit 0; e2e on 6403: journal-agenda,
+  journal-stream-editing, journals, a-fresh-journal, templates, phone, focus, editing — 59 passed;
+  views, query, tasks — 49 passed, 1 failed (`views.spec.ts:461`, B-173, fails on base too).
+
 ## In flight
 
-- Nothing mid-edit.
+- Real-graph perf numbers (step 5).
 
 ## Next steps
 
@@ -75,7 +85,13 @@ Updated after every meaningful step. If you are reading this after a restart, co
 2. (done) agenda data + rules + component.
 3. (done) hookups + B-170.
 4. (done) e2e.
-5. Real-graph perf check; record numbers here.
+5. Real-graph perf check with `tools/probes/journal-agenda-perf.mjs`: base build
+   (`scratchpad/impl-journal/base`, a `git archive da85cfb` with `apps/web/dist` built by its own
+   e2e run) vs this branch, on the real copy and on a stress copy (686 dated open tasks, 386
+   overdue — made by SQL on a copy, so `verify` on it is meaningless). One browser profile per
+   build per graph (a shared profile's service worker served the other build's bundle). Record
+   medians here. Note: the base build cannot run the probe's typing step (B-174 loses the editor),
+   so compare load / load-more on base, and edit cost only between variants of this branch.
 
 ## How to resume
 

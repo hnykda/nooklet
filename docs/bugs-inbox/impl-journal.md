@@ -97,8 +97,9 @@ regression of B-72 since 2026-09-12 or something about headless focus on a loade
 ---
 
 ### B-174 · Typing in an earlier day of the journal stream drops out of editing after the first write
-**Status:** open · **Severity:** high · **Found:** 2026-09-13, impl-journal (the real-graph
-performance probe's typing step kept "losing" its editor) · **Test:** —
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, impl-journal (the real-graph
+performance probe's typing step kept "losing" its editor) · **Test:**
+`e2e/tests/journal-stream-editing.spec.ts`, `apps/web/src/views/JournalStreamView.test.tsx`
 
 On `/journals`, click a block on any day below Today and type: about half a second later (the
 editor's debounced write) the caret is gone — focus drops to `<body>`, and further keys go nowhere.
@@ -112,3 +113,12 @@ days with `<For each={earlierDays()}>` over `JournalDayEntry` objects; every wri
 `useJournalStream`, which builds new entry objects, and `<For>` is keyed by reference — so every
 section, with its `BlockTree` and the editor inside it, is torn down and rebuilt on each write.
 Today's section is a non-keyed `<Show>`, which is why it survives.
+
+**Fixed 2026-09-13.** `JournalStreamView` iterates day NUMBERS (`laterDays`/`earlierDays` are
+`number[]` memos with an element-wise `equals`) and reads each day's entry from an `entryByDay`
+map inside the section, through a non-keyed `<Show>`. Numbers compare by value, so a section — and
+the `BlockTree` and editor in it — lives as long as its day is in the stream. Tests that would have
+caught it: `journal-stream-editing.spec.ts` "typing in an earlier day keeps editing across the
+write, and every key lands (B-174)" (fails on a clean `da85cfb` build: the editor is gone after the
+first write), and `JournalStreamView.test.tsx` "keeps every day's outline mounted when a write
+refetches the stream (B-174)" (old view: 13 `BlockTree` mounts after three refetches instead of 4).
