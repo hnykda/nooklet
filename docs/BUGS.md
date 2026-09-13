@@ -482,6 +482,31 @@ resolved labels are not kept across a refresh.
 
 ---
 
+### B-540 · Syncing is visible: every ordinary push and pull shows on screen
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, owner report · **Test:** none yet
+
+"The syncing being so visible is a bug on its own, it should be very silent, one shouldn't basically
+even know unless it's necessary." Seen: references flashing to `((id))` (B-500), focus lost in the
+desktop app (B-42), rows re-rendering, the sync indicator changing on every routine cycle. A refresh
+that changes nothing on screen must change nothing visible; the indicator should appear only when
+something needs attention (offline, pending for seconds, an error). Being handled with B-500 on
+`m11/ref-label-flash`.
+
+---
+
+### B-541 · In the desktop app the top bar's controls sit under the macOS window buttons, so Settings, Graph and the sidebar are unreachable
+**Status:** open (hypothesis, being verified on `m11/desktop-shell`) · **Severity:** high ·
+**Found:** 2026-09-13, owner report ("I don't see any settings dialog anywhere, nor the question mark
+icon in the desktop app. not even graph?") · **Test:** none yet
+
+`main.rs` opens the window with `TitleBarStyle::Transparent` and a hidden title, so the page starts
+under the title bar; at the default 1100×800 the client's top-left controls (Toggle sidebar, Back,
+Forward) are exactly where the traffic lights are, the sidebar starts collapsed, and Settings and
+Graph live only in the sidebar or the palette. Also checked: the app's WebKit store holds a service
+worker and precache from Sep 11, so a stale client is a second possible cause.
+
+---
+
 ## Fixed
 
 ### B-291 · Text composed in place (an IME's marked text, a dead-key accent) while the date picker is open goes into the block behind it
