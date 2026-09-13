@@ -82,3 +82,31 @@ to `docs/bugs-inbox/impl-commands.md` (never `docs/BUGS.md`). e2e port 6402.
 
 Read this file and `docs/bugs-inbox/impl-commands.md`; `git log --oneline da85cfb..` on
 `m8/impl-commands` shows what landed.
+
+## 6. Adversarial verification (2026-09-13, second agent)
+
+State: in flight. Verifier works on the same branch; commits below are the verifier's.
+
+Re-run so far: web unit 724/724; `pnpm -r typecheck` clean; biome on changed files: only the
+pre-existing DiagnosticsPanel/BlockContextMenu diagnostics on untouched lines; wiki generator
+re-run → no diff. e2e 6402: commands + context-menu + shelf = 27 passed, 1 skipped. B-161
+(`views.spec.ts:461`) fails on this branch AND 2/2 with `apps/web/src` checked out at da85cfb —
+confirmed pre-existing.
+
+Probes (browser, scratch only): journal stream with 3 seeded days — Collapse all with nothing
+focused folds all three on the server, focused folds only that day, `nooklet verify` OK (29 ops).
+Real-graph copy, page 2026-05-03 (448 blocks, 59 parents): Expand all / Collapse all / Cmd+Z
+correct on screen and on the server within ~1.2 s; zoomed into its 447-block top block: Collapse
+all → 262 rows (root + 261 children), 58/59 parents collapsed (root left open), undo restores.
+Edges checked in e2e: a selected nested block folded away is deselected and Backspace deletes
+nothing; client-side navigation leaves no stale outline registered; Shift+Enter / Open this page
+on shelf on a Czech namespaced page; multi-selection → Open on shelf takes the first; Collapse all
+/ Expand all / Open this page on shelf on /search are inert, no crash; typing after the editor
+folded away writes nothing.
+
+Found: R26 prose still says "every block" (the implementation deliberately skips leaves, keeps the
+zoom root open, fans out over journal days) — spec drift introduced by the branch. Plugins section
+names `nooklet plugin enable|disable|reload` without saying a restart of `nooklet serve` is needed
+(the CLI says it is). Pre-existing, logged not fixed: B-162 undo of a collapse ends editing.
+
+Next: fix R26 + plugins note, add e2e for the selection and undo edges, rerun, commit.
