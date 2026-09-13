@@ -25,12 +25,11 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
 
 ## 2. In flight
 
-- Property-only probe (next step 1).
+- Spec update (next step 1).
 
 ## 3. Next steps, in order
 
-1. Probe: an agent's `block.update` of only a PROPERTY of the edited block (content_hlc unchanged) —
-   expected stale in the buffer until editing ends; log as B-460 if so.
+1. (done) Property-only probe → B-460 logged, open; probe `tools/probes/remote-property-while-editing.spec.ts`.
 2. Spec: `docs/spec/commands-and-keymap.md` R32b ("Both leave editing first" is wrong now) + a rule
    for rewrites from elsewhere.
 3. Real graph: copy `~/.nooklet/default/graph.sqlite`, serve, edit a journal block while an API

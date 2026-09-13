@@ -39,3 +39,23 @@ a second browser context (its own replica and device) with nothing typed and wit
 not a remote change" and the rest of the verdict table, plus `mapThroughRewrite`;
 `apps/web/src/editor/outline-registry.test.ts` › "typing flush (B-192)";
 `apps/web/src/commands/registrations/refactor.test.ts` › "neither block command ends edit mode".
+
+---
+
+### B-460 · A property changed elsewhere on the block being edited stays stale in the editor until editing ends
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, m11/remote-rewrite (fixing B-192) ·
+**Test:** none (probe `tools/probes/remote-property-while-editing.spec.ts`)
+
+Put the caret in a block with a property line (`owner:: alice`). An agent's `block.update` with
+`properties: {owner: "bob"}` — or another device editing that line — lands: the server has `bob`,
+other rows refetch, and the editor still shows `owner:: alice`. Typing on line 1 does NOT write
+`alice` back (the flush writes only the fields the typing changed); the row shows `bob` once editing
+ends. Editing the property line itself would, by reading `flushPendingEdit` (not probed), write the
+old value plus the edit over `bob` — the same shape as B-192 before its fix.
+
+Cause: B-192's fix tells a newer write by `content_hlc`, and a `block.prop` write leaves it alone.
+The buffer holds the editable properties too (B-101), but the page tree the worker returns carries
+their values and not their HLCs (`db/worker-core.ts#collectPageProperties`). A fix: return the
+newest `block_prop.hlc` per block with the tree and compare `max(content_hlc, that)` in
+`editor/remote-text.ts`, recording this tree's own `block.prop` writes for non-reserved keys (a
+marker or date op writes a block column, not `block_prop`, and must not count).
