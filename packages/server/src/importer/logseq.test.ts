@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isId, newId } from "@nooklet/core";
@@ -387,6 +387,57 @@ describe("importLogseqGraph: assets", () => {
     expect(ctx.driver.get<{ content: string }>("SELECT content FROM block")?.content).toMatch(
       /^\[zeleny\]\(assets\/[a-z0-9]+\.pdf\)$/,
     );
+  });
+
+  it("does not follow a symlink in assets/ out of the graph (B-127)", async () => {
+    // A received graph whose "picture" is a link to the importing user's private key: followed,
+    // it became an asset served without authentication at /assets/:id and synced everywhere.
+    const outside = mkdtempSync(join(tmpdir(), "nooklet-import-outside-"));
+    try {
+      const secret = join(outside, "id_ed25519");
+      writeFileSync(secret, "-----BEGIN OPENSSH PRIVATE KEY----- test\n");
+      writeGraphFile("pages/Photos.md", "- look ![pic](../assets/pic.png)\n");
+      mkdirSync(join(graphDir, "assets"));
+      symlinkSync(secret, join(graphDir, "assets", "pic.png"));
+
+      const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+      expect(stats.assetsImported).toBe(0);
+      expect(ctx.driver.get<{ n: number }>("SELECT count(*) AS n FROM asset")?.n).toBe(0);
+      expect(stats.warnings).toContain("assets/pic.png: a symbolic link, not followed");
+      expect(stats.danglingAssetLinks).toBe(1);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("a dangling symlink in assets/ is a warning, not an aborted import (B-127)", async () => {
+    writeGraphFile("assets/ok.png", "PNG");
+    symlinkSync("/nonexistent/x.png", join(graphDir, "assets", "broken.png"));
+    writeGraphFile("pages/One.md", "- ![ok](../assets/ok.png)\n");
+
+    const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+    expect(stats.errors).toEqual([]);
+    expect(stats.pagesImported).toBe(1);
+    expect(stats.assetsImported).toBe(1);
+    expect(stats.warnings).toContain("assets/broken.png: a symbolic link, not followed");
+  });
+
+  it("does not follow assets/ itself when it is a symlink (B-127)", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "nooklet-import-outside-"));
+    try {
+      writeFileSync(join(outside, "id_ed25519"), "PRIVATE");
+      writeGraphFile("pages/One.md", "- [k](../assets/id_ed25519)\n");
+      symlinkSync(outside, join(graphDir, "assets"));
+
+      const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+      expect(stats.assetsImported).toBe(0);
+      expect(ctx.driver.get<{ n: number }>("SELECT count(*) AS n FROM asset")?.n).toBe(0);
+      expect(stats.warnings).toContain(
+        "assets/ is a symbolic link, not followed: no assets were imported",
+      );
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("says so, loudly, when there is nowhere to put the assets", async () => {

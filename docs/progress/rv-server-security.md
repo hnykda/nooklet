@@ -39,9 +39,15 @@ start, you were restarted: read it, then continue from "Next steps".
   `export.ts`. Green: server suite 57 files / 527; real-graph copy `nooklet export`: 952 exported,
   `failed: []`.
 
+- Hashes so far: F1 `c533125`, F2 `3f77bf9`.
+- F3 (B-127) — commit "fix(server): the Logseq importer never follows a symlink in assets/". Red:
+  3 importer tests (asset row created ×2, ENOENT). Green: server suite 57 files / 530; the owner's
+  Logseq graph (`~/notes-graph`, read only) imported into
+  `scratchpad/.../import-f3`: 127 pages, 825 journals, 18,628 blocks, 171 assets, no warnings.
+
 ## 2. In flight
 
-- F3.
+- F5.
 
 ## 3. Next steps, in order
 

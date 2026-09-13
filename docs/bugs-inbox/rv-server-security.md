@@ -76,8 +76,10 @@ neither stalls later sweeps nor leaves temp files behind (B-126)".
 ---
 
 ### B-127 · The Logseq importer follows symlinks in `assets/` out of the graph, and one dangling symlink aborts the import
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, server security review (F3) ·
-**Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, server security review (F3) ·
+**Test:** `packages/server/src/importer/logseq.test.ts` "does not follow a symlink in assets/ out of
+the graph (B-127)", "a dangling symlink in assets/ is a warning, not an aborted import (B-127)",
+"does not follow assets/ itself when it is a symlink (B-127)"
 
 `importAssets` checks `statSync(path).isFile()`, which follows symlinks, then reads the target. A
 symlink in a graph's `assets/` pointing anywhere (say `~/.ssh/id_ed25519`) is stored as an asset,
@@ -85,6 +87,17 @@ served without authentication at `/assets/:id` (unauthenticated by design, `http
 synced to every device. A graph received from someone else is where such a link would come from.
 Separately, the `statSync` sits outside the `try`, so a broken symlink (common in synced folders)
 throws `ENOENT` out of `importLogseqGraph` after some assets were already stored.
+
+**Fixed 2026-09-13.** `importAssets` lists `assets/` with `withFileTypes` (Dirent types come from
+lstat) and skips a symbolic link with the warning `assets/<name>: a symbolic link, not followed`,
+so a dangling one no longer throws; an `assets/` directory that is itself a link is not followed
+either (warning, nothing imported). Pages and journals were already listed by Dirent and so never
+followed links. The owner's Logseq graph has no symlinks in `assets/` (180 entries, 0 links):
+importing it into a scratch data dir gave 127 pages, 825 journals, 18,628 blocks, 171 assets,
+0 dangling asset links, no symlink warnings. Tests: `importer/logseq.test.ts` "does not follow a
+symlink in assets/ out of the graph (B-127)", "a dangling symlink in assets/ is a warning, not an
+aborted import (B-127)", "does not follow assets/ itself when it is a symlink (B-127)" — the first
+and third failed on the old code with an asset row created, the second with `ENOENT … stat`.
 
 ---
 
