@@ -15,7 +15,8 @@
  *   this, semantic and hybrid search silently degrade to keyword.
  * - **`esbuild`** — the per-platform binary esbuild's JS API shells out to, used at runtime to
  *   bundle user plugins. Pointed at with `ESBUILD_BINARY_PATH`, the documented escape hatch.
- * - **`web/`** — the built client, which the server serves from its own origin.
+ * - **`web/`** — the client, built by this script from this checkout every time (B-337), which
+ *   the server serves from its own origin.
  * - **`plugins/`** — the built-in plugins (word-count, mermaid, daily-summary), ALREADY bundled
  *   (B-180). `nooklet serve` bundles the repo's plugin sources at startup, resolving their
  *   `@nooklet/plugin-api`/`zod` imports through `node_modules` and writing into their directories;
@@ -167,15 +168,23 @@ cpSync(esbuildBin, esbuildOut);
 chmodSync(esbuildOut, 0o755);
 console.log(`esbuild           ${mib(esbuildOut)}`);
 
-// 5. The web client. Built first if missing, since a desktop app with no UI is not useful.
+// 5. The web client, built NOW from this checkout's sources — every time, never "if missing".
+// `apps/web/dist` is rewritten by every e2e run and every `vite build`, from whatever tree the
+// checkout had then; this step used to build only when `dist/index.html` was absent and otherwise
+// copy what was there, so a `desktop:build` after switching branches (or after an e2e run on
+// another tree state) shipped an older client beside a newer server with nothing to say so
+// (B-337). CI starts from a fresh checkout and never saw it. Vite takes seconds;
+// `e2e/global-setup.ts` rebuilds for the same reason. `tools/probes/sidecar-web-freshness.mjs`
+// plants a stale `dist` and checks it does not ship.
 const webDist = join(repoRoot, "apps", "web", "dist");
+console.log("building the web client…");
+const webBuild = spawnSync("pnpm", ["--filter", "@nooklet/web", "build"], {
+  cwd: repoRoot,
+  stdio: "inherit",
+});
+if (webBuild.status !== 0) throw new Error("web client build failed");
 if (!existsSync(join(webDist, "index.html"))) {
-  console.log("building the web client first…");
-  const r = spawnSync("pnpm", ["--filter", "@nooklet/web", "build"], {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
-  if (r.status !== 0) throw new Error("web client build failed");
+  throw new Error(`the web client build left no ${join(webDist, "index.html")}`);
 }
 cpSync(webDist, join(outDir, "web"), { recursive: true });
 console.log("web/              (client build)");

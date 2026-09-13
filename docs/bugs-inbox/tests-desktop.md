@@ -199,3 +199,16 @@ boundary), `EditorSelection.content` and its `start`/`end`, `ReplaceRangeSpec.fr
 `EditorHost.getSelection`/`replaceRange`. The field keeps its name `content` (renaming it touches
 every command; the doc says so). Comment only, no test; checked against the real host
 (`app/editor-host.ts#createEditorHost` reads `surface.content()`, the CM6 document).
+
+---
+
+### B-337 (existing)
+
+**Fixed 2026-09-13.** Reproduced first with the new probe `tools/probes/sidecar-web-freshness.mjs`,
+which plants a stale client in `apps/web/dist` (an `index.html` saying so, plus a marker file) and
+runs the sidecar build: at `70c9bb9` it printed `STALE: sidecar/web/index.html is the planted one;
+sidecar/web holds the marker; …`. Step 5 of `apps/desktop/build-sidecar.mjs` now runs `pnpm --filter
+@nooklet/web build` every time (Vite empties `dist` first) and fails if that leaves no
+`index.html`; the probe then prints `fresh: sidecar/web is a client built by this run`. Test that
+would have caught it: that probe (there is no test suite for `apps/desktop`; the probe is the check,
+and it exits 1 on a stale client). Cost: the web build, seconds, on every sidecar build.

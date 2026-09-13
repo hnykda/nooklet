@@ -38,6 +38,10 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
   `tools/probes/cpu-vs-wall-under-load.ts`. Core 399/399 idle and 3x under load.
 - **B-371** — commit "docs(web): EditorSelection's text is the editing buffer, not the content
   (B-371)". Comment only in `apps/web/src/commands/hosts/editor-host.ts`.
+- **B-337** — commit "fix(desktop): the sidecar build always builds the web client (B-337)".
+  `apps/desktop/build-sidecar.mjs` step 5; probe `tools/probes/sidecar-web-freshness.mjs` (STALE at
+  base, fresh after). The sidecar's Node runtime was copied from the main checkout's
+  `apps/desktop/.cache` (ignored build cache) to avoid a download.
 
 ## 2. In flight
 
@@ -45,5 +49,10 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
 
 ## 3. Next steps
 
-1. B-337 (build-sidecar ships stale web dist), then B-336 (user plugins in the sidecar cannot
-   import host modules); verify with a built sidecar started on a scratch NOOKLET_DATA. — sidecar build + user plugin host modules; verify with a built sidecar.
+1. B-336 (user plugins in the sidecar cannot import host modules) — reproduced with
+   `node tools/probes/sidecar-user-plugin.mjs apps/desktop/sidecar 6412` (404, "Could not
+   resolve"). Plan: a build-time `packageHostModules` in `plugins/bundled.ts` writes
+   `sidecar/host-modules/*.mjs` (each host specifier bundled with the others external);
+   `bundler.ts#hostAliasMap` prefers `$NOOKLET_HOST_MODULES_DIR` (set by the server.mjs banner)
+   over `require.resolve`.
+2. Start the built sidecar with a scratch NOOKLET_DATA; check healthz, web, built-in + user plugin.
