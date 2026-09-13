@@ -7,7 +7,7 @@
  * are the only ones handed a token (docs/BUGS.md B-25), and the test runner is one.
  */
 
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 
 let cachedToken: string | undefined;
 
@@ -82,4 +82,17 @@ interface TreeNode {
   id: string;
   content: string;
   children?: TreeNode[];
+}
+
+/**
+ * `base`, made unique per `--repeat-each` iteration and per retry.
+ *
+ * Every spec in a run shares ONE server, and so does every repeat of a test. A test that seeds a
+ * fixed page name and then asserts on its exact state (a row count, a reference count, an icon
+ * slot that starts empty) passes once per server and fails on the second repeat against what the
+ * first one left behind (B-292, B-356) — so it could not be looped to tell load from a regression,
+ * which is the first thing a flaky-looking failure calls for.
+ */
+export function runName(base: string, info: Pick<TestInfo, "repeatEachIndex" | "retry">): string {
+  return `${base} ${info.repeatEachIndex}-${info.retry}`;
 }
