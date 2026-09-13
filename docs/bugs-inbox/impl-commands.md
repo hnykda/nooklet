@@ -10,6 +10,8 @@ Entries in `docs/BUGS.md`'s format, for the coordinator to fold in. Existing bug
 `e2e/tests/commands.spec.ts` "Collapse all and Expand all fold the whole page with nothing focused,
 and it persists (B-97)", "zoomed into a block, Collapse all and Expand all act on that subtree only
 (B-97)", "Collapse all while editing a block it hides ends editing, and the page stays editable
+(B-97)", "a selected block that Collapse all folds away is deselected, so Backspace deletes nothing
+hidden (B-97)", "Collapse all is one undo step: Cmd/Ctrl+Z in the page opens everything it folded
 (B-97)"; `apps/web/src/editor/collapse-all.test.ts`; `apps/web/src/editor/outline-registry.test.ts`
 
 Two causes, not one. The audit's reading was right that `BlockTree`'s `runCommand` and selection
@@ -37,6 +39,13 @@ block) in 136 ms, server shows 150/150 collapsed ~11 s later, and a reload still
 flag was written on a leaf. `pnpm nooklet verify` on the copy afterwards: 20,671 ops replayed, OK.
 The ~11 s is the time for the batch to reach the server, not the UI — not investigated further.
 
+Verification (second agent, 2026-09-13): the selection guard is load-bearing — with the
+`setSelection(null)` line removed, the "deselected" test fails because Backspace deletes the hidden
+`a1` on the server. Journal stream probed in a browser against a scratch server (3 seeded days):
+nothing focused folds all three, a focused block folds only its day; `nooklet verify` OK. R26's
+prose still said "every block" and "the page's overflow menu" (which does not exist); rewritten to
+what the code does.
+
 ---
 
 ### B-98 (existing) · "Open plugin manager" leads to a blank page
@@ -46,9 +55,12 @@ not a blank page (B-98)"
 
 **Fixed 2026-09-13.** Not a manager — there is nothing to manage from the client: the server
 exposes `GET /api/v1/plugins` (active plugins only) and no op to enable, disable or reload one
-(`nooklet plugin …` is the only switch). So Settings gained a read-only Plugins section
+(`nooklet plugin …` is the only switch, and it takes effect when `nooklet serve` restarts). So
+Settings gained a read-only Plugins section
 (`views/PluginsSection.tsx`, data in `data/plugins.ts`) listing name, id, version and which halves
-each plugin has, with a note naming the CLI commands and saying disabled plugins are not shown.
+each plugin has, with a note naming the CLI commands, saying a restart of `nooklet serve` applies
+them (added in verification — the note first read as if the change were immediate), and saying
+disabled plugins are not shown.
 `app.openPluginManager` now opens Settings scrolled to that section (`AppDeps.openPluginManager`,
 wired in `CommandLayer.tsx`) and no longer navigates anywhere. The test compares the section's rows
 with what the server's endpoint returns (the e2e server loads the repo's `plugins/`); against the
@@ -95,6 +107,20 @@ time a command is added without its row — which is the intent; the fix is a sp
 wiki generator (`docs/wiki/tools/generate-shortcuts.mjs`) now passes the optional refactor and shelf
 hosts (their commands were missing from the wiki page) and lists `requiresArgs` commands apart from
 the palette-reachable ones; `docs/wiki/pages/Keyboard shortcuts.md` regenerated (90 commands).
+
+---
+
+### B-162 · Undoing a collapse ends editing, so redo has no keyboard target
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, impl-commands verification · **Test:**
+none yet (reproduced with a throwaway e2e spec, not kept)
+
+Pre-existing, not caused by this branch. Editing a block with children, Cmd/Ctrl+Up collapses it;
+Cmd/Ctrl+Z expands it again but also ends editing (`.cm-content` count 0), so the Cmd/Ctrl+Shift+Z
+that follows reaches no host and does nothing (3 rows stay 3). "Collapse all" behaves the same way.
+Cause, by reading: `BlockTree.commitOne` (and `setAllCollapsed`) record the history entry with
+`before`/`after` focus `null`, and `doUndo`/`doRedo` treat a null focus as "detach the surface".
+Recording the editing block's caret when the edited row survives would keep editing through undo.
+Not fixed here (outside this brief's scope).
 
 ---
 

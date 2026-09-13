@@ -156,6 +156,47 @@ test("Collapse all while editing a block it hides ends editing, and the page sta
   await expect(editor(page)).toHaveText("b!");
 });
 
+test("a selected block that Collapse all folds away is deselected, so Backspace deletes nothing hidden (B-97)", async ({
+  page,
+}) => {
+  // The data-loss edge: a selection left on a row that is no longer on screen would let the next
+  // Backspace delete a block nobody can see.
+  const name = "Commands Collapse Selection";
+  const outliner = await openEditing(page, name, "- a\n  - a1\n- b");
+  await clickRow(page, outliner, 1);
+  await page.keyboard.press("Escape");
+  await expect(outliner.locator(".vr-row-selected")).toHaveCount(1);
+
+  await runFromPalette(page, "Collapse all");
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await expect(outliner.locator(".vr-row-selected")).toHaveCount(0);
+
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Delete");
+  await expect.poll(() => serverCollapsed(page, name)).toEqual({ a: true, a1: false, b: false });
+  expect((await readBlocks(page, name)).map((blk) => blk.content)).toEqual(["a", "a1", "b"]);
+});
+
+test("Collapse all is one undo step: Cmd/Ctrl+Z in the page opens everything it folded (B-97)", async ({
+  page,
+}) => {
+  const name = "Commands Collapse Undo";
+  const outliner = await openEditing(page, name, "- a\n  - a1\n    - a2\n- b\n  - b1");
+  await runFromPalette(page, "Collapse all");
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await expect
+    .poll(() => serverCollapsed(page, name))
+    .toMatchObject({ a: true, a1: true, b: true });
+
+  // One Cmd+Z, not three: the batch is a single history entry.
+  await clickRow(page, outliner, 0);
+  await page.keyboard.press(`${MOD}+z`);
+  await expect(outliner.locator(".vr-row")).toHaveCount(5);
+  await expect
+    .poll(() => serverCollapsed(page, name))
+    .toEqual({ a: false, a1: false, a2: false, b: false, b1: false });
+});
+
 // ── B-98: Open plugin manager ───────────────────────────────────────────────────────────────────
 
 test("Open plugin manager opens Settings at the list of running plugins, not a blank page (B-98)", async ({

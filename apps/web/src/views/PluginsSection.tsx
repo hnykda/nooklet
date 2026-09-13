@@ -67,10 +67,14 @@ export function PluginsSection(): JSX.Element {
       <Show when={!plugins.loading && plugins.error === undefined && list().length === 0}>
         <p class="set-muted">No plugins are running on this server.</p>
       </Show>
+      {/* The restart is not optional: the CLI only writes the `plugin` table, and v1 has no channel
+          into a running server (`packages/server/src/cli.ts`, "plugin" case) — without saying so,
+          this read as if the change applied at once. */}
       <p class="set-note">
         Active plugins only. Enable, disable or reload one on the server with{" "}
         <code>nooklet plugin list</code>, <code>enable &lt;id&gt;</code>,{" "}
-        <code>disable &lt;id&gt;</code> or <code>reload &lt;id&gt;</code>.
+        <code>disable &lt;id&gt;</code> or <code>reload &lt;id&gt;</code>, then restart{" "}
+        <code>nooklet serve</code>.
       </p>
     </section>
   );

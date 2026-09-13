@@ -323,10 +323,17 @@ requires `hasChildren` (collapsing a leaf is meaningless) and the opposite of th
 never flags this pair because their `when` clauses are already mutually exclusive by state, not
 just by variable name).
 
-**R26.** `block.collapseAll` / `block.expandAll` set `collapsed` on every block of the current
-page (or, if `zoomed`, every block under the zoom root) to `true` / `false` in one batched
-transaction. No default keybinding (§ Open issues); reachable from the palette and the page's
-overflow menu.
+**R26.** `block.collapseAll` / `block.expandAll` set `collapsed` to `true` / `false` on every block
+**with children** on the current page (or, if `zoomed`, in the zoom root's subtree), writing an op
+only where the flag actually changes, in one batched, undoable transaction. A leaf gets no op: its
+flag has no visible effect and would put a `collapsed:: true` line into the markdown mirror. Zoomed,
+`block.collapseAll` leaves the zoom root itself open (collapsing it would fold the whole view into
+one line) and `block.expandAll` opens it. The target is the outline being edited or holding a
+selection; with nothing focused it is every editable outline on screen — on the journal stream,
+every loaded day. If the block being edited folds out of view, editing ends; a selection that loses
+a row is cleared. No default keybinding (§ Open issues); reachable from the palette. `when` is
+`true`, so off a page route (search, all pages) both are listed and do nothing — `WhenContext`
+cannot see the route (B-97).
 
 **R27.** `block.zoomIn` sets the view's zoom root to the target block (focused, or the anchor of
 the selection) and pushes a navigation entry (interacts with `nav.back`/`nav.forward`, § R44).
