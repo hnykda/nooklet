@@ -16,19 +16,26 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
 
 ## 1. Done (committed)
 
-(nothing yet)
+- B-224 — `e7f1fa6` "fix(web): a multi-line block renders a line break between its lines".
+  `render/tokens.tsx#Lines`; tests `tokens.test.tsx` (3 new/changed), new
+  `e2e/tests/render-views.spec.ts` (B-224 test). Unit web 1002/1002; e2e render-views, rendering,
+  render, embeds, query, editing, block-properties, math-display, parity: 61 passed. The e2e failed
+  on the old `tokens.tsx` (`br` count 0).
+- B-211 + new B-320 (plugin fence in an embed/query hit got the host block) + new B-321 (journal
+  agenda item carried `data-block-id`) — commit "fix(web): only outliner rows carry
+  data-block-id". `QueryFenceView.tsx` (`data-query-hit-id`), `JournalAgenda.tsx`
+  (`data-agenda-block-id`), `PluginFence.tsx#fenceContext` (`FENCE_OWNER`). Tests:
+  `render-seams.test.tsx`, `PluginFence.test.tsx` (+2), `JournalAgenda.test.tsx`, e2e
+  `render-views.spec.ts` B-211 test (reproduced in Chromium on the old file). Unit web 1004/1004;
+  e2e render-views, query, query-task-tag, query-limits, embeds, plugins, journal-agenda,
+  shelf-outline, shelf, review-reactivity: 54 passed.
 
 ## 2. In flight
 
-- B-224: `apps/web/src/editor/render/tokens.tsx` — `<br>` between paragraph/quote lines.
+- B-225 next.
 
 ## 3. Next steps, in order
 
-1. B-224 — br between lines in `BlockContentView`; unit test in `tokens.test.tsx`; e2e in a new
-   `e2e/tests/render-views.spec.ts`.
-2. B-211 — `data-query-hit-id` on query hits; `PluginFence#fenceContext` must then look for the
-   hit/embed id before the row id; the journal agenda's `li` carries `data-block-id` too (same
-   trap, log as new).
 3. B-225 — `@media (pointer: coarse)` reveal for `.page-history-link` / `.page-icon-button-empty`,
    in a new CSS module; phone e2e (iPhone 13 descriptor).
 4. B-200 — `ReferencesPanel` under the missing-page view (linked + tagged; "Link all" cannot work

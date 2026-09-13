@@ -8,9 +8,9 @@
  * its renderer registered must re-render once it has, not stay plain code until a reload.
  *
  * `RenderInfo` carries the fence's `Block` and `Page`. The renderer contract gives no way to thread
- * them through `RenderCtx` without touching every caller, so the fence finds its block the way the
- * shelf and the live-UI overlay already do — the nearest `[data-block-id]` row — and reads both
- * from the replica. A fence with no block row around it (the shelf's outline) keeps showing its
+ * them through `RenderCtx` without touching every caller, so the fence finds its block from the
+ * DOM — the nearest query result, embedded row or outliner row around it (`FENCE_OWNER`) — and
+ * reads both from the replica. A fence with no block row around it (the shelf's outline) keeps showing its
  * source rather than calling a renderer with an invented block.
  */
 import type { Block, Page } from "@nooklet/core";
@@ -85,8 +85,16 @@ export function fenceRenderer(lang: string): CodeBlockRenderer | undefined {
   return renderers().get(lang.trim().toLowerCase());
 }
 
+/** The attributes naming the block a rendered fence belongs to, innermost wins: a query result
+ * (`./QueryFenceView.tsx`) and an embedded row (`./EmbedView.tsx`) sit INSIDE an outliner row and
+ * carry their own attribute so `[data-block-id]` lookups only ever find rows (B-211). Looking for
+ * the row's attribute alone handed a fence in an embed or a result the host block (B-320). */
+const FENCE_OWNER = "[data-query-hit-id], [data-embed-block-id], [data-block-id]";
+
 async function fenceContext(el: HTMLElement): Promise<{ block: Block; page: Page } | null> {
-  const blockId = el.closest<HTMLElement>("[data-block-id]")?.dataset.blockId;
+  const owner = el.closest<HTMLElement>(FENCE_OWNER);
+  const blockId =
+    owner?.dataset.queryHitId ?? owner?.dataset.embedBlockId ?? owner?.dataset.blockId;
   if (!blockId) return null;
   const block = await loadBlock(blockId);
   if (!block) return null;

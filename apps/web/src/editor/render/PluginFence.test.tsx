@@ -72,6 +72,38 @@ describe("plugin-rendered fences (B-103)", () => {
     expect(calls[0]?.info.editing).toBe(false);
   });
 
+  // B-320: query results and embedded rows carry their own id attributes rather than
+  // `data-block-id` (B-211), so a fence drawn inside one must be told about THAT block, not the
+  // outliner row the query or embed is written in.
+  it.each([
+    ["an embedded row", "data-embed-block-id"],
+    ["a query result", "data-query-hit-id"],
+  ])("a fence inside %s is handed that block, not the host row's", async (_label, attr) => {
+    const calls: RenderInfo[] = [];
+    disposers.push(
+      registerFenceRenderer("demo", {
+        render(_source, el, info) {
+          calls.push(info);
+          el.textContent = "drawn";
+        },
+      }),
+    );
+    const content = "```demo\nA -> B\n```";
+    const { container } = render(() => (
+      <div data-block-id="bhost000000001">
+        <ul>
+          <li {...{ [attr]: "binner00000001" }}>
+            <BlockContentView content={classifyBlockContent(content)} ctx={{ source: content }} />
+          </li>
+        </ul>
+      </div>
+    ));
+    await waitFor(() =>
+      expect(container.querySelector(".vr-plugin-fence")?.textContent).toBe("drawn"),
+    );
+    expect(calls.map((info) => info.block.id)).toEqual(["binner00000001"]);
+  });
+
   it("re-renders a fence painted before its renderer registered — plugins activate after first paint", async () => {
     const { container } = renderFenceInRow("```demo\nA -> B\n```");
     expect(container.querySelector(".vr-plugin-fence")).toBeNull();

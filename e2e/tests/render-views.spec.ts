@@ -56,3 +56,48 @@ test("a multi-line block renders each line on its own line (B-224)", async ({ pa
     expect(await view.evaluate((el) => (el as HTMLElement).innerText)).toContain(`\n${second}`);
   }
 });
+
+test("revealing a block lands on its row, not on a query result above it (B-211)", async ({
+  page,
+}) => {
+  const name = "RV Query Reveal";
+  const outliner = await openPage(
+    page,
+    name,
+    [
+      "- ```query",
+      "  TODO tag:rvreveal",
+      "  ```",
+      `- put [[${name}]] on the shelf`,
+      "- TODO rv reveal target #rvreveal",
+    ].join("\n"),
+  );
+  const target = (await readBlocks(page, name)).find((b) => b.content.includes("rv reveal target"));
+  expect(target).toBeDefined();
+  const id = target?.id as string;
+  // The query renders its result ABOVE the row it found — the shape the entry describes.
+  await expect(outliner.locator(".vr-query-hit", { hasText: "rv reveal target" })).toHaveCount(1);
+
+  // Every `[data-block-id]` for this block is its outliner row: that attribute is how "which DOM
+  // node is block X" is answered (`shell/Shelf.tsx`, `live/RemoteFlashOverlay.tsx`).
+  const owners = await page.evaluate(
+    (blockId) =>
+      [...document.querySelectorAll(`[data-block-id="${CSS.escape(blockId)}"]`)].map(
+        (el) => el.className,
+      ),
+    id,
+  );
+  expect(owners).toHaveLength(1);
+  expect(owners[0]).toContain("vr-row");
+
+  // The real gesture: shelve the page, switch the card to its outline, click the task's entry.
+  // `[data-from]`: the link in the block's text, not the query group's page heading.
+  await outliner
+    .locator(".vr-page-ref[data-from]", { hasText: name })
+    .click({ modifiers: ["Shift"] });
+  const card = page.locator(".shelf-card").first();
+  await card.getByRole("button", { name: "Show page outline" }).click();
+  await card.locator(".shelf-toc-link", { hasText: "rv reveal target" }).click();
+  await expect(page.locator(`.vr-row[data-block-id="${id}"]`)).toHaveClass(/shelf-reveal-target/);
+  await expect(outliner.locator(".vr-query-hit.shelf-reveal-target")).toHaveCount(0);
+});
