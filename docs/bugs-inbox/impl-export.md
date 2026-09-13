@@ -127,3 +127,19 @@ title row is hovered or the control has keyboard focus. A touch screen has no ho
 `.all-pages-star` (`views/all-pages.css`) there is no `@media (pointer: coarse)` rule revealing
 them, so on a phone the History link is an invisible tap target that still takes ~60px from the
 title. The page actions star and "…" button added for B-220–B-222 are always visible on purpose.
+
+---
+
+### B-226 · `views.spec.ts` "opening the palette while editing and closing it hands focus back to the editor" fails at `da85cfb`
+**Status:** open (needs-investigation) · **Severity:** medium · **Found:** 2026-09-13, e2e run for
+this branch · **Test:** that test
+
+After Cmd/Ctrl+K and Escape the palette closes but `.cm-content` never regains focus
+(`toBeFocused` times out at 10 s; the locator resolves, state "inactive"). Failed 6 of 6 runs on
+port 6408, Chromium: in a 12-spec batch; in `views.spec.ts` alone; alone with `-g` on this branch;
+alone with the title-row controls removed; alone with the page-action commands and print hookup
+also removed; and alone with `apps/web/src`, `packages/core/src` and `packages/server/src`
+checked out from `da85cfb` (production build, fresh server) — so it is not caused by this branch. The coordinator's full run at `a6c2859` did not list it among
+failures, so either `06fd859`/`da85cfb` or the machine's state since then changed something;
+neither was checked. B-72's fix names this test. Nothing in `CommandPalette.tsx` restores focus
+explicitly, so whatever used to return it to the editor is worth finding first.

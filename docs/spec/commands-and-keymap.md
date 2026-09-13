@@ -590,6 +590,10 @@ behavior exactly rather than special-casing mobile.
 | `sync.now` | Sync now | — | — | `true` |
 | `app.toggleTheme` | Toggle theme | — | — | `true` |
 | `app.hideKeyboard` | Hide keyboard | — | — | `mobile && editorFocused` |
+| `app.copyPageMarkdown` | Copy page as markdown | — | — | `true` |
+| `app.exportPageMarkdown` | Export page as markdown | — | — | `true` |
+| `app.printPage` | Print page | — | — | `true` |
+| `app.toggleFavorite` | Toggle favourite | — | — | `true` |
 
 **R51.** `edit.undo` / `edit.redo` operate the document-level history manager of ADR 006 / research
 04 §7 (a document-level history of inverse ops with 500 ms text coalescing — CM6's own
@@ -606,6 +610,20 @@ icon click). `app.toggleTheme` cycles light → dark → system. `app.hideKeyboa
 `platform.keyboard.hide()` (research 08 §3.2's `KeyboardAdapter`) and commits/unmounts the
 surface without navigating away from the block; it only appears (as the toolbar's rightmost
 button, § Mobile) when `mobile`.
+
+**R52a.** Page actions (exposure audit §2 items 9, 10, 13). `app.copyPageMarkdown`,
+`app.exportPageMarkdown` and `app.toggleFavorite` act on `args.page` (a page name) when it is a
+non-empty string, else on the page the current route shows; off a page route they do nothing
+(`WhenContext` cannot see the route, so `when` stays `true`). The page title row's star and "…"
+menu invoke them through `exec` with `args.page` set. `app.exportPageMarkdown` hands the browser
+the page's markdown-mirror text exactly — the same renderer (`@nooklet/core` `sync/page-outline.ts`)
+over the local replica, `^id` suffixes included, named as the mirror names the file.
+`app.copyPageMarkdown` writes the same render with ids omitted, starting the clipboard write
+synchronously inside `run()` (WebKit rejects a clipboard write outside the user gesture).
+`app.toggleFavorite` flips the synced `favorite` page property. `app.printPage` opens the print
+dialog for whatever view is showing, after closing the palette; the print stylesheet prints only
+the content, and collapsed blocks render expanded between `beforeprint` and `afterprint` without
+writing anything. The ids use the `app` area because R2's areas are closed.
 
 ### F. Slash menu
 

@@ -38,23 +38,21 @@ before any work, as the brief says everyone starts there.
   edit, palette export, print via real `page.pdf()`, palette print, star, palette favourite +
   Recent heading).
 
+- `457d7d3` web page actions (above). B-220, B-221, B-222 fixed; B-224, B-225 logged open.
+- (next commit) B-226 logged: `views.spec.ts` palette-focus test fails at `da85cfb` too (6/6 runs,
+  last one with baseline sources checked out) — pre-existing, not this branch. Spec: E.6 rows +
+  R52a for the four commands.
+
 ## In flight
 
-- `views.spec.ts` "opening the palette while editing and closing it hands focus back to the
-  editor" fails on this branch, 3 of 3 runs (once in the batch, once in the spec, once alone). It
-  still fails with PageActions, the page-actions commands and the print hookup all removed, so it
-  looks pre-existing; confirming against a `da85cfb` build is the next step.
+- nothing uncommitted after the docs commit.
 
 ## Next steps, in order
 
-1. Confirm the views.spec focus failure on a `da85cfb` build (check out `apps/web` and
-   `packages/core` from `da85cfb` into the working tree, run that one test, restore from HEAD).
-   If pre-existing: log it as B-226 (open) with the evidence; not this branch's to fix.
-2. Spec rows for the four commands in `docs/spec/commands-and-keymap.md` E.6.
-3. Real-graph check: serve a copy of the owner's graph on a spare port, export a heavy page from
-   the browser and byte-compare with the mirror file serve writes; `pnpm nooklet verify` on the
+1. Real-graph check: serve a copy of the owner's graph on a spare port, export heavy pages from
+   the browser and byte-compare with the mirror files serve writes; `pnpm nooklet verify` on the
    copy.
-4. Final e2e run of the specs touched + at risk; report.
+2. Final e2e run of the specs touched + at risk; report.
 
 ## Decisions
 
