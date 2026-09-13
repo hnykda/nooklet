@@ -70,3 +70,41 @@ their values and not their HLCs (`db/worker-core.ts#collectPageProperties`). A f
 newest `block_prop.hlc` per block with the tree and compare `max(content_hlc, that)` in
 `editor/remote-text.ts`, recording this tree's own `block.prop` writes for non-reserved keys (a
 marker or date op writes a block column, not `block_prop`, and must not count).
+
+---
+
+### B-461 · With this tab's clock behind, typing on a text written elsewhere is silently lost
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, m11/remote-rewrite verification
+pass (adversarial e2e) · **Test:** none yet
+
+Tab clock 20 s behind the server (`page.clock.setFixedTime(now − 20 s)`). Put the caret in
+`original`; an agent's `block.update` makes it `rewritten`; the editor takes it (B-192). Type
+` more`: the editor shows `rewritten more`, the server keeps `rewritten` (polled 15 s). The same
+happens without B-192's take path — the row shows the agent's `rewritten`, click into it and type
+` more`: stored stays `rewritten` (probe run 2026-09-13, same setup). In real use the window is the
+skew (≤ 60 s, `HLC_MAX_DRIFT_MS`), and nothing on screen says the typing was dropped.
+
+Cause: the editor's clock (`editor/clock.ts`) is a `new Hlc(deviceId)` that only follows wall time;
+it never absorbs an HLC it has seen. Every keystroke's `block.text` is stamped below the other
+writer's `content_hlc`, and `applyBlockText` drops it as stale. B-192's fix made it absorb the HLC
+of an OFFERED version (`Clock.receive`, 99f54ff) but not of a taken one, nor of any text the tree
+shows.
+
+---
+
+### B-462 · An agent flipping the task marker while you type offers your own untyped text as "the other version"
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, m11/remote-rewrite verification pass
+(adversarial e2e) · **Test:** none yet
+
+Type into `TODO call the plumber`; meanwhile an agent runs `block.update {old_str: "TODO", new_str:
+"DONE"}` — the flip `block_update`'s own description recommends. The pill turns DONE and the row
+says "This block changed elsewhere." with **Use the other version**, whose text is `call the
+plumber`: the text as it was before the typing. The text did not change elsewhere; taking "the
+other version" only throws the typing away (screenshot in the verification run:
+`e2e/test-results/6412/remote-rewrite-edges-an-ag-…/test-failed-1.png`).
+
+Cause: `block.update` with `content` or `old_str`/`new_str` always writes a `block.text` (plus
+`marker`/`priority` props), even when the content is unchanged, so `content_hlc` moves. B-192's
+verdict (`editor/remote-text.ts#decide`) sees a newer `content_hlc` whose text differs from the
+buffer (the buffer has the typing) and offers it — it never asks whether the other writer changed
+the text the typing started from.
