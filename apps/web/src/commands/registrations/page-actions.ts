@@ -1,6 +1,7 @@
 /**
  * Page portability and favourites (exposure audit §2 items 9, 10, 13; B-220, B-221, B-222):
- * copy a page as markdown, export it as a `.md` file, print it, and favourite/unfavourite it —
+ * copy a page as markdown, export it as a `.md` file, print it, favourite/unfavourite it, and
+ * delete it to the Trash —
  * from the palette, and from the page's title row, which runs these same commands with the page
  * named in `args` (`views/PageActions.tsx`).
  *
@@ -30,6 +31,9 @@ export interface PageActionsHost {
   toggleFavorite(page: string): Promise<void>;
   /** Open the print dialog. */
   printPage(): void;
+  /** Ask, then move the page and its blocks to the Trash and leave for the journal
+   * (`app/page-delete.ts`). A journal day is refused with a notice instead. */
+  deletePage(page: string): Promise<void>;
 }
 
 /** `args.page` if it is a non-empty string, else the routed page. */
@@ -96,6 +100,20 @@ export function createPageActionCommands(deps: { pageActions: PageActionsHost })
       when: "true",
       run: onPage((page) => host.toggleFavorite(page)),
     },
+    {
+      id: "app.deletePage",
+      // A dialog on the person's screen, and a delete they did not ask for: `ui_run` must not
+      // reach it (B-228's rule). An agent has `page_delete`, whose own host asks the person
+      // (`requiresUserInteraction`).
+      remoteInvocable: false,
+      title: "Delete page…",
+      description:
+        "Move this page and its blocks to the Trash, after asking; restore it from there",
+      category: "App",
+      defaultKeys: {},
+      when: "true",
+      run: onPage((page) => host.deletePage(page)),
+    },
   ];
 }
 
@@ -117,6 +135,9 @@ export function createFakePageActionsHost(opts?: { page?: string | null }): {
     },
     printPage() {
       calls.push({ method: "printPage", args: [] });
+    },
+    async deletePage(page) {
+      calls.push({ method: "deletePage", args: [page] });
     },
   };
   return { host, calls };

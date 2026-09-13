@@ -24,7 +24,7 @@ What that breaks in the app today, found by grep, none of it verified in a built
   clear the local copy" (`views/GraphMismatchView.tsx`). The action fails with no word.
 
 Chromium (the e2e suite) shows real dialogs, which is why no test noticed. Fix direction: an
-in-page dialog. `apps/web/src/app/confirm-dialog.tsx` (being added for Delete page on this branch) is a
+in-page dialog. `apps/web/src/app/confirm-dialog.tsx` (added for Delete page on this branch) is a
 drop-in for the confirms; the alerts want the same or an inline error line. Not done here — those
 call sites belong to other workstreams.
 

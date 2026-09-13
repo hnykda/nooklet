@@ -28,7 +28,8 @@ export const pageActionNotice = notice;
 let seq = 0;
 let clearTimer: ReturnType<typeof setTimeout> | undefined;
 
-function announce(text: string, error = false): void {
+/** Show `text` on the page's title row for a moment (an error a little longer). */
+export function announce(text: string, error = false): void {
   seq++;
   setNotice({ text, seq, error });
   if (clearTimer !== undefined) clearTimeout(clearTimer);

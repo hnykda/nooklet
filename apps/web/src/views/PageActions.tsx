@@ -1,6 +1,7 @@
 /**
  * The page title row's own controls (B-220, B-221, B-222): a favourite star and a "…" menu with
- * Copy as markdown, Export as markdown and Print. Every control runs a registered command
+ * Copy as markdown, Export as markdown, Print and Delete page (last, apart, and not on a journal
+ * day). Every control runs a registered command
  * (`../commands/registrations/page-actions.ts`) through the same `exec` the palette uses, with the
  * page named in `args` — a new surface for the palette's behaviour, never a second
  * implementation, the rule `../app/BlockContextMenu.tsx` follows.
@@ -18,7 +19,7 @@
  */
 
 import { A } from "@solidjs/router";
-import { Copy, Ellipsis, FileDown, History, Printer, SmilePlus, Star } from "lucide-solid";
+import { Copy, Ellipsis, FileDown, History, Printer, SmilePlus, Star, Trash2 } from "lucide-solid";
 import { createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { buildContextBase } from "../app/editor-host.js";
 import { createStore } from "../app/hosts.js";
@@ -35,6 +36,8 @@ export function PageActions(props: {
   favorite: boolean;
   /** The page's `icon` property, when it has one: the menu offers "Add icon" only without. */
   icon: string | undefined;
+  /** A journal day, which cannot be deleted (`../app/page-delete.ts`): no Delete item. */
+  journal: boolean;
 }): JSX.Element {
   const { buildContext } = useCommands();
   const { platform, mobile } = detectPlatformFromEnvironment();
@@ -164,6 +167,16 @@ export function PageActions(props: {
                 }}
               >
                 <SmilePlus size={15} /> Add icon
+              </button>
+            </Show>
+            <Show when={!props.journal}>
+              <button
+                type="button"
+                role="menuitem"
+                class="page-actions-item page-actions-item-danger"
+                onClick={() => run("app.deletePage")}
+              >
+                <Trash2 size={15} /> Delete page…
               </button>
             </Show>
           </div>
