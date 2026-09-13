@@ -10,8 +10,9 @@
  * the owner's live graph. Run from packages/server:
  *   pnpm exec tsx ../../tools/probes/mirror-roundtrip-graph.ts <path-to-graph.sqlite>
  *
- * Result on the owner's graph copy (2026-09-13 13:08, 18,628 live blocks): see
- * docs/progress/core-ops.md ("Real-graph checks").
+ * Result on the owner's graph copy (2026-09-13 13:08, 952 pages, 18,628 live blocks): the old
+ * parser read 441 pages back differently, the fixed one 2 (the 20 pre-B-266 `SCHEDULED:` lines).
+ * Details in docs/progress/core-ops.md ("Real-graph checks").
  */
 import { DatabaseSync } from "node:sqlite";
 import type { OutlineNode } from "../../packages/core/src/model.js";
