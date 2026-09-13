@@ -84,6 +84,30 @@ describe("pages exist once referenced, over HTTP", () => {
     expect(await pageNames()).toEqual(["Hub", "Placeholder"]);
   });
 
+  it("renaming a page to a name only links hold takes the name, and the links now reach the page", async () => {
+    await call("page.create", { name: "Hub", markdown: "- about [[Home Automation]]" });
+    await call("page.create", { name: "HA notes", markdown: "- zigbee" });
+    const renamed = await call("page.update", { page: "HA notes", new_name: "Home Automation" });
+    expect(renamed.page.name).toBe("Home Automation");
+    expect(await pageNames()).toEqual(["Home Automation", "Hub"]);
+    const read = await call("page.read", { page: "Home Automation", format: "json" });
+    expect((read.tree as Array<{ content: string }>).map((b) => b.content)).toEqual(["zigbee"]);
+    const backlinks = await call("page.backlinks", { target: "Home Automation" });
+    expect((backlinks.linked as unknown[]).length).toBe(1);
+    expect((await call("trash.list", {})).items).toEqual([]);
+    expectParity();
+  });
+
+  it("renaming onto a page someone wrote in is still refused", async () => {
+    await call("page.create", { name: "Taken", markdown: "- mine" });
+    await call("page.create", { name: "Other", markdown: "- other" });
+    const r = await post(s.app, "/api/v1/page.update", s.writeToken, {
+      page: "Other",
+      new_name: "Taken",
+    });
+    expect(r.status).toBe(409);
+  });
+
   it("the trash never lists a page the server removed with its last link", async () => {
     const hub = await call("page.create", { name: "Hub", markdown: "- [[Draft One]]" });
     const blockId = hub.created[0] as string;

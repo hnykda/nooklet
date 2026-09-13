@@ -2,6 +2,7 @@ import { normalizePageName, splitList } from "@nooklet/core";
 import { z } from "zod";
 import { buildWikilinkRewriteOps } from "../data-api.js";
 import { aliasKeysOf } from "../page-aliases.js";
+import { unclaimedReferencePageForKey } from "../ref-pages.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { checkIfVersion, currentHeadSeq, pageMetaWire, requirePage } from "./resolve.js";
@@ -72,8 +73,14 @@ export const pageUpdate = defineOp({
       let refsRewritten = 0;
       if (input.new_name !== undefined && input.new_name !== page.name) {
         const existing = await ctx.data.pages.get({ name: input.new_name });
-        if (existing && existing.id !== page.id) {
+        // The name held only by an empty page its links made (ADR 024) is free to take: that page
+        // goes in the same batch, before the rename, and the links then resolve to this page.
+        const holder = unclaimedReferencePageForKey(ctx.db, normalizePageName(input.new_name));
+        if (existing && existing.id !== page.id && existing.id !== holder) {
           throw new OpError("conflict", `page "${input.new_name}" already exists`);
+        }
+        if (holder && holder !== page.id) {
+          ops.push(ctx.mintOp(holder, { kind: "page.delete", deletedAt: Date.now() }));
         }
         ops.push(ctx.mintOp(page.id, { kind: "page.rename", name: input.new_name }));
         const rewriteOps = buildWikilinkRewriteOps(ctx.db, ctx.mintOp, page.name, input.new_name);
