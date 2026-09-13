@@ -90,3 +90,25 @@ then unreferenced; client rebuilt by the run) — so it is not the embeds work. 
 closes the palette: `.cm-content` is still in the DOM but "inactive" for the full 10 s, so typing
 afterwards would go nowhere — the B-72 symptom that test was written for. The other 118 tests in
 journals/selection/context-menu/navigation/focus/phone/tasks/views passed in the same run.
+
+---
+
+### B-214 · Typing anywhere on a page collapses its embeds to the placeholder and back, and resets their expand toggles
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-embeds` on a copy of the owner's graph · **Test:** —
+
+On the owner's 2024-09-29 journal (an embed of 27 rows), one keystroke in the day's first block
+made the embed's host row measure 775 → 51 → 775 → 51 → 775 px (a `ResizeObserver` on the row):
+the embed is torn down and rebuilt twice per keystroke, and each rebuild shows the one-line
+"Embed: ((id))" Suspense fallback until the new resource's first read lands. Typing in a block
+*below* an embed (a page with `{{embed [[2024-09-29]]}}` above it) moved the editor on screen
+between y=309, 875 and 1233 while typing six characters. A row unfolded with the embed's own toggle
+folds again on the next keystroke anywhere on the page. Probes:
+`impl-embeds-verify/probe-remount2.mjs`, `probe-flash.mjs`, `probe-toggle.mjs` (scratch).
+
+Cause (verified by tagging DOM nodes): `BlockTree` hands every row a new `block` object whenever the
+page tree re-reads (every write), and `BlockRowView`'s `content` memo and its `ctx.source` both read
+`props.block.content` — so the row's `.vr-block-view` survives but everything rendered inside it is
+rebuilt, including a fresh `EmbedView` whose `useEmbed` resource starts unresolved and suspends. The
+same rebuild is what makes a ```` ```query ```` block flicker 78 → 45 → 78 px (pre-existing, same
+cause); for plain text it was invisible.
