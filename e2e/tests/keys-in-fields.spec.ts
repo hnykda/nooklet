@@ -63,7 +63,7 @@ test("Backspace and Cmd/Ctrl+X in the page title edit the title, and Enter renam
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`${pagePath(`${name} renamed`)}$`));
   await expect(page.locator(".vr-outliner .cm-content")).toHaveCount(0);
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   expect(await stored(page, `${name} renamed`)).toEqual(SEEDED);
 });
 
@@ -85,7 +85,7 @@ test("Cmd/Ctrl+Shift+D and Cmd/Ctrl+. in the page title leave the selected block
   await page.waitForTimeout(500);
   expect(await rowTexts(page, outliner)).toEqual(SEEDED);
   await expect(page.locator(".vr-zoom-trail")).toHaveCount(0);
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   expect(await stored(page, name)).toEqual(SEEDED);
 });
 
@@ -125,7 +125,7 @@ test("Backspace, Cmd/Ctrl+A then Cmd/Ctrl+X in the palette edit the query, not t
   await expect(selected).toHaveCount(1);
   expect(await rowTexts(page, outliner)).toEqual(SEEDED);
   await expect(page.locator(".vr-zoom-trail")).toHaveCount(0);
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   expect(await stored(page, name)).toEqual(SEEDED);
 });
 
@@ -148,7 +148,7 @@ test("a shortcut typed into the palette over an open edit does not write into th
   await expect(page.locator(".cm-content")).toBeFocused();
   await page.keyboard.type("!");
   await page.keyboard.press("Escape");
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   await expect.poll(() => stored(page, name)).toEqual(["kf one!", "kf two", "kf three"]);
 });
 
@@ -192,7 +192,7 @@ test("with no field focused, a standing selection still answers Backspace and Cm
   await expect(selected).toHaveCount(1);
   await page.keyboard.press("Backspace");
   await expect.poll(() => rowTexts(page, outliner)).toEqual(["kf four"]);
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   await expect.poll(() => stored(page, name)).toEqual(["kf four"]);
 });
 
@@ -244,7 +244,7 @@ test("over a block selection, the keys meant for a field still work there (B-300
   await expect(page.locator(".page-find-count")).toHaveText(/^2 of 4$/);
   await page.keyboard.press("Escape");
   await expect(page.locator(".page-find")).toHaveCount(0);
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   await expect.poll(() => stored(page, name)).toEqual(["kf one", "kf one", "kf two", "kf three"]);
 });
 
@@ -308,6 +308,6 @@ test("Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z on a focused select do not take back a blo
   await expect(select).toHaveCount(0);
   await page.keyboard.press(`${MOD}+z`);
   await expect.poll(() => rowTexts(page, outliner)).toEqual(SEEDED);
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   await expect.poll(() => stored(page, name)).toEqual(SEEDED);
 });

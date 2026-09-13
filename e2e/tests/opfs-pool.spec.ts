@@ -46,7 +46,10 @@ test("a start cut short while the OPFS pool was being created does not leave the
   // On OPFS, not quietly on the in-memory fallback: the fix is that the pool is usable, not that
   // something else took over. Anchored: "synced via another tab" is an in-memory follower (B-81)
   // and an unanchored /synced/ let it pass.
-  await expect(page.locator(".app-sync-indicator")).toHaveText(/^(synced|syncing \(\d+\))$/);
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute(
+    "data-state",
+    /^(synced|pending)$/,
+  );
 
   // And it writes: the rollback journal is exactly the file there was no room for.
   await outliner.locator(".vr-block-view").first().click();

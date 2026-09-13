@@ -89,22 +89,23 @@ test("Delete page from the … menu: asked, gone from All pages and search, in t
     `"${name}" and its 3 blocks will be moved to the Trash. You can restore them from there.`,
   );
   await expect(dialog).toContainText(
-    "Links to it from other pages will point at a page that doesn't exist until it is restored.",
+    "Links to it from other pages will open an empty page of that name until it is restored.",
   );
   await dialog.getByRole("button", { name: "Delete page" }).click();
 
   await expect(page).toHaveURL(/\/journals$/);
   await expect(dialog).toHaveCount(0);
-  expect(await pageExists(page, name)).toBe(false);
+  // ADR 024: another page still links to the name, so the server makes it a page again at once —
+  // an empty one. What was deleted is the page with its blocks: they are gone from it.
+  await expect.poll(async () => (await readBlocks(page, name)).length).toBe(0);
 
-  // All pages: the page that links to it is listed (the list has loaded), the deleted one is not.
+  // All pages: the linking page is listed (the list has loaded), and the name is one empty page.
   await page.goto("/pages");
   const filter = page.locator(".all-pages-filter");
   await filter.fill("Delete Zebra Linker");
   await expect(page.locator(".all-pages-row")).toHaveCount(1);
   await filter.fill(name);
-  await expect(page.locator(".all-pages-row")).toHaveCount(0);
-  await expect(page.locator(".all-pages-empty")).toBeVisible();
+  await expect(page.locator(".all-pages-row")).toHaveCount(1);
 
   await keywordSearch(page, "zebradel");
   await expect(page.locator(".search-summary")).toHaveText("0 results", { timeout: 15_000 });

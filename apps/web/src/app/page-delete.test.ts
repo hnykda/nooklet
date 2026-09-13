@@ -111,7 +111,7 @@ describe("pageDeleteConfirmation", () => {
 
   it("counts blocks in the singular, leaves out blocks a page does not have, and warns about links", () => {
     const links =
-      "Links to it from other pages will point at a page that doesn't exist until it is restored.";
+      "Links to it from other pages will open an empty page of that name until it is restored.";
     expect(pageDeleteConfirmation("P", { blocks: 1, backlinks: 1 }).message).toEqual([
       '"P" and its 1 block will be moved to the Trash. You can restore them from there.',
       links,

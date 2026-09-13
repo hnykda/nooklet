@@ -46,9 +46,11 @@ export function pageDeleteConfirmation(name: string, preview: PageDeletePreview)
   // No number: the dry run's `backlinks_affected` counts every block UNDER a linking block too
   // (`path_ref`) — 98 for a page three blocks link to on the owner's graph (B-492). Any count above
   // zero does mean at least one real link on another page, which is all this sentence claims.
+  // ADR 024: a name other pages still link to is a page again at once — empty, and the restore
+  // takes the name back (`trash.restore` pushes an unclaimed page aside).
   if (preview.backlinks > 0) {
     message.push(
-      "Links to it from other pages will point at a page that doesn't exist until it is restored.",
+      "Links to it from other pages will open an empty page of that name until it is restored.",
     );
   }
   return {
