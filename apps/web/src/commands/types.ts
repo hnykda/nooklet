@@ -101,6 +101,11 @@ export interface BlockTaskSnapshot {
   repeat?: string;
 }
 
+export interface BlockPropsWrite {
+  blockId: string;
+  props: Record<string, string | null>;
+}
+
 export interface Store {
   /** The current task-relevant properties of one block, or `undefined` if it doesn't exist.
    * `task.cycle`/`task.toggleDone`/`task.setMarkerDone` need this to apply R35's repeat-aware
@@ -113,6 +118,9 @@ export interface Store {
   /** Set several block properties as a single atomic transaction (R35's "stamp `done` AND set
    * `marker`" / "advance `scheduled`/`deadline` AND reset `marker`" both need this). */
   setBlockProps(blockId: string, props: Record<string, string | null>): Promise<void>;
+  /** Several blocks' properties as ONE write — one undo step, anchored on the first block (a marker
+   * command over a multi-selection, B-346). `setBlockProps` once per block is one Cmd/Ctrl+Z each. */
+  setPropsOfBlocks(writes: ReadonlyArray<BlockPropsWrite>): Promise<void>;
   /** Escape hatch mirroring `data/store.ts#applyOps` today, for callers that already have
    * fully-formed ops (correct id/hlc/device). */
   applyOps(ops: Op[]): Promise<ApplyOpsResult>;

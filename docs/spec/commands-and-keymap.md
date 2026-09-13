@@ -453,7 +453,7 @@ back to its `text/plain` sibling) except behind a future "paste as markdown" plu
 | `task.setMarkerDone` | Mark DONE | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerWaiting` | Mark WAITING | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerCanceled` | Mark CANCELED | — | — | `editorFocused \|\| blockSelected` |
-| `task.clearMarker` | Clear task marker | — | — | `isTask` |
+| `task.clearMarker` | Clear task marker | — | — | `isTask \|\| blockSelected` |
 
 **R34.** `task.cycle` reads the target block's current `marker` and advances it exactly:
 `null → TODO → DOING → DONE → null` (wrapping). `WAITING` and `CANCELED` are never reached by
@@ -523,6 +523,10 @@ side effects beyond that (no `done` stamping — only reaching `DONE` triggers R
 `done` untouched (clearing the marker does not delete task metadata, so re-adding a marker later
 restores the same schedule). None of the six has a default keybinding; all six are reachable from
 the palette, the block's context menu, and (for Todo only) the slash menu's "TODO/task" item.
+In block-selection mode all six act on **every** selected block (`clearMarker` on those that have a
+marker), as one write and one undo step (B-346); `task.setMarkerDone` completes each block from its
+own dates. `clearMarker` is enabled for any block selection because the context's `isTask` is read
+from the edited block only.
 
 #### E.3 Navigation and palette (categories `Navigation`)
 

@@ -11,21 +11,34 @@ first for each. Bug notes go to `docs/bugs-inbox/editor-keys.md`, not BUGS.md.
 
 ## Done
 
-(nothing yet)
+- B-282 + B-346 (one commit, both in `commands/registrations/task.ts`): task commands queued
+  (`createSerialRun`); marker commands write every selected block through new
+  `Store.setPropsOfBlocks` as one batch; `clearMarker` when `isTask || blockSelected`;
+  `external-batch.ts` refuses a batch touching a block the tree does not show. e2e
+  `task-marker-keys.spec.ts` (2 tests) red before, green after (4/4 repeats); related specs
+  (tasks, dates, undo-gaps, undo-redo, selection, commands, redo, template-undo, context-menu,
+  palette-text-keys) 85 passed, 1 skipped. Web unit 1,136 green.
 
 ## In flight
 
-- Reading code for all five.
+- (next) B-294.
 
 ## Next
 
-1. B-346, B-282 (task.ts / dispatcher)
-2. B-294 (autocomplete replace range)
-3. B-295 (follow link ends editing)
-4. B-344 (mermaid starter into its own block)
+1. B-294 (autocomplete replace range when the caret is inside a complete link)
+2. B-295 (follow link ends editing / keys typed after Alt+Enter)
+3. B-344 (mermaid starter into its own block)
+4. Full e2e run at the end.
 
 ## Decisions
+
+- B-282: serialize rather than read from the editor tree. Verified ordering: tree `commit` posts
+  `applyLocalOps` synchronously; worker `applyLocalOps` is sync (`worker-core.ts`), so the queued
+  command's replica query sees the write.
+- B-346: brief said "like Set scheduled date now does (B-345)" but B-345 gated instead; followed the
+  explicit instruction (act on all). `task.cycle` stays single-block.
 
 ## How to resume
 
 `git log m10/editor-keys` for landed commits; the inbox file names each test.
+Run e2e: `NOOKLET_DATA=<scratch>/data NOOKLET_E2E_PORT=6400 pnpm --dir <worktree>/e2e exec playwright test tests/<spec> --project=chromium`.

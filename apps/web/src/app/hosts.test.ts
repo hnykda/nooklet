@@ -132,6 +132,29 @@ describe("createStore block-property writes (B-142)", () => {
     expect(s.applied).toEqual([]);
   });
 
+  it("several blocks' properties go as ONE batch, anchored on the first block (B-346)", async () => {
+    const s = store(true);
+    await s.store.setPropsOfBlocks([
+      { blockId: "blk1", props: { marker: "DONE", done: "2026-09-13T10:00:00Z" } },
+      { blockId: "blk2", props: { marker: "DONE" } },
+    ]);
+    expect(s.batches).toHaveLength(1);
+    expect(s.batches[0]?.anchorId).toBe("blk1");
+    expect(s.batches[0]?.ops.map((o) => [o.entity, o.payload])).toEqual([
+      ["blk1", { kind: "block.prop", key: "marker", value: "DONE" }],
+      ["blk1", { kind: "block.prop", key: "done", value: "2026-09-13T10:00:00Z" }],
+      ["blk2", { kind: "block.prop", key: "marker", value: "DONE" }],
+    ]);
+    expect(s.applied).toEqual([]);
+  });
+
+  it("writes nothing for an empty list of blocks", async () => {
+    const s = store(true);
+    await s.store.setPropsOfBlocks([]);
+    expect(s.batches).toEqual([]);
+    expect(s.applied).toEqual([]);
+  });
+
   it("writes straight to the replica when no editor shows the block", async () => {
     const s = store(false);
     await s.store.setBlockProp("blk3", "marker", null);

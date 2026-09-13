@@ -4,7 +4,7 @@ import { createFakeAppHost, createFakeNavigationHost } from "../hosts/nav-host.j
 import { createFakeStore } from "../hosts/store.js";
 import { createPaletteController } from "../palette/palette-controller.js";
 import { createCommandRegistry } from "../registry.js";
-import type { WhenContext } from "../types.js";
+import { type CommandContext, DEFAULT_WHEN_CONTEXT, type WhenContext } from "../types.js";
 import { compileWhen } from "../when/compile.js";
 import { evaluateWhen } from "../when/evaluate.js";
 import { createFakeDatePickerHost } from "./date-picker-host.js";
@@ -200,4 +200,134 @@ describe("the date commands date one block (B-345)", () => {
       expect(evaluateWhen(when, { ...base, blockSelected: true, selectionCount: 2 })).toBe(false);
     });
   }
+});
+
+function taskCtx(
+  store: ReturnType<typeof createFakeStore>,
+  over: Partial<CommandContext> = {},
+): CommandContext {
+  return {
+    ...DEFAULT_WHEN_CONTEXT,
+    focusedBlockId: null,
+    selectedBlockIds: [],
+    surface: null,
+    store,
+    exec: async () => {},
+    ...over,
+  };
+}
+
+function taskCommand(id: string) {
+  const cmd = createCoreCommands(makeDeps()).find((c) => c.id === id);
+  if (!cmd) throw new Error(`no ${id}`);
+  return cmd;
+}
+
+describe("task commands started back to back (B-282)", () => {
+  // The dispatcher does not await a command before running the next key. Both runs used to read
+  // the marker before either wrote, and both wrote TODO.
+  it("two task.cycle runs started together advance the marker twice", async () => {
+    const store = createFakeStore({ b1: {} });
+    const cycle = taskCommand("task.cycle");
+    const ctx = taskCtx(store, { editorFocused: true, focusedBlockId: "b1" });
+    await Promise.all([cycle.run(ctx), cycle.run(ctx)]);
+    expect(store.props.get("b1")?.marker).toBe("DOING");
+  });
+
+  it("a cycle queued behind one that throws still runs", async () => {
+    const store = createFakeStore({ b1: {} });
+    const cycle = taskCommand("task.cycle");
+    const ctx = taskCtx(store, { editorFocused: true, focusedBlockId: "b1" });
+    const failing = {
+      ...store,
+      getBlockTaskState: async () => {
+        throw new Error("replica gone");
+      },
+    };
+    const first = cycle.run({ ...ctx, store: failing });
+    const second = cycle.run(ctx);
+    await expect(first).rejects.toThrow("replica gone");
+    await second;
+    expect(store.props.get("b1")?.marker).toBe("TODO");
+  });
+});
+
+describe("the marker commands act on every selected block, in one write (B-346)", () => {
+  function spyStore(initial: Record<string, Record<string, string | null>>) {
+    const store = createFakeStore(initial);
+    const calls: string[] = [];
+    const setPropsOfBlocks = store.setPropsOfBlocks;
+    store.setPropsOfBlocks = async (writes) => {
+      calls.push(writes.map((w) => w.blockId).join(","));
+      await setPropsOfBlocks(writes);
+    };
+    store.setBlockProp = async () => {
+      throw new Error("one block at a time is one undo step per block");
+    };
+    return { store, calls };
+  }
+  const selected = {
+    blockSelected: true,
+    selectionCount: 3,
+    selectedBlockIds: ["b1", "b2", "b3"],
+  };
+
+  it("Mark TODO marks all three", async () => {
+    const { store, calls } = spyStore({ b1: {}, b2: { marker: "DONE" }, b3: {} });
+    await taskCommand("task.setMarkerTodo").run(taskCtx(store, selected));
+    expect(calls).toEqual(["b1,b2,b3"]);
+    expect(["b1", "b2", "b3"].map((id) => store.props.get(id)?.marker)).toEqual([
+      "TODO",
+      "TODO",
+      "TODO",
+    ]);
+  });
+
+  it("Mark DONE completes each block from its own dates (R35)", async () => {
+    const { store, calls } = spyStore({
+      b1: { marker: "TODO" },
+      b2: { marker: "DOING", scheduled: "2026-09-01", repeat: "1w" },
+      b3: {},
+    });
+    await taskCommand("task.setMarkerDone").run(taskCtx(store, selected));
+    expect(calls).toEqual(["b1,b2,b3"]);
+    expect(store.props.get("b1")?.marker).toBe("DONE");
+    expect(store.props.get("b1")?.done).toBeTruthy();
+    // The repeating one is rescheduled and reopened, not left DONE.
+    expect(store.props.get("b2")?.marker).toBe("TODO");
+    expect(store.props.get("b2")?.scheduled).not.toBe("2026-09-01");
+    expect(store.props.get("b3")?.marker).toBe("DONE");
+  });
+
+  it("Clear task marker clears every selected task and writes nothing for the rest", async () => {
+    const { store, calls } = spyStore({
+      b1: { marker: "TODO" },
+      b2: {},
+      b3: { marker: "WAITING" },
+    });
+    await taskCommand("task.clearMarker").run(taskCtx(store, selected));
+    expect(calls).toEqual(["b1,b3"]);
+    expect(["b1", "b2", "b3"].map((id) => store.props.get(id)?.marker ?? null)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("while editing, only the edited block is written", async () => {
+    const { store, calls } = spyStore({ b1: {}, b2: {} });
+    await taskCommand("task.setMarkerDoing").run(
+      taskCtx(store, { editorFocused: true, focusedBlockId: "b2" }),
+    );
+    expect(calls).toEqual(["b2"]);
+    expect(store.props.get("b1")?.marker).toBeUndefined();
+  });
+
+  it("Clear task marker is offered for a block selection, where isTask is false", () => {
+    const when = compileWhen(taskCommand("task.clearMarker").when ?? "false");
+    const base = DEFAULT_WHEN_CONTEXT;
+    expect(evaluateWhen(when, { ...base, blockSelected: true, selectionCount: 3 })).toBe(true);
+    expect(evaluateWhen(when, { ...base, editorFocused: true, isTask: true })).toBe(true);
+    expect(evaluateWhen(when, { ...base, editorFocused: true, isTask: false })).toBe(false);
+  });
 });

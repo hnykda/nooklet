@@ -17,7 +17,7 @@ import type {
   PageSource,
   PageSummary,
 } from "../commands/hosts/page-source.js";
-import type { BlockTaskSnapshot, Store } from "../commands/types.js";
+import type { BlockPropsWrite, BlockTaskSnapshot, Store } from "../commands/types.js";
 import { applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
 import { forceSync, queryAs } from "../db/client.js";
 import { assetUrl } from "../editor/render/asset-url.js";
@@ -65,18 +65,23 @@ export function createStore(deps: StoreDeps = {}): Store {
    * HLCs are monotonic, not gapless), and it writes them without being awaited — as it does every
    * edit — so this resolves once the tree has the change, not once the replica does.
    */
-  async function writeBlockProps(
-    blockId: string,
-    props: Record<string, string | null>,
-  ): Promise<void> {
-    const entries = Object.entries(props);
-    if (entries.length === 0) return;
+  async function writePropsOfBlocks(writes: ReadonlyArray<BlockPropsWrite>): Promise<void> {
+    const entries = writes.flatMap(({ blockId, props }) =>
+      Object.entries(props).map(([key, value]) => ({ blockId, key, value })),
+    );
+    const anchorId = entries[0]?.blockId;
+    if (anchorId === undefined) return;
     const clock = await opClock(entries.length);
-    const ops: Op[] = entries.map(([key, value]) =>
+    const ops: Op[] = entries.map(({ blockId, key, value }) =>
       makeOp(clock.next(), clock.device, blockId, { kind: "block.prop", key, value } as OpPayload),
     );
-    if (editor.commitOps({ ops, anchorId: blockId })) return;
+    // One batch for every block: the tree records it as ONE undo step (B-346).
+    if (editor.commitOps({ ops, anchorId })) return;
     await write(ops);
+  }
+
+  function writeBlockProps(blockId: string, props: Record<string, string | null>): Promise<void> {
+    return writePropsOfBlocks([{ blockId, props }]);
   }
 
   return {
@@ -112,6 +117,8 @@ export function createStore(deps: StoreDeps = {}): Store {
 
     // One atomic batch: R35's "stamp done AND reset marker" must not be observable half-applied.
     setBlockProps: writeBlockProps,
+
+    setPropsOfBlocks: writePropsOfBlocks,
 
     async applyOps(ops) {
       return applyOps(ops);

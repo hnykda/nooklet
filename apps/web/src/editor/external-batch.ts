@@ -40,11 +40,17 @@ export function prepareExternalBatch(
   clock: Clock,
 ): { ops: Op[]; focus?: FocusChange } | null {
   if (batch.ops.length === 0 || !tree.byId.has(batch.anchorId)) return null;
+  const created = new Set<string>();
   for (const op of batch.ops) {
     const p = op.payload;
     if (!UNDOABLE.has(p.kind)) return null;
     if ((p.kind === "block.create" || p.kind === "block.place") && p.place.pageId !== tree.pageId)
       return null;
+    if (p.kind === "block.create") created.add(op.entity);
+    // A batch over several blocks (a marker set on a selection, B-346) must not touch one this tree
+    // does not show: its inverse reads the old value from this tree, finds nothing, and undo would
+    // write `null` over a marker the block really had.
+    else if (!tree.byId.has(op.entity) && !created.has(op.entity)) return null;
   }
   const ops = batch.ops.map((o) => makeOp(clock.next(), clock.device, o.entity, o.payload));
   if (!batch.focus) return { ops };

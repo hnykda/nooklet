@@ -44,6 +44,9 @@ export function createFakeStore(
     async setBlockProps(blockId, patch) {
       merge(blockId, patch);
     },
+    async setPropsOfBlocks(writes) {
+      for (const { blockId, props: patch } of writes) merge(blockId, patch);
+    },
     async applyOps(ops: Op[]): Promise<ApplyOpsResult> {
       const results = ops.map((o) => ({
         id: o.id,
