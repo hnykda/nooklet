@@ -13,17 +13,21 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
 
 ## Done
 
-(nothing yet)
+- `b75e571` bugs inbox + this file (bugs logged before fixing).
+- F1 / B-130 — listener fan-out in `db/client.ts` (the commit after `b75e571`, subject
+  "fix(web): fan the worker's single change listener out…"). Unit repro `data/history.test.ts`
+  failed (0 refetches after Trash) before the fix; e2e `review-reactivity.spec.ts` failed against
+  the unfixed client (client.ts temporarily reverted; global-setup rebuilds) and passes with it.
+  Related e2e after the fix: trash, history, diagnostics, references, query, remote-device,
+  connectivity — 33/33. Web unit 692/692 before adding F1's tests.
 
 ## In flight
 
-- F1: fan-out of change/sync-status listeners in `apps/web/src/db/client.ts`.
+- F2: errored-resource guards in Trash/History.
 
 ## Next steps, in order
 
-1. F1 — `db/client.ts` fan-out + unsubscribe; `useSyncStatus` onCleanup; comments in store.ts,
-   history.ts, worker-api.ts. Tests: `db/client.test.ts`, `data/history.test.ts` (store resource
-   still refetches after `useTrash`).
+1. (done) F1.
 2. F2 — guard errored reads in `TrashView.tsx`, `history.ts`, `HistoryView.tsx`; component tests.
 3. F3 — `QueryFenceView.tsx` guarded `latest`, `describeError`; render-seams test.
 4. F4 — generation counter in `usePageHistory.loadMore`; `data/history.test.ts`.

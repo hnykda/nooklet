@@ -8,8 +8,12 @@ findings.
 ---
 
 ### B-130 · After visiting Trash or a page's History, no other view refreshes until a reload
-**Status:** open · **Severity:** high · **Found:** 2026-09-13, web reactivity review (F1) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, web reactivity review (F1) ·
+**Tests:** `e2e/tests/review-reactivity.spec.ts` "after visiting Trash, an open page still picks up
+a write made elsewhere (B-130)"; `apps/web/src/db/client.test.ts` "two onChange subscribers both
+receive a ChangeEvent" (and four more); `apps/web/src/data/history.test.ts` "a store.ts resource
+still refetches on a change after Trash has subscribed", "two useSyncStatus() callers (the shell
+and the diagnostics panel) both see a status"
 
 Open `/trash` or any page's History once, then go back to a page and edit, or let another device
 write: page trees, the journal stream, the sidebar, Tasks, page icons, ```query fences and `((ref))`
@@ -22,6 +26,13 @@ The worker keeps exactly one change listener and one sync-status listener
 `onSyncStatus` call straight to it. `data/history.ts` subscribes on first use, replacing
 `data/store.ts`'s listener; `store.ts` never re-registers. `useSyncStatus()` registers once per
 call, so AppShell and DiagnosticsPanel replace each other.
+
+**Fixed 2026-09-13.** `db/client.ts` registers one Comlink proxy per listener kind with the worker,
+on first use, and fans out to a set of subscribers; `onChange`/`onSyncStatus` return an
+unsubscribe, a throwing subscriber is logged and does not starve the others, and `useSyncStatus`
+unsubscribes on cleanup. The worker keeps its single slot — `client.ts` is now its only caller.
+Reproduced first: the e2e case failed at "after trash" against the unfixed client and passes with
+the fix; the `history.test.ts` case failed at the refetch-after-Trash assertion (0 refetches).
 
 ---
 

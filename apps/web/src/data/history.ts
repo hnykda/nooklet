@@ -5,11 +5,13 @@
  * client replica does not carry (docs/spec/sql-schema.md rule 1) — so these go over HTTP to
  * `/api/v1/*`, the same way `./store.ts`'s backlinks and search do.
  *
- * Invalidation follows `./store.ts`'s `stamped` idiom, re-implemented here rather than imported
- * because that module keeps its version signals private: a resource's source reads one version
- * counter per table it depends on (bumped by the worker's `ChangeEvent`, which fires for local
- * writes and for pulled ones alike) and returns a fresh object, so Solid sees "something changed"
- * and refetches. A restore or an undo is a SERVER write; it reaches this replica as a pulled
+ * Invalidation follows `./store.ts`'s `stamped` idiom with its own counters, because it also
+ * bumps on the push queue draining (`onSyncStatus` below) where `store.ts`'s `stampedFor` does
+ * not: a resource's source reads one version counter per table it depends on (bumped by the
+ * worker's `ChangeEvent`, which fires for local writes and for pulled ones alike) and returns a
+ * fresh object, so Solid sees "something changed" and refetches. Subscribing here is safe only
+ * because `db/client.ts` fans the worker's single listener slot out — before it did, this module's
+ * subscription replaced `store.ts`'s and every other view stopped refreshing (B-130). A restore or an undo is a SERVER write; it reaches this replica as a pulled
  * change moments later and bumps the same counters — plus each write here calls `refetch` on
  * completion so the view does not wait for the round trip.
  */
