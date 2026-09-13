@@ -104,7 +104,9 @@ export function describeElement(target: unknown): string {
 export function keyCategory(
   e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing">,
 ): string {
-  const named = e.key.length > 1 ? e.key : "char";
+  // Named key values (UI Events) are ASCII words: `Enter`, `ArrowUp`, `F5`, `Dead`. Not "longer
+  // than one": an emoji or a decomposed accent is several UTF-16 units and would be logged as itself.
+  const named = /^[A-Z][A-Za-z0-9]+$/.test(e.key) ? e.key : "char";
   const mods = [e.metaKey && "Meta", e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift"]
     .filter(Boolean)
     .join("+");

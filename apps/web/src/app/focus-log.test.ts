@@ -60,6 +60,11 @@ describe("describeElement / keyCategory (never text)", () => {
     expect(keyCategory({ ...base, key: "[", altKey: true })).toBe("Alt+char");
     expect(keyCategory({ ...base, key: "Enter", shiftKey: true })).toBe("Shift+Enter");
     expect(keyCategory({ ...base, key: "a", isComposing: true })).toBe("char (composing)");
+    // A character outside the BMP is two UTF-16 units long, and used to be logged as itself.
+    expect(keyCategory({ ...base, key: "😀" })).toBe("char");
+    expect(keyCategory({ ...base, key: "e\u0301" })).toBe("char");
+    expect(keyCategory({ ...base, key: "Dead", altKey: true })).toBe("Alt+Dead");
+    expect(keyCategory({ ...base, key: "F5" })).toBe("F5");
   });
 });
 

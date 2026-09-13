@@ -1,7 +1,7 @@
 # Bugs inbox — webkit-focus (M11, B-42 in WebKit on sync refresh)
 
 Entries in `docs/BUGS.md` format, to be folded in by the coordinator. New numbers B-501..B-509
-(B-501 used by the branch; B-502 used by its verification).
+(B-501 used by the branch; B-502, B-503 used by its verification).
 
 ---
 
@@ -132,3 +132,17 @@ unfocused.
 selection into it in the same task, before any `selectionchange` — the repair
 `commands/focus-return.ts` already makes for B-296. No timer, no BlockTree change. The test above
 fails in WebKit before (2/2, caret 0) and passes after (2/2), Chromium passes both.
+
+---
+
+### B-503 · The focus log recorded some typed characters as themselves
+**Status:** fixed · **Severity:** low (a debug log the owner pastes into bug reports; its promise is
+"no text you type is recorded") · **Found:** 2026-09-13, verifying m11/webkit-focus, by reading
+`app/focus-log.ts#keyCategory` · **Test:** `apps/web/src/app/focus-log.test.ts` "reports a
+character key as `char` and named keys by name, with modifiers"
+
+`keyCategory` treated any `KeyboardEvent.key` longer than one UTF-16 unit as a named key and logged
+it verbatim. A character outside the BMP (an emoji) is two units, a decomposed accent (`e` + U+0301)
+is two, so either went into the log as typed. Now only the shape named key values have (UI Events:
+an ASCII word starting with a capital — `Enter`, `ArrowUp`, `F5`, `Dead`) is logged by name;
+everything else is `char`. The unit test fails before (`😀` logged) and passes after.
