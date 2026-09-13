@@ -108,3 +108,17 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
   `render-views.spec.ts`, new `apps/web/src/editor/caret.test.tsx`. Web unit 1011/1011; e2e
   render-views(+phone), focus, editing, block-properties, rendering, parity, context-menu,
   math-display: 86 passed, 1 skipped.
+- Found and fixed B-326 — `6e469b0`: every write to the `page`/`page_prop` tables anywhere (an
+  agent's `page.create`) rebuilt a missing page's view, so the B-200 panel fell back to "Loading
+  references…" with the scroll at 0. `PageView.tsx` keeps the missing view through a refetch for
+  the name the lookup last settled for. New e2e in `render-views.spec.ts` (failed before:
+  `samePanel: false, loadingSeen: true`). Missing-view neighbours (pages, page-rename,
+  page-identity, references*, tagged-pages, journals, journal-agenda, trash, history, …): 89 passed.
+- Real graph copy (`16eecd7`, `tools/probes/render-views-blank-line-real-graph.mjs`): B-325 marker
+  lands on the empty line of `2022-12-02`'s emoji block; B-326 `/page/book` keeps panel and scroll.
+- Final: web unit 1011/1011, `pnpm -r typecheck` clean, biome clean on every changed file. Whole
+  chromium e2e in four groups on the branch head: 120 passed + 1 skipped; 94 passed + 1 failed
+  (`page-icons.spec` "setting an icon from the title row…", All Pages row without the icon after a
+  reload — then 3/3 alone and 20/20 with page-export and page-find before it; load); 113 passed;
+  119 passed + 1 failed + 1 skipped (`views.spec` B-161 — also 2/2 failed with `apps/web/src`
+  restored to `cf08d19`). WebKit project (storage.spec only) not run.
