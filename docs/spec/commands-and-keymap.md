@@ -502,6 +502,8 @@ writes exactly `scheduled:: 2026-09-12` / `deadline:: 2026-09-14 14:00` — ISO 
 24-hour time, no weekday, no angle brackets, no timezone (ADR 011, verbatim format). No default
 keybinding: reached via the `/scheduled` / `/deadline` slash items or the palette.
 
+*Owner confirmed 2026-09-13:* the typed line (`fri 14:00 every 2w from done`) is the design; the "Add time" / "Repeat" toggles described above are not planned.
+
 *As built (2026-09-13, B-96; `apps/web/src/commands/date-picker/`):* the grid, arrows,
 PageUp/PageDown (Shift: a year), Enter and Escape are as above. Where this rule has toggles, the
 picker has a typed line instead, so nothing needs the mouse: typing is not limited to digits but

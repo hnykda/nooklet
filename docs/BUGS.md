@@ -194,34 +194,6 @@ page views, references and the sync status re-query on).
 
 ---
 
-### B-291 · Text composed in place (an IME's marked text, a dead-key accent) while the date picker is open goes into the block behind it
-**Status:** open (needs the owner's call) · **Severity:** low · **Found:** 2026-09-13, m9/focus
-(split out of B-147) · **Test:** none; probe `tools/probes/date-picker-composition.spec.ts`
-
-B-147's second half, the part its fix could not reach. With the picker open over a block being
-edited, a composition — emulated through CDP `Input.imeSetComposition` ("ˇ", then "č") and committed
-with `Input.insertText` — is written into the block: editor `"compose ˇ"`, then `"compose č"`, and
-the picker's query stays empty. Plain `insertText` right after it (what the B-147 fix takes) reached
-the picker (`"zítra"`), so the probe tells the two apart. A composition's `beforeinput`
-(`insertCompositionText`) cannot be cancelled, and CodeMirror applies the DOM change itself, so no
-listener can keep it out while the editor holds DOM focus.
-
-Unverified on real hardware: which layouts compose. By the B-147 entry's reading, a Czech Mac
-layout's number-row letters are ordinary keydowns (fine), while háček/čárka dead keys and every CJK
-IME compose (this bug). The picker's vocabulary is English words and digits, so what lands is junk
-in the block, not a wrong date.
-
-Why it is not fixed here: the only robust fix is for the picker to OWN focus while open — a
-visually hidden input inside it takes every kind of text input natively — and hand focus back on
-close (`commands/focus-return.ts#rememberFocus` now does that part). That reverses a deliberate
-design choice in `DatePicker.tsx` ("the editor KEEPS focus… the caret is exactly where it was by
-never having left"), changes what `e2e/tests/dates.spec.ts` asserts ("while the picker is open" the
-editor is focused), and on a phone a focus move between inputs affects the virtual keyboard in ways
-nobody here can test. Owner decision: keep "editor keeps focus" and accept this, or move focus
-into the picker.
-
----
-
 ### B-292 · `editing.spec.ts` "typing immediately after Enter is not discarded" cannot run with `--repeat-each`
 **Status:** open · **Severity:** low (test harness) · **Found:** 2026-09-13, m9/focus (re-running
 it to rule out load) · **Test:** the spec itself
@@ -479,6 +451,37 @@ editor tree when a tree shows the block, or serialize store-routed task commands
 
 ## Fixed
 
+### B-291 · Text composed in place (an IME's marked text, a dead-key accent) while the date picker is open goes into the block behind it
+**Status:** wontfix · **Severity:** low · **Found:** 2026-09-13, m9/focus
+(split out of B-147) · **Test:** none; probe `tools/probes/date-picker-composition.spec.ts`
+
+B-147's second half, the part its fix could not reach. With the picker open over a block being
+edited, a composition — emulated through CDP `Input.imeSetComposition` ("ˇ", then "č") and committed
+with `Input.insertText` — is written into the block: editor `"compose ˇ"`, then `"compose č"`, and
+the picker's query stays empty. Plain `insertText` right after it (what the B-147 fix takes) reached
+the picker (`"zítra"`), so the probe tells the two apart. A composition's `beforeinput`
+(`insertCompositionText`) cannot be cancelled, and CodeMirror applies the DOM change itself, so no
+listener can keep it out while the editor holds DOM focus.
+
+Unverified on real hardware: which layouts compose. By the B-147 entry's reading, a Czech Mac
+layout's number-row letters are ordinary keydowns (fine), while háček/čárka dead keys and every CJK
+IME compose (this bug). The picker's vocabulary is English words and digits, so what lands is junk
+in the block, not a wrong date.
+
+Why it is not fixed here: the only robust fix is for the picker to OWN focus while open — a
+visually hidden input inside it takes every kind of text input natively — and hand focus back on
+close (`commands/focus-return.ts#rememberFocus` now does that part). That reverses a deliberate
+design choice in `DatePicker.tsx` ("the editor KEEPS focus… the caret is exactly where it was by
+never having left"), changes what `e2e/tests/dates.spec.ts` asserts ("while the picker is open" the
+editor is focused), and on a phone a focus move between inputs affects the virtual keyboard in ways
+nobody here can test. Owner decision: keep "editor keeps focus" and accept this, or move focus
+into the picker.
+
+
+**Owner decision 2026-09-13: accepted as is.** The editor keeps focus while the date picker is open; composed text landing in the block is junk, never a wrong date. Revisit only if a real layout hits it in daily use.
+
+---
+
 ### B-301 · An edit written just before a reload never reaches the server until something else is edited
 
 **Status:** fixed · **Severity:** high (a device can hold an edit the server never gets; closing the
@@ -706,6 +709,9 @@ Reproduced on `cf08d19`: after the move, click into "keep", End, Cmd+Z, type "Z"
 This branch answers no. If the answer should be yes, delete the `present` argument in `doUndo`/
 `doRedo` (two call sites); the focus rule stays either way. The e2e test fails on `cf08d19` and
 passes with the change.
+
+
+**Owner confirmed 2026-09-13:** an undo does not reach a block that left the page. Keep the `present` check.
 
 ---
 
