@@ -51,7 +51,7 @@ test("a phone's Tasks view row shows both labelled dates without overflowing (B-
   expect(m.docScroll).toBeLessThanOrEqual(m.viewport);
   expect(m.due.right).toBeLessThanOrEqual(m.row.right + 0.5);
   for (const d of m.dates) expect(d.left).toBeGreaterThanOrEqual(m.row.left);
-  // Stacked, not side by side, and the task text keeps most of the row.
+  // Stacked, not side by side, and the task text keeps at least half of the row.
   expect(m.dates[1]?.top ?? 0).toBeGreaterThan(m.dates[0]?.top ?? 0);
   expect(m.row.width - m.due.width).toBeGreaterThan(m.row.width * 0.5);
 });
