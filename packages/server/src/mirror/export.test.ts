@@ -394,6 +394,8 @@ describe("exportAll with sinceSeq (B-260)", () => {
     createBlock(renamed, "body");
     const from = createPage("Move From");
     const moving = createBlock(from, "travels");
+    // So the page it leaves still has a file to read back: an empty page has none (ADR 024).
+    createBlock(from, "stays", { order: "b0" });
     const to = createPage("Move To");
     createBlock(to, "here");
     expect(exportAll(ctx.driver, dataDir).exported).toBe(4);
@@ -432,7 +434,7 @@ describe("exportAll rebuilds missing files (B-262)", () => {
   it("rewrites a page whose file is gone even though mirror_file says it is up to date", () => {
     const pageId = createPage("Vanished File");
     createBlock(pageId, "still in the database");
-    createPage("Still There");
+    createBlock(createPage("Still There"), "also here");
     expect(exportAll(ctx.driver, dataDir).exported).toBe(2);
 
     // A database copied without its pages/, or a file deleted by hand: the row stays, the file

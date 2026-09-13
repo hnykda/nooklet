@@ -42,7 +42,62 @@ function write(ops: Op[]): void {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** A page with nothing in it gets no file (ADR 024); tests about files give theirs a property. */
+const TYPED = { type: "note" };
+
 describe("startLiveMirror", () => {
+  it("writes no file for a page only a reference made, and removes a page's file when its last block goes (ADR 024)", () => {
+    const logs: string[] = [];
+    const mirror = startLiveMirror(ctx, dataDir, { debounceMs: 10_000, log: (m) => logs.push(m) });
+    try {
+      const home = newId();
+      const line = newId();
+      write([
+        op(home, { kind: "page.create", name: "Mirror Home", journalDay: null, createdAt: 1 }),
+        op(line, {
+          kind: "block.create",
+          place: { pageId: home, parentId: null, order: "a0" },
+          content: "see [[Mirror Linked]] and #mirrortag",
+          createdAt: 1,
+        }),
+      ]);
+      mirror.flush();
+      const files = () => readdirSync(join(dataDir, "pages")).sort();
+      expect(files()).toEqual(["Mirror Home.md"]);
+      const rows = () =>
+        ctx.driver
+          .all<{ path: string }>("SELECT path FROM mirror_file ORDER BY path")
+          .map((r) => r.path);
+      expect(rows()).toEqual(["pages/Mirror Home.md"]);
+
+      // The linked page gets content: now it has a file.
+      const linked = ctx.driver.get<{ id: string }>(
+        "SELECT id FROM page WHERE key = 'mirror linked'",
+      )?.id as string;
+      const typed = newId();
+      write([
+        op(typed, {
+          kind: "block.create",
+          place: { pageId: linked, parentId: null, order: "a0" },
+          content: "written in",
+          createdAt: 2,
+        }),
+      ]);
+      mirror.flush();
+      expect(files()).toEqual(["Mirror Home.md", "Mirror Linked.md"]);
+
+      // Its only block deleted: the page stays (someone wrote in it), its file goes, and so does
+      // the row saying the file is there.
+      write([op(typed, { kind: "block.delete", deletedAt: 3 })]);
+      mirror.flush();
+      expect(files()).toEqual(["Mirror Home.md"]);
+      expect(rows()).toEqual(["pages/Mirror Home.md"]);
+      expect(logs.filter((l) => l.includes("could not") || l.includes("failed"))).toEqual([]);
+    } finally {
+      mirror.stop();
+    }
+  });
+
   it("writes a page's file shortly after it is created, and updates it after an edit", async () => {
     const mirror = startLiveMirror(ctx, dataDir, { debounceMs: 20, log: () => {} });
     try {
@@ -268,7 +323,9 @@ describe("startLiveMirror", () => {
     try {
       const page = (name: string): string => {
         const id = newId();
-        write([op(id, { kind: "page.create", name, journalDay: null, createdAt: 1 })]);
+        write([
+          op(id, { kind: "page.create", name, journalDay: null, properties: TYPED, createdAt: 1 }),
+        ]);
         return id;
       };
       const alpha = page("Alpha");
@@ -315,7 +372,15 @@ describe("startLiveMirror", () => {
       expect(failures()).toHaveLength(1);
 
       // Still blocked: a commit to another page retries it, and says so again.
-      write([op(newId(), { kind: "page.create", name: "Other", journalDay: null, createdAt: 2 })]);
+      write([
+        op(newId(), {
+          kind: "page.create",
+          name: "Other",
+          journalDay: null,
+          properties: TYPED,
+          createdAt: 2,
+        }),
+      ]);
       mirror.flush();
       expect(existsSync(join(dataDir, "pages", "Other.md"))).toBe(true);
       expect(failures()).toHaveLength(2);
@@ -323,14 +388,30 @@ describe("startLiveMirror", () => {
 
       // The obstacle goes; the next commit, to a different page, brings the file back.
       rmSync(target, { recursive: true, force: true });
-      write([op(newId(), { kind: "page.create", name: "Third", journalDay: null, createdAt: 3 })]);
+      write([
+        op(newId(), {
+          kind: "page.create",
+          name: "Third",
+          journalDay: null,
+          properties: TYPED,
+          createdAt: 3,
+        }),
+      ]);
       mirror.flush();
       expect(existsSync(join(dataDir, "pages", "Third.md"))).toBe(true);
       expect(readFileSync(target, "utf8")).toContain("stuck text");
       expect(failures()).toHaveLength(2);
 
       // Once written it is not retried again: the next sweep writes only the page it touched.
-      write([op(newId(), { kind: "page.create", name: "Fourth", journalDay: null, createdAt: 4 })]);
+      write([
+        op(newId(), {
+          kind: "page.create",
+          name: "Fourth",
+          journalDay: null,
+          properties: TYPED,
+          createdAt: 4,
+        }),
+      ]);
       logs.length = 0;
       mirror.flush();
       expect(logs).toEqual(["mirror: wrote 1 page file(s), removed 0"]);

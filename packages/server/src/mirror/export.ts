@@ -39,6 +39,8 @@ export interface ExportResult {
   path: string;
   contentHash: string;
   changed: boolean;
+  /** The page has no blocks and no properties, so it has no file: `changed` means one was removed. */
+  empty?: true;
 }
 
 export interface ExportFailure {
@@ -109,13 +111,28 @@ export function renderPageToOutline(driver: SqlDriver, pageId: string): Rendered
 export function exportPage(driver: SqlDriver, dataDir: string, pageId: string): ExportResult {
   const rendered = renderPageToOutline(driver, pageId);
   const relPath = pageMirrorPath(rendered);
-  const text = serializeOutline(pageMirrorOutline(rendered));
-  const contentHash = sha256Hex(text);
 
   const existing = driver.get<{ path: string; content_hash: string }>(
     "SELECT path, content_hash FROM mirror_file WHERE page_id = ?",
     [pageId],
   );
+
+  // A page with nothing in it — the kind a reference makes (ADR 024) — gets no file, as in Logseq,
+  // and loses the one it had once its last block goes. Otherwise every `[[link]]` and `#tag` would
+  // put an empty file in `pages/` (259 on the owner's graph), which is noise in a greppable copy.
+  if (rendered.parsed.blocks.length === 0 && Object.keys(rendered.parsed.properties).length === 0) {
+    if (!existing) return { path: relPath, contentHash: "", changed: false, empty: true };
+    try {
+      unlinkSync(join(dataDir, existing.path));
+    } catch {
+      // Already gone on disk; the bookkeeping row still goes.
+    }
+    driver.run("DELETE FROM mirror_file WHERE page_id = ?", [pageId]);
+    return { path: existing.path, contentHash: "", changed: true, empty: true };
+  }
+
+  const text = serializeOutline(pageMirrorOutline(rendered));
+  const contentHash = sha256Hex(text);
 
   const absPath = join(dataDir, relPath);
   // The row only says what we last wrote, not that it is still there (B-262): it travels with a
@@ -218,6 +235,7 @@ export function exportAll(
 
   let exported = 0;
   let skipped = allLivePages.length - candidates.length;
+  let deleted = 0;
   const failed: ExportFailure[] = [];
   for (const p of candidates) {
     // One page that cannot be written must not cost every page after it, or the prune below: a
@@ -226,14 +244,14 @@ export function exportAll(
     // passes it back as `alsoPageIds`, B-365).
     try {
       const result = exportPage(driver, dataDir, p.id);
-      if (result.changed) exported++;
+      if (result.changed && result.empty) deleted++;
+      else if (result.changed) exported++;
       else skipped++;
     } catch (err) {
       failed.push({ pageId: p.id, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
-  let deleted = 0;
   const stale = driver.all<{ path: string }>(
     `SELECT mf.path AS path
      FROM mirror_file mf
