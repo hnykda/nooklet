@@ -51,6 +51,7 @@ import {
   useCommands,
 } from "../commands/index.js";
 import { apiBaseUrl, authToken } from "../data/bootstrap.js";
+import { listRandomPageCandidates } from "../data/random-page.js";
 import { applyOp, resolvePageName } from "../data/store.js";
 import { forceSync, initDb } from "../db/client.js";
 import {
@@ -63,6 +64,7 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
+import { pathToPageName } from "../views/navigateTarget.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
 import { activeContextSnapshot, buildContextBase, liveEditorHost } from "./editor-host.js";
@@ -309,6 +311,14 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       closePalette: () => palette.close(),
     }),
     pageFind: { open: () => openPageFind(editor.getSelection()) },
+    randomPage: {
+      candidates: listRandomPageCandidates,
+      currentPageName: () => {
+        const path = window.location.pathname;
+        return path.startsWith("/page/") ? pathToPageName(path.slice("/page/".length)) : null;
+      },
+      open: (pageId) => navigation.openPage(pageId),
+    },
   });
 
   const anyAutocomplete = createMemo(() => {

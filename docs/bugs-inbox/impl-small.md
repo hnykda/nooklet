@@ -148,3 +148,22 @@ same function — presumably the same, not checked. Fix: apply the pre-block's p
 asked. So an agent cannot favourite, give an icon to, or lock a journal day, while a person can (the
 properties panel writes `page.prop` locally). Fix: move the journal check inside the
 `new_name !== undefined` branch, plus a server test for a properties-only update on a journal.
+
+---
+
+### B-237 · No way to land on a random page
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit §2 #18 · **Test:**
+`e2e/tests/random-page.spec.ts`, `apps/web/src/commands/registrations/random-page.test.ts`
+
+Rediscovering old notes by jumping to a random page is a common outliner habit; nooklet has no
+command for it. The audit records no vote evidence (research/13) and ranks it "only if it is free".
+
+**Fixed 2026-09-13.** `nav.randomPage` ("Open a random page", palette only, no default key; spec
+R44b) opens a random live page that is not a journal day and has at least one live block, never
+the page on screen. Journals and empty pages are skipped on purpose: in a copy of the owner's graph
+825 of 952 pages are journal days and 41 of the other 127 are empty. Files:
+`commands/registrations/random-page.ts` (+test), `data/random-page.ts` (+test against the real
+client schema through `WorkerDb`; removing either the journal or the has-a-block condition fails
+it — checked); two-line hookups in `registrations/index.ts` and `CommandLayer.tsx`. Tests that
+would have caught it: `e2e/tests/random-page.spec.ts` (2 tests),
+`apps/web/src/commands/registrations/random-page.test.ts`, `apps/web/src/data/random-page.test.ts`.

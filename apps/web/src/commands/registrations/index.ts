@@ -9,6 +9,7 @@ import { createFormatCommands } from "./format.js";
 import { createInsertCommands } from "./insert.js";
 import { createNavCommands } from "./nav.js";
 import { createPageFindCommands, type PageFindHost } from "./page-find.js";
+import { createRandomPageCommands, type RandomPageHost } from "./random-page.js";
 import { createRefactorCommands, type RefactorHost } from "./refactor.js";
 import { createStructuralCommands } from "./structural.js";
 import { createTaskCommands } from "./task.js";
@@ -26,6 +27,8 @@ export interface CoreCommandDeps {
   refactor?: RefactorHost;
   /** Find in page (audit §2 #16). Optional like `refactor`: no host, no command. */
   pageFind?: PageFindHost;
+  /** `nav.randomPage` (audit §2 #18). Optional: no host, no command. */
+  randomPage?: RandomPageHost;
 }
 
 /** Every command core registers at startup (E.1-E.6 of the spec). Structural `Block`-category
@@ -46,6 +49,7 @@ export function createCoreCommands(deps: CoreCommandDeps): Command[] {
     ...createAppCommands({ app: deps.app }),
     ...(deps.refactor ? createRefactorCommands({ refactor: deps.refactor }) : []),
     ...(deps.pageFind ? createPageFindCommands({ pageFind: deps.pageFind }) : []),
+    ...(deps.randomPage ? createRandomPageCommands({ randomPage: deps.randomPage }) : []),
   ];
 }
 

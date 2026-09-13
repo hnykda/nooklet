@@ -469,6 +469,7 @@ the palette, the block's context menu, and (for Todo only) the slash menu's "TOD
 | `nav.followLink` | Follow link under cursor | Alt+Enter | Alt+Enter | `editorFocused && caretInLink` |
 | `search.open` | Open search | Cmd+Shift+F | Ctrl+Shift+F | `true` |
 | `search.findInPage` | Find in page | Cmd+F | Ctrl+F | `pageView` |
+| `nav.randomPage` | Open a random page | — | — | `true` |
 
 **R40.** `palette.open` opens one shared palette component (§ Interfaces, `PaletteState`) in
 **mixed mode**: as the user types, results interleave fuzzy-matched pages/journals and fuzzy-
@@ -515,6 +516,12 @@ the bar ends any editing session first (keys typed into the bar must not reach t
 `when` is `pageView`, so on every other view no binding matches and the browser's own find runs.
 The block being edited stays visible while it no longer matches. Implementation:
 `apps/web/src/app/page-find.ts`, `views/PageFindBar.tsx`, `editor/pageFilter.ts`.
+
+**R44b.** `nav.randomPage` (added 2026-09-13, audit §2 #18) opens a page chosen uniformly at
+random from the live pages that are not journal days and have at least one live block, excluding
+the page currently on screen (compared with `normalizePageName`). With no such page it does
+nothing. No default keybinding. Implementation: `commands/registrations/random-page.ts`,
+`data/random-page.ts`.
 
 #### E.4 Formatting (category `Formatting`)
 

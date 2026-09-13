@@ -46,14 +46,21 @@ based on `da85cfb` (the worktree was created at an older commit, `41666ee`; the 
   "the slash menu opens and inserts" (popup not visible in 5 s), which passed on rerun of
   parity.spec alone (14/14); treated as load.
 
+- #17 hash `5cdaf21`.
+- #18 random page (B-237) — commit "feat(web): nav.randomPage". New:
+  `commands/registrations/random-page.ts` (+test), `data/random-page.ts` (+test via WorkerDb),
+  `e2e/tests/random-page.spec.ts`; hookups in `registrations/index.ts`, `CommandLayer.tsx`; spec
+  R44b. Also tightened `read-only.spec.ts`'s palette check with a positive control (a `fill` of
+  ">text" does not switch the palette to commands mode; only a typed ">" does).
+
 ## 2. In flight
 
-- #18 random page.
+- #11 search filters.
 
 ## 3. Next steps, in order
 
-1. #18 random page (`nav.randomPage`, journals excluded).
-2. #11 search filters (marker, journals only / pages only) in `views/SearchView.tsx`.
+1. #11 search filters (marker, journals only / pages only) in `views/SearchView.tsx`.
+2. Final report: full unit suite, typecheck, e2e of every spec this branch touched.
 
 ## 4. Decisions
 

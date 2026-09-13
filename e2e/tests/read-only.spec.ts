@@ -95,11 +95,16 @@ test("a locked page offers no block selection, so selection keys and block comma
   await expect(page.locator(".ctx-menu .ctx-item")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // …nor in the palette.
+  // …nor in the palette — while a page-level command still is (so the palette really is listing
+  // commands, and "absent" is not just an empty palette).
   await page.keyboard.press(`${MOD}+k`);
+  const palette = page.locator(".cmd-palette");
+  await expect(palette).toBeVisible();
+  await page.keyboard.type(">Find in page");
+  await expect(palette.locator(".cmd-row", { hasText: "Find in page" })).toHaveCount(1);
+  await palette.locator(".cmd-input").fill("");
   await page.keyboard.type(">Cycle task");
-  await expect(page.locator(".cmd-palette")).toBeVisible();
-  await expect(page.locator(".cmd-palette", { hasText: "Cycle task state" })).toHaveCount(0);
+  await expect(palette.locator(".cmd-row", { hasText: "Cycle task state" })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   // Then the server, once nothing is left to push.
