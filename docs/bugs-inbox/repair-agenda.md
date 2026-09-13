@@ -28,3 +28,19 @@ fails if the clock is not seeded from the fields first, checked; all or nothing 
 `packages/core/src/outline-org-dates.test.ts` › "findOrgDateLines" (4).
 **Still for the coordinator:** run it on `~/.nooklet/default` with the app quit (dry run first).
 Not checked: whether a window left open during the repair shows it before its next reconnect.
+
+---
+
+### B-480 · `review-reactivity.spec.ts`'s "Older changes" retry once listed 25 history batches instead of 26
+**Status:** needs-repro · **Severity:** low (test harness, probably) · **Found:** 2026-09-13,
+repair-agenda, e2e run of 32 specs (`references-filters` … `views`, alphabetical) on port 6414 at
+load average ~100 · **Test:** `e2e/tests/review-reactivity.spec.ts` "a failed Older changes says
+so instead of silently re-enabling the button (B-131)"
+
+After the aborted "Older changes" load showed its error and the route was removed, the second click
+left `.history-batch` at 25 for the whole 10 s (`expect … toHaveCount(26)`, line 182). The same
+spec alone right after: 7/7. Nothing on this branch touches History or `page.history`. Unexplained;
+one guess not checked: `page.unroute` and the click racing, so the retry went through the abort
+route too but the error line had already been cleared. The trace is gone (the next run on 6414
+wiped `e2e/test-results/6414/`); the failure output is in the repair-agenda scratch dir,
+`e2e-chunk3.log`.

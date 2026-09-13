@@ -226,8 +226,9 @@ test("a dated block that is not a task is listed on its own day, with a bullet, 
 test("today holds overdue tasks past ten behind 'Show all N overdue', and the count follows the graph", async ({
   page,
 }) => {
-  // Twelve tasks overdue by more than three months: older than anything another spec leaves, so
-  // they lead the list. Closed again at the end — later specs count open tasks.
+  // Twelve tasks overdue by eleven years: older than anything another spec leaves — including the
+  // literal dates some specs write, which turn overdue as the calendar moves — so they lead the
+  // list. Closed again at the end: later specs count open tasks.
   const BACKLOG = "Agenda Backlog";
   await seedPage(
     page,
@@ -235,7 +236,7 @@ test("today holds overdue tasks past ten behind 'Show all N overdue', and the co
     Array.from(
       { length: 12 },
       (_, i) =>
-        `- TODO agx backlog ${String(i + 1).padStart(2, "0")}\n  deadline:: ${isoOffset(-111 + i)}`,
+        `- TODO agx backlog ${String(i + 1).padStart(2, "0")}\n  deadline:: ${isoOffset(-4011 + i)}`,
     ).join("\n"),
   );
   const backlog = await readBlocks(page, BACKLOG);

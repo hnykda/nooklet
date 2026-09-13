@@ -160,14 +160,31 @@ first attempt's output was lost (it ended in an error), so it may have bootstrap
 typed 8×"x" then 8×Backspace into a block on an earlier journal day. Moved to ports 7414/7415 and
 now wait for my own "nooklet serving <my dir>" log line before probing.
 
+## Whole suites on the final code (2026-09-13, ~18:30-18:50, load average ~100)
+
+- Chromium e2e, port 6414, all 97 specs in three runs (the tool call caps at 10 min, so one
+  server per run — cross-spec state is shared within a run, not across): specs 1-33 (`a-fresh-journal`
+  … `journal-midnight`) 177 passed, 1 skipped; 34-65 (`journal-stream-editing` … `references-cap`)
+  191 passed; 66-97 (`references-filters` … `views`) 167 passed, 1 skipped, 1 failed —
+  `review-reactivity.spec.ts` B-131 "Older changes" (25 history batches instead of 26), 7/7 alone
+  right after; nothing here touches History; logged as B-480 (needs-repro). Total 535 passed,
+  2 skipped, 1 failed-then-passed. After that the backlog test's dates moved 11 years back (literal
+  `scheduled:: 2026-09-20` in other specs turns overdue with the calendar and would otherwise
+  overtake them in a few months); agenda + midnight specs again: 10/10.
+- Unit: core 412/412, server 684/684 (after part 1; untouched since), web 1,146/1,146 (after part
+  2's last code change). `pnpm -r typecheck` clean. Biome clean on every changed file.
+- `verify` on the repaired real-graph copy: OK (20,482 and 20,666 ops). The server schema did not
+  change (the index is client-only).
+
 ## Next steps
 
 1. (done) Part 1 code + unit tests.
 2. (done) Dry-run + apply on the graph copy; `verify`; chips; undo.
 3. (done) Part 2 perf before/after.
 4. (done) Part 2 code + unit + e2e.
-5. Full Chromium e2e suite on port 6414 (non-task dated blocks now appear in other days' agendas
-   — check no other spec trips on that), full unit suites, typecheck, then final report.
+5. (done) Whole suites.
+6. Coordinator: read the Part 1 report, quit the app, `pnpm nooklet repair org-dates` (dry run)
+   then `--apply` on `~/.nooklet/default`; keep the printed `batch_id`.
 
 ## How to resume
 
