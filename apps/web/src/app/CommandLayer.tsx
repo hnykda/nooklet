@@ -69,7 +69,12 @@ import { requestPluginsSection } from "../views/PluginsSection.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
 import { blockDatePicker } from "./date-picker.js";
-import { activeContextSnapshot, buildContextBase, liveEditorHost } from "./editor-host.js";
+import {
+  activeContextSnapshot,
+  buildContextBase,
+  liveEditorHost,
+  withoutOutliner,
+} from "./editor-host.js";
 import {
   createAppHost,
   createBlockSource,
@@ -82,7 +87,7 @@ import { openPageFind, pageFindAvailable } from "./page-find.js";
 import { createRefactorHost } from "./refactor-host.js";
 import { openOnShelf } from "./shelf.js";
 import { createShelfHost } from "./shelf-host.js";
-import { textFieldOwnsKey } from "./text-field-keys.js";
+import { isFieldOutsideOutliner, textFieldOwnsKey } from "./text-field-keys.js";
 import { useTheme } from "./theme.js";
 
 type ContextBase = Omit<CommandContext, "exec" | "args">;
@@ -95,7 +100,9 @@ function KeyboardDispatch(props: { getContext: () => ContextBase }): null {
       const base = props.getContext();
       // Backspace in the palette's input deleted the selected blocks (B-347).
       if (textFieldOwnsKey(e, base.platform === "mac")) return;
-      if (dispatcher.handleKeyDown(e, buildContext(base))) {
+      // Nor may any other key from a field outside the outliner act on blocks (B-300).
+      const ctx = isFieldOutsideOutliner(e.target) ? withoutOutliner(base) : base;
+      if (dispatcher.handleKeyDown(e, buildContext(ctx))) {
         e.preventDefault();
         e.stopPropagation();
       }

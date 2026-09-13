@@ -279,3 +279,16 @@ export function buildContextBase(
 ): ContextBase {
   return { ...activeContextSnapshot(), store, platform, mobile, pageView };
 }
+
+/**
+ * `base` as a key typed into a field outside the outliner sees it (B-300,
+ * `text-field-keys.ts#isFieldOutsideOutliner`): nothing edited, nothing selected, so no
+ * `editorFocused`/`blockSelected` binding matches, while `when: true` and view-level clauses
+ * (`pageView`) still do. For keyboard dispatch only — the palette must still list the selection
+ * commands, and it evaluates its rows against the full context while its own input has focus
+ * (why "report `blockSelected: false` while a field has focus" was not the fix). `popupOpen` is
+ * kept: it is the popup-key claim (`../commands/popup-keys.ts`), not the outliner's state.
+ */
+export function withoutOutliner(base: ContextBase): ContextBase {
+  return { ...base, ...NOTHING_FOCUSED, popupOpen: base.popupOpen };
+}

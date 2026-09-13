@@ -1,6 +1,23 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { isOtherTextField, isTextEditingKey, textFieldOwnsKey } from "./text-field-keys.js";
+import { createFakeEditorHost } from "../commands/hosts/editor-host.js";
+import { createFakeAppHost, createFakeNavigationHost } from "../commands/hosts/nav-host.js";
+import { createFakeStore } from "../commands/hosts/store.js";
+import { buildKeymap } from "../commands/keymap/build.js";
+import { createDispatcher } from "../commands/keymap/dispatch.js";
+import { chordSteps, parseSingleToken } from "../commands/keymap/notation.js";
+import { createPaletteController } from "../commands/palette/palette-controller.js";
+import { createFakeDatePickerHost } from "../commands/registrations/date-picker-host.js";
+import { createCoreCommands } from "../commands/registrations/index.js";
+import { createFakePageFindHost } from "../commands/registrations/page-find.js";
+import type { WhenContext } from "../commands/types.js";
+import { type ContextBase, withoutOutliner } from "./editor-host.js";
+import {
+  isFieldOutsideOutliner,
+  isOtherTextField,
+  isTextEditingKey,
+  textFieldOwnsKey,
+} from "./text-field-keys.js";
 
 const key = (
   k: string,
@@ -63,5 +80,178 @@ describe("isOtherTextField (B-347)", () => {
     expect(textFieldOwnsKey({ ...key("Backspace"), target: input }, true)).toBe(true);
     expect(textFieldOwnsKey({ ...key("Backspace"), target: content }, true)).toBe(false);
     expect(textFieldOwnsKey({ ...key("Escape"), target: input }, true)).toBe(false);
+  });
+});
+
+describe("isFieldOutsideOutliner (B-300)", () => {
+  it("is any input, textarea, select or contenteditable that is not inside the outliner", () => {
+    const title = document.createElement("textarea");
+    const query = document.createElement("input");
+    const date = Object.assign(document.createElement("input"), { type: "date" });
+    const select = document.createElement("select");
+    const editable = document.createElement("div");
+    editable.contentEditable = "true";
+    // jsdom does not compute `isContentEditable`.
+    Object.defineProperty(editable, "isContentEditable", { value: true });
+    const button = document.createElement("button");
+    const outliner = document.createElement("div");
+    outliner.className = "vr-outliner";
+    outliner.tabIndex = -1;
+    const surface = document.createElement("div");
+    surface.className = "cm-editor";
+    const content = document.createElement("div");
+    content.contentEditable = "true";
+    Object.defineProperty(content, "isContentEditable", { value: true });
+    surface.append(content);
+    const checkboxInBlock = Object.assign(document.createElement("input"), { type: "checkbox" });
+    outliner.append(surface, checkboxInBlock);
+    document.body.append(title, query, date, select, editable, button, outliner);
+
+    for (const field of [title, query, date, select, editable]) {
+      expect(isFieldOutsideOutliner(field)).toBe(true);
+    }
+    // The outliner's own keys are commands: its container, the block editor, a control in a row.
+    for (const el of [outliner, content, checkboxInBlock]) {
+      expect(isFieldOutsideOutliner(el)).toBe(false);
+    }
+    expect(isFieldOutsideOutliner(button)).toBe(false);
+    expect(isFieldOutsideOutliner(document.body)).toBe(false);
+    expect(isFieldOutsideOutliner(null)).toBe(false);
+  });
+});
+
+describe("the default keymap, typed into a field outside the outliner (B-300)", () => {
+  const FULL: WhenContext = {
+    editorFocused: true,
+    blockSelected: true,
+    hasSelection: true,
+    selectionCount: 1,
+    isTask: true,
+    isCollapsed: false,
+    hasChildren: true,
+    atLineStart: true,
+    atLineEnd: true,
+    onFirstVisualLine: true,
+    onLastVisualLine: true,
+    caretInLink: true,
+    popupOpen: false,
+    composing: false,
+    zoomed: true,
+    pageView: true,
+    platform: "mac",
+    mobile: false,
+  };
+
+  /** Every command a single key of the default mac keymap runs from `target`, over a context in
+   * which an edit AND a selection stand (collapsed and not), dispatched as `CommandLayer` does. */
+  function reachable(target: HTMLElement): string[] {
+    const commands = createCoreCommands({
+      editor: createFakeEditorHost(),
+      navigation: createFakeNavigationHost(),
+      app: createFakeAppHost(),
+      palette: createPaletteController(),
+      datePicker: createFakeDatePickerHost(),
+      pageFind: createFakePageFindHost(),
+    });
+    const bindings = buildKeymap(commands, [], { platform: "mac" });
+    const dispatcher = createDispatcher({ getBindings: () => bindings });
+    const ran = new Set<string>();
+    const named: Record<string, string> = {
+      Up: "ArrowUp",
+      Down: "ArrowDown",
+      Left: "ArrowLeft",
+      Right: "ArrowRight",
+      Space: " ",
+    };
+    for (const row of bindings) {
+      if (chordSteps(row.key).length !== 1) continue;
+      const { mods, base } = parseSingleToken(row.key);
+      const event = {
+        key: named[base] ?? (base.length === 1 ? base.toLowerCase() : base),
+        metaKey: mods.cmd,
+        ctrlKey: mods.ctrl,
+        altKey: mods.alt,
+        shiftKey: mods.shift,
+        target,
+        preventDefault: () => {},
+      };
+      for (const isCollapsed of [false, true]) {
+        const full: ContextBase = {
+          ...FULL,
+          isCollapsed,
+          focusedBlockId: "b1",
+          selectedBlockIds: ["b1"],
+          surface: null,
+          store: createFakeStore(),
+        };
+        // Exactly what `CommandLayer#KeyboardDispatch` does with a keydown.
+        if (textFieldOwnsKey(event, true)) continue;
+        const ctx = isFieldOutsideOutliner(target) ? withoutOutliner(full) : full;
+        dispatcher.resetChord();
+        dispatcher.handleKeyDown(event, {
+          ...ctx,
+          exec: async (id) => {
+            ran.add(id);
+          },
+        });
+      }
+    }
+    return [...ran].sort();
+  }
+
+  it("runs only the global shortcuts — nothing that acts on a block", () => {
+    const title = document.createElement("textarea");
+    document.body.append(title);
+    expect(reachable(title)).toEqual([
+      "app.openSettings",
+      "app.toggleSidebar",
+      "nav.back",
+      "nav.forward",
+      "nav.journals",
+      "nav.switchPage",
+      "nav.todayJournal",
+      "palette.open",
+      "search.findInPage",
+      "search.open",
+    ]);
+  });
+
+  it("runs the same from a select or a checkbox too — not the outliner's undo/redo (B-452)", () => {
+    const select = document.createElement("select");
+    const checkbox = Object.assign(document.createElement("input"), { type: "checkbox" });
+    document.body.append(select, checkbox);
+    const globals = [
+      "app.openSettings",
+      "app.toggleSidebar",
+      "nav.back",
+      "nav.forward",
+      "nav.journals",
+      "nav.switchPage",
+      "nav.todayJournal",
+      "palette.open",
+      "search.findInPage",
+      "search.open",
+    ];
+    expect(reachable(select)).toEqual(globals);
+    expect(reachable(checkbox)).toEqual(globals);
+  });
+
+  it("while the same keys from the outliner still reach its commands", () => {
+    const outliner = document.createElement("div");
+    outliner.className = "vr-outliner";
+    document.body.append(outliner);
+    const fromOutliner = reachable(outliner);
+    for (const id of [
+      "block.deleteSelected",
+      "block.cutSelection",
+      "block.split",
+      "block.duplicate",
+      "block.zoomIn",
+      "format.insertLink",
+      "edit.undo",
+      "palette.open",
+    ]) {
+      expect(fromOutliner).toContain(id);
+    }
   });
 });
