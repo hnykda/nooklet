@@ -76,3 +76,17 @@ reads computed `text-decoration-line` on the host row of an embed, the host row 
 shelf card holding the embed; before the fix each of the three read `line-through` (checked one at a
 time by reordering/reverting), after it `none`, while the finished item itself is still struck.
 `tasks.spec.ts`'s own-marker strike test still passes.
+
+---
+
+### B-213 · e2e "opening the palette while editing and closing it hands focus back to the editor" fails at `da85cfb`
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, running neighbouring specs for
+embeds · **Test:** `e2e/tests/views.spec.ts` "opening the palette while editing and closing it hands
+focus back to the editor" (the failing test itself)
+
+Not diagnosed. On port 6407 the test failed three runs out of three: twice on `m8/impl-embeds`, and
+once with every existing web file this branch modifies checked out at `da85cfb` (its new modules
+then unreferenced; client rebuilt by the run) — so it is not the embeds work. It fails at `expect(editor(page)).toBeFocused()` after Escape
+closes the palette: `.cm-content` is still in the DOM but "inactive" for the full 10 s, so typing
+afterwards would go nowhere — the B-72 symptom that test was written for. The other 118 tests in
+journals/selection/context-menu/navigation/focus/phone/tasks/views passed in the same run.

@@ -55,9 +55,13 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
 - Lint note: `biome check apps/web/src/editor/BlockRowView.tsx` reports
   `noStaticElementInteractions` on `.vr-row` — present at `da85cfb` too, not from this branch.
 
-- Step 3 (next commit): `shell/Shelf.tsx` passes `embedPath: [node.id]` too; e2e "on the shelf, a
+- `354449c` fix(web): `shell/Shelf.tsx` passes `embedPath: [node.id]` too; e2e "on the shelf, a
   self-embedding block shows the notice rather than a copy of its page" failed first (2 rows), then
   embeds + shelf + shelf-outline 16/16.
+- Broader e2e after `354449c`: journals, selection, context-menu, navigation, focus, phone, tasks,
+  views — 118 passed, 1 failed: views.spec "opening the palette while editing and closing it hands
+  focus back to the editor", failing 3/3 including with this branch's modified web files checked
+  out at `da85cfb` → pre-existing, logged as B-213 (not fixed). Final embeds.spec: 10/10.
 
 ## In flight
 
