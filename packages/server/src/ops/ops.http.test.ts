@@ -277,6 +277,40 @@ describe("block.move", () => {
     expect(after.json.tree[0].children[0].content).toBe("b");
   });
 
+  it("moves the whole subtree when the target is another page (B-85)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "MvSrc",
+      markdown: "- p\n  - c\n    - gc\n- stays",
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "MvDst", markdown: "- d" });
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "MvSrc",
+      format: "json",
+    });
+    const p = read.json.tree[0];
+    const { status, json } = await post(s.app, "/api/v1/block.move", s.writeToken, {
+      id: p.id,
+      page: "MvDst",
+    });
+    expect(status).toBe(200);
+    // Root first, then every descendant: each one got its own block.place onto the new page.
+    expect(json.updated).toHaveLength(3);
+    expect(json.updated[0]).toBe(p.id);
+    const dst = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "MvDst",
+      format: "json",
+    });
+    expect(dst.json.tree.map((n: JsonAny) => n.content)).toEqual(["d", "p"]);
+    expect(dst.json.tree[1].children[0].content).toBe("c");
+    expect(dst.json.tree[1].children[0].children[0].content).toBe("gc");
+    const src = await post(s.app, "/api/v1/page.read", s.writeToken, {
+      page: "MvSrc",
+      format: "json",
+    });
+    expect(src.json.tree.map((n: JsonAny) => n.content)).toEqual(["stays"]);
+    expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
+  });
+
   it("rejects moving a block under its own descendant (invalid, cycle)", async () => {
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Cyc", markdown: "- a\n  - b" });
     const read = await post(s.app, "/api/v1/page.read", s.writeToken, {

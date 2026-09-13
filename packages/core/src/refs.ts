@@ -12,6 +12,7 @@
  */
 
 import type { Properties } from "./model.js";
+import { findTopLevelPipe } from "./tokens.js";
 
 export interface ExtractedRefs {
   pageRefs: string[];
@@ -160,11 +161,16 @@ function scanLine(line: string, acc: RefSet): void {
 }
 
 function addPageRef(acc: RefSet, inner: string): void {
-  const name = inner.trim();
+  // `[[Target|label]]`: the page is what precedes the top-level pipe (B-86). `tokens.ts` has split
+  // it that way for the renderer all along; this reader took the whole interior as the name, so
+  // such links were indexed under "target|label" and resolved to nothing — no backlink, no graph
+  // edge, and a rename did not rewrite them.
+  const pipe = findTopLevelPipe(inner);
+  const name = (pipe === -1 ? inner : inner.slice(0, pipe)).trim();
   if (name === "") return;
   acc.pageRefs.add(name);
-  // nested refs like [[a [[b]]]]
-  if (name.includes("[[")) scanLine(name, acc);
+  // nested refs like [[a [[b]]]], on either side of the pipe
+  if (inner.includes("[[")) scanLine(inner, acc);
 }
 
 /** Index of the "]]" closing the "[[" opened before `from`, honoring nesting; -1 if none. */

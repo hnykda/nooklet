@@ -11,6 +11,11 @@ describe("extractRefs", () => {
     expect(r.blockRefs).toEqual(["64f1a2b3-0000-4000-8000-000000000001"]);
   });
 
+  it("[[Target|label]] refs the target, not 'target|label' (B-86)", () => {
+    const r = extractRefs("see [[Target|the target]], [[Plain]] and [[a|see [[nested]]]]");
+    expect(r.pageRefs).toEqual(["Target", "Plain", "a", "nested"]);
+  });
+
   it("does not treat org-mode block directives (#+BEGIN_QUOTE) as tags", () => {
     const r = extractRefs("#+BEGIN_QUOTE\nquoted text #real\n#+END_QUOTE");
     expect(r.tags).toEqual(["real"]);

@@ -188,7 +188,7 @@ function findBacktickRun(text: string, from: number, len: number): number {
 }
 
 /** Index of the first "|" at bracket-depth 0 (honoring nested [[...]]); -1 if none. */
-function findTopLevelPipe(text: string): number {
+export function findTopLevelPipe(text: string): number {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
     if (text[i] === "[" && text[i + 1] === "[") {

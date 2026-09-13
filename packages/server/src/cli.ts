@@ -60,6 +60,7 @@ import type { ServerConfig } from "./ops/registry.js";
 import { createAppWithPlugins } from "./plugins/bootstrap.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
+import { reindexPipeAliasRefs } from "./ref-reindex.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
 
 function dataDir(args: Args): string {
@@ -111,6 +112,7 @@ function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config:
   const ctx = createServerContext(openDb({ path: join(dir, "graph.sqlite") }));
   if (opts.migrate) {
     const journals = migrateJournalNames(ctx);
+    reindexPipeAliasRefs(ctx);
     if (journals.renamed > 0) {
       process.stderr.write(`nooklet: gave ${journals.renamed} journal pages their ISO names\n`);
     }

@@ -163,42 +163,7 @@ which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
 
 ---
 
-### B-85 · Moving a block to another page makes its children vanish from both pages
-**Status:** open (fixed for the M7 refactor ops and `DataApi.blocks.move`; `block.move` itself
-still does it) · **Severity:** high · **Found:** 2026-09-12, probing for `block.move_to_page` ·
-**Tests:** `packages/server/src/ops/block-move-to-page.test.ts` "moves the whole subtree, not
-just the root",
-`packages/server/src/ops/page-merge.test.ts` "nested blocks survive the move"
 
-`block_move {id: <a block with children>, page: "Other"}`: the block appears on `Other`, its
-children appear nowhere. `page_read` of either page lists only what was already there, plus the
-moved block with `children: []`. In the database the children still say `page_id = <old page>`
-with `parent_id = <the moved block>`, so neither page's tree query finds them.
-
-Cause: `@nooklet/core`'s `applyBlockPlace` updates one row — the block the op names — and a
-`block.place` op that changes `pageId` carries nothing about descendants. The reducer is right to
-be one-op-one-row (that is what makes it replayable), so the fix is at the op layer: every
-cross-page move emits a `block.place` for each descendant too, keeping its parent and order and
-changing only the page (`data-api.ts#subtreePlaceOps`). The M7 ops (`block.to_page`,
-`block.move_to_page`, `page.merge`) and `DataApi.blocks.move` do this. **`ops/block-move.ts` does
-not yet** — its `page:` form needs the same two-line change; owned by another agent this session.
-
----
-
-### B-86 · `[[Page|label]]` links are indexed under the key `page|label` and never resolve
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, probing the reference rewrite ·
-**Test:** none yet (a `refs.test.ts` case for the pipe form would catch it)
-
-Write `[[Target|the target]]` in a block: `Target`'s backlinks do not list it, the link is not a
-graph edge, and a rename of `Target` does not rewrite it. `ref.dst_page_key` for that block is
-`target|the target` with `dst_page_id = NULL`. `packages/core/src/refs.ts#addPageRef` takes the
-whole `[[…]]` interior as the page name; `tokens.ts#tryWikilink` already splits the top-level
-pipe (`target` + `alias`), so `extractRefs` is the one reader that does not. The M7 reference
-rewrite (`data-api.ts#buildRefRewriteOps`) handles the pipe form when it meets one, but it finds
-candidate blocks through `ref`, so a block whose only link to a page is a `[[Page|label]]` is not
-rewritten by a rename or a merge until this is fixed.
-
----
 
 ### B-88 · The row being edited stays on screen after its block leaves the page
 **Status:** open (worked around in the refactor commands) · **Severity:** low · **Found:**
@@ -269,6 +234,54 @@ pull, or navigation fixes it. A timer that bumps the version at local midnight (
 
 
 ## Fixed
+
+### B-86 · `[[Page|label]]` links are indexed under the key `page|label` and never resolve
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, probing the reference rewrite ·
+**Test:** `packages/core/src/refs.test.ts` "[[Target|label]] refs the target, not 'target|label'
+(B-86)"; `packages/server/src/ref-reindex.test.ts`
+
+Write `[[Target|the target]]` in a block: `Target`'s backlinks do not list it, the link is not a
+graph edge, and a rename of `Target` does not rewrite it. `ref.dst_page_key` for that block is
+`target|the target` with `dst_page_id = NULL`. `packages/core/src/refs.ts#addPageRef` takes the
+whole `[[…]]` interior as the page name; `tokens.ts#tryWikilink` already splits the top-level
+pipe (`target` + `alias`), so `extractRefs` is the one reader that does not. The M7 reference
+rewrite (`data-api.ts#buildRefRewriteOps`) handles the pipe form when it meets one, but it finds
+candidate blocks through `ref`, so a block whose only link to a page is a `[[Page|label]]` is not
+rewritten by a rename or a merge until this is fixed.
+
+**Fixed 2026-09-13.** `refs.ts#addPageRef` splits on the top-level pipe with `tokens.ts`'s own
+`findTopLevelPipe` (now exported), so both readers agree. Graphs indexed before the fix are
+re-indexed once by `ref-reindex.ts#reindexPipeAliasRefs` (blocks with a `|` in `dst_page_key`
+only; gated by setting `refs.pipe_alias`), run from the writer commands' migrate step. The owner's
+graph had zero such rows.
+
+---
+
+### B-85 · Moving a block to another page makes its children vanish from both pages
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-12, probing for `block.move_to_page` ·
+**Tests:** `packages/server/src/ops/block-move-to-page.test.ts` "moves the whole subtree, not
+just the root",
+`packages/server/src/ops/page-merge.test.ts` "nested blocks survive the move"
+
+`block_move {id: <a block with children>, page: "Other"}`: the block appears on `Other`, its
+children appear nowhere. `page_read` of either page lists only what was already there, plus the
+moved block with `children: []`. In the database the children still say `page_id = <old page>`
+with `parent_id = <the moved block>`, so neither page's tree query finds them.
+
+Cause: `@nooklet/core`'s `applyBlockPlace` updates one row — the block the op names — and a
+`block.place` op that changes `pageId` carries nothing about descendants. The reducer is right to
+be one-op-one-row (that is what makes it replayable), so the fix is at the op layer: every
+cross-page move emits a `block.place` for each descendant too, keeping its parent and order and
+changing only the page (`data-api.ts#subtreePlaceOps`). The M7 ops (`block.to_page`,
+`block.move_to_page`, `page.merge`) and `DataApi.blocks.move` do this. **`ops/block-move.ts` does
+not yet** — its `page:` form needs the same two-line change; owned by another agent this session.
+
+**Fixed 2026-09-13.** `block.move` now goes through `data-api.ts#subtreePlaceOps` like the M7 ops: one
+`block.place` per block, root first, only when the page changes. `updated` lists every moved id.
+Test: `packages/server/src/ops/ops.http.test.ts` "moves the whole subtree when the target is another
+page (B-85)" (rebuild parity asserted).
+
+---
 
 ### B-95 · `nooklet serve` never writes the markdown mirror
 **Status:** fixed · **Severity:** high · **Found:** 2026-09-12, exposure audit

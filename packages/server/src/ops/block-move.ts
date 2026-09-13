@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { ServerBlockNode } from "../data-api.js";
-import { boundsForPageEnd, newOrderKeys, resolveInsertionBounds, wouldCycle } from "../data-api.js";
+import {
+  boundsForPageEnd,
+  newOrderKeys,
+  resolveInsertionBounds,
+  subtreePlaceOps,
+  wouldCycle,
+} from "../data-api.js";
 import { getBlockRow, pageWireNameById } from "../rows.js";
 import { runWithDryRun } from "./dry-run.js";
 import { renderOutlineText } from "./outline-bridge.js";
@@ -75,12 +81,15 @@ export const blockMove = defineOp({
 
       // biome-ignore lint/style/noNonNullAssertion: newOrderKeys(bounds, 1) always returns one key
       const key = newOrderKeys(bounds, 1)[0]!;
-      const applyResult = await ctx.applyOps([
-        ctx.mintOp(input.id, {
-          kind: "block.place",
-          place: { pageId: bounds.pageId, parentId: bounds.parentId, order: key },
-        }),
-      ]);
+      // One `block.place` per block, root first (B-85): the core reducer updates the one row an
+      // op names, so a cross-page move that placed only the root left every descendant saying
+      // `page_id = <old page>` — on neither page's tree. Same-page moves get the single op.
+      const ops = subtreePlaceOps(ctx.db, ctx.mintOp, input.id, {
+        pageId: bounds.pageId,
+        parentId: bounds.parentId,
+        order: key,
+      });
+      const applyResult = await ctx.applyOps(ops);
       const rejected = applyResult.results.find(
         (r) => r.entity === input.id && r.status === "rejected",
       );
@@ -91,7 +100,7 @@ export const blockMove = defineOp({
       return {
         page: pageWireNameById(ctx.db, bounds.pageId),
         created: [],
-        updated: [input.id],
+        updated: ops.map((o) => o.entity),
         deleted: [],
         outline,
         seq: applyResult.seq,

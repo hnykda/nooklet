@@ -212,7 +212,12 @@ function reindexBlockAndSubtree(driver: SqlDriver, blockId: string): void {
  * and link to by hand; lookups normalise case anyway (`normalizeKey`). */
 const TASK_TAG = "Task";
 
-function rebuildRefRows(driver: SqlDriver, blockId: string, pageId: string, content: string): void {
+export function rebuildRefRows(
+  driver: SqlDriver,
+  blockId: string,
+  pageId: string,
+  content: string,
+): void {
   driver.run("DELETE FROM ref WHERE src_block_id = ?", [blockId]);
   const props = driver.all<{ key: string; value: string | null }>(
     "SELECT key, value FROM block_prop WHERE block_id = ? AND value IS NOT NULL",
