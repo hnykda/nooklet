@@ -85,7 +85,10 @@ Read this file and `docs/bugs-inbox/impl-commands.md`; `git log --oneline da85cf
 
 ## 6. Adversarial verification (2026-09-13, second agent)
 
-State: in flight. Verifier works on the same branch; commits below are the verifier's.
+State: done. Verdict fixed-up — the branch's code held up; two doc/text inaccuracies fixed, two
+e2e edges added, one pre-existing bug logged. Verifier commits: `6c69732` (this section, in
+flight), `d7b1059` (R26 prose, plugins restart note, 2 e2e tests, B-162), and the commit that
+closes this section.
 
 Re-run so far: web unit 724/724; `pnpm -r typecheck` clean; biome on changed files: only the
 pre-existing DiagnosticsPanel/BlockContextMenu diagnostics on untouched lines; wiki generator
@@ -109,4 +112,19 @@ zoom root open, fans out over journal days) — spec drift introduced by the bra
 names `nooklet plugin enable|disable|reload` without saying a restart of `nooklet serve` is needed
 (the CLI says it is). Pre-existing, logged not fixed: B-162 undo of a collapse ends editing.
 
-Next: fix R26 + plugins note, add e2e for the selection and undo edges, rerun, commit.
+Fixed in `d7b1059`: R26 rewritten to what the code does; plugins note says restart `nooklet
+serve`; e2e "a selected block that Collapse all folds away is deselected, so Backspace deletes
+nothing hidden (B-97)" (mutation-checked: with the `setSelection(null)` guard removed it fails —
+Backspace deletes the hidden block on the server) and "Collapse all is one undo step".
+
+Final numbers after the fixes: web unit 724/724 (one run had `page-title.test.ts` time out once,
+passes alone and on the full rerun — same flake the author saw); typecheck clean. e2e on 6402:
+commands.spec 10/10; sweep of commands, context-menu, shelf, shelf-outline, views, selection,
+journals, focus, settings, popups, editing, phone = 169 passed, 1 skipped, 2 failed —
+`focus.spec.ts:282` (Alt+Up/Down) passed 2/2 on rerun (load), `views.spec.ts:461` is B-161
+(pre-existing, confirmed on da85cfb's web sources). navigation, pages, help, refactor, templates,
+remote-device = 39 passed. `nooklet verify` on the real-graph copy after the probes: 20,646 ops,
+OK.
+
+Still open (unchanged from §3a): commands listed off a page route do nothing; journal fan-out has
+no e2e (probe only); B-161; B-162.
