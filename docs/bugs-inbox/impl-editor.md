@@ -60,7 +60,12 @@ editing before its op, for a different reason found while removing it: the block
 not moved, and the editor keeps a stale buffer over an external rewrite — logged as B-192.
 
 Not covered: a block created in this tab and removed elsewhere before any refetch has returned it
-keeps its row until editing ends (a window one refetch long).
+keeps its row until editing ends (a window one refetch long). Also not covered, found by the
+verification pass (probe, 2026-09-13): another writer moving the edited block under a COLLAPSED
+parent on the same page. The block stays on the page, so this path does not run; its row stops
+rendering, the editor goes with it and focus drops to `<body>` — the same screen B-88's fix gives,
+and the text typed before the move is saved (`"edited one"`), but `editingId` still names the
+hidden block.
 
 ---
 
