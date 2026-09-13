@@ -77,3 +77,58 @@ next keystroke goes nowhere. The e2e test B-72 added for exactly this fails on `
 investigated beyond establishing that; which commit between B-72's fix and `da85cfb` broke it is
 the next question (`git bisect` over `e2e/tests/views.spec.ts -g "opening the palette"`).
 
+
+---
+
+### B-183 · Diagrams drop back to their source and re-draw on every edit anywhere on their page
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, verification of impl-plugins ·
+**Test:** `e2e/tests/plugins.spec.ts` "a diagram stays drawn while another block on its page is
+edited (B-183)"; `apps/web/src/editor/render/PluginFence.test.tsx` "a fence re-created for the same
+source shows the last drawing at once, not its source (B-183)"
+
+Every write to a page (one coalesced op per typing pause in any block, a sync pull) re-creates the
+rendered content of every row on it — rows survive, their `.vr-block-view` children do not
+(pre-existing; probed by marking a paragraph, a code `<pre>` and the diagram in untouched rows,
+typing in a fourth: all three were new nodes). For synchronous content that is invisible. For a
+plugin fence it is not: `PluginFence` starts from the `<pre>` source and mermaid draws
+asynchronously, so each write flashed every diagram on the page back to its source. Measured with
+a `requestAnimationFrame` sampler: 4 flashes of 14–52 ms, 328 px → 95 px → 328 px, typing three
+words in a sibling row; on the owner's graph copy (journal 2022-12-15) 9 frames without the
+diagram, 452 px → 134 px, everything below it jumping.
+
+**Fixed 2026-09-13.** `PluginFence` remembers the last thing each renderer drew per language +
+source (`WeakMap` per renderer, 64 entries) and puts it into a re-created fence synchronously,
+before the renderer runs again, so no frame paints the source. The rows re-creating their content
+is not changed. Without the fix the e2e test saw 8 frames without the diagram.
+
+---
+
+### B-184 · A mermaid fence that fails to parse leaves a "Syntax error" drawing under <body>
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verification of impl-plugins ·
+**Test:** `e2e/tests/plugins.spec.ts` "a broken mermaid fence says why instead of rendering nothing"
+(now also asserts no `body > [id^="dnooklet-mermaid-"]`)
+
+`mermaid.render` appends a temp `div#d<id>` to `document.body`; on a parse error it draws its
+"Syntax error in text" bomb there and throws without removing it (mermaid 12.0.0
+`renderDiagram`: `removeTempElements()` runs on that path only with `suppressErrorRendering`).
+Three broken fences left three such divs; with B-183 every edit to the page added more. Hidden by
+`body { overflow: hidden }` but in the DOM and the accessibility tree.
+
+**Fixed 2026-09-13.** `plugins/mermaid/src/client.ts` initialises mermaid with
+`suppressErrorRendering: true`; the error still reaches the plugin's catch and is shown in the fence.
+
+---
+
+### B-185 · `/mermaid` leaves the caret after the closing fence
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verification of impl-plugins ·
+**Test:** `e2e/tests/plugins.spec.ts` "/mermaid is in the slash menu and inserts a diagram that
+renders" (types " --> C" straight after inserting); `apps/web/src/plugins/host.test.ts` "/mermaid
+inserts the starter diagram at the caret through the editor host" (asserts the caret)
+
+The starter was inserted with the caret after "```", so the next keystroke produced "```X" — no
+longer a closing fence — and the diagram became a parse error. Core "Code block" puts the caret
+inside its fence.
+
+**Fixed 2026-09-13.** The slash command passes `insertText(STARTER, { cursor })` to land at the end
+of "  A --> B". `EditorApi.insertText`'s `cursor` is now documented as an offset into the inserted
+text, which is what the host already implemented.

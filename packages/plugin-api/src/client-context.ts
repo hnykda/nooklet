@@ -47,6 +47,8 @@ export interface EditorApi {
   currentPage(): Page | null;
   currentBlock(): Block | null;
   selection(): { blocks: BlockId[]; text?: string };
+  /** Insert `text` at the caret of the block being edited. `cursor` is where the caret lands, as an
+   * offset into `text` (default: just after it). */
   insertText(text: string, opts?: { cursor?: number }): Promise<void>;
   replaceBlock(id: BlockId, content: string): Promise<void>;
   insertBlockAfter(id: BlockId, content: string): Promise<Block>;

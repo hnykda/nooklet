@@ -126,6 +126,9 @@ describe("the built-in client halves (B-103)", () => {
     await t.registry.get("plugin.mermaid.slashMermaid")?.run(commandContext());
 
     expect(t.editor.state?.content).toBe("before ```mermaid\ngraph TD\n  A --> B\n``` after");
+    // Inside the fence, at the end of "  A --> B" — not after the closing ``` (B-185).
+    const caret = "before ```mermaid\ngraph TD\n  A --> B".length;
+    expect([t.editor.state?.start, t.editor.state?.end]).toEqual([caret, caret]);
   });
 });
 

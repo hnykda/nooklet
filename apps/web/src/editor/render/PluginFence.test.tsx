@@ -112,6 +112,39 @@ describe("plugin-rendered fences (B-103)", () => {
     expect(container.querySelector("pre.vr-fence")?.textContent).toBe("???");
   });
 
+  it("a fence re-created for the same source shows the last drawing at once, not its source (B-183)", async () => {
+    // Rows re-create their rendered content on every write to the page. A renderer that draws
+    // asynchronously (mermaid) must not leave the fence showing its `<pre>` source meanwhile.
+    let calls = 0;
+    const finishing: CodeBlockRenderer = {
+      render(_source, el) {
+        calls += 1;
+        if (calls === 1) {
+          el.innerHTML = `<svg data-testid="drawn"></svg>`;
+          return;
+        }
+        return new Promise<void>(() => {}); // the second drawing never finishes
+      },
+    };
+    disposers.push(registerFenceRenderer("demo", finishing));
+
+    const one = renderFenceInRow("```demo\nA -> B\n```");
+    await waitFor(() => expect(one.container.querySelector("[data-testid=drawn]")).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the finished drawing be recorded
+    one.unmount();
+
+    const again = renderFenceInRow("```demo\nA -> B\n```");
+    // Synchronously, before the renderer's second (never-ending) run could have drawn anything.
+    expect(again.container.querySelector("[data-testid=drawn]")).not.toBeNull();
+    expect(again.container.querySelector("pre.vr-fence")).toBeNull();
+    await waitFor(() => expect(calls).toBe(2));
+
+    // A different source never shows another source's drawing.
+    const other = renderFenceInRow("```demo\nC -> D\n```");
+    expect(other.container.querySelector("[data-testid=drawn]")).toBeNull();
+    expect(other.container.querySelector("pre.vr-fence")?.textContent).toBe("C -> D");
+  });
+
   it("refuses a second renderer for the same language and the core `query` fence", () => {
     disposers.push(registerFenceRenderer("demo", { html: () => "" }));
     expect(() => registerFenceRenderer("DEMO", { html: () => "" })).toThrow(/already registered/);

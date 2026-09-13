@@ -21,6 +21,42 @@ import "./plugin-fence.css";
 
 const [renderers, setRenderers] = createSignal<ReadonlyMap<string, CodeBlockRenderer>>(new Map());
 
+/**
+ * The last thing each renderer drew for a given fence, so a fence re-created for the same source
+ * shows that drawing straight away while its renderer runs again. Rows re-create their rendered
+ * content on every write to their page — a coalesced keystroke in any block, a sync pull — and an
+ * asynchronous renderer then left every diagram on the page showing its `<pre>` source until it
+ * had drawn again: while typing elsewhere on the owner's 2022-12-15 journal, the diagram dropped
+ * from 452 px to 134 px and back on each pause, and everything below it jumped (B-183).
+ *
+ * Per renderer (a disposed renderer's drawings go with it), keyed by language and source, and
+ * bounded: this only has to cover the fences on screen.
+ */
+const lastDrawn = new WeakMap<CodeBlockRenderer, Map<string, string>>();
+const LAST_DRAWN_LIMIT = 64;
+
+function drawnKey(lang: string, code: string): string {
+  return `${lang}\n${code}`;
+}
+
+function recallDrawn(renderer: CodeBlockRenderer, key: string): string | undefined {
+  return lastDrawn.get(renderer)?.get(key);
+}
+
+function rememberDrawn(renderer: CodeBlockRenderer, key: string, html: string): void {
+  let drawings = lastDrawn.get(renderer);
+  if (!drawings) {
+    drawings = new Map();
+    lastDrawn.set(renderer, drawings);
+  }
+  drawings.delete(key); // re-inserted last: Map order is the eviction order
+  drawings.set(key, html);
+  if (drawings.size > LAST_DRAWN_LIMIT) {
+    const oldest = drawings.keys().next().value;
+    if (oldest !== undefined) drawings.delete(oldest);
+  }
+}
+
 /** `query` fences are core (ADR 011) and are matched before this registry is consulted, so a
  * plugin claiming them would silently never run; refuse it up front instead. */
 const RESERVED_LANGS = new Set(["query"]);
@@ -71,6 +107,10 @@ export function PluginFence(props: { code: string; lang: string; renderer: CodeB
       disposable?.dispose();
     });
     setFailed(null);
+    const key = drawnKey(lang, code);
+    // Synchronous, in the same task that created the fence, so no frame ever paints the source.
+    const drawn = recallDrawn(renderer, key);
+    if (drawn !== undefined) el.innerHTML = drawn;
 
     void (async () => {
       const context = await fenceContext(el);
@@ -79,6 +119,7 @@ export function PluginFence(props: { code: string; lang: string; renderer: CodeB
       try {
         if ("render" in renderer) {
           const result = await renderer.render(code, el, info);
+          if (!abort.signal.aborted) rememberDrawn(renderer, key, el.innerHTML);
           if (!result) return;
           // Rendered into a fence that has since been replaced: nothing will dispose it later.
           if (abort.signal.aborted) result.dispose();
@@ -86,7 +127,10 @@ export function PluginFence(props: { code: string; lang: string; renderer: CodeB
         } else {
           const html = await renderer.html(code, info);
           // Trusted v1 host (ADR 007): a plugin's markup goes in as-is, like its `render` would.
-          if (!abort.signal.aborted) el.innerHTML = html;
+          if (!abort.signal.aborted) {
+            el.innerHTML = html;
+            rememberDrawn(renderer, key, html);
+          }
         }
       } catch (e) {
         if (abort.signal.aborted) return;

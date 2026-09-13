@@ -29,12 +29,21 @@ test("/mermaid is in the slash menu and inserts a diagram that renders", async (
     .poll(async () => (await readBlocks(page, name)).map((b) => b.content), { timeout: 15_000 })
     .toEqual(["intro", STARTER]);
 
+  // The caret is inside the diagram, so carrying on typing extends it. It used to sit after the
+  // closing ```, where the first keystroke broke the fence (B-185).
+  await page.keyboard.type(" --> C");
+  const extended = "```mermaid\ngraph TD\n  A --> B --> C\n```";
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content), { timeout: 15_000 })
+    .toEqual(["intro", extended]);
+
   // Out of edit mode, the plugin's renderer draws it: mermaid's chunks load on this first diagram.
   await clickAway(page);
   const diagram = outliner.locator(".vr-row").nth(1).locator(".vr-plugin-fence svg");
   await expect(diagram).toBeVisible({ timeout: 30_000 });
   await expect(diagram).toContainText("A");
   await expect(diagram).toContainText("B");
+  await expect(diagram).toContainText("C");
 });
 
 // mermaid and its layout engines are ~6 MB of chunks (ADR 023): loaded for the first diagram,
@@ -80,6 +89,52 @@ test("a broken mermaid fence says why instead of rendering nothing", async ({ pa
   );
   const fence = outliner.locator('.vr-plugin-fence[data-lang="mermaid"]');
   await expect(fence).toContainText("mermaid: render failed", { timeout: 30_000 });
+  // …and only there: mermaid used to leave its "Syntax error in text" drawing in a temp
+  // `div#dnooklet-mermaid-…` under <body>, one per failed render (B-184).
+  await expect(page.locator('body > [id^="dnooklet-mermaid-"]')).toHaveCount(0);
+  await expect(page.getByText("Syntax error in text")).toHaveCount(0);
+});
+
+test("a diagram stays drawn while another block on its page is edited (B-183)", async ({
+  page,
+}) => {
+  const outliner = await openPage(
+    page,
+    "Plugins Mermaid Steady",
+    "- ```mermaid\n  graph TD\n    Jaro --> Leto\n    Leto --> Podzim\n  ```\n- zapisuji",
+  );
+  await expect(outliner.locator(".vr-plugin-fence svg")).toBeVisible({ timeout: 30_000 });
+
+  // Sample what every painted frame shows. Each write to the page re-creates its rows' rendered
+  // content; the diagram used to drop back to its source for the tens of ms mermaid took to draw
+  // it again, and the page jumped by the difference in height.
+  await page.evaluate(() => {
+    const w = window as unknown as { __frames: boolean[]; __sampling: boolean };
+    w.__frames = [];
+    w.__sampling = true;
+    const tick = () => {
+      w.__frames.push(document.querySelector(".vr-outliner .vr-plugin-fence svg") !== null);
+      if (w.__sampling) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await outliner.locator(".vr-row").nth(1).locator(".vr-block-view").click();
+  await page.keyboard.press("End");
+  for (const word of [" jedna", " dva", " tři"]) {
+    await page.keyboard.type(word);
+    await page.waitForTimeout(800); // past the editor's ~500 ms coalescing: one write per word
+  }
+  await expect
+    .poll(async () => (await readBlocks(page, "Plugins Mermaid Steady"))[1]?.content)
+    .toBe("zapisuji jedna dva tři");
+
+  const frames = await page.evaluate(() => {
+    const w = window as unknown as { __frames: boolean[]; __sampling: boolean };
+    w.__sampling = false;
+    return w.__frames;
+  });
+  expect(frames.length).toBeGreaterThan(30);
+  expect(frames.filter((drawn) => !drawn)).toEqual([]);
 });
 
 test("word count shows the open page's words and follows edits (audit item 14)", async ({

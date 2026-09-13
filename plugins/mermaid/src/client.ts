@@ -12,6 +12,8 @@
 import type { ClientPluginModule } from "@nooklet/plugin-api";
 import type { Mermaid } from "mermaid";
 
+const STARTER = "```mermaid\ngraph TD\n  A --> B\n```";
+
 let mermaidPromise: Promise<Mermaid> | undefined;
 
 function loadMermaid(theme: "light" | "dark"): Promise<Mermaid> {
@@ -24,6 +26,11 @@ function loadMermaid(theme: "light" | "dark"): Promise<Mermaid> {
           startOnLoad: false,
           securityLevel: "strict",
           theme: theme === "dark" ? "dark" : "default",
+          // Without this, a source that fails to parse makes mermaid draw its "Syntax error in
+          // text" bomb into the temp `div#d<id>` it appends to <body>, throw, and never remove it:
+          // one stray div per failed render, piling up under the app (B-184). The error still
+          // reaches the catch below and is shown in the fence.
+          suppressErrorRendering: true,
         });
         return mermaid;
       },
@@ -58,7 +65,10 @@ export default {
       id: "mermaid",
       label: "Mermaid diagram",
       keywords: ["diagram", "graph", "chart", "flowchart"],
-      run: (editor) => editor.insertText("```mermaid\ngraph TD\n  A --> B\n```"),
+      // The caret lands at the end of the starter's last line, inside the fence. Left at the end
+      // of the insertion (after the closing ```), the next keystroke turned that line into "```x",
+      // which closes nothing, and the diagram became a parse error (B-185).
+      run: (editor) => editor.insertText(STARTER, { cursor: STARTER.lastIndexOf("\n```") }),
     });
   },
 } satisfies ClientPluginModule;
