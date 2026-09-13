@@ -103,3 +103,32 @@ palette's `task.setMarker*` use `ctx.store.setBlockProp` — but only the date c
 Fix needs a seam, not a patch in the picker: an `EditorHost` (or store) method that commits ops
 through the active tree's history, used by every store-routed command. `BlockTree.tsx` is a
 shared file this milestone, so not done on this branch.
+
+---
+
+### B-143 · Import keeps `SCHEDULED: <2023-2-17 Fri>` as text and loses the date when Logseq wrote a one-digit month or day
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, impl-dates (checking chips
+against a copy of the owner's graph)
+
+In a copy of `~/.nooklet/default/graph.sqlite` only 4 blocks have `scheduled_day`, and 20 more
+still carry a literal `SCHEDULED: <2023-2-17 Fri>` line in their content — so they show no chip,
+sort nowhere in the Tasks view, and read as text. The Logseq source graph
+(`~/notes-graph`) has exactly 24 `SCHEDULED:` lines: 4 zero-padded
+(`<2023-01-06 Fri>`) and 20 not (`<2023-2-17 Fri>` ×19, `<2022-12-8 Thu>` ×1) — the 20 lost ones.
+(Survey: `grep -rhoE "(SCHEDULED|DEADLINE): <[^>]*>" journals pages`, digits folded.) Cause:
+`packages/core/src/outline.ts` `TIMESTAMP_INNER_RE` takes the date as `\d{4}-\d{2}-\d{2}` only,
+and a non-matching timestamp falls through to content "so no data is lost". The same regex
+takes the time as `\d{1,2}:\d{2}` and stores it unpadded, while the reducer
+(`sync/apply-ops.ts#SCHEDULED_RE`) only accepts `HH:MM` — a `<2026-09-14 Mon 9:30>` would be
+parsed into a value the reducer rejects (no such line exists in the owner's graph).
+
+**Fixed 2026-09-13.** `outline.ts#orgTimestamp` accepts one-digit month, day and hour, zero-pads
+them, and rejects an impossible date or time (kept as text, as before). Grammar spec OUT-23 rule
+5 says so. Checked on real data: a fresh `pnpm nooklet import ~/notes-graph
+--data <scratch>` now has 24 blocks with `scheduled_day` (was 4) and 0 blocks with
+`SCHEDULED:`/`DEADLINE:` text (was 20); `pnpm nooklet verify` on it: 19,580 ops replayed, OK.
+**The owner's live graph is not repaired by this** — the 20 blocks keep their text until the
+graph is re-imported (or someone runs a one-off fix; none written).
+**Test:** `packages/core/src/outline-org-dates.test.ts` (4 tests, all failed before the fix) and
+`packages/server/src/importer/logseq.test.ts` "imports SCHEDULED/DEADLINE written with one-digit
+month, day and hour (B-143)" (fails against the old parser — checked by restoring it).
