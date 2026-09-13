@@ -19,9 +19,9 @@
  *   2026-09-20  2026-9-5         ISO, single-digit month/day accepted
  *   20.9.  20. 9. 2026           day.month[.year] — the owner writes Czech dates
  *   sep 20 · 20 sep · september 20th, 2027
- *   … 14:00  … at 9:30           a time after any of the above; a time on its own keeps the day
+ *   … 14:00  … at 9:30  … no time  a time after any of the above; a time on its own keeps the day
  *   … every 2w  … every month from done  … no repeat
- *   none · clear · remove        take the date off (whole words only: this one is destructive)
+ *   none · clear · remove · delete   take the date off (whole words only: this one is destructive)
  *
  * A date typed without a year that is already behind today rolls to next year — in September,
  * "jan 5" means the coming January, because you schedule forward.
@@ -39,7 +39,8 @@ export type DateField = "scheduled" | "deadline";
 /** The parts a typed string sets. An absent key means "not typed — keep what the picker has". */
 export interface DateInputParts {
   day?: JournalDay;
-  time?: string;
+  /** `null` = "no time" was typed. */
+  time?: string | null;
   /** `null` = "no repeat" was typed. */
   repeat?: string | null;
 }
@@ -94,6 +95,7 @@ const REPEAT_SUFFIX_RE = new RegExp(
 );
 const NO_REPEAT_SUFFIX_RE = /(?:^|\s)no repeat$/;
 const TIME_SUFFIX_RE = /(?:^|\s)(?:at\s+)?(\d{1,2}):(\d{2})$/;
+const NO_TIME_SUFFIX_RE = /(?:^|\s)no time$/;
 const SIGNED_REL_RE = new RegExp(`^([+-])\\s*(\\d+)\\s*${UNIT_RE}?$`);
 const UNSIGNED_REL_RE = new RegExp(`^(?:in\\s+)?(\\d+)\\s*${UNIT_RE}$`);
 const ISO_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
@@ -123,8 +125,12 @@ export function parseDateInput(input: string, today: JournalDay): DateInputResul
     s = s.slice(0, repeat.index).trim();
   }
 
-  const time = TIME_SUFFIX_RE.exec(s);
-  if (time) {
+  const noTime = NO_TIME_SUFFIX_RE.exec(s);
+  const time = noTime ? null : TIME_SUFFIX_RE.exec(s);
+  if (noTime) {
+    parts.time = null;
+    s = s.slice(0, noTime.index).trim();
+  } else if (time) {
     const hh = Number(time[1]);
     const mm = Number(time[2]);
     if (hh > 23 || mm > 59)

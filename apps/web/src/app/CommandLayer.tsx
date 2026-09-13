@@ -37,7 +37,6 @@ import {
   CommandPalette,
   CommandProvider,
   createCoreCommands,
-  createFakeDatePickerHost,
   createPaletteController,
   detectPlatformFromEnvironment,
   type EditorHost,
@@ -65,6 +64,7 @@ import {
 } from "../live/index.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
+import { blockDatePicker } from "./date-picker.js";
 import { activeContextSnapshot, buildContextBase, liveEditorHost } from "./editor-host.js";
 import {
   createAppHost,
@@ -299,7 +299,9 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     // The palette controller is created by the provider; commands that open it go through the
     // same instance, so `palette.open()` from a command and Cmd+K agree.
     palette,
-    datePicker: createFakeDatePickerHost(),
+    // The real picker (B-96). This was `createFakeDatePickerHost()` — a test double — so
+    // `/scheduled`, `/deadline` and both palette rows removed their trigger and did nothing.
+    datePicker: blockDatePicker,
     now: () => Date.now(),
     // M7 refactors (ADR 020): server ops behind the context menu and the palette.
     refactor: createRefactorHost({

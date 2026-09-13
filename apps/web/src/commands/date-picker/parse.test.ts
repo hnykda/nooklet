@@ -117,6 +117,10 @@ describe("parseDateInput — time, repeat, clear, junk", () => {
     });
     expect(parseDateInput("9:30", SUN)).toEqual({ kind: "value", parts: { time: "09:30" } });
     expect(parseDateInput("fri 24:00", SUN).kind).toBe("invalid");
+    expect(parseDateInput("fri no time", SUN)).toEqual({
+      kind: "value",
+      parts: { day: 20260918, time: null },
+    });
   });
 
   it("every … writes ADR 011's repeat shape, 'from done' included; 'no repeat' removes it", () => {
