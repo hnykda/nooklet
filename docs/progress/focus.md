@@ -1,0 +1,57 @@
+# M9 progress — focus (B-161, B-195, B-231, B-147, B-203)
+
+Resilience log, updated after every meaningful step. If you are reading this after a restart:
+read "Next steps" and continue from there.
+
+Branch `m9/focus`, worktree `<repo>/.claude/worktrees/wf_e473942f-106-6`, based on
+`cf08d19`. E2E port 6401. Bug entries go to `docs/bugs-inbox/focus.md` (new numbers B-290..B-299),
+never `docs/BUGS.md`. Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m9/focus/`
+(`burn.sh N` / `unburn.sh` start and stop N busy node loops for "under load" runs).
+
+Brief, in order: B-161 (palette Escape leaves the editor unfocused — find the timing-dependent
+refocus, make product and test deterministic, prove with a loop under artificial CPU load before
+and after); B-195 (Move to page… onto its own page while editing); B-231 (press on a context-menu
+separator/padding ends editing); B-147 (date picker type-ahead and keydown-less text); B-203
+(Alt+Enter under Playwright on macOS: real bug or harness artifact).
+
+## 1. Done (committed)
+
+- **B-161 + new B-290** — commit "fix(web): overlays give focus back when they close; a late frame
+  no longer steals it (B-161, B-290)" (hash in the next progress update). Diagnosis: nothing gave
+  focus back when the palette closed; the test passed only when `surface.attach`'s
+  requestAnimationFrame backstop (armed by the click that entered editing) landed after Escape —
+  i.e. on a machine loaded enough for frames to lag input. The same backstop stole focus from an
+  open palette (B-290). Files: new `apps/web/src/commands/focus-return.ts` (+ `.test.ts`), hookup in
+  `commands/palette/CommandPalette.tsx`, backstop guard in `editor/surface.ts`, new
+  `e2e/helpers/focus.ts#delayAnimationFrames`, `e2e/tests/views.spec.ts` test made deterministic,
+  new `e2e/tests/focus-return.spec.ts` (4 tests), probe `tools/probes/palette-escape-focus.spec.ts`.
+  Numbers: see the inbox entry. Broad e2e (19 specs): 214 passed, 1 skipped. Typecheck clean.
+
+## 2. In flight
+
+(nothing)
+
+## 3. Next steps
+
+1. B-195: `app/refactor-host.tsx#pickPage` — `rememberFocus` at open, give back after `root.remove()`;
+   e2e in `focus-return.spec.ts` (right-click the edited block, Move to page…, pick its own page,
+   `expectEditorFocusedNow`, type, stored text).
+2. B-231: `onMouseDown` preventDefault on `.ctx-menu` (`app/BlockContextMenu.tsx`); e2e pressing a
+   `.ctx-sep`.
+3. B-147: date picker type-ahead / beforeinput.
+4. B-203: Alt+Enter under Playwright on macOS.
+
+## 4. Decisions
+
+- Focus return is synchronous and owns no timers — the whole point is that the next input event
+  already finds focus back, whatever the machine load.
+- `rememberFocus` lives in `commands/` (plain DOM, no editor import) so the palette can use it
+  without breaking the command package's host-agnostic seam; `.cm-content` is one element
+  re-parented between rows, so `isConnected` == still editing.
+- Frame-timing bugs are tested by delaying frames on purpose (`delayAnimationFrames`), not by
+  hoping the machine is loaded.
+
+## 5. How to resume
+
+`git switch m9/focus` in the worktree; `pnpm install --frozen-lockfile --prefer-offline`; read
+this file and `docs/bugs-inbox/focus.md`.

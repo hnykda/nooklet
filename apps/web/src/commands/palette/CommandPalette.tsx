@@ -9,6 +9,7 @@
  * exactly where the integrator should mount it.
  */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { rememberFocus } from "../focus-return.js";
 import type { PageSource, PageSummary } from "../hosts/page-source.js";
 import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
@@ -63,6 +64,14 @@ export function CommandPalette(props: CommandPaletteProps) {
       return true;
     });
     onCleanup(release);
+  });
+  // Whatever had focus when the palette opened gets it back when it closes, however it closes
+  // (B-161). Captured in the effect that runs as `isOpen` flips — synchronously, before the
+  // input's own focus microtask below — and given back in the same task as the closing key.
+  let overlayEl: HTMLDivElement | undefined;
+  createEffect(() => {
+    if (!palette.isOpen()) return;
+    onCleanup(rememberFocus(() => overlayEl));
   });
 
   function refreshPages() {
@@ -201,7 +210,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     <Show when={palette.isOpen()}>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-to-dismiss (a standard pattern); keyboard users dismiss via Escape on the input below, per onKeyDown. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: see above. */}
-      <div class="cmd-overlay" onClick={() => palette.close()}>
+      <div ref={overlayEl} class="cmd-overlay" onClick={() => palette.close()}>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the overlay's click-to-dismiss from firing for clicks inside the palette itself. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: no keyboard action needed here — it only stops propagation. */}
         <div class="cmd-palette" onClick={(e) => e.stopPropagation()}>
