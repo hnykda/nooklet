@@ -57,6 +57,18 @@ B-310..B-319), never `docs/BUGS.md`.
   journal rename refused, page.create with a pre-block (properties set), page.append with one
   refused and no page created. Server stopped; `nooklet verify` after: OK, 20,442 ops.
 
+## Unit suites at the end (load average 64-110 on the shared machine)
+
+- core: 396/396 on a quiet run after B-151; at the end 395/396 — `tokens.test.ts`'s perf budget
+  (2,330 ms vs 500) failed inside the full run and passed alone (59/59); `tokens.ts` is untouched.
+  One earlier full run also timed out two `sync.property.test.ts` cases at 30 s; they passed on
+  the rerun.
+- server: 650 tests; final full run 638 passed, 12 timed out at 5 s in `plugins/built-ins.test.ts`
+  and `plugins/host.test.ts` (plugin bundling under load; also timed out alone); with
+  `--testTimeout=60000 --hookTimeout=120000` those two files pass 17/17. The last clean full run
+  was 647/647 (before B-148 added 3).
+- web: 1002/1002 (after the B-148 change). typecheck: clean.
+
 ## E2E (port 6403)
 
 - `agent-ops.spec.ts` alone: 4/4.
