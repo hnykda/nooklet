@@ -96,12 +96,19 @@ Harry Potter theme with Robin"), all by tap. Tests that would have caught it:
 ---
 
 ### B-353 · Clearing the search box leaves the previous results on screen, under any filter chosen next
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, M8 views QA (finding Q4) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, M8 views QA (finding Q4) ·
+**Test:** `e2e/tests/search-cleared.spec.ts`
 
 Search "zaplatit" (49 results), clear the box: "Type to search." shows, and so do "49 results" and
 all 49 rows. Choosing Task = LATER then leaves the same 49 rows (DONE and unmarked blocks among
 them) under a filter they do not satisfy. A reload clears it.
+
+**Fixed 2026-09-13.** Cause: with an empty query `SearchView`'s source memo is `undefined`, so no
+search runs, and a Solid resource whose source goes `undefined` keeps its last value; the list read
+that value unconditionally. `safeResults()` (and the error line) now also require a query
+(`views/SearchView.tsx`). Real graph copy: typed 49 results; cleared → hint only, 0 rows; cleared +
+LATER → hint only, 0 rows; typing again under LATER → 2 results. Test that would have caught it:
+`e2e/tests/search-cleared.spec.ts` (failed before: 1 summary where 0 expected).
 
 ---
 

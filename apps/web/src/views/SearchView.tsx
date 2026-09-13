@@ -65,7 +65,11 @@ export function SearchView(): JSX.Element {
   // Reading an errored resource RE-THROWS. Every read below goes through this, or the first
   // failed request threw inside the loading branch's own `when`, the reactive computation died
   // with it, and "Searching…" stayed on screen forever — B-10's symptom, back for search (B-80).
-  const safeResults = () => (results.error === undefined ? results() : undefined);
+  // …and only while there IS a query. An emptied box runs no search, and a resource whose source
+  // goes undefined keeps its last value: the old summary and rows stayed under "Type to search.",
+  // and under any filter chosen next, which they did not satisfy (B-353).
+  const safeResults = () =>
+    input() !== undefined && results.error === undefined ? results() : undefined;
 
   function openHit(hit: SearchHit): void {
     navigate(hit.kind === "page" ? pageRoutePath(hit.page) : pageZoomRoutePath(hit.page, hit.id));
@@ -181,7 +185,7 @@ export function SearchView(): JSX.Element {
       </Show>
       {/* Without this, a failed request left "Searching…" on screen forever — which is exactly
           how a missing API token presented, and is indistinguishable from a slow server. */}
-      <Show when={!results.loading && results.error !== undefined}>
+      <Show when={input() !== undefined && !results.loading && results.error !== undefined}>
         <p class="search-error" role="alert">
           Search failed. {errorText(results.error)}{" "}
           <button type="button" class="search-retry" onClick={() => refetch()}>

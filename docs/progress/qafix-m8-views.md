@@ -35,13 +35,20 @@ replace (low, B-354); Q6 search filter order splits the date range (low, B-355).
   (B-161, fails identically with all branch app files at cf08d19; logged). Real graph probe
   `palette.mjs`: Collapse/Expand all and random page by tap from the drawer.
 
+- Q4 (B-353) — `SearchView` shows results/error only while there is a query. Test
+  `e2e/tests/search-cleared.spec.ts` (failed before). Nearby: search-filters, views, navigation —
+  39 passed, 1 failed = the B-161 palette-focus test again. Real graph probe `search.mjs`: OK.
+  The same probe recorded the Q5/Q6 "before" state (ISO names in hits and replace groups; filter
+  order Tag, Namespace, Updated after, Task, Show, Journals only, Updated before).
+
 ## In flight
 
-- Q4 next.
+- Q5 next.
 
 ## Next steps
 
-Q4 → Q5 → Q6, one commit each, each with its failing test first.
+Q5 → Q6, one commit each, each with its failing test first. Then a final pass over all touched
+specs, `pnpm -r test`, `pnpm -r typecheck`.
 
 ## Decisions
 
