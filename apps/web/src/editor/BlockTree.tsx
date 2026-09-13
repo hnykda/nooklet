@@ -51,6 +51,7 @@ import {
   setActiveContextSnapshot,
   setActiveEditorHost,
 } from "../app/editor-host.js";
+import { isPrinting } from "../app/print.js";
 import { openOnShelf } from "../app/shelf.js";
 import { dispatchPopupKey, isPopupOpen } from "../commands/popup-keys.js";
 import { displayPageName } from "../data/page-title.js";
@@ -236,7 +237,11 @@ export function BlockTree(props: {
     return trail;
   });
 
-  const rows = createMemo(() => flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }));
+  // While printing, collapsed children are rendered too, or the printed page silently loses them
+  // (B-221, `../app/print.ts`).
+  const rows = createMemo(() =>
+    flattenVisible(editorTree(), { rootBlockId: effectiveRoot(), expandAll: isPrinting() }),
+  );
   const visibleIds = createMemo(() => rows().map((r) => r.id));
   // Rendering iterates `visibleIds()` (strings, compared by value) rather than `rows()` (fresh
   // objects on every rebuild), so `<For>` reuses each row's DOM instead of recreating it. This is

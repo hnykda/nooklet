@@ -1,0 +1,145 @@
+/*
+ * Print / Save as PDF (B-221). Loaded by `app/print.ts`.
+ *
+ * Three things the screen layout does that paper cannot survive:
+ *
+ *  1. The shell is `position: fixed` over a `height: 100%; overflow: hidden` body, and
+ *     `.page-scroll` is the only scroller (`shell.css`). Print layout sees one viewport, so a page
+ *     longer than the screen printed as ONE sheet and lost the rest — measured: a 120-block page
+ *     made a 1-page PDF. Everything on the way down to the content goes back to normal flow.
+ *  2. The chrome — top bar, sidebar, shelf, help button, popups, the page's own controls — is not
+ *     the page. Links in a printed page cannot be followed, so the namespace list and references
+ *     panel go too: what prints is the title, the properties that are open, and the outline.
+ *  3. The dark palette prints light-grey ink on white paper. Browsers drop backgrounds when
+ *     printing but keep text colour, so the light tokens are restored here.
+ *
+ * Every selector starts with `html:root` on purpose. Where this file lands in the bundle relative
+ * to `shell.css` depends on import order, so these rules must win on specificity, not position:
+ * `html:root` adds (0,1,1), which beats the dark palette's `:root[data-theme="dark"]` and
+ * `:root:not([data-theme="light"])` (both (0,2,0)) once combined with the `:is(…)` below, and
+ * every single-class layout rule it overrides.
+ *
+ * Collapsed children are expanded for the print by `editor/tree.ts#flattenVisible`'s `expandAll`
+ * (driven by `beforeprint`), so the collapse arrows and child counts that announce hidden content
+ * would be wrong on paper and are hidden.
+ */
+
+@media print {
+  /* `:is([data-theme], :not([data-theme]))` matches every root; it is there for its (0,1,0). */
+  html:root:is([data-theme], :not([data-theme])) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface-sunken: #ffffff;
+    --surface-1: #ffffff;
+    --surface-2: #eeeef2;
+    --fg: #17171b;
+    --fg-soft: #45454f;
+    --muted: #6a6a76;
+    --hairline: #e5e5ea;
+    --border: #d4d4dd;
+    --accent: #2f55d4;
+    --accent-strong: #23429f;
+    --accent-soft: color-mix(in srgb, #2f55d4 11%, transparent);
+    --accent-contrast: #ffffff;
+    --ok: #197a3d;
+    --warn: #8a5c00;
+    --danger: #bf2f2f;
+    --marker-todo: #6a6a76;
+    --marker-doing: #a85c00;
+    --marker-waiting: #7f6208;
+    --marker-done: #197a3d;
+    --marker-canceled: #6a6a76;
+    --prio-a: #c62a2f;
+    --prio-b: #a86200;
+    --prio-c: #6a6a76;
+    --guide: #dcdce4;
+  }
+
+  html:root,
+  html:root body {
+    height: auto;
+    overflow: visible;
+    background: #ffffff;
+  }
+
+  html:root .app-shell {
+    position: static;
+    display: block;
+    padding: 0;
+    background: none;
+  }
+
+  html:root .app-shell-body {
+    display: block;
+  }
+
+  html:root .page-scroll {
+    overflow: visible;
+    padding: 0;
+    background: none;
+  }
+
+  html:root .page-scroll-inner {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  html:root
+    :is(
+      .app-topbar,
+      .app-sidebar,
+      .app-shelf,
+      .help-fab,
+      .help-backdrop,
+      .cmd-overlay,
+      .cmd-popup,
+      .cmd-toolbar,
+      .ctx-menu,
+      .diag-backdrop,
+      .set-backdrop,
+      .vr-live-badge-wrap,
+      .page-view-breadcrumb,
+      .vr-zoom-trail,
+      .page-actions,
+      .page-history-link,
+      .page-icon-button-empty,
+      .page-properties-toggle,
+      .page-property-add,
+      .namespace-children,
+      .references-panel,
+      .journal-stream-toolbar,
+      .vr-collapse-arrow,
+      .vr-child-count
+    ) {
+    /* biome-ignore lint/complexity/noImportantStyles: chrome must not print however a view styles its display — a `display: flex` on any of these, at any specificity, would put it on paper. */
+    display: none !important;
+  }
+
+  /* `content-visibility: auto` (`editor.css`) skips rendering rows outside the viewport; paper has
+     no viewport, and a skipped row printed as a blank 31px gap. A block also stays in one piece
+     across a page break where it can. */
+  html:root .vr-row {
+    content-visibility: visible;
+    contain-intrinsic-size: none;
+    break-inside: avoid;
+  }
+
+  /* A bullet is a filled circle drawn as a `background`, and so are the indent guides and the
+     priority chip. Browsers leave backgrounds off paper unless told otherwise ("Background
+     graphics" is unchecked by default), and a PDF of the page came out as indented text with no
+     bullets at all — an outline without its outline. `exact` is inherited, so the whole tree gets
+     it; a selection tint is the one background that must not print. */
+  html:root .vr-outliner {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html:root .vr-row-selected {
+    background-color: transparent;
+  }
+
+  html:root :is(.page-title-input, .journal-day-title) {
+    break-after: avoid;
+  }
+}

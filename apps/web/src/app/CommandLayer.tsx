@@ -74,6 +74,7 @@ import {
   createStore,
   pagePath,
 } from "./hosts.js";
+import { createPageActionsHost } from "./page-actions-host.js";
 import { createRefactorHost } from "./refactor-host.js";
 import { useTheme } from "./theme.js";
 
@@ -306,6 +307,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       navigate: (path) => navigate(path),
       closePalette: () => palette.close(),
     }),
+    pageActions: createPageActionsHost({ closePalette: () => palette.close() }),
   });
 
   const anyAutocomplete = createMemo(() => {

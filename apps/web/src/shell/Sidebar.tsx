@@ -96,7 +96,9 @@ export function Sidebar(): JSX.Element {
 
         <Show when={recent().length > 0}>
           <section class="sidebar-section">
-            <h2>Pages</h2>
+            {/* "Recent", not "Pages": it is the twelve most recently edited pages, and "Pages" was
+                already the nav link right above it that opens all of them (B-222). */}
+            <h2>Recent</h2>
             <ul>
               <For each={recent()}>
                 {(page) => (

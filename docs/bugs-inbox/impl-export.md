@@ -5,36 +5,79 @@ Entries in `docs/BUGS.md`'s format, for the coordinator to merge. Numbers B-220.
 ---
 
 ### B-220 · A page cannot be copied or exported as markdown from the app
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, exposure audit §2 #9 · **Test:**
-pending
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exposure audit §2 #9 · **Tests:**
+`e2e/tests/page-export.spec.ts` "Export as markdown downloads exactly the file the mirror wrote for
+the page", "Copy as markdown puts the page on the clipboard without ids, including a just-typed
+edit", "Export from the palette acts on the page the route shows"
 
 Portability is the #1 reason people leave Logseq (research/13 §3.5) and the markdown mirror is
 nooklet's answer — but inside the app there is no way to get a page's text out. `block.copySelection`
 copies selected blocks only; `nooklet export` and the mirror directory are server-side and
 invisible to a person in the browser or on a phone. No palette command, no control on the page.
 
+**Fixed 2026-09-13.** Palette commands "Copy page as markdown" (`app.copyPageMarkdown`) and
+"Export page as markdown" (`app.exportPageMarkdown`), and the same two in a new "…" menu in the
+page title row (`views/PageActions.tsx`), which runs the registered commands with the page in
+`args`. The text is rendered in the browser from the local replica by the mirror's own renderer,
+moved to `packages/core/src/sync/page-outline.ts` for this (SQL + a pure row -> tree build; the
+server's `mirror/export.ts` now calls it too), so it works offline and includes unpushed edits.
+Export = the mirror file byte for byte, `^id`s included, under the mirror's file name; Copy = the
+same render with ids off. The first named test compares the download with the file the real
+server's mirror wrote to disk. Copy starts `navigator.clipboard.write` with a promised
+`ClipboardItem` inside the click/key, which is what WebKit requires — verified on Chromium only.
+
 ---
 
 ### B-221 · Printing a page prints the app chrome and silently drops collapsed children
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, exposure audit §2 #10 · **Test:**
-pending
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exposure audit §2 #10 · **Tests:**
+`e2e/tests/page-export.spec.ts` "printing a long page prints all of it — without the chrome,
+collapsed children expanded, in light ink", "Print page from the palette closes the palette and
+opens the print dialog"; `apps/web/src/editor/tree.test.ts` "expandAll (print, B-221)…"
 
 There is no print stylesheet and no print command. Cmd/Ctrl+P prints the top bar, the sidebar,
 the shelf and the help button around the page, and a collapsed block's children are not in the
 DOM at all (`editor/tree.ts#flattenVisible` skips them), so a printed or PDF'd page loses content
 with no mark that anything is missing.
 
+Worse than the audit said: **everything below the first screen is cut off.** The shell is
+`position: fixed` over a `height: 100%; overflow: hidden` body, with `.page-scroll` as the only
+scroller, so print layout sees one viewport. Measured at `da85cfb` (Playwright, Chromium, print
+media, `page.pdf()`): a 120-block page produced a **1-page** PDF with `.app-topbar` visible and the
+collapsed block's child absent. The same run showed `page.pdf()` fires `beforeprint`/`afterprint`,
+which is what lets a test observe the print-time DOM.
+
+**Fixed 2026-09-13.** `apps/web/src/styles/print.css` (`@media print`): the shell back to normal
+flow, chrome/page controls/references hidden, the light palette forced (a dark-theme screen printed
+light-grey ink), `print-color-adjust: exact` on the outline (a first PDF had no bullets or guides —
+they are backgrounds), `content-visibility` off for rows. `apps/web/src/app/print.ts` flips a signal
+on `beforeprint`/`afterprint` that `BlockTree`'s rows memo passes to `flattenVisible` as
+`expandAll`, so collapsed children are in the DOM for exactly the print and nothing is written.
+"Print page" (`app.printPage`) in the palette and the title-row menu calls `window.print()`. The
+named e2e test asserts ≥3 PDF sheets for the same 120-block page, the hidden child and the last
+line in the print-time DOM, chrome hidden, light ink, exact colour, and the page still collapsed
+afterwards (also in `page.read`). Not checked: Safari/WKWebView print, page breaks inside very long
+blocks.
+
 ---
 
 ### B-222 · Favourites can only be set from /pages; the sidebar's recent list is labelled "Pages"
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, exposure audit §1.7 and §2 #13 ·
-**Test:** pending
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exposure audit §1.7 and §2 #13 ·
+**Tests:** `e2e/tests/page-export.spec.ts` "the star in the title row favourites and unfavourites
+the page, and the sidebar follows", "Toggle favourite from the palette stars the routed page; the
+sidebar's recent list reads Recent"; `apps/web/src/data/page-export.test.ts` `isFavoriteValue`
 
 The only favourite control is the star column in `views/AllPagesView.tsx`. The page itself and
 the palette have none, so on a fresh graph the sidebar's Favourites section never appears and
 nothing hints that it could. The sidebar section under it is titled "Pages" but lists the twelve
 most recently edited pages — a second "Pages" right under the nav link of the same name that
 opens the full list.
+
+**Fixed 2026-09-13.** A star in the page title row (always visible, filled when favourited) and a
+"Toggle favourite" palette command (`app.toggleFavorite`), both writing the synced `favorite`
+page property through the existing `setPageFavorite`. The star's state uses `isFavoriteValue`,
+the sidebar query's exact test (`value NOT IN ('', 'false')`), so the two cannot disagree. The
+sidebar's recent section is headed "Recent"; `pages.spec.ts` and `page-icons.spec.ts` located it
+by the text "Pages" and now locate it by its heading.
 
 ---
 
@@ -56,3 +99,31 @@ the web export, B-220) and sorts `ORDER BY order_key, id`. The named test fails 
 `ORDER BY order_key` (checked by reverting the clause: 1 failed / 5 passed) and passes with the
 fix. The owner's graph (copy of 2026-09-13: 952 pages, 18,628 live blocks) has zero tied
 `(page_id, parent_id, order_key)` groups, so no mirror file there changes.
+
+---
+
+### B-224 · A multi-line block renders its lines run together, with no line break
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, screenshot while building the page
+export · **Test:** none yet
+
+A block whose content is `Poznámka: **žluťoučký kůň**\nsecond line` (stored exactly so — checked
+with `page.read`) renders as "Poznámka: **žluťoučký kůň**second line": one `<p class="vr-paragraph">`
+whose spans jump from `data-to="27"` to `data-from="28"` with no `<br>` for offset 27. A plain
+`plain first\nplain second` renders "plain firstplain second" the same way. `@nooklet/core`'s
+`tokenizeContent` does insert `br` tokens and `render/tokens.tsx` has a `br` case, so the render
+path in use is dropping them somewhere between the two. Reproduced on a production build at
+`06ed234` + this branch's uncommitted web changes (none of which touch `render/`), Chromium, seeded
+through `page.create` markdown with a continuation line. Not fixed here: `render/tokens.tsx` is
+another branch's file this round (`m8/impl-render` exists).
+
+---
+
+### B-225 · The page title row's History link and empty icon slot cannot be discovered on a phone
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, while placing the page actions in the
+same row · **Test:** none
+
+`.page-history-link` and `.page-icon-button-empty` (`styles/views.css`) are `opacity: 0` until the
+title row is hovered or the control has keyboard focus. A touch screen has no hover, and unlike
+`.all-pages-star` (`views/all-pages.css`) there is no `@media (pointer: coarse)` rule revealing
+them, so on a phone the History link is an invisible tap target that still takes ~60px from the
+title. The page actions star and "…" button added for B-220–B-222 are always visible on purpose.

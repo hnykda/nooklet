@@ -20,6 +20,23 @@ describe("flattenVisible", () => {
     expect(rows.find((r) => r.id === "B")?.hasChildren).toBe(true);
   });
 
+  it("expandAll (print, B-221): walks into collapsed blocks and still reports them collapsed", () => {
+    const t = buildTree(
+      makeBlock({ id: "A", order: "a0", collapsed: true }),
+      makeBlock({ id: "A1", parentId: "A", order: "a0", collapsed: true }),
+      makeBlock({ id: "A1a", parentId: "A1", order: "a0" }),
+      makeBlock({ id: "B", order: "b0" }),
+    );
+    expect(flattenVisible(t).map((r) => r.id)).toEqual(["A", "B"]);
+    const rows = flattenVisible(t, { expandAll: true });
+    expect(rows.map((r) => [r.id, r.depth, r.collapsed])).toEqual([
+      ["A", 0, true],
+      ["A1", 1, true],
+      ["A1a", 2, false],
+      ["B", 0, false],
+    ]);
+  });
+
   it("zoom root: renders only that block's subtree, root row included", () => {
     const t = buildTree(
       makeBlock({ id: "root", order: "a0" }),

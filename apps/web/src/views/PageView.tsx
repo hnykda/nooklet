@@ -8,6 +8,7 @@
 import { isoJournalName, newId, orderBetween, parseJournalTitle } from "@nooklet/core";
 import { A, useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
+import { isFavoriteValue } from "../data/page-export.js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
 import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
@@ -15,6 +16,7 @@ import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
+import { PageActions } from "./PageActions.js";
 import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
@@ -151,6 +153,7 @@ export function PageView(props: PageViewProps): JSX.Element {
               >
                 History
               </A>
+              <PageActions pageName={p().name} favorite={isFavoriteValue(properties().favorite)} />
             </div>
             <PageProperties pageId={p().id} properties={properties()} />
             <BlockTree pageId={p().id} rootBlockId={blockId()} onNavigate={onNavigate} />
