@@ -11,7 +11,7 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
 | QA | Bug | Severity | State |
 |---|---|---|---|
 | Q1 redo of undone create never reaches server | B-240 | high | fixed (first commit) |
-| Q2 Cmd+Z after deleting a selection does nothing | B-241 | high | todo |
+| Q2 Cmd+Z after deleting a selection does nothing | B-241 | high | fixed (second commit) |
 | Q3 undo of Alt+Up/Down drops focus | B-242 | medium | todo |
 | Q4 cold client: journal draft text lost when pull says today exists | B-243 | medium | todo |
 | Q5 cold client: `[[` New page writes `]]` to DB not editor | B-244 | medium | todo |
@@ -25,14 +25,24 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
   without the fix). E2E `e2e/tests/undo-redo.spec.ts` failed before, passes after; with
   `focus.spec.ts` 31/31 on 6460. Web unit 685/685, typecheck clean.
 
+- Q1/B-240 committed as `f7ea0f6`.
+- Q2/B-241 `fix(web): undo and redo still reach the page after its editing session ends`:
+  `apps/web/src/app/editor-host.ts` (`historyEditorHost`, `releaseEditorHost`; `liveEditorHost`
+  routes `edit.undo`/`edit.redo` through the fallback), `BlockTree.tsx` (2 lines in the host
+  backing's `runStructural`, cleanup calls `releaseEditorHost`). Tests: 3 new e2e in
+  `undo-redo.spec.ts` (failed 3/3 before), 2 unit in `editor-host.test.ts`. E2E undo-redo +
+  selection + focus + phone + context-menu: 71 passed, 1 skipped (pre-existing skip).
+
 ## 2. In flight
 
 - (nothing)
 
 ## 3. Next steps, in order
 
-1. (done) Q1.
-2. Q2 (B-241): selection delete -> undo host. Test in `undo-redo.spec.ts`.
+1. (done) Q1, Q2.
+2. Unverified side observation, not fixed: the global keydown dispatcher matches `edit.undo`
+   (`when: "true"`) and preventDefaults it everywhere, so native Cmd+Z inside a plain `<input>`
+   (search, page title) is probably swallowed. Probe it before logging as a bug.
 3. Q3 (B-242): refocus after undo/redo of a move. Test in `undo-redo.spec.ts`.
 4. Q4 (B-243): journal draft unmount must commit its text. Needs a cold-client e2e (fresh
    context + server that already has today).

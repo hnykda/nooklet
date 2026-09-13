@@ -30,12 +30,27 @@ checks the server and a reload, which is what would have caught it.
 ---
 
 ### B-241 · Cmd+Z does nothing after deleting a block selection; the undo fires later instead
-**Status:** open · **Severity:** high · **Found:** 2026-09-13, exploratory QA (Q2) · **Test:** —
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, exploratory QA (Q2) · **Tests:**
+`e2e/tests/undo-redo.spec.ts` "Cmd/Ctrl+Z right after Delete on a block selection brings the blocks
+back (B-241)" (and the Backspace variant), "Cmd/Ctrl+Z after clicking away still undoes the last
+edit on the page (B-241)"; `apps/web/src/app/editor-host.test.ts` "undo/redo after the editing
+session ends (B-241)"
 
 Select two blocks (Escape, Shift+Down), press Delete or Backspace: both go. Cmd+Z does nothing,
 and focus is on `<body>` or the outliner. Much later, Cmd+Z while editing a different block brings
 the deleted blocks back, which is the wrong moment. A user who deletes a selection by mistake sees
-undo do nothing.
+undo do nothing. Same cause, found while writing the test: type into a block, click away (which
+ends editing since B-74), Cmd+Z: nothing.
+
+**Fixed 2026-09-13.** `edit.undo` reaches the tree through the active `EditorHost`, and a tree
+withdraws as the active host as soon as nothing in it is edited or selected, which is exactly what
+deleting a selection, clicking away, or an undo that leaves nothing focused do. The keystroke went
+to the inert no-op host while the tree's history kept the step. Undo and redo now fall back to the
+tree whose session ended most recently (`editor-host.ts#historyEditorHost`), cleared when that
+tree unmounts (`releaseEditorHost`, which also stops an unmounting tree from nulling another tree's
+active registration). The fallback does not take Cmd+Z typed into an `<input>`/`<textarea>`
+outside the outliner. The tree runs `edit.undo`/`edit.redo` arriving with neither an edit nor a
+selection. The e2e tests fail without the change (3/3) and pass with it.
 
 ---
 

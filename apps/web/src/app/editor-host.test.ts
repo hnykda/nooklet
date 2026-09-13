@@ -4,6 +4,9 @@ import {
   activeEditorHost,
   createEditorHost,
   type EditorHostBacking,
+  historyEditorHost,
+  liveEditorHost,
+  releaseEditorHost,
   setActiveEditorHost,
 } from "./editor-host.js";
 
@@ -93,5 +96,47 @@ describe("activeEditorHost", () => {
     expect(activeEditorHost().getSelection()?.blockId).toBe("blk1");
     setActiveEditorHost(null);
     expect(activeEditorHost().getSelection()).toBeNull();
+  });
+});
+
+describe("undo/redo after the editing session ends (B-241)", () => {
+  it("still reach the tree whose session ended last, and nothing else does", () => {
+    const { state, b } = backing();
+    const host = createEditorHost(b);
+    setActiveEditorHost(host);
+    state.id = null; // a selection deleted, or a click away: nothing edited or selected
+    setActiveEditorHost(null);
+
+    liveEditorHost.runStructuralCommand("edit.undo", {} as CommandContext);
+    liveEditorHost.runStructuralCommand("edit.redo", {} as CommandContext);
+    expect(state.structural).toEqual([
+      { id: null, commandId: "edit.undo" },
+      { id: null, commandId: "edit.redo" },
+    ]);
+    // Everything else stays with the (absent) active host.
+    liveEditorHost.runStructuralCommand("block.indent", {} as CommandContext);
+    expect(state.structural).toHaveLength(2);
+    expect(historyEditorHost()).toBe(host);
+    releaseEditorHost(host);
+  });
+
+  it("a newer session takes over, and an unmounted tree is never the target", () => {
+    const first = backing();
+    const second = backing();
+    const a = createEditorHost(first.b);
+    const b = createEditorHost(second.b);
+    setActiveEditorHost(a);
+    setActiveEditorHost(null);
+    setActiveEditorHost(b);
+    setActiveEditorHost(null);
+    expect(historyEditorHost()).toBe(b);
+
+    // `a` unmounting must not clear `b`; `b` unmounting leaves nothing to undo into.
+    releaseEditorHost(a);
+    expect(historyEditorHost()).toBe(b);
+    releaseEditorHost(b);
+    liveEditorHost.runStructuralCommand("edit.undo", {} as CommandContext);
+    expect(first.state.structural).toEqual([]);
+    expect(second.state.structural).toEqual([]);
   });
 });

@@ -48,6 +48,7 @@ import {
 import { blockMenuRequest, openBlockMenu } from "../app/context-menu.js";
 import {
   createEditorHost,
+  releaseEditorHost,
   setActiveContextSnapshot,
   setActiveEditorHost,
 } from "../app/editor-host.js";
@@ -751,6 +752,9 @@ export function BlockTree(props: {
       // nothing at all — Enter from selection mode never re-entered editing (B-44).
       const sel = selection();
       if (sel) runSelectionCommand(cmd, sel);
+      // Neither: undo/redo after the session ended (`historyEditorHost`, B-241).
+      else if (cmd === "edit.undo") doUndo();
+      else if (cmd === "edit.redo") doRedo();
     },
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
   });
@@ -804,7 +808,7 @@ export function BlockTree(props: {
     }
   });
   onCleanup(() => {
-    setActiveEditorHost(null);
+    releaseEditorHost(editorHost);
     setActiveContextSnapshot(null);
   });
 

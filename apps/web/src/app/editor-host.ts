@@ -23,10 +23,46 @@ import type {
 import type { CommandContext, WhenContext } from "../commands/types.js";
 
 let active: EditorHost | null = null;
+/** The host that was active last, kept after its session ends, for undo/redo only. */
+let recent: EditorHost | null = null;
 
 /** Called by the focused `BlockTree`; pass `null` on blur/unmount. */
 export function setActiveEditorHost(host: EditorHost | null): void {
   active = host;
+  if (host) recent = host;
+}
+
+/** Called by a `BlockTree` that unmounts: its history goes with it, so it must stop being the
+ * undo target (and the active host, if it still is). */
+export function releaseEditorHost(host: EditorHost): void {
+  if (recent === host) recent = null;
+  if (active === host) active = null;
+}
+
+/** Focus is in a plain text field (search, page title, journal draft), not in the outliner. */
+function typingInOtherField(): boolean {
+  if (typeof document === "undefined") return false;
+  const el = document.activeElement;
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+}
+
+/**
+ * Where Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z go: the active host, or else the tree whose editing or
+ * selection session ended most recently.
+ *
+ * A tree withdraws as the active host the moment nothing in it is edited or selected, so the
+ * context snapshot stops describing a session that is over. Undo used to be withdrawn with it,
+ * and the moments that end a session are exactly the ones you undo: deleting a block selection
+ * (it clears the selection), clicking away, an undo that leaves nothing focused. Cmd+Z did
+ * nothing, and the tree's history kept the step until the next time a block there was edited,
+ * where the undo then fired unexpectedly (B-241). The history lives as long as the tree, so the
+ * fallback does too (`releaseEditorHost`). It does not take a keystroke meant for a text field
+ * outside the outliner.
+ */
+export function historyEditorHost(): EditorHost {
+  if (active) return active;
+  if (recent && !typingInOtherField()) return recent;
+  return NOOP_HOST;
 }
 
 const NOOP_HOST: EditorHost = {
@@ -56,7 +92,11 @@ export function activeEditorHost(): EditorHost {
 export const liveEditorHost: EditorHost = {
   getSelection: () => activeEditorHost().getSelection(),
   replaceRange: (spec) => activeEditorHost().replaceRange(spec),
-  runStructuralCommand: (id, ctx) => activeEditorHost().runStructuralCommand(id, ctx),
+  runStructuralCommand: (id, ctx) =>
+    (id === "edit.undo" || id === "edit.redo"
+      ? historyEditorHost()
+      : activeEditorHost()
+    ).runStructuralCommand(id, ctx),
   getLinkAtCaret: () => activeEditorHost().getLinkAtCaret(),
 };
 
