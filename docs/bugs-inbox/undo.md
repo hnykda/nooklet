@@ -163,3 +163,19 @@ longer selected after a date is picked in day B (a click into day B leaves it se
 verification probe; that inconsistency predates this branch and is not touched). The e2e test
 fails before the change and passes after it, redo included; the unit test fails with the line
 removed.
+
+---
+
+### B-282 · Cmd/Ctrl+Enter pressed twice in quick succession cycles the marker once
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying `m9/undo` (probe P2 in
+`tools/probes/undo-verify-edges.spec.ts`) · **Test:** none
+
+Caret in a block with no marker, Cmd/Ctrl+Enter twice with no pause (Playwright `press` twice):
+the server ends with `TODO`, not `DOING`, and the history holds two steps (the first Cmd/Ctrl+Z
+leaves `TODO`, the second clears it). Same result with `apps/web/src` at `cf08d19`, so not caused
+by `m9/undo`. Cause, by reading: `task.cycle` (`commands/registrations/task.ts`) reads the marker
+from the replica (`Store.getBlockTaskState`) and the dispatcher does not await a command before
+running the next (`keymap/dispatch.ts#runRow`: `void ctx.exec(...)`), so the second press reads
+the marker before the first write reached the replica. Human key repeat is usually slower than
+that window; unmeasured how slow is safe. Fix direction (not done): read the marker from the
+editor tree when a tree shows the block, or serialize store-routed task commands per block.

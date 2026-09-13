@@ -89,5 +89,18 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
   undo; cross-tree chip pick with editing in another day is undone correctly. Rapid double
   Cmd/Ctrl+Enter reads a stale marker (TODO twice) — the same on `cf08d19`, not this branch.
 - Found and fixed **B-281** (`9546dff`): a block left selected in another journal day kept its
-  tree the undo target over the tree that took a chip date. New e2e test in `undo-gaps.spec.ts`,
-  unit test in `editor-host.test.ts`.
+  tree the undo target over the tree that took a chip date. New e2e test in `undo-gaps.spec.ts`
+  (fails before the change), unit test in `editor-host.test.ts`. Logged, not fixed: **B-282**
+  (rapid double Cmd/Ctrl+Enter, pre-existing).
+- Probes kept: `tools/probes/undo-verify-edges.spec.ts` (results in its header),
+  `tools/probes/undo-verify-real-graph.spec.ts` (B-281 and an undo chain on real journal days;
+  both passed on a backup copy, `nooklet verify` OK, 20449 ops).
+- After `9546dff`: web unit 1016/1016; `pnpm -r test` 393 + 17 + 608 + 1016, all passed;
+  `pnpm -r typecheck` exit 0. Related e2e (undo-gaps, undo-redo, redo, selection, dates, tasks,
+  journal-stream-editing, read-only, template-undo, templates, journals, context-menu): 91 passed,
+  1 skipped. Full e2e in three runs on port 6400: `[a-i]` 127 passed, 1 skipped, 1 failed
+  (`autocomplete.spec.ts` "typing a namespaced query…", passed alone and again after the four specs
+  before it: 7/7); `[j-p]` 142 passed; `[q-z]` 177 passed, 1 skipped, 2 failed — `templates.spec.ts`
+  "a day started in the app…" (passed on rerun, templates + views 36/37) and `views.spec.ts` "opening
+  the palette while editing…" (fails again with `apps/web/src` at `cf08d19`: B-161, pre-existing).
+  446 passed + 2 skipped + 3 failed of 451; 448 counting the reruns.
