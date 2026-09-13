@@ -62,3 +62,30 @@ launch).
   journal guard) like `page-rename.ts`; the dialog focuses the destructive button (undoable via
   Trash); no post-delete toast (the dialog already says where it goes) — possible follow-up.
   A `read-only:: true` page can still be deleted (the server op does not check it either).
+
+## Adversarial verification (second agent, 2026-09-13)
+
+Re-ran everything claimed and tried to break it. Findings, in order:
+
+- `e2e/tests/page-delete.spec.ts` "Cancel, Escape and the backdrop…" **failed 2/2** on 6415 with
+  "Delete Zebra Page" highlighted in the palette: a row rendered under a pointer that never moved
+  takes the highlight (B-493, pre-existing palette behaviour, logged open). The spec's
+  `runFromPalette` now moves the pointer away and uses commands mode (`>`).
+- Added two tests to the same spec: mid-typing → palette → dialog counts the new block, Escape
+  gives the caret back (fails with the dialog's popup-key claim removed — tried; does NOT isolate
+  `forceSync`, which the local server outruns — also tried), and a second browser context on the
+  page follows the delete (`.page-view-missing`) and the restore, with what it typed.
+- Probed without finding defects: Czech + namespaced name delete/restore; Backspace/Delete/Cmd+Z
+  with a block selection behind the open dialog (no effect); favourite leaves the sidebar; Back
+  after delete shows "doesn't exist yet" with an explicit Create button; confirming a dialog whose
+  page was deleted elsewhere meanwhile writes nothing and shows nothing (the notice's host view is
+  gone) — the page is in the Trash anyway.
+- Real graph copy, fresh backup (953 pages): "Sprouts/Growing/Third Try" (17 blocks, 4 links) via
+  the menu and "TTRPG/VTM-alpha/Isabella D'Angelo" (13 blocks, apostrophe) via the palette — both
+  gone from All pages, in the Trash, restored; block/page_prop/block_prop rows byte-identical to the
+  pre-delete snapshot; `nooklet verify` exact (20,527 ops).
+- B-430 against the real server, not a stand-in: an `#[ignore]`d scratch test (not committed) ran
+  `node --import tsx src/cli.ts serve` on a copy with `user_version = 99` through
+  `spawn_capturing` + `watch_startup` → `{"state":"exited","code":1,"reason":"schema_too_new",…}`
+  with the server's line as `stderr`. Tauri 2.11.5 `webview/mod.rs:1823` confirms app commands pass
+  from local origins without an app manifest.

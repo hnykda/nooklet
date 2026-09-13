@@ -14,7 +14,14 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { api, isoOffset, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import {
+  api,
+  expectEditorFocusedNow,
+  isoOffset,
+  pagePath,
+  readBlocks,
+  seedPage,
+} from "../helpers/index.js";
 
 async function openPageView(page: Page, name: string): Promise<void> {
   await page.goto(pagePath(name));
@@ -26,11 +33,21 @@ async function chooseDeleteFromMenu(page: Page): Promise<void> {
   await page.getByRole("menuitem", { name: "Delete page…" }).click();
 }
 
-/** Run a command from the palette's commands mode, checking the row that Enter will run first. */
+/**
+ * Run a command from the palette's commands mode (`>`), checking the row that Enter will run first.
+ *
+ * Commands mode, and the pointer moved out of the way first: a row rendered under a pointer that
+ * never moved takes the highlight (`onMouseEnter`, B-493). After a click on the dialog's Cancel the
+ * pointer rests exactly where the palette's second row appears, and in mixed mode that row was the
+ * page "Delete Zebra Page" from the first test — so this failed 2 of 2 runs with "Delete Zebra
+ * Page" highlighted, and Enter would have opened that page instead of running the command.
+ */
 async function runFromPalette(page: Page, title: string): Promise<void> {
+  await page.mouse.move(1, 1);
   await page.keyboard.press("ControlOrMeta+Shift+P");
   const palette = page.locator(".cmd-palette");
   await expect(palette).toBeVisible();
+  await palette.locator(".cmd-input").fill(">");
   await palette.locator(".cmd-input").fill(title);
   await expect(palette.locator(".cmd-row--active")).toContainText(title);
   await page.keyboard.press("Enter");
@@ -171,4 +188,83 @@ test("a journal day offers no Delete, and the palette command refuses it without
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`/page/${day}$`));
   expect(await pageExists(page, day)).toBe(true);
+});
+
+// The keyboard path from the middle of typing: Enter, a new block, straight to the palette. Two
+// things can go wrong that the tests above never exercise. The dry run could count the page
+// without the block typed a moment ago, and then promise, and delete, one block too few. (This
+// checks the count, not the push that makes it right: against a local server the sync gets there
+// first even with `previewPageDelete`'s `forceSync` removed — tried.) And Cancel could leave the
+// person somewhere other than their caret: without the dialog's popup-key claim, the global keymap
+// takes Escape in the capture phase and the dialog does not close at all — also tried; this fails.
+test("from the palette mid-typing: the dialog counts the block just typed, and Escape gives the caret back", async ({
+  page,
+}) => {
+  const name = "Delete Zebra Typing";
+  await seedPage(page, name, "- zebratype one");
+  await openPageView(page, name);
+  await page.locator(".vr-outliner .vr-block-view").first().click();
+  await expect(page.locator(".cm-content")).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("zebratype two");
+
+  await runFromPalette(page, "Delete page");
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText(`"${name}" and its 2 blocks will be moved to the Trash.`);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await expectEditorFocusedNow(page, "after Escape on the delete dialog");
+  await expect(page.locator(".vr-row-selected")).toHaveCount(0);
+  await page.keyboard.type(" more");
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["zebratype one", "zebratype two more"]);
+});
+
+// Two windows on one graph (a browser tab and the desktop app, say): the one that did not delete
+// must not keep showing, or keep editing, a page that is in the Trash — and Restore must bring it
+// back there too, with what was typed in it before the delete.
+test("another window on the page follows the delete and the restore", async ({ browser }) => {
+  const name = "Delete Zebra Two Windows";
+  const ctxA = await browser.newContext();
+  const ctxB = await browser.newContext();
+  try {
+    const a = await ctxA.newPage();
+    const b = await ctxB.newPage();
+    await seedPage(a, name, "- zebrawin one\n  - zebrawin two");
+    await openPageView(a, name);
+    await openPageView(b, name);
+
+    await b.locator(".vr-outliner .vr-block-view").first().click();
+    await expect(b.locator(".cm-content")).toBeFocused();
+    await b.keyboard.press("End");
+    await b.keyboard.type(" typed in B");
+    await expect
+      .poll(async () => (await readBlocks(a, name)).map((x) => x.content))
+      .toEqual(["zebrawin one typed in B", "zebrawin two"]);
+
+    await chooseDeleteFromMenu(a);
+    await a.getByRole("alertdialog").getByRole("button", { name: "Delete page" }).click();
+    await expect(a).toHaveURL(/\/journals$/);
+    await expect(b.locator(".page-view-missing")).toBeVisible();
+    await expect(b.locator(".vr-outliner")).toHaveCount(0);
+
+    await a.goto("/trash");
+    const row = a.locator(".trash-row", { hasText: name });
+    await row.locator(".trash-restore").click();
+    await expect(a.locator(".trash-notice")).toContainText(`Restored "${name}"`);
+
+    await expect(b.locator(".page-view-missing")).toHaveCount(0);
+    await expect(b.locator(".vr-outliner").first()).toContainText("zebrawin one typed in B");
+    await expect(b.locator(".vr-outliner").first()).toContainText("zebrawin two");
+    expect((await readBlocks(a, name)).map((x) => [x.content, x.depth])).toEqual([
+      ["zebrawin one typed in B", 0],
+      ["zebrawin two", 1],
+    ]);
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
 });

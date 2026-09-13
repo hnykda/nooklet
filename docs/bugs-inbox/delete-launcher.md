@@ -90,3 +90,27 @@ for every descendant of a block that references the page. On a copy of the owner
 will break". `backlinkCount` has other callers, so the fix (count `ref` rows, or distinct linking
 blocks) should be checked against each of them; not changed here. The web app's Delete page dialog
 does not print the number for this reason (`apps/web/src/app/page-delete.ts`).
+
+---
+
+### B-493 · The palette's highlight follows a pointer that never moved, so Enter can run a row the keyboard never chose
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying delete-launcher (its e2e
+test "Cancel, Escape and the backdrop delete nothing; from the palette, Enter confirms" failed 2 of
+2 runs) · **Test:** none for the palette; `e2e/tests/page-delete.spec.ts`'s `runFromPalette` now
+moves the pointer away and uses commands mode
+
+Leave the mouse resting over the middle of the window (here: where the delete dialog's Cancel was
+just clicked), press Cmd/Ctrl+Shift+P and type. Each palette row has `onMouseEnter={() =>
+setHighlight(i())}` (`commands/palette/CommandPalette.tsx`); when the rows render or re-sort under
+the stationary pointer, Chromium fires `mouseenter` on the row that lands there, and the highlight
+jumps to it. In the failing run the query "Delete page" listed the command "Delete page…" first
+and the page "Delete Zebra Page" second, and the second row — under the pointer — was highlighted;
+Enter would have opened that page. Reproduced on purpose too: pointer at (640, 195), palette opened
+from the keyboard, "Probe Yak Pointer" typed → rows `Probe Yak Pointer`, `Probe Yak Pointer Other`,
+highlight on the second.
+
+The test passed for its author (3/3, and in the full run) and failed for the verifier (2/2, same
+code, same port). Why is not established — presumably when the page rows arrive relative to
+Chromium's synthetic `mouseenter` under a still pointer; not verified. Fix direction (not done — the palette is not
+this branch's): take the highlight on `mousemove`, not `mouseenter`, as editors' pickers commonly
+do, so only a pointer that actually moves steals it.
