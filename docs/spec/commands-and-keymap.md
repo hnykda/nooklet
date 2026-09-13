@@ -829,7 +829,10 @@ completion is applied); deleting back through either `[` of the trigger; or sele
 *As built (B-294):* the editor does not auto-pair `]]`; instead, when the text after the caret closes
 the link the caret is in (`[^[\]\n]*]]`), the replaced span runs through that `]]`, so a pick inside
 an existing link — the caret walked in, or the link's name being retyped — replaces the whole link.
-`((` does the same with `))`. `#` does not (no closer to find; B-380).
+`((` does the same with `))`. `#` does not (no closer to find; B-380). There the "Create" row names
+the whole link, the query plus the rest of the name up to `]]` (`[[Walkin Unm|ade Page]]` offers
+`New page "Walkin Unmade Page"`, and none when that page exists), so picking it never deletes part of
+the name (B-382).
 
 **R57.** `#` (tag): triggers on `matchBefore(/(^|\s)#([^\s#]*)$/)` (start-of-run, same rule as the
 slash trigger, so `word#tag` does not open it). Matching and the "Create" affordance are identical

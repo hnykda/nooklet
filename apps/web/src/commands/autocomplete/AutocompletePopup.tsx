@@ -14,6 +14,7 @@ import {
   For,
   onCleanup,
   Show,
+  untrack,
 } from "solid-js";
 import { journalTitleFormat } from "../../data/page-title.js";
 import type { EditorHost } from "../hosts/editor-host.js";
@@ -117,12 +118,15 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     }
 
     // R56/R57: append "Create <query>" unless some candidate's title matches the query exactly
-    // (case-insensitive), and only once the user has typed something.
+    // (case-insensitive), and only once the user has typed something. Inside a closed link the
+    // name is the whole link's, not the text before the caret (B-382). Untracked: the memo already
+    // re-runs on every trigger, which is rebuilt on every keyup.
     if (trig.query.trim() !== "") {
-      const q = trig.query.toLowerCase();
+      const name = untrack(() => createName(trig, VARIANT_SHAPE[props.variant]));
+      const q = name.toLowerCase();
       const hasExact = candidates.some((p) => p.title.toLowerCase() === q);
       if (!hasExact) {
-        pageRows.push({ id: "__create__", label: `New page "${trig.query}"`, isCreate: true });
+        pageRows.push({ id: "__create__", label: `New page "${name}"`, isCreate: true });
       }
     }
 
@@ -148,9 +152,10 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       // the late insertion, which then landed on a buffer that had moved on (B-244). A `[[link]]`
       // to a page that does not exist yet is an ordinary state — references are keyed by name,
       // not id — so nothing depends on the page being there first.
-      replaceQueryWith(trig, shape, trig.query);
+      const name = createName(trig, shape);
+      replaceQueryWith(trig, shape, name);
       props.onDismiss();
-      void props.pages.createPage(trig.query).then(
+      void props.pages.createPage(name).then(
         (created) => mru.record("page", created.id),
         (err) => console.error("nooklet: creating the linked page failed", err),
       );
@@ -206,6 +211,18 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     if (shape.closer !== "]]" && shape.closer !== "))") return caret;
     const content = props.editor.getSelection()?.content ?? "";
     return caret + existingRefTailLength(content.slice(caret), shape.closer);
+  }
+
+  /** The page "New page" creates and links: the query, and — with the caret inside a link that is
+   * already closed — the rest of that link's name after the caret. The replaced range runs to the
+   * link's `]]` (`queryEnd`), so a name of only the query deleted the rest of the link and created
+   * a page named after the fragment: `[[Walkin Unm|ade Page]]` became `[[Walkin Unm]]` (B-382). */
+  function createName(trig: AutocompleteMatch, shape: { delimiterLen: number; closer: string }) {
+    const caret = trig.from + shape.delimiterLen + trig.query.length;
+    const end = queryEnd(trig, shape);
+    if (end === caret) return trig.query;
+    const content = props.editor.getSelection()?.content ?? "";
+    return trig.query + content.slice(caret, end - shape.closer.length);
   }
 
   /** The popup's keymap (R12 step 2). Reached two ways: from the editor's own key dispatch via

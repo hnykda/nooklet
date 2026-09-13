@@ -110,6 +110,57 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
     expect(editor.state?.start).toBe("alpha [[Recipes]]".length);
   });
 
+  it("New page with the caret inside a complete link names the whole link, not the text before the caret (B-382)", async () => {
+    // `alpha [[Walkin Unm|ade Page]] omega`, and no such page.
+    const editor = createFakeEditorHost({
+      content: "alpha [[Walkin Unmade Page]] omega",
+      start: 18,
+      end: 18,
+    });
+    const pages = createFakePageSource([]);
+    const createPage = vi.fn((_title: string) => new Promise<never>(() => {}));
+    pages.createPage = createPage;
+    const onDismiss = vi.fn();
+    render(() => (
+      <CommandProvider commands={[]} platform="mac">
+        <AutocompletePopup
+          variant="page"
+          editor={editor}
+          trigger={{ from: 6, query: "Walkin Unm" }}
+          position={{ top: 0, left: 0 }}
+          pages={pages}
+          onDismiss={onDismiss}
+        />
+      </CommandProvider>
+    ));
+    await screen.findByText('New page "Walkin Unmade Page"');
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    expect(editor.state?.content).toBe("alpha [[Walkin Unmade Page]] omega");
+    expect(editor.state?.start).toBe("alpha [[Walkin Unmade Page]]".length);
+    expect(createPage).toHaveBeenCalledWith("Walkin Unmade Page");
+  });
+
+  it("offers no New page inside a complete link whose whole name is an existing page (B-382)", async () => {
+    // Walked into `[[Recipes]]` with the page list loaded: "Rec" is not an exact title, but the
+    // link's name is, so creating "Rec" (or a second "Recipes") is not offered.
+    const editor = createFakeEditorHost({ content: "[[Recipes]]", start: 5, end: 5 });
+    const pages = createFakePageSource([{ id: "p1", title: "Recipes", aliases: [], updatedAt: 1 }]);
+    render(() => (
+      <CommandProvider commands={[]} platform="mac">
+        <AutocompletePopup
+          variant="page"
+          editor={editor}
+          trigger={{ from: 0, query: "Rec" }}
+          position={{ top: 0, left: 0 }}
+          pages={pages}
+          onDismiss={() => {}}
+        />
+      </CommandProvider>
+    ));
+    await screen.findByText("Recipes");
+    expect(screen.queryByText(/New page/)).toBeNull();
+  });
+
   it("New page links and dismisses at once, without waiting for the page to be created (B-244)", async () => {
     const editor = createFakeEditorHost({ content: "[[new/page", start: 10, end: 10 });
     const pages = createFakePageSource([]);

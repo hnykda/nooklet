@@ -141,3 +141,34 @@ Fix direction (not done, outside this branch's scope): poll the read, and use `h
 (token from `/api/session`) instead of the page's window.
 
 ---
+
+### B-382 · Enter on "New page" inside an existing `[[link]]` deletes the rest of the link's name
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+m10/editor-keys (introduced by the B-294 fix, `86897db`) · **Test:**
+`e2e/tests/autocomplete-inside-link.spec.ts` "Enter on New page inside a link to a page that does not
+exist keeps the whole link (B-382)"
+
+`- alpha [[Walkin Unmade Page]] omega` (no such page — an ordinary state, references are keyed by
+name), Home, ArrowRight to after `[[Walkin Unm`: the popup's rows are `New page "Walkin Unm"` and a
+block match. Enter stores `alpha [[Walkin Unm]] omega` and creates a page "Walkin Unm". B-294's fix
+replaces through the link's `]]`, but the "New page" row still names the page after the text BEFORE
+the caret, so "ade Page" is silently gone. Before `86897db` the same Enter gave the visible garble
+`[[Walkin Unm]]ade Page]]`. The same path is reached for a link to a page that DOES exist whenever
+the "New page" row is active — B-294's own repro saw it once, and it is the only row until the pages
+list has loaded (B-244's busy worker). Probe: `e2e/tests/zz-ekv-probe.spec.ts` P1 (throwaway).
+
+**Fixed 2026-09-13.** `AutocompletePopup.tsx#createName`: inside a closed link the "New page" row
+names the whole link — the query plus the text from the caret to the `]]` — in its label, in the
+`hasExact` check and in what it links and creates. So Enter there leaves `[[Walkin Unmade Page]]` as
+it was and creates that page; for a link whose whole name is a loaded page no "New page" row is
+offered at all; and in the not-yet-loaded race the create of an existing name is rejected by
+`apply-ops.ts#applyPageCreate` (`page-key-collision`), leaving the link untouched. Chosen over
+"do not replace through `]]` for this row", which would have brought B-294's garble back for it.
+Cost: retyping a link's name from the middle and picking "New page" names the page after everything
+the link now says (`[[Walkin OthGoal Page]]`), not after the typed part — what the buffer shows. The
+e2e test was red on `67ae509` (`alpha [[Walkin Unm]]! omega`), green after. Unit:
+`AutocompletePopup.test.tsx` "New page with the caret inside a complete link names the whole link…"
+and "offers no New page inside a complete link whose whole name is an existing page" (both red with
+the fix reverted).
+
+---
