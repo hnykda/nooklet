@@ -236,10 +236,11 @@ Tasks:
   can carry `scheduled::` and `deadline::` typed date values (`2026-09-12`, optional time) and a
   `repeat::` value (ADR 011: `1w` shifting from the date, or `1w from done` shifting from
   completion — no org repeater dialects). Slash commands `/scheduled` and `/deadline` open a date
-  picker; the journal page for a day shows a "Scheduled and deadline" section listing blocks
-  (**not yet built** as of 2026-09-12 — the Tasks view filters by date, but no journal day shows
-  the section; research/13 §4.1 marks it missing)
-  scheduled for or due on that day plus overdue ones; the Tasks view sorts by these dates.
+  picker; the journal page for a day shows a "Scheduled and deadline" section listing open
+  tasks scheduled for or due on that day, plus — on today — overdue ones (built 2026-09-13:
+  `apps/web/src/views/JournalAgenda.tsx`; read-only, grouped by page, hidden when empty; tasks
+  only, since a dated block without a marker can never stop being overdue); the Tasks view sorts
+  by these dates.
   Marking a repeating task DONE advances the date, resets the marker, and stamps `done::` with
   the completion time. Logseq's `SCHEDULED: <2026-09-12 Sat .+1w>` / `DEADLINE:` lines and
   `:LOGBOOK:` drawers are parsed on import into these properties and the sync op log

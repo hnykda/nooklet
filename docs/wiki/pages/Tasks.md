@@ -23,4 +23,4 @@ tags:: guide
 - ## The Tasks view
   - `/tasks` (sidebar → Tasks): open tasks grouped by page, sorted by due date. Filters: state (TODO, DOING, LATER, NOW, WAITING), a tag, a namespace, and a due-from/due-to window. The checkbox completes a task in place; the text opens the block zoomed in its page.
   - Over the API and MCP the same question is `search` with a `properties` filter such as `{"marker": "TODO"}`; there is no separate tasks tool. See [[Agents and MCP]].
-- Related: [[Journals]] (the per-day "Scheduled and deadline" section is planned, not built), [[Keyboard shortcuts]], [[Markdown format]].
+- Related: [[Journals]] (each day lists the tasks scheduled or due then, and today the overdue ones), [[Keyboard shortcuts]], [[Markdown format]].

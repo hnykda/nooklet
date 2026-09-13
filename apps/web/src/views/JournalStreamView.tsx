@@ -5,15 +5,28 @@
  * the primary phone surface — kept usable one-handed: the calendar is collapsed by default, "load
  * more" happens automatically near the bottom of the scroll (no precise tapping required).
  */
-import { formatJournalTitle, todayJournalDay } from "@nooklet/core";
+import { formatJournalTitle } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
-import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+  untrack,
+} from "solid-js";
+import { useAgendaTasks } from "../data/agenda.js";
 import { journalTitleFormat } from "../data/page-title.js";
 import { useJournalStream, usePinnedJournalDay } from "../data/store.js";
 import type { JournalDayEntry, NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { Calendar } from "./Calendar.js";
+import { JournalAgenda } from "./JournalAgenda.js";
 import { goToTarget } from "./navigateTarget.js";
+import { createStreamToday } from "./streamToday.js";
 import { VirtualJournalDay } from "./VirtualJournalDay.js";
 
 const INITIAL_MAX_DAYS = 14;
@@ -29,35 +42,58 @@ export function JournalStreamView(): JSX.Element {
   const navigate = useNavigate();
   const onNavigate = (t: NavigateTarget) => void goToTarget(navigate, t);
 
-  const today = todayJournalDay();
+  let root: HTMLDivElement | undefined;
+  // Follows the local day, so a tab left open overnight moves on to the new day (B-170).
+  const today = createStreamToday(() => root);
   const [maxDays, setMaxDays] = createSignal(INITIAL_MAX_DAYS);
   const [calendarOpen, setCalendarOpen] = createSignal(false);
   const [pinnedDay, setPinnedDay] = createSignal<number | undefined>(undefined);
 
-  const stream = useJournalStream(() => ({ today, maxDays: maxDays() }));
+  // A pin is "a day other than Today" (the calendar never pins today itself), but Today moves at
+  // midnight: a day pinned late the evening before would then be rendered twice — two editable
+  // outlines of one page, one above the other (B-177). Once Today catches up, the pin is spent.
+  createEffect(() => {
+    if (untrack(pinnedDay) === today()) setPinnedDay(undefined);
+  });
+
+  const stream = useJournalStream(() => ({ today: today(), maxDays: maxDays() }));
   const pinned = usePinnedJournalDay(pinnedDay);
+  // One read for every day's "Scheduled and deadline" section, however many days are loaded.
+  const agenda = useAgendaTasks();
+  const agendaFor = (day: number) => (
+    <JournalAgenda day={day} today={today()} tasks={agenda} onNavigate={onNavigate} />
+  );
 
   // The stream's own today entry — real (page/blocks already exist) or virtual (`page: null`,
   // PLAN.md §8). `stream()` always includes today (`worker-core.ts#getJournalStream`), so this is
   // only ever `undefined` for one frame while the resource is first loading.
   const todayEntry = createMemo<JournalDayEntry | undefined>(() =>
-    stream()?.find((e) => e.day === today),
+    stream()?.find((e) => e.day === today()),
   );
+
+  const entryByDay = createMemo(
+    () => new Map<number, JournalDayEntry>((stream() ?? []).map((e) => [e.day, e])),
+  );
+
+  // The lists below are DAY NUMBERS, never `JournalDayEntry` objects. `<For>` is keyed by
+  // reference, and every write refetches the stream into brand-new entry objects — so iterating
+  // entries tore down and rebuilt every day section, with its `BlockTree` and the editor inside
+  // it, on each debounced keystroke write: typing in any day below Today dropped out of editing
+  // half a second in (B-174). Numbers compare by value, so a section lives as long as its day is
+  // in the stream, and reads its entry through `entryByDay`.
+  const days = (keep: (day: number) => boolean) =>
+    createMemo<number[]>(() => [...entryByDay().keys()].filter(keep), [], {
+      equals: (a, b) => a.length === b.length && a.every((d, i) => d === b[i]),
+    });
 
   // Journal days AHEAD of today, rendered above it so the whole stream reads newest-first. These
   // exist only because something was deliberately written or scheduled there, so unlike empty past
   // days they are never hidden (`worker-core.ts#getJournalStream`).
-  const laterDays = createMemo<JournalDayEntry[]>(() => {
-    const all = stream() ?? [];
-    return all.filter((e) => e.day > today && e.day !== pinnedDay());
-  });
+  const laterDays = days((d) => d > today() && d !== pinnedDay());
 
   // "Earlier non-empty days" per PLAN.md §8, minus the pinned day if the calendar jump duplicates
   // one already in that window.
-  const earlierDays = createMemo<JournalDayEntry[]>(() => {
-    const all = stream() ?? [];
-    return all.filter((e) => e.day < today && e.day !== pinnedDay());
-  });
+  const earlierDays = days((d) => d < today() && d !== pinnedDay());
 
   let sentinel: HTMLDivElement | undefined;
   onMount(() => {
@@ -73,7 +109,7 @@ export function JournalStreamView(): JSX.Element {
   });
 
   return (
-    <div class="journal-stream">
+    <div class="journal-stream" ref={root}>
       <div class="journal-stream-toolbar">
         <button
           type="button"
@@ -85,33 +121,35 @@ export function JournalStreamView(): JSX.Element {
       </div>
       <Show when={calendarOpen()}>
         <Calendar
-          selected={pinnedDay() ?? today}
+          selected={pinnedDay() ?? today()}
           onSelect={(day) => {
-            setPinnedDay(day === today ? undefined : day);
+            setPinnedDay(day === today() ? undefined : day);
             setCalendarOpen(false);
           }}
         />
       </Show>
 
       <For each={laterDays()}>
-        {(entry) => (
-          <section class="journal-day journal-day-upcoming" aria-label={dayTitle(entry.day)}>
-            <h2 class="journal-day-title">{dayTitle(entry.day)} · Upcoming</h2>
-            <Show when={entry.page}>
+        {(day) => (
+          <section class="journal-day journal-day-upcoming" aria-label={dayTitle(day)}>
+            <h2 class="journal-day-title">{dayTitle(day)} · Upcoming</h2>
+            <Show when={entryByDay().get(day)?.page}>
               {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
             </Show>
+            {agendaFor(day)}
           </section>
         )}
       </For>
 
       <section class="journal-day journal-day-today" aria-label="Today">
-        <h2 class="journal-day-title">{dayTitle(today)} · Today</h2>
+        <h2 class="journal-day-title">{dayTitle(today())} · Today</h2>
         <Show
           when={todayEntry()?.page}
-          fallback={<VirtualJournalDay day={today} onNavigate={onNavigate} />}
+          fallback={<VirtualJournalDay day={today()} onNavigate={onNavigate} />}
         >
           {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
         </Show>
+        {agendaFor(today())}
       </section>
 
       <Show when={pinned() && pinnedDay() !== undefined}>
@@ -128,16 +166,18 @@ export function JournalStreamView(): JSX.Element {
           >
             {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
           </Show>
+          {agendaFor(pinnedDay() as number)}
         </section>
       </Show>
 
       <For each={earlierDays()}>
-        {(entry) => (
-          <section class="journal-day" aria-label={dayTitle(entry.day)}>
-            <h2 class="journal-day-title">{dayTitle(entry.day)}</h2>
-            <Show when={entry.page}>
+        {(day) => (
+          <section class="journal-day" aria-label={dayTitle(day)}>
+            <h2 class="journal-day-title">{dayTitle(day)}</h2>
+            <Show when={entryByDay().get(day)?.page}>
               {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
             </Show>
+            {agendaFor(day)}
           </section>
         )}
       </For>

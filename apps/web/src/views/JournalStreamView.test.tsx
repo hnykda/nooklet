@@ -2,7 +2,8 @@
 
 import { todayJournalDay } from "@nooklet/core";
 import { Route, Router } from "@solidjs/router";
-import { cleanup, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JournalDayEntry } from "../data/types.js";
 
@@ -11,20 +12,40 @@ import type { JournalDayEntry } from "../data/types.js";
 // over mid-development).
 const today = todayJournalDay();
 
+// The local day, as a signal a test can move (the real clock is `day-clock.test.ts`'s subject).
+const [clockDay, setClockDay] = createSignal(today);
+vi.mock("../data/day-clock.js", () => ({ currentDay: () => clockDay() }));
+
 let streamValue: JournalDayEntry[] | undefined;
-const usePinnedJournalDay = vi.fn((..._args: unknown[]) =>
-  Object.assign(() => undefined, { loading: false, error: undefined }),
-);
+// A signal on top, for tests that refetch: the stream hands back NEW entry objects on every write.
+const [refetched, setRefetched] = createSignal<JournalDayEntry[] | undefined>(undefined);
+let blockTreeMounts = 0;
+const noPin = (..._args: unknown[]) =>
+  Object.assign((): JournalDayEntry | undefined => undefined, { loading: false, error: undefined });
+const usePinnedJournalDay = vi.fn(noPin);
 
 vi.mock("../data/store.js", () => ({
-  useJournalStream: () => Object.assign(() => streamValue, { loading: false, error: undefined }),
+  useJournalStream: () =>
+    Object.assign(() => refetched() ?? streamValue, { loading: false, error: undefined }),
   usePinnedJournalDay: (...args: unknown[]) => usePinnedJournalDay(...args),
   useAllPages: () => Object.assign(() => [], { loading: false, error: undefined }),
 }));
 
 vi.mock("../editor/BlockTree.js", () => ({
-  BlockTree: (props: { pageId: string }) => (
-    <div data-testid="block-tree">block-tree:{props.pageId}</div>
+  BlockTree: (props: { pageId: string }) => {
+    blockTreeMounts++;
+    return <div data-testid="block-tree">block-tree:{props.pageId}</div>;
+  },
+}));
+
+// One agenda read for the whole stream; the section itself is `JournalAgenda.test.tsx`'s subject.
+const useAgendaTasks = vi.fn(() => Object.assign(() => [], { loading: false, error: undefined }));
+vi.mock("../data/agenda.js", () => ({ useAgendaTasks: () => useAgendaTasks() }));
+vi.mock("./JournalAgenda.js", () => ({
+  JournalAgenda: (props: { day: number; today: number }) => (
+    <div data-testid="agenda">
+      agenda:{props.day}/{props.today}
+    </div>
   ),
 }));
 
@@ -43,7 +64,14 @@ class FakeIntersectionObserver {
 }
 vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  setRefetched(undefined);
+  blockTreeMounts = 0;
+  setClockDay(today);
+  useAgendaTasks.mockClear();
+  usePinnedJournalDay.mockImplementation(noPin);
+});
 
 async function renderStream() {
   const { JournalStreamView } = await import("./JournalStreamView.js");
@@ -150,5 +178,127 @@ describe("JournalStreamView", () => {
     // not have pinned anything, and the virtual-today stub must be the one shown (not a real tree).
     expect(screen.getByTestId("virtual-day")).toBeTruthy();
     expect(screen.getAllByTestId("block-tree")).toHaveLength(1);
+  });
+
+  it("puts a Scheduled and deadline section under every day, from one shared read", async () => {
+    streamValue = [
+      { day: today, page: null, blocks: [] },
+      {
+        day: 20260909,
+        page: {
+          id: "p-909",
+          graphId: "default",
+          name: "2026-09-09",
+          key: "2026-09-09",
+          journalDay: 20260909,
+          createdAt: 0,
+          updatedAt: 0,
+          deletedAt: null,
+          nameHlc: "",
+          deletedHlc: null,
+        },
+        blocks: [{} as never],
+      },
+    ];
+    await renderStream();
+    const agendas = screen.getAllByTestId("agenda").map((el) => el.textContent);
+    expect(agendas).toEqual([`agenda:${today}/${today}`, `agenda:20260909/${today}`]);
+    expect(useAgendaTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves Today to the new day when the local day changes (B-170)", async () => {
+    const tomorrow = today + 1; // only compared, never parsed as a date
+    streamValue = [{ day: today, page: null, blocks: [] }];
+    await renderStream();
+    expect(screen.getByTestId("virtual-day").textContent).toBe(`virtual:${today}`);
+
+    setClockDay(tomorrow);
+    expect(screen.getByTestId("virtual-day").textContent).toBe(`virtual:${tomorrow}`);
+    expect(screen.getAllByTestId("agenda")[0]?.textContent).toBe(`agenda:${tomorrow}/${tomorrow}`);
+  });
+
+  it("keeps every day's outline mounted when a write refetches the stream (B-174)", async () => {
+    const page = (id: string, day: number) => ({
+      id,
+      graphId: "default",
+      name: String(day),
+      key: String(day),
+      journalDay: day,
+      createdAt: 0,
+      updatedAt: 0,
+      deletedAt: null,
+      nameHlc: "",
+      deletedHlc: null,
+    });
+    // Fresh objects every call — exactly what each refetch of the real resource returns.
+    const snapshot = (): JournalDayEntry[] => [
+      { day: today + 1, page: page("p-up", today + 1), blocks: [] },
+      { day: today, page: page("p-today", today), blocks: [] },
+      { day: 20260909, page: page("p-909", 20260909), blocks: [] },
+      { day: 20260908, page: page("p-908", 20260908), blocks: [] },
+    ];
+    setRefetched(snapshot());
+    await renderStream();
+    const trees = screen.getAllByTestId("block-tree");
+    expect(trees).toHaveLength(4);
+    expect(blockTreeMounts).toBe(4);
+
+    // Three writes' worth of refetches.
+    setRefetched(snapshot());
+    setRefetched(snapshot());
+    setRefetched(snapshot());
+
+    expect(blockTreeMounts).toBe(4);
+    // The very same DOM nodes, not look-alikes: an editor inside them would have survived.
+    expect(screen.getAllByTestId("block-tree")).toEqual(trees);
+  });
+
+  it("drops a calendar pin once midnight makes the pinned day Today, so the day is not rendered twice (B-177)", async () => {
+    // Fixed days, so the calendar opens on a month that contains both of them.
+    const sat = 20260912;
+    const sun = 20260913;
+    const page = (id: string, day: number) => ({
+      id,
+      graphId: "default",
+      name: String(day),
+      key: String(day),
+      journalDay: day,
+      createdAt: 0,
+      updatedAt: 0,
+      deletedAt: null,
+      nameHlc: "",
+      deletedHlc: null,
+    });
+    usePinnedJournalDay.mockImplementation((...args: unknown[]) => {
+      const pinned = args[0] as () => number | undefined;
+      return Object.assign(
+        (): JournalDayEntry | undefined => {
+          const d = pinned();
+          return d === undefined ? undefined : { day: d, page: page(`p-${d}`, d), blocks: [] };
+        },
+        { loading: false, error: undefined },
+      );
+    });
+    setClockDay(sat);
+    streamValue = [
+      { day: sun, page: page(`p-${sun}`, sun), blocks: [] },
+      { day: sat, page: page(`p-${sat}`, sat), blocks: [] },
+    ];
+    await renderStream();
+
+    // Late on Saturday, jump to Sunday from the calendar.
+    fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
+    fireEvent.click(screen.getByRole("button", { name: "13" }));
+    expect(screen.getByRole("region", { name: "Jumped-to day" })).toBeTruthy();
+
+    // Midnight: Sunday is Today now.
+    setClockDay(sun);
+    expect(screen.getByRole("region", { name: "Today" }).textContent).toContain(
+      `block-tree:p-${sun}`,
+    );
+    expect(screen.queryByRole("region", { name: "Jumped-to day" })).toBeNull();
+    expect(
+      screen.getAllByTestId("block-tree").filter((el) => el.textContent === `block-tree:p-${sun}`),
+    ).toHaveLength(1);
   });
 });
