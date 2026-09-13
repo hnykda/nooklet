@@ -12,16 +12,20 @@ Review record: `docs/review/2026-09-13-rv-merge-web.md` (the last commit).
 
 ## Done
 
-- Bugs logged in the inbox before any fix (first commit).
+- Bugs logged in the inbox before any fix (first commit, `docs(bugs-inbox,progress)`).
+- F1 / B-360 — `bufferCaret()` in `BlockTree.runStructural`'s same-block branch. e2e case in
+  `templates.spec.ts` failed first (stored `list: "number!"`, content without the `!`), passes with
+  the fix. e2e templates + template-undo + template-collapsed + block-properties: 24/24. Web unit:
+  996/1000 in the full run at load average 63 (page-title, SearchView ×2, render-seams timeouts);
+  those three files rerun alone: 23/23.
 
 ## In flight
 
-- F1 / B-360: e2e case in `e2e/tests/templates.spec.ts`, then `bufferCaret` in
-  `BlockTree.runStructural`'s same-block branch.
+- F2 / B-361.
 
 ## Next steps, in order
 
-1. F1 (medium): failing e2e, fix, commit.
+1. (done) F1.
 2. F2: `page-find.ts` stores a content offset (unit test in `app/page-find.test.ts` + e2e in
    `page-find.spec.ts`).
 3. F3: readOnly guard in `doUndo`/`doRedo` + e2e in `read-only.spec.ts`.

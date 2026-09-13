@@ -621,9 +621,11 @@ export function BlockTree(props: {
     if (!res.focus) return;
     // Focus staying on the block being edited (a command's batch written into it, B-108): the
     // buffer was synced by `commit`, and `attachEditing` with the same id re-renders nothing, so
-    // the caret would never move. Same case as in `doUndo`.
+    // the caret would never move. Same case as in `doUndo`, and like there the caret is a CONTENT
+    // caret that has to be mapped into the buffer: set as-is, `/template`'s `{at: "end"}` in an
+    // empty numbered item landed after `list:: number` and the next keystroke edited that (B-360).
     if (res.focus.id === editingId() && surface.currentId() === res.focus.id)
-      surface.setCaret(res.focus.caret);
+      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
     else attachEditing(res.focus.id, res.focus.caret);
   }
 

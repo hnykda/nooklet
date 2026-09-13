@@ -7,8 +7,9 @@ parent branch had on its own — two changes that were correct apart and met in 
 ---
 
 ### B-360 · `/template` into an empty bullet that has a property puts the caret in the property line
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, merge-resolution review (F1) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, merge-resolution review (F1) ·
+**Test:** `e2e/tests/templates.spec.ts` "/template into an empty numbered item: what is typed next
+extends the text, not the list property (B-360)"
 
 Pick a template with `/template` in an empty numbered item (`list:: number`), or in any empty
 bullet with a property line, and type: the characters go into the property's value, not after the
@@ -22,6 +23,13 @@ last property line. The impl-render merge converted `doUndo`/`doRedo` to `buffer
 this branch, and dropped the B-154 unit assertions on the caret instead of porting them.
 `docs/BUGS.md` B-154's "through `onContent` … the caret ends after the text" no longer describes
 the code (the text now arrives as a `block.text` op in a `commitOps` batch).
+
+**Fixed 2026-09-13.** The same-block branch maps the caret into the buffer with `bufferCaret()`, as
+`doUndo`/`doRedo` do. The e2e test (seed `- first` / `list:: number`, Enter, `/template` daily, type
+`!`) failed first against the unfixed build — stored `{content: "Daily plan for [[Sep 13th,
+2026]]", properties: {list: "number!"}}` — and passes with the fix. **For the coordinator:** B-154's
+Fixed paragraph in `docs/BUGS.md` should say the template's text arrives as a `block.text` op in a
+`commitOps` batch (not through `onContent`), and that the caret after it was wrong until B-360.
 
 ---
 
