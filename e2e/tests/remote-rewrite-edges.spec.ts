@@ -219,12 +219,14 @@ test("with this tab's clock behind, typing into a block the row showed rewritten
 test("a rewrite while the [[ popup is open does not garble the pick", async ({ page }) => {
   // The popup keeps the trigger's offset and re-detects only on keyup/pointerup; a rewrite taken
   // into the buffer under it made Enter replace the wrong range (B-463).
-  const target = unique("Remote Edge Popup Target");
+  // The repeat index inside the name, not appended: a query for one repeat's target must not also
+  // match the previous repeat's.
+  const target = `Remote Edge Popup R${test.info().repeatEachIndex} Target`;
   await seedPage(page, target, "- x");
   const name = unique("Remote Edge Popup");
   await openEditing(page, name, "- alpha\n- other");
   const id = await idOf(page, name, "alpha");
-  const query = target.slice(0, "Remote Edge Popup Ta".length);
+  const query = target.slice(0, -"rget".length);
   await page.keyboard.type(` see [[${query}`, { delay: 30 });
   await expect(page.locator(".cmd-popup").first()).toBeVisible();
   // Past the write debounce: nothing unsaved in the buffer, only the open popup.
