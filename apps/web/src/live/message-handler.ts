@@ -18,6 +18,10 @@ export interface MessageHandlerDeps {
   runCommand: (commandId: string, args: unknown) => Promise<CommandRunResult>;
 }
 
+/** A thrown message is relayed to an agent verbatim; this bounds a pathological one (a stack, a
+ * serialized document) to what an error message needs. */
+const MAX_ERROR_CHARS = 1000;
+
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
@@ -49,7 +53,18 @@ export async function handleIncomingFrame(
 
   if (msg.type === "command.run") {
     const commandId = typeof msg.command_id === "string" ? msg.command_id : "";
-    const result = await deps.runCommand(commandId, msg.args);
+    let result: CommandRunResult;
+    try {
+      result = await deps.runCommand(commandId, msg.args);
+    } catch (e) {
+      // A command that throws — most often one refusing its args (`task.setScheduled` given
+      // "banana") — still gets an answer. With none, the server waited out its RPC timeout and told
+      // the agent the window was busy and to try again: the very input that fails again (B-148).
+      // `error` in place of `when_result` is how the server tells the two apart.
+      const error = (e instanceof Error ? e.message : String(e)).slice(0, MAX_ERROR_CHARS);
+      activityLog.record(`Claude tried ${commandId} (it failed: ${error})`);
+      return JSON.stringify({ type: "command.result", request_id: requestId, error });
+    }
     activityLog.record(describeCommandActivity(commandId, result.when_result));
     return JSON.stringify({ type: "command.result", request_id: requestId, ...result });
   }

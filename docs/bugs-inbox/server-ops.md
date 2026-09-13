@@ -153,3 +153,28 @@ page (B-312)" — pre-block, unknown `^id`, unknown `^id` on an unwritten journa
 missing page; all four failed on the old `page-append.ts` (row counts moved).
 
 ---
+
+### B-148 (existing)
+
+**Fixed 2026-09-13.** Both halves of the `/ui/live` protocol, as the entry's fix direction said.
+Client: `apps/web/src/live/message-handler.ts#handleIncomingFrame` catches a rejection from
+`runCommand` and replies `command.result` `{ request_id, error }` (the thrown message, capped at
+1,000 chars; also recorded in the window's activity log), so `socket.ts` sends a reply and there is
+no unhandled rejection. Server: `packages/server/src/live/run-remote-command.ts` turns a reply with
+`error` into `invalid` — "task.setScheduled failed in window "…": "banana" is not a date …", hint
+"change args (or command_id) rather than retrying as is", `details.reason: "command_failed"` —
+which `ui_navigate`/`ui_highlight` inherit. mcp-tools.md §4.3.21's Errors list it. Tests that would
+have caught it: `apps/web/src/live/message-handler.test.ts` › "answers command.run with
+command.result carrying the error when the command throws" and "reports a non-Error throw, and cuts
+a huge message to a bounded length" (both failed before: the handler rejected), and
+`packages/server/src/live/ui-run-error.test.ts` (ui_run → 400 with the window's reason in well
+under the 2 s timeout; same through ui_navigate; a normal result still relayed — the first two
+failed before: 200 `unknown_command`). And the real thing, kept this time:
+`e2e/tests/agent-ops.spec.ts` › "ui_run with args the command refuses answers invalid with its
+reason, not a timeout (B-148)" mints a `write --ui-control` token with the CLI against the run's
+data dir, turns control on in a real Chromium window, and sends `task.setScheduled` `"banana"` and
+`42` (400 `command_failed` in under 1.9 s each, nothing stored), then a real date (200 `ran`,
+stored). With the old `message-handler.ts` built into the client it failed exactly as reported:
+500 `internal`, "window … did not respond in time", hint "try again".
+
+---

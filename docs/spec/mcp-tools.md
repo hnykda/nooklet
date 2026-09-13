@@ -1743,8 +1743,13 @@ also `not_found` with `details.reason: "no_live_window"` when `window_id` is omi
 windows are live (`hint`: "use page_append/block_update instead"); `conflict` with
 `details.reason: "ambiguous_window"` and `details.windows` listing candidates when `window_id` is
 omitted and more than one window is live; `forbidden` — the target window has `control_enabled:
-false` (`hint` names the "let agents control this window" toggle); `internal` — the window did not
-respond within ~2s (rare: a busy or navigating tab; retry). Note: `docs/spec/mcp-tools.md` §3.8's
+false` (`hint` names the "let agents control this window" toggle); `invalid` with
+`details.reason: "command_failed"` (and `details.window_id`) — the command ran in the window and
+threw, typically refusing its `args`; `message` carries the window's own reason, and retrying
+unchanged cannot help (B-148: the window answers such a run with `command.result` `{ request_id,
+error }` in place of `when_result`, capped at 1,000 chars; it used to send nothing, which surfaced
+as the timeout below); `internal` — the window did not respond within ~2s (rare: a busy or
+navigating tab; retry). Note: `docs/spec/mcp-tools.md` §3.8's
 fixed `OpErrorCode` enum has no `ambiguous`/`no_live_window` members (research/09's own sketch used
 those as illustrative names); this implementation carries the same information in `details.reason`
 instead of inventing new top-level codes, consistent with §3.8's closed list.

@@ -40,6 +40,8 @@ interface CommandResultMessage {
   when_result?: string;
   result?: unknown;
   changed?: unknown;
+  /** Set instead of `when_result` when the command threw in the window (B-148). */
+  error?: unknown;
 }
 
 /** Shared by all three ops' handlers (see file header). `windowId` is `input.window_id`, already
@@ -113,6 +115,18 @@ export async function runRemoteCommand(
   }
 
   const msg = rpcResult.data as CommandResultMessage;
+  if (typeof msg.error === "string") {
+    // The command ran and threw — most often it refused its args (`task.setScheduled` given
+    // "banana"). The window used to send nothing at all, so this op waited out the timeout above
+    // and told the agent to try again: the same input, failing the same way (B-148). `invalid`,
+    // because retrying unchanged cannot help; the window's own message says what to change.
+    throw new OpError(
+      "invalid",
+      `${args.commandId} failed in window "${window.windowId}": ${msg.error.slice(0, 1000)}`,
+      "the command refused this call; change args (or command_id) rather than retrying as is",
+      { reason: "command_failed", window_id: window.windowId },
+    );
+  }
   const whenResult = RunCommandOutput.shape.when_result.safeParse(msg.when_result);
   return {
     window_id: window.windowId,
