@@ -100,3 +100,27 @@ test("undoing Alt+Up moves the block back without moving the caret (B-501)", asy
   await page.keyboard.type("X");
   await expect.poll(() => editorText(page)).toBe("twXo");
 });
+
+// The fix writes the caret through `EditorView.domAtPos`, and the live preview hides `[[`/`]]`/`**`
+// away from the caret, so DOM offsets and document offsets differ on this line. The caret must come
+// back mid-line, between the same two characters.
+test("Alt+Up keeps a mid-line caret on a line with hidden link and bold markers (B-501)", async ({
+  page,
+  browserName,
+}) => {
+  const name = `Alt Up Mid Line ${browserName}`;
+  const outliner = await openEditing(page, name, "- one\n- see [[Linked]] and **bold** words here");
+  await clickRow(page, outliner, 1);
+  await page.keyboard.press("End");
+  for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowLeft");
+  const before = await caret(page);
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect.poll(() => editingRowIndex(page, outliner)).toBe(0);
+  await page.waitForTimeout(300);
+  await expect(page.locator(".cm-content")).toBeFocused();
+  expect(await caret(page)).toEqual(before);
+  await page.keyboard.type("X");
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["see [[Linked]] and **bold** words Xhere", "one"]);
+});
