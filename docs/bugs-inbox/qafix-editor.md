@@ -73,12 +73,33 @@ without the change (the X is never stored) and pass with it.
 ---
 
 ### B-243 · On a fresh client, text typed into today's journal draft vanishes when sync says today exists
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q4) · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q4) · **Tests:**
+`e2e/tests/journal-draft-sync.spec.ts` "text typed into today's draft survives the first sync
+saying today already exists (B-243)"; `apps/web/src/views/VirtualJournalDay.test.tsx` "torn down
+with text nobody committed (B-243)" (4 tests)
 
 The server already has today's journal with blocks. A fresh browser (empty OPFS) opens
 `/journals`, the local replica does not have today yet, so the virtual draft shows; click it and
 type. When the initial pull lands, the draft is replaced by the real outliner and what was typed is
 in neither the UI nor the server. Focus falls to `<body>`; the sync indicator says "synced".
+
+**Fixed 2026-09-13.** The stream picks draft or outliner from the local replica, and the draft
+committed only on blur or Enter. When the snapshot flipped today to "exists", `<Show>` disposed
+the draft with its text uncommitted, and nothing else looked at it. `VirtualJournalDay`'s cleanup
+now keeps a non-empty uncommitted draft: it appends it as the last top-level block of the day's
+page the replica now has (`data/journal-day.ts#appendToJournalDay`, an ordinary `block.create`
+through `applyOps`) and, if the draft held the caret, requests focus there so typing continues at
+its end. With no page for the day (unmounted for another reason) it commits the normal way. The
+blur that removing a focused textarea can fire is ignored after disposal, so there is one writer.
+The e2e test holds `/sync/snapshot` with `page.route` (the route reaches the sync worker's fetch)
+to open the same window the 952-page graph opens by being big; it failed before (text not stored)
+and passes after, 3/3 with `--repeat-each=3`.
+
+Not covered, and not verified either way: (a) the draft committed (blur/Enter) *before* the
+snapshot lands, which creates a second page for a day the server already has; core rejects a
+`page.create` whose key is taken, so the typed blocks likely fail on push. (b) QA's `t7.mjs` saw
+text typed immediately after Enter on a just-materialised day lost (second block stayed empty);
+`a-fresh-journal.spec.ts` covers Enter-then-type but waits for focus first.
 
 ---
 
@@ -91,6 +112,21 @@ stores `x [[new/page]]`, but the editor still shows `x [[new/page` and the popup
 next keystroke commits the editor's buffer over it: stored `...testing [[new/pages/child after`,
 an unclosed link. Accepting an existing page works; a warm client works (0/4). The owner's B-42
 report was exactly `testing [[new/page`, so this may be what they hit.
+
+---
+
+### B-246 · `views.spec.ts` "opening the palette while editing and closing it hands focus back to the editor" fails at da85cfb
+**Status:** open · **Severity:** low (test or focus regression, undiagnosed) · **Found:**
+2026-09-13, while regression-running e2e for B-243 · **Test:** the one named
+
+Mod+K while editing, Escape: the palette closes and `.cm-content` is never focused again
+(`toBeFocused` times out, "inactive"). Fails 3/3 on port 6460: twice in the full `views.spec.ts`
+with this branch's changes, and once alone and once in the full spec with `apps/web/src` checked
+out at `da85cfb`, so it is not caused by this branch. The coordinator's last full run on
+`a6c2859` did not list it among failures. Nothing in `apps/web/src` explicitly returns focus to
+the editor when the palette closes (no `focus()` call in `CommandPalette`/`palette-controller`),
+so whatever made it pass before is worth finding before "fixing" the test. Not investigated
+further on this branch.
 
 ---
 

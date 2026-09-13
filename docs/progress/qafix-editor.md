@@ -13,7 +13,7 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
 | Q1 redo of undone create never reaches server | B-240 | high | fixed (first commit) |
 | Q2 Cmd+Z after deleting a selection does nothing | B-241 | high | fixed (second commit) |
 | Q3 undo of Alt+Up/Down drops focus | B-242 | medium | fixed (third commit) |
-| Q4 cold client: journal draft text lost when pull says today exists | B-243 | medium | todo |
+| Q4 cold client: journal draft text lost when pull says today exists | B-243 | medium | fixed (fourth commit) |
 | Q5 cold client: `[[` New page writes `]]` to DB not editor | B-244 | medium | todo |
 | Q6 Cmd+X on selection does nothing | B-245 | low | feature gap: logged, skipped |
 
@@ -39,19 +39,27 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
   same-block branch. 2 e2e tests in `undo-redo.spec.ts` (failed 2/2 before). E2E undo-redo +
   focus + selection + editing + parity: 72/72.
 
+- Q3/B-242 committed as `9a19de3`.
+- Q4/B-243 `fix(web): text typed into a journal draft survives the draft being swapped out`:
+  new `apps/web/src/data/journal-day.ts` (`appendToJournalDay`), `views/VirtualJournalDay.tsx`
+  cleanup keeps an uncommitted draft (+ `disposed` guard on blur). 4 unit tests in
+  `VirtualJournalDay.test.tsx`; e2e `e2e/tests/journal-draft-sync.spec.ts` holds `/sync/snapshot`
+  with `page.route` (failed before, 3/3 after). E2E a-fresh-journal + editing + journal-draft-sync
+  + pages + templates + views + storage: 57 passed, 1 failed, 1 skipped; the failure is
+  `views.spec.ts` palette focus, which also fails with `apps/web/src` at da85cfb (logged B-246).
+- Side bug logged, not fixed: B-246 (above).
+
 ## 2. In flight
 
 - (nothing)
 
 ## 3. Next steps, in order
 
-1. (done) Q1, Q2, Q3.
+1. (done) Q1, Q2, Q3, Q4.
 2. Unverified side observation, not fixed: the global keydown dispatcher matches `edit.undo`
    (`when: "true"`) and preventDefaults it everywhere, so native Cmd+Z inside a plain `<input>`
    (search, page title) is probably swallowed. Probe it before logging as a bug.
-3. Q4 (B-243): journal draft unmount must commit its text. Needs a cold-client e2e (fresh
-   context + server that already has today).
-4. Q5 (B-244): popup New page during initial pull. Needs a slow-pull fixture.
+3. Q5 (B-244): popup New page during initial pull. Needs a slow-pull fixture.
 
 ## 4. How to resume
 

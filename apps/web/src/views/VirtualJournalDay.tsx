@@ -13,6 +13,7 @@ import {
   orderBetween,
 } from "@nooklet/core";
 import { createSignal, type JSX, onCleanup, Show } from "solid-js";
+import { appendToJournalDay } from "../data/journal-day.js";
 import { applyOps, getOpClock } from "../data/store.js";
 import { journalTemplateOpsFor, loadJournalTemplate } from "../data/templates.js";
 import type { NavigateTarget } from "../data/types.js";
@@ -30,6 +31,8 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
 
   // The block Enter asked to put the caret in.
   let focusTarget: string | undefined;
+  let textarea: HTMLTextAreaElement | undefined;
+  let disposed = false;
 
   /**
    * Hand the focus request back if we are torn down after it was claimed (B-107).
@@ -49,8 +52,33 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
    * click on the page background does, and nobody clicks away inside the swap's window.
    */
   onCleanup(() => {
+    disposed = true;
     if (focusTarget && blockFocusRequest() !== focusTarget) requestBlockFocus(focusTarget);
+    if (pageId() === undefined && draft() !== "") {
+      // Cleanup runs before Solid removes the textarea, so it still holds the caret if it had it.
+      void keepUncommittedDraft(draft(), document.activeElement === textarea);
+    }
   });
+
+  /**
+   * Torn down with typed text that was never committed (B-243).
+   *
+   * The stream swaps this draft out the moment the local replica has a page for the day, and on a
+   * fresh client that happens when the first sync lands, while someone may be typing here. Nothing
+   * committed the text: no blur, no Enter. It was simply dropped, and the sync indicator then said
+   * "synced". It goes to the end of the page that now exists, with the caret after it if the
+   * caret was here. With no such page (unmounted for another reason) it is committed the normal
+   * way. The blur that removing a focused textarea may fire is ignored (`disposed`), so this is
+   * the only writer.
+   */
+  async function keepUncommittedDraft(value: string, hadCaret: boolean): Promise<void> {
+    const blockId = await appendToJournalDay(props.day, value);
+    if (blockId === null) {
+      await materialize();
+      return;
+    }
+    if (hadCaret) requestBlockFocus(blockId);
+  }
 
   /**
    * Commit the placeholder row, creating the page and its first block.
@@ -144,12 +172,13 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
             <div class="vr-row-main">
               <div class="vr-content">
                 <textarea
+                  ref={textarea}
                   class="vr-draft-input"
                   value={draft()}
                   rows={1}
                   placeholder="Start typing…"
                   onInput={(e) => setDraft(e.currentTarget.value)}
-                  onBlur={() => void materialize()}
+                  onBlur={() => !disposed && void materialize()}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
