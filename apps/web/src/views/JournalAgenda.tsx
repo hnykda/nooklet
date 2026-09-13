@@ -57,16 +57,20 @@ function EntryRow(props: { entry: AgendaEntry; onNavigate: (t: NavigateTarget) =
           if (e.key === "Enter") go(e);
         }}
       >
-        <span
-          class={`vr-marker vr-marker-${props.entry.task.marker}`}
-          role="img"
-          aria-label={`Task: ${props.entry.task.marker}`}
-        >
-          {MARKER_GLYPH[props.entry.task.marker] ?? "☐"}
+        {/* Marker and priority share one grid cell, so the content column starts in the same place
+            whether or not a task has a priority — and the dates can drop under it on a phone. */}
+        <span class="journal-agenda-lead">
+          <span
+            class={`vr-marker vr-marker-${props.entry.task.marker}`}
+            role="img"
+            aria-label={`Task: ${props.entry.task.marker}`}
+          >
+            {MARKER_GLYPH[props.entry.task.marker] ?? "☐"}
+          </span>
+          <Show when={props.entry.task.priority}>
+            {(p) => <span class={`vr-priority vr-priority-${p()}`}>{p()}</span>}
+          </Show>
         </span>
-        <Show when={props.entry.task.priority}>
-          {(p) => <span class={`vr-priority vr-priority-${p()}`}>{p()}</span>}
-        </Show>
         <span class="journal-agenda-content" dir="auto">
           <InlineContent content={props.entry.task.content} onNavigate={props.onNavigate} />
         </span>

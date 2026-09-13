@@ -75,9 +75,41 @@ Updated after every meaningful step. If you are reading this after a restart, co
   journal-stream-editing, journals, a-fresh-journal, templates, phone, focus, editing — 59 passed;
   views, query, tasks — 49 passed, 1 failed (`views.spec.ts:461`, B-173, fails on base too).
 
+- `feat(web): agenda rows on a grid; dates drop under the text on a phone; journal-stream perf
+  probe and numbers` — found by looking at screenshots of the stress copy at 1100 px (light) and
+  400 px (dark): on a phone the flex row wrapped a two-date chip onto its own line at the far left.
+  Now a three-column grid (glyphs, text, dates) that becomes two columns under 480 px.
+  `tools/probes/journal-agenda-perf.mjs` finished; numbers below.
+
+## Performance (2026-09-13, machine load average 17-45, 5 warm runs each, medians)
+
+Probe: `tools/probes/journal-agenda-perf.mjs`, port 6403, headless Chromium, persistent profile
+per build per graph (replica bootstrapped once). "base" = `git archive da85cfb` with its own
+production build; "branch" = this branch at the B-174 fix plus the grid CSS (same JS paths).
+
+| graph | build | load /journals (ms) | load more (ms) | long tasks over 8 edits (ms) | agenda rows on screen |
+|---|---|---|---|---|---|
+| owner's copy (18.6k blocks, 0 dated open tasks) | base | 239 | 138 | n/a (B-174) | 0 |
+| owner's copy | branch | 226 | 126 | 0 | 0 |
+| stress copy (686 dated open tasks, 386 overdue) | base | 182 | 111 | n/a (B-174) | 0 |
+| stress copy | branch | 337 | 148 | 0 | 625 |
+
+Reading: on the owner's real graph the section costs nothing measurable (it is empty — the graph
+has no open task with a date). On the stress copy the first render is ~150 ms slower because
+Today's section renders ~390 rows (386 overdue) and the other visible days ~235 more; still a
+third of a second. Editing produced no main-thread long task on either graph (the queries run in
+the worker; the probe checks its typing landed, and a 200 ms busy loop registers as 199 ms, so the
+observer works). Single outliers of ~2-2.8 s appeared in both base and branch runs (load).
+The agenda SQL uses `block_marker` (EXPLAIN QUERY PLAN), guarded by a unit test.
+
+Open question for the owner (not built): a graph with hundreds of forgotten dated tasks puts all of
+them under Today. Logseq avoids that by not listing overdue non-repeating tasks at all; a cap
+("and 356 more overdue → Tasks") would be the smallest fix. Left as-is because the brief asks for
+overdue tasks and the owner's own graph has none.
+
 ## In flight
 
-- Real-graph perf numbers (step 5).
+- Nothing mid-edit.
 
 ## Next steps
 
@@ -85,7 +117,7 @@ Updated after every meaningful step. If you are reading this after a restart, co
 2. (done) agenda data + rules + component.
 3. (done) hookups + B-170.
 4. (done) e2e.
-5. Real-graph perf check with `tools/probes/journal-agenda-perf.mjs`: base build
+5. (done — see Performance) Real-graph perf check with `tools/probes/journal-agenda-perf.mjs`: base build
    (`scratchpad/impl-journal/base`, a `git archive da85cfb` with `apps/web/dist` built by its own
    e2e run) vs this branch, on the real copy and on a stress copy (686 dated open tasks, 386
    overdue — made by SQL on a copy, so `verify` on it is meaningless). One browser profile per

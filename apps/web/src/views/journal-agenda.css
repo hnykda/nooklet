@@ -44,14 +44,22 @@
   padding: 0;
 }
 
+/* Three columns — glyphs, text, dates — so a long task wraps inside its own column instead of
+   pushing the dates onto a line of their own at the far left. */
 .journal-agenda-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
   gap: var(--space-2xs) var(--space-xs);
   padding: 2px var(--space-xs);
   border-radius: var(--radius-xs);
   cursor: pointer;
+}
+
+.journal-agenda-lead {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
 }
 
 .journal-agenda-row:hover,
@@ -66,7 +74,6 @@
 }
 
 .journal-agenda-content {
-  flex: 1 1 12em;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -74,6 +81,7 @@
 .journal-agenda-dates {
   display: inline-flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2xs) var(--space-xs);
   align-self: center;
 }
@@ -87,4 +95,17 @@
 
 .journal-agenda-date-overdue {
   color: var(--danger);
+}
+
+/* A phone has no room for a date column: the dates go under the text, lined up with it. */
+@media (max-width: 480px) {
+  .journal-agenda-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .journal-agenda-dates {
+    grid-column: 2;
+    justify-content: flex-start;
+    align-self: start;
+  }
 }
