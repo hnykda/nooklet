@@ -58,13 +58,20 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
   24 chars and lists at most two fields (unit test with those real values). `pnpm nooklet verify`
   on the copy afterwards: 20438 ops replayed, OK.
 
+- Final run on `f675cb6` (port 6460, Chromium, one server, 26 specs: merge-keeps-fields, read-only,
+  image-insert, assets, dates, palette-text-keys, editing, block-properties, undo-redo, redo, focus,
+  parity, selection, editing-row-leaves, plugins, popups, commands, context-menu, journal-agenda,
+  tasks, templates, template-undo, views, page-title-draft, search-filters, page-find): **254 passed,
+  1 failed, 1 skipped** — the failure is the pre-existing `views.spec.ts` palette-focus test above.
+  Web unit 1012/1012, `pnpm -r typecheck` clean.
+
 ## 2. In flight
 
 - Nothing.
 
 ## 3. Next steps, in order
 
-1. Final regression run of touched specs; report.
+1. None on this branch. Open for others: B-342 and B-346 (owner decisions), B-344 (feature gap).
 
 ## Notes
 
