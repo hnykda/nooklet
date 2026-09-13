@@ -427,6 +427,8 @@ const SLASH_ORDER = [
   // M7 appends, in `items.ts` order: templates (ADR 019) and the query fence (ADR 011).
   "Template",
   "Query",
+  // Contributed by the built-in mermaid plugin's client half, after every core row (ADR 023).
+  "Mermaid diagram",
 ];
 
 test.describe("/ slash menu", () => {
