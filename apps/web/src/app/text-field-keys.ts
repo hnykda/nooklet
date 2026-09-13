@@ -64,6 +64,33 @@ export function isOtherTextField(target: EventTarget | null): boolean {
   return target.isContentEditable === true;
 }
 
+/**
+ * A focused form field outside the outliner — the palette's query, a page title, the find bar,
+ * search, a setting, a dialog's input (B-300).
+ *
+ * `textFieldOwnsKey` keeps the keys a field EDITS with, but every other key still went to the
+ * keymap against the outliner's context: with a block selected, Enter in the page title opened the
+ * block for editing instead of committing the name, Mod+Shift+D in the title or the palette
+ * duplicated the selected block, Mod+. zoomed into it, and Mod+Shift+K in the palette over an open
+ * edit inserted `[]()` into the block behind it. So a key from such a field is dispatched with the
+ * outliner hidden (`editor-host.ts#withoutOutliner`): the global shortcuts (Mod+K, Mod+J, Mod+F, …)
+ * still fire, and nothing reaches a block the user is not looking at.
+ *
+ * Wider than `isOtherTextField`: a `<select>` and the non-text inputs count too (Enter on a focused
+ * date input or a select must not open the selected block), and the test is "outside the outliner"
+ * rather than "not CodeMirror", because the block editor's surface is the outliner's own field.
+ */
+export function isFieldOutsideOutliner(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
+  if (target.closest(".vr-outliner, .cm-editor")) return false;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable === true
+  );
+}
+
 /** `true`: leave this keydown to the focused field; the command dispatcher must not see it. */
 export function textFieldOwnsKey(
   e: KeyboardEventLike & { target: EventTarget | null },

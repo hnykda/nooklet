@@ -183,9 +183,23 @@ editor's surface — an `<input>` of a text type, a `<textarea>`, a contentedita
 text-editing key: Backspace, Delete, the arrows, Home, End, PageUp, PageDown (with any modifier,
 except Alt+Left/Right outside macOS, which are `nav.back`/`nav.forward`), and Mod+A/C/X/V/Z (Z with
 or without Shift). The field handles them natively. Every other key still dispatches from a text
-field (Escape, Enter, Tab, Mod+K and the other global shortcuts). Without this, Backspace typed
-into the palette with blocks selected ran `block.deleteSelected`. As built:
+field (Escape, Enter, Tab, Mod+K and the other global shortcuts), subject to R12b. Without this,
+Backspace typed into the palette with blocks selected ran `block.deleteSelected`. As built:
 `apps/web/src/app/text-field-keys.ts`, called by `CommandLayer`'s global keydown listener.
+
+**R12b (fields outside the outliner, B-300).** A keydown whose target is an `<input>` (any type),
+`<textarea>`, `<select>` or contenteditable that is not inside `.vr-outliner` or `.cm-editor` (the
+palette's query, a page title, the find bar, search, a setting, a picker dialog's input) and that
+R12a did not already leave to the field, is resolved against the context with the outliner hidden:
+every field of the editor snapshot reads as nothing edited and nothing selected
+(`editorFocused`, `blockSelected`, `hasSelection` false, `selectionCount` 0, `zoomed` false, …);
+`popupOpen`, `pageView`, `platform`, `mobile` are kept. So a key typed into such a field never runs
+a command on the outliner's edit or selection (Enter is not `block.editSelected`, Mod+Shift+D is
+not `block.duplicate`, Mod+Shift+K is not `format.insertLink` into the block behind the palette),
+while the global shortcuts (`when: true` — Mod+K, Mod+O, Mod+J, Mod+Shift+J, Mod+Shift+F, Mod+[/],
+Mod+\, Mod+,) and `pageView` (Mod+F) still fire. Keyboard dispatch only: the palette evaluates its
+rows against the full context, so it still lists and runs the selection's commands. As built:
+`text-field-keys.ts#isFieldOutsideOutliner` + `app/editor-host.ts#withoutOutliner`.
 
 **R13.** When no `Surface` is mounted (block-selection mode), the same table and the same
 resolution algorithm apply; the outliner container (`tabindex="-1"`) is the event target instead
