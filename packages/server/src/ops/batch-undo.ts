@@ -31,7 +31,7 @@
  *    into thinking an asset upload was undone.
  */
 
-import { normalizePageName, type Op } from "@nooklet/core";
+import { aliasKeysOf, normalizePageName, type Op } from "@nooklet/core";
 import { z } from "zod";
 import {
   type BlockChangeSnapshot,
@@ -47,6 +47,7 @@ import { changedFields, fieldsChangedLater, type UndoField } from "./later-edits
 import { defineOp, OpError } from "./registry.js";
 import { currentHeadSeq } from "./resolve.js";
 import { IdempotencyKey, WriteResult } from "./schemas.js";
+import { livePageAliasing } from "./trash-restore.js";
 
 const BatchId = z
   .string()
@@ -94,7 +95,8 @@ export const batchUndo = defineOp({
     "timestamp, the undo always wins over anything in between. Pass keep_later_edits: true to " +
     "leave alone every field some other batch changed after this one (listed in kept) - use it " +
     "when undoing anything but your own latest write. If a page it would restore has lost its " +
-    "name to a live page since, it fails with conflict and writes nothing; so does any restore " +
+    "name to a live page since, or a live page uses that name as an alias, it fails with " +
+    "conflict and writes nothing; so does any restore " +
     "the database rejects. Cannot undo asset_upload (assets are not in the op log); such a " +
     "batch_id fails with an invalid error. Use dry_run to preview what would be restored/deleted " +
     "without writing anything.",
@@ -224,7 +226,42 @@ export const batchUndo = defineOp({
         // whole undo fail after the page was deleted and its name reused.
         const rename =
           !skip.has("name") && !(deletedAfter !== null && current.name === before.name);
-        return { before, nameAfter, deletedAfter, rename };
+        const aliasAfter = skip.has("prop:alias")
+          ? current.properties.alias
+          : before.properties.alias;
+        return { current, before, nameAfter, deletedAfter, aliasAfter, rename };
+      };
+
+      const batchPageRows = [...firstByEntity.values()].filter((r) => r.entity_type === "page");
+      const batchPageIds = batchPageRows.map((r) => r.entity_id);
+      let batchAliases: Map<string, { id: string; name: string }> | undefined;
+      /** The page of this batch that answers to `key` as an alias once the undo is done. Indexed
+       * on first use, once: most undos claim no page name at all. A page's own key is never among
+       * its alias keys (`aliasKeysOf`), so the page asking never finds itself. */
+      const batchPageAliasing = (key: string): { id: string; name: string } | undefined => {
+        if (batchAliases === undefined) {
+          batchAliases = new Map();
+          for (const r of batchPageRows) {
+            const current = snapshotPage(ctx.db, r.entity_id);
+            if (!current) continue;
+            let after: { name: string; alias: string | undefined } | undefined;
+            if (r.before_json === null) {
+              // Created by the batch: the undo deletes it, unless another batch changed it since.
+              const keptLive = current.deleted_at === null && laterEdits(r).size > 0;
+              if (keptLive) after = { name: current.name, alias: current.properties.alias };
+            } else {
+              const plan = pagePlan(r);
+              if (plan?.deletedAfter === null)
+                after = { name: plan.nameAfter, alias: plan.aliasAfter };
+            }
+            if (!after) continue;
+            for (const k of aliasKeysOf(after.alias, normalizePageName(after.name))) {
+              if (!batchAliases.has(k))
+                batchAliases.set(k, { id: r.entity_id, name: current.name });
+            }
+          }
+        }
+        return batchAliases.get(key);
       };
 
       // A page this undo brings back to life (or renames) needs that name free. Core rejects the
@@ -232,13 +269,23 @@ export const batchUndo = defineOp({
       // a page delete would un-delete the blocks onto a page that stays in the trash and still
       // report "restored". Ask first, so the caller hears why; the savepoint in
       // `applyAllOrNothing` below catches any rejection this check does not foresee.
-      for (const row of firstByEntity.values()) {
-        if (row.entity_type !== "page") continue;
+      for (const row of batchPageRows) {
         const plan = pagePlan(row);
-        if (!plan || (plan.deletedAfter !== null && !plan.rename)) continue;
+        const liveAfter = plan?.deletedAfter === null;
+        if (!plan || (!liveAfter && !plan.rename)) continue;
+        const keyAfter = normalizePageName(plan.nameAfter);
+        // Live now under the same key and after: the undo moves no name, so nothing it does can
+        // take one from anybody (an alias already shadowed by this page stays that way).
+        if (
+          liveAfter &&
+          plan.current.deleted_at === null &&
+          normalizePageName(plan.current.name) === keyAfter
+        ) {
+          continue;
+        }
         const clash = ctx.db.get<{ id: string; name: string }>(
           "SELECT id, name FROM page WHERE key = ? AND deleted_at IS NULL AND id != ?",
-          [normalizePageName(plan.nameAfter), row.entity_id],
+          [keyAfter, row.entity_id],
         );
         if (clash && !firstByEntity.has(clash.id)) {
           throw new OpError(
@@ -246,6 +293,21 @@ export const batchUndo = defineOp({
             `cannot restore page "${plan.nameAfter}": a live page is already named "${clash.name}"`,
             "rename or delete the live page first, or restore the deleted page from the trash with trash_restore and new_name",
             { live_page_id: clash.id, page_id: row.entity_id },
+          );
+        }
+        if (!liveAfter) continue; // stays in the trash: answers to no link, shadows no alias
+        // B-367: nor may it take the name from a live page's alias (B-256, as `trash.restore`
+        // refuses). Pages this batch touched are judged by the aliases the undo leaves them —
+        // undoing a merge removes the alias it added, unless keep_later_edits keeps a later edit
+        // of it — and every other page by what it has now.
+        const aliasing =
+          livePageAliasing(ctx.db, keyAfter, batchPageIds) ?? batchPageAliasing(keyAfter);
+        if (aliasing) {
+          throw new OpError(
+            "conflict",
+            `cannot restore page "${plan.nameAfter}": a live page, "${aliasing.name}", uses "${plan.nameAfter}" as an alias`,
+            `remove "${plan.nameAfter}" from ${aliasing.name}'s alias:: first, or restore the deleted page from the trash with trash_restore and new_name`,
+            { live_page_id: aliasing.id, page_id: row.entity_id },
           );
         }
       }

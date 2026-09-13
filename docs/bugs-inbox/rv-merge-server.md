@@ -70,3 +70,33 @@ pre-check's 409 conflict. Tests that would have caught it:
 fight over the page's old name (B-366)" (409 at `cf08d19`) and `ops/undelete-collision.http.test.ts`
 "batch.undo of a restore under new_name, after the old name was taken, is conflict (B-366)" (400 at
 `cf08d19`).
+
+---
+
+### B-367 · Undoing a page delete takes the name back from a live page's alias
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, merge review of server/core (F3) ·
+**Test:** `packages/server/src/ops/batch-undo-alias.http.test.ts`
+
+Delete page "Alex", add `alias:: Alex` to "@Alex", then undo the delete (History's Undo, or
+`batch_undo` with the delete's `batch_id`): "restored page "Alex"". `page.read Alex` now returns the
+restored page instead of "@Alex", and every `[[Alex]]` link goes there — the harm B-256 fixed for
+the Trash view. `trash.restore` of the same page is refused with 409 "a live page, "@Alex", uses
+"Alex" as an alias"; the undo is not.
+
+Cause: B-256 added the alias check to `trash.restore` (`assertNameFree`) while another branch added
+a parallel "restored name must be free" pre-check to `batch.undo`, copied from `trash.restore`'s
+older key-only check. The merge kept both and gave the alias half to `trash.restore` only. Undoing
+a `page.merge` itself is not affected: the merge adds the alias in the same batch, so its undo
+removes it again — unless `keep_later_edits` keeps a later change to that alias.
+
+**Fixed 2026-09-13.** `batch.undo`'s pre-check refuses a page name that a live page uses as an
+alias, with the same `conflict` as a taken name ("cannot restore page "Alex": a live page,
+"@Alex", uses "Alex" as an alias"), through `trash-restore.ts#livePageAliasing`, now exported and
+taking a list of pages to leave out. Two things the reviewer's suggested fix ("exclude pages in the
+batch") would have got wrong, both tested: a page the batch touched is judged by the aliases the
+undo leaves it, not skipped — undoing a merge removes the alias the merge added, but with
+`keep_later_edits` a later edit of that alias is kept and still shadows the restored page; and an
+undo that moves no name (the page is live under the same key before and after) is not refused over
+an alias that page already shadowed, which `page.create` allows. Test that would have caught it:
+`ops/batch-undo-alias.http.test.ts` (4; the delete-then-alias case and the kept-alias merge case
+answered 200 before this fix, at `d4f1335`; the other two guard the exemptions).

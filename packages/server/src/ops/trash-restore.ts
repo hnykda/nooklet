@@ -122,20 +122,23 @@ function livePageWithKey(driver: SqlDriver, key: string): { id: string; name: st
 }
 
 /**
- * The live page, other than `exceptPageId`, that answers to `key` as an alias (B-256). A page's
- * own key wins over an alias when a link resolves (`page-aliases.ts#resolvePageIdForKey`), so
- * restoring a page under a name another page aliases silently re-points every `[[name]]` at the
+ * A live page, other than those in `exceptPageIds`, that answers to `key` as an alias (B-256). A
+ * page's own key wins over an alias when a link resolves (`page-aliases.ts#resolvePageIdForKey`),
+ * so restoring a page under a name another page aliases silently re-points every `[[name]]` at the
  * restored page — which is exactly what un-merging "Alex" from "@Alex" (`alias:: Alex`) did.
+ * `batch.undo` asks the same question (B-367), excluding every page its own undo rewrites.
  */
-function livePageAliasing(
+export function livePageAliasing(
   driver: SqlDriver,
   key: string,
-  exceptPageId: string,
+  exceptPageIds: readonly string[],
 ): { id: string; name: string } | undefined {
+  // json_each rather than one `?` per id: an undone batch can touch any number of pages.
   return driver.get<{ id: string; name: string }>(
     `SELECT p.id, p.name FROM page_alias pa JOIN page p ON p.id = pa.page_id
-     WHERE pa.alias_key = ? AND p.deleted_at IS NULL AND p.id != ? LIMIT 1`,
-    [key, exceptPageId],
+     WHERE pa.alias_key = ? AND p.deleted_at IS NULL
+       AND p.id NOT IN (SELECT value FROM json_each(?)) LIMIT 1`,
+    [key, JSON.stringify(exceptPageIds)],
   );
 }
 
@@ -154,7 +157,7 @@ function assertNameFree(
       live_page_id: clash.id,
     });
   }
-  const aliasing = livePageAliasing(driver, key, restoringPageId);
+  const aliasing = livePageAliasing(driver, key, [restoringPageId]);
   if (aliasing) {
     throw new OpError(
       "conflict",

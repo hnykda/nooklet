@@ -1490,7 +1490,9 @@ undone; asset uploads are not reversible this way"), or the reducer rejected any
 (nothing is written); `conflict` — a page the undo would bring back or rename back has lost its
 name to a live page (`details.live_page_id`, `details.page_id`); nothing is written (B-90
 follow-up: the page's op used to be rejected while its blocks were un-deleted, and the call
-reported success). The name checked is the one the page has after the undo: with
+reported success), or a live page not rewritten by this undo uses that name as an alias (B-367,
+the rule `trash_restore` follows since B-256; a page this batch touched counts with the aliases
+the undo leaves it). The name checked is the one the page has after the undo: with
 `keep_later_edits`, a later rename or delete that is kept claims no name, and a page that stays in
 the trash under its current name is not renamed at all (B-366).
 
