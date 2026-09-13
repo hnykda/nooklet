@@ -4,7 +4,8 @@ Agent task: make dates work end to end. B-96 (`/scheduled`, `/deadline`, "Set sc
 date" do nothing — the real command set was handed `createFakeDatePickerHost()`), exposure audit
 §2 item 3 (a real, keyboard-first date picker), B-102 / audit §2 item 2 (scheduled/deadline
 chips on the row, overdue styled, click opens the picker). Syntax is ADR 011 (`scheduled::
-YYYY-MM-DD[ HH:MM]`), picker behaviour is `docs/spec/commands-and-keymap.md` R38.
+YYYY-MM-DD[ HH:MM]`, `repeat:: 1w[ from done]`), picker behaviour is
+`docs/spec/commands-and-keymap.md` R38.
 
 Branch `m8/impl-dates`, worktree `<repo>/.claude/worktrees/wf_69b4f9a8-ee2-8`,
 started from `da85cfb` (the worktree was created at an older commit, `41666ee`; the fresh branch
@@ -13,31 +14,67 @@ was reset to `da85cfb` before any work). e2e port 6400. Scratch:
 
 ## 1. Done (commit hashes)
 
-(nothing yet)
+- `de8a3bb` `commands/date-picker/parse.ts` (+test): typed-date vocabulary → ADR 011 parts.
+- `fa30e65` picker + host + chips, unit/component tested:
+  - `commands/date-picker/host.ts` — real `DatePickerHost` (`open` → pick → one
+    `setBlockProps` batch; `set` for agents, no UI); `patchForPick` is the write contract.
+  - `commands/date-picker/DatePicker.tsx` + `date-picker.css` — the popup.
+  - `commands/registrations/date-picker-host.ts` — interface gains `set` and `anchor`; fake
+    records both. `task.ts` — `runDateCommand`: no args → open, string/`{date}`/null → set.
+  - `app/date-picker.ts` — the one shared host instance; `app/CommandLayer.tsx` uses it (the
+    B-96 fix, 3 lines).
+  - `editor/date-chips.ts` (pure label/tone) + `editor/DateChips.tsx` + `date-chips.css`;
+    `editor/BlockRowView.tsx` hookup (import + 7-line JSX).
+- (next commit) `e2e/tests/dates.spec.ts` 6 tests, `docs/bugs-inbox/impl-dates.md` (B-96,
+  B-102 fixed; B-140 new+fixed), this file.
 
 ## 2. In flight
 
-- Reading: `commands/registrations/date-picker-host.ts` (fake), `task.ts` (commands),
-  `commands/slash/TemplatePicker.tsx` (the model for a command-opened popup), `popup-keys.ts`,
-  `editor/BlockRowView.tsx`, `core/sync/apply-ops.ts` (`block.prop scheduled` → columns).
+Nothing uncommitted beyond the commit above.
 
 ## 3. Next steps, in order
 
-1. Pure parser `apps/web/src/commands/date-picker/parse.ts` (+ tests): today/tomorrow/yesterday,
-   `+3d/-2w/+1m/+1y`, weekday names (next occurrence after today), ISO `YYYY-MM-DD`, optional
-   ` HH:MM`, `none`/`clear`.
-2. `DatePicker.tsx` popup (mounted into `document.body` like `TemplatePicker`), keys at the
-   window capture phase + `claimPopupKeys`; the editor keeps focus.
-3. Real host `app/date-picker-host.ts` → swap `createFakeDatePickerHost()` in `CommandLayer.tsx`
-   (one line).
-4. Chips `editor/DateChips.tsx` + css, one-line hookup in `BlockRowView.tsx`.
-5. e2e `e2e/tests/dates.spec.ts`; run with popups/tasks/editing specs.
+1. Commit the e2e spec + inbox + progress.
+2. Docs: `docs/spec/commands-and-keymap.md` R38 — record what shipped vs the spec (typed
+   vocabulary instead of an "Add time"/"Repeat" toggle UI; Tab owned but unused; Cmd/Ctrl
+   shortcuts close the picker). Owner-facing, so keep it short.
+3. Run the wider e2e set once more after the last change; `pnpm -r test`.
+4. Report.
 
-## 4. Decisions
+## 4. Decisions (and why)
 
-(none yet)
+- **Editor keeps focus; keys taken at the WINDOW capture phase.** Like `TemplatePicker` the
+  popup is not focusable, so Escape/Enter leave the caret exactly where it was. But
+  `TemplatePicker` listens on `document`, where `CommandLayer`'s global dispatcher (registered
+  first) runs before it; in block selection that made Backspace delete the selected block.
+  Verified by mutation: swapping the listener to `document` failed e2e test 6 with the first
+  block deleted.
+- **Typed vocabulary instead of R38's "Add time" / "Repeat" toggles.** `fri 14:00`,
+  `every 2w from done`, `no time`, `no repeat`, `none` — keyboard-first, as asked, and no extra
+  controls. The grid, month nav, Today/Tomorrow/Next week and Remove buttons cover the mouse.
+- **Weekday names mean the next one strictly after today** ("today" is spelled `today`);
+  `next week`/`next month` mean what the `[[` date shortcuts mean (Monday of next ISO week, 1st
+  of next month). A yearless date already behind today rolls to next year.
+- **Chips on every block with a date, task or not**; overdue styling only on open tasks (red on
+  a plain note would be an alarm about nothing); closed tasks muted.
+- **Clearing the last remaining date also removes `repeat`**; clearing one of two keeps it.
+- **Commands take an argument** (`"tomorrow"`, `{date: null}`) and write without a picker — an
+  agent through `ui_run` has nobody to answer a picker (ADR 015).
+- **Icons by path, data layer on click** in `DateChips.tsx` — see B-140.
+- e2e test 1 uses a plain block, not a TODO: `query.spec.ts` counts open tasks scheduled for
+  tomorrow in the shared e2e graph.
 
-## 5. How to resume
+## 5. Known limits (not done)
+
+- A date set through the picker is not on the editor's undo stack (Cmd+Z does not revert it) —
+  same as every `ctx.store` task command (priority, markers from the palette). Not verified by a
+  test; not logged as a bug (behaviour shared with existing commands, unchanged here).
+- Mobile/IME: a virtual keyboard that sends `beforeinput` without real `keydown`s would type into
+  the block rather than the picker. The grid and buttons work by touch. Not tested on a device.
+- The journal day "Scheduled and deadline" section (audit §2 #1) is a different item — not
+  started here.
+
+## 6. How to resume
 
 `git switch m8/impl-dates` in the worktree above; read §3; run
 `pnpm --filter @nooklet/web test` and
