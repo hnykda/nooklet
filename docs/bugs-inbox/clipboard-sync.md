@@ -109,6 +109,25 @@ Test before the fix: `e2e/tests/reload-durability.spec.ts` "an edit queued behin
 survives a reload after the text debounce (B-247)" and "... inside the text debounce (B-247)" — both
 fail on `cf08d19` + B-233/B-245 (server keeps `x`).
 
+**Fixed 2026-09-13** — the cheapest safe mitigation; the options and what is still open are in
+`docs/proposals/002-pending-edits-durability.md`. New `apps/web/src/db/unapplied-ops.ts`:
+`db/client.ts#applyOps` writes each batch to `localStorage` synchronously before posting it and
+removes it when the worker answers (kept if the call fails). At `initDb`, batches of page loads
+that are gone — each load holds a Web Lock named after itself, released by the browser with the
+document — are replayed through a new worker method, `WorkerDb.replayLocalOps`, which skips op ids
+already in the replica's `op` table (so a batch that did land is not pushed again) and otherwise
+runs `applyLocal`; a second pass runs 5 s later in case the old document's lock was released late.
+A batch whose replay fails is kept for the next start. Tests: `e2e/tests/reload-durability.spec.ts`
+"an edit queued behind a busy replica survives a reload after the text debounce (B-247)" and
+"... inside the text debounce (B-247)" — 15/15 runs green with the fix (`--repeat-each=5`), and
+4/4 red with only the `localStorage` write disabled (B-301's fix still in), so the copy is what
+fixes them. Unit: `apps/web/src/db/unapplied-ops.test.ts` (record/settle, only dead owners' batches,
+order, quota, unreadable entries, replay keeps a failed batch), `db/client-unapplied.test.ts` (the
+copy exists synchronously before the worker answers; `initDb` replays an orphaned batch and removes
+it), `db/worker-core.test.ts` "applies and queues ops the replica never saw, and skips ones it
+already recorded". Chromium only: WebKit/WKWebView and Capacitor are unverified (proposal §4). Not
+covered: a renderer crash inside the editor's 500 ms text debounce, where no `pagehide` runs.
+
 ---
 
 ### B-301 · An edit written just before a reload never reaches the server until something else is edited
@@ -125,4 +144,15 @@ until a later local write anywhere schedules a push (the probe's "one more edit 
 it). `WorkerDb.start()` bootstraps, connects the live socket and pulls, and nothing at startup
 pushes an outbox left by a previous session; `schedulePush` is only called by `applyLocal` and by
 the online/visible/resume lifecycle events.
+
+**Fixed 2026-09-13.** `SyncClient.connectLive` schedules an immediate push when `pending_op` is not
+empty — once when called at startup (even if the socket never opens) and on every live-socket
+`onOpen`, so an outbox that failed to push while the server was down also goes out on reconnect
+instead of waiting for the next write. Tests: `e2e/tests/reload-durability.spec.ts` "an edit
+written just before a reload is pushed after it, with no further edit (B-301)" (red before, green
+after); `apps/web/src/sync/sync-client.test.ts` "pushes ops left in pending_op by an earlier
+session as soon as it connects" and "pushes again when live sync reconnects after a failed push"
+(both red with the change reverted), "does not push at all when the outbox is empty".
+
+---
 

@@ -126,6 +126,11 @@ const api: WorkerApi = {
     return db.applyLocalOps(ops);
   },
 
+  async replayLocalOps(ops: Op[]) {
+    const db = await requireDb();
+    return db.replayLocalOps(ops);
+  },
+
   async getPageTree(pageId: string) {
     const db = await requireDb();
     return db.getPageTree(pageId);

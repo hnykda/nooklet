@@ -514,6 +514,76 @@ describe("SyncClient.bootstrap (fresh replica from snapshot)", () => {
   });
 });
 
+describe("SyncClient pushes an outbox it did not fill (B-301)", () => {
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+
+  it("pushes ops left in pending_op by an earlier session as soon as it connects", async () => {
+    const driver = memoryDriver();
+    // Session 1: the write landed in the outbox, and the page went away before the push debounce.
+    const earlier = new SyncClient({ driver, transport: new FakeTransport() });
+    earlier.init();
+    const op = pageCreateOp(earlier, "Written before reload", "pgBeforeReload1");
+    earlier.applyLocal([op]);
+    earlier.dispose();
+
+    // Session 2: a new client on the same replica, and nothing is typed.
+    const transport = new FakeTransport();
+    transport.nextPush = {
+      accepted: [{ id: op.id, seq: 1 }],
+      rejected: [],
+      corrections: [],
+      server_seq: 1,
+    };
+    const later = new SyncClient({ driver, transport });
+    later.init();
+    later.connectLive();
+    await settle();
+
+    expect(transport.pushCalls.map((c) => c.ops.map((o) => o.id))).toEqual([[op.id]]);
+    expect(driver.all("SELECT * FROM pending_op")).toHaveLength(0);
+    later.dispose();
+  });
+
+  it("pushes again when live sync reconnects after a failed push", async () => {
+    const driver = memoryDriver();
+    const transport = new FakeTransport();
+    const client = new SyncClient({ driver, transport });
+    client.init();
+    client.connectLive();
+    transport.failPush = true;
+    const op = pageCreateOp(client, "Server was down", "pgServerDown001");
+    client.applyLocal([op]);
+    await client.flush();
+    expect(driver.all("SELECT * FROM pending_op")).toHaveLength(1);
+
+    transport.failPush = false;
+    transport.nextPush = {
+      accepted: [{ id: op.id, seq: 1 }],
+      rejected: [],
+      corrections: [],
+      server_seq: 1,
+    };
+    const before = transport.pushCalls.length;
+    transport.liveHandlers?.onOpen?.();
+    await settle();
+
+    expect(transport.pushCalls.length).toBeGreaterThan(before);
+    expect(driver.all("SELECT * FROM pending_op")).toHaveLength(0);
+    client.dispose();
+  });
+
+  it("does not push at all when the outbox is empty", async () => {
+    const transport = new FakeTransport();
+    const client = new SyncClient({ driver: memoryDriver(), transport });
+    client.init();
+    client.connectLive();
+    transport.liveHandlers?.onOpen?.();
+    await settle();
+    expect(transport.pushCalls).toHaveLength(0);
+    client.dispose();
+  });
+});
+
 describe("SyncClient crash-safety", () => {
   let dir: string;
   let dbPath: string;

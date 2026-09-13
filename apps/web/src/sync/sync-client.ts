@@ -427,8 +427,24 @@ export class SyncClient {
     this.unsubscribeLive?.();
     this.unsubscribeLive = this.transport.connectLive(this.deviceId, {
       onPoke: () => void this.pull(),
-      onOpen: () => void this.pull(),
+      onOpen: () => {
+        void this.pull();
+        this.pushIfPending();
+      },
     });
+    this.pushIfPending();
+  }
+
+  /**
+   * Push an outbox this client did not fill itself. Only `applyLocal` (and the online/visible/
+   * resume lifecycle events) used to schedule a push, so ops that were durable in `pending_op` but
+   * unpushed when the page reloaded — written less than the 300 ms push debounce before it, or
+   * while the server was down — sat there until the next local write, which on a device you only
+   * read on might be never (B-301). Called when live sync connects (startup, and every reconnect
+   * after the server was unreachable) and once at startup even if the socket never opens.
+   */
+  private pushIfPending(): void {
+    if (this.status.pendingCount > 0) this.schedulePush(0);
   }
 
   dispose(): void {

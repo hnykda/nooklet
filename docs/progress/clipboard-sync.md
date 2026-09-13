@@ -33,26 +33,33 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
   the replica is never pushed after a reload until the next local write). Commit "docs(bugs):
   measure the B-247 window; log B-301".
 
+- B-301 + B-247 fixed — `sync/sync-client.ts#pushIfPending` (connectLive + onOpen);
+  `db/unapplied-ops.ts` (+test), `db/client.ts` hookup, `WorkerApi.replayLocalOps` in
+  `worker-api.ts`/`db.worker.ts`/`worker-core.ts` (+test), `fake-worker.ts`,
+  `db/client-unapplied.test.ts`, `e2e/tests/reload-durability.spec.ts`, proposal
+  `docs/proposals/002-pending-edits-durability.md`. E2E reload-durability 15/15 (repeat 5);
+  attribution: journal disabled → B-247 tests 4/4 red. Commit "fix(web): edits survive a reload
+  before the replica wrote them (B-247), and an unpushed outbox is pushed at start (B-301)".
+  Unit: full web suite 1021/1021 (at load average ~20; at 65–72 it had 7 timeouts in
+  `SearchView.test.tsx`, `page-title.test.ts`, `render-seams.test.tsx`, identical with the original
+  `db/client.ts`). E2E a-fresh-journal + editing + reload-durability + selection: 27/27.
+  (`--repeat-each` is not valid for editing/selection: fixed page names and today's journal carry
+  state between repeats.)
+
 ## 2. In flight
 
-- `e2e/tests/reload-durability.spec.ts` (uncommitted until green): 3 tests, all FAIL before the
-  fix (verified). Fix plan:
-  1. B-301: `WorkerDb.start()` schedules a push when `pending_op` is not empty (+ unit test in
-     `db/worker-core.test.ts`).
-  2. B-247: new `db/unapplied-ops.ts` — a synchronous `localStorage` write-ahead copy of each
-     `applyOps` batch, keyed by page-load owner (held Web Lock = alive), removed when the worker
-     answers; at `initDb`, batches of dead owners are replayed through a new worker method that
-     skips op ids already in the replica's `op` table. Hook: `db/client.ts#applyOps` + `initDb`.
-  3. Proposal `docs/proposals/002-pending-edits-durability.md` with the options.
+(nothing)
 
 ## 3. Next steps
 
-1. B-247 / B-301 fix per "In flight".
+1. `pnpm nooklet verify --data <scratch>/graph` (touched sync), and rerun
+   `tools/probes/replica-busy-window.mjs` against the fixed build (expect nothing lost locally).
 2. B-300 if time allows: end a standing selection on a pointerdown outside the outliner (same
    exclusions as the editing listener); probe spec kept in scratch
    (`zz-probe-selection-input.spec.ts`) → turn into a regression test.
-3. Full e2e run at the end (a-fresh-journal now deterministically leaves 2 blocks in today's
-   journal; check nothing else depended on the old race).
+3. E2E: selection, editing, a-fresh-journal, reload-durability, autocomplete-busy-replica,
+   journal-draft-sync, remote-device, connectivity, storage, history, redo; then the full suite
+   (a-fresh-journal now deterministically leaves 2 blocks in today's journal).
 
 ## 4. Decisions
 
@@ -60,6 +67,11 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
 - B-245: the cut deletes only after the clipboard write resolved (no clipboard → no delete). Not
   wired through `resolveCommand`, same as copy (spec note 11). Wiki shortcut page not regenerated
   (generated file; regenerate after merge).
+- B-247: implemented proposal 002's option B (localStorage copy until the worker answers, Web Lock
+  per page load for liveness, replay skipping recorded op ids). Option C (writes on the main
+  thread) is left to the owner.
+- B-301: push on connectLive/onOpen when the outbox is non-empty, in `SyncClient` (not only
+  `WorkerDb.start`), so reconnects after a server outage are covered too.
 
 ## 5. Environment notes
 
