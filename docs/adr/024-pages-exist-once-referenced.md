@@ -46,9 +46,9 @@ it makes neither `2026` nor `2026/09`.
 
 After a `serverApplyOps` batch applies, `packages/server/src/ref-pages.ts#planReferencedPages`
 mints, in the same transaction, `page.create` for every key the batch left dangling (plus
-ancestors) — or, when an unclaimed tombstone already carries the key, brings that page back
-(`page.rename` if the new spelling differs, then `page.delete {deletedAt: null}`), so toggling a
-link does not accumulate page rows. The ops are ordinary logged ops returned as the batch's
+ancestors) — always a new page. (A first version brought an unclaimed tombstone of the same name
+back instead, to save rows; it was dropped because a replica can lack that tombstone, B-443, and an
+un-delete would then reach every device but that one.) The ops are ordinary logged ops returned as the batch's
 `corrections`: the pushing device applies them from the push response, every other device learns
 of them by pull, and `nooklet verify` replays them like any other write. Clients never create pages
 implicitly.
@@ -157,7 +157,10 @@ went offline — older than the server's `page.create` for X. `verify` (and any 
 HLC order, meets A's blocks before their page, and rejects them: replay parity breaks.
 
 Instead: the push response names the page holding the name (`refused_pages`, a snapshot row), and a
-pull that brings a `page.create`/`page.rename` for a name a local page holds is recognised too.
+pull that brings a `page.create`/`page.rename` for a name a local page holds is recognised too — but
+only when that local page's `page.create` is still unconfirmed and the pulled page keeps the name to
+the end of the batch; otherwise a device pulling an older, since-deleted page of its page's name
+would move its content onto the tombstone.
 Either way the client (`apps/web/src/sync/refused-page.ts`) removes its refused page and what was on
 it, takes the server's page, and re-sends the blocks' current state onto it as fresh ops — fresh
 HLCs, so the log's order is causal. Tested both orders against the real server in-process
@@ -179,9 +182,10 @@ synced; the graph, search and `page_list` read the server.
 - Every write that touches blocks does one extra indexed `ref` lookup per touched block (the fast
   path: "does any of this block's references dangle?"), and parses the block again only when one
   does.
-- A link edited slowly creates and deletes a page per flush: two logged ops each. They are hidden
-  from the trash and reuse tombstones when a name comes back, but they are in the op log and in
-  `changes`.
+- A link edited slowly creates and deletes a page per flush: two logged ops and a tombstone row
+  each. They are hidden from the trash, but they are in the op log, in `changes` and in `page`.
+- A replica that holds a page of a name can lack the tombstone of an older page of that name
+  (B-443, open, older than this ADR but made common by it). Nothing live differs.
 - `Task` is a page now, and so is every one-off `#tag` people wrote. That is Logseq's behaviour and
   the owner's request; All pages gets longer (953 → 1,212 live pages on the graph copy).
 - A name referenced only from an offline device's unsynced edits does not exist on other devices
@@ -191,14 +195,17 @@ synced; the graph, search and `page_list` read the server.
 
 - `packages/server/src/ref-pages.test.ts` (17): every reference kind, ancestors, casing, no journal
   days, alias rules, junk from a character-by-character edit and a slow `#tag`, removal cascades,
-  tombstone reuse, deleted-page names, claims; `verifyRebuildParity` in each.
-- `packages/server/src/ops/ref-pages.http.test.ts` (6): `block.update` adding `[[Agent Made Page]]`
+  no tombstone revival, deleted-page names, claims; `verifyRebuildParity` in each.
+- `packages/server/src/ops/ref-pages.http.test.ts` (10): `block.update` adding `[[Agent Made Page]]`
   shows in `page.list`/`page.read`/`search`; `page.create` claims; trash stays empty; `batch.undo`;
-  `trash.restore` pushes an unclaimed page aside.
+  `trash.restore`, `page.update` rename and `batch.undo` of a delete push an unclaimed page aside.
+- `packages/server/src/mcp/server.test.ts`: `block_update` link → `page_list`/`page_read`;
+  `packages/server/src/data-api.test.ts`: `ctx.data.pages.create` claims.
 - `packages/server/src/ref-pages-migration.test.ts` (3): migration, import order, import into a graph
   that already references the file's page.
 - `packages/server/src/mirror/live.test.ts`: no file for an empty page; removed with its last block.
-- `apps/web/src/sync/e2e.test.ts` (2): the race, push-first and pull-first.
+- `apps/web/src/sync/e2e.test.ts` (4): the race, push-first and pull-first; and its false positive —
+  a device's accepted page of a name whose older page the server deleted stays put, both orders.
 - `e2e/tests/ref-pages.spec.ts` (5): the owner's scenario in a journal block; All pages, graph,
   search, `[[` popup; no junk from a slow link edit; removal vs a page typed into; the two-device
   race in two browser contexts.
