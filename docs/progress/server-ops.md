@@ -129,3 +129,13 @@ literal SCHEDULED blocks as documented); flush-as-content and page_read@0 old-vs
 (tsx probes, not kept); real ops through `nooklet serve` on a fresh copy (nested Czech DONE task via
 page_read-shaped content, marker flips, batch.undo, journal props, pre-blocks, refusals) then
 `nooklet verify` OK at 20,444 ops.
+
+Suites after these commits (port 6403, load 15-25): server 656/656; typecheck clean; biome clean on
+every changed .ts. Core untouched by the verification commits (396/396 at its start); web untouched
+(1002/1002 on the second run — the first had one testing-library `waitFor` timeout under load).
+E2E: agent-ops 5/5; sweep of agent-ops, selection, page-export, block-properties, read-only,
+journal-agenda, mirror-live, tasks, templates, template-collapsed, undo-redo, redo, commands,
+remote-device, journals, history, editing — 114 passed, 0 failed; views, context-menu, embeds,
+review-reactivity, history-later-edits, connectivity — 67 passed, 2 failed, 1 skipped: views'
+palette-focus test (known B-161) and review-reactivity's trash Retry, which passed 7/7 when the
+spec was rerun alone.

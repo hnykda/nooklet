@@ -38,7 +38,11 @@ exception. Blocks with an id (the mirror) are unchanged. Tests that would have c
 `packages/core/src/outline.test.ts` › "a block that opens with a fence, without ids (B-151)" (closed
 fence with a property-looking line inside and `collapsed`, unclosed fence, and no-properties
 unchanged). `tools/probes/serialize-fence-props.ts` now prints the properties back for both modes.
-Found in passing: B-310 (the same block with a marker).
+Found in passing: B-310 (the same block with a marker). In a browser (added while verifying):
+`e2e/tests/agent-ops.spec.ts` › "copying a fence-first block with a property and pasting it keeps
+the property (B-151)" — Cmd/Ctrl+C, the clipboard text, a paste, the pasted block's stored
+properties; with cf08d19's `outline.ts` built into the client it fails at the clipboard (the
+property line inside the fence).
 
 ---
 
