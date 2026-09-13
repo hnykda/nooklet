@@ -135,6 +135,9 @@
   --ok: #197a3d;
   --warn: #8a5c00;
   --danger: #bf2f2f;
+  /* A yellow for a 7px status dot (the sync cloud's "waiting"). One value for both themes: users
+     mix it toward their ground. --warn is a text colour and reads brown at that size. */
+  --dot-pending: #d9a520;
 
   /* Task markers and priorities. Their job is to be scannable at a glance without being read, so
      they are the one place besides the accent that carries hue. */
@@ -471,28 +474,6 @@ select:focus-visible {
 .app-history {
   display: flex;
   gap: var(--space-2xs);
-}
-
-/* The sync state, doubling as the way into Diagnostics. Quiet by design — it is glanced at, not
-   read, and only earns attention when it says something other than "synced". */
-.app-sync-indicator {
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-size: var(--text-xs);
-  color: var(--muted);
-  cursor: pointer;
-  padding: var(--space-xs) var(--space-md);
-  border-radius: var(--radius-pill);
-  margin-left: auto;
-  transition:
-    background var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease);
-}
-
-.app-sync-indicator:hover {
-  background: var(--surface-2);
-  color: var(--fg);
 }
 
 /* One icon button style for the whole chrome. Lucide throughout — a single set, sized to the

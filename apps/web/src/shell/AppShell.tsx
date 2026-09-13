@@ -10,53 +10,20 @@
 import { useNavigate } from "@solidjs/router";
 import { ChevronLeft, ChevronRight, PanelLeft } from "lucide-solid";
 import { type JSX, onCleanup, onMount, Show } from "solid-js";
-import { useSyncStatus } from "../data/store.js";
-import { storageInfo } from "../db/client.js";
 // ADR 015 §2.6: the persistent live-UI-control consent badge — see ../live/ConsentBadge.tsx.
 import { ConsentBadge } from "../live/index.js";
 import { platform } from "../platform/index.js";
 import { PluginStatusItems } from "../plugins/StatusItems.js";
-import {
-  closeDiagnostics,
-  DiagnosticsPanel,
-  diagnosticsOpen,
-  openDiagnostics,
-} from "../views/DiagnosticsPanel.js";
+import { closeDiagnostics, DiagnosticsPanel, diagnosticsOpen } from "../views/DiagnosticsPanel.js";
 import { closeSettings, SettingsPanel, settingsOpen } from "../views/SettingsPanel.js";
 import { HelpMenu } from "./HelpMenu.js";
 import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
+import { SyncIndicator } from "./SyncIndicator.js";
 import "../styles/shell.css";
 // Per-device appearance (text size, width, custom CSS) applies itself on load. Import it here,
 // where the shell is, rather than leaving that to whoever happens to import SettingsPanel first.
 import "../data/appearance.js";
-
-/** The sync state, doubling as the way into Diagnostics — "why does it say that?" is exactly
- * the question this indicator provokes, so the answer lives one click away from it. */
-function SyncIndicator() {
-  const status = useSyncStatus();
-  return (
-    <button
-      type="button"
-      class="app-sync-indicator"
-      title="Show diagnostics"
-      onClick={() => openDiagnostics()}
-    >
-      {(() => {
-        // Storage first: "synced" would be true and still the wrong thing to say about a
-        // session whose local copy evaporates on reload (B-43).
-        if (storageInfo()?.storage === "memory") return "not saved locally";
-        // A second tab: usable, syncing through the server, but the other tab keeps the local copy.
-        if (storageInfo()?.storage === "follower") return "synced via another tab";
-        const s = status();
-        if (!s) return "";
-        if (s.state === "offline") return "offline";
-        if (s.pendingCount > 0) return `syncing (${s.pendingCount})`;
-        return "synced";
-      })()}
-    </button>
-  );
-}
 
 export function AppShell(props: { children?: JSX.Element }) {
   const navigate = useNavigate();

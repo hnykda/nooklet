@@ -109,7 +109,8 @@ test("a locked page offers no block selection, so selection keys and block comma
   await page.keyboard.press("Escape");
 
   // Then the server, once nothing is left to push.
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  // The accessible name is the true state; only the dot waits out a routine push (B-540).
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("aria-label", "Synced");
   const blocks = await readBlocks(page, "Locked Selection");
   expect(blocks.map((b) => [b.content, b.depth])).toEqual([
     ["locked task", 0],
