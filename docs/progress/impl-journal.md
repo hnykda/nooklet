@@ -149,3 +149,20 @@ overdue tasks and the owner's own graph has none.
 ## How to resume
 
 `git log --oneline da85cfb..m8/impl-journal`, then this file's Next steps.
+
+## Adversarial verification (second agent, 2026-09-13)
+
+Scratch: `scratchpad/impl-journal-verify/` (graph copy `graph/`, stress copy `stress/` with 686
+dated open tasks made by SQL, probes `probe1..5.mjs`). Port 6403.
+
+- Re-ran the branch's unit tests (34/34 in the 7 touched files) and e2e journal-agenda,
+  journal-stream-editing, journals: 11/11.
+- Real browser on the graph copy + seeded Czech tasks: grouping, overdue chips, [[link]] in a row,
+  B-170 rollover with Playwright's fake clock (waits for 2 s of idle typing, then moves; Today
+  A→B page switch works). Note for anyone repeating it: fake the clock FORWARD of real time or
+  the server rejects/loses the edits (HLC drift / LWW), which looks like a product bug and is not.
+- Found and fixed: B-175 (web link in an agenda row opened the task), B-176 (every write rebuilt
+  every agenda row, dropping keyboard focus), B-177 (a calendar pin equal to the new Today was
+  rendered twice). Commits: `66b0fa3` (log), `d83610d` (B-177), `2b676b2` (B-175, B-176).
+- Next: rebuild, re-run the browser probes against the fixes, full web unit suite, e2e journal
+  specs + phone/focus/editing/query/tasks.
