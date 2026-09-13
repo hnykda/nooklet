@@ -26,20 +26,36 @@ Branch `m11/search-fallback` from `52e5d20`, worktree
 
 ## Done (committed)
 
-(nothing yet)
+- `c42f932` progress file; B-520 logged in the inbox before fixing.
+- `43fbe68` server: `search` output `fallback` {reason, message, provider, model, host, indexed,
+  total, errors, error} (defineOp), reasons in `embeddings/semantic-search.ts`
+  (`checkSemanticAvailability` now returns `fallback`; new `embedQueryForSearch` classifies a failed
+  query embed by probing the host). B-521 (pages filter matching nothing said `keyword`) fixed.
+  Spec `docs/spec/mcp-tools.md` §4.3.5. Test `server/src/ops/search-fallback.http.test.ts` (8, all
+  fail on the old code). Server suite 684/684, typecheck clean.
+- Evidence before the fix (old code, real-graph copy on :6438): `search` hybrid → only
+  `{mode_used: "keyword"}`; `embeddings.status` → vec loaded v0.1.9, active null, switching_to
+  null, provider reachable with bge-m3:latest + qwen3-embedding:8b. I.e. "not set up".
+
+- `1f06196` web: `views/SearchFallbackNote.tsx` (+ `search-fallback.css`), one sentence and
+  action per reason; `SettingsPanel.tsx#openEmbeddingsSettings` (scroll-request signal, same
+  pattern as `PluginsSection`); `api-client.ts` maps `fallback`. Tests
+  `SearchFallbackNote.test.tsx` (11), `SearchView.test.tsx` (+3). Web suite 1152/1152.
+- `4c22ed4` e2e `e2e/tests/search-fallback.spec.ts` (2). Chromium with settings.spec + views.spec:
+  39 passed. The in-viewport assertion was checked to fail with the scroll removed.
 
 ## In flight
 
-- Logged B-520 (the unexplained fallback) in the inbox.
+- Real-graph run with Ollama (part 2).
 
 ## Next steps
 
-1. Server: `checkSemanticAvailability` returns a structured reason; `embedQueryVector` reports why
-   it failed; `search` output gains `fallback` (defineOp). http test.
-2. Web: `api-client` maps it; `SearchView` renders one sentence per reason, "not set up" with a
-   button that opens Settings at the embeddings section. Component tests.
-3. e2e: "not set up" message → Settings.
-4. Real-graph run with Ollama; desktop sidecar run.
+1. Real-graph copy served from this branch on :6438, Ollama bge-m3: configure via
+   `embeddings.configure`, poll `embeddings.status` + `search` fallback during indexing, time it,
+   CPU (`ps`/`top` of node + ollama), errors; semantic query once active.
+2. Desktop sidecar: read `apps/desktop/src-tauri/src/main.rs`, run the bundled sidecar from
+   `<repo>/apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app/Contents/Resources/sidecar`
+   the same way against a scratch copy on :6439; check `embeddings.status.sqlite_vec`.
 
 ## Decisions
 
