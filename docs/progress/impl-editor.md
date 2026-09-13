@@ -66,6 +66,31 @@ Playwright test first, then the fix, then remove the refactor-command workaround
 - `template-undo.spec.ts` deletes its template library after each test: specs share one server
   and `templates.spec.ts` asserts the exact Settings template list (it went red when it didn't).
 
+## Verification pass (2026-09-13, a second agent, same worktree and port)
+
+Adversarial check of the three fixes. Verdict: they do what they claim; no defect found in the
+branch's code. Evidence, all re-run rather than read from above:
+
+- Unit (apps/web `vitest run`) 74 files / 695 tests passed; `pnpm -r typecheck` clean; biome clean
+  on every changed file.
+- The five new e2e tests fail against `apps/web` at `da85cfb` (5 of 5) and pass on the branch.
+- Throwaway probes (not committed; steps in the entries they produced): nested template with a
+  marker + property + grandchildren, undo/redo/reload; `template-including-parent:: false` into an
+  empty bullet; template then typing then two undos; undo of a Backspace delete then typing; redo
+  then typing; keyboard Back to another page while editing (the tree is reused with a new
+  `pageId`: no ghost row, text kept); a seen block deleted through the API while typed in;
+  template through the palette; a 300-block Czech template undo/redo; "Move to page…" from the
+  menu and the palette on the edited row. All behaved. `nooklet verify` OK on that data (1,930
+  ops).
+- Real-graph copy (952 pages): `/template Meeting` (collapsed, custom props) on the 263-block
+  journal 2023-01-11, undo, redo, Czech typing, reload; an agent deleting the block being edited on
+  OmnivoreSync (961 blocks). Both right; `nooklet verify` OK (20,480 ops).
+- Mutation checks: with `UnseenCreations.has` forced false, 10 editing/focus e2e tests fail (the
+  stale-read race it guards is common, not theoretical); with revives not counted as creations,
+  only the new "a block brought back by undo keeps its row…" test fails — no earlier e2e covered it.
+- Added: two tests in `editing-row-leaves.spec.ts`, one in `template-undo.spec.ts` (named in the
+  B-88/B-108 entries). Logged B-194 and B-195 (both pre-existing or edge, low).
+
 ## How to resume
 
 `git log --oneline da85cfb..m8/impl-editor`, then this file's Next list. e2e:

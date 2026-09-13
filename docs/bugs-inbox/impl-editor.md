@@ -9,7 +9,8 @@ their numbers; new ones take B-190..B-199.
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, building it (ADR 019) · **Test:**
 `e2e/tests/template-undo.spec.ts` "Cmd/Ctrl+Z takes back a template inserted into an empty bullet,
 and redo restores it" and "Cmd/Ctrl+Z takes back a template inserted after a bullet with text,
-caret back where it was"; `apps/web/src/editor/external-batch.test.ts`;
+caret back where it was", and "undo and redo of a nested template with a marker and a property on
+the bullet" (added by the verification pass); `apps/web/src/editor/external-batch.test.ts`;
 `apps/web/src/commands/registrations/templates.test.ts`
 
 Unchanged from `docs/BUGS.md`: a template inserted with `/template` stays after Cmd/Ctrl+Z.
@@ -37,8 +38,10 @@ after each test for that reason.
 ### B-88 (existing)
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, `e2e/tests/refactor.spec.ts` ·
 **Test:** `e2e/tests/editing-row-leaves.spec.ts` "a block deleted elsewhere while the caret is in it
-leaves the page" and "a block moved to another page while the caret is in it leaves, and what was
-typed goes with it"; `apps/web/src/editor/unseen-creations.test.ts`
+leaves the page", "a block moved to another page while the caret is in it leaves, and what was
+typed goes with it", "Move to page… on the row being edited takes the row away and the text typed
+just before" and "a block brought back by undo keeps its row while typing straight away" (the last
+two added by the verification pass, below); `apps/web/src/editor/unseen-creations.test.ts`
 
 Unchanged from `docs/BUGS.md`: the row holding the editor stays on screen, showing the old text,
 after its block is moved to another page or deleted elsewhere. Before the fix both e2e tests
@@ -140,3 +143,41 @@ coordinator's full run on `a6c2859` did not list it as failing, and nothing unde
 machine was running a dozen agents' builds and browsers) or that run passed it by chance. Next
 step: run the single test on an idle machine; if it still fails, trace focus on Escape
 (`e2e/helpers/focus.ts#installFocusTrace`).
+
+---
+
+### B-194 · Cmd/Ctrl+Z after the edited block left the page reverts it out of sight and unmounts the editor
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying `m8/impl-editor` (probe) ·
+**Test:** none (the probe was a throwaway spec; its steps are here)
+
+Caret in "goes", type " typed"; another writer moves "goes" to another page
+(`block.move_to_page` through the API). The row leaves and " typed" is written to the block on
+the destination page (B-88, as intended). Now click into "keep", End, Cmd/Ctrl+Z: the undo takes
+" typed" back on the OTHER page, where nobody sees it, and the editor disappears from "keep" —
+`editingRowIndex` is -1, `document.activeElement` is `<body>`, and the next keystrokes go
+nowhere. Probe on the branch: destination read back `["already here","goes","child"]`, no row
+held the editor, typed "Z" landed nowhere.
+
+Not introduced by B-88's fix: the same probe against `apps/web` at `da85cfb` (where the row stays
+until the click into "keep", which flushes the same text transaction) ends identically. B-88's
+flush only makes it reachable without that click.
+
+Cause: `EditHistory` keeps transactions for blocks that are no longer in this tree, and
+`BlockTree#doUndo`/`doRedo` call `attachEditing(res.focus.id, …)` without checking that the tree
+has a row for that id — `editingId` then names a block nothing renders. Fix when it matters: skip
+(or drop) history entries whose blocks have left the tree, or keep the editor where it is when the
+focus target is absent; which one is the owner's call (should an undo reach a block that left?).
+
+---
+
+### B-195 · "Move to page…" onto the block's own page while editing it leaves an unfocused editor
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying `m8/impl-editor` (probe) ·
+**Test:** none (throwaway probe)
+
+Caret in the first block, right-click it, "Move to page…", pick the page it is already on. The
+block moves to the end of the page (correct), and its row still holds the editor, but focus is on
+`<body>` — the picker took it and nothing gives it back — so typing goes nowhere until a click.
+Before B-88's fix removed `leaveEditing` from this command, it ended editing first and left the
+block selected with the outliner focused (typing did nothing there either, but nothing looked
+editable). The row did not leave the page, so the tree's new end-editing path (B-88) does not run.
+Same family as B-193: a picker or palette closing without handing focus back to the editor.

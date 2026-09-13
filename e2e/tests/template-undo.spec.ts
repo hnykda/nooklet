@@ -14,6 +14,7 @@ import {
   editingRowIndex,
   MOD,
   openEditing,
+  pagePath,
   rowDepths,
   rowTexts,
   seedPage,
@@ -23,13 +24,28 @@ const LIBRARY = "Template Undo Library";
 const LIBRARY_MD = `- Checklist
   template:: undocopy
   - first step
-  - TODO second step`;
+  - TODO second step
+- TODO Porada — úkoly
+  template:: undonested
+  kind:: meeting
+  - agenda
+    - bod jedna
+    - bod dva`;
 
 interface Node {
   id: string;
   content: string;
   marker?: string | null;
+  properties?: Record<string, string>;
   children: Node[];
+}
+
+/** Content, marker and properties at every depth — what the shallow `serverShape` leaves out. */
+async function deepShape(page: Page, name: string): Promise<unknown[]> {
+  const out = await api<{ tree?: Node[] }>(page, "page.read", { page: name, format: "json" });
+  const walk = (nodes: Node[]): unknown[] =>
+    nodes.map((n) => [n.content, n.marker ?? null, n.properties ?? {}, walk(n.children)]);
+  return walk(out.tree ?? []);
 }
 
 /** The page as the server has it: top-level contents, and each one's child contents. */
@@ -130,4 +146,52 @@ test("Cmd/Ctrl+Z takes back a template inserted after a bullet with text, caret 
   await expect
     .poll(async () => (await serverShape(page, name)).map(([content]) => content.trim()))
     .toEqual(["keep me"]);
+});
+
+// The bullet itself takes the template's marker and a property (`block.prop` ops the undo must
+// invert on a block that stays), and the copy is two levels deep, so the redo has to revive a
+// parent before the children under it (B-190) or the grandchildren come back without a place.
+test("undo and redo of a nested template with a marker and a property on the bullet", async ({
+  page,
+}) => {
+  const name = "Template Undo Nested";
+  const outliner = await openEditing(page, name, "- start");
+  await page.keyboard.press("Enter");
+  await pickTemplate(page, "undonested");
+  const inserted = [
+    ["start", null, {}, []],
+    [
+      "Porada — úkoly",
+      "TODO",
+      { kind: "meeting" },
+      [
+        [
+          "agenda",
+          null,
+          {},
+          [
+            ["bod jedna", null, {}, []],
+            ["bod dva", null, {}, []],
+          ],
+        ],
+      ],
+    ],
+  ];
+  await expect.poll(() => deepShape(page, name)).toEqual(inserted);
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect
+    .poll(() => deepShape(page, name))
+    .toEqual([
+      ["start", null, {}, []],
+      ["", null, {}, []],
+    ]);
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["start", ""]);
+
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  await expect.poll(() => deepShape(page, name)).toEqual(inserted);
+  await expect.poll(() => rowDepths(page, outliner)).toEqual([0, 0, 1, 2, 2]);
+  // What the replica holds, not the optimistic tree.
+  await page.goto(pagePath(name));
+  await expect.poll(() => rowDepths(page)).toEqual([0, 0, 1, 2, 2]);
 });

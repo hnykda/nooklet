@@ -10,7 +10,17 @@
  */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { api, clickRow, openEditing, readBlocks, rowTexts, seedPage } from "../helpers/index.js";
+import {
+  api,
+  clickRow,
+  editor,
+  MOD,
+  openEditing,
+  pagePath,
+  readBlocks,
+  rowTexts,
+  seedPage,
+} from "../helpers/index.js";
 
 /**
  * The write reached this page — the child, whose row does NOT hold the editor, is gone — and then
@@ -67,4 +77,70 @@ test("a block moved to another page while the caret is in it leaves, and what wa
       ["goes typed", 0],
       ["child", 1],
     ]);
+});
+
+// The path the removed workaround guarded: "Move to page…" from the context menu of the very row
+// being edited, with keystrokes still inside the write debounce. `refactor.spec.ts` moves a row
+// that is NOT being edited, and the tests above move through the API, so neither runs the command
+// against the edited row itself.
+test("Move to page… on the row being edited takes the row away and the text typed just before", async ({
+  page,
+}) => {
+  const name = "Row Leaves Menu Src";
+  const dst = "Row Leaves Menu Dst";
+  await seedPage(page, dst, "- already here");
+  const outliner = await openEditing(page, name, "- keep\n- goes\n  - child");
+  await clickRow(page, outliner, 1);
+  await page.keyboard.press("End");
+  await page.keyboard.type(" typed");
+
+  await outliner.locator(".vr-row").nth(1).click({ button: "right" });
+  const menu = page.locator(".ctx-menu");
+  await expect(menu).toBeVisible();
+  await menu.locator(".ctx-item", { hasText: "Move to page…" }).first().click();
+  const picker = page.locator(".page-picker");
+  await expect(picker).toBeVisible();
+  await picker.locator(".cmd-input").fill(dst);
+  await expect(picker.locator(".cmd-row--active")).toHaveText(dst);
+  await page.keyboard.press("Enter");
+  await expect(picker).toHaveCount(0);
+
+  await expectRowLeft(page, outliner);
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["keep"]);
+  await expect
+    .poll(async () => (await readBlocks(page, dst)).map((b) => [b.content, b.depth]))
+    .toEqual([
+      ["already here", 0],
+      ["goes typed", 0],
+      ["child", 1],
+    ]);
+});
+
+// What must NOT go, on the path `UnseenCreations` treats specially: a block the database HAD (a
+// refetch returned it), deleted, and brought back by this tab's own undo. A refetch that read
+// before the revive landed does not contain it; were the revive not counted as a creation, that
+// refetch would end editing and the characters typed straight after Cmd/Ctrl+Z would go nowhere.
+test("a block brought back by undo keeps its row while typing straight away", async ({ page }) => {
+  const name = "Row Leaves Revive";
+  const outliner = await openEditing(page, name, "- keep");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("x");
+  // Seen: the database, and so a refetch, has had the block before it is deleted.
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["keep", "x"]);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await expect(outliner.locator(".vr-row")).toHaveCount(1);
+  await expect.poll(async () => (await readBlocks(page, name)).length).toBe(1);
+
+  await page.keyboard.press(`${MOD}+z`); // the delete: the empty block comes back, caret in it
+  await page.keyboard.type("revived");
+  await expect(editor(page)).toBeFocused();
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["keep", "revived"]);
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["keep", "revived"]);
+  await page.goto(pagePath(name));
+  await expect.poll(() => rowTexts(page)).toEqual(["keep", "revived"]);
 });
