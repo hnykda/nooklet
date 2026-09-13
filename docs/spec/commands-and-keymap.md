@@ -1268,9 +1268,9 @@ Given commands `["Toggle sidebar" (app.toggleSidebar), "Open settings" (app.open
    noisy in practice.
 9. **Bulk task-cycling**: `task.cycle` only fires with `selectionCount == 1` in block-selection
    mode (R34); cycling every selected block's marker at once is out of scope for v1, matching the
-   plan's general "small scope" stance — a user wanting to mark several tasks DONE at once uses
-   `task.setMarkerDone` from the block context menu on each, or the Tasks view's bulk actions
-   (outside this spec).
+   plan's general "small scope" stance — a user wanting to mark several tasks DONE at once selects
+   them and runs `task.setMarkerDone` from the palette, which acts on every selected block as one
+   undo step (R39, B-346).
 10. **`keybindings.json` storage**: this spec fixes the JSON *shape* and its merge/precedence/
     conflict semantics (R63–R68) but defers the literal settings-storage table/op (how
     `input.keybindings` is persisted and synced) to a future settings spec, consistent with this
