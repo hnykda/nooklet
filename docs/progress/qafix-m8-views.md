@@ -22,13 +22,19 @@ replace (low, B-354); Q6 search filter order splits the date range (low, B-355).
   once then passed on rerun (page-icons race, logged B-356). Web unit 1000/1000 (one load timeout
   on the first run, clean rerun). Real graph probe: all four long names unclipped, phone + desktop.
 
+- Q2 (B-351) — context menu placed from its measured size (`app/menu-placement.ts`, hookup in
+  `BlockContextMenu.tsx`), bottom edge = keyboard toolbar's top on a phone, max-height + scroll.
+  Tests `e2e/tests/context-menu-placement.spec.ts` (7; 5 failed before), `menu-placement.test.ts`
+  (8). Nearby: context-menu, block-timestamps, phone, selection, placement — 46 passed, 1 skipped
+  (pre-existing fixme). Web unit 1008/1008. Real graph `/page/TODO` probe `ctx.mjs`: all on screen.
+
 ## In flight
 
-- Q2 next.
+- Q3 next.
 
 ## Next steps
 
-Q2 → Q3 → Q4 → Q5 → Q6, one commit each, each with its failing test first.
+Q3 → Q4 → Q5 → Q6, one commit each, each with its failing test first.
 
 ## Decisions
 

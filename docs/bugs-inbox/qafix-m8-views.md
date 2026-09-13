@@ -35,14 +35,32 @@ true`, no "Add icon" item); the fifth (Enter renames, no line break) guards the 
 ---
 
 ### B-351 · The block context menu opens partly off-screen in the lower half of the window
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, M8 views QA (finding Q2) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, M8 views QA (finding Q2) ·
+**Test:** `e2e/tests/context-menu-placement.spec.ts`, `apps/web/src/app/menu-placement.test.ts`
 
 Right-click a row at y≈520 of a 900px window (or long-press one at y≈490 of an 844px phone): the
 menu's top is 536 and its bottom 1047, so "Move to page…" and the "Created … · Edited …" line are
 below the window, and the menu has no scroll to reach them. `BlockContextMenu.tsx` clamps its top
 to `innerHeight - 320`, a height the menu had before M8 added "Open on shelf" and the timestamps
 footer; it is now 511–542px.
+
+**Fixed 2026-09-13.** The menu is placed from its measured size (`app/menu-placement.ts#placeMenu`,
+a `ResizeObserver` in `BlockContextMenu.tsx`, so the late footer re-places it): downward from the
+pointer when it fits, else upward from it, else pinned to the bottom margin; shifted left to stay
+on screen; `max-height` plus `overflow-y: auto` when the window is shorter than the menu. The
+bottom edge is the phone's keyboard toolbar when one is showing (`usableViewport`): a first version
+that used the window's height still put "Move to page…" and the footer under the 44px toolbar
+(z-index 900) on a long-press at 0.55 of an 844px screen — seen in a real-graph screenshot, then
+reproduced by the e2e test once it measured against the toolbar's top. Real graph `/page/TODO`:
+desktop presses at y=272/522/740 give bottoms 798/537/755 of 900; phone long-presses at
+y=267/486/704 give 791/791/720 above the toolbar at 799; footer and "Move to page…" on screen in
+all six. Tests that would have caught it: `e2e/tests/context-menu-placement.spec.ts` (7; five
+failed before the change, e.g. bottom 1040 > 900, and two phone cases failed against the
+window-height-only version, bottom 836 > 799) and `apps/web/src/app/menu-placement.test.ts` (8).
+Not verified: a real iPhone with the on-screen keyboard open (the toolbar's top is taken as the
+keyboard's top; placement is computed when the menu's size changes, not when the keyboard moves).
+Pre-existing, not touched: biome's `useSemanticElements` error on the menu's `role="separator"`
+div (present at `cf08d19`).
 
 ---
 
