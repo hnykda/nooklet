@@ -12,24 +12,29 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
 
 ## 1. Done (committed)
 
-- nothing yet
+- commit "fix(editor): take a rewrite from elsewhere into the editor…" (B-192): `editor/remote-text.ts`
+  (+17 unit tests), `BlockTree.tsx` (verdict in the tree effect, writes recorded, offer signal,
+  `takeRemoteText`/`takeRemoteOffer`, typing-flush registration), `RemoteChangeNotice.tsx` + css,
+  `BlockRowView.tsx` (`remoteChange` prop), `surface.ts` (`replaceContent` selection arg),
+  `outline-registry.ts#flushTyping` (+1 test), `refactor-host.tsx` (flush before push),
+  `refactor.ts` (`leaveEditing` removed; test rewritten), `e2e/tests/remote-rewrite.spec.ts` (7, all
+  red on base, all green after), inbox entry. Web unit 1156/1156, typecheck clean.
 
 ## 2. In flight
 
-- Design (below), then `apps/web/src/editor/remote-text.ts` + unit tests.
+- Regression sweep of editing-related e2e specs on 6412.
 
 ## 3. Next steps, in order
 
-1. `editor/remote-text.ts`: `TextVersions` (per-block HLC bookkeeping, verdict keep/take/offer/hold)
-   and `mapThroughRewrite` (caret). Unit tests incl. the stale-read case.
-2. `BlockTree.tsx`: record writes (commit, applyHistoryStep, flushPendingEdit, initialOps), note
-   shown HLCs in the tree effect, act on the verdict for the edited block; notice state.
-3. Notice UI (`RemoteChangeNotice.tsx`, rendered by `BlockRowView`).
-4. Remove `leaveEditing` from `commands/registrations/refactor.ts`; flush typing before a server
-   refactor op instead (`outline-registry.ts#flushTyping`, called by `refactor-host.tsx#write`).
-5. E2E `e2e/tests/remote-rewrite.spec.ts`: two browser contexts + agent `block.update`, clean and
-   unsaved-typing cases; Turn into page on the edited row.
-6. Spec R32b + a new rule; inbox entry B-192 (existing); sweep of editing specs; verify on real graph.
+1. E2E sweep: editing, focus, undo-redo, redo, undo-gaps, template-undo, merge-keeps-fields,
+   editing-row-leaves, refactor, journal-*, block-properties, selection, reload-durability,
+   autocomplete, date-picker-type-ahead, context-menu. Then the whole suite in chunks.
+2. Probe: an agent's `block.update` of only a PROPERTY of the edited block (content_hlc unchanged) —
+   expected stale in the buffer until editing ends; log as B-460 if so.
+3. Spec: `docs/spec/commands-and-keymap.md` R32b ("Both leave editing first" is wrong now) + a rule
+   for rewrites from elsewhere.
+4. Real graph: copy `~/.nooklet/default/graph.sqlite`, serve, edit a journal block while an API
+   `block.update` rewrites it (clean and typing); `pnpm nooklet verify` (no ops/schema touched).
 
 ## Design notes
 

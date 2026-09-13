@@ -22,6 +22,7 @@ import { describeError } from "../data/api-client.js";
 import { refactorApi } from "../data/refactor-api.js";
 import { useAllPages } from "../data/store.js";
 import { forceSync } from "../db/client.js";
+import { flushTyping } from "../editor/outline-registry.js";
 import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { fuzzyFindPages } from "../views/pageSearch.js";
 
@@ -183,6 +184,9 @@ export function createRefactorHost(deps: {
    * merge that did not happen must not look like one that did. */
   async function write(label: string, fn: () => Promise<void>): Promise<void> {
     try {
+      // The last keystrokes are not in the replica until the editor's write debounce ends, and the
+      // push below would go without them (B-192).
+      flushTyping();
       await forceSync();
       await fn();
       await forceSync();

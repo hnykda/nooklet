@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { activeEditorHost } from "../app/editor-host.js";
 import type { CommandContext } from "../commands/types.js";
-import { registerOutline, runOnOutlines } from "./outline-registry.js";
+import {
+  flushTyping,
+  registerOutline,
+  registerTypingFlush,
+  runOnOutlines,
+} from "./outline-registry.js";
 
 describe("outline registry (B-97)", () => {
   it("hands Collapse all / Expand all to every mounted outline, and nothing else", () => {
@@ -38,5 +43,20 @@ describe("outline registry (B-97)", () => {
       off();
     }
     expect(seen).toEqual(["block.collapseAll"]);
+  });
+});
+
+describe("typing flush (B-192)", () => {
+  it("runs every mounted tree's flush until it unregisters", () => {
+    let a = 0;
+    let b = 0;
+    const offA = registerTypingFlush(() => a++);
+    const offB = registerTypingFlush(() => b++);
+    flushTyping();
+    offA();
+    flushTyping();
+    offB();
+    flushTyping();
+    expect([a, b]).toEqual([1, 2]);
   });
 });

@@ -102,11 +102,12 @@ import { linkAtCaret } from "./linkAtCaret.js";
 import { mergeRefusedMessage } from "./merge-fields.js";
 import { deriveNumbering, isNumbered } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
-import { registerOutline } from "./outline-registry.js";
+import { registerOutline, registerTypingFlush } from "./outline-registry.js";
 import { filterVisible } from "./pageFilter.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
 import { createReadOnlyNotice } from "./ReadOnlyNotice.js";
 import { isReadOnlyValue, READ_ONLY_PROPERTY } from "./readOnly.js";
+import { mapThroughRewrite, TextVersions } from "./remote-text.js";
 import type { NavigateTarget } from "./render/tokens.js";
 import { cutToClipboard, selectionMarkdown } from "./selection-clipboard.js";
 import { createSurface, type Surface } from "./surface.js";
@@ -144,11 +145,15 @@ function toEditableBlock(row: BlockTreeNode): EditableBlock {
   };
 }
 
-function flattenBlockTreeNodes(nodes: readonly BlockTreeNode[]): EditableBlock[] {
+function flattenBlockTreeNodes(
+  nodes: readonly BlockTreeNode[],
+  contentHlcs: Map<string, string>,
+): EditableBlock[] {
   const out: EditableBlock[] = [];
   const visit = (ns: readonly BlockTreeNode[]): void => {
     for (const n of ns) {
       out.push(toEditableBlock(n));
+      contentHlcs.set(n.id, n.contentHlc);
       visit(n.children);
     }
   };
@@ -229,30 +234,67 @@ export function BlockTree(props: {
   function supersedeUnansweredText(ops: readonly Op[]): void {
     for (const op of ops) if (op.payload.kind !== "block.place") unansweredText.delete(op.entity);
   }
+  /** Which fetched texts are newer than anything this tree showed or wrote (B-192). */
+  const textVersions = new TextVersions();
+  textVersions.noteWrites(props.initialOps ?? []);
+  /** A newer text of the block being edited that arrived over unsaved typing, offered on its row
+   * (B-192): its editing text, and the `content_hlc` it was fetched with. */
+  const [remoteOffer, setRemoteOffer] = createSignal<{
+    id: BlockId;
+    hlc: string;
+    text: string;
+  } | null>(null);
 
   createEffect(() => {
     const data = treeResource();
     if (!data) return;
     const editingBlockId = editingId();
-    const flat = flattenBlockTreeNodes(data.blocks);
+    const contentHlcs = new Map<BlockId, string>();
+    const flat = flattenBlockTreeNodes(data.blocks, contentHlcs);
     unseenCreations.seen(flat.map((b) => b.id));
+    const attachedId =
+      editingBlockId && surface.currentId() === editingBlockId ? editingBlockId : null;
+    const fetchedEdited = attachedId ? flat.find((b) => b.id === attachedId) : undefined;
     for (let i = 0; i < flat.length; i++) {
-      const written = unansweredText.get((flat[i] as EditableBlock).id);
+      const id = (flat[i] as EditableBlock).id;
+      const written = unansweredText.get(id);
       if (written) flat[i] = withEditText(flat[i] as EditableBlock, written.content);
+      // What the screen shows is the fetched text (B-192) — unless an unanswered write stands in
+      // for it, or it is the editor's block, which is decided below.
+      else if (id !== attachedId) textVersions.noteShown(id, contentHlcs.get(id) as string);
     }
+    let takeIntoEditor: string | null = null;
     if (editingBlockId && surface.currentId() === editingBlockId) {
       const live = surface.content();
       const idx = flat.findIndex((b) => b.id === editingBlockId);
-      if (idx !== -1) {
-        // Never let a resource refetch clobber the live CM6 buffer for the block being typed into.
-        // This is also NOT the place to notice an external change and push it in: a refetch that
-        // READ before one of our own writes and RESOLVED after it looks exactly like "the database
-        // disagrees", and doing that here reverted a split mid-keystroke (found fixing B-66).
-        // Local operations that change this block's text — undo, redo, a merge — update the
-        // editor themselves at commit time (`commit`), where there is nothing to guess.
-        // The buffer holds property lines too (B-101), so it is split back into content and
-        // properties rather than copied into `content`.
-        flat[idx] = withEditText(flat[idx] as EditableBlock, live);
+      if (idx !== -1 && fetchedEdited) {
+        // Never let a STALE refetch clobber the live CM6 buffer for the block being typed into: a
+        // refetch that READ before one of our own writes and RESOLVED after it looks exactly like
+        // "the database disagrees", and pushing it in reverted a split mid-keystroke (B-66). What
+        // tells the two apart is the text's `content_hlc` against this tree's own writes
+        // (`./remote-text.ts`), not timing. Only a text newer than both reaches the editor, and
+        // only with nothing unsaved in it; over unsaved typing it is offered on the row (B-192).
+        // Local operations that change this block's text — undo, redo, a merge — still update the
+        // editor themselves at commit time (`commit`). The buffer holds property lines too (B-101),
+        // so it is split back into content and properties rather than copied into `content`.
+        const hlc = contentHlcs.get(editingBlockId) as string;
+        const verdict = untrack(() =>
+          textVersions.decide(editingBlockId, hlc, {
+            sameText: editTextMatches(fetchedEdited, live),
+            unsaved: hasUnsavedTyping(editingBlockId),
+          }),
+        );
+        if (verdict === "take") {
+          flat[idx] = fetchedEdited;
+          takeIntoEditor = editTextOf(fetchedEdited);
+        } else {
+          flat[idx] = withEditText(flat[idx] as EditableBlock, live);
+        }
+        if (verdict === "offer") {
+          setRemoteOffer({ id: editingBlockId, hlc, text: editTextOf(fetchedEdited) });
+        } else if (verdict === "take" || verdict === "same") {
+          if (untrack(remoteOffer)?.id === editingBlockId) setRemoteOffer(null);
+        }
       } else if (unseenCreations.has(editingBlockId)) {
         // The block being edited is not in this query result yet — it was just created
         // optimistically (Enter for a new sibling) and the write has not committed by the time
@@ -282,7 +324,17 @@ export function BlockTree(props: {
     // 10-40 ms after an undo, where a keystroke typed in that window was lost (B-242).
     const hadFocus = editingBlockId !== null && surface.view()?.hasFocus === true;
     setLocalBlocks(flat);
+    const takeText = takeIntoEditor;
+    if (takeText !== null && editingBlockId !== null) {
+      untrack(() => takeRemoteText(editingBlockId, takeText));
+    }
     if (hadFocus && editingBlockId !== null) refocusAfterReorder(editingBlockId);
+  });
+  // An offer is about the block being edited; once editing moves on, the buffer was flushed and
+  // what it wrote is the answer.
+  createEffect(() => {
+    const offer = remoteOffer();
+    if (offer && editingId() !== offer.id) setRemoteOffer(null);
   });
 
   const editorTree = createMemo<EditorTree>(() => buildEditorTree(props.pageId, localBlocks()));
@@ -492,6 +544,7 @@ export function BlockTree(props: {
   ): void {
     if (ops.length === 0) return;
     unseenCreations.note(ops);
+    textVersions.noteWrites(ops);
     supersedeUnansweredText(ops);
     setLocalBlocks((prev) => applyOptimistic(prev, ops as unknown as OptimisticOp[], deletedCache));
     history.record(ops, treeBefore, kind, before, after, blockId);
@@ -543,6 +596,7 @@ export function BlockTree(props: {
       payloads.length > 0
         ? payloads.map((p) => makeOp(clock.next(), clock.device, id, p))
         : [makeOp(clock.next(), clock.device, id, { kind: "block.text", content })];
+    textVersions.noteWrites(ops);
     // Carets in history are content offsets, like every other `CaretSpec` in this file; they are
     // mapped back into the buffer when the surface re-attaches (`caretInEditText`).
     const headAfter = surface.currentId() === id ? surface.head() : content.length;
@@ -560,6 +614,71 @@ export function BlockTree(props: {
       if (unansweredText.get(id) === written) unansweredText.delete(id);
     };
     void applyOps(ops).then(answered, answered);
+  }
+
+  /** Typing in `id` that `flushPendingEdit` would still write (B-192). The pending edit that
+   * `surface.replaceContent` streams back after a buffer sync writes nothing, and is not typing. */
+  function hasUnsavedTyping(id: BlockId): boolean {
+    if (!pendingEdit || pendingEdit.id !== id) return false;
+    const before = pendingEdit.treeBefore.byId.get(id) ?? untrack(editorTree).byId.get(id);
+    return !before || blockTextPayloads(before, pendingEdit.content).length > 0;
+  }
+
+  function dropPendingEdit(): void {
+    if (flushTimer !== undefined) clearTimeout(flushTimer);
+    flushTimer = undefined;
+    pendingEdit = null;
+  }
+
+  /** A newer text from elsewhere, with nothing unsaved in the editor: put it in, the caret mapped
+   * through the change (B-192). The tree already holds it; nothing is written. */
+  function takeRemoteText(id: BlockId, text: string): void {
+    const view = surface.view();
+    if (!view || surface.currentId() !== id) return;
+    const before = surface.content();
+    const { anchor, head } = view.state.selection.main;
+    surface.replaceContent(id, text, {
+      anchor: mapThroughRewrite(before, text, anchor),
+      head: mapThroughRewrite(before, text, head),
+    });
+    // The replacement came back through `onTextChange` as a pending edit equal to the tree.
+    dropPendingEdit();
+  }
+
+  /**
+   * "Use the other version" (B-192): the offered text replaces the typing. Written, not only shown
+   * — the typing may have been saved already, over it — and as one undo step, whose undo puts the
+   * typing back. Keystrokes not yet written are dropped rather than written first: the person chose
+   * the other version, and a write of theirs would reach other devices only to be overwritten.
+   */
+  function takeRemoteOffer(): void {
+    const offer = remoteOffer();
+    setRemoteOffer(null);
+    const clock = clockSig();
+    if (!offer || !clock || readOnly()) return;
+    const { id, text } = offer;
+    dropPendingEdit();
+    history.stopCapturing();
+    textVersions.taken(id, offer.hlc);
+    const tree = editorTree();
+    const block = tree.byId.get(id);
+    if (!block) return;
+    const payloads = blockTextPayloads(block, text);
+    if (payloads.length === 0) return;
+    const editing = surface.currentId() === id;
+    const live = editing ? surface.content() : editTextOf(block);
+    const head = editing ? surface.head() : live.length;
+    const headAfter = mapThroughRewrite(live, text, head);
+    commit(
+      payloads.map((p) => makeOp(clock.next(), clock.device, id, p)),
+      tree,
+      "structure",
+      { id, caret: { offset: contentOffsetOf(live, head) } },
+      { id, caret: { offset: contentOffsetOf(text, headAfter) } },
+    );
+    // `commit` synced the buffer (caret clamped) and streamed a pending edit that writes nothing.
+    dropPendingEdit();
+    if (editing) surface.setCaret({ offset: headAfter });
   }
 
   function attachEditing(id: BlockId, caret: CaretSpec): void {
@@ -754,6 +873,7 @@ export function BlockTree(props: {
   function applyHistoryStep(res: UndoRedoResult | null): void {
     if (!res) return;
     unseenCreations.note(res.ops);
+    textVersions.noteWrites(res.ops);
     supersedeUnansweredText(res.ops);
     setLocalBlocks((prev) =>
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
@@ -1037,6 +1157,8 @@ export function BlockTree(props: {
   // or reloaded first — the op was never built, so it is not in the local replica either. Both
   // events are the documented ones for "you may never run again"; `visibilitychange` is what
   // actually fires on mobile, where a backgrounded tab can be killed without `pagehide`.
+  // And before a server op reads the text (`./outline-registry.ts#flushTyping`, B-192).
+  onCleanup(registerTypingFlush(() => flushPendingEdit()));
   onMount(() => {
     const flushNow = (): void => flushPendingEdit();
     const onHidden = (): void => {
@@ -1495,6 +1617,15 @@ export function BlockTree(props: {
                         onSwipeIndent={() => doIndent(id)}
                         onSwipeOutdent={() => doOutdent(id)}
                         onDragStep={(direction) => doMoveStep(id, direction)}
+                        remoteChange={
+                          remoteOffer()?.id === id
+                            ? {
+                                other: remoteOffer()?.text ?? "",
+                                onTake: takeRemoteOffer,
+                                onKeep: () => setRemoteOffer(null),
+                              }
+                            : undefined
+                        }
                       />
                     )}
                   </Show>
