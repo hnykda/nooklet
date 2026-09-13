@@ -10,7 +10,8 @@ start, you were restarted: read it, then continue from "Next steps".
   The worktree was created at an OLD commit (41666ee, 88 commits behind); the branch was reset to
   `da85cfb` (the agreed start) before any work.
 - Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/rv-server-security/`
-  — the reviewer's probes `p1`..`p7` are there; `graph-fix/` is this branch's real-graph copy.
+  — the reviewer's probes `p1`..`p7`, this pass's `p10`..`p12`, `graph-fix/` (real-graph copy,
+  now with a replace + undo in its op log), `graph-gc/` (disposable, gc ran on it), `import-f3/`.
 - e2e port 6471. Bugs go to `docs/bugs-inbox/rv-server-security.md`, never `docs/BUGS.md`.
 
 ## Bug numbers
@@ -27,89 +28,40 @@ start, you were restarted: read it, then continue from "Next steps".
 
 ## 1. Done
 
-- Inbox entries logged for all seven before any fix.
-- F1 (B-125 time half) — commit "fix(server): graph.replace scans in a worker with a 2 s budget".
-  Red first: at 25 `a`s `/healthz` answered after 5,010 ms. Green: server suite 57 files / 523
-  tests; e2e `replace.spec.ts` 3/3 on 6471 (the tsx-served server runs the eval worker); real-graph
-  copy: the three 60 s-killed patterns answer `invalid` in 2.1–2.3 s, `TODO` dry run ~120–250 ms at
-  load 24 vs ~75 ms before.
+All seven fixed, each red first. Commits, oldest first:
 
-- F2 (B-126) — commit "fix(server): the mirror survives a page name past NAME_MAX". Red: 3 export
-  tests (ENAMETOOLONG, EISDIR, `%XX` cut) and the live test (leaked `.tmp`) on the old
-  `export.ts`. Green: server suite 57 files / 527; real-graph copy `nooklet export`: 952 exported,
-  `failed: []`.
+- `c533125` F1 (B-125 time) — scan in an eval'd worker with a 2 s budget; pre-write re-check and
+  409 `conflict`. Red: `/healthz` at 5,010 ms (25 `a`s). Real graph: the three 60 s-killed
+  patterns answer `invalid` in 2.1–2.3 s.
+- `3f77bf9` F2 (B-126) — shortened hash-suffixed file names + `title::`; per-page failure
+  isolation; temp file cleanup. Real graph `nooklet export`: 952 pages, `failed: []`.
+- `3389bd1` F3 (B-127) — assets listed by Dirent, symlinks skipped with a warning, symlinked
+  `assets/` not followed. Owner's Logseq graph imports as before (171 assets, no warnings).
+- `8ddae71` F5 (B-125 memory) — max_blocks stops holding text, output budget, per-block cap.
+  Real graph: `e` → 2,000 chars 1,091 MB → ~210 MB rss. (Its heap cap was wrong — see `3d01f11`.)
+- `fe5837a` F6 (B-109) — `--key=value`, `parseGcFlags`, unknown flags refused for gc/restore.
+  Reproduced and re-checked with the CLI on a graph copy.
+- `e377269` F7 (B-129) — parser depth 32 / filters 100; new `e2e/tests/query-limits.spec.ts`.
+- `47186b3` F8 (B-128) — `gu`/`giu` server and web; new `e2e/tests/replace-unicode.spec.ts`.
+- `6b492d2` progress note: heap-cap abort found in `8ddae71`.
+- `3d01f11` B-125 correction — exact replaced length before building, no `resourceLimits`. Red:
+  the 199,990-char test SIGABRTed the vitest worker.
+- `25e3951`, `2d384e4` — `tools/probes/worker-heap-cap-abort.mjs`, `tools/probes/tsx-function-tostring.ts`.
+- Last commit: `docs/review/2026-09-13-m7-rv-server-security.md` and this file.
 
-- Hashes so far: F1 `c533125`, F2 `3f77bf9`.
-- F3 (B-127) — commit "fix(server): the Logseq importer never follows a symlink in assets/". Red:
-  3 importer tests (asset row created ×2, ENOENT). Green: server suite 57 files / 530; the owner's
-  Logseq graph (`~/notes-graph`, read only) imported into
-  `scratchpad/.../import-f3`: 127 pages, 825 journals, 18,628 blocks, 171 assets, no warnings.
-
-- F3 hash `3389bd1`.
-- F5 (B-125 memory half) — commit "fix(server): graph.replace stops building text it will
-  refuse". Red: 2 op tests returned 200, 4 `runScan` tests (new result shape). Green: server
-  suite 58 files / 537. Probe `p10-replace-memory.mts` on the real-graph copy, main checkout vs
-  worktree: `e`→2,000 chars peak rss 1,091 MB → 209 MB; with `max_blocks: 20000` it used to
-  succeed at 2,001 MB writing 250,949-char blocks, now 413 `block_too_long`.
-
-- F5 hash `8ddae71`.
-- F6 (B-109 existing) — commit "fix(cli): gc --no-backup and --flag=value work; gc and restore
-  refuse unknown flags". Red: on a graph copy the old CLI took a backup under `--no-backup` and
-  `--dry-run=true` dropped 20,404 ops; 5 cli-args tests. Green: 58 files / 542; CLI rerun on a
-  fresh copy behaves. `graph-gc/` in scratch is disposable (gc ran on it).
-
-- F6 hash `fe5837a`.
-- F7 (B-129) — commit "fix(core): query fences refuse more than 32 levels of nesting or 100
-  filters". Red: core test (RangeError), new e2e `query-limits.spec.ts` 2/2 failed on the old
-  parser (fences rendered as raw code, no error). Green: core 16 files / 334, web 72 / 684,
-  e2e `query.spec.ts` + `query-limits.spec.ts` 11/11 on 6471.
-
-- F7 hash `e377269`.
-- F8 (B-128) — commit "fix(server,web): graph.replace regexes run in Unicode mode". Red: op
-  test (0 matches), new e2e `replace-unicode.spec.ts` ("No matches."). Green: server 58 / 543,
-  web 72 / 684, e2e `replace-unicode` + `replace` 4/4 on 6471; real graph `Č\p{Ll}+` 0 → 17.
-
-- F8 hash `47186b3`.
-- Final checks so far: `nooklet verify` on graph-fix OK (20,411 ops; again 21,588 after a real
-  replace + undo via `p11-replace-real-run.mts`); `pnpm -r test` 149 files / 1,578 tests green;
-  e2e replace, replace-unicode, query, query-limits, refactor, views: 48 passed, 1 failed —
-  `views.spec.ts:461` (palette Escape hands focus back to the editor), which ALSO fails with every
-  source file of this branch checked out at `da85cfb`, so it predates this branch.
-
-- Heap-cap abort (below) fixed — commit "fix(server): graph.replace refuses an oversized block
-  before building it; no worker heap cap". Red: the 199,990-char explode test SIGABRTed the vitest
-  worker. Green: server 58 / 544; `p12` 199k/280k blocks → `block_too_long` in ~25 ms; `p10`
-  unchanged (225–271 MB); `p11` real replace + undo + `verify` OK (22,765 ops). Mutation check:
-  removing the `$nn` rule fails the exactness test.
+Final numbers: `pnpm -r test` 149 files / 1,579 tests green; `pnpm -r typecheck` clean;
+`nooklet verify` on graph-fix OK (22,765 ops after a real replace + undo); e2e on 6471: replace,
+replace-unicode, query, query-limits, refactor, views 48/49 (the one failure, `views.spec.ts:461`,
+also fails at `da85cfb`); after `3d01f11` replace, replace-unicode, query-limits, refactor 11/11.
 
 ## 2. In flight
 
-- Review doc, then final e2e rerun of replace specs.
+- Nothing. Task complete.
 
-## 2a. History of the heap-cap finding
+## 3. Next steps
 
-- **Found in my own F5 commit (`8ddae71`)**: `resourceLimits.maxOldGenerationSizeMb: 256` on the
-  scan worker turns ONE large allocation into a whole-process abort. Probe `p12-explode-path.mts`:
-  a 199,000-char block × 2,000-char replacement (398 M chars) → `FATAL ERROR: Reached heap limit
-  Allocation failed` from `node::worker::Worker::Run`, exit 134 — not `ERR_WORKER_OUT_OF_MEMORY`.
-  Reachable over HTTP (page.create allows 200,000 chars of markdown). Fix in progress: compute
-  each block's exact replaced length from the matches BEFORE building it (literal: Σ(repl −
-  match); template: GetSubstitution lengths), refuse before `replace` runs, drop the heap cap
-  (it would also abort the server on a graph whose text alone passes 256 MB). Test first: the
-  199k block over HTTP must be a 413 and the process must survive.
-
-## 3. Next steps, in order
-
-1. F1 — scan in a `worker_threads` Worker (eval'd JS source) with a 2 s budget; test `(a+)+$`
-   over 40 chars expects a prompt 400 `invalid` and `/healthz` answering meanwhile.
-2. F2 — `pageFilePath` byte cap + hash suffix; `exportAll` per-page try/catch; `exportPage`
-   unlinks the temp file on failure.
-3. F3 — `lstatSync` inside the try; symlinks skipped with a warning.
-4. F5 — stop at `max_blocks`, output budget, per-block content cap.
-5. F6 — `noBackup` reads `backup === false`; `--key=value`; unknown flags rejected for gc/restore.
-6. F7 — parser depth and term caps.
-7. F8 — `u` flag server + FindReplaceView preview; description notes `\b`/`\w`.
-8. Review doc, `pnpm nooklet verify --data graph-fix`, e2e replace spec on 6471.
+- None on this branch. For the integrator: fold `docs/bugs-inbox/rv-server-security.md` into
+  `docs/BUGS.md`; `views.spec.ts:461` is failing on `da85cfb` and has no owner here.
 
 ## 4. Decisions
 
@@ -117,11 +69,20 @@ start, you were restarted: read it, then continue from "Next steps".
   real graph copy (`scratchpad/.../tostring/worker-cost.mjs`): a fresh eval worker scanning 18,628
   blocks costs ~20 ms (16 ms of it spawn) against ~2.5 ms inline. One implementation keeps "the
   preview IS the op" and means no pattern of any kind runs on the event loop.
-- F1: the worker source is a plain JS string, not `fn.toString()` of a TS function. Probe
-  (`tostring/fn.ts`): tsx's esbuild transform injects `__name(...)` into inner arrow functions and
-  classes, which would be a ReferenceError inside the worker in dev only. A file-path worker would
-  break the desktop sidecar, which esbuild-bundles the server into one `server.mjs`.
+- F1: the worker source is a plain JS string, not `fn.toString()` of a TS function —
+  `tools/probes/tsx-function-tostring.ts`: tsx injects `__name(...)` into inner arrow functions and
+  classes, a ReferenceError inside the worker in dev only. A file-path worker would break the
+  desktop sidecar, which esbuild-bundles the server into one `server.mjs`.
 - F1: awaiting the worker opens a macrotask gap between the SELECT and `applyOps` that did not exist
   before; `/sync/push` does not take `writeLock`, so a device edit could land in between and be
   overwritten by text computed from the old content. The real run re-reads the matched blocks right
   before `applyOps` (no await in between) and answers 409 `conflict` if any changed.
+- F5: no `resourceLimits` on the worker — `tools/probes/worker-heap-cap-abort.mjs one` aborts the
+  whole process at a 256 MB cap. Memory is bounded by computing each block's replaced length
+  (literal lengths or GetSubstitution lengths) before building it.
+- F5: the per-block cap refuses growth past 100,000 characters but allows an edit that does not
+  grow an already longer block (the real graph has a 120,016-character block).
+- F7: limits in the parser (32 levels, 100 filters) rather than a balanced `joinSql`; at 100
+  filters the prefilter SQL is far inside SQLite's depth of 1,000.
+- Bug numbers: seven findings, five numbers (B-125..B-129) — F1+F5 share B-125, F6 is logged
+  against B-109, whose fix caused it.
