@@ -241,6 +241,30 @@ describe("importLogseqGraph: task markers, scheduling, nesting", () => {
     expect(done?.priority).toBe("A");
   });
 
+  it("imports SCHEDULED/DEADLINE dates and hours written without zero padding (B-266)", async () => {
+    writeGraphFile(
+      "pages/Unpadded.md",
+      "- DONE Mirek\n  SCHEDULED: <2023-2-17 Fri>\n- LATER call\n  DEADLINE: <2022-12-8 Thu 9:05>\n",
+    );
+
+    const stats = await importLogseqGraph(ctx, graphDir);
+    expect(stats.errors).toEqual([]);
+
+    const rows = ctx.driver.all<{
+      content: string;
+      scheduled_day: number | null;
+      deadline_day: number | null;
+      deadline_time: string | null;
+    }>(
+      `SELECT b.content, b.scheduled_day, b.deadline_day, b.deadline_time
+       FROM block b JOIN page p ON p.id = b.page_id WHERE p.name = 'Unpadded' ORDER BY b.order_key`,
+    );
+    expect(rows).toEqual([
+      { content: "Mirek", scheduled_day: 20230217, deadline_day: null, deadline_time: null },
+      { content: "call", scheduled_day: null, deadline_day: 20221208, deadline_time: "09:05" },
+    ]);
+  });
+
   it("preserves nested block parent/child structure and per-level order", async () => {
     writeGraphFile("pages/Nested.md", "- a\n\t- b\n\t- c\n\t\t- d\n- e\n");
 

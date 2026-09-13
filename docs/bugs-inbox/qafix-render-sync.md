@@ -158,12 +158,29 @@ bullet, stored `collapsed: false`. Still not verified: what Logseq does.
 ---
 
 ### B-266 · `SCHEDULED: <2023-2-17 Fri>` (no zero padding) is not recognised
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q7) · **Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q7) · **Test:**
+`packages/core/src/outline.test.ts` "reads org timestamps without zero padding, and stores them
+padded", `packages/server/src/importer/logseq.test.ts` "imports SCHEDULED/DEADLINE dates and hours
+written without zero padding"
 
 20 live blocks on the real graph (19 DONE, 1 unmarked) keep a literal `SCHEDULED: <2023-2-17 Fri>`
 line in their content with `scheduled_day` NULL, so `scheduled:any` returns 4 blocks instead of
 24. The parser and spec OUT-23 both require `YYYY-MM-DD`; the owner's Logseq data has single-digit
 months and days.
+
+**Fixed 2026-09-13.** `outline.ts`'s `TIMESTAMP_INNER_RE` took `\d{4}-\d{2}-\d{2}`. mldoc, which
+Logseq writes and reads these with, parses the date with `Scanf.sscanf s "%d-%d-%d"`
+(https://raw.githubusercontent.com/logseq/mldoc/master/lib/syntax/timestamp.ml, `parse_date`,
+read 2026-09-13; its call site was not located), so one-digit parts are valid Logseq. The regex now
+takes them and the branch stores the value zero-padded. Found while fixing: the regex already
+allowed a one-digit HOUR (`9:05`), consumed the line, and handed the reducer `2026-09-14 9:05`,
+which `SCHEDULED_RE` refuses — and an invalid key in a `block.create` bag is dropped silently, so
+the schedule vanished with no trace in content (probe: `deadline_day` NULL, line gone). Padding
+covers that too. OUT-23 amended. Real data: all 20 live blocks on the owner's graph that still hold
+a literal `SCHEDULED:` line now parse to a schedule when re-read through `parseOutline`.
+**Not done — needs the owner:** those 20 blocks in the already-imported database keep the literal
+line until the graph is re-imported or a one-off repair re-parses them; nothing here rewrites
+existing data.
 
 ---
 

@@ -48,9 +48,12 @@ const ID_SUFFIX_RE = / \^([0-9a-z]{14})$/;
 const ID_ALONE_RE = /^\^([0-9a-z]{14})$/;
 /** OUT-23: org timestamp lines. Group 1 = SCHEDULED|DEADLINE, group 2 = the `<...>` interior. */
 const SCHEDULED_DEADLINE_RE = /^\s*(SCHEDULED|DEADLINE):\s*<([^>]+)>\s*$/;
-/** Interior of an org timestamp: date, optional weekday, optional time, optional repeater. */
+/** Interior of an org timestamp: date, optional weekday, optional time, optional repeater. Month,
+ * day and hour may lack zero padding (`<2023-2-17 Fri>` is on the owner's graph, and mldoc reads
+ * it — `Scanf.sscanf s "%d-%d-%d"`); the OUT-23 branch below pads them, because the reducer only accepts
+ * `YYYY-MM-DD[ HH:MM]` and silently drops anything else from a create's property bag (B-266). */
 const TIMESTAMP_INNER_RE =
-  /^(\d{4}-\d{2}-\d{2})(?:\s+[A-Za-z]{2,3})?(?:\s+(\d{1,2}:\d{2}))?(?:\s+[.+]{1,2}(\d+)([dwmy]))?$/;
+  /^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+[A-Za-z]{2,3})?(?:\s+(\d{1,2}):(\d{2}))?(?:\s+[.+]{1,2}(\d+)([dwmy]))?$/;
 const HEADING_PREFIX_RE = /^#{1,6} /;
 
 const MARKER_ALIASES: Record<string, TaskMarker> = {
@@ -268,8 +271,10 @@ function finalizeNode(raw: RawNode): OutlineNode {
       const tm = TIMESTAMP_INNER_RE.exec((sdm[2] as string).trim());
       if (tm) {
         const kind = (sdm[1] as string).toLowerCase();
-        properties[kind] = tm[2] ? `${tm[1]} ${tm[2]}` : (tm[1] as string);
-        if (tm[3] && tm[4]) properties.repeat = `${tm[3]}${tm[4]}`;
+        const pad = (n: string | undefined) => (n as string).padStart(2, "0");
+        const day = `${tm[1]}-${pad(tm[2])}-${pad(tm[3])}`;
+        properties[kind] = tm[4] ? `${day} ${pad(tm[4])}:${tm[5]}` : day;
+        if (tm[6] && tm[7]) properties.repeat = `${tm[6]}${tm[7]}`;
         return;
       }
       // malformed timestamp: fall through and keep the line as ordinary content (no data loss).

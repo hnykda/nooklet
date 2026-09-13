@@ -209,8 +209,10 @@ conventions glossary — not added there because this task may only touch this f
   4. If the line matches the property regex (OUT-18), extract it (OUT-19/20).
   5. If the line matches `^\s*SCHEDULED:\s*<([^>]+)>\s*$` or `^\s*DEADLINE:\s*<([^>]+)>\s*$`
      (org timestamp syntax, optionally with a leading weekday abbreviation and a repeater — e.g.
-     `<2026-09-12 Sat .+1w>`, `<2026-09-14 Sat 14:00 +1d>`): parse the date (`YYYY-MM-DD`),
-     optional `HH:MM` time, and optional repeater `[.+]{1,2}(\d+)([dwmy])`; discard the line;
+     `<2026-09-12 Sat .+1w>`, `<2026-09-14 Sat 14:00 +1d>`): parse the date (`YYYY-MM-DD`, or with
+     a one-digit month, day or hour — `<2023-2-17 Fri>`, `9:05` — as the owner's Logseq data has
+     and mldoc accepts; stored zero-padded, B-266), optional `HH:MM` time, and optional repeater
+     `[.+]{1,2}(\d+)([dwmy])`; discard the line;
      set `scheduled::`/`deadline::` (OUT-22 shape, weekday dropped) and, if a repeater was
      present, `repeat:: <n><unit>` (the `+`/`++`/`.+` dialect marker is discarded — ADR 011 keeps
      one repeat shape, not three). If a `repeat::` property is set by more than one of these
