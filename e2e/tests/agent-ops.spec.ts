@@ -17,7 +17,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
-import { api, isoOffset, openEditing, openPage, pagePath, readBlocks } from "../helpers/index.js";
+import {
+  api,
+  isoOffset,
+  MOD,
+  openEditing,
+  openPage,
+  pagePath,
+  readBlocks,
+} from "../helpers/index.js";
 
 const PORT = process.env.NOOKLET_E2E_PORT ?? "6188";
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -181,4 +189,44 @@ test("ui_run with args the command refuses answers invalid with its reason, not 
   expect(ok.status, JSON.stringify(ok.json)).toBe(200);
   expect(ok.json.when_result).toBe("ran");
   await expect.poll(read).toBe(isoOffset(3));
+});
+
+// B-151 where a person meets it: Cmd/Ctrl+C on a selected block writes `ids: "none"` markdown. For
+// a block that opens with a code fence, the property lines went right after line 1 — inside the
+// fence — so pasting the copy back made them code and the pasted block had no properties.
+test("copying a fence-first block with a property and pasting it keeps the property (B-151)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openEditing(page, "Srvops Fence Copy", "- ```js\n  const x = 1;\n  ```\n  lang:: js");
+  await page.evaluate(() => navigator.clipboard.writeText("sentinel"));
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".vr-row-selected")).toHaveCount(1);
+  await page.keyboard.press(`${MOD}+c`);
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("- ```js\n  const x = 1;\n  ```\n  lang:: js\n");
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+
+  const target = "Srvops Fence Paste";
+  await openEditing(page, target, "- anchor");
+  await page.locator(".cm-content").evaluate((el, text) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    el.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  }, copied);
+
+  type Node = { content: string; properties?: Record<string, string> };
+  await expect
+    .poll(async () => {
+      const out = await api<{ tree?: Node[] }>(page, "page.read", { page: target, format: "json" });
+      return (out.tree ?? []).map((n) => ({ content: n.content, properties: n.properties ?? {} }));
+    })
+    .toEqual([
+      { content: "anchor", properties: {} },
+      { content: "```js\nconst x = 1;\n```", properties: { lang: "js" } },
+    ]);
 });
