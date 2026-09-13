@@ -120,3 +120,20 @@ text changes. The e2e test (an unfolded embedded row, a tag on the outline eleme
 minimum height) failed before the change — "about the car" folded away — and passes after. Re-run
 on the graph copy: the embed row's height stays 775 / 942 px through typing, the editor stays at one
 y, the unfolded row stays open, and the query block's 78 → 45 px flicker is gone with it.
+
+---
+
+### B-215 · Shift+click on an embedded row shelves a card that says "This block is gone."
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-embeds` (reading `BlockTree.tsx#onShelfOpen`, then reproduced in Chromium) · **Test:**
+`e2e/tests/embeds.spec.ts` "Shift+click on an embedded row shelves that block, from its own page
+(B-215)"
+
+B-210's summary promises "Shift+click puts it on the shelf". `EmbedRow` calls
+`ctx.onShelfOpen({ kind: "block", id })`, and the only provider, `BlockTree.tsx#onShelfOpen`, fills
+in the page id as `props.pageId` — the page the tree is showing, which for an embedded row is the
+HOST page, not the page the block lives on. `Shelf.tsx#BlockCard` then reads the host page's tree,
+does not find the block, and the card is titled with the host page and reads "This block is gone."
+(seen in the e2e test: `" Embed Host Shelf RowThis block is gone."`). The component test only
+checked the call's `{ kind, id }` against a mock, so it passed.
+
