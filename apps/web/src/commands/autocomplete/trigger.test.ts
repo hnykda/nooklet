@@ -3,6 +3,7 @@ import {
   computeBlockRefQuery,
   computePageRefQuery,
   computeTagQuery,
+  existingRefTailLength,
   matchBlockRefTrigger,
   matchPageRefTrigger,
   matchTagTrigger,
@@ -102,5 +103,26 @@ describe("computeBlockRefQuery — dismissal (R58)", () => {
 
   it("closes when the caret moves back through either (", () => {
     expect(computeBlockRefQuery("(", 0)).toBeNull();
+  });
+});
+
+describe("existingRefTailLength — the rest of a link the caret was walked into (B-294)", () => {
+  it("runs to the closing ]] of the link the caret is inside, closer included", () => {
+    expect(existingRefTailLength("arget]] omega", "]]")).toBe("arget]]".length);
+    expect(existingRefTailLength("]] omega", "]]")).toBe(2);
+    expect(existingRefTailLength("snip)) after", "))")).toBe("snip))".length);
+  });
+
+  it("is 0 when the text after the caret closes no link", () => {
+    expect(existingRefTailLength(" plain text", "]]")).toBe(0);
+    expect(existingRefTailLength("", "]]")).toBe(0);
+    // A newline ends the line the link would have to close on.
+    expect(existingRefTailLength("arget\nmore]]", "]]")).toBe(0);
+  });
+
+  it("does not swallow another link that follows a freshly typed [[", () => {
+    expect(existingRefTailLength("[[Other]] tail", "]]")).toBe(0);
+    expect(existingRefTailLength("x [[Other]]", "]]")).toBe(0);
+    expect(existingRefTailLength("((abc))", "))")).toBe(0);
   });
 });

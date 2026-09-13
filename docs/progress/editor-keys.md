@@ -17,18 +17,21 @@ first for each. Bug notes go to `docs/bugs-inbox/editor-keys.md`, not BUGS.md.
   `external-batch.ts` refuses a batch touching a block the tree does not show. e2e
   `task-marker-keys.spec.ts` (2 tests) red before, green after (4/4 repeats); related specs
   (tasks, dates, undo-gaps, undo-redo, selection, commands, redo, template-undo, context-menu,
-  palette-text-keys) 85 passed, 1 skipped. Web unit 1,136 green.
+  palette-text-keys) 85 passed, 1 skipped. Web unit 1,136 green. Commit `6e590ca`.
+- B-294: a pick replaces through the `]]`/`))` of the link the caret is inside
+  (`trigger.ts#existingRefTailLength`, `AutocompletePopup.tsx#queryEnd`). e2e
+  `autocomplete-inside-link.spec.ts` (3; 2 red before). Tag form left open as new B-380 (owner
+  decision; probe `tools/probes/autocomplete-tag-walk.spec.ts`). Autocomplete/follow-link specs green.
 
 ## In flight
 
-- (next) B-294.
+- (next) B-295.
 
 ## Next
 
-1. B-294 (autocomplete replace range when the caret is inside a complete link)
-2. B-295 (follow link ends editing / keys typed after Alt+Enter)
-3. B-344 (mermaid starter into its own block)
-4. Full e2e run at the end.
+1. B-295 (follow link ends editing / keys typed after Alt+Enter)
+2. B-344 (mermaid starter into its own block)
+3. Full e2e run at the end.
 
 ## Decisions
 

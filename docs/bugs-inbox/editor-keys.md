@@ -40,3 +40,39 @@ Note: the coordinator's brief said "like Set scheduled date now does (B-345)", b
 other way — the date commands are not offered for several blocks — and that is unchanged here.
 
 ---
+
+### B-294 (existing)
+**Fixed 2026-09-13.** Of the two answers the entry offered, picking a row now replaces up to the
+link's `]]`; the autocomplete still opens inside a complete link. Reasons: it is what spec R56
+already described (the pick "consumes" a `]]` after the caret), it lets you retarget a link by
+typing inside its name and picking another page, and B-203's Alt+Enter-with-the-popup-open path is
+unchanged. `commands/autocomplete/trigger.ts#existingRefTailLength` finds the tail — text after the
+caret up to and including `]]` (or `))` for `((`), containing no opener, closer or newline — and
+`AutocompletePopup.tsx#queryEnd` extends the replaced span through it for page, date, create and
+`[[`→block-ref picks. A `[[` typed straight before another link (`[[|[[Other]]`) does not swallow it.
+`#tags` are not covered: B-380. **Test:** `e2e/tests/autocomplete-inside-link.spec.ts` — "Enter on
+the autocomplete a walk into a complete [[link]] opened keeps one link (B-294)" and "typing inside an
+existing link and picking another page replaces the whole link (B-294)" were red before
+(`…Target]]!rget]] omega`, `…Other]]Target]] omega`), green after; "a new [[ typed right before an
+existing link leaves that link alone (B-294)" guards the boundary (green before and after). Unit:
+`AutocompletePopup.test.tsx` "a pick with the caret inside a complete link replaces the whole link
+(B-294)" (red with the tail ignored), `trigger.test.ts` "existingRefTailLength" (3).
+
+---
+
+### B-380 · Enter on the `#` autocomplete that walking into an existing `#tag` opened duplicates the tag's tail
+**Status:** open (needs owner decision) · **Severity:** low · **Found:** 2026-09-13, fixing B-294 ·
+**Test:** none; probe `tools/probes/autocomplete-tag-walk.spec.ts`
+
+`- alpha #WalkTagTarget omega`, Home, ArrowRight ×12 (caret after `#WalkT`): the tag autocomplete
+opens; Enter picks `WalkTagTarget` and replaces only `WalkT`, giving `alpha #WalkTagTarget!agTarget
+omega` (with `!` typed after). The `[[link]]` form was B-294, fixed by replacing through the link's
+`]]`. A tag has no closer, and the probe's second case shows what that costs: `- alpha omega`, `#WalkT`
+typed straight before `omega`, Enter → `alpha #WalkTagTarget!omega` today; a "swallow the rest of the
+tag" rule (text up to a `TAG_STOP` character, `core/tokens.ts`) would delete `omega` there, and the
+two cases look identical to the popup (same text before and after the caret). Options: (a) leave it;
+(b) swallow the tail only when the popup was opened by caret movement rather than typing (needs
+`CommandLayer` to remember how each trigger opened); (c) do not open the `#` popup when the caret is
+inside a word that already follows `#`.
+
+---

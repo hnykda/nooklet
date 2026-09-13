@@ -826,6 +826,10 @@ replaces the span from just after `[[` through the caret with `<title>]]` (consu
 already-present auto-paired `]]` rather than duplicating it) and places the caret after the
 closing `]]`. Closes on: Escape (leaves `[[` and whatever was typed as plain text — no
 completion is applied); deleting back through either `[` of the trigger; or selecting an item.
+*As built (B-294):* the editor does not auto-pair `]]`; instead, when the text after the caret closes
+the link the caret is in (`[^[\]\n]*]]`), the replaced span runs through that `]]`, so a pick inside
+an existing link — the caret walked in, or the link's name being retyped — replaces the whole link.
+`((` does the same with `))`. `#` does not (no closer to find; B-380).
 
 **R57.** `#` (tag): triggers on `matchBefore(/(^|\s)#([^\s#]*)$/)` (start-of-run, same rule as the
 slash trigger, so `word#tag` does not open it). Matching and the "Create" affordance are identical

@@ -36,6 +36,27 @@ export function matchBlockRefTrigger(textBeforeCaret: string): AutocompleteMatch
   return { from: m.index, query: m[1] ?? "" };
 }
 
+/**
+ * How many characters after the caret belong to the `[[link]]` (or `((ref))`) the caret sits inside,
+ * closing delimiter included — 0 when the text after the caret does not close one.
+ *
+ * Walking the caret into an existing link re-detects the `[[` before it and opens the autocomplete
+ * (B-203). A pick replaced only the query — trigger to caret — and left the rest of the old link
+ * behind the new one: `[[Target]]arget]]` (B-294). The replaced range has to run to the link's own
+ * closer. The tail may not contain an opener, so a `[[` typed straight before another link
+ * (`[[|[[Other]]`) does not swallow that link.
+ *
+ * Not for `#tags`: a tag has no closer, so "the caret is inside an existing tag" cannot be told
+ * apart from "`#` typed straight before a word" — B-380.
+ */
+export function existingRefTailLength(textAfterCaret: string, closer: "]]" | "))"): number {
+  const m = (closer === "]]" ? PAGE_REF_TAIL_RE : BLOCK_REF_TAIL_RE).exec(textAfterCaret);
+  return m ? m[0].length : 0;
+}
+
+const PAGE_REF_TAIL_RE = /^[^[\]\n]*\]\]/;
+const BLOCK_REF_TAIL_RE = /^[^()\n]*\)\)/;
+
 /** Shared dismiss/live-query logic for all three popups: `triggerLength` is 2 for `[[`/`((`
  * (their opening delimiter is two characters) and 1 for `#`. A popup closes when its opening
  * delimiter no longer sits at `from` (deleted back through it) or when the query now contains a

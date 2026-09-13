@@ -22,7 +22,7 @@ import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import { dateShortcuts } from "./dates.js";
-import type { AutocompleteMatch } from "./trigger.js";
+import { type AutocompleteMatch, existingRefTailLength } from "./trigger.js";
 import "../styles.css";
 
 export type AutocompleteVariant = "page" | "tag" | "block";
@@ -171,7 +171,7 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       // block ref rather than a page link.
       if (props.variant === "page") {
         const from = trig.from;
-        const to = trig.from + shape.delimiterLen + trig.query.length;
+        const to = queryEnd(trig, shape);
         const text = `((${row.block.id}))`;
         props.editor.replaceRange({ from, to, text, caretOffset: text.length });
       } else {
@@ -194,9 +194,18 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     title: string,
   ): void {
     const from = trig.from + shape.delimiterLen;
-    const to = from + trig.query.length;
+    const to = queryEnd(trig, shape);
     const text = `${title}${shape.closer}`;
     props.editor.replaceRange({ from, to, text, caretOffset: text.length });
+  }
+
+  /** Where the replaced text ends: the caret, or — when the caret is inside a link that is already
+   * closed — that link's closer, so the old link's tail does not stay behind the new one (B-294). */
+  function queryEnd(trig: AutocompleteMatch, shape: { delimiterLen: number; closer: string }) {
+    const caret = trig.from + shape.delimiterLen + trig.query.length;
+    if (shape.closer !== "]]" && shape.closer !== "))") return caret;
+    const content = props.editor.getSelection()?.content ?? "";
+    return caret + existingRefTailLength(content.slice(caret), shape.closer);
   }
 
   /** The popup's keymap (R12 step 2). Reached two ways: from the editor's own key dispatch via

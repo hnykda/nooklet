@@ -86,6 +86,30 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
     expect(editor.state?.content).toBe("[[Recipes]]");
   });
 
+  it("a pick with the caret inside a complete link replaces the whole link (B-294)", async () => {
+    // `alpha [[Rec|ipes]] omega`: the caret was walked into an existing link.
+    const editor = createFakeEditorHost({ content: "alpha [[Recipes]] omega", start: 11, end: 11 });
+    const pages = createFakePageSource([{ id: "p1", title: "Recipes", aliases: [], updatedAt: 1 }]);
+    const onDismiss = vi.fn();
+    render(() => (
+      <CommandProvider commands={[]} platform="mac">
+        <AutocompletePopup
+          variant="page"
+          editor={editor}
+          trigger={{ from: 6, query: "Rec" }}
+          position={{ top: 0, left: 0 }}
+          pages={pages}
+          onDismiss={onDismiss}
+        />
+      </CommandProvider>
+    ));
+    fireEvent.click(await screen.findByText("Recipes"));
+    await waitFor(() => expect(onDismiss).toHaveBeenCalledOnce());
+    expect(editor.state?.content).toBe("alpha [[Recipes]] omega");
+    // After the link's own `]]`, not inside its old tail.
+    expect(editor.state?.start).toBe("alpha [[Recipes]]".length);
+  });
+
   it("New page links and dismisses at once, without waiting for the page to be created (B-244)", async () => {
     const editor = createFakeEditorHost({ content: "[[new/page", start: 10, end: 10 });
     const pages = createFakePageSource([]);
