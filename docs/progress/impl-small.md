@@ -53,14 +53,21 @@ based on `da85cfb` (the worktree was created at an older commit, `41666ee`; the 
   R44b. Also tightened `read-only.spec.ts`'s palette check with a positive control (a `fill` of
   ">text" does not switch the palette to commands mode; only a typed ">" does).
 
+- #18 hash `170f867`.
+- #11 search filters (B-239) + the server bug it exposed (B-238: `properties.marker` matched
+  nothing) — commit "feat(web,server): search filters for task marker, journals, pages".
+  Server: `ops/search.ts` maps marker/priority/repeat to block columns, new
+  `ops/search-filters.test.ts`; spec note in `mcp-tools.md`. Web: `views/searchFilters.ts` (+test),
+  `views/search-filters.css`, controls in `SearchView.tsx` (+ component test), `properties` in
+  `data/api-client.ts`. E2E `search-filters.spec.ts` 2/2 with `views.spec.ts` (31 passed).
+
 ## 2. In flight
 
-- #11 search filters.
+- Final verification pass (full unit suite, typecheck, `nooklet verify`, e2e of touched specs).
 
 ## 3. Next steps, in order
 
-1. #11 search filters (marker, journals only / pages only) in `views/SearchView.tsx`.
-2. Final report: full unit suite, typecheck, e2e of every spec this branch touched.
+1. Final report: full unit suite, typecheck, e2e of every spec this branch touched.
 
 ## 4. Decisions
 

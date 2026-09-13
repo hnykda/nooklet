@@ -167,3 +167,45 @@ client schema through `WorkerDb`; removing either the journal or the has-a-block
 it — checked); two-line hookups in `registrations/index.ts` and `CommandLayer.tsx`. Tests that
 would have caught it: `e2e/tests/random-page.spec.ts` (2 tests),
 `apps/web/src/commands/registrations/random-page.test.ts`, `apps/web/src/data/random-page.test.ts`.
+
+---
+
+### B-238 · `search` with `properties: {"marker": "TODO"}` never matches anything
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, impl-small (wiring the Search view's
+marker filter, audit §2 #11) · **Test:** `packages/server/src/ops/search-filters.test.ts`
+
+The `search` op's description (and so its MCP tool) offers `properties` as "exact key=value
+filters, e.g. `{"marker":"TODO"}`", but the filter only looks in `block_prop`, and a task marker is
+stored in the `block.marker` column (ADR 011's reserved keys) — never as a `block_prop` row. In a
+copy of the owner's graph `block_prop` has no `marker`, `priority`, `scheduled`, `deadline`,
+`repeat` or `done` rows at all, while 686 blocks carry a marker. So every marker or priority filter
+silently returns zero hits. Reproduced by the new test before the fix (2 of 3 failing with `[]`).
+
+**Fixed 2026-09-13.** `packages/server/src/ops/search.ts` maps `marker`, `priority` and `repeat` in
+`properties` to the `block` columns; other keys still match `block_prop`. `scheduled`, `deadline`
+and `done` (day number / time / epoch ms in their columns) are NOT mapped and still match nothing
+through `properties` — written into `docs/spec/mcp-tools.md` beside the op, not fixed. Tests that
+would have caught it: `packages/server/src/ops/search-filters.test.ts` (failed 2 of 3 before) and
+`e2e/tests/search-filters.spec.ts` (its marker test fails with "0 results" when the mapping is
+removed — checked).
+
+---
+
+### B-239 · The Search view cannot filter by task marker, journals, or pages vs blocks
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit §1.1 (`search`:
+"`scope`, `properties` (e.g. `marker`), `pages`, `journals_only` have no UI") and §2 #11 ·
+**Test:** `e2e/tests/search-filters.spec.ts`, `apps/web/src/views/searchFilters.test.ts`,
+`apps/web/src/views/SearchView.test.tsx` ("SearchView filters")
+
+"Search operators / filters for the search box" has 83 votes and "Filters for note body" 140
+(research/13 §3.1). The op had the filters; the view's Filters panel offered tag, namespace and
+dates only.
+
+**Fixed 2026-09-13.** Three controls in the Filters panel: Task (any, or one of the seven markers →
+`properties: {marker}`, and blocks only, since page hits ignore the marker filter), Show (blocks
+and pages / blocks only / pages only → `scope`; "pages only" is disabled while a marker is chosen)
+and Journals only (→ `journals_only`). Mapping in `views/searchFilters.ts`; `properties` added to
+the client's `SearchInput` (`data/api-client.ts`); styles in `views/search-filters.css`. The `pages`
+filter (restrict to named pages) is still not exposed — the audit's list for #11 did not ask for
+it. Depends on the B-238 server fix: before it, the marker filter would have shown "0 results".
+Tests named above.

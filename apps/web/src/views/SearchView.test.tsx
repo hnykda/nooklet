@@ -51,6 +51,36 @@ async function renderSearch() {
   ));
 }
 
+describe("SearchView filters (audit §2 #11)", () => {
+  it("a task marker searches blocks with that marker; journals only and pages only pass through", async () => {
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+    await screen.findByText("Projects/Aurora");
+    expect(lastInput?.scope).toBe("all");
+    expect(lastInput?.properties).toBeUndefined();
+
+    const marker = document.querySelector(".search-filter-marker") as HTMLSelectElement;
+    fireEvent.change(marker, { target: { value: "LATER" } });
+    await vi.waitFor(() => expect(lastInput?.properties).toEqual({ marker: "LATER" }));
+    expect(lastInput?.scope).toBe("blocks");
+    // A task is a block, so "Pages only" is not offered alongside a marker.
+    const pagesOnly = document.querySelector(
+      '.search-filter-kind option[value="pages"]',
+    ) as HTMLOptionElement;
+    expect(pagesOnly.disabled).toBe(true);
+
+    fireEvent.change(marker, { target: { value: "" } });
+    const kind = document.querySelector(".search-filter-kind") as HTMLSelectElement;
+    fireEvent.change(kind, { target: { value: "pages" } });
+    await vi.waitFor(() => expect(lastInput?.scope).toBe("pages"));
+    expect(lastInput?.properties).toBeUndefined();
+
+    const journals = document.querySelector(".search-filter-journals") as HTMLInputElement;
+    fireEvent.click(journals);
+    await vi.waitFor(() => expect(lastInput?.journalsOnly).toBe(true));
+  });
+});
+
 describe("SearchView", () => {
   it("shows a hint and does not search before anything is typed", async () => {
     await renderSearch();

@@ -14,6 +14,15 @@ import { defineOp, OpError } from "./registry.js";
 import { resolvePageIds } from "./resolve.js";
 import { Cursor, Limit, PageRef, PropertyKey } from "./schemas.js";
 
+/** `properties` keys whose value is stored verbatim in a `block` column rather than `block_prop`.
+ * `scheduled`/`deadline`/`done` are reserved too but stored as a day number, time and epoch ms, so
+ * an exact string compare is not meaningful for them; they are not mapped (B-238 says so). */
+const TEXT_COLUMN_PROPS: Readonly<Record<string, string>> = {
+  marker: "marker",
+  priority: "priority",
+  repeat: "repeat",
+};
+
 /** `updated_after`/`updated_before` as epoch ms, or `invalid` — a silently-NaN bound would compare
  * every row as false and return nothing, which reads as "no results" rather than "bad input". */
 function parseWhen(field: string, value: string): number {
@@ -203,6 +212,14 @@ export const search = defineOp({
         params.push(normalizePageName(tag));
       }
       for (const [k, v] of Object.entries(input.properties ?? {})) {
+        // Reserved task keys live in `block` columns (ADR 011), never in `block_prop` — looking
+        // there made the description's own example, {"marker":"TODO"}, match nothing (B-238).
+        const column = TEXT_COLUMN_PROPS[k];
+        if (column) {
+          conditions.push(`b.${column} = ?`);
+          params.push(v);
+          continue;
+        }
         conditions.push(
           "EXISTS (SELECT 1 FROM block_prop bp WHERE bp.block_id = b.id AND bp.key = ? AND bp.value = ?)",
         );
