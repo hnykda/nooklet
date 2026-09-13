@@ -155,3 +155,28 @@ test("Collapse all while editing a block it hides ends editing, and the page sta
   await page.keyboard.type("!");
   await expect(editor(page)).toHaveText("b!");
 });
+
+// ── B-98: Open plugin manager ───────────────────────────────────────────────────────────────────
+
+test("Open plugin manager opens Settings at the list of running plugins, not a blank page (B-98)", async ({
+  page,
+}) => {
+  await openPage(page, "Commands Plugin Manager", "- here");
+  const url = page.url();
+  await runFromPalette(page, "Open plugin manager");
+
+  // It used to navigate to /settings/plugins, which is not a route, and blank the main area.
+  expect(page.url()).toBe(url);
+  const section = page.locator(".set-panel #set-plugins");
+  await expect(section).toBeInViewport();
+
+  // Whatever the server says is running, the section lists — the e2e server loads the repo's own
+  // `plugins/` directory (`packages/server/src/cli.ts#pluginDirsFor`).
+  const running = await page.evaluate(async () => {
+    const token = (window as unknown as { __NOOKLET__?: { token?: string } }).__NOOKLET__?.token;
+    const res = await fetch("/api/v1/plugins", { headers: { authorization: `Bearer ${token}` } });
+    return ((await res.json()) as { plugins: Array<{ name: string }> }).plugins.map((p) => p.name);
+  });
+  expect(running.length).toBeGreaterThan(0);
+  await expect(section.locator(".set-plugin .set-label")).toHaveText(running);
+});

@@ -605,7 +605,9 @@ blocks, or a subtree delete, and restore the caret/selection recorded with that 
 
 **R52.** `app.toggleSidebar` shows/hides the navigation sidebar (page tree, journals, tags).
 `app.openSettings` opens the settings view (which includes the keybindings editor, § G).
-`app.openPluginManager` opens the installed-plugins view. `sync.now` requests an immediate
+`app.openPluginManager` opens settings scrolled to its Plugins section, a read-only list of the
+plugins the server is running (`GET /api/v1/plugins`); enabling and disabling stay on the server's
+`nooklet plugin` CLI. `sync.now` requests an immediate
 push/pull cycle against the server outside the normal background schedule (no default key: sync
 is automatic; this is a rare manual escape hatch, reachable from the palette and a status-bar
 icon click). `app.toggleTheme` cycles light → dark → system. `app.hideKeyboard` calls

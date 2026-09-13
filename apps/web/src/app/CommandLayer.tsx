@@ -63,6 +63,7 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
+import { requestPluginsSection } from "../views/PluginsSection.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
 import { activeContextSnapshot, buildContextBase, liveEditorHost } from "./editor-host.js";
@@ -221,6 +222,10 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     // `app.openSettings` (Cmd/Ctrl+,) raises the shell-level panel `AppShell` renders. It used to
     // navigate to `/settings`, a route that does not exist, so the keybinding opened nothing.
     openSettings: openSettingsPanel,
+    openPluginManager: () => {
+      requestPluginsSection();
+      openSettingsPanel();
+    },
   });
 
   const getContext = (): ContextBase => buildContextBase(store, platform, mobile);

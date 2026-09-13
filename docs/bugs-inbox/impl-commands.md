@@ -33,7 +33,19 @@ days in a shared-server spec disturbs `journals.spec.ts`; the fan-out is unit-te
 ---
 
 ### B-98 (existing) · "Open plugin manager" leads to a blank page
-**Status:** in progress · **Severity:** low · **Found:** 2026-09-12, exposure audit
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit · **Test:**
+`e2e/tests/commands.spec.ts` "Open plugin manager opens Settings at the list of running plugins,
+not a blank page (B-98)"
+
+**Fixed 2026-09-13.** Not a manager — there is nothing to manage from the client: the server
+exposes `GET /api/v1/plugins` (active plugins only) and no op to enable, disable or reload one
+(`nooklet plugin …` is the only switch). So Settings gained a read-only Plugins section
+(`views/PluginsSection.tsx`, data in `data/plugins.ts`) listing name, id, version and which halves
+each plugin has, with a note naming the CLI commands and saying disabled plugins are not shown.
+`app.openPluginManager` now opens Settings scrolled to that section (`AppDeps.openPluginManager`,
+wired in `CommandLayer.tsx`) and no longer navigates anywhere. The test compares the section's rows
+with what the server's endpoint returns (the e2e server loads the repo's `plugins/`); against the
+old code it fails on the URL changing to `/settings/plugins`. Spec R52 updated.
 
 ---
 
