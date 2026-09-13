@@ -23,6 +23,7 @@ type ContextBase = Omit<CommandContext, "exec" | "args">;
 /** `null` is a separator. */
 const ENTRIES: ReadonlyArray<{ id: string; label: string } | null> = [
   { id: "block.zoomIn", label: "Zoom in" },
+  { id: "block.openOnShelf", label: "Open on shelf" },
   { id: "block.copyRef", label: "Copy block reference" },
   null,
   { id: "task.cycle", label: "Cycle task state" },

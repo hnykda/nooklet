@@ -125,6 +125,73 @@ describe("<CommandPalette>", () => {
     expect(screen.queryByText("Recipes")).toBeNull();
   });
 
+  // B-105: `nav.openPage`/`nav.revealBlock` need a page/block argument only an agent or a
+  // keybinding row supplies; listed, they were rows that did nothing when chosen.
+  it("never lists a command that requires arguments, even when the query matches it", async () => {
+    const run = vi.fn();
+    function HarnessWithArgsOnly() {
+      const cmds: Command[] = [
+        ...commands(),
+        {
+          id: "nav.openPage",
+          title: "Open page",
+          category: "Navigation",
+          defaultKeys: {},
+          requiresArgs: true,
+          run,
+        },
+      ];
+      return (
+        <CommandProvider commands={cmds} platform="mac">
+          <Opener />
+          <CommandPalette pages={createFakePageSource([])} getContext={baseContext} />
+        </CommandProvider>
+      );
+    }
+    render(() => <HarnessWithArgsOnly />);
+    fireEvent.click(screen.getByTestId("opener"));
+    const input = await screen.findByRole("combobox");
+    expect(screen.getByText("Toggle sidebar")).toBeTruthy();
+    expect(screen.queryByText("Open page")).toBeNull();
+    fireEvent.input(input, { target: { value: ">" } });
+    fireEvent.input(input, { target: { value: "open page" } });
+    expect(screen.queryByText("Open page")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  // B-160: the shelf's keyboard way in from the page switcher, same modifier as Shift+click.
+  it("Shift+Enter on a page row shelves it instead of opening it, and says so", async () => {
+    const onSelectPage = vi.fn();
+    const onShelfPage = vi.fn();
+    function HarnessWithShelf() {
+      const pages = createFakePageSource([
+        { id: "p1", title: "Recipes", aliases: [], updatedAt: 1 },
+      ]);
+      return (
+        <CommandProvider commands={[]} platform="mac">
+          <Opener />
+          <CommandPalette
+            pages={pages}
+            getContext={baseContext}
+            onSelectPage={(p) => onSelectPage(p.id)}
+            onShelfPage={(p) => onShelfPage(p.id)}
+          />
+        </CommandProvider>
+      );
+    }
+    render(() => <HarnessWithShelf />);
+    fireEvent.click(screen.getByTestId("opener"));
+    const input = await screen.findByRole("combobox");
+    fireEvent.input(input, { target: { value: "Recipes" } });
+    await screen.findByText("Recipes");
+    expect(screen.getByText(/Shift\+Enter to open on the shelf/)).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    await waitFor(() => expect(onShelfPage).toHaveBeenCalledWith("p1"));
+    expect(onSelectPage).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  });
+
   it("selecting a page calls onSelectPage and closes", async () => {
     const onSelectPage = vi.fn();
     render(() => <Harness onSelectPage={onSelectPage} />);

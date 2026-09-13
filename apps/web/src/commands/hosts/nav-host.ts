@@ -38,6 +38,7 @@ export interface NavigationHost {
 export interface AppHost {
   toggleSidebar(): void;
   openSettings(): void;
+  /** Settings, at its read-only list of running plugins — there is no manager UI (B-98). */
   openPluginManager(): void;
   /** Cycles light -> dark -> system (R52). */
   toggleTheme(): void;

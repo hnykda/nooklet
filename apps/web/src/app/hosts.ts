@@ -294,6 +294,8 @@ export interface AppDeps {
   /** Raises the settings panel. A dependency rather than a direct import because the panel is
    * shell-level UI and this module is the data/router seam — `CommandLayer` owns that wiring. */
   openSettings: () => void;
+  /** Raises the settings panel at its Plugins section (B-98) — same reason as `openSettings`. */
+  openPluginManager: () => void;
 }
 
 const THEME_CYCLE = { light: "dark", dark: "system", system: "light" } as const;
@@ -306,9 +308,9 @@ export function createAppHost(deps: AppDeps): AppHost {
     // modal over whatever you were reading — the same shape as Diagnostics — so it keeps the
     // current route instead of replacing it.
     openSettings: deps.openSettings,
-    openPluginManager() {
-      deps.navigate("/settings/plugins");
-    },
+    // Not `navigate("/settings/plugins")`, which is what this used to do — no such route, so the
+    // main area went blank (B-98). There is no manager; Settings lists the running plugins.
+    openPluginManager: deps.openPluginManager,
     toggleTheme() {
       deps.setTheme(THEME_CYCLE[deps.getTheme()]);
     },

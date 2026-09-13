@@ -55,6 +55,12 @@ never has to guess.
 meaning the command has no default keyboard shortcut on that platform (it remains reachable via
 the palette, slash menu, a menu item, or the mobile toolbar).
 
+**R1a.** A command whose `run` does nothing without `ctx.args` (an agent primitive such as
+`nav.openPage`, which needs a page) MUST set `requiresArgs: true`. A surface that invokes commands
+with no payload — the palette, the block context menu, the mobile toolbar — MUST NOT list such a
+command; `ctx.exec(id, args)`, the live-UI channel (ADR 015 §2.4) and a `keybindings.json` row
+carrying `args` (§ I) still run it. (Listed, it is a row that does nothing when chosen — B-105.)
+
 **R2.** `id` MUST match `^[a-z][a-zA-Z0-9]*\.[a-zA-Z][a-zA-Z0-9]*$` — one `area` segment, a dot,
 one `verb` segment (`camelCase`), per the conventions doc (`block.indent`, `task.cycle`,
 `nav.journals`, `search.open`). Core uses the areas `block`, `task`, `nav`, `palette`, `search`,
@@ -229,6 +235,9 @@ only, which is itself a deliberate, unambiguous choice, not an omission).
 | `block.copySelection` | Copy selected blocks as markdown | Cmd+C | Ctrl+C | `blockSelected` |
 | `block.duplicate` | Duplicate block | Cmd+Shift+D | Ctrl+Shift+D | `editorFocused \|\| blockSelected` |
 | `block.copyRef` | Copy block reference | Cmd+Shift+C | Ctrl+Shift+C | `editorFocused \|\| blockSelected` |
+| `block.openOnShelf` | Open on shelf | — | — | `editorFocused \|\| blockSelected` |
+| `block.turnIntoPage` | Turn into page | — | — | `editorFocused \|\| blockSelected` |
+| `block.moveToPage` | Move to page… | — | — | `editorFocused \|\| blockSelected` |
 | `edit.paste` | Paste | Cmd+V | Ctrl+V | `editorFocused` |
 
 **R16.** `block.split` MUST split the block's `content` at the caret offset into `before`/`after`
@@ -314,10 +323,17 @@ requires `hasChildren` (collapsing a leaf is meaningless) and the opposite of th
 never flags this pair because their `when` clauses are already mutually exclusive by state, not
 just by variable name).
 
-**R26.** `block.collapseAll` / `block.expandAll` set `collapsed` on every block of the current
-page (or, if `zoomed`, every block under the zoom root) to `true` / `false` in one batched
-transaction. No default keybinding (§ Open issues); reachable from the palette and the page's
-overflow menu.
+**R26.** `block.collapseAll` / `block.expandAll` set `collapsed` to `true` / `false` on every block
+**with children** on the current page (or, if `zoomed`, in the zoom root's subtree), writing an op
+only where the flag actually changes, in one batched, undoable transaction. A leaf gets no op: its
+flag has no visible effect and would put a `collapsed:: true` line into the markdown mirror. Zoomed,
+`block.collapseAll` leaves the zoom root itself open (collapsing it would fold the whole view into
+one line) and `block.expandAll` opens it. The target is the outline being edited or holding a
+selection; with nothing focused it is every editable outline on screen — on the journal stream,
+every loaded day. If the block being edited folds out of view, editing ends; a selection that loses
+a row is cleared. No default keybinding (§ Open issues); reachable from the palette. `when` is
+`true`, so off a page route (search, all pages) both are listed and do nothing — `WhenContext`
+cannot see the route (B-97).
 
 **R27.** `block.zoomIn` sets the view's zoom root to the target block (focused, or the anchor of
 the selection) and pushes a navigation entry (interacts with `nav.back`/`nav.forward`, § R44).
@@ -366,6 +382,18 @@ properties are copied verbatim, but `scheduled`/`deadline`/`done` timestamps are
 copy's top block at its original caret offset. `block.copyRef` copies the string `((<id>))` of
 the focused/anchor block to the system clipboard (no popup, no autocomplete — this is the
 "canonical block reference" text a user pastes elsewhere).
+
+**R32a.** `block.openOnShelf` puts the focused block (or the first selected block) on the
+right-hand shelf, exactly as a Shift+click on its bullet does: newest card first, a block already
+on the shelf moves back to the top. It is also a bullet context-menu entry. No focus or selection
+change.
+
+**R32b.** `block.turnIntoPage` and `block.moveToPage` are the M7 block refactors (ADR 020), each a
+server op (`block.to_page`, `block.move_to_page`) on the focused block or the first selected one,
+bracketed by a sync push and pull. "Turn into page" makes the block's first line a page, its
+children that page's blocks, and leaves a link in its place; "Move to page…" asks for a page with a
+fuzzy picker (creating one is allowed) and moves the block with its subtree to that page's end.
+Both leave editing first. Both are bullet context-menu entries.
 
 **R33.** `edit.paste`'s keybinding row is informational: `Cmd+V`/`Ctrl+V` is the OS/browser paste
 gesture and is never matched by the keydown dispatcher (R12); the actual trigger is the editor's
@@ -467,6 +495,10 @@ the palette, the block's context menu, and (for Todo only) the slash menu's "TOD
 | `nav.forward` | Go forward | Cmd+] | Alt+Right | `true` |
 | `nav.followLink` | Follow link under cursor | Alt+Enter | Alt+Enter | `editorFocused && caretInLink` |
 | `search.open` | Open search | Cmd+Shift+F | Ctrl+Shift+F | `true` |
+| `nav.openPageOnShelf` | Open this page on shelf | — | — | `true` |
+| `nav.openPage` | Open page | — | — | `true` |
+| `nav.revealBlock` | Reveal block | — | — | `true` |
+| `search.findReplace` | Find and replace… | — | — | `true` |
 
 **R40.** `palette.open` opens one shared palette component (§ Interfaces, `PaletteState`) in
 **mixed mode**: as the user types, results interleave fuzzy-matched pages/journals and fuzzy-
@@ -497,6 +529,19 @@ URL opens in a new tab/window. The pointer equivalent while editing is Cmd/Ctrl+
 click only moves the caret, since the block is in raw-markdown edit mode); while **not** editing
 (rendered view), a plain click on any of these already navigates, so `nav.followLink`'s keyboard
 form exists specifically for the editing case.
+
+**R43a.** `nav.openPageOnShelf` puts the page the current route shows on the shelf (a no-op off a
+page route — `when` cannot see the route). In the palette, Shift+Enter or Shift+click on a page row
+puts that page on the shelf instead of opening it, and the palette shows a one-line hint saying so
+while a page row is highlighted.
+
+**R43b.** `nav.openPage` (`args: { page, blockId? }`) and `nav.revealBlock` (`args: { blockId }`)
+are the live-UI channel's primitives (ADR 015 §2.4): open a page by name, id, ISO date or
+`today`/`yesterday`/`tomorrow` with no picker (zooming to `blockId` if given), and scroll a block
+into view and flash it without changing zoom or focus. Without their arguments they do nothing, so
+both are `requiresArgs` (R1a) and never listed in the palette — "Switch page" is the human form.
+`search.findReplace` opens the Find and replace view (ADR 020): a text or pattern search across
+every block with an undoable replace-all.
 
 **R44.** `search.open` opens the full-text/semantic/hybrid search view (PLAN §9) — filterable by
 tag/page/namespace/date/marker, with snippets. This is **not** the excluded graph-view feature
@@ -550,6 +595,8 @@ exist for the palette, the slash menu ("page ref" / "tag" items), and the mobile
 | `block.embedBlock` | Embed block | — | — | `editorFocused` |
 | `block.insertToday` | Today's date | — | — | `editorFocused` |
 | `block.insertProperty` | Property | — | — | `editorFocused` |
+| `block.insertTemplate` | Insert template… | — | — | `editorFocused` |
+| `block.insertQueryFence` | Query | — | — | `editorFocused` |
 | `block.openSlashMenu` | Open slash menu | — | — | `editorFocused && atLineStart` |
 
 **R48.** `block.setHeading1/2/3` prefix the block's content with `# `/`## `/`### ` (replacing any
@@ -572,6 +619,13 @@ property-key picker (fuzzy list of existing property-definition pages, plus "Cre
 inserts a `key:: ` line at the correct position (a contiguous property-line run at the very start
 or very end of the block's content — the parser's rule, research 04 §4.2 — never in the middle).
 
+**R49a.** `block.insertTemplate` (ADR 019) opens a picker over the graph's templates (any block with
+`template:: <name>`) and copies the chosen template's blocks at the caret, filling `<% today %>`,
+`<% yesterday %>`, `<% tomorrow %>` and `<% time %>`; `args: { name }` (or the name as a string)
+skips the picker. `block.insertQueryFence` (ADR 011) wraps the block's current text in a
+```` ```query ```` fence — the text becomes the query — with the caret at the end of the query
+line.
+
 **R50.** `block.openSlashMenu` inserts the literal character `/` at the caret and lets the normal
 slash-trigger matcher (§ F) pick it up — it exists solely so the mobile toolbar can offer a `/`
 button without the user first tapping to position the caret at a valid trigger spot; its `when`
@@ -590,6 +644,7 @@ behavior exactly rather than special-casing mobile.
 | `sync.now` | Sync now | — | — | `true` |
 | `app.toggleTheme` | Toggle theme | — | — | `true` |
 | `app.hideKeyboard` | Hide keyboard | — | — | `mobile && editorFocused` |
+| `edit.mergePage` | Merge this page into… | — | — | `true` |
 
 **R51.** `edit.undo` / `edit.redo` operate the document-level history manager of ADR 006 / research
 04 §7 (a document-level history of inverse ops with 500 ms text coalescing — CM6's own
@@ -599,13 +654,18 @@ blocks, or a subtree delete, and restore the caret/selection recorded with that 
 
 **R52.** `app.toggleSidebar` shows/hides the navigation sidebar (page tree, journals, tags).
 `app.openSettings` opens the settings view (which includes the keybindings editor, § G).
-`app.openPluginManager` opens the installed-plugins view. `sync.now` requests an immediate
+`app.openPluginManager` opens settings scrolled to its Plugins section, a read-only list of the
+plugins the server is running (`GET /api/v1/plugins`); enabling and disabling stay on the server's
+`nooklet plugin` CLI. `sync.now` requests an immediate
 push/pull cycle against the server outside the normal background schedule (no default key: sync
 is automatic; this is a rare manual escape hatch, reachable from the palette and a status-bar
 icon click). `app.toggleTheme` cycles light → dark → system. `app.hideKeyboard` calls
 `platform.keyboard.hide()` (research 08 §3.2's `KeyboardAdapter`) and commits/unmounts the
 surface without navigating away from the block; it only appears (as the toolbar's rightmost
-button, § Mobile) when `mobile`.
+button, § Mobile) when `mobile`. `edit.mergePage` (ADR 020; `edit.`, because R2's areas are closed
+and an unknown one blanks the app — B-87) asks for a target page and merges the current page into
+it (`page.merge`: blocks moved, links rewritten, the old name kept as an alias). Off a page route it
+does nothing; `when` cannot see the route.
 
 ### F. Slash menu
 
@@ -640,10 +700,12 @@ the block first.
 | Tag | `format.insertTag` | `#` |
 | Today's date | `block.insertToday` | journal, now |
 | Property | `block.insertProperty` | metadata, `::` |
+| Template | `block.insertTemplate` | snippet, insert, tpl |
+| Query | `block.insertQueryFence` | query, filter, tasks, search, ```` ```query ```` |
 
-Templates are **not** a core slash item (PLAN §2 cuts templates from core entirely — "later as a
-plugin or slash command"); a plugin that adds one contributes it declaratively the same way any
-plugin command joins the slash menu (PLAN §12/§13), appearing under its own category once loaded.
+Templates **are** a core slash item: ADR 019 reversed PLAN §2's "later as a plugin or slash
+command". A plugin that adds an item contributes it declaratively the same way any plugin command
+joins the slash menu (PLAN §12/§13), appearing under its own category once loaded.
 
 **R55.** Items are filtered by the typed query (the text after `/`) against `Label` **and**
 `Keywords` using the same fuzzy scorer as the palette (§ H); with an empty query, items show in
@@ -854,6 +916,8 @@ interface Command {
   when?: string;                                 // grammar in § B; absent = always enabled
   defaultKeys: { mac?: string; other?: string }; // resolved-form tokens, see R15
   icon?: string;                                 // icon-set key, palette/menu/toolbar glyph
+  remoteInvocable?: boolean;                     // ADR 015 §2.4; absent = true
+  requiresArgs?: boolean;                        // R1a; never listed by the palette/menus
   run: (ctx: CommandContext) => void | Promise<void>;
 }
 

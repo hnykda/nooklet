@@ -63,6 +63,7 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
+import { requestPluginsSection } from "../views/PluginsSection.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
 import { activeContextSnapshot, buildContextBase, liveEditorHost } from "./editor-host.js";
@@ -75,6 +76,8 @@ import {
   pagePath,
 } from "./hosts.js";
 import { createRefactorHost } from "./refactor-host.js";
+import { openOnShelf } from "./shelf.js";
+import { createShelfHost } from "./shelf-host.js";
 import { useTheme } from "./theme.js";
 
 type ContextBase = Omit<CommandContext, "exec" | "args">;
@@ -221,6 +224,10 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     // `app.openSettings` (Cmd/Ctrl+,) raises the shell-level panel `AppShell` renders. It used to
     // navigate to `/settings`, a route that does not exist, so the keybinding opened nothing.
     openSettings: openSettingsPanel,
+    openPluginManager: () => {
+      requestPluginsSection();
+      openSettingsPanel();
+    },
   });
 
   const getContext = (): ContextBase => buildContextBase(store, platform, mobile);
@@ -306,6 +313,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       navigate: (path) => navigate(path),
       closePalette: () => palette.close(),
     }),
+    shelf: createShelfHost(),
   });
 
   const anyAutocomplete = createMemo(() => {
@@ -326,6 +334,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
         pages={pages}
         getContext={getContext}
         onSelectPage={(p) => navigation.openPage(p.id)}
+        onShelfPage={(p) => openOnShelf({ kind: "page", name: p.title })}
         onCreatePage={(name) => {
           // Create it and go there in one step. `page.create` is the same op the API uses, so a
           // page made this way is indistinguishable from one an agent or an import produced.

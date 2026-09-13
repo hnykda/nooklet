@@ -49,6 +49,7 @@ import {
 } from "../data/page-title.js";
 import { listTemplates, setJournalTemplate, type TemplateSummary } from "../data/templates.js";
 import { openDiagnostics } from "./DiagnosticsPanel.js";
+import { PluginsSection } from "./PluginsSection.js";
 import "./settings.css";
 
 /** Injected at build time (`vite.config.ts`), same as `shell/HelpMenu.tsx`. */
@@ -630,6 +631,7 @@ export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
         <AppearanceSection />
         <TemplatesSection />
         <EmbeddingsSection />
+        <PluginsSection />
         <AboutSection onClose={props.onClose} />
       </div>
     </div>

@@ -223,6 +223,8 @@ test("every entry shown while editing has a working command behind it", async ({
   // The full set for an editing, non-task block with a previous sibling and a child.
   expect(labels).toEqual([
     "Zoom in",
+    // B-160, `commands.spec.ts` exercises it.
+    "Open on shelf",
     "Copy block reference",
     "Cycle task state",
     "Indent",

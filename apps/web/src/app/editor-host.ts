@@ -21,6 +21,7 @@ import type {
   ReplaceRangeSpec,
 } from "../commands/hosts/editor-host.js";
 import type { CommandContext, WhenContext } from "../commands/types.js";
+import { runOnOutlines } from "../editor/outline-registry.js";
 
 let active: EditorHost | null = null;
 /** The host that was active last, kept after its session ends, for undo/redo only. */
@@ -68,7 +69,11 @@ export function historyEditorHost(): EditorHost {
 const NOOP_HOST: EditorHost = {
   getSelection: () => null,
   replaceRange: () => {},
-  runStructuralCommand: () => {},
+  // Nothing is focused, but "Collapse all"/"Expand all" still have a target — the outline(s) on
+  // screen. Every other structural command stays a no-op here (B-97, `../editor/outline-registry.ts`).
+  runStructuralCommand: (id) => {
+    runOnOutlines(id);
+  },
   getLinkAtCaret: () => null,
 };
 

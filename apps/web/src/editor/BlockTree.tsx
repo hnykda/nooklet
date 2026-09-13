@@ -55,6 +55,7 @@ import { applyOps, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
 import { BlockRowView } from "./BlockRowView.js";
 import { getClock } from "./clock.js";
+import { rowSurvivesCollapseAll, setAllCollapsedOps } from "./collapse-all.js";
 import {
   blockRefText,
   deleteForwardMerge,
@@ -75,6 +76,7 @@ import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.
 import { linkAtCaret } from "./linkAtCaret.js";
 import { deriveNumbering } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
+import { registerOutline } from "./outline-registry.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
 import type { NavigateTarget } from "./render/tokens.js";
 import { createSurface, type Surface } from "./surface.js";
@@ -463,6 +465,37 @@ export function BlockTree(props: {
     commit([op], editorTree(), "structure", null, null);
   }
 
+  /** `block.collapseAll`/`block.expandAll` (R26, B-97) over this page, or the zoomed subtree. */
+  function setAllCollapsed(collapsed: boolean): void {
+    const clock = clockSig();
+    if (props.readOnly || !clock) return;
+    flushPendingEdit();
+    history.stopCapturing();
+    const tree = editorTree();
+    const root = effectiveRoot();
+    commit(setAllCollapsedOps(tree, root, collapsed, clock), tree, "structure", null, null);
+    if (!collapsed) return;
+    // The row being edited may just have folded away. An editor left attached to an unmounted row
+    // swallows every keystroke after it, so end editing; a selection that lost a row goes too.
+    const cur = editingId();
+    if (cur !== null && !rowSurvivesCollapseAll(tree, root, cur)) {
+      surface.detach();
+      setEditingId(null);
+    }
+    if (selection()?.ids.some((id) => !rowSurvivesCollapseAll(tree, root, id))) setSelection(null);
+  }
+  // Reachable with nothing focused too: `../app/editor-host.ts`'s no-op host hands page-scoped
+  // commands to every registered tree (`./outline-registry.ts`).
+  if (!props.readOnly) {
+    onCleanup(
+      registerOutline((commandId) => {
+        if (commandId === "block.collapseAll" || commandId === "block.expandAll") {
+          setAllCollapsed(commandId === "block.collapseAll");
+        }
+      }),
+    );
+  }
+
   function doUndo(): void {
     const clock = clockSig();
     if (!clock) return;
@@ -602,6 +635,10 @@ export function BlockTree(props: {
         return true;
       case "block.expand":
         commitOne(setCollapsed(id, false, clock));
+        return true;
+      case "block.collapseAll":
+      case "block.expandAll":
+        setAllCollapsed(cmd === "block.collapseAll");
         return true;
       case "block.zoomIn":
         setLocalZoomRoot(id);
@@ -903,6 +940,10 @@ export function BlockTree(props: {
         return;
       case "block.expand":
         commit([setCollapsed(sel.focusId, false, clock)], tree, "structure", null, null);
+        return;
+      case "block.collapseAll":
+      case "block.expandAll":
+        setAllCollapsed(cmd === "block.collapseAll");
         return;
       case "block.extendSelectionUp":
       case "block.extendSelectionDown": {

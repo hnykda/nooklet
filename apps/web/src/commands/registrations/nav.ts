@@ -93,14 +93,16 @@ export function createNavCommands(deps: {
       },
     },
     // ADR 015 §2.4: no default keybinding, no picker — "jump straight to a known page/block."
-    // Reachable from the palette/a future plugin like any other command, but exists primarily as
-    // the primitive `ui_navigate`/`ui_highlight` (the live-UI-control MCP tools) wrap.
+    // The primitives `ui_navigate`/`ui_highlight` (the live-UI-control MCP tools) wrap, also open
+    // to a plugin through `ctx.exec`. Without a page or block id they do nothing, so they are
+    // `requiresArgs` and the palette does not list them (B-105) — "Switch page" is the human form.
     {
       id: "nav.openPage",
       title: "Open page",
       category: "Navigation",
       defaultKeys: {},
       when: "true",
+      requiresArgs: true,
       run(ctx) {
         const args = ctx.args as { page?: string; blockId?: string } | undefined;
         if (args?.page) navigation.openPageByRef(args.page, args.blockId);
@@ -112,6 +114,7 @@ export function createNavCommands(deps: {
       category: "Navigation",
       defaultKeys: {},
       when: "true",
+      requiresArgs: true,
       run(ctx) {
         const args = ctx.args as { blockId?: string } | undefined;
         if (args?.blockId) navigation.revealBlock(args.blockId);

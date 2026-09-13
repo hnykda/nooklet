@@ -53,12 +53,16 @@ try {
   const datePicker = await server.ssrLoadModule("/src/commands/registrations/date-picker-host.ts");
   const keymap = await server.ssrLoadModule("/src/commands/keymap/secondary-defaults.ts");
   SECONDARY_DEFAULTS = keymap.SECONDARY_DEFAULTS;
+  // Every optional host too: without `refactor` and `shelf` the commands behind them are simply not
+  // registered, and the page silently omitted "Turn into page", "Open on shelf" and the rest.
   commands = registrations.createCoreCommands({
     editor: hosts.createFakeEditorHost(),
     navigation: hosts.createFakeNavigationHost(),
     app: hosts.createFakeAppHost(),
     palette: palette.createPaletteController(),
     datePicker: datePicker.createFakeDatePickerHost(),
+    refactor: registrations.createFakeRefactorHost().host,
+    shelf: registrations.createFakeShelfHost(),
   });
 } finally {
   await server.close();
@@ -147,9 +151,20 @@ lines.push(
   "- Reachable from the command palette (Cmd/Ctrl+K), the slash menu (`/` at the start of a line), the block context menu, or the phone toolbar. Listed so the palette holds no surprises.",
 );
 for (const category of categories) {
-  const list = (byCategory.get(category) ?? []).filter((c) => !hasKey(c));
+  const list = (byCategory.get(category) ?? []).filter((c) => !hasKey(c) && !c.requiresArgs);
   if (list.length === 0) continue;
   lines.push(`  - **${category}**: ${list.map((c) => `${c.title} (\`${c.id}\`)`).join(" · ")}`);
+}
+
+// Not in the palette (spec R1a): they do nothing without a payload, so only an agent, a plugin or a
+// `keybindings.json` row with `args` can run them. Listed apart so the list above stays true.
+const argsOnly = commands.filter((c) => c.requiresArgs);
+if (argsOnly.length > 0) {
+  lines.push("- ## Commands that need arguments");
+  lines.push(
+    "- Not in the palette: each does nothing without its payload. Agents run them through the live UI channel; a `keybindings.json` row can bind one with `args`.",
+  );
+  for (const c of argsOnly) lines.push(`  - ${c.title} (\`${c.id}\`)`);
 }
 
 writeFileSync(OUT, `${lines.join("\n")}\n`, "utf8");

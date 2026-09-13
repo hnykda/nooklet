@@ -137,6 +137,11 @@ export interface Command {
    * that act outside the document model entirely (a hypothetical future `app.quit`, a
    * factory-reset), of which there are none in the v1 registry today. */
   remoteInvocable?: boolean;
+  /** R1a: `run()` needs `ctx.args` to do anything (an agent primitive such as `nav.openPage`,
+   * which takes a page). Surfaces that invoke a command with no payload — the palette, menus —
+   * MUST NOT list it; `ctx.exec(id, args)`, the live-UI channel and a `keybindings.json` row with
+   * `args` still reach it. Listed, such a command was a row that did nothing when chosen (B-105). */
+  requiresArgs?: boolean;
   run: (ctx: CommandContext) => void | Promise<void>;
 }
 
