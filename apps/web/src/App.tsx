@@ -1,6 +1,6 @@
 /**
  * Route table. `/journals` is the default route (PLAN.md §8). `/page/*name` takes a page name, not
- * an id (a splat so a namespace's "/" survives as real path segments — `../views/navigateTarget.ts`),
+ * an id (a splat so a namespace's "/" survives as real path segments — `./routes/page-path.ts`),
  * optionally scoped to one block via `?block=<id>` (zoom, BUILD item 3). `/search`, `/tasks` and
  * `/graph` round out the views. The command palette (Cmd/Ctrl+K), slash menu, autocomplete popups and
  * mobile toolbar are overlays mounted once by `app/CommandLayer.tsx`, not routes of their own.
