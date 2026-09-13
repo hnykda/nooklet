@@ -34,10 +34,21 @@ branch and worktree. Scratch: `scratchpad/m10/editor-keys-verify/`. e2e port 640
   itself. The row that keeps the link is now first; block variant lists nothing inside a closed ref.
   3 e2e + 4 unit red before, green after. Web unit 1,159 passed; web typecheck clean.
 
+- B-384 committed `3d191d7`.
+- Full chromium e2e on `3d191d7`, in halves: `tests/[a-l]` 184 passed, 1 failed, 1 skipped (2.9 min);
+  `tests/[m-z]` 352 passed, 1 failed, 1 skipped (6.7 min). The two failures — `focus.spec.ts:282`
+  (Alt+Up/Down, `editingRowIndex` read once; seen as load before in `impl-commands.md`) and
+  `views.spec.ts:436` (Cmd+K pressed straight after `goto`, palette never opened, 30 s timeout) —
+  each passed 3/3 alone straight after. Neither touches this branch's code. `pnpm -r typecheck`
+  clean; biome clean on every .ts/.tsx the branch changed.
+
 ## In flight
 
-- Commit B-384, then the full e2e run in halves on the head.
+- Nothing. Verification done.
 
-## Next
+## Left open
 
-1. Full e2e `tests/[a-l]` and `tests/[m-z]`; rerun any failure alone once.
+- B-380 (`#tag` walk-in; owner decision), B-381 (page-icons flake), B-383 (zoom-root inserts).
+- B-384's uncovered case: text before the caret, link to a page that does not exist, another page
+  fuzzy-matching that text — ranking still decides.
+- B-295's back/forward/openJournals/openSearch still unmeasured (as the branch said).
