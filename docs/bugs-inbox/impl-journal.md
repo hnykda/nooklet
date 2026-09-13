@@ -93,3 +93,22 @@ Fails 2 of 2 on this branch and 1 of 1 on a clean `git archive da85cfb` checkout
 load average ~17): after Escape closes the palette, `.cm-content` is "inactive" rather than
 focused for the whole 10 s. So it predates this branch. Not investigated: whether it is a
 regression of B-72 since 2026-09-12 or something about headless focus on a loaded machine.
+
+---
+
+### B-174 · Typing in an earlier day of the journal stream drops out of editing after the first write
+**Status:** open · **Severity:** high · **Found:** 2026-09-13, impl-journal (the real-graph
+performance probe's typing step kept "losing" its editor) · **Test:** —
+
+On `/journals`, click a block on any day below Today and type: about half a second later (the
+editor's debounced write) the caret is gone — focus drops to `<body>`, and further keys go nowhere.
+Today's own section is not affected. Reproduced on a clean `git archive da85cfb` build against a
+copy of the owner's graph: marking every `.journal-day` element, typing one character into the
+first earlier day, and waiting 1.5 s left 1 of 29 sections as the same DOM element (Today's);
+the other 28 had been replaced, and `.cm-content` no longer existed
+(`scratchpad` probe `debug-remount.mjs`; the kept probe is `tools/probes/journal-agenda-perf.mjs`,
+whose typing step failed the same way). Cause: `JournalStreamView` renders earlier and upcoming
+days with `<For each={earlierDays()}>` over `JournalDayEntry` objects; every write refetches
+`useJournalStream`, which builds new entry objects, and `<For>` is keyed by reference — so every
+section, with its `BlockTree` and the editor inside it, is torn down and rebuilt on each write.
+Today's section is a non-keyed `<Show>`, which is why it survives.
