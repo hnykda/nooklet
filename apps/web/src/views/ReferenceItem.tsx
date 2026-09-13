@@ -15,7 +15,7 @@
  * falls back to the first line the server sent, as before.
  */
 import { createMemo, For, type JSX, Show } from "solid-js";
-import { lookupBlockText } from "../data/block-ref-cache.js";
+import { lookupBlockText, resolveBlockRef } from "../data/block-ref-cache.js";
 import { displayRefName } from "../data/page-title.js";
 import type { NavigateTarget } from "../data/types.js";
 import { InlineContent } from "../editor/InlineContent.js";
@@ -120,6 +120,7 @@ export function ReferenceBreadcrumb(props: {
                   <InlineContent
                     content={breadcrumbLabel(parent.content)}
                     onNavigate={props.onNavigate}
+                    resolveBlockRef={resolveBlockRef}
                   />
                 </span>
               </>
@@ -166,7 +167,12 @@ export function ReferenceItem(props: {
             class="reference-item-jump"
             onClick={() => props.onNavigate({ kind: "block", id: props.id })}
           >
-            <InlineContent content={props.text} onNavigate={props.onNavigate} />
+            {/* `((ref))` in the server's first line reads as the block's text too (B-510). */}
+            <InlineContent
+              content={props.text}
+              onNavigate={props.onNavigate}
+              resolveBlockRef={resolveBlockRef}
+            />
           </button>
         }
       >

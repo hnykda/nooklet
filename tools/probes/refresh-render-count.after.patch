@@ -1,0 +1,105 @@
+diff --git a/apps/web/src/data/block-ref-cache.ts b/apps/web/src/data/block-ref-cache.ts
+index 104060d..abb853d 100644
+--- a/apps/web/src/data/block-ref-cache.ts
++++ b/apps/web/src/data/block-ref-cache.ts
+@@ -92,6 +92,7 @@ function flush(): void {
+ }
+ 
+ function readChunk(ids: string[], at: number): void {
++  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("refQuery");
+   void queryAs<{ id: string; content: string }>(
+     `SELECT id, content FROM block WHERE id IN (${ids.map(() => "?").join(",")}) AND deleted_at IS NULL`,
+     ids,
+@@ -137,6 +138,7 @@ function pruneUnwatched(): void {
+  * through every later re-read and changes only when the block's text does.
+  */
+ export function lookupBlockText(id: string): string | undefined {
++  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("lookup");
+   const entry = entryFor(id);
+   if (getListener()) {
+     entry.watchers++;
+diff --git a/apps/web/src/editor/BlockProperties.tsx b/apps/web/src/editor/BlockProperties.tsx
+index 2e1bd1f..a45e83b 100644
+--- a/apps/web/src/editor/BlockProperties.tsx
++++ b/apps/web/src/editor/BlockProperties.tsx
+@@ -64,7 +64,7 @@ export function BlockProperties(props: {
+ }) {
+   // A memo compared by value: the row gets a new properties object on every refresh, and a fresh
+   // array of the same pairs made `<For>` rebuild every property row each time (B-511).
+-  const entries = createMemo(() => visibleProperties(props.properties), undefined, {
++  const entries = createMemo(() => ((globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("propEntries"), visibleProperties(props.properties)), undefined, {
+     equals: sameJson,
+   });
+   return (
+diff --git a/apps/web/src/editor/BlockRowView.tsx b/apps/web/src/editor/BlockRowView.tsx
+index 67fb2d6..09f729a 100644
+--- a/apps/web/src/editor/BlockRowView.tsx
++++ b/apps/web/src/editor/BlockRowView.tsx
+@@ -78,7 +78,11 @@ export function BlockRowView(props: {
+   // but an `{{embed}}` was torn down to its one-line placeholder and back twice per keystroke in
+   // another block, and lost its unfolded rows (B-214). A memo on a string only notifies when the
+   // text actually changed.
+-  const text = createMemo(() => props.block.content);
++  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("rowMount");
++  const text = createMemo(() => {
++    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("rowBlockRead");
++    return props.block.content;
++  });
+   const content = createMemo(() => classifyBlockContent(text()));
+   let rowEl: HTMLDivElement | undefined;
+ 
+diff --git a/apps/web/src/editor/BlockTree.tsx b/apps/web/src/editor/BlockTree.tsx
+index 209c034..7b2529e 100644
+--- a/apps/web/src/editor/BlockTree.tsx
++++ b/apps/web/src/editor/BlockTree.tsx
+@@ -233,6 +233,7 @@ export function BlockTree(props: {
+   createEffect(() => {
+     const data = treeResource();
+     if (!data) return;
++    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("treeEffect");
+     const editingBlockId = editingId();
+     const flat = flattenBlockTreeNodes(data.blocks);
+     unseenCreations.seen(flat.map((b) => b.id));
+@@ -281,7 +282,10 @@ export function BlockTree(props: {
+     // new order: two DOM moves, each blurring the editor, with nothing to refocus it. Traced
+     // 10-40 ms after an undo, where a keystroke typed in that window was lost (B-242).
+     const hadFocus = editingBlockId !== null && surface.view()?.hasFocus === true;
++    const rlfT0 = performance.now();
+     setLocalBlocks(flat);
++    // Solid flushes what this set marked stale after the effect returns, before microtasks.
++    queueMicrotask(() => (globalThis as unknown as { __rlfc?: (k: string, n?: number) => void }).__rlfc?.("treeUpdateMs", performance.now() - rlfT0));
+     if (hadFocus && editingBlockId !== null) refocusAfterReorder(editingBlockId);
+   });
+ 
+diff --git a/apps/web/src/editor/DateChips.tsx b/apps/web/src/editor/DateChips.tsx
+index b058cb5..68078ff 100644
+--- a/apps/web/src/editor/DateChips.tsx
++++ b/apps/web/src/editor/DateChips.tsx
+@@ -64,6 +64,7 @@ export function DateChips(props: {
+   // array of equal chips made `<For>` rebuild the buttons each time (B-511).
+   const chips = createMemo(
+     () =>
++      ((globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("dateChips"), 0) ||
+       dateChips(
+         { scheduled: props.scheduled, deadline: props.deadline, marker: props.marker },
+         today(),
+diff --git a/apps/web/src/editor/render/tokens.tsx b/apps/web/src/editor/render/tokens.tsx
+index 81d3c44..cfbe724 100644
+--- a/apps/web/src/editor/render/tokens.tsx
++++ b/apps/web/src/editor/render/tokens.tsx
+@@ -341,6 +341,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
+   return (
+     <>
+       {(() => {
++        (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("tokenView");
+         const tok = props.tok;
+         const ctx = props.ctx;
+         switch (tok.kind) {
+@@ -558,6 +559,7 @@ export function BlockContentView(props: { content: BlockContent; ctx: RenderCtx
+   return (
+     <>
+       {(() => {
++        (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("contentView");
+         const c = props.content;
+         const ctx = props.ctx;
+         switch (c.kind) {

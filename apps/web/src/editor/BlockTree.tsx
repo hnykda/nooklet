@@ -109,6 +109,7 @@ import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
 import { createReadOnlyNotice } from "./ReadOnlyNotice.js";
 import { isReadOnlyValue, READ_ONLY_PROPERTY } from "./readOnly.js";
 import type { NavigateTarget } from "./render/tokens.js";
+import { sameFields } from "./same-fields.js";
 import { cutToClipboard, selectionMarkdown } from "./selection-clipboard.js";
 import { createSurface, type Surface } from "./surface.js";
 import { cycleMarker, toggleDone } from "./task.js";
@@ -1440,8 +1441,13 @@ export function BlockTree(props: {
           {(id) => {
             // Everything this row needs is read through memos keyed off `id`, so depth, collapse
             // state and content all update this row IN PLACE. `<For>` only ever sees the id string.
-            const row = createMemo(() => rowById().get(id));
-            const block = createMemo(() => editorTree().byId.get(id));
+            // Compared field by field (ref-label-flash, B-511): every refresh rebuilds every row
+            // and block object, and without this each row re-ran its marker, date chips and
+            // properties though only the rows that changed differ. A changed field still notifies.
+            const row = createMemo(() => rowById().get(id), undefined, { equals: sameFields });
+            const block = createMemo(() => editorTree().byId.get(id), undefined, {
+              equals: sameFields,
+            });
             return (
               <Show when={row()}>
                 {(r) => (

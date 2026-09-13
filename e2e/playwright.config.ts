@@ -54,6 +54,12 @@ export default defineConfig({
     // the whole suite would run against an in-memory replica — a different app from the one
     // shipped — and the Mac app's WKWebView, which does have OPFS, is what WebKit coverage would
     // be for anyway. This keeps the engine exercised without pretending it is a faithful stand-in.
-    { name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /storage\.spec\.ts/ },
+    // `ref-label-flash` (B-500) also runs here: the owner sees it in the Mac app, and what it pins
+    // — what a refresh leaves on screen between two renders — does not depend on the storage tier.
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testMatch: /(storage|ref-label-flash)\.spec\.ts/,
+    },
   ],
 });

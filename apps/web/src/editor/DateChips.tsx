@@ -16,6 +16,7 @@ import CalendarClock from "lucide-solid/icons/calendar-clock";
 import Flag from "lucide-solid/icons/flag";
 import Repeat from "lucide-solid/icons/repeat";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { sameJson } from "../data/same-json.js";
 import { dateChips } from "./date-chips.js";
 import "./date-chips.css";
 
@@ -59,11 +60,16 @@ export function DateChips(props: {
   onLocked?: () => void;
 }): JSX.Element {
   watchToday();
-  const chips = createMemo(() =>
-    dateChips(
-      { scheduled: props.scheduled, deadline: props.deadline, marker: props.marker },
-      today(),
-    ),
+  // By value: every refresh hands this row a new block object, the memo re-runs, and a fresh
+  // array of equal chips made `<For>` rebuild the buttons each time (B-511).
+  const chips = createMemo(
+    () =>
+      dateChips(
+        { scheduled: props.scheduled, deadline: props.deadline, marker: props.marker },
+        today(),
+      ),
+    undefined,
+    { equals: sameJson },
   );
 
   return (

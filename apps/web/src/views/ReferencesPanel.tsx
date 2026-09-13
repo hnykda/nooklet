@@ -41,6 +41,7 @@ import { callOp, describeError } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { undoBatch } from "../data/refactor-api.js";
 import { useReferenceListTrees } from "../data/reference-trees.js";
+import { sameJson } from "../data/same-json.js";
 import { useLinkedReferences } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { ReferenceGroups } from "./ReferenceItem.js";
@@ -202,7 +203,16 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   // Reading a Solid resource that has errored RE-THROWS the error, so every read below goes
   // through here. Without it the first `backlinks()` call threw during render and took the whole
   // panel down — including the error message it was supposed to be showing.
-  const data = createMemo(() => (backlinks.error !== undefined ? undefined : backlinks()));
+  //
+  // Compared by value: the panel re-asks on every change to the graph, and the same references in
+  // new objects made every group and row below rebuild (B-511).
+  const data = createMemo(
+    () => (backlinks.error !== undefined ? undefined : backlinks()),
+    undefined,
+    {
+      equals: sameJson,
+    },
+  );
 
   const allLinked = createMemo(() => data()?.linked ?? []);
   const candidates = createMemo(() => filterCandidates(allLinked(), pageKey()));

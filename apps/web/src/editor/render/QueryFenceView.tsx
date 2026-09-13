@@ -19,6 +19,7 @@ import {
   type QueryResults,
   useQueryResults,
 } from "../../data/queries.js";
+import { sameJson } from "../../data/same-json.js";
 import { pageRoutePath } from "../../routes/page-path.js";
 import { MARKER_GLYPH } from "../BlockRowView.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
@@ -152,8 +153,15 @@ export default function QueryFenceView(props: { code: string; ctx: RenderCtx }) 
   // `results.latest` re-throws while the resource is errored, exactly like calling it: an
   // unguarded read in the head's `when` threw before "Query failed" could render, and the fence
   // sat on "Running query…" forever (B-131). Every read goes through this.
-  const latest = (): QueryResults | undefined =>
-    results.error !== undefined ? undefined : results.latest;
+  //
+  // A memo compared by value: the query re-runs on every change to the graph and answers with new
+  // objects even when the results are the same, and `<For>` rebuilt every hit from them — each
+  // `((ref))` inside one back to its placeholder, until B-500 (B-511).
+  const latest = createMemo(
+    (): QueryResults | undefined => (results.error !== undefined ? undefined : results.latest),
+    undefined,
+    { equals: sameJson },
+  );
   return (
     <div class="vr-query" data-lang="query">
       <Show

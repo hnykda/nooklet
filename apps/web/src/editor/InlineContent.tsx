@@ -9,14 +9,26 @@
 
 import { tokenizeContent } from "@nooklet/core";
 import { createMemo } from "solid-js";
-import { InlineTokens, type NavigateTarget } from "./render/tokens.js";
+import { InlineTokens, type NavigateTarget, type RenderCtx } from "./render/tokens.js";
 
 export function InlineContent(props: {
   content: string;
   onNavigate?: (t: NavigateTarget) => void;
+  /** Renders `((id))` as the referenced block's text (`../data/block-ref-cache.ts#resolveBlockRef`).
+   * A prop rather than an import: this component is also rendered where no replica exists (unit
+   * tests of views) and must not pull the worker client in. Absent = the muted `((id))`
+   * placeholder. */
+  resolveBlockRef?: RenderCtx["resolveBlockRef"];
 }) {
   const tokens = createMemo(() => tokenizeContent(props.content));
   return (
-    <InlineTokens tokens={tokens()} ctx={{ source: props.content, onNavigate: props.onNavigate }} />
+    <InlineTokens
+      tokens={tokens()}
+      ctx={{
+        source: props.content,
+        onNavigate: props.onNavigate,
+        resolveBlockRef: props.resolveBlockRef,
+      }}
+    />
   );
 }
