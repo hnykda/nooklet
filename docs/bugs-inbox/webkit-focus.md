@@ -1,7 +1,7 @@
 # Bugs inbox — webkit-focus (M11, B-42 in WebKit on sync refresh)
 
 Entries in `docs/BUGS.md` format, to be folded in by the coordinator. New numbers B-501..B-509
-(none used).
+(B-501 used).
 
 ---
 
@@ -62,3 +62,30 @@ webkit — all six runs fail against a build that blurs on every replica change,
 branch), `e2e/tests/focus-log.spec.ts` (2, both projects), `apps/web/src/app/focus-log.test.ts` (8).
 
 **Next, needs the owner:** a focus log from the desktop app covering one loss.
+
+---
+
+### B-501 · In WebKit, Alt+Up/Down moves the block but the caret jumps to the start of it
+**Status:** needs-repro (in the desktop app) · **Severity:** low · **Found:** 2026-09-13,
+m11/webkit-focus, running `focus.spec.ts` in Playwright's WebKit · **Test:** `e2e/tests/focus.spec.ts`
+"Alt+Up/Down moves the block and keeps the editor in it (R22)" fails in WebKit (it runs only in
+Chromium in the suite)
+
+Editing `two` on `one, two` with the caret at the end, Alt+ArrowUp: the block moves up and the
+editor keeps focus, but the caret is at offset 0 instead of 3 (`{anchor: 0, head: 0}`). Chromium
+keeps it at 3. Same result on `52e5d20` (this branch's base) with none of this branch's changes, so
+not caused by the focus log. Not yet checked in the real desktop app (WKWebView), where it would
+matter; not diagnosed. A guess worth testing first, not a finding: the keyed `<For>` moves the row's
+DOM node, WebKit resets the document selection when the focused node moves, and CodeMirror reads
+that selection back on refocus instead of writing its own.
+
+For the record, the same WebKit run (`popups`, `focus`, `focus-return`, `editing`,
+`editing-row-leaves`, `autocomplete`, `autocomplete-busy-replica`, `follow-link-popup`,
+`journal-stream-editing`, `diagnostics`, `storage`, `webkit-refresh-focus`, `focus-log`: 101
+passed, 6 failed) had five more failures, all of one kind and all also failing on `52e5d20`: a
+reload or `page.goto` shortly after typing (`editing.spec.ts` "text survives blurring…", "Enter
+creates a second bullet…", "typing immediately after Enter…"; `focus.spec.ts` "text typed just
+before an in-app navigation…"; `popups.spec.ts` "Table on an empty block…"), each at its first
+assertion after the reload or `goto` (lines 69, 98, 134, 382, 594). Playwright's WebKit has no OPFS
+in workers and runs the in-memory replica (B-43), whose queue of unpushed ops dies with
+the page — expected there, and why the webkit project does not run the suite. Not a bug by itself.

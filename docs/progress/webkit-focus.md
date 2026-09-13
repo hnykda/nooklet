@@ -32,15 +32,20 @@ Decisions: no fix (task step 4 — nothing reproduced, nothing to fix without gu
 WebKit not run (would take the keyboard from the owner's live session). No BlockTree hunks at all,
 so no merge surface with m11/remote-rewrite.
 
+- Broad e2e on `94ed831`'s code (13 specs: popups, focus, focus-return, editing,
+  editing-row-leaves, autocomplete, autocomplete-busy-replica, follow-link-popup,
+  journal-stream-editing, diagnostics, storage, webkit-refresh-focus, focus-log):
+  - chromium: 106 passed, 1 skipped (storage's webkit-only test).
+  - webkit (temporary config without testMatch, deleted): 101 passed, 6 failed. All 6 also fail
+    with the app files reverted to `52e5d20`. Five fail at the first assertion after a reload or
+    `goto` (in-memory replica loses its unpushed queue — expected, B-43); one is new B-501
+    (Alt+Up/Down caret to 0 in WebKit), logged in the inbox, not diagnosed.
+
 ## 2. In flight
 
-- Broad e2e in both projects: popups, focus, focus-return, editing, editing-row-leaves,
-  autocomplete, autocomplete-busy-replica, follow-link-popup, journal-stream-editing, diagnostics,
-  storage + the two new specs. WebKit needs a temporary config widening testMatch
-  (`e2e/playwright.webkit-all.config.ts`, NOT committed — delete after).
+(nothing)
 
 ## 3. Next steps
 
-1. Record the broad e2e counts here (and failures with reasons: WebKit runs the in-memory replica,
-   so reload-durability-style tests are expected to differ).
-2. Final: `pnpm -r typecheck`, web unit suite, report.
+1. Owner: record a focus log in the desktop app (Diagnostics → Focus log) covering one loss.
+2. B-501: check Alt+Up/Down in the desktop app; diagnose if it reproduces there.
