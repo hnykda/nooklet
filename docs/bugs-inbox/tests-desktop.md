@@ -186,3 +186,16 @@ and 140 busy loops (load average 122-153): 399 passed each time, with "stays far
 quadratic" at 451-661 ms wall (the old wall budget would have failed 2 of 3), "converges regardless
 of interleaving" at 4.7-5.7 s (over the old 5 s twice) and "dense adversarial moves" at 16-20 s.
 Idle: 399 passed.
+
+---
+
+### B-371 (existing)
+
+**Fixed 2026-09-13.** `apps/web/src/commands/hosts/editor-host.ts` now says "editing text" wherever
+it said content: the file's design notes (with a paragraph on why the buffer is not the content, for
+which blocks the two coincide, and where the split happens — `splitBlockText` in
+`registrations/insert-logic.ts` and `registrations/templates.ts`, `editor/editText.ts` as the
+boundary), `EditorSelection.content` and its `start`/`end`, `ReplaceRangeSpec.from`/`to`, and
+`EditorHost.getSelection`/`replaceRange`. The field keeps its name `content` (renaming it touches
+every command; the doc says so). Comment only, no test; checked against the real host
+(`app/editor-host.ts#createEditorHost` reads `surface.content()`, the CM6 document).

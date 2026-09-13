@@ -36,6 +36,8 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
   `tokens.test.ts`: CPU-time budget + new line-length scaling check (verified against injected
   quadratics); `sync.property.test.ts`: 120 s timeouts, numRuns unchanged. Probe
   `tools/probes/cpu-vs-wall-under-load.ts`. Core 399/399 idle and 3x under load.
+- **B-371** — commit "docs(web): EditorSelection's text is the editing buffer, not the content
+  (B-371)". Comment only in `apps/web/src/commands/hosts/editor-host.ts`.
 
 ## 2. In flight
 
@@ -43,5 +45,5 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
 
 ## 3. Next steps
 
-1. B-371 — comment.
-2. B-337, B-336 — sidecar build + user plugin host modules; verify with a built sidecar.
+1. B-337 (build-sidecar ships stale web dist), then B-336 (user plugins in the sidecar cannot
+   import host modules); verify with a built sidecar started on a scratch NOOKLET_DATA. — sidecar build + user plugin host modules; verify with a built sidecar.
