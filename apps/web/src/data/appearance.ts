@@ -140,10 +140,9 @@ export function setCustomCss(css: string): void {
 }
 
 /**
- * Put the stored choices on the document. Runs once at import — this module is loaded by the
- * settings panel, which the shell imports statically, so the stored size/width/CSS are on screen
- * from the first paint rather than from the first time the panel is opened. Exported so a test
- * (or a future explicit call from the shell) can re-run it.
+ * Put the stored choices on the document. Runs once at import — `shell/AppShell.tsx` imports this
+ * module for exactly that, so the stored size/width/CSS are on screen from the first paint rather
+ * than whenever something else happens to import it first.
  */
 export function applyAppearance(): void {
   applyTextSize(textSizeSignal());

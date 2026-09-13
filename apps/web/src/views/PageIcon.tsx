@@ -4,9 +4,8 @@
  *
  * Two pieces. `PageIconBadge` is the read-only mark for lists (sidebar, all pages). `PageIconEditor`
  * sits in the page title row: click it to type or paste an emoji, Enter to keep it, empty to
- * clear. No picker library on purpose — the CSP allows no third-party assets, an emoji is one
- * keystroke away on every OS (Ctrl/Cmd+Space, Win+.), and a popover of 1,800 glyphs is the kind
- * of thing this app is not.
+ * clear. No picker library on purpose — an emoji is one keystroke away on every OS
+ * (Ctrl/Cmd+Space, Win+.), and a popover of 1,800 glyphs is the kind of thing this app is not.
  */
 
 import { createEffect, createSignal, type JSX, Show } from "solid-js";

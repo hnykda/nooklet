@@ -20,9 +20,9 @@
  *  - `wikilink`/`linkToPage` `.vr-ref-new` (page doesn't exist) needs a page-existence index this
  *    milestone's data seam does not expose; every ref renders as "resolved" (no `.vr-ref-new`)
  *    until a page-index prop is threaded through.
- *  - `blockRef`/`linkToBlock`'s "inline render of the target block's own tokens" needs a
- *    cross-page block lookup, likewise not in the data seam yet; falls back to a muted
- *    `((id))`-style placeholder unless the caller supplies `resolveBlockRef`.
+ *  - `blockRef`/`linkToBlock` render the target block's own tokens through `resolveBlockRef`
+ *    (`BlockRowView` and the Shelf pass `data/block-ref-cache.ts`'s lookup); a caller that
+ *    supplies none, or a block not in the replica, gets a muted `((id))`-style placeholder.
  *  - `embed` renders a placeholder (not a live nested `BlockTree`) — same gap (needs a
  *    page-name/block-id -> page/tree resolver the data seam doesn't expose yet).
  *

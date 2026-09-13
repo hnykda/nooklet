@@ -11,15 +11,10 @@
  * item 4's ordering requirement) — see `history.ts`'s doc comment for why undo/redo mint fresh
  * ops rather than replaying stored ones.
  *
- * Highlighting seam (BUILD item 1's "pick a lightweight highlighter and justify it, or defer
- * behind a clearly-marked seam" choice): DEFERRED. `render/tokens.tsx#BlockContentView` already
- * accepts an optional `highlightCode(code, lang)` prop and falls back to plain, unhighlighted
- * `<code>` when it is absent (which it is here) — no highlighter dependency is wired in this
- * milestone. Justification: CM6 + the tokenizer already spend this package's whole bundle/time
- * budget (research/04-editor.md's own §2.1 numbers put CM6 core alone at ~75 kB brotli before any
- * language support), and a real evaluation of shiki vs. highlight.js/lowlight needs a bundle-size
- * and phone-perf measurement this task's remaining time did not allow; the seam is one function
- * prop away from either.
+ * Highlighting: code fences are highlighted by `render/tokens.tsx#BlockContentView` itself, with
+ * highlight.js loaded lazily per language (`render/highlight.ts`; highlight.js over shiki and the
+ * bundle numbers are in docs/research/14-render-seams.md). `RenderCtx.highlightCode` can still
+ * override it; nothing here does.
  *
  * Long pages (BUILD item 6): `content-visibility: auto` on every `.vr-row` (`editor.css`) is
  * wired — the "zero code" tier 1 research/04-editor.md §5 recommends starting with. Tier 2
@@ -28,9 +23,10 @@
  * change" later. See the package summary for the actual 1.7 MB-page measurement.
  *
  * Known data-seam gaps (not bugs in this file): no page-existence index (`.vr-ref-new` never
- * renders), no cross-page block lookup (`blockRef`/embed render placeholders), and `list::
- * number` is not yet projected by `BlockRow` (numbering is wired end-to-end but always empty) —
- * all three are called out where they bite in `render/tokens.tsx`/`numbering.ts`.
+ * renders), `{{embed}}` renders a placeholder rather than a live tree, and `list:: number` is not
+ * yet projected by `BlockRow` (numbering is wired end-to-end but always empty) — all three are
+ * called out where they bite in `render/tokens.tsx`/`numbering.ts`. `((block refs))` do render
+ * their target's text: `BlockRowView` passes `resolveBlockRef` from `data/block-ref-cache.ts`.
  */
 import type { EditorView } from "@codemirror/view";
 import { formatDayTime, makeOp, type Op, type OutlineNode, serializeOutline } from "@nooklet/core";
