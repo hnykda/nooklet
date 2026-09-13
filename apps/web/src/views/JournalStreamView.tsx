@@ -27,7 +27,7 @@ import { Calendar } from "./Calendar.js";
 import { JournalAgenda } from "./JournalAgenda.js";
 import { goToTarget } from "./navigateTarget.js";
 import { createStreamToday } from "./streamToday.js";
-import { VirtualJournalDay } from "./VirtualJournalDay.js";
+import { JournalDayLoading, VirtualJournalDay } from "./VirtualJournalDay.js";
 
 const INITIAL_MAX_DAYS = 14;
 const LOAD_MORE_STEP = 14;
@@ -66,7 +66,8 @@ export function JournalStreamView(): JSX.Element {
 
   // The stream's own today entry — real (page/blocks already exist) or virtual (`page: null`,
   // PLAN.md §8). `stream()` always includes today (`worker-core.ts#getJournalStream`), so this is
-  // only ever `undefined` for one frame while the resource is first loading.
+  // `undefined` only while the resource is first loading — which on a fresh client is not one
+  // frame but the whole first sync, because every worker call waits for it (B-410).
   const todayEntry = createMemo<JournalDayEntry | undefined>(() =>
     stream()?.find((e) => e.day === today()),
   );
@@ -143,11 +144,14 @@ export function JournalStreamView(): JSX.Element {
 
       <section class="journal-day journal-day-today" aria-label="Today">
         <h2 class="journal-day-title">{dayTitle(today())} · Today</h2>
-        <Show
-          when={todayEntry()?.page}
-          fallback={<VirtualJournalDay day={today()} onNavigate={onNavigate} />}
-        >
-          {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
+        {/* No entry yet means the stream has not answered, not that today is virtual (B-410). */}
+        <Show when={todayEntry()} fallback={<JournalDayLoading />}>
+          <Show
+            when={todayEntry()?.page}
+            fallback={<VirtualJournalDay day={today()} onNavigate={onNavigate} />}
+          >
+            {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
+          </Show>
         </Show>
         {agendaFor(today())}
       </section>

@@ -256,6 +256,26 @@
   margin: 0;
 }
 
+/* The row an empty page offers instead of nothing (B-410): shaped like a block row, so starting
+   the first block does not move anything. */
+.vr-empty-start {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  padding-block: 0;
+  padding-inline-end: 0;
+  cursor: text;
+}
+
+.vr-empty-start-label {
+  display: block;
+  min-height: var(--vr-row-lead);
+  color: var(--muted);
+}
+
 /* CM6 host: identical font metrics to the rendered view so switching modes never shifts text. */
 .vr-surface-host {
   min-height: var(--vr-row-lead);

@@ -341,6 +341,13 @@
   outline: none;
 }
 
+/* The same row while the stream has not said whether the day exists yet (B-410). */
+.vr-draft-pending {
+  display: block;
+  color: var(--muted);
+  min-height: calc(1em * var(--leading-normal));
+}
+
 /* The caret is the focus indicator inside the text; the bullet carries it outside, exactly as it
    does for a real editing row. */
 .vr-row-draft:focus-within .vr-bullet-dot {

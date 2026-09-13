@@ -29,7 +29,14 @@
  * happens where the block lives.
  */
 import type { EditorView } from "@codemirror/view";
-import { blockTextPayloads, formatDayTime, makeOp, type Op } from "@nooklet/core";
+import {
+  blockTextPayloads,
+  formatDayTime,
+  makeOp,
+  newId,
+  type Op,
+  orderBetween,
+} from "@nooklet/core";
 import "./editor.css";
 import {
   createEffect,
@@ -1344,6 +1351,33 @@ export function BlockTree(props: {
     holdSelectionFocus();
   }
 
+  /**
+   * A page that exists and has no blocks — made by an agent's `page.create`, or emptied by deleting
+   * every block (a journal day included) — rendered zero rows and gave nowhere to type (B-410; B-75
+   * fixed only pages created from the UI). Only once the fetch has answered "no blocks", so a page
+   * still loading does not flash it; never while zoomed or filtered, where "no rows" means
+   * something else.
+   */
+  const emptyPage = createMemo(
+    () =>
+      !readOnly() &&
+      effectiveRoot() === undefined &&
+      !props.filter &&
+      treeResource()?.blocks.length === 0 &&
+      visibleIds().length === 0,
+  );
+  function startFirstBlock(): void {
+    const clock = clockSig();
+    if (readOnly() || !clock) return;
+    const id = newId();
+    const place = { pageId: props.pageId, parentId: null, order: orderBetween(null, null) };
+    const payload = { kind: "block.create", place, content: "", createdAt: Date.now() } as const;
+    runStructural({
+      ops: [makeOp(clock.next(), clock.device, id, payload)],
+      focus: { id, caret: { at: "end" } },
+    });
+  }
+
   return (
     <>
       <Show when={zoomTrail().length > 0}>
@@ -1461,6 +1495,18 @@ export function BlockTree(props: {
             );
           }}
         </For>
+        <Show when={emptyPage()}>
+          <button type="button" class="vr-row vr-empty-start" onClick={startFirstBlock}>
+            <span class="vr-bullet-wrap" aria-hidden="true">
+              <span class="vr-bullet">
+                <span class="vr-bullet-dot" />
+              </span>
+            </span>
+            <span class="vr-row-main">
+              <span class="vr-content vr-empty-start-label">Start typing…</span>
+            </span>
+          </button>
+        </Show>
       </div>
       <readOnlyNotice.View />
     </>

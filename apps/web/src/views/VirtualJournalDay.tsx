@@ -25,6 +25,32 @@ import {
   requestBlockFocus,
 } from "../editor/focus-request.js";
 
+/**
+ * Where the draft goes while the journal stream does not yet know whether the day exists
+ * (B-410). On a fresh client that is until the first sync has filled the replica — seconds on the
+ * owner's 952-page graph — and a draft shown then was a draft for a day the server may already
+ * have: Enter created a second page for that day, which the server rejected along with every line
+ * typed after it, silently. Nothing here takes input; the draft replaces it once the stream answers.
+ */
+export function JournalDayLoading(): JSX.Element {
+  return (
+    <div class="vr-draft vr-draft-loading" aria-busy="true">
+      <div class="vr-row vr-row-draft">
+        <span class="vr-bullet-wrap" aria-hidden="true">
+          <span class="vr-bullet">
+            <span class="vr-bullet-dot" />
+          </span>
+        </span>
+        <div class="vr-row-main">
+          <div class="vr-content">
+            <span class="vr-draft-pending">Loading…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export interface VirtualJournalDayProps {
   day: number;
   onNavigate?: (t: NavigateTarget) => void;
