@@ -62,6 +62,15 @@ function highlighted(text: string, re: RegExp | null): JSX.Element {
   return parts;
 }
 
+function sameFields(a: ReplaceInput, b: ReplaceInput): boolean {
+  return (
+    a.query === b.query &&
+    a.replacement === b.replacement &&
+    a.regex === b.regex &&
+    a.caseSensitive === b.caseSensitive
+  );
+}
+
 interface Outcome {
   batchId?: string;
   blocks: number;
@@ -78,33 +87,53 @@ export function FindReplaceView(): JSX.Element {
   const [outcome, setOutcome] = createSignal<Outcome | undefined>();
   const [writeError, setWriteError] = createSignal<string | undefined>();
 
+  // What the fields say right now. Replace all is built from THIS, never from the debounced copy
+  // below: the debounce lags the last keystroke by 250 ms, and a click inside that window used to
+  // write the replacement from before it — an empty string on the real graph, deleting all 19
+  // matches while the field showed the new text (B-250).
+  const fields = createMemo<ReplaceInput | undefined>(() => {
+    const q = query();
+    return q.trim() === ""
+      ? undefined
+      : {
+          query: q,
+          replacement: replacement(),
+          regex: regex(),
+          caseSensitive: caseSensitive(),
+          dryRun: true,
+          limit: PREVIEW_LIMIT,
+        };
+  });
+
   // The preview request, debounced: one call per pause in typing, not one per keystroke.
   const [input, setInput] = createSignal<ReplaceInput | undefined>();
   createEffect(() => {
-    const q = query();
-    const next: ReplaceInput | undefined =
-      q.trim() === ""
-        ? undefined
-        : {
-            query: q,
-            replacement: replacement(),
-            regex: regex(),
-            caseSensitive: caseSensitive(),
-            dryRun: true,
-            limit: PREVIEW_LIMIT,
-          };
+    const next = fields();
     const t = setTimeout(() => setInput(next), 250);
     onCleanup(() => clearTimeout(t));
   });
-  const [preview, { refetch }] = createResource(input, (i) => refactorApi.replace(i));
+  // The result carries the input it answers: a resource keeps showing its last value while the
+  // next one loads, so without this the view cannot tell a preview of the current fields from a
+  // preview of fields the user has since changed.
+  const [preview, { refetch }] = createResource(input, async (i) => ({
+    input: i,
+    result: await refactorApi.replace(i),
+  }));
   // Reading an errored resource re-throws (B-10/B-80's lesson); every read goes through this.
   const safePreview = (): ReplaceResult | undefined =>
-    preview.error === undefined ? preview() : undefined;
+    preview.error === undefined ? preview()?.result : undefined;
+  /** The preview on screen was computed for exactly the current fields and is not being
+   * recomputed — the only state in which Replace all writes what the page shows. */
+  const previewIsCurrent = (): boolean => {
+    const f = fields();
+    const p = preview.error === undefined ? preview() : undefined;
+    return f !== undefined && p !== undefined && !preview.loading && sameFields(p.input, f);
+  };
   const matcher = createMemo(() => previewMatcher(query(), regex(), caseSensitive()));
 
   async function replaceAll(): Promise<void> {
-    const i = input();
-    if (!i || busy()) return;
+    const i = fields();
+    if (!i || busy() || !previewIsCurrent()) return;
     setBusy(true);
     setWriteError(undefined);
     try {
@@ -144,7 +173,7 @@ export function FindReplaceView(): JSX.Element {
 
   const canReplace = (): boolean => {
     const p = safePreview();
-    return !busy() && input() !== undefined && p !== undefined && p.blocksMatched > 0;
+    return !busy() && previewIsCurrent() && p !== undefined && p.blocksMatched > 0;
   };
 
   return (
