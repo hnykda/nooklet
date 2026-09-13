@@ -25,9 +25,9 @@ import type { JournalDayEntry, NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { Calendar } from "./Calendar.js";
 import { JournalAgenda } from "./JournalAgenda.js";
+import { JournalDayOutline } from "./JournalDayOutline.js";
 import { goToTarget } from "./navigateTarget.js";
 import { createStreamToday } from "./streamToday.js";
-import { VirtualJournalDay } from "./VirtualJournalDay.js";
 
 const INITIAL_MAX_DAYS = 14;
 const LOAD_MORE_STEP = 14;
@@ -66,7 +66,8 @@ export function JournalStreamView(): JSX.Element {
 
   // The stream's own today entry — real (page/blocks already exist) or virtual (`page: null`,
   // PLAN.md §8). `stream()` always includes today (`worker-core.ts#getJournalStream`), so this is
-  // only ever `undefined` for one frame while the resource is first loading.
+  // `undefined` only while the resource is first loading — which on a fresh client is not one
+  // frame but the whole first sync, because every worker call waits for it (B-410).
   const todayEntry = createMemo<JournalDayEntry | undefined>(() =>
     stream()?.find((e) => e.day === today()),
   );
@@ -143,11 +144,10 @@ export function JournalStreamView(): JSX.Element {
 
       <section class="journal-day journal-day-today" aria-label="Today">
         <h2 class="journal-day-title">{dayTitle(today())} · Today</h2>
-        <Show
-          when={todayEntry()?.page}
-          fallback={<VirtualJournalDay day={today()} onNavigate={onNavigate} />}
-        >
-          {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
+        {/* Keyed by day: a day started from its draft keeps its own tree (B-411), which must not
+            carry over to the next day at midnight. */}
+        <Show when={today()} keyed>
+          {(day) => <JournalDayOutline day={day} entry={todayEntry()} onNavigate={onNavigate} />}
         </Show>
         {agendaFor(today())}
       </section>
@@ -160,11 +160,15 @@ export function JournalStreamView(): JSX.Element {
               Back to stream
             </button>
           </h2>
-          <Show
-            when={pinned()?.page}
-            fallback={<VirtualJournalDay day={pinnedDay() as number} onNavigate={onNavigate} />}
-          >
-            {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
+          <Show when={pinnedDay()} keyed>
+            {(day) => (
+              <JournalDayOutline
+                day={day}
+                // While a new pin loads, the resource still holds the previous day's entry.
+                entry={pinned()?.day === day ? pinned() : undefined}
+                onNavigate={onNavigate}
+              />
+            )}
           </Show>
           {agendaFor(pinnedDay() as number)}
         </section>

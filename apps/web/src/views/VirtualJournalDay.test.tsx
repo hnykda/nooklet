@@ -51,10 +51,13 @@ vi.mock("../data/templates.js", async () => {
   };
 });
 
+// What the day's tree was drawn from before its first fetch (B-411).
+let treeInitialOps: readonly Op[] | undefined;
 vi.mock("../editor/BlockTree.js", () => ({
-  BlockTree: (props: { pageId: string }) => (
-    <div data-testid="block-tree">materialized:{props.pageId}</div>
-  ),
+  BlockTree: (props: { pageId: string; initialOps?: readonly Op[] }) => {
+    treeInitialOps = props.initialOps;
+    return <div data-testid="block-tree">materialized:{props.pageId}</div>;
+  },
 }));
 
 afterEach(() => {
@@ -179,35 +182,78 @@ describe("VirtualJournalDay", () => {
     );
     expect(rootOrder < typedOrder && typedOrder < nextOrder).toBe(true);
     expect(root?.payload.properties).toBeUndefined();
-    // The pool was sized for the template (2) plus page + typed + next (3).
-    expect(getOpClock).toHaveBeenCalledWith(5);
+    // One pool, sized from the template it was loaded with: its 2 blocks, the page, and room for
+    // the typed rows (4, so a commit that waited on the worker rarely needs a second trip).
+    expect(getOpClock.mock.calls).toEqual([[7]]);
   });
 
-  async function materializeWithEnter() {
-    const rendered = render(() => <VirtualJournalDay day={20260910} />);
+  it("once focus has prepared it, Enter writes the day and shows its tree in the same task (B-411)", async () => {
+    const onStarted = vi.fn();
+    render(() => <VirtualJournalDay day={20260910} onStarted={onStarted} />);
     const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    textarea.focus();
+    fireEvent.focus(textarea);
+    await settle(); // the template and the HLC pool, fetched on focus
+    fireEvent.input(textarea, { target: { value: "first" } });
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    // No await: a key typed next must already find the day's tree and the caret request.
+    expect(applyOps).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("block-tree")).toBeTruthy();
+    const ops = applyOps.mock.calls[0]?.[0] ?? [];
+    expect(treeInitialOps).toEqual(ops);
+    const blocks = creates(ops);
+    expect(blocks.map((b) => b.payload.content)).toEqual(["first", ""]);
+    expect(blockFocusRequest()).toBe(blocks[1]?.entity);
+    expect(onStarted).toHaveBeenCalledWith(true);
+    clearBlockFocusRequest();
+  });
+
+  it("keeps taking lines while the replica has not answered, and writes them all at once (B-411)", async () => {
+    let answer: (v: null) => void = () => {};
+    loadJournalTemplate.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    textarea.focus();
+    fireEvent.input(textarea, { target: { value: "first" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    fireEvent.input(textarea, { target: { value: "second" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    fireEvent.input(textarea, { target: { value: "thi" } });
+    // Still the draft, with the closed lines shown above the one being typed.
+    expect(applyOps).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("block-tree")).toBeNull();
+    expect(screen.getByText("first")).toBeTruthy();
+    expect(screen.getByText("second")).toBeTruthy();
+    expect(textarea.value).toBe("thi");
+
+    answer(null);
+    await vi.waitFor(() => expect(applyOps).toHaveBeenCalledTimes(1));
+    const blocks = creates(applyOps.mock.calls[0]?.[0] ?? []);
+    expect(blocks.map((b) => b.payload.content)).toEqual(["first", "second", "thi"]);
+    // The caret goes where the typing was: the end of the last line.
+    expect(blockFocusRequest()).toBe(blocks[2]?.entity);
+    expect(await screen.findByTestId("block-tree")).toBeTruthy();
+    clearBlockFocusRequest();
+  });
+
+  it("leaves the caret request alone when torn down after starting the day", async () => {
+    const { unmount } = render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    textarea.focus();
     fireEvent.input(textarea, { target: { value: "first" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     await settle();
     const nextId = blockFocusRequest();
     expect(nextId).toBeDefined();
-    await screen.findByTestId("block-tree");
-    return { ...rendered, nextId: nextId as string };
-  }
-
-  it("hands its focus request back if it is torn down after the request was claimed (B-107)", async () => {
-    const { unmount, nextId } = await materializeWithEnter();
-    // Our optimistic tree claims the request (its editor has not necessarily taken focus yet) …
-    clearBlockFocusRequest();
-    // … then the stream swaps in its own tree for the page and unmounts us.
     unmount();
     expect(blockFocusRequest()).toBe(nextId);
-  });
-
-  it("leaves a still-pending request alone on teardown", async () => {
-    const { unmount, nextId } = await materializeWithEnter();
-    unmount();
-    expect(blockFocusRequest()).toBe(nextId);
+    expect(appendToJournalDay).not.toHaveBeenCalled();
     clearBlockFocusRequest();
   });
 
@@ -295,8 +341,10 @@ describe("VirtualJournalDay torn down with text nobody committed (B-243)", () =>
 
   it("keeps the typed line, drops its caret request, and can try again when the write fails (B-131)", async () => {
     applyOps.mockRejectedValueOnce(new Error("disk full"));
-    render(() => <VirtualJournalDay day={20260910} />);
+    const onStarted = vi.fn();
+    render(() => <VirtualJournalDay day={20260910} onStarted={onStarted} />);
     const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    textarea.focus();
     fireEvent.input(textarea, { target: { value: "first" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     await settle();
@@ -305,6 +353,8 @@ describe("VirtualJournalDay torn down with text nobody committed (B-243)", () =>
       "Could not start this day: disk full",
     );
     expect(screen.queryByTestId("block-tree")).toBeNull();
+    // The section is told the draft is back, so it does not keep a tree for a page that is not there.
+    expect(onStarted.mock.calls).toEqual([[true], [false]]);
     // No caret request left behind for a block that was never created.
     expect(blockFocusRequest()).toBeUndefined();
     const back = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;

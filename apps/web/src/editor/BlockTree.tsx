@@ -29,7 +29,14 @@
  * happens where the block lives.
  */
 import type { EditorView } from "@codemirror/view";
-import { blockTextPayloads, formatDayTime, makeOp, type Op } from "@nooklet/core";
+import {
+  blockTextPayloads,
+  formatDayTime,
+  makeOp,
+  newId,
+  type Op,
+  orderBetween,
+} from "@nooklet/core";
 import "./editor.css";
 import {
   createEffect,
@@ -185,6 +192,10 @@ export function BlockTree(props: {
   filter?: string;
   /** The matching block ids in reading order, on every change while `filter` is set. */
   onFilterMatches?: (ids: readonly string[]) => void;
+  /** A batch the caller has just applied to this page, drawn before the first fetch answers, so a
+   * focus request for a block in it is claimed on mount rather than a worker round trip later —
+   * keys typed in that gap had no editor (B-411, `views/VirtualJournalDay.tsx`). Read once. */
+  initialOps?: readonly Op[];
 }) {
   const treeResource = usePageTree(() => props.pageId);
   // The read-only page lock (`./readOnly.ts`): the prop, or the page's own `read-only:: true`.
@@ -195,9 +206,13 @@ export function BlockTree(props: {
     () => props.readOnly === true || isReadOnlyValue(pageProperties()[READ_ONLY_PROPERTY]),
   );
   const readOnlyNotice = createReadOnlyNotice();
-  const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
   const deletedCache = new Map<string, EditableBlock>();
+  const initialOps = (props.initialOps ?? []) as unknown as OptimisticOp[];
+  const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>(
+    applyOptimistic([], initialOps, deletedCache),
+  );
   const unseenCreations = new UnseenCreations();
+  unseenCreations.note(props.initialOps ?? []);
   /**
    * The buffer of each block whose flushed text write the worker has not answered yet (B-303).
    * The effect below also re-runs when editing ENDS, against the page tree it fetched before that
@@ -1344,6 +1359,33 @@ export function BlockTree(props: {
     holdSelectionFocus();
   }
 
+  /**
+   * A page that exists and has no blocks — made by an agent's `page.create`, or emptied by deleting
+   * every block (a journal day included) — rendered zero rows and gave nowhere to type (B-410; B-75
+   * fixed only pages created from the UI). Only once the fetch has answered "no blocks", so a page
+   * still loading does not flash it; never while zoomed or filtered, where "no rows" means
+   * something else.
+   */
+  const emptyPage = createMemo(
+    () =>
+      !readOnly() &&
+      effectiveRoot() === undefined &&
+      !props.filter &&
+      treeResource()?.blocks.length === 0 &&
+      visibleIds().length === 0,
+  );
+  function startFirstBlock(): void {
+    const clock = clockSig();
+    if (readOnly() || !clock) return;
+    const id = newId();
+    const place = { pageId: props.pageId, parentId: null, order: orderBetween(null, null) };
+    const payload = { kind: "block.create", place, content: "", createdAt: Date.now() } as const;
+    runStructural({
+      ops: [makeOp(clock.next(), clock.device, id, payload)],
+      focus: { id, caret: { at: "end" } },
+    });
+  }
+
   return (
     <>
       <Show when={zoomTrail().length > 0}>
@@ -1461,6 +1503,18 @@ export function BlockTree(props: {
             );
           }}
         </For>
+        <Show when={emptyPage()}>
+          <button type="button" class="vr-row vr-empty-start" onClick={startFirstBlock}>
+            <span class="vr-bullet-wrap" aria-hidden="true">
+              <span class="vr-bullet">
+                <span class="vr-bullet-dot" />
+              </span>
+            </span>
+            <span class="vr-row-main">
+              <span class="vr-content vr-empty-start-label">Start typing…</span>
+            </span>
+          </button>
+        </Show>
       </div>
       <readOnlyNotice.View />
     </>

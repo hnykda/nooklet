@@ -53,6 +53,7 @@ vi.mock("./VirtualJournalDay.js", () => ({
   VirtualJournalDay: (props: { day: number }) => (
     <div data-testid="virtual-day">virtual:{props.day}</div>
   ),
+  JournalDayLoading: () => <div data-testid="day-loading" />,
 }));
 
 // jsdom has no IntersectionObserver (used for the infinite-scroll "load more" sentinel); a no-op
@@ -90,6 +91,19 @@ describe("JournalStreamView", () => {
     expect(screen.getByText(/Today/)).toBeTruthy();
     expect(screen.getByTestId("virtual-day").textContent).toContain(String(today));
     expect(screen.queryByTestId("block-tree")).toBeNull();
+  });
+
+  it("offers no draft for today while the stream has not answered, then the day it answers with (B-410)", async () => {
+    streamValue = undefined;
+    await renderStream();
+    // On a fresh client "not answered" lasts the whole first sync: a draft here could be committed
+    // for a day the server already has.
+    expect(screen.getByTestId("day-loading")).toBeTruthy();
+    expect(screen.queryByTestId("virtual-day")).toBeNull();
+
+    setRefetched([{ day: today, page: null, blocks: [] }]);
+    expect(screen.queryByTestId("day-loading")).toBeNull();
+    expect(screen.getByTestId("virtual-day")).toBeTruthy();
   });
 
   it("renders today first, then earlier non-empty days below it, in the order the seam returned them", async () => {
@@ -213,6 +227,9 @@ describe("JournalStreamView", () => {
     expect(screen.getByTestId("virtual-day").textContent).toBe(`virtual:${today}`);
 
     setClockDay(tomorrow);
+    // What the real resource refetches once its `today` moves; until then there is no entry for
+    // the new day, and a day with no entry is not yet known to be virtual (B-410).
+    setRefetched([{ day: tomorrow, page: null, blocks: [] }]);
     expect(screen.getByTestId("virtual-day").textContent).toBe(`virtual:${tomorrow}`);
     expect(screen.getAllByTestId("agenda")[0]?.textContent).toBe(`agenda:${tomorrow}/${tomorrow}`);
   });
