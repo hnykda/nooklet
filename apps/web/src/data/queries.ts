@@ -32,6 +32,7 @@ import {
 } from "@nooklet/core";
 import { type Accessor, createResource, type Resource } from "solid-js";
 import { queryAs } from "../db/client.js";
+import { currentDay } from "./day-clock.js";
 import { stampedFor } from "./store.js";
 
 /** Rows SQLite hands to JavaScript at most; past this the result carries `truncated: true` and
@@ -319,8 +320,8 @@ function toResultBlock(
 // ---------------------------------------------------------------------------------------------
 
 /** Live results for a parsed query; `undefined` query = nothing to run. Refetches after every
- * local or pulled write to `block`/`block_prop`/`page` (the tables a query can read). Read
- * `.latest` to keep the previous result on screen while a refetch runs. */
+ * local or pulled write to `block`/`block_prop`/`page` (the tables a query can read), and when the
+ * local day changes. Read `.latest` to keep the previous result on screen while a refetch runs. */
 export function useQueryResults(
   query: Accessor<Query | undefined>,
 ): Resource<QueryResults | undefined> {
@@ -328,9 +329,12 @@ export function useQueryResults(
     () => {
       const q = query();
       if (!q) return undefined;
-      return stampedFor(q, ["block", "block_prop", "page"]);
+      // `today` is part of the source, not read inside `runQuery`: `scheduled:<=today` answers
+      // differently after midnight while no table has changed, and a page left open overnight
+      // kept listing yesterday's results (B-94). Reading the day signal here is what subscribes.
+      return stampedFor({ query: q, today: currentDay() }, ["block", "block_prop", "page"]);
     },
-    ({ value: q }) => runQuery(q),
+    ({ value }) => runQuery(value.query, { today: value.today }),
   );
   return resource;
 }

@@ -6,11 +6,25 @@ coordinator folds them in. Format matches `docs/BUGS.md`.
 ---
 
 ### B-94 (existing) · A ```query fence keeps yesterday's "today" after midnight until something else changes
-**Status:** open · **Severity:** low · **Found:** 2026-09-12 while building the fence · **Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12 while building the fence ·
+**Test:** `apps/web/src/data/queries.today.test.ts`, `apps/web/src/data/day-clock.test.ts`
 
 Unchanged from `docs/BUGS.md`: `useQueryResults` (`data/queries.ts`) re-runs only when
 `block`/`block_prop`/`page` change, and `today` is read at evaluation time, so a page with
 `scheduled:<=today` left open across midnight lists the previous day's results.
+
+**Fixed 2026-09-13.** New `apps/web/src/data/day-clock.ts`: the local day as a Solid signal
+(`currentDay()`), kept by a timer aimed just past local midnight (capped at five minutes, because
+browser timers stop while a machine sleeps), `visibilitychange` to visible, and window `focus`.
+`useQueryResults` puts `{ query, today: currentDay() }` in the resource source and passes that
+`today` to `runQuery`, so a rollover re-evaluates with no table change. Put in its own module
+rather than next to `stampedFor` in `store.ts` (as the entry suggested) so the journal views can
+use it too without widening the store seam. Tests that would have caught it:
+`queries.today.test.ts` — "re-evaluates `today` at local midnight without any table changing" and
+"re-evaluates when the page becomes visible after sleeping through midnight" (both fail on the old
+`queries.ts`: `expected [ 20260912 ] to deeply equal [ 20260912, 20260913 ]`); the clock itself in
+`day-clock.test.ts` (midnight, visibility, focus, a sleep-paused timer, DST-safe midnight, one
+notification per rollover).
 
 ---
 

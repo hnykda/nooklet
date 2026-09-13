@@ -30,16 +30,21 @@ Updated after every meaningful step. If you are reading this after a restart, co
 
 ## Done (commit hashes)
 
-- (none yet)
+- `docs(progress): impl-journal — plan, decisions; log B-94 (existing), B-170, B-171`.
+- `fix(web): a query fence re-evaluates today at local midnight (B-94)` — `data/day-clock.ts`
+  (+ `day-clock.test.ts`, 7 tests), `data/queries.ts` source carries `today`,
+  `data/queries.today.test.ts` (2 tests, both fail on the old `queries.ts`). Web unit suite:
+  691 passed / 2 failed on the first run — `page-title.test.ts` timed out at 5 s on a cold import
+  (load average 45; passes alone with `--testTimeout=60000`), `render-seams.test.tsx` (a 1 s `waitFor`
+  on a lazily loaded fence view that mocks `useQueryResults`) passed on 3 of 3 reruns. e2e for the fence not yet run (step 4).
 
 ## In flight
 
-- Logging bugs (B-94 existing, B-170, B-171) and this file.
+- Nothing mid-edit.
 
 ## Next steps
 
-1. `data/day-clock.ts` — the local day as a signal (midnight timer capped at 5 min + visibility
-   + focus), fake-clock unit test. Wire into `useQueryResults` (B-94) with a test.
+1. (done) day clock + B-94.
 2. `data/agenda.ts` (query) + `views/journalAgenda.ts` (pure selection/grouping, unit tests) +
    `views/JournalAgenda.tsx` (component).
 3. Hook into `JournalStreamView` (all day sections) and `PageView` (journal pages); stream `today`
