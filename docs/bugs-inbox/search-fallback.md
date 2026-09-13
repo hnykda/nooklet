@@ -159,3 +159,35 @@ runs used only search-fallback + settings + views, which is why it passed there.
 **Fixed 2026-09-13.** The test searches a word no other spec uses ("fallbacknotequokka"). The pair
 `search-cleared.spec.ts` + `search-fallback.spec.ts` on Chromium: 1 failed before ("2 results"),
 5 passed after.
+
+---
+
+### B-527 · Settings says "Indexing… It turns on by itself" for a backfill that stopped on errors — the state the search note calls `index_incomplete`
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, search-fallback verify (real-graph
+copy on :6418) · **Test:** none
+
+Since B-520 the Search view's note sends a reader to Settings with "Search settings" when indexing
+ended with failures. Settings then contradicts it. Reproduced on the scratch copy by making the
+configured model inactive with one `embedding` row in `status = 'error'` (queue empty, nothing
+pending): the note read "indexing stopped: 1 item(s) failed to embed (14,469 of 14,470 embedded),
+so semantic search was not switched on. (ollama /api/embed 500: simulated) Search settings", and
+the Search & embeddings section read "● Indexing… · Indexed 14469 embedded · 1 failed · It turns on
+by itself once every page and block has been embedded. 0 still queued." It will not turn on by
+itself — `promoteConfiguredModelIfReady` refuses while any error row remains; "Re-index everything"
+(shown) is the way out, and nothing says so. Pre-existing in `SettingsPanel.tsx`'s `switching_to`
+branch; not changed here.
+
+Side note from the same run: when a re-embed fails for a unit that already has a vector, the vector
+stays and the row is `error`, so the note's `total` (indexed + pending + errors + queued) counts that
+unit twice ("14,469 of 14,470"). Cosmetic; not changed.
+
+---
+
+### B-528 · The Settings panel's indexing progress never refreshes on its own
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, search-fallback (noticed by the
+branch author during the real-graph backfill, not logged then) · **Test:** none
+
+`EmbeddingsSection` reads `embeddings.status` once per mount (`createResource` with no source and
+no timer, `apps/web/src/views/SettingsPanel.tsx`); it refetches only on Refresh, after a save, and
+after Re-index. During a 7–8 minute backfill of the owner's graph "0 embedded · 19586 still queued"
+stays on screen until Refresh is pressed, which reads as stuck. Not changed here.
