@@ -183,8 +183,8 @@ export class PluginHost {
    *
    * Not built at activation any more. The web app compiles the built-in client halves into its own
    * build (ADR 023) and requests none of these, while a client half may bundle a real library:
-   * mermaid made this 12 MB of esbuild output on every server start, before the first request was
-   * answered (over 5 s on a loaded machine, which is how a unit test timing out found it).
+   * mermaid made this 12 MB and ~0.6 s of esbuild on every server start, before the first request
+   * was answered (`tools/probes/mermaid-client-bundle-cost.mjs`; much more on a busy machine).
    */
   clientBundle(id: string): Promise<{ file: string; hash: string } | undefined> {
     const entry = this.active.get(id);

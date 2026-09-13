@@ -37,7 +37,24 @@ test("/mermaid is in the slash menu and inserts a diagram that renders", async (
   await expect(diagram).toContainText("B");
 });
 
+// mermaid and its layout engines are ~6 MB of chunks (ADR 023): loaded for the first diagram,
+// never for a page without one.
+const MERMAID_CHUNK = /mermaid|elk-|cytoscape|dagre|flowDiagram/;
+
+test("a page without a diagram loads none of mermaid's chunks", async ({ page }) => {
+  const urls: string[] = [];
+  page.on("request", (r) => urls.push(r.url()));
+  await openPage(page, "Plugins No Diagram", "- ```js\n  const x = 1;\n  ```\n- words");
+  // The plugins are up (this is the other plugin's output): "```js", "const", "x", "=", "1;",
+  // "```", "words".
+  await expect(wordCount(page)).toHaveText("7 words");
+  await page.waitForLoadState("networkidle");
+  expect(urls.filter((u) => MERMAID_CHUNK.test(u))).toEqual([]);
+});
+
 test("a mermaid fence renders as a diagram, not as code", async ({ page }) => {
+  const urls: string[] = [];
+  page.on("request", (r) => urls.push(r.url()));
   const outliner = await openPage(
     page,
     "Plugins Mermaid Fence",
@@ -50,6 +67,9 @@ test("a mermaid fence renders as a diagram, not as code", async ({ page }) => {
   // A fence no plugin claims is still the ordinary highlighted code block.
   await expect(outliner.locator('pre.vr-fence[data-lang="js"] code')).toHaveText("const x = 1;");
   await expect(outliner.locator('.vr-plugin-fence[data-lang="js"]')).toHaveCount(0);
+  // Served by this origin's own build — nothing from a CDN.
+  expect(urls.some((u) => /\/static\/mermaid\.core-/.test(u))).toBe(true);
+  expect(urls.filter((u) => !u.startsWith(new URL(page.url()).origin))).toEqual([]);
 });
 
 test("a broken mermaid fence says why instead of rendering nothing", async ({ page }) => {

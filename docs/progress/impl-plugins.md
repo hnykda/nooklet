@@ -12,7 +12,7 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 
 - `329d7f7` B-181: client bundles content-addressed in `<pluginDir>/.nooklet-build/`, not a leaked
   temp dir per start (`bundler.test.ts`). Inbox: B-103 in progress, B-180, B-181.
-- (next commit) the host: `plugins/*` workspace members; mermaid bundled (lazy chunks) instead of
+- `8d1e9c7` the host: `plugins/*` workspace members; mermaid bundled (lazy chunks) instead of
   jsdelivr; `apps/web/src/plugins/{host.ts,builtins.ts,ClientPlugins.tsx,StatusItems.tsx}`;
   `editor/render/PluginFence.tsx` + `tokens.tsx` hookup; `commands/slash/contributed.ts` +
   `SlashMenu.tsx` ranks it; `data/plugin-lookups.ts`; `store.ts#serverCaughtUpVersion`;
@@ -20,21 +20,26 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
   client on `page.changed`; server bundles client halves lazily (`PluginHost.clientBundle`).
   Unit: web 13 host + 5 fence + 1 slash test new; server plugins 55/55 (sequential run — the
   machine was at load 44, parallel runs time out at vitest's 5 s in files I did not touch too).
+- `1cf6d2c` `e2e/tests/plugins.spec.ts` (5 tests then) + `popups.spec.ts` SLASH_ORDER gains
+  "Mermaid diagram".
+- (next commit) ADR 023, spec §5 note, B-103 fixed + B-182 in the inbox, plugins.spec.ts lazy-chunk
+  and same-origin assertions (6/6), `tools/probes/web-build-weight.mjs`,
+  `tools/probes/mermaid-client-bundle-cost.mjs`.
+
+e2e on 6404 (Chromium): plugins 6/6; popups + render + rendering + templates + query + navigation +
+diagnostics 77/77; editing + views + shelf + parity + a-fresh-journal + focus 82/83 — the one
+failure, views "opening the palette while editing…", also fails on `da85cfb` → B-182, not mine.
 
 ## 2. In flight
 
-Nothing uncommitted after the host commit.
+Nothing uncommitted after the docs commit.
 
 ## 3. Next steps, in order
 
-1. `e2e/tests/plugins.spec.ts`: `/mermaid` row in the slash menu and inserting it; a mermaid fence
-   renders an `<svg>`; word-count shows "N words" on a page created over the API and updates
-   after typing; the count disappears on `/journals`.
-2. Run on 6404: plugins + popups + render + rendering + editing + templates + query specs.
-3. ADR 023 (client plugin host), spec §5 note (`page.changed`, what the v1 client host
-   implements), B-103 Fixed paragraph naming the tests, research/14-style bundle numbers
-   (mermaid chunks, precache size) from the production build.
-4. Final: biome, `pnpm -r typecheck`, unit suites, report.
+1. Final: biome, `pnpm -r typecheck`, unit suites of web/plugin-api/server, report.
+2. Coordinator: B-180 (desktop ships no plugin server halves), B-182 (palette focus regression),
+   the precache decision (ADR 023 Consequences: +5 MB), `plugins/*` in the workspace + lockfile
+   (+116 packages) when merging.
 
 ## 4. Decisions made and why
 
