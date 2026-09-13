@@ -34,8 +34,10 @@ Fixed paragraph in `docs/BUGS.md` should say the template's text arrives as a `b
 ---
 
 ### B-361 · Escape from find in page puts the caret back in the wrong place in a block with properties
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F2) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F2) ·
+**Tests:** `e2e/tests/page-find.spec.ts` "Escape puts the caret back in the same place in a block
+that shows a property line (B-361)"; `apps/web/src/app/page-find.test.ts` "puts back a content
+offset when the editing buffer shows property lines (B-361)"
 
 Edit a block that has a property line, put the caret anywhere below its first line, press
 Cmd/Ctrl+F, then Escape: the caret comes back further along than it was — by the length of the
@@ -45,6 +47,12 @@ property lines — or at the end of the block.
 buffer (property lines included, B-101); on Escape the tree maps it into the buffer a second time
 as if it were an offset into the content (`caretInEditText`). Find in page was written before
 B-101 existed on its branch.
+
+**Fixed 2026-09-13.** `openPageFind` takes the editor's whole selection and saves
+`contentOffsetOf(content, end)`, a content caret, which is what a focus request carries
+(`CommandLayer` already passed the full selection, so it is unchanged). Both tests failed first:
+the unit case got `{offset: 31}` for 17; in the browser the caret came back at 41 instead of 31
+(`first line` / `list:: number` / `second| line here`).
 
 ---
 

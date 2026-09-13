@@ -17,17 +17,19 @@ Review record: `docs/review/2026-09-13-rv-merge-web.md` (the last commit).
   `templates.spec.ts` failed first (stored `list: "number!"`, content without the `!`), passes with
   the fix. e2e templates + template-undo + template-collapsed + block-properties: 24/24. Web unit:
   996/1000 in the full run at load average 63 (page-title, SearchView ×2, render-seams timeouts);
-  those three files rerun alone: 23/23.
+  those three files rerun alone: 23/23. Commit `c3bb9f7`.
+- F2 / B-361 — `openPageFind` saves `contentOffsetOf(content, end)`. Unit case in
+  `app/page-find.test.ts` failed first (31 for 17); e2e case in `page-find.spec.ts` failed first
+  (caret 41 for 31) and passes; page-find.spec 9/9. Web unit 1001/1001.
 
 ## In flight
 
-- F2 / B-361.
+- F3 / B-362.
 
 ## Next steps, in order
 
 1. (done) F1.
-2. F2: `page-find.ts` stores a content offset (unit test in `app/page-find.test.ts` + e2e in
-   `page-find.spec.ts`).
+2. (done) F2.
 3. F3: readOnly guard in `doUndo`/`doRedo` + e2e in `read-only.spec.ts`.
 4. F4: `filtered` off while printing + `.page-find` hidden in print.css + e2e in
    `page-export.spec.ts`.
