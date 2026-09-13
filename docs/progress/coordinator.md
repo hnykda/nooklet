@@ -52,31 +52,57 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
 4. Publish-a-graph (2–3 days per the audit) — the wiki is the first candidate. Owner's call.
 5. `changes-since.ts`: classify asset rows beyond "uploaded" (GC deletions, dedupe touches).
 
-## M8 run — 2026-09-13 07:55 (in flight)
+## M8 run — 2026-09-13, done and integrated
 
-One workflow, run `wf_69b4f9a8-ee2` (script:
-`~/.claude/projects/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/workflows/scripts/m8-verify-review-build-wf_69b4f9a8-ee2.js`;
-resume with `Workflow({scriptPath, resumeFromRunId})` — finished agents return cached results).
-Base for every branch: `da85cfb`.
+One workflow (`wf_69b4f9a8-ee2`, 38 agents, 0 errors): 3 QA explorers on copies of the real graph →
+3 fixers; 4 reviewers → a skeptic per dimension (35 of 37 findings survived) → 4 fixers; 10 builders
+→ an adversarial verifier each in the same worktree (9 fixed defects on their branch, 1 solid).
+All 17 branches `m8/*` merged into main (merge commits `…` through `db4f1eb`), inbox folded
+(`5454b49`), 26 bugs open.
 
-| Track | Agents | Branches (`m8/<slug>`) | e2e ports | New bug numbers |
-|---|---|---|---|---|
-| QA on a copy of the real graph → fixer per area | qa-editor, qa-views, qa-render-sync | `m8/qafix-editor`, `m8/qafix-views`, `m8/qafix-render-sync` | serve 6450–6452, fix 6460–6462 | B-240–269 |
-| Review → skeptic refutes each finding → fixer per dimension | rv-server-sync, rv-server-security, rv-web-reactivity, rv-web-security | `m8/rv-*` | 6470–6473 | B-120–139 |
-| Build → adversarial verify in the same worktree | impl-dates (B-96/102), impl-render (B-99/100/101), impl-commands (B-97/98/105/106), impl-plugins (B-103), impl-editor (B-88/108), impl-journal (scheduled section, B-94), impl-refs (B-89/104/111), impl-embeds, impl-export (md/print/favourites), impl-small (timestamps, find-in-page, read-only, random page) | `m8/impl-*` | 6400–6409 | B-140–239 |
+### What landed (by branch)
+- QA editor: redo of a new block (B-240), undo after selection delete (B-241), Alt+Up/Down undo focus
+  (B-242), fresh-client journal draft (B-243), `[[` New page mid-first-sync (B-244).
+- QA views: Replace all stale fields (B-250), Restore/Undo overwriting later edits (B-251), references
+  truncation (B-253), Turn into page names (B-254), Trash rename-on-conflict (B-255), alias restore (B-256).
+- QA render/sync: live mirror follows renames/moves/markers/props (B-260), title rename through the
+  server (B-261), export of missing files (B-262), `tag:task` (B-263), `$$` math (B-264), collapsed
+  template (B-265), `javascript:` hrefs (B-268).
+- Review server/core (B-120–B-124, plus B-85/86/90/91 follow-ups); server security (B-125 graph.replace
+  in a worker with a 2 s budget, B-126 NAME_MAX mirror names, B-127 importer symlinks, B-128 `u` flag,
+  B-129 query depth); web reactivity (B-130–B-133); web security (B-137 asset Alt+Enter, B-138 fence
+  classes + KaTeX size, B-139 block-ref Alt+Enter).
+- Builders: date picker + chips (B-96, B-102, B-141, B-143, B-145); numbered lists, visible
+  properties, /image (B-99–B-101, B-150, B-152–B-154); dead commands, plugin list, open on shelf
+  (B-97, B-98, B-105, B-106, B-160); client plugin host — /mermaid, word count (B-103, B-183…);
+  template undo and edited-row-leaves (B-108, B-88); journal Scheduled-and-deadline section + midnight
+  (B-94, B-170, B-174); alias routes, Pages tagged X, create props bag (B-104, B-111, B-89, B-202);
+  read-only embeds (B-210, B-212, B-214…); copy/export/print/favourite (B-220–B-223); timestamps,
+  find in page, read-only lock, random page, search filters (B-230–B-234…).
+- Coordinator: B-146 `--help` (an agent served the owner's live graph for 10 min through it — no
+  content changed; pre-incident copy at `~/.nooklet/backup-2026-09-13-before-accidental-serve.sqlite`).
 
-Conventions for this run: agents never edit `docs/BUGS.md`; each writes `docs/bugs-inbox/<slug>.md`
-(BUGS.md entry format; `### B-NN (existing)` for fixes to existing entries). Each keeps
-`docs/progress/<slug>.md` on its branch.
+### Integration choices (so nobody re-litigates)
+- Parallel duplicate fixes: kept B-250 over B-134, B-240 over B-190, B-130/B-131 over B-135/B-136,
+  B-143 over B-266 (both tests kept), B-268's scheme denylist over B-138's allowlist.
+- Skipped from `m8/rv-web-security`: `6d1cb2e` (allowlist), `3d73b13` (one-POST-path refactor) and
+  `373c654` (page paths module) — overlapping refactors that conflicted with the reactivity branch;
+  worth redoing on the merged tree. `ff140b1`/`eb3face` were duplicates.
+- `m8/impl-export` moved the page renderer to core; the security branch's NAME_MAX-safe
+  `pageFilePath` was kept in `mirror/export.ts`.
 
-### Integration (coordinator, after the run)
-1. For each branch in priority order (qafix, rv, impl-editor, impl-dates, impl-render,
-   impl-commands, impl-plugins, then the rest): `git merge --no-ff m8/<slug>` on main; resolve
-   conflicts (expected in shared files only); typecheck + unit after each merge.
-2. Fold `docs/bugs-inbox/*.md` into BUGS.md (existing → move to Fixed with the note; new → Open or
-   Fixed by status), delete the inbox dir, one commit.
-3. Full unit, full e2e, `verify` on a fresh real-graph copy; record numbers here.
-4. Remove the worktrees (`git worktree list`), keep branches until the owner has seen the result.
+### Numbers on the merged tree
+Unit: core 393, plugin-api 17, server 608, web 1,000 — all green after `9f410e3`. `verify` on a
+fresh copy of the live graph: OK, 20,411 ops. Fresh import of the Logseq graph: 127 pages + journals,
+18,628 blocks, 171 assets, 0 dangling; verify OK; 24 scheduled dates (was 4), 0 leftover `SCHEDULED:`.
+Full e2e: see below once it finishes.
+
+### Owner decisions waiting
+- Plugin host precache: +5 MB (mermaid's ELK layout, cytoscape) — keep, lazy-exclude, or drop mermaid.
+- Repair the 20 blocks in the live graph that still hold `SCHEDULED:` text (re-import or one-off op).
+- B-192: what wins when a remote rewrite meets unsaved typing.
+- Journal agenda: include non-task dated blocks? cap the overdue list?
+- Date picker built as a typed line, not the spec's time/repeat toggles.
 
 ## Pending on the owner
 
