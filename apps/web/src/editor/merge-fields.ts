@@ -68,10 +68,21 @@ const FIELD_LABEL: Record<string, string> = {
   repeat: "repeat",
 };
 
+/** Values go into a toast. On the real graph two web-clipped article blocks disagreed about a
+ * `site::` that is a whole markdown link each, and the notice ran to four lines. */
+const MAX_VALUE = 24;
+const MAX_FIELDS = 2;
+
+function clip(value: string): string {
+  return value.length > MAX_VALUE ? `${value.slice(0, MAX_VALUE - 1)}…` : value;
+}
+
 /** The notice for a refused merge: which field, and both values, so the user knows what to change. */
 export function mergeRefusedMessage(conflicts: readonly MergeConflict[]): string {
-  const parts = conflicts.map(
-    (c) => `${FIELD_LABEL[c.field] ?? `${c.field}::`} (${c.kept} / ${c.merged})`,
-  );
-  return `Not merged: the two blocks have a different ${parts.join(", ")}. Change or remove one first.`;
+  const parts = conflicts
+    .slice(0, MAX_FIELDS)
+    .map((c) => `${FIELD_LABEL[c.field] ?? `${c.field}::`} (${clip(c.kept)} / ${clip(c.merged)})`);
+  const more = conflicts.length - parts.length;
+  const list = more > 0 ? `${parts.join(", ")} and ${more} more` : parts.join(", ");
+  return `Not merged: the two blocks have a different ${list}. Change or remove one first.`;
 }

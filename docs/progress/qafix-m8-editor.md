@@ -40,7 +40,7 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
   `tools/probes/serialize-property-shaped-content.ts` shows every property/timestamp-shaped content
   line re-reads as a property) and B-344 (Q5, feature gap: `classifyFence` reads line 1 only, and the
   plugin host lacks `insertBlockAfter`/`focusBlock`/`currentBlock`). Logged, not fixed.
-- B-347 (found, high, fixed): new `apps/web/src/app/text-field-keys.ts` + 3-line hookup in
+- `d5e0796` B-347 (found, high, fixed): new `apps/web/src/app/text-field-keys.ts` + 3-line hookup in
   `CommandLayer.tsx`; spec R12a. Unit `text-field-keys.test.ts` (3), e2e
   `palette-text-keys.spec.ts` (red before hookup, green after). Sweep of 20 specs (palette-text-keys,
   undo-redo, redo, focus, template-undo, views, commands, popups, page-title-draft, page-find,
@@ -48,6 +48,15 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
   autocomplete, templates): 204 passed, 1 skipped, 1 failed = `views.spec.ts` "opening the palette
   while editing … hands focus back" — fails the same with every web file restored to `cf08d19`
   (2/2), i.e. the known B-246/B-193 entry, not this branch.
+- Real-graph check of B-340 (copy of the owner's graph in scratch `graph/`, served on 6478 — 6461
+  was taken by another agent; script scratch `realmerge.mjs`): Backspace on the real
+  `DONE rukavice` (scheduled 2022-12-16) under `2022-12-16` merged into the deep descendant
+  `projít skříň` → `projít skříňrukavice`, DONE, scheduled kept; Cmd+Z restored both blocks.
+  Backspace on the collapsed OmnivoreSync article `Destigmatize being dumb` (author/site/date-saved
+  differ from the article above) was refused with the notice, 960 blocks before and after. The
+  notice listed three long `site::` links and ran long, so `mergeRefusedMessage` now clips values to
+  24 chars and lists at most two fields (unit test with those real values). `pnpm nooklet verify`
+  on the copy afterwards: 20438 ops replayed, OK.
 
 ## 2. In flight
 

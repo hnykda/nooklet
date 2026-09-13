@@ -409,6 +409,22 @@ describe("merges keep what the merged block carried (B-340)", () => {
     );
   });
 
+  it("keeps the refusal notice short when the values are long web-clip properties", () => {
+    // Shape from the real graph: two OmnivoreSync article blocks, `site::` a whole markdown link.
+    const message = mergeRefusedMessage([
+      { field: "author", kept: "unknown", merged: "Defender" },
+      {
+        field: "site",
+        kept: "[nabeelqu.co](https://nabeelqu.co/reflections-on-palantir)",
+        merged: "[Defender’s Corner](https://defenderofthebasic.substack.com/p/destigmatize)",
+      },
+      { field: "date-saved", kept: "[[Wed, 23.10.2024]]", merged: "[[Mon, 21.10.2024]]" },
+    ]);
+    expect(message).toBe(
+      "Not merged: the two blocks have a different author:: (unknown / Defender), site:: ([nabeelqu.co](https://n… / [Defender’s Corner](htt…) and 1 more. Change or remove one first.",
+    );
+  });
+
   it("Delete at the end pulls in the next block's properties and its completion time", () => {
     const [a, b] = o(2);
     const t = buildTree(
