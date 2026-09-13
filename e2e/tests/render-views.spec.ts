@@ -205,3 +205,32 @@ test("a journal day nobody has written shows the links to it, whatever date form
     "RV Date Linker",
   ]);
 });
+
+test("the Tasks view's due window finds a deadline on a task that is also scheduled (B-171)", async ({
+  page,
+}) => {
+  // Dates years out, so no other spec's task falls in the window; rows are matched by text anyway.
+  await seedPage(
+    page,
+    "RV Tasks Window",
+    [
+      "- TODO rvtw scheduled early, deadline inside",
+      "  scheduled:: 2031-03-01",
+      "  deadline:: 2031-03-20",
+      "- TODO rvtw scheduled inside",
+      "  scheduled:: 2031-03-18",
+      "- TODO rvtw scheduled early only",
+      "  scheduled:: 2031-03-01",
+    ].join("\n"),
+  );
+  await page.goto("/tasks");
+  const rows = page.locator(".task-group", { hasText: "RV Tasks Window" }).locator(".task-row");
+  await expect(rows).toHaveCount(3);
+
+  await page.locator("label", { hasText: "Due from" }).locator("input").fill("2031-03-15");
+  await page.locator("label", { hasText: "Due to" }).locator("input").fill("2031-03-25");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: "deadline inside" })).toHaveCount(1);
+  await expect(rows.filter({ hasText: "scheduled inside" })).toHaveCount(1);
+  await expect(rows.filter({ hasText: "scheduled early only" })).toHaveCount(0);
+});

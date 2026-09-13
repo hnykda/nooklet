@@ -170,6 +170,31 @@ never settles would look like. Not investigated; the failed run's trace was over
 ---
 
 ### B-171 (existing)
-**Status:** in progress · **Test:** —
+**Status:** fixed · **Test:** `e2e/tests/render-views.spec.ts` ("the Tasks view's due window finds a
+deadline on a task that is also scheduled"), `apps/web/src/views/taskFilters.test.ts` ("the due
+window looks at the scheduled date AND the deadline", 4 cases)
+
+**Fixed 2026-09-13.** `views/taskFilters.ts#inDueWindow` matches when the scheduled date or the
+deadline lies in the window, one date satisfying both bounds (a task scheduled before a window with
+its deadline after it is not in it); `filterTasks` uses it instead of comparing `dueDay`. The e2e
+seeds three tasks in 2031 — scheduled 03-01 with deadline 03-20, scheduled 03-18, scheduled 03-01
+only — and sets the window 03-15..03-25 in the real Tasks view: 2 rows expected; on `cf08d19`'s
+`taskFilters.ts` it got 1 (the deadline task missing). The unit cases "a deadline inside the
+window…" and "an open-ended bound…" failed before. The existing fixture task that had only
+`dueDay` now also carries the `scheduledDay` it would have in real data. Left as it was: the row's
+date label (B-324).
+
+---
+
+### B-324 · A Tasks view row shows only one date, so a task found by its deadline shows its scheduled date
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, fixing B-171 · **Test:** none
+
+`views/TasksView.tsx` renders `formatDueDay(t.dueDay)` in `.task-due`, and `dueDay` is
+`coalesce(scheduled_day, deadline_day)`. Since B-171 the Due from/to window matches either date,
+so with a 2031-03-15..25 window the task "scheduled 2031-03-01, deadline 2031-03-20" is listed
+with the label "2031-03-01" — outside the window the reader just typed, with nothing saying why it
+is there. The row does not say whether its one date is a scheduled date or a deadline either. Likely
+fix: show both dates when both are set, labelled as the journal agenda does
+(`views/JournalAgenda.tsx`). Not done here: a display change beyond the filter bug.
 
 ---

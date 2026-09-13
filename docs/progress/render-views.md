@@ -48,13 +48,19 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   rerun). e2e render-views, pages, references, references-cap, references-filters, tagged-pages,
   journal-agenda, journals, page-rename, navigation, link-unlinked: 51/52 then 52/52 on rerun.
 
+- B-171 — commit "fix(web): the Tasks view's due window matches a deadline as well as a scheduled
+  date". `views/taskFilters.ts#inDueWindow`; 4 unit cases in `taskFilters.test.ts`; e2e in
+  `render-views.spec.ts` (failed on the old file: 1 row, expected 2). Logged B-324 (row label shows
+  only `dueDay`). Unit web 1008/1008. e2e render-views, tasks, views, dates: 53 passed, 1 failed —
+  `views.spec.ts` "opening the palette while editing…", the known B-161, failed again alone (28/29);
+  nothing on this branch touches the palette or editor focus (not revert-checked by this branch).
+
 ## 2. In flight
 
-- B-171 next.
+- Real-graph checks next.
 
 ## 3. Next steps, in order
 
-5. B-171 — `filterTasks` due window matches scheduled OR deadline; unit test; e2e in tasks area.
 6. Real-graph check (backup copy, own server on a spare port, production build): `/page/book`
    (B-200: owner has `tags:: book`, no `book` page), a multi-line block (B-224).
 7. Final: full web unit suite, typecheck, the touched e2e specs together; fill in the return.
