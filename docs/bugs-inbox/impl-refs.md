@@ -63,6 +63,12 @@ the "links onward" e2e test fails with the guard removed (checked). All five e2e
 same alias the client picks the older page, the server (`resolvePageIdForKey`) whichever row SQLite
 returns first.
 
+Real graph (`tools/probes/refs-real-graph.mjs`, a copy of the owner's graph served on 6406):
+`/page/daně` → `/page/Taxes`, `/page/zahrada` → `/page/Garden`, and the `[[…]]`-wrapped alias with
+commas → the `hls__The_Logic_of_Experimental_Tests…` page, each in ~230–275 ms from `goto`;
+`/page/GARDEN` resolves by its own key without a redirect. `pnpm nooklet verify` on the copy
+afterwards: 20,411 ops, OK.
+
 ---
 
 ### B-111 (existing) · ADR 017's `tagged_pages` group was never built
@@ -89,6 +95,13 @@ returned fewer than exist; hooked into `ReferencesPanel` above linked references
 shows when tagged pages are all there is. All three e2e tests fail against `da85cfb`'s
 `ReferencesPanel.tsx`/`page-backlinks.ts` (checked). Not built: ADR 017's "a `property` tag is
 removable, an `intrinsic` one is not" control — the list marks `data-source` but offers no remove.
+
+Real graph (`tools/probes/refs-real-graph.mjs`): the owner's lowercase `journal` page shows "Pages
+tagged journal" with count 825, 200 names shown newest first in the reader's format ("Mon,
+07.09.2026", …), "Showing 200 of 825.", then Linked and Unlinked references, ~110–220 ms from
+`goto`. `page.backlinks {target: "journal", limit: 500}`: `tagged_total` 825, 500 rows, cursor
+present, 8–14 ms. `{target: "book"}` (no `book` page exists): the one highlights page carrying
+`tags:: book, design`, source `property` — which the UI cannot show, see B-200.
 
 ---
 

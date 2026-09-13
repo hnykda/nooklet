@@ -43,16 +43,30 @@ and immediately `git reset --hard da85cfb` before any work (no commits lost; not
   full rerun — load), e2e tagged-pages 3/3 (all fail on da85cfb), neighbours 53 passed. Logged
   B-200 (uncreated page shows no references) — open, not fixed.
 
+- B-111 commit `a4ba8fd`.
+- Real-graph probe `tools/probes/refs-real-graph.mjs` on a copy served at 6406: alias routes
+  (daně → Taxes, zahrada → Garden, bracketed alias with commas) redirect in ~250 ms; `journal` page
+  shows "Pages tagged journal" 825 (200 shown, note present) above linked refs; API journal 825 in
+  8–14 ms; `book` tagged page listed. Verify on the copy afterwards: OK, 20,411 ops.
+
 ## In flight
 
-- Real-graph check (B-104 alias routes, B-111 `journal` page) + final verify.
+Nothing. All three bugs fixed and committed.
 
 ## Next steps, in order
 
-1. Serve the real-graph copy on 6406 (not during e2e), check `/page/daně` -> Taxes,
-   `/page/zahrada` -> Garden, `/page/journal` lists 825 days (200 shown), `page.backlinks
-   {target: "book"}` lists the tagged highlights page. Keep the probe in `tools/probes/`.
-2. `pnpm nooklet verify` on the copy again (reads/serve do not write ops, but check).
+1. (Coordinator) fold `docs/bugs-inbox/impl-refs.md` into BUGS.md: B-89, B-104, B-111 fixed; B-200
+   open (an uncreated page shows no references — touches `PageView.tsx`, a product call).
+2. Not built from ADR 017: a remove control for `property` tags vs none for `intrinsic`.
+
+## Decisions
+
+- B-89: a set top-level `marker`/`priority`/`collapsed` wins over the bag; `null`/`false` counts as
+  unset (core producers always send those defaults next to a bag).
+- B-104: parser shared through core (`page-alias.ts`), not duplicated in the client; redirect only
+  for non-journal pages; waits for the resource to finish loading (else links bounce back).
+- B-111: `tagged_pages` windowed by the same `limit`/`cursor` as `linked`, plus `tagged_total`;
+  target's alias keys count; the target never lists itself; named pages before journal days.
 
 ## How to resume
 
