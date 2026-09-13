@@ -288,6 +288,14 @@ If `content !== ''`, set `prev.content = prev.content + this.content`, re-parent
 children (if any) to become `prev`'s children, appended after `prev`'s pre-existing children,
 delete this block, and move focus to `prev` at the offset equal to `prev`'s original content
 length (the join point).
+**R20a (fields travel with a merge, B-340).** In both the empty and the non-empty case, `prev`
+takes every field of the deleted block that `prev` does not set itself: `marker`, `priority`,
+`scheduled`, `deadline`, `repeat`, `done`, and each generic property (`list:: number`,
+`owner:: dan`). The marker stays a marker (it is not written into the text at the join). If both
+blocks set one of `marker`/`priority`/`scheduled`/`deadline`/`repeat`/a generic property to
+*different* values, the merge is **refused**: no op is written and the outliner's notice names the
+field and both values. `done` never refuses (the staying block's own timestamp wins), and
+`collapsed` is not carried. Applies to R21 with `next` as the deleted block.
 
 **R21.** `block.deleteForwardMerge` (Delete when `atLineEnd && !hasSelection`) is the mirror of
 R20: let `next` be the block immediately after this one in flattened visible order. If there is

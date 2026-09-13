@@ -97,6 +97,7 @@ import { EditHistory } from "./history.js";
 import { insertAt, pickImageFile } from "./imagePicker.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
+import { mergeRefusedMessage } from "./merge-fields.js";
 import { deriveNumbering, isNumbered } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
 import { registerOutline } from "./outline-registry.js";
@@ -768,12 +769,14 @@ export function BlockTree(props: {
         return true;
       case "block.mergeWithPrevious": {
         const r = mergeWithPrevious(tree, outlineOrder(), id, clock);
-        if (r) runStructural(r);
+        if (r && "refused" in r) readOnlyNotice.show(mergeRefusedMessage(r.refused));
+        else if (r) runStructural(r);
         return true;
       }
       case "block.deleteForwardMerge": {
         const r = deleteForwardMerge(tree, outlineOrder(), id, clock);
-        if (r) runStructural({ ops: r.ops });
+        if (r && "refused" in r) readOnlyNotice.show(mergeRefusedMessage(r.refused));
+        else if (r) runStructural({ ops: r.ops });
         return true;
       }
       case "block.moveUp":

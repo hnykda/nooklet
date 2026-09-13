@@ -1,3 +1,4 @@
+import { formatDoneIso, type Op } from "@nooklet/core";
 import { describe, expect, it } from "vitest";
 import {
   deleteForwardMerge,
@@ -5,12 +6,16 @@ import {
   duplicateBlock,
   indentBlock,
   indentSelectedBlocks,
+  type MergeRefused,
   mergeWithPrevious,
   moveBlock,
+  type OpsFocusResult,
+  type OpsResult,
   outdentBlock,
   outdentSelectedBlocks,
   splitBlock,
 } from "./commands.js";
+import { mergeRefusedMessage } from "./merge-fields.js";
 import { tree as buildTree, makeBlock, makeFakeClock, orders } from "./test-helpers.js";
 import { childrenIds, flattenVisible } from "./tree.js";
 
@@ -220,7 +225,13 @@ describe("mergeWithPrevious (R20) — the spec's own worked example", () => {
       makeBlock({ id: "X", parentId: "B", order: x as string }),
     );
     const rows = flattenVisible(t).map((r) => r.id); // A, B, X, C
-    const { ops, focus } = mergeWithPrevious(t, rows, "B", makeFakeClock(), 5000) ?? {
+    const { ops, focus } = (mergeWithPrevious(
+      t,
+      rows,
+      "B",
+      makeFakeClock(),
+      5000,
+    ) as OpsFocusResult | null) ?? {
       ops: [],
       focus: undefined as never,
     };
@@ -254,7 +265,7 @@ describe("mergeWithPrevious (R20) — the spec's own worked example", () => {
       makeBlock({ id: "B", order: b as string, content: "" }),
     );
     const rows = flattenVisible(t).map((r) => r.id);
-    const result = mergeWithPrevious(t, rows, "B", makeFakeClock(), 5000);
+    const result = mergeWithPrevious(t, rows, "B", makeFakeClock(), 5000) as OpsFocusResult | null;
     expect(result?.ops).toEqual([
       expect.objectContaining({ entity: "B", payload: { kind: "block.delete", deletedAt: 5000 } }),
     ]);
@@ -281,7 +292,13 @@ describe("deleteForwardMerge (R21)", () => {
       makeBlock({ id: "B1", parentId: "B", order: b1 as string }),
     );
     const rows = flattenVisible(t).map((r) => r.id); // A, B, B1
-    const { ops } = deleteForwardMerge(t, rows, "A", makeFakeClock(), 5000) ?? { ops: [] };
+    const { ops } = (deleteForwardMerge(
+      t,
+      rows,
+      "A",
+      makeFakeClock(),
+      5000,
+    ) as OpsResult | null) ?? { ops: [] };
     expect(ops[0]).toMatchObject({
       entity: "A",
       payload: { kind: "block.text", content: "foobar" },
@@ -296,6 +313,162 @@ describe("deleteForwardMerge (R21)", () => {
     const t = buildTree(makeBlock({ id: "A", order: a as string }));
     const rows = flattenVisible(t).map((r) => r.id);
     expect(deleteForwardMerge(t, rows, "A", makeFakeClock())).toBeNull();
+  });
+});
+
+describe("merges keep what the merged block carried (B-340)", () => {
+  /** The merge's ops, failing the test on a refusal or a no-op. */
+  function ops(r: { ops: Op[] } | MergeRefused | null): Op[] {
+    if (r === null || "refused" in r) throw new Error(`expected a merge, got ${JSON.stringify(r)}`);
+    return r.ops;
+  }
+  const payloads = (list: Op[]) => list.map((x) => [x.entity, x.payload]);
+
+  it("Backspace into a plain block carries the TODO marker, the scheduled date and owner::", () => {
+    const [a, b] = o(2);
+    const t = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "notes here" }),
+      makeBlock({
+        id: "B",
+        order: b as string,
+        content: "buy milk",
+        marker: "TODO",
+        scheduled: "2026-09-20",
+        properties: { owner: "dan" },
+      }),
+    );
+    const rows = flattenVisible(t).map((r) => r.id);
+    const r = mergeWithPrevious(t, rows, "B", makeFakeClock(), 5000);
+    expect(payloads(ops(r))).toEqual([
+      ["A", { kind: "block.text", content: "notes herebuy milk" }],
+      ["A", { kind: "block.prop", key: "marker", value: "TODO" }],
+      ["A", { kind: "block.prop", key: "scheduled", value: "2026-09-20" }],
+      ["A", { kind: "block.prop", key: "owner", value: "dan" }],
+      ["B", { kind: "block.delete", deletedAt: 5000 }],
+    ]);
+    expect(r && "focus" in r ? r.focus : null).toEqual({ id: "A", caret: { offset: 10 } });
+  });
+
+  it("an empty block is not empty when it has properties: they move to the previous block", () => {
+    const [a, b] = o(2);
+    const t = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "plain" }),
+      makeBlock({
+        id: "B",
+        order: b as string,
+        content: "",
+        properties: { list: "number", source: "book" },
+      }),
+    );
+    const rows = flattenVisible(t).map((r) => r.id);
+    const r = mergeWithPrevious(t, rows, "B", makeFakeClock(), 5000);
+    expect(payloads(ops(r))).toEqual([
+      ["A", { kind: "block.prop", key: "list", value: "number" }],
+      ["A", { kind: "block.prop", key: "source", value: "book" }],
+      ["B", { kind: "block.delete", deletedAt: 5000 }],
+    ]);
+    expect(r && "focus" in r ? r.focus : null).toEqual({ id: "A", caret: { at: "end" } });
+  });
+
+  it("an empty numbered item after a numbered one is still just deleted (Enter, Backspace)", () => {
+    const [a, b] = o(2);
+    const t = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "one", properties: { list: "number" } }),
+      makeBlock({ id: "B", order: b as string, content: "", properties: { list: "number" } }),
+    );
+    const rows = flattenVisible(t).map((r) => r.id);
+    expect(payloads(ops(mergeWithPrevious(t, rows, "B", makeFakeClock(), 5000)))).toEqual([
+      ["B", { kind: "block.delete", deletedAt: 5000 }],
+    ]);
+  });
+
+  it("refuses, writing nothing, when both blocks set a field to different values", () => {
+    const [a, b] = o(2);
+    const t = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "x", properties: { owner: "alice" } }),
+      makeBlock({
+        id: "B",
+        order: b as string,
+        content: "y",
+        marker: "DONE",
+        properties: { owner: "dan" },
+      }),
+    );
+    const t2 = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "x", marker: "TODO" }),
+      makeBlock({ id: "B", order: b as string, content: "y", marker: "DONE" }),
+    );
+    const rows = flattenVisible(t).map((r) => r.id);
+    expect(mergeWithPrevious(t, rows, "B", makeFakeClock())).toEqual({
+      refused: [{ field: "owner", kept: "alice", merged: "dan" }],
+    });
+    const refused = deleteForwardMerge(t2, rows, "A", makeFakeClock());
+    expect(refused).toEqual({ refused: [{ field: "marker", kept: "TODO", merged: "DONE" }] });
+    expect(mergeRefusedMessage((refused as MergeRefused).refused)).toBe(
+      "Not merged: the two blocks have a different task marker (TODO / DONE). Change or remove one first.",
+    );
+  });
+
+  it("Delete at the end pulls in the next block's properties and its completion time", () => {
+    const [a, b] = o(2);
+    const t = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "gamma" }),
+      makeBlock({
+        id: "B",
+        order: b as string,
+        content: "delta",
+        marker: "DONE",
+        priority: "A",
+        deadline: "2026-10-01",
+        repeat: "1w",
+        doneAt: Date.parse("2026-09-12T10:00:00.000Z"),
+        properties: { list: "number", tag: "x" },
+      }),
+    );
+    const rows = flattenVisible(t).map((r) => r.id);
+    expect(payloads(ops(deleteForwardMerge(t, rows, "A", makeFakeClock(), 5000)))).toEqual([
+      ["A", { kind: "block.text", content: "gammadelta" }],
+      ["A", { kind: "block.prop", key: "marker", value: "DONE" }],
+      ["A", { kind: "block.prop", key: "priority", value: "A" }],
+      ["A", { kind: "block.prop", key: "deadline", value: "2026-10-01" }],
+      ["A", { kind: "block.prop", key: "repeat", value: "1w" }],
+      ["A", { kind: "block.prop", key: "list", value: "number" }],
+      ["A", { kind: "block.prop", key: "tag", value: "x" }],
+      [
+        "A",
+        {
+          kind: "block.prop",
+          key: "done",
+          value: formatDoneIso(Date.parse("2026-09-12T10:00:00.000Z")),
+        },
+      ],
+      ["B", { kind: "block.delete", deletedAt: 5000 }],
+    ]);
+  });
+
+  it("fields both blocks already share are not rewritten", () => {
+    const [a, b] = o(2);
+    const t = buildTree(
+      makeBlock({
+        id: "A",
+        order: a as string,
+        content: "a",
+        marker: "TODO",
+        properties: { k: "v" },
+      }),
+      makeBlock({
+        id: "B",
+        order: b as string,
+        content: "b",
+        marker: "TODO",
+        properties: { k: "v" },
+      }),
+    );
+    const rows = flattenVisible(t).map((r) => r.id);
+    expect(payloads(ops(deleteForwardMerge(t, rows, "A", makeFakeClock(), 5000)))).toEqual([
+      ["A", { kind: "block.text", content: "ab" }],
+      ["B", { kind: "block.delete", deletedAt: 5000 }],
+    ]);
   });
 });
 
