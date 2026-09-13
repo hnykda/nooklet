@@ -19,25 +19,39 @@ Playwright test first, then the fix, then remove the refactor-command workaround
   re-mint), 8-line hookup in `BlockTree.tsx` (+ `runStructural` places the caret when focus stays
   on the edited block), `data/templates.ts` builds ops without applying, command commits them.
   Tests `e2e/tests/template-undo.spec.ts` (both failed before), unit tests. ADR 019 amended.
-  B-191 logged (generic property undo limit). Commit: the one after `c510633`.
+  B-191 logged (generic property undo limit). Commit `e2698fd`.
   e2e run: template-undo + redo + templates + focus = 41/41 passed.
+
+- **B-88**: `BlockTree` ends editing when the edited block leaves the page;
+  `editor/unseen-creations.ts` tells a not-yet-committed local creation from a block that left.
+  "Move to page…" workaround removed; "Turn into page" keeps ending editing (probe showed the
+  stale buffer overwriting the `[[link]]` rewrite) — B-192 logged. Tests
+  `e2e/tests/editing-row-leaves.spec.ts` (both failed before), `unseen-creations.test.ts`,
+  `refactor.test.ts` updated. Commit: the one after `e2698fd`.
+  e2e runs after the fix: editing-row-leaves + refactor + focus + editing + selection +
+  context-menu = 73 passed, 1 skipped (pre-existing `test.fixme`); parity + popups +
+  autocomplete + journals + a-fresh-journal + templates + template-undo + redo + tasks + replace +
+  query + phone = 104 passed.
 
 ## In flight
 
-- Nothing uncommitted after the B-108 commit.
+- Nothing. Both assigned bugs and B-190 are fixed and committed.
 
 ## Next, in order
 
-1. Failing e2e for B-88: `e2e/tests/editing-row-leaves.spec.ts` — caret in a block, move or
-   delete it through the API, the row must go (and nothing typed is lost).
-2. Fix B-88 in `BlockTree.tsx`'s tree effect: keep an absent editing row only while it is a local
-   creation no refetch has seen yet; otherwise flush, detach, end editing. Remove `leaveEditing`
-   from `commands/registrations/refactor.ts` and its test expectations; rerun `refactor.spec.ts`.
-3. Rerun the specs that exercise optimistic creation: focus, editing, selection, parity,
-   templates, template-undo, redo, refactor, context-menu, journals.
+1. (Optional, for whoever merges) run the whole Chromium e2e suite once on the merged branch —
+   this branch ran 18 of the 40 specs (after the B-88 fix), the ones that edit through `BlockTree`.
+2. B-191 and B-192 are open and need no action from this branch; B-192 needs an owner decision
+   on what wins when an external text rewrite meets unflushed keystrokes.
 
 ## Decisions
 
+- B-88 fix distinguishes "never seen by a refetch" from "seen, now missing". Relies on Solid's
+  `createResource` dropping superseded fetches (solid-js 1.9.15 `loadEnd`, `if (pr === p)`),
+  read in `apps/web/node_modules/solid-js/dist/solid.js`.
+- "Turn into page" keeps `leaveEditing` — not a B-88 workaround any more but a guard against
+  B-192; probe (temporary spec, deleted) showed `[[Probe kickoff]]` reverted to
+  `Probe kickoff typed` without it.
 - B-108 seam is a typed `EditorHost.commitOps(batch): boolean`, not a stringly
   `runStructuralCommand("block.insertOps")`: the command needs to know whether a tree took the
   batch, so it can fall back to `applyOps` rather than lose the insertion.

@@ -35,11 +35,29 @@ after each test for that reason.
 ---
 
 ### B-88 (existing)
-**Status:** in progress · **Severity:** low · **Found:** 2026-09-12, `e2e/tests/refactor.spec.ts` ·
-**Test:** being written (`e2e/tests/editor-row-lifecycle.spec.ts`)
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, `e2e/tests/refactor.spec.ts` ·
+**Test:** `e2e/tests/editing-row-leaves.spec.ts` "a block deleted elsewhere while the caret is in it
+leaves the page" and "a block moved to another page while the caret is in it leaves, and what was
+typed goes with it"; `apps/web/src/editor/unseen-creations.test.ts`
 
 Unchanged from `docs/BUGS.md`: the row holding the editor stays on screen, showing the old text,
-after its block is moved to another page or deleted elsewhere.
+after its block is moved to another page or deleted elsewhere. Before the fix both e2e tests
+failed the same way: the pull landed (the block's child row went) and the edited row was still
+there, editor and all, ten seconds later.
+
+**Fixed 2026-09-13.** The cause was the `else` branch of `BlockTree`'s tree effect: any refetch
+without the block being edited was taken for an optimistic creation not yet committed, and the
+local row was kept. The tree now remembers which blocks it created or revived that no refetch has
+returned yet (`editor/unseen-creations.ts`, fed from `commit`, `doUndo`, `doRedo`); only those keep
+their row. A block the database had, missing from a later refetch, has left: the tree flushes
+pending keystrokes (written to the block by id, wherever it went — the move test checks
+`"goes typed"` arrives on the destination page), detaches the editor and ends editing. The "Move
+to page…" workaround in `commands/registrations/refactor.ts` is gone. "Turn into page" still ends
+editing before its op, for a different reason found while removing it: the block is rewritten,
+not moved, and the editor keeps a stale buffer over an external rewrite — logged as B-192.
+
+Not covered: a block created in this tab and removed elsewhere before any refetch has returned it
+keeps its row until editing ends (a window one refetch long).
 
 ---
 
@@ -83,3 +101,26 @@ the API, for one) and the template sets `type:: b`, Cmd/Ctrl+Z removes `type` in
 `a`. Fix when it matters: let an `OpBatch` carry the before-values of the properties it overwrites
 (`data/templates.ts` would read them from `block_prop` while it builds the batch), or project
 generic properties into the page tree, which today (`BlockRow`) has none.
+
+---
+
+### B-192 · A block's text rewritten elsewhere while you edit it stays stale, and your next keystroke reverts it
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, fixing B-88 (probe below) ·
+**Test:** none for the editor itself (the probe was a throwaway spec; its steps are here)
+
+Put the caret in a block. Something else rewrites that block's text — another device, an agent's
+`block_update`, or this app's own "Turn into page" (server op `block.to_page`, which turns the
+text into `[[First line]]`). The rows around it update after the pull; the block being edited
+keeps showing its old text. Type one character: the old text plus the character is written back
+over the rewrite, last-writer-wins. Probe (2026-09-13, "Turn into page" with its end-editing step
+removed): the server had `[[Probe kickoff]]`; after typing ` typed` it had `Probe kickoff typed`.
+
+Cause: `BlockTree`'s tree effect always prefers the live CM6 buffer for the block being edited,
+because a refetch that read before one of this tab's own writes looks the same as an external
+change (the B-66 note in that effect). `surface.replaceContent` exists for external changes but is
+only called for this tab's own undo/redo/merge. "Turn into page" keeps ending editing before its
+op (`commands/registrations/refactor.ts#leaveEditing`) for this reason; there is no guard for the
+other writers. A fix needs a way to tell a stale read from a newer write — the block's
+`content_hlc` against the HLC of the last text op this tab wrote, for one — and a decision on what
+to do with unflushed keystrokes when a newer external text arrives (the owner's call: merge,
+prefer local, or prefer remote).
