@@ -205,3 +205,30 @@ the files said before is not recoverable here. The pre-incident DB copy was kept
 
 Fix direction (not done — `cli.ts` is shared): `--help` / `-h` on any subcommand prints that
 command's usage and exits 0 before `open()`; arguably unknown flags should be an error for writers.
+
+---
+
+### B-147 · Text that reaches the page before the picker is listening, or without a keydown, goes into the block behind it
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verify-impl-dates · **Test:** none;
+measured with throwaway Playwright probes (numbers below)
+
+Two ways the picker's "keys never reach the block" rule has a hole, both because the editor keeps
+DOM focus and the picker takes keys from a window `keydown` listener:
+
+1. **Type-ahead.** `open()` reads the block (`getBlockTaskState`, a replica query) and lazy-loads
+   `DatePicker.js` before the listener exists. Enter on the slash menu → picker mounted measured
+   25 / 10 / 7 ms on the e2e graph and 6–24 ms (8 opens) on a copy of the owner's graph. A key
+   pressed inside that window lands in the block: `" /sched"`, Enter, `tom` typed at once gave
+   the block `fast typist t` and a picker holding `om` (invalid, so Enter only showed an error).
+   Human keystrokes after Enter are normally slower than the gap, hence low.
+2. **No keydown.** Text committed by an IME, a dead-key composition, dictation or a virtual
+   keyboard arrives as `beforeinput`/`input` with no `keydown` of its own. Emulated with
+   Playwright's `keyboard.type("zítra ěščřžýáíé")` (non-US characters go through `insertText`):
+   the picker saw `ztra`, the block got `íěščřžýáíé`. Unverified on a real keyboard: a Czech
+   layout's number-row letters (ě š č ř ž ý á í é) should arrive as ordinary keydowns and work;
+   letters built with a dead háček/čárka key (ď ť ň, most capitals) should not. The picker's
+   vocabulary is English words and digits, so this mostly matters for junk landing in the block. `docs/progress/impl-dates.md` §5 already names the
+   mobile half of this.
+
+Fix direction: hold keys from the moment `open()` is called (a capture listener handed to the
+picker, replayed on mount), and take `beforeinput` `insertText` while open. Not done here.
