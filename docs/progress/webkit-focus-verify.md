@@ -8,8 +8,13 @@ Branch `m11/webkit-focus` (worktree `.claude/worktrees/wf_b8e786c1-020-1`), revi
 ## Done
 
 - Branch's own e2e on its HEAD: webkit-refresh-focus + focus-log 10/10 (chromium + webkit).
-- Test-merge: clean with main and every m11 branch except m11/ref-label-flash — one trivial
-  conflict in e2e/playwright.config.ts (both widen the webkit testMatch regex; take the union).
+- Test-merge (`git merge-tree`, after all verification commits): clean with main, quiet-topbar,
+  desktop-shell. Two trivial conflicts:
+  - m11/ref-label-flash, `e2e/playwright.config.ts`: both widen the webkit testMatch regex — take
+    the union `(storage|ref-label-flash|webkit-refresh-focus|focus-log|edited-row-move-caret)`.
+  - m11/remote-rewrite, `apps/web/src/editor/surface.ts`: their `replaceContent(id, content,
+    selection)` sits on the line after this branch's rewritten `focus()` — keep BOTH (this branch's
+    multi-line `focus() {…}` followed by their `replaceContent`). No BlockTree.tsx hunk here.
 - B-42 still NOT reproduced (independent probe `tools/probes/refresh-focus-structural.spec.ts`,
   7 structural refreshes incl. a real second client and typing through remote inserts).
 - Found B-502 (WebKit only): a refresh that MOVES the edited block → caret 0, `[[` popup left open,
