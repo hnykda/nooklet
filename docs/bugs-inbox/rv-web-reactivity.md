@@ -163,3 +163,17 @@ preview not to be loading, so the button is disabled from the edit until the mat
 screen. Reproduced first in a real browser: fill "wombat", wait for its preview, fill "numbat" and
 click at once — the unfixed page wrote "the wombat smiles"; with the fix Playwright's click waits
 for the button to re-enable and "the numbat smiles" is written.
+
+---
+
+## Found in passing — needs a number from the coordinator
+
+### B-??? · Closing the command palette with Escape leaves the editor unfocused
+**Status:** needs-repro · **Severity:** medium · **Found:** 2026-09-13, rv-web-reactivity's broader
+e2e pass · **Test:** `e2e/tests/views.spec.ts` "opening the palette while editing and closing it
+hands focus back to the editor" (B-72's regression test) — failing
+
+Edit a block, press Mod+K, press Escape: the palette closes but `.cm-content` is not focused, and
+typing goes nowhere. Failed three times in a row on port 6472 at load average ≈35 — twice on this
+branch and once with every source file this branch changes restored to `da85cfb`, so it predates
+the branch. Not investigated; it may be timing under load, but it did not pass once.

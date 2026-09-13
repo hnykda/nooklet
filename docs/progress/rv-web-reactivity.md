@@ -13,9 +13,12 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
 
 ## Done
 
+All eight findings fixed; the review doc is the last commit. Commits: `b75e571` (inbox),
+`cdaf63c` F1, `918c0ff` F2, `8651877` F3, `e5a19dc` F4, `b7a2b3f` F5, `4837d25` F6, `0294865` F7,
+`1248892` F8, then the review doc.
+
 - `b75e571` bugs inbox + this file (bugs logged before fixing).
-- F1 / B-130 — listener fan-out in `db/client.ts` (the commit after `b75e571`, subject
-  "fix(web): fan the worker's single change listener out…"). Unit repro `data/history.test.ts`
+- `cdaf63c` F1 / B-130 — listener fan-out in `db/client.ts`. Unit repro `data/history.test.ts`
   failed (0 refetches after Trash) before the fix; e2e `review-reactivity.spec.ts` failed against
   the unfixed client (client.ts temporarily reverted; global-setup rebuilds) and passes with it.
   Related e2e after the fix: trash, history, diagnostics, references, query, remote-device,
@@ -54,16 +57,23 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   says why; two cases in `views/VirtualJournalDay.test.tsx` failed first. e2e a-fresh-journal +
   journals + templates — 13/13 (no e2e for the failure itself). Web unit 704/704.
 
+- Broader e2e after all fixes: editing, pages, tasks, views, navigation, page-icons, shelf,
+  refactor, link-unlinked, graph, settings, references-filters, focus — 127 passed, 1 failed
+  (`views.spec.ts:461` palette focus; fails with `da85cfb` sources too — logged unnumbered in the
+  inbox). Final at HEAD: review-reactivity (7) + trash, history, query, replace, a-fresh-journal,
+  journals, templates, diagnostics, references, render — 54/54. Web unit 704/704.
+- Review doc `docs/review/2026-09-13-m7-rv-web-reactivity.md`.
+
 ## In flight
 
-- Final verification pass, then the review doc.
+Nothing.
 
 ## Next steps, in order
 
-1. (done) F1–F8.
-2. Broader e2e pass over the specs that could be affected (editing, pages, tasks, views,
-   references, diagnostics, remote-device, sync-ish ones) on port 6472.
-3. Review doc `docs/review/2026-09-13-m7-rv-web-reactivity.md`, commit last.
+1. (coordinator) fold the inbox into BUGS.md; give the palette-focus entry a number.
+2. Possible follow-ups recorded in the review doc's "Found in passing": `VirtualJournalDay`
+   ignoring `ApplyOpsResult.rejected`; render-seams `waitFor` under load; e2e for the sync-status
+   fan-out.
 
 ## How to resume
 
