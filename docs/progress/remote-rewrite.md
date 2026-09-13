@@ -97,4 +97,9 @@ Scratch `…/scratchpad/m11/remote-rewrite-verify/`, same port 6412.
   commands, context-menu, refactor, popups: 93 passed, 1 skipped; web unit 1158/1158; typecheck.
 - Phone width (390 px, scratch run, not kept): the notice wraps inside the row (330 px wide, no
   horizontal scroll); "Use the other version" works there.
-- Next: real-graph copy — the author's probe with these fixes, then `pnpm nooklet verify`.
+- Real graph (`.backup` copy, served on 6413 with `--no-mirror`, killed after): the author's
+  `tools/probes/remote-rewrite-real-graph.mjs` 7/7 ok, no console errors; new
+  `tools/probes/remote-rewrite-verify-real-graph.mjs` on a LATER task of 2023-09-19 (Czech) 8/8 ok —
+  marker flip LATER→NOW over typing: no notice, typing and NOW both stored (B-462); clock 20 s
+  behind: rewrite taken, typing on it stored (B-461); block put back. `pnpm nooklet verify` on the
+  copy: 20,498 ops replayed, OK.
