@@ -65,6 +65,10 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
   bge-m3 available).
 - Still from M10 (`wf_ced35de1-fb8`): `m10/editor-keys` (verifier running), `m10/tests-desktop`
   (finishing). Merged already: `m10/core-ops`, `m10/qafix-regression`.
+- `wf_dd1ff6ba-1f5` (m11c, port 6419–6421): desktop-shell — B-541 title bar over the toolbar, Settings/Graph
+  reachability, native menu, service-worker updates in WKWebView; builds its own devtest app (never the owner's).
+- B-540 (sync must be silent): a duplicate agent instance was stopped; its recorder and notes are in
+  `scratchpad/m11b/sync-quiet-handoff/`. Run B-540 as its own follow-up after `m11/ref-label-flash` merges.
 - Held until M10 lands: B-380 option (c) (no tag popup inside an existing tag), mermaid out of the
   PWA precache, sidecar reusing the web build's mermaid.
 - Owner decisions recorded 2026-09-13: all twelve recommendations accepted (see BUGS.md B-194,
