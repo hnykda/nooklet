@@ -48,6 +48,9 @@ export function BlockRowView(props: {
   /** A locked page (`./readOnly.ts`): the text can be selected with the mouse, since a click
    * never turns into editing. */
   readOnly?: boolean;
+  /** On a locked page, a click that would have written (a date chip, B-341) calls this instead —
+   * `BlockTree` shows its read-only notice. */
+  onReadOnlyRefused?: () => void;
   surfaceHost: (el: HTMLDivElement) => void;
   onEnterEdit: (offset: number) => void;
   onToggleCollapse: () => void;
@@ -247,6 +250,7 @@ export function BlockRowView(props: {
           deadline={props.block.deadline}
           marker={props.block.marker}
           repeat={props.block.repeat}
+          onLocked={props.readOnly ? () => props.onReadOnlyRefused?.() : undefined}
         />
       </div>
     </div>

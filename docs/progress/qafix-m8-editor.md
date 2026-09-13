@@ -9,8 +9,8 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
 
 | QA | Bug | Severity | State |
 |---|---|---|---|
-| Q1 merge drops marker/dates/properties | B-340 | high | in progress |
-| Q2 date chip writes on a read-only page | B-341 | medium | queued |
+| Q1 merge drops marker/dates/properties | B-340 | high | fixed `94776a3` |
+| Q2 date chip writes on a read-only page | B-341 | medium | fixed (next commit after 94776a3) |
 | Q3 typed `scheduled::` line: DB text, mirror property | B-342 | medium | queued (may be owner decision) |
 | Q4 caret before inserted image | B-343 | low | queued |
 | Q5 `/mermaid` after text inline, never renders | B-344 | low | queued |
@@ -18,15 +18,28 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
 
 ## 1. Done (committed)
 
-- (nothing yet)
+- `94776a3` Q1/B-340: new `apps/web/src/editor/merge-fields.ts#carryFields`; `commands.ts` merges
+  return `MergeRefused` on a conflict; `BlockTree.tsx` shows it in the tree's toast
+  (`ReadOnlyNotice.tsx#show(text)`); spec R20a. Unit: `commands.test.ts` (4/6 new red on base).
+  E2E `merge-keeps-fields.spec.ts` (2/2 red on base, green after). Related specs (merge, editing,
+  block-properties, read-only, parity, undo-redo, focus, editing-row-leaves): 79 passed.
+- Q2/B-341: `DateChips.tsx` `onLocked`, `BlockRowView.tsx` `onReadOnlyRefused`, one line in
+  `BlockTree.tsx`. E2E `read-only.spec.ts` B-341 test red before, green after; read-only + dates +
+  journal-agenda: 21 passed.
 
 ## 2. In flight
 
-- Q1: unit tests in `apps/web/src/editor/commands.test.ts`, fix in `commands.ts` merge functions.
+- Q4 next.
 
 ## 3. Next steps, in order
 
-1. Q1, Q2, Q4, Q5, Q6, then assess Q3.
+1. Q4, Q5, Q6, then assess Q3.
+
+## Notes
+
+- `biome check` on `apps/web/src/editor/BlockRowView.tsx` already fails on `cf08d19`
+  (`lint/a11y/noStaticElementInteractions` on the row's `onContextMenu`); not touched here.
+- Decision (B-340): a merge carries the marker as a marker, and refuses on conflicting values.
 
 ## 4. How to resume
 

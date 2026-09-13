@@ -1378,6 +1378,7 @@ export function BlockTree(props: {
                           }
                         }}
                         readOnly={readOnly()}
+                        onReadOnlyRefused={() => readOnlyNotice.show()}
                         onToggleCollapse={() => onToggleCollapse(id)}
                         onZoomIn={() => setLocalZoomRoot(id)}
                         onToggleMarker={() => onToggleMarker(id)}

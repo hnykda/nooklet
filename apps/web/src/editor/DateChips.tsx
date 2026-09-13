@@ -52,6 +52,11 @@ export function DateChips(props: {
   deadline: string | null;
   marker: string | null;
   repeat: string | null;
+  /** Set on a locked page (`./readOnly.ts`): a click calls this — the tree's read-only notice —
+   * instead of opening the picker. The chips and the lock were built apart, and the chip was the
+   * one click on a locked row that still wrote: a date typed into its picker, or its Remove
+   * button, changed the block without a word (B-341). */
+  onLocked?: () => void;
 }): JSX.Element {
   watchToday();
   const chips = createMemo(() =>
@@ -77,6 +82,10 @@ export function DateChips(props: {
               onClick={(e) => {
                 // The row's own click handler would enter edit mode at the click offset.
                 e.stopPropagation();
+                if (props.onLocked) {
+                  props.onLocked();
+                  return;
+                }
                 const rect = e.currentTarget.getBoundingClientRect();
                 // Imported on click, not at the top: `BlockRowView` (and through it the shelf and
                 // the query fence, which borrow `MARKER_GLYPH`) must not drag the data layer —

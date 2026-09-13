@@ -32,3 +32,22 @@ and both values (`mergeRefusedMessage`), because keeping either value silently l
 list/source gone; no notice) and green after; unit: `commands.test.ts` "merges keep what the merged
 block carried (B-340)" (4 of 6 red before the fix, the other two guard the Enter-then-Backspace
 numbered-item flow and shared fields).
+
+---
+
+### B-341 · On a read-only page, clicking a date chip opens the picker and writes or removes the date
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA of M8 editor features
+(Q2, `scratchpad/m9/qa-m8-editor/locked2.mjs`) · **Test:** `e2e/tests/read-only.spec.ts` "a date
+chip on a locked page refuses with the notice and never opens the picker (B-341)"
+
+On a page with `read-only:: true` (the Read-only badge showing), clicking the Scheduled chip of
+`TODO locked task` opened the date picker; `+10d` Enter rewrote `scheduled:: 2026-09-20` to today+10,
+and the picker's Remove deleted the date. No read-only notice appeared — while a click on the task
+marker, a drag and Enter on the same page are refused with one (B-234).
+
+Cause: `editor/DateChips.tsx` (impl-dates) and the page lock (impl-small) merged separately; the
+chip's click handler opened `blockDatePicker` unconditionally, and nothing passed it the lock.
+
+**Fixed 2026-09-13.** `DateChips` takes `onLocked`; `BlockRowView` sets it on a locked row to its new
+`onReadOnlyRefused`, which `BlockTree` wires to the read-only notice — so the chip refuses exactly
+the way the marker does. The e2e test was red before the fix (no notice) and green after.
