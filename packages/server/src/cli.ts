@@ -629,7 +629,7 @@ async function main(): Promise<void> {
         `gc: assets - ${a.total} on record, ${assetVerb} ${a.orphans.length} orphan(s) ` +
           `(unreferenced for over ${a.graceDays} day${a.graceDays === 1 ? "" : "s"}); ` +
           `${a.inGrace} unreferenced but within the grace period, ${a.keptByTrashOnly} ` +
-          `referenced only from the trash - both kept\n`,
+          `referenced only from the trash, ${a.keptByHistoryOnly} only from page history - all kept\n`,
       );
       for (const o of a.orphans) {
         process.stdout.write(

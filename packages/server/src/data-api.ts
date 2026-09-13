@@ -441,6 +441,10 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
       const mode = opts?.children ?? "delete";
       const row = requireBlock(id);
       const ops: Op[] = [];
+      // ONE instant for the whole action: `trash.restore` recognises what a delete took with it
+      // by an equal `deleted_at`, so a per-op `Date.now()` that crossed a millisecond left the
+      // descendants behind as separate trash entries (B-121). Same as `ops/block-delete.ts`.
+      const now = Date.now();
       if (mode === "lift") {
         for (const child of siblingRows(driver, row.page_id, id)) {
           const order = orderForAfter(driver, row.page_id, row.parent_id, "last");
@@ -451,12 +455,12 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
             }),
           );
         }
-        ops.push(mint(id, { kind: "block.delete", deletedAt: Date.now() }));
+        ops.push(mint(id, { kind: "block.delete", deletedAt: now }));
       } else {
         const stack = [id];
         while (stack.length > 0) {
           const cur = stack.pop() as string;
-          ops.push(mint(cur, { kind: "block.delete", deletedAt: Date.now() }));
+          ops.push(mint(cur, { kind: "block.delete", deletedAt: now }));
           for (const child of siblingRows(driver, row.page_id, cur)) stack.push(child.id);
         }
       }
@@ -546,13 +550,15 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
 
     async delete(id) {
       const row = requireBlockPage(driver, id);
-      const ops: Op[] = [mint(id, { kind: "page.delete", deletedAt: Date.now() })];
+      // One instant for the page and every block, as `ops/page-delete.ts` does: `trash.restore`
+      // brings back the blocks whose `deleted_at` equals the page's (B-121).
+      const now = Date.now();
+      const ops: Op[] = [mint(id, { kind: "page.delete", deletedAt: now })];
       const blockRows = driver.all<{ id: string }>(
         "SELECT id FROM block WHERE page_id = ? AND deleted_at IS NULL",
         [row.id],
       );
-      for (const b of blockRows)
-        ops.push(mint(b.id, { kind: "block.delete", deletedAt: Date.now() }));
+      for (const b of blockRows) ops.push(mint(b.id, { kind: "block.delete", deletedAt: now }));
       apply(ops);
     },
 

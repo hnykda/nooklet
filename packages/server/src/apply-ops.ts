@@ -5,6 +5,8 @@
  *
  *  - emit a **corrective op** with a server-owned HLC when a `block.place` is rejected for a
  *    cycle, so every client converges on the same decision (core deliberately does not do this);
+ *  - emit server-HLC `block.place` ops that bring a page-changing block's descendants onto its
+ *    new page, whoever authored the move (B-120, `./subtree-page-repair.ts`);
  *  - maintain the derived `ref`/`path_ref` tables from `extractRefs`/`tokenizeContent`;
  *  - enqueue `embed_dirty` for anything whose text a future embeddings worker (M3) should re-index;
  *  - write one `changes` row per touched entity, for `changes_since`/audit/attribution.
@@ -24,6 +26,7 @@ import {
   normalizePageName,
   TASK_TAG,
 } from "@nooklet/core";
+import { type ChildRow, childLookup } from "./block-children.js";
 import { reindexPageIdentity, resolvePageIdForKey } from "./page-aliases.js";
 import { rebuildPageTags } from "./page-tags.js";
 import { runBeforeWrite } from "./plugins/before-write.js";
@@ -33,6 +36,7 @@ import {
   snapshotBlock,
   snapshotPage,
 } from "./rows.js";
+import { planSubtreePageRepair } from "./subtree-page-repair.js";
 import { notifyCommit } from "./sync/realtime.js";
 
 /** Reserved device id for ops the server itself authors (corrective moves). Never a real device. */
@@ -66,7 +70,9 @@ export interface ServerApplyOptions {
 
 export interface ServerApplyResult extends ApplyOpsResult {
   batchId: string;
-  /** Corrective ops the server generated in response to a rejected `block.place` (rule 24). */
+  /** Ops the server authored and applied in the same transaction: the correction for a rejected
+   * `block.place` (rule 24), and the moves that bring a page-changing block's descendants along
+   * (B-120, `./subtree-page-repair.ts`). */
   corrections: Op[];
 }
 
@@ -100,9 +106,9 @@ export function serverApplyOps(
   const result = driver.transaction(() => {
     // `batch.undo` (ADR 013) needs a full pre-image of every entity this call is about to touch,
     // so it can generate compensating ops later without re-deriving state from op payloads (which
-    // are per-field deltas, not full snapshots). Snapshot BEFORE applying — `corrections` (below)
-    // never introduce a new entity beyond what `ops` already touches, so `ops`'s own entity set is
-    // complete for this purpose.
+    // are per-field deltas, not full snapshots). Snapshot BEFORE applying. A cycle correction
+    // (below) only touches an entity `ops` already names; the subtree repair can touch
+    // descendants `ops` never named, and snapshots those itself just before it applies.
     const beforeSnapshots = snapshotEntities(driver, ops);
 
     const r = coreApplyOps(driver, ops);
@@ -125,6 +131,26 @@ export function serverApplyOps(
       corrections.push(correction);
       const cr = coreApplyOps(driver, [correction]);
       for (const cone of cr.results) r.results.push(cone);
+    }
+
+    // B-120: a block that changed page takes its descendants with it, whoever moved it — see
+    // `./subtree-page-repair.ts`. A repaired descendant `ops` never named has not changed yet, so
+    // its snapshot taken now is its pre-batch image.
+    const repairs = planSubtreePageRepair(
+      driver,
+      ops.concat(corrections),
+      r.results,
+      beforeSnapshots,
+      (entity, place) =>
+        makeOp(ctx.hlc.next(), SERVER_DEVICE_ID, entity, { kind: "block.place", place }),
+    );
+    if (repairs.length > 0) {
+      for (const op of repairs) {
+        if (!beforeSnapshots.has(op.entity))
+          beforeSnapshots.set(op.entity, snapshotBlock(driver, op.entity));
+      }
+      corrections.push(...repairs);
+      for (const one of coreApplyOps(driver, repairs).results) r.results.push(one);
     }
 
     const allOps = ops.concat(corrections);
@@ -170,7 +196,17 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
     if (op.payload.kind.startsWith("block.")) touchedBlocks.add(op.entity);
     else if (op.payload.kind.startsWith("page.")) touchedPages.add(op.entity);
   }
-  for (const blockId of touchedBlocks) reindexBlockAndSubtree(driver, blockId);
+  // `ref` for every touched block first, then `path_ref` once for the union of their subtrees:
+  // a descendant's path reads its ancestors' `ref` rows, and a batch that moves a subtree touches
+  // every block in it — rebuilding each block's whole subtree per block was O(n·depth) walks.
+  const children = childLookup(driver);
+  const pathBlocks = new Set<string>();
+  for (const blockId of touchedBlocks) indexBlockRefs(driver, blockId);
+  for (const blockId of touchedBlocks) {
+    if (pathBlocks.has(blockId)) continue; // reached from an ancestor's walk, subtree included
+    for (const id of subtreeIds(blockId, children)) pathBlocks.add(id);
+  }
+  for (const id of pathBlocks) rebuildPathRef(driver, id);
   for (const pageId of touchedPages) {
     // Page-level tags are derived from the page's `tags` property and its journal day, so any
     // page write can change them (ADR 017) — the page equivalent of `rebuildRefRows` above.
@@ -187,26 +223,36 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
   }
 }
 
-/** Recompute `ref` for one block and `path_ref` for it and every descendant (sql-schema.md rule 12). */
-function reindexBlockAndSubtree(driver: SqlDriver, blockId: string): void {
-  const block = driver.get<{
-    id: string;
-    page_id: string;
-    content: string;
-    deleted_at: number | null;
-  }>("SELECT id, page_id, content, deleted_at FROM block WHERE id = ?", [blockId]);
+/** Recompute `ref` for one block and `path_ref` for it and every descendant (sql-schema.md rule 12).
+ * Exported for the one-time re-index in `./ref-reindex.ts`, which must rebuild both. */
+export function reindexBlockAndSubtree(
+  driver: SqlDriver,
+  blockId: string,
+  children: (parentId: string) => ChildRow[] = childLookup(driver),
+): void {
+  if (!indexBlockRefs(driver, blockId)) return;
+  for (const id of subtreeIds(blockId, children)) rebuildPathRef(driver, id);
+}
+
+/** `ref` rows and `embed_dirty` for one block; false (and its derived rows gone) when the block
+ * does not exist. `path_ref` is the caller's, because it spans the subtree. */
+function indexBlockRefs(driver: SqlDriver, blockId: string): boolean {
+  const block = driver.get<{ id: string; page_id: string; content: string }>(
+    "SELECT id, page_id, content FROM block WHERE id = ?",
+    [blockId],
+  );
   if (!block) {
     // Block never existed (a rejected create) or was hard-deleted: nothing to index.
     driver.run("DELETE FROM ref WHERE src_block_id = ?", [blockId]);
     driver.run("DELETE FROM path_ref WHERE block_id = ?", [blockId]);
-    return;
+    return false;
   }
   rebuildRefRows(driver, block.id, block.page_id, block.content);
-  for (const id of subtreeIds(driver, blockId)) rebuildPathRef(driver, id);
   driver.run(
     "INSERT OR IGNORE INTO embed_dirty(unit_kind, unit_id, enqueued_at) VALUES ('block', ?, ?)",
     [blockId, Date.now()],
   );
+  return true;
 }
 
 export function rebuildRefRows(
@@ -273,15 +319,15 @@ function normalizeKey(name: string): string {
   return normalizePageName(canonicalRefName(name));
 }
 
-function subtreeIds(driver: SqlDriver, rootId: string): string[] {
+/** The block and every descendant, tombstoned ones included. Through `childLookup`, not a bare
+ * `WHERE parent_id = ?`: that cannot use the partial `block_children` index and scanned the whole
+ * table once per visited block (`./block-children.ts`). */
+function subtreeIds(rootId: string, children: (parentId: string) => ChildRow[]): string[] {
   const ids: string[] = [rootId];
   const queue = [rootId];
   while (queue.length > 0) {
     const parent = queue.shift() as string;
-    const children = driver.all<{ id: string }>("SELECT id FROM block WHERE parent_id = ?", [
-      parent,
-    ]);
-    for (const c of children) {
+    for (const c of children(parent)) {
       ids.push(c.id);
       queue.push(c.id);
     }
@@ -342,8 +388,12 @@ function recordChanges(
   after: ReadonlyMap<string, PageChangeSnapshot | BlockChangeSnapshot | null>,
 ): void {
   const byEntity = new Map<string, { opIds: string[]; kind: string }>();
+  // One Map, not `results.find` per op: that was quadratic in the batch, and `graph.replace` sends
+  // up to 20,000 blocks through one call (16k ops: 1.3 s of lookups alone, F8 in
+  // docs/review/2026-09-13-m7-rv-server-sync.md, tools/probes/apply-ops-batch-scaling.ts).
+  const resultById = new Map(results.map((r) => [r.id, r]));
   for (const op of ops) {
-    const result = results.find((r) => r.id === op.id);
+    const result = resultById.get(op.id);
     if (!result || result.status === "rejected") continue;
     const entry = byEntity.get(op.entity) ?? { opIds: [], kind: op.payload.kind };
     entry.opIds.push(op.id);

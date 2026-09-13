@@ -35,6 +35,14 @@
  *   - **Referenced only from the trash** (a tombstoned block, or a block on a deleted page):
  *     kept. The trash has no expiry (ADR 022), and a page restored from it must not come back
  *     with broken images.
+ *   - **Referenced only from page history** (a page/block pre- or post-image in `changes`, e.g.
+ *     the link was removed by an edit): kept, for the same reason one step further. "Restore this
+ *     version" is `batch.undo` of the newer batches (ADR 022 §3), which rewrites block text from
+ *     `changes.before_json`; collecting the file turned that restore into a broken image,
+ *     recoverable only from the pre-GC backup archive (M7 server/sync review, F10). `changes` is
+ *     never trimmed, so this keeps any asset a recorded write ever embedded; what the GC still
+ *     collects is uploads no write ever pointed at (an agent's `asset_upload` never used, a paste
+ *     whose block write never reached the server).
  *   - **Unreferenced but younger than the grace period**: left alone this run. The one legitimate
  *     way an asset is briefly unreferenced is between the upload and the write that embeds it --
  *     an agent's `asset_upload` followed by `block_update`, or the editor's paste, whose block op
@@ -173,6 +181,9 @@ export interface AssetGcPlan {
   inGrace: number;
   /** Referenced only from tombstoned blocks or deleted pages: kept for the trash. */
   keptByTrashOnly: number;
+  /** Referenced by no block or page, live or trashed, but by a page/block image in `changes`:
+   * kept so restoring an older version (`batch.undo`) does not bring back a broken image. */
+  keptByHistoryOnly: number;
 }
 
 /** `assets/<id>.<ext>` wherever it appears in text. Ids are `newId()` strings; the character
@@ -184,9 +195,14 @@ interface RefRow {
   live: number;
 }
 
-/** Every asset id mentioned anywhere, split by whether the mention is live. One pass over the few
- * rows that contain `assets/` at all, rather than a full scan per asset. */
-function referencedAssetIds(driver: SqlDriver): { live: Set<string>; any: Set<string> } {
+/** Every asset id mentioned anywhere, split by whether the mention is live, trashed, or only in
+ * history. One pass over the few rows that contain `assets/` at all, rather than a full scan per
+ * asset. */
+function referencedAssetIds(driver: SqlDriver): {
+  live: Set<string>;
+  any: Set<string>;
+  history: Set<string>;
+} {
   const rows: RefRow[] = [
     ...driver.all<RefRow>(
       `SELECT b.content AS text, (b.deleted_at IS NULL AND p.deleted_at IS NULL) AS live
@@ -213,7 +229,22 @@ function referencedAssetIds(driver: SqlDriver): { live: Set<string>; any: Set<st
       if (r.live) live.add(id);
     }
   }
-  return { live, any };
+  // Page and block images only. An asset's own `changes` rows (its upload, a deduplicated
+  // re-upload) describe it by file name today, not by path — filtered anyway, so a future shape
+  // of those rows cannot make every asset look referenced.
+  const history = new Set<string>();
+  const historyRows = driver.all<{ before: string | null; after: string | null }>(
+    `SELECT before_json AS before, after_json AS after FROM changes
+      WHERE entity_type IN ('page', 'block')
+        AND (instr(before_json, 'assets/') > 0 OR instr(after_json, 'assets/') > 0)`,
+  );
+  for (const r of historyRows) {
+    for (const text of [r.before, r.after]) {
+      if (text === null) continue;
+      for (const m of text.matchAll(ASSET_REF_RE)) history.add(m[1] as string);
+    }
+  }
+  return { live, any, history };
 }
 
 interface AssetRow {
@@ -242,11 +273,16 @@ export function planAssetGc(
     orphans: [],
     inGrace: 0,
     keptByTrashOnly: 0,
+    keptByHistoryOnly: 0,
   };
   for (const a of assets) {
     if (refs.live.has(a.id)) continue;
     if (refs.any.has(a.id)) {
       plan.keptByTrashOnly++;
+      continue;
+    }
+    if (refs.history.has(a.id)) {
+      plan.keptByHistoryOnly++;
       continue;
     }
     const touchedRecently =

@@ -1095,11 +1095,15 @@ function termSql(term: QueryTerm, today: number): QueryPrefilter {
       if (term.mode === "none") return { sql: "b.priority IS NULL", params: [], exact: true };
       return inList("b.priority", term.values);
     case "ref": {
-      // Anything that can carry a reference: a `#`, a `[[`, or a `tags::` property. Necessary,
-      // not sufficient — `extractRefs` decides for real (code spans, escapes, the exact name).
+      // Anything that can carry a reference, as `extractRefs` reads it: a `#` or `[[` in the
+      // content; a `tags::` or `alias::` property, whose plain items are references; or a `#`/`[[`
+      // in ANY other property value (`date-saved:: [[Sep 7th, 2026]]`). Leaving the last two out
+      // dropped blocks the JavaScript matcher and backlinks both count (B-124). Necessary, not
+      // sufficient — `extractRefs` decides for real (code spans, escapes, the exact name).
       const textual =
         "instr(b.content, '#') > 0 OR instr(b.content, '[[') > 0 OR EXISTS " +
-        "(SELECT 1 FROM block_prop bp WHERE bp.block_id = b.id AND bp.key = 'tags')";
+        "(SELECT 1 FROM block_prop rp WHERE rp.block_id = b.id AND (rp.key IN ('tags', 'alias') " +
+        "OR instr(rp.value, '#') > 0 OR instr(rp.value, '[[') > 0))";
       // `Task` is also carried by the marker column, with nothing in the text (B-263).
       const sql =
         normalizePageName(term.name) === TASK_KEY

@@ -272,6 +272,82 @@ describe("block.create placement + reserved properties", () => {
   });
 });
 
+describe("block.place keeps a tombstoned parent it already has (B-120)", () => {
+  function setup(): { pageA: string; pageB: string; parent: string; child: string } {
+    const pageA = createPage(hlcAt(BASE, DEV_A), DEV_A);
+    const pageB = createPage(hlcAt(BASE + 1, DEV_A), DEV_A);
+    const parent = newId();
+    const child = newId();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE + 2, DEV_A), DEV_A, parent, {
+        kind: "block.create",
+        place: { pageId: pageA, parentId: null, order: "a0" },
+        content: "parent",
+        createdAt: BASE + 2,
+      }),
+      makeOp(hlcAt(BASE + 3, DEV_A), DEV_A, child, {
+        kind: "block.create",
+        place: { pageId: pageA, parentId: parent, order: "a0" },
+        content: "child",
+        createdAt: BASE + 3,
+      }),
+      makeOp(hlcAt(BASE + 4, DEV_A), DEV_A, parent, { kind: "block.delete", deletedAt: BASE + 4 }),
+      makeOp(hlcAt(BASE + 4, DEV_A, 1), DEV_A, child, {
+        kind: "block.delete",
+        deletedAt: BASE + 4,
+      }),
+    ]);
+    return { pageA, pageB, parent, child };
+  }
+
+  it("a deleted subtree moved to another page parent-first stays one subtree", () => {
+    const { pageB, parent, child } = setup();
+    const res = applyOps(driver, [
+      makeOp(hlcAt(BASE + 10, DEV_A), DEV_A, parent, {
+        kind: "block.place",
+        place: { pageId: pageB, parentId: null, order: "a0" },
+      }),
+      makeOp(hlcAt(BASE + 11, DEV_A), DEV_A, child, {
+        kind: "block.place",
+        place: { pageId: pageB, parentId: parent, order: "a0" },
+      }),
+    ]);
+    expect(res.applied).toBe(2);
+    expect(getBlock(driver, child)?.parentId).toBe(parent);
+    expect(getBlock(driver, child)?.pageId).toBe(pageB);
+  });
+
+  it("a reorder under a parent that was deleted meanwhile keeps the block attached and hidden", () => {
+    const { pageA, parent, child } = setup();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE + 10, DEV_B), DEV_B, child, {
+        kind: "block.place",
+        place: { pageId: pageA, parentId: parent, order: "b0" },
+      }),
+    ]);
+    expect(getBlock(driver, child)?.parentId).toBe(parent);
+    expect(getBlock(driver, child)?.order).toBe("b0");
+  });
+
+  it("moving under a DIFFERENT, tombstoned parent still falls back to the top level", () => {
+    const { pageA, parent } = setup();
+    const other = newId();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE + 10, DEV_A), DEV_A, other, {
+        kind: "block.create",
+        place: { pageId: pageA, parentId: null, order: "b0" },
+        content: "other",
+        createdAt: BASE + 10,
+      }),
+      makeOp(hlcAt(BASE + 11, DEV_A), DEV_A, other, {
+        kind: "block.place",
+        place: { pageId: pageA, parentId: parent, order: "a0" },
+      }),
+    ]);
+    expect(getBlock(driver, other)?.parentId).toBeNull();
+  });
+});
+
 describe("block.place cycle rejection", () => {
   function chain(pageId: string): { a: string; b: string; c: string } {
     const a = newId();

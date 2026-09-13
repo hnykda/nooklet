@@ -124,6 +124,28 @@ offline device's push queue for as long as a laptop stays closed; a week covers 
 monthly `nooklet gc` still collects. A `changes` row for the asset newer than the cutoff extends
 the grace, so a future "touched on deduplicated re-upload" audit row (B-91) needs no GC change.
 
+**Amended 2026-09-13 (M7 server/sync review, F10): page history counts as a reference too.** An
+asset mentioned in a page or block pre/post-image in `changes` is kept, reported as
+`keptByHistoryOnly`. Decision 4 makes "restore this version" a walk of `batch.undo`, which
+rewrites block text from `changes.before_json`; an image removed by an *edit* (nothing in the
+trash) and collected a week later came back from a history restore as a broken image, recoverable
+only by digging the file out of the pre-GC backup. The reasoning is decision 1's: the saving is
+disk nobody will miss, the loss is a restore people trust.
+
+What it costs, stated plainly: `changes` is never trimmed, so an asset any recorded write ever
+embedded is never collected. The GC still collects uploads no write ever pointed at — an agent's
+`asset_upload` that was never used, a paste whose block write never reached the server — which is
+the window the grace period was built for; it no longer collects "a picture pasted and later
+edited out of its block".
+
+Rejected: *extend the grace from the last history mention* (an image edited out within the last 7
+days is kept, older ones collected) — keeps GC useful for old edits, but a restore of a version
+from last month still shows a broken image, the failure this amendment exists to remove.
+*Document the limitation and keep collecting* — honest, and the smallest change, but it leaves a
+first-class feature (History's restore) silently lossy. If disk ever matters, the shape of a real
+answer is trimming history itself behind an explicit horizon, at which point the assets it alone
+kept become collectable with no GC change.
+
 ## Consequences
 
 - `docs/spec/mcp-tools.md` gains `trash.list`, `trash.restore`, `page.history` (rows 25–27); the

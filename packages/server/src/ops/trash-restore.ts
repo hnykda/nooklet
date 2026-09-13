@@ -18,18 +18,26 @@
  *    revived, not the ancestors' other deleted children — those stay in the trash as their own
  *    entries.
  *
- * Two things are refused rather than guessed at. A page whose name is now taken by a live page
- * cannot be restored as-is: core's `applyPageDelete` does not re-check the live-name unique index
- * (docs/BUGS.md B-90), so the write would fail on a SQL constraint mid-transaction; this op checks
- * first and asks for `new_name` (also when a live page uses the name as an alias, B-256). And a
- * block whose page is itself in the trash is refused with a pointer at the page — restoring one
- * block onto a deleted page would "succeed" invisibly.
+ * Refused rather than guessed at:
+ *
+ *  - A page whose name is now taken by a live page. Core rejects that un-delete
+ *    (`page-key-collision`, docs/BUGS.md B-90) but would apply the block un-deletes in the same
+ *    batch, leaving live blocks on a page still in the trash; this op checks first and asks for
+ *    `new_name` (also when a live page uses the name as an alias, B-256).
+ *  - `new_name` for a journal day. A journal page's name is derived from its date (ADR 018), so
+ *    core stores any rename of it under the ISO name again — the rename and the un-delete were both
+ *    rejected while the blocks came back, and the call answered 200.
+ *  - A block whose page is itself in the trash, with a pointer at the page — restoring one block
+ *    onto a deleted page would "succeed" invisibly.
+ *
+ * Anything core still rejects rolls the whole restore back (`./apply-all-or-nothing.ts`).
  */
 
 import type { Op, SqlDriver } from "@nooklet/core";
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
 import { pageWireNameById, wirePageNameOf } from "../rows.js";
+import { applyAllOrNothing } from "./apply-all-or-nothing.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { BatchIdOut, IdempotencyKey } from "./schemas.js";
@@ -279,6 +287,13 @@ export const trashRestore = defineOp({
             "pass new_name to restore this page under a different name, or rename/delete the live page first",
           );
         } else {
+          if (page.journal_day !== null) {
+            throw new OpError(
+              "invalid",
+              `page "${page.name}" is a journal day, whose name is its date; new_name cannot rename it`,
+              "delete or merge away the live page for that day, then restore this one without new_name",
+            );
+          }
           assertNameFree(driver, input.new_name, page.id, undefined);
           // Rename lands while the page is still tombstoned (core's rename only guards against
           // LIVE pages with the key), then the un-delete brings it back under the new name.
@@ -331,7 +346,7 @@ export const trashRestore = defineOp({
         }
       }
 
-      const applyResult = await ctx.applyOps(ops);
+      const applyResult = await applyAllOrNothing(ctx, ops, "trash_restore");
       const pageWire =
         kind === "page" && input.new_name !== undefined
           ? wirePageNameOf({ name: input.new_name, journal_day: page?.journal_day ?? null })

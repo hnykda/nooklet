@@ -397,7 +397,11 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
       for `(block, entity)`, `(page, place.pageId)`, and every ancestor block id (their
       "flattened descendants" embedding text now includes this block).
     - **`block.place`** `{place}` — LWW on `(page_id, parent_id, order_key)` as one field via
-      `place_hlc`. Same missing/invalid-parent fallback as `block.create`. **Server-only** cycle
+      `place_hlc`. Same missing/invalid-parent fallback as `block.create`, with one exception
+      (B-120): a tombstoned parent on `place.pageId` is kept when it is the parent the block
+      already has — a tombstone hides a subtree, it does not dissolve it, so carrying a deleted
+      subtree to another page, or reordering under a parent deleted meanwhile, keeps the block
+      attached. A move under a *different* tombstoned parent still falls back to `null`. **Server-only** cycle
       check via the recursive CTE (verified, `check_cycle.mjs`):
       ```sql
       WITH RECURSIVE ancestors(id, parent_id) AS (
@@ -415,7 +419,14 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
       own reserved device id, applied and logged with `origin = 'system'`. Clients never
       rebase; they just apply this corrective op like any other and the renderer's transient
       "Unplaced" pseudo-node (a client-side rendering concern, not a schema one) resolves within
-      one round trip. On acceptance: update the four place columns + `place_hlc`; recompute
+      one round trip. **Server-only subtree repair (B-120):** after the batch (and any cycle
+      correction) applies, every descendant of a block placed in the batch that sits on a
+      different page than its parent gets a server-authored `block.place` keeping its
+      `parentId`/`order` and taking the parent's `pageId`, minted parent-first with
+      `serverHlc.next()`, applied in the same transaction and returned with the corrections —
+      the reducer itself stays one-op-one-row, so a move that wins LWW over a server-planned
+      subtree move (or arrives by sync at all) cannot strand the children on the old page. On
+      acceptance: update the four place columns + `place_hlc`; recompute
       `path_ref` for the moved block and its **entire subtree** (rule 12b); refresh
       `dst_page_key`/`dst_page_id` on every `ref` row with `dst_block_id = movedBlockId`
       (rule 11); if `page_id` changed, enqueue `embed_dirty` for the page unit of both the old
@@ -458,7 +469,10 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
 26. `rebuild()` MUST reproduce the state tables from the `op` log alone, replaying in `seq`
     order into empty state tables (`page`, `block`, `block_prop`, `page_prop`, `setting`,
     `keybinding`, `plugin`) via the same `applyOps` function used for live writes. It runs in
-    two phases: **(1) replay** — apply every op in `seq` order (MAY skip the synchronous
+    two phases: **(1) replay** — apply every op in `seq` order except those logged
+    `status = 'rejected'` (B-123: a rejection such as `page-key-collision` depends on the state
+    the op met, so replaying it in HLC order can reverse the server's decision; its effect, if
+    any, is already in a logged corrective op) (MAY skip the synchronous
     ref/`path_ref`/FTS maintenance during replay for speed, since phase 2 recomputes them
     wholesale anyway); **(2) reindex** — recompute `ref` and `path_ref` for every non-deleted
     block from scratch, recompute `page_alias` from `page_prop`, rebuild `block_fts`/`block_tri`/

@@ -6,7 +6,14 @@
  * along.
  */
 
-import { isoJournalName, newId, type Op, type Page, parseJournalTitle } from "@nooklet/core";
+import {
+  isoJournalName,
+  newId,
+  normalizePageName,
+  type Op,
+  type Page,
+  parseJournalTitle,
+} from "@nooklet/core";
 import { z } from "zod";
 import type { ServerBlockNode } from "../data-api.js";
 import {
@@ -17,6 +24,7 @@ import {
   subtreePlaceOps,
 } from "../data-api.js";
 import { getBlockRow, pageWireNameById } from "../rows.js";
+import { applyAllOrNothing } from "./apply-all-or-nothing.js";
 import { runWithDryRun } from "./dry-run.js";
 import { renderOutlineText } from "./outline-bridge.js";
 import { defineOp, type OpContext, OpError } from "./registry.js";
@@ -54,17 +62,25 @@ export async function resolveOrMintPage(
   }
   const name = ref.trim().replace(/\s+/g, " ");
   const day = journalDayFromWire(name) ?? parseJournalTitle(name);
+  const storedName = day === null ? name : isoJournalName(day);
+  // The name the new page would be stored under can already belong to a live page that
+  // `resolvePageRef` does not return for this ref: an ordinary page called `2026-09-07` (an
+  // imported pages/2026-09-07.md) when the ref is a wire date, which resolves journals only.
+  // Minting a create for it would be rejected as a key collision (B-122); that page IS the target.
+  const taken = ctx.db.get<{ id: string }>(
+    "SELECT id FROM page WHERE key = ? AND deleted_at IS NULL",
+    [normalizePageName(storedName)],
+  );
+  const takenPage = taken ? await ctx.data.pages.get(taken.id) : null;
+  if (takenPage) return { page: takenPage };
   const id = newId();
   const createOp = ctx.mintOp(id, {
     kind: "page.create",
-    name: day === null ? name : isoJournalName(day),
+    name: storedName,
     journalDay: day,
     createdAt: Date.now(),
   });
-  return {
-    page: { id, name: day === null ? name : isoJournalName(day), journalDay: day },
-    createOp,
-  };
+  return { page: { id, name: storedName, journalDay: day }, createOp };
 }
 
 export const blockMoveToPage = defineOp({
@@ -125,9 +141,7 @@ export const blockMoveToPage = defineOp({
         }),
       );
 
-      const applyResult = await ctx.applyOps(ops);
-      const rejected = applyResult.results.find((r) => r.status === "rejected");
-      if (rejected) throw new OpError("invalid", `move rejected: ${rejected.reason}`);
+      const applyResult = await applyAllOrNothing(ctx, ops, "move");
 
       const [subtree] = await ctx.data.blocks.tree(input.id);
       return {

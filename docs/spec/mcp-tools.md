@@ -1464,7 +1464,11 @@ single-page `outline`/`page` convention the other 17 tools use cannot represent;
 **Errors**: `not_found` — no `changes` row exists for `batch_id`; `invalid` — `batch_id` touched an
 entity type outside the op log (currently only `asset`, from `asset_upload`), which cannot be
 reconstructed through `applyOps` (`hint`: "only page/block changes recorded via the op log can be
-undone; asset uploads are not reversible this way").
+undone; asset uploads are not reversible this way"), or the reducer rejected any compensating op
+(nothing is written); `conflict` — a page the undo would bring back or rename back has lost its
+name to a live page (`details.live_page_id`, `details.page_id`); nothing is written (B-90
+follow-up: the page's op used to be rejected while its blocks were un-deleted, and the call
+reported success).
 
 ---
 
@@ -1885,7 +1889,10 @@ Every descendant of every child gets its own `block.place` so nothing is strande
 ```
 
 **Errors**: `not_found` — `id` unknown; `invalid` — the block has no first line and no `name`
-was given, or the name exceeds 512 chars; `conflict` — stale `if_version`.
+was given, or the name exceeds 512 chars, or the reducer rejected any op of the batch (nothing is
+written: the batch runs in a savepoint and is rolled back first, B-122); `conflict` — stale
+`if_version`. A name whose stored form already belongs to a live page — an ordinary page called
+`2026-09-07`, say — extends that page rather than minting a colliding create.
 
 ---
 
@@ -1939,7 +1946,8 @@ export const blockMoveToPage = defineOp({
 ```
 
 **Errors**: `not_found` — `id` unknown, or `page` unknown with `create_page: false`; `conflict` —
-stale `if_version`; `invalid` — the reducer rejected the placement.
+stale `if_version`; `invalid` — the reducer rejected any op of the batch, in which case nothing is
+written (B-122).
 
 ---
 
@@ -2012,7 +2020,8 @@ link is `[[X|label]]` is not in `ref` until B-86 is fixed; the alias covers it m
 ```
 
 **Errors**: `not_found` — either page unknown; `invalid` — same page (also via an alias), or
-`source` is a journal day; `conflict` — stale `if_version`.
+`source` is a journal day, or the reducer rejected any op of the batch (nothing is written,
+B-122); `conflict` — stale `if_version`.
 
 ---
 
@@ -2233,8 +2242,10 @@ against LIVE pages with the key.
   "seq": 48260, "batch_id": "1k7f3qj4x1wzr2", "dry_run": false }
 ```
 
-**Errors**: `invalid` — neither or both of `id`/`page` given, `new_name` on a block, or the target
-exists but is not in the trash; `not_found` — no such id, or no deleted page with that name;
+**Errors**: `invalid` — neither or both of `id`/`page` given, `new_name` on a block or on a
+journal day (its name is its date, ADR 018), the target exists but is not in the trash, or the
+reducer rejected any op of the restore (nothing is written); `not_found` — no such id, or no
+deleted page with that name;
 `conflict` — a live page has the (new) name or lists it in `alias::` (B-256: a page's own key wins
 over an alias, so restoring would re-point that alias's links; `details.live_page_id`, `hint`
 mentions `new_name`),
