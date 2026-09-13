@@ -31,17 +31,36 @@ to `docs/bugs-inbox/impl-commands.md` (never `docs/BUGS.md`). e2e port 6402.
   `context-menu.spec.ts` pinned list. e2e on 6402: commands+context-menu+shelf = 27 passed,
   1 skipped (pre-existing fixme); views+navigation+pages = 50 passed.
 
-- B-106 (commit after 0cbf5bd, "docs(spec): …"): `registrations/spec-tables.test.ts` (fails 2/4
+- `1c1be0c` B-106: `registrations/spec-tables.test.ts` (fails 2/4
   on da85cfb's spec, verified), eight missing rows + rules, R54 slash table, DiagnosticsPanel
   comment, wiki generator (optional hosts, requiresArgs section) + regenerated wiki page.
 
+- Final sweep (commit after 1c1be0c, "test(probe): …"): web unit 724/724 (a first run had 2
+  failures in `page-title.test.ts` / `render-seams.test.tsx`, not touched here, both passing alone
+  and on the rerun); `pnpm -r typecheck` clean; e2e on 6402 over 19 specs (commands, context-menu,
+  shelf, shelf-outline, views, settings, selection, journals, editing, focus, navigation, pages,
+  help, popups, phone, refactor, templates, remote-device, a-fresh-journal): 207 passed, 1
+  skipped, 2 failed — `editing.spec.ts:55` passed on rerun (load); `views.spec.ts:461` fails also
+  with this branch's web sources reverted to da85cfb → logged B-161. Real-graph probe
+  `tools/probes/collapse-all-real-graph.mjs` + `nooklet verify` OK (numbers in the B-97 entry).
+
 ## 2. In flight
 
-- Nothing uncommitted after the B-106 commit.
+- Nothing. Task complete; report delivered.
 
 ## 3. Next steps, in order
 
-1. Final: related e2e sweep on 6402, `pnpm -r test`, `pnpm -r typecheck`, report.
+- None for this brief. Left for the owner/coordinator: see "Open" below.
+
+## 3a. Open
+
+- "Collapse all", "Expand all", "Open this page on shelf" and (pre-existing) "Merge this page
+  into…" are listed off a page route and do nothing there: `WhenContext` is a closed set with no
+  route/outline variable. Adding one is a spec change (R6/R7, `types.ts`, every full context
+  literal in tests) — an owner decision.
+- `spec-tables.test.ts` fails whenever a branch adds a command without a spec row. Branches merged
+  after this one that add commands will need a row each.
+- B-161 (palette focus e2e) needs someone to look at focus return after the palette closes.
 
 ## 4. Decisions
 

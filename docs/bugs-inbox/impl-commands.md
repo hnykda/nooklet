@@ -30,6 +30,13 @@ stream, every loaded day. All three e2e tests fail against `da85cfb`'s `BlockTre
 `editor-host.ts` (rows stay 6/4/2). Not covered by e2e: the journal stream fan-out (seeding journal
 days in a shared-server spec disturbs `journals.spec.ts`; the fan-out is unit-tested).
 
+Real graph (`tools/probes/collapse-all-real-graph.mjs`, a copy of the owner's graph served on 6402,
+page "OmnivoreSync": 961 blocks, 150 parents, 110 collapsed): Expand all → 961 rows on screen in
+467 ms, server shows 0 collapsed ~11 s later; Collapse all → 1 row (the page has one top-level
+block) in 136 ms, server shows 150/150 collapsed ~11 s later, and a reload still shows 1 row. No
+flag was written on a leaf. `pnpm nooklet verify` on the copy afterwards: 20,671 ops replayed, OK.
+The ~11 s is the time for the batch to reach the server, not the UI — not investigated further.
+
 ---
 
 ### B-98 (existing) · "Open plugin manager" leads to a blank page
@@ -114,3 +121,21 @@ Shift+Enter — or Shift+click — on a page row shelves the page instead of ope
 under the list says so whenever a page row is highlighted. Limitation, same as `edit.mergePage`:
 "Open this page on shelf" is listed off a page route too (journals, search) and does nothing there,
 because `WhenContext` cannot see the route.
+
+---
+
+### B-161 · e2e "opening the palette while editing and closing it hands focus back to the editor" fails
+**Status:** needs-repro · **Severity:** low · **Found:** 2026-09-13, impl-commands e2e sweep ·
+**Test:** `e2e/tests/views.spec.ts` "opening the palette while editing and closing it hands focus
+back to the editor"
+
+Open a page, click into a block, Cmd/Ctrl+K, Escape: the palette closes but `.cm-content` is not
+focused (`toBeFocused` times out, "inactive"), so the `!` typed next goes nowhere. On port 6402 it
+passed twice earlier the same morning and then failed three runs in a row — once in a 19-spec sweep
+and twice alone (`--repeat-each=2`) — **including with every `apps/web/src` file this branch changed
+restored to `da85cfb`**, so this branch did not cause it. Reading the code, nothing hands focus
+back to the editor when the palette closes (the palette input takes focus in a microtask on open;
+removing it leaves focus on `<body>`), so the test passing at all may depend on timing — e.g. the
+input's `focus()` landing before or after the element is attached. Machine load at the time was
+heavy (a dozen agents). Not investigated beyond that; logged so it is not mistaken for a
+regression from whichever branch merges next.
