@@ -43,16 +43,27 @@ before any work, as the brief says everyone starts there.
   last one with baseline sources checked out) — pre-existing, not this branch. Spec: E.6 rows +
   R52a for the four commands.
 
+- (next commit) `tools/probes/page-export-real-graph.mjs` — real-graph check, results below.
+
+## Real-graph results (owner's graph copy, 2026-09-13; 952 pages, 20,411 ops)
+
+- `serve` on the copy with this branch's renderer: "mirror: wrote 952 page file(s)", startup
+  verify OK.
+- Probe, export: 27 pages picked by most blocks / block props / task dates / multi-line blocks /
+  page props / journals / collapsed blocks (incl. the 1.7 MB `OmnivoreSync`, namespaced names with
+  `"`, `'`, `__/`) exported through the UI — **27 of 27 byte-identical** to the mirror files.
+- Probe, print: 6 pages with the most collapsed blocks — rows in the DOM at `beforeprint` equal
+  the blocks reachable in the DB on all 6 (e.g. 114 vs 24 on screen; 961 rows / 367 sheets for
+  `OmnivoreSync`).
+- `pnpm nooklet verify --data <copy>`: replayed 20,411 ops, OK.
+
 ## In flight
 
-- nothing uncommitted after the docs commit.
+- nothing uncommitted after the probe commit.
 
 ## Next steps, in order
 
-1. Real-graph check: serve a copy of the owner's graph on a spare port, export heavy pages from
-   the browser and byte-compare with the mirror files serve writes; `pnpm nooklet verify` on the
-   copy.
-2. Final e2e run of the specs touched + at risk; report.
+1. Final e2e run of the specs touched + at risk; report.
 
 ## Decisions
 
