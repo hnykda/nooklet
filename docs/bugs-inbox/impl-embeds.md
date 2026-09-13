@@ -164,3 +164,20 @@ links are presumably dead too — not reproduced, not fixed here.
 tests failed before the change (the e2e test timed out waiting for the tab; the component test's
 `fireEvent.click` returned `false`) and pass after.
 
+---
+
+### B-217 · `nooklet serve --help` does not print help: it opens and serves the default graph
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, verifying `m8/impl-embeds` (by
+accident) · **Test:** —
+
+`pnpm exec tsx src/cli.ts serve --help` (from `packages/server`, meaning "show serve's options")
+ignored `--help`: it resolved `--data` to its default `~/.nooklet/default`, opened that database with
+`migrate: true`, ran the dev-mode rebuild verify over its 20,411 ops, loaded plugins, and died only
+because port 6100 was already taken by the owner's running app (`EADDRINUSE`). Had the port been
+free it would have served — and started the live markdown mirror on — the owner's real graph. The
+directory's mtimes (graph.sqlite, -wal, pages/, journals/ all 09:19:42, the command ran at ~09:26)
+show nothing was written this time. `cli.ts#main` only honours `help`/`--help` as the COMMAND (the
+`default:` branch); a subcommand never looks at the flag. For a repo whose working rule is "never
+open ~/.nooklet/default", a help flag that opens it is a trap. Fix direction: any `--help`/`-h` flag
+prints `USAGE` and exits before `dataDir()` is ever called.
+
