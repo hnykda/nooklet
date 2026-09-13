@@ -5,6 +5,7 @@ import {
   editTextOffsetToContent,
   joinBlockText,
   samePropertySet,
+  showsInEditText,
   splitBlockText,
 } from "./block-text.js";
 import { parseOutline } from "./outline.js";
@@ -92,6 +93,42 @@ describe("joinBlockText", () => {
 
   it("leaves out keys that editing text does not carry", () => {
     expect(joinBlockText("x", { heading: "2", list: "number" })).toBe("x\nlist:: number");
+  });
+});
+
+describe("properties whose line would not read back as themselves (B-152)", () => {
+  // `block.update` takes any string as a value; an agent can write any of these.
+  const unshowable: Record<string, string> = {
+    summary: "line1\nline2",
+    padded: " x ",
+    cr: "a\rb",
+    "-foo": "imported _foo",
+    Upper: "v",
+  };
+
+  it("are not shown, and a plain one is", () => {
+    for (const [key, value] of Object.entries(unshowable)) {
+      expect(showsInEditText(key, value), key).toBe(false);
+    }
+    expect(showsInEditText("status", "done")).toBe(true);
+    expect(showsInEditText("empty", "")).toBe(true);
+    expect(showsInEditText("fence", "```js")).toBe(true);
+  });
+
+  it("stay out of the editing text", () => {
+    expect(joinBlockText("title", { ...unshowable, ok: "1" })).toBe("title\nok:: 1");
+    expect(joinBlockText("title", unshowable)).toBe("title");
+  });
+
+  it("are never rewritten or deleted by an edit that could not see them", () => {
+    const before = { content: "title", properties: { ...unshowable, ok: "1" } };
+    const typed = joinBlockText("title", before.properties).replace("title", "title!");
+    expect(typed).toBe("title!\nok:: 1");
+    expect(blockTextPayloads(before, typed)).toEqual([{ kind: "block.text", content: "title!" }]);
+    // Deleting the one line it could see removes only that property.
+    expect(blockTextPayloads(before, "title")).toEqual([
+      { kind: "block.prop", key: "ok", value: null },
+    ]);
   });
 });
 

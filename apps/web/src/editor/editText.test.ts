@@ -5,7 +5,13 @@
  */
 import type { Op, OpPayload } from "@nooklet/core";
 import { describe, expect, it } from "vitest";
-import { caretInEditText, contentOffsetOf, editTextOf, withEditText } from "./editText.js";
+import {
+  caretInEditText,
+  contentOffsetOf,
+  editTextMatches,
+  editTextOf,
+  withEditText,
+} from "./editText.js";
 import { EditHistory } from "./history.js";
 import { invertOp } from "./invert.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
@@ -32,6 +38,15 @@ describe("editing text <-> EditableBlock", () => {
   it("keeps a property the buffer could never show", () => {
     const b = makeBlock({ id: "A", content: "x", properties: { heading: "2", k: "v" } });
     expect(withEditText(b, "x").properties).toEqual({ heading: "2" });
+  });
+
+  it("keeps a multi-line value out of the buffer and in the block, however the buffer changes (B-152)", () => {
+    const b = makeBlock({ id: "A", content: "title", properties: { summary: "one\ntwo", k: "v" } });
+    expect(editTextOf(b)).toBe("title\nk:: v");
+    expect(editTextMatches(b, "title\nk:: v")).toBe(true);
+    const typed = withEditText(b, "title!\nk:: v");
+    expect(typed.content).toBe("title!");
+    expect(typed.properties).toEqual({ summary: "one\ntwo", k: "v" });
   });
 
   it("maps content carets into the buffer: end means end of the text, not of the last property", () => {

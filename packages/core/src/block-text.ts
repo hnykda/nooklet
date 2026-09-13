@@ -39,6 +39,24 @@ export function isEditTextProperty(key: string): boolean {
   return key !== "heading" && !RESERVED_BLOCK_PROPS.has(key);
 }
 
+/**
+ * Whether property `key` = `value` is written into editing text as a `key:: value` line: only when
+ * that line reads back as exactly this property. Keys that `isEditTextProperty` excludes never are;
+ * neither is a value with a line break (its tail would be split off as content), a value with
+ * leading or trailing whitespace (the split trims it), or a key the line regex cannot read back
+ * (an imported `_foo` is stored as `-foo`). `block.update` accepts any string as a value, so an
+ * agent can write such a property; putting it into the buffer made the first keystroke move
+ * its tail into the block's text (B-152). Such a property stays out of the buffer, and so out of
+ * the diff, exactly like `heading`.
+ */
+export function showsInEditText(key: string, value: string): boolean {
+  if (!isEditTextProperty(key)) return false;
+  const m = PROPERTY_LINE_RE.exec(`${key}:: ${value}`);
+  return (
+    m !== null && normalizePropertyKey(m[1] as string) === key && (m[2] as string).trim() === value
+  );
+}
+
 interface TextLine {
   text: string;
   /** Offset of the line's first character in the whole text. */
@@ -101,7 +119,7 @@ export function splitBlockText(text: string): SplitBlockText {
  */
 export function joinBlockText(content: string, properties: Readonly<Properties>): string {
   const editable = Object.fromEntries(
-    Object.entries(properties).filter(([key]) => isEditTextProperty(key)),
+    Object.entries(properties).filter(([key, value]) => showsInEditText(key, value)),
   );
   const lines = Object.entries(editable).map(([key, value]) => `${key}:: ${value}`);
   if (lines.length === 0) return content;
@@ -178,8 +196,8 @@ export type BlockTextPayload =
  *
  * Diffed against `before` — the block as it was when this edit began — and never against the
  * store's live properties, so a property another device or an agent set in the meantime is not
- * deleted just because this buffer never saw it. Non-editable keys in `before` are ignored: they
- * were never in the text, so their absence from it says nothing.
+ * deleted just because this buffer never saw it. Properties of `before` the text could not show
+ * (`showsInEditText`) are ignored: they were never in the text, so their absence says nothing.
  */
 export function blockTextPayloads(
   before: { content: string; properties: Readonly<Properties> },
@@ -188,8 +206,8 @@ export function blockTextPayloads(
   const next = splitBlockText(text);
   const out: BlockTextPayload[] = [];
   if (next.content !== before.content) out.push({ kind: "block.text", content: next.content });
-  for (const key of Object.keys(before.properties)) {
-    if (isEditTextProperty(key) && !Object.hasOwn(next.properties, key)) {
+  for (const [key, value] of Object.entries(before.properties)) {
+    if (showsInEditText(key, value) && !Object.hasOwn(next.properties, key)) {
       out.push({ kind: "block.prop", key, value: null });
     }
   }

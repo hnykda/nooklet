@@ -17,9 +17,9 @@
 import {
   contentOffsetToEditText,
   editTextOffsetToContent,
-  isEditTextProperty,
   joinBlockText,
   samePropertySet,
+  showsInEditText,
   splitBlockText,
 } from "@nooklet/core";
 import type { CaretSpec, EditableBlock } from "./types.js";
@@ -39,14 +39,15 @@ export function editTextOf(block: TextFields): string {
 
 /**
  * `block` as `text` describes it: content and editable properties from the text, and any property
- * the text could never show (`heading`) carried over untouched. Returns `block` itself when nothing
+ * the text could never show (`heading`, a multi-line value — `showsInEditText`) carried over
+ * untouched. Returns `block` itself when nothing
  * moved, so a caller can compare by reference.
  */
 export function withEditText<T extends TextFields>(block: T, text: string): T {
   const split = splitBlockText(text);
   const properties: Record<string, string> = {};
   for (const [key, value] of Object.entries(block.properties)) {
-    if (!isEditTextProperty(key)) properties[key] = value;
+    if (!showsInEditText(key, value)) properties[key] = value;
   }
   Object.assign(properties, split.properties);
   if (split.content === block.content && samePropertySet(properties, block.properties)) {

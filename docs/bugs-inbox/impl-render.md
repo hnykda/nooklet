@@ -123,3 +123,29 @@ the round trip holds, which is why the mirror never showed it. Callers with `ids
 `outline-bridge.ts#renderSingleBlockText` (the before-text `block.update` matches `old_str`
 against). `core/block-text.ts#joinBlockText` avoids the same trap by writing such a block's
 properties after the closed fence. Fix: the same placement in `serializeOutline`.
+
+---
+
+### B-152 · Editing a block whose property value has a line break moves the value's tail into the text
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-render` · **Test:** `e2e/tests/block-properties.spec.ts` "a property value the buffer
+cannot show as one line survives editing the block (B-152)"
+
+Since B-101 the editor's buffer writes every generic property as a `key:: value` line and splits the
+buffer back with the parser's line rules on flush. A value that does not survive that trip as the
+same property is corrupted by the first keystroke. `block.update` accepts any string as a value
+(`schemas.ts#PropertiesPatch`), so an agent can set `summary:: line1\nline2`; the buffer then reads
+`title\nsummary:: line1\nline2`, the split takes `line2` as content, and typing one character wrote
+`block.text "title!\nline2"`. Seen in a real browser before the fix: `page.read` after one `!`
+returned `content: "title!\nline2"`. (The `summary` value itself was not rewritten only because a
+refetch had already folded the truncated value into the local tree, so the diff saw no change.)
+A value with leading/trailing whitespace is silently trimmed the same way, and a key the line regex
+cannot read back (an imported `_foo`, normalized to `-foo`) is moved into the text and deleted.
+
+**Fixed 2026-09-13.** `core/block-text.ts#showsInEditText(key, value)`: a property goes into the
+buffer only if its `key:: value` line reads back as exactly that key and value. The others are
+treated like `heading` — left out of `joinBlockText`, carried over untouched by
+`editText.ts#withEditText`, and never deleted by `blockTextPayloads`. Typing a `summary:: x` line
+still overrides one. The e2e test was red before the fix (the buffer read
+`title\nsummary:: line1\nline2`); unit: `block-text.test.ts` "properties whose line would not read
+back as themselves (B-152)", `editText.test.ts` "keeps a multi-line value out of the buffer".

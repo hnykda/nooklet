@@ -19,6 +19,7 @@ import {
   MOD,
   openEditing,
   openPage,
+  readBlocks,
 } from "../helpers/index.js";
 
 interface ReadNode {
@@ -210,4 +211,31 @@ test.describe("block properties (B-101)", () => {
       .toEqual([{ content: "item", properties: { a: "1", b: "2" } }]);
     await expect.poll(() => editorText(page)).toBe("item\na:: 1\nb:: 2");
   });
+});
+
+test("a property value the buffer cannot show as one line survives editing the block (B-152)", async ({
+  page,
+}) => {
+  // An agent can store any string as a value (`block.update`'s properties take z.string()). Put
+  // into the buffer as `summary:: line1\nline2`, the value's tail read back as content, and the
+  // first keystroke wrote `title!\nline2` into the block's text.
+  const name = "Props Multiline Value";
+  const outliner = await openPage(page, name, "- title");
+  const [block] = await readBlocks(page, name);
+  await api(page, "block.update", {
+    id: block?.id,
+    properties: { summary: "line1\nline2", status: "draft" },
+  });
+  await expect(outliner.locator(".vr-prop")).toHaveCount(2);
+
+  await outliner.locator(".vr-block-view").first().click();
+  await expect(editor(page)).toBeFocused();
+  expect(await editorText(page)).toBe("title\nstatus:: draft");
+  await page.keyboard.press(`${MOD}+Home`);
+  await page.keyboard.press("End");
+  await page.keyboard.type("!");
+  await clickAway(page);
+  await expect
+    .poll(() => readWithProps(page, name))
+    .toEqual([{ content: "title!", properties: { summary: "line1\nline2", status: "draft" } }]);
 });

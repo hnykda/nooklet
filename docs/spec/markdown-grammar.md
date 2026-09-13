@@ -207,7 +207,10 @@ conventions glossary — not added there because this task may only touch this f
   trailing space is the next keystroke). **Not** split out, so they stay ordinary content text in
   the buffer exactly as before: the reserved keys (`id collapsed marker priority scheduled deadline
   repeat done`) and `heading` — the scheduling keys are validated columns, and half-typed dates
-  would be rejected on every typing pause; they get their own UI.
+  would be rejected on every typing pause; they get their own UI. Also never written into the
+  buffer: a property whose `key:: value` line would not read back as exactly that key and value —
+  a value with a line break or surrounding whitespace, which `block.update` accepts (B-152). Such a
+  property is not in the text, so the edit neither rewrites nor deletes it.
 
 ### 2.5 Logseq import tolerance: SCHEDULED/DEADLINE/LOGBOOK, `heading::`, headings without a bullet
 
