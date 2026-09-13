@@ -2008,7 +2008,8 @@ call again without `dry_run` to apply. The real run changes every matched block 
 returns its `batch_id`, so `batch_undo` reverses the whole replacement at once. Only block text is
 touched — not page names, not properties. Refuses to change more than `max_blocks` blocks
 (default 2000) so a loose pattern cannot rewrite the graph by accident; `matches` lists at most
-`limit` blocks, with `truncated: true` and the full counts when there are more."
+`limit` blocks, with `truncated: true` and the full counts when there are more. A pattern that
+runs longer than 2 seconds is refused as invalid; simplify it."
 
 ```ts
 export const graphReplace = defineOp({
@@ -2033,8 +2034,12 @@ export const graphReplace = defineOp({
 ```
 
 A literal `replacement` is inserted verbatim (`$1` stays `$1`); only `regex: true` interprets
-it. A pattern that is invalid, or that matches the empty string, is `invalid`. `batch_id` is
-absent on `dry_run` and when nothing matched. `matches` is ordered by page name.
+it. A pattern that is invalid, or that matches the empty string, is `invalid`. The scan runs in a
+worker thread with a 2 s budget (B-125): a pattern still running then is `invalid` ("took too long
+to run"), so a backtracking regex cannot stall the server. The real run re-reads the matched
+blocks before writing and is `conflict`, writing nothing, if any changed during the scan (a device
+sync can land meanwhile). `batch_id` is absent on `dry_run` and when nothing matched. `matches`
+is ordered by page name.
 
 **HTTP**: `POST /api/v1/graph.replace`.
 

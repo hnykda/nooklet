@@ -126,6 +126,35 @@ describe("graph.replace", () => {
     expect(allContents()).toContain("the colour of money");
   });
 
+  it("a backtracking pattern is refused within the time budget, and the server answers meanwhile (B-125)", async () => {
+    // `(a+)+$` against 40 `a`s and a `!` backtracks ~2^40 steps. Run on the event loop, as it
+    // was, 25 `a`s already held `/healthz` for 5 s; 40 would never return.
+    const n = 40;
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Redos",
+      markdown: `- ${"a".repeat(n)}!\n- an ordinary block`,
+    });
+    const started = Date.now();
+    const pending = replace({ query: "(a+)+$", regex: true, replacement: "x", dry_run: true });
+    // Asked 100 ms in; timed from `started`, because a blocked event loop delays the timer itself.
+    const health = new Promise<{ status: number; ms: number }>((resolve) => {
+      setTimeout(async () => {
+        const res = await s.app.request("/healthz");
+        resolve({ status: res.status, ms: Date.now() - started });
+      }, 100);
+    });
+    const { status, json } = await pending;
+    const totalMs = Date.now() - started;
+
+    expect((await health).status).toBe(200);
+    expect((await health).ms).toBeLessThan(1000);
+    expect(status).toBe(400);
+    expect(json.error.code).toBe("invalid");
+    expect(json.error.message).toContain("too long");
+    expect(totalMs).toBeLessThan(6000);
+    expect(allContents()).toContain(`${"a".repeat(n)}!`);
+  }, 20_000);
+
   it("limit caps the preview list, not the counts", async () => {
     await seed();
     const { json } = await replace({ query: "colour", limit: 1, dry_run: true });
