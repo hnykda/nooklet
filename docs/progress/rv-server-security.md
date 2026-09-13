@@ -69,9 +69,24 @@ start, you were restarted: read it, then continue from "Next steps".
   test (0 matches), new e2e `replace-unicode.spec.ts` ("No matches."). Green: server 58 / 543,
   web 72 / 684, e2e `replace-unicode` + `replace` 4/4 on 6471; real graph `Č\p{Ll}+` 0 → 17.
 
+- F8 hash `47186b3`.
+- Final checks so far: `nooklet verify` on graph-fix OK (20,411 ops; again 21,588 after a real
+  replace + undo via `p11-replace-real-run.mts`); `pnpm -r test` 149 files / 1,578 tests green;
+  e2e replace, replace-unicode, query, query-limits, refactor, views: 48 passed, 1 failed —
+  `views.spec.ts:461` (palette Escape hands focus back to the editor), which ALSO fails with every
+  source file of this branch checked out at `da85cfb`, so it predates this branch.
+
 ## 2. In flight
 
-- Review doc + final checks (verify on graph-fix, broader e2e).
+- **Found in my own F5 commit (`8ddae71`)**: `resourceLimits.maxOldGenerationSizeMb: 256` on the
+  scan worker turns ONE large allocation into a whole-process abort. Probe `p12-explode-path.mts`:
+  a 199,000-char block × 2,000-char replacement (398 M chars) → `FATAL ERROR: Reached heap limit
+  Allocation failed` from `node::worker::Worker::Run`, exit 134 — not `ERR_WORKER_OUT_OF_MEMORY`.
+  Reachable over HTTP (page.create allows 200,000 chars of markdown). Fix in progress: compute
+  each block's exact replaced length from the matches BEFORE building it (literal: Σ(repl −
+  match); template: GetSubstitution lengths), refuse before `replace` runs, drop the heap cap
+  (it would also abort the server on a graph whose text alone passes 256 MB). Test first: the
+  199k block over HTTP must be a 413 and the process must survive.
 
 ## 3. Next steps, in order
 
