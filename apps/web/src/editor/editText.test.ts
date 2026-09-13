@@ -35,6 +35,19 @@ describe("editing text <-> EditableBlock", () => {
     expect(withEditText(b, "x\nb:: 2\ny\na:: 1")).toBe(b);
   });
 
+  it("returns the same block for its own editing text, even with a key:: value line in its TEXT (B-474)", () => {
+    // Text an agent wrote as `foo\:: bar` (OUT-23a) or a paste kept as text. Splitting the
+    // untouched buffer made `foo` a property the database did not have; the next keystroke's diff
+    // then dropped the line from the content without writing the property.
+    const b = makeBlock({ id: "A", content: "notes\nfoo:: bar\nmore", properties: { k: "v" } });
+    expect(withEditText(b, editTextOf(b))).toBe(b);
+    expect(editTextMatches(b, editTextOf(b))).toBe(true);
+    // A real edit still splits, as B-101 wants (what the line becomes then is B-472's question).
+    const typed = withEditText(b, `${editTextOf(b)}!`);
+    expect(typed.content).toBe("notes\nmore!");
+    expect(typed.properties).toEqual({ k: "v", foo: "bar" });
+  });
+
   it("keeps a property the buffer could never show", () => {
     const b = makeBlock({ id: "A", content: "x", properties: { heading: "2", k: "v" } });
     expect(withEditText(b, "x").properties).toEqual({ heading: "2" });

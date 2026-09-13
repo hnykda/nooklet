@@ -104,6 +104,9 @@ copy then paste now keeps it text, where before the paste made it a property. Wa
 call: the buffer shows such a line escaped (`foo\:: bar`) and the split un-escapes it — lossless,
 the same rule as the mirror, but a backslash in the editor — or keep the promotion and document it.
 
+Checked in Chromium by mirror-escape-verify: before B-474's fix the app did not even promote — one
+keystroke deleted the line or doubled it (B-474). After that fix it promotes, as described above.
+
 ---
 
 ### B-473 · `editing.spec.ts` fails when a run has no `a-fresh-journal.spec.ts` before it but has `dates.spec.ts`
@@ -123,8 +126,10 @@ alone: 4/4. `e2e/helpers/editor.ts#openJournal` has the same locator.
 ---
 
 ### B-474 · One keystroke in a block whose text has a `foo:: bar` line deletes that line (or duplicates it as a property)
-**Status:** open · **Severity:** high (silent data loss) · **Found:** 2026-09-13,
-mirror-escape-verify (adversarial check of B-342's fix, in Chromium) · **Test:** pending
+**Status:** fixed · **Severity:** high (silent data loss) · **Found:** 2026-09-13,
+mirror-escape-verify (adversarial check of B-342's fix, in Chromium) · **Test:**
+`e2e/tests/text-property-line-keystroke.spec.ts` (4), `apps/web/src/editor/editText.test.ts` ›
+"returns the same block for its own editing text, even with a key:: value line in its TEXT (B-474)"
 
 Seed `- notes` / `  foo\:: bar` / `  more` through `page.create` (OUT-23a: the text `foo:: bar`),
 open the page, click into the block and type one character:
@@ -144,6 +149,21 @@ The buffer is still exactly the block's editing text, but `withEditText` splits 
 editor's tree holds content `notes\nmore` and a property `foo = bar` the database does not have.
 The first keystroke snapshots that tree as `before`, and the diff at flush then sees the line as an
 unchanged property: it writes only the content without it (or only the property).
+
+A second face, found testing the fix: Cmd/Ctrl+Z of such an edit restored the text line, then
+rewrote the buffer to it; that rewrite reaches `onTextChange` like typing, and diffing the unchanged
+buffer against the restored block wrote the line as a property again half a second later — and that
+new step emptied the redo stack.
+
+**Fixed 2026-09-13** (mirror-escape-verify), in the web editor, not the grammar: `withEditText`
+(`apps/web/src/editor/editText.ts`) returns the block itself when the text is exactly the block's
+editing text (`editTextOf`), and `flushPendingEdit` (`BlockTree.tsx`) writes nothing for a buffer
+that is exactly `before`'s editing text. What such a line becomes on a real edit is unchanged — a
+property, B-472's open question — but it is no longer lost or doubled, and undo holds. Tests: the
+e2e spec's three keystroke cases (line 1, last line, the `foo::` line itself: the key survives
+exactly once, with the typed value) were red before (lost, lost, `["bar","bar!"]`); its undo/redo
+case was red with only the `withEditText` half in place (the line came back as a property); all 4
+green. The unit test is red without the `withEditText` change.
 
 ---
 

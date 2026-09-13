@@ -44,6 +44,13 @@ export function editTextOf(block: TextFields): string {
  * moved, so a caller can compare by reference.
  */
 export function withEditText<T extends TextFields>(block: T, text: string): T {
+  // The block's own editing text describes the block as it is, even when splitting it would not
+  // give the block back: a content line shaped like `foo:: bar` (written as `foo\:: bar`, OUT-23a)
+  // is text in the block and a property line in the split. Splitting it here put `foo` into the
+  // editor's tree as a property the database did not have — attaching the editor does this with
+  // the untouched buffer — and the first keystroke's diff then saw no property to write and a
+  // line to drop: the text line was deleted (B-474).
+  if (text === editTextOf(block)) return block;
   const split = splitBlockText(text);
   const properties: Record<string, string> = {};
   for (const [key, value] of Object.entries(block.properties)) {
