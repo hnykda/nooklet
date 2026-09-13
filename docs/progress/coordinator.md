@@ -13,9 +13,13 @@ cherry-picked on purpose (see "Integration choices" under M8); the branches are 
 are removed.
 
 ### State of `main` at the end
-- Unit: core 423, plugin-api 17, server 744, web 1,300 — all green. `pnpm -r typecheck` clean.
+- Unit: core 423, plugin-api 17, server 744, web 1,300 — all green (web 1,300 before `0d7ae24`'s one
+  test-only change). `pnpm -r typecheck` clean.
 - `pnpm nooklet verify` on a fresh copy of the live graph: OK.
-- Full Chromium e2e: see the last line of this section (run at the end).
+- Full Chromium e2e on `0d7ae24`: **634 passed, 1 failed, 2 skipped** (11.8 min). The failure is B-561
+  (search-fallback keyword test, order-dependent: passes alone). The first full run on the merged tree
+  had 11 failures; 9 were real merge interactions fixed in `0d7ae24` (tests reading the old text sync
+  indicator; the delete dialog vs ADR 024), 1 passed alone (autocomplete, load/order).
 - Schema is v7 now (ADR 024's indexes). A desktop `.app` built before this is v6 and its bundled
   server would refuse the migrated graph (B-430's case) — rebuild the app after the owner's server
   has run the new code.

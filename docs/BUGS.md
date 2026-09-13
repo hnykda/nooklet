@@ -776,6 +776,17 @@ text; clicking it should open that day's page (`/page/<ISO date>`), as Logseq do
 ---
 
 
+### B-561 · `search-fallback.spec.ts` "a keyword search shows no fallback note" fails in a full run, passes alone
+**Status:** open (test order) · **Severity:** low · **Found:** 2026-09-13, the coordinator's two
+final full Chromium runs on the merged tree · **Test:** the spec itself
+
+Failed at the same place (test 488, 15.4 s timeout on the result text) in both full runs, passed 4/4
+when `search-fallback.spec.ts` ran on its own. Consistent position rather than load, so most likely
+state an earlier spec leaves on the shared e2e server (an embeddings setting or a search-index
+state) — not traced.
+
+---
+
 ## Fixed
 
 ### B-541 · In the desktop app the top bar's controls sit under the macOS window buttons, so Settings, Graph and the sidebar are unreachable
