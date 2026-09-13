@@ -36,6 +36,7 @@
 import type { Op, SqlDriver } from "@nooklet/core";
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
+import { unclaimedReferencePageForKey } from "../ref-pages.js";
 import { pageWireNameById, wirePageNameOf } from "../rows.js";
 import { applyAllOrNothing } from "./apply-all-or-nothing.js";
 import { runWithDryRun } from "./dry-run.js";
@@ -143,16 +144,18 @@ export function livePageAliasing(
 }
 
 /** Refuse a restored name that a live page already has, or uses as an alias. `liveHint` is the
- * hint for the first case; the alias case always says how to get past it. */
+ * hint for the first case; the alias case always says how to get past it. `evicting` is a live
+ * page the same batch deletes first, which therefore does not count as a clash. */
 function assertNameFree(
   driver: SqlDriver,
   name: string,
   restoringPageId: string,
   liveHint: string | undefined,
+  evicting: string | null = null,
 ): void {
   const key = normalizePageName(name);
   const clash = livePageWithKey(driver, key);
-  if (clash) {
+  if (clash && clash.id !== evicting) {
     throw new OpError("conflict", `a live page is already named "${clash.name}"`, liveHint, {
       live_page_id: clash.id,
     });
@@ -282,12 +285,21 @@ export const trashRestore = defineOp({
       if (page) {
         kind = "page";
         pageId = page.id;
+        // The name is held by an empty page a reference made after this one was deleted (ADR 024):
+        // that page gives way, in the same batch and before the un-delete, rather than refusing
+        // the restore. Every `[[name]]` then resolves to the page that has the content.
+        const holder = unclaimedReferencePageForKey(
+          driver,
+          normalizePageName(input.new_name ?? page.name),
+        );
+        if (holder) ops.push(ctx.mintOp(holder, { kind: "page.delete", deletedAt: Date.now() }));
         if (input.new_name === undefined) {
           assertNameFree(
             driver,
             page.name,
             page.id,
             "pass new_name to restore this page under a different name, or rename/delete the live page first",
+            holder,
           );
         } else {
           if (page.journal_day !== null) {
@@ -297,7 +309,7 @@ export const trashRestore = defineOp({
               "delete or merge away the live page for that day, then restore this one without new_name",
             );
           }
-          assertNameFree(driver, input.new_name, page.id, undefined);
+          assertNameFree(driver, input.new_name, page.id, undefined, holder);
           // Rename lands while the page is still tombstoned (core's rename only guards against
           // LIVE pages with the key), then the un-delete brings it back under the new name.
           ops.push(ctx.mintOp(page.id, { kind: "page.rename", name: input.new_name }));

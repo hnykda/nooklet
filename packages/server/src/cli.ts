@@ -69,6 +69,7 @@ import type { ServerConfig } from "./ops/registry.js";
 import { createAppWithPlugins } from "./plugins/bootstrap.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
+import { migrateReferencedPages } from "./ref-pages-migration.js";
 import { reindexPipeAliasRefs } from "./ref-reindex.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
 
@@ -122,6 +123,14 @@ function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config:
   if (opts.migrate) {
     const journals = migrateJournalNames(ctx);
     reindexPipeAliasRefs(ctx);
+    // After both: ISO journal keys and `[[Target|label]]` keys must be right before "which
+    // references resolve to nothing" can be answered (ADR 024).
+    const referenced = migrateReferencedPages(ctx);
+    if (referenced.created > 0) {
+      process.stderr.write(
+        `nooklet: created ${referenced.created} pages the graph references (ADR 024) in ${referenced.durationMs} ms\n`,
+      );
+    }
     if (journals.renamed > 0) {
       process.stderr.write(`nooklet: gave ${journals.renamed} journal pages their ISO names\n`);
     }

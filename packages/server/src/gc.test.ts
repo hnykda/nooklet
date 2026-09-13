@@ -73,8 +73,10 @@ function createBlock(pageId: string, content: string, parentId: string | null = 
  * one entity, per the task's "real graph-shaped fixture" requirement. */
 function seedGraph(): void {
   const home = createPage("Home");
-  createBlock(home, "Hello [[Projects]] #idea");
+  // `Projects` first: once `[[Projects]]` is written the server creates that page itself (ADR 024),
+  // and this device's own `page.create` for the name would be refused.
   const projects = createPage("Projects");
+  createBlock(home, "Hello [[Projects]] #idea");
   const parent = createBlock(projects, "Parent");
   createBlock(projects, "Child", parent);
   createBlock(projects, "Another top-level block");

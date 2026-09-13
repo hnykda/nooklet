@@ -183,7 +183,9 @@ describe("EmbeddingIndexer.drainOnce / hash-skip logic", () => {
   });
 
   it("skips a block that is too short and has no children", async () => {
-    const page = createPage("Projects/Nooklet");
+    // Not namespaced: `Projects/Nooklet` makes a `Projects` page exist too (ADR 024), and that is a
+    // second page unit this count is not about.
+    const page = createPage("Nooklet Notes");
     createBlock(page, "hi");
     const model = registerModel(ctx.driver, { provider: "fake", model: "m", dims: 8 });
     activateModel(ctx.driver, model.id);

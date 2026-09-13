@@ -142,7 +142,9 @@ describe("end-to-end smoke test", () => {
 
     const undo = await api("/api/v1/batch.undo", { batch_id: appendBatchId });
     expect(undo.status).toBe(200);
-    expect(undo.json.deleted).toHaveLength(1);
+    // The appended block, and the `followup` page its `#followup` made exist in the same batch
+    // (ADR 024) — one undo takes back the whole write.
+    expect(undo.json.deleted).toHaveLength(2);
 
     const afterUndo = await api("/api/v1/page.read", { page: "Journal Notes", format: "json" });
     expect((afterUndo.json.tree as Array<{ content: string }>).map((n) => n.content)).toEqual([

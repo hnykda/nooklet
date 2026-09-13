@@ -14,6 +14,7 @@
 import type { SqlDriver } from "@nooklet/core";
 import { normalizePageName } from "@nooklet/core";
 import { z } from "zod";
+import { HIDDEN_FROM_TRASH_SQL, REFERENCE_DEVICE_ID } from "../ref-pages.js";
 import { pageWireNameById, wirePageNameOf } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
 import { Limit, OriginEnum } from "./schemas.js";
@@ -177,11 +178,13 @@ export const trashList = defineOp({
     const merged: Merged[] = [];
 
     if (input.kind !== "block" && pageFilterId === undefined) {
+      // Not the empty pages references made and the server removed again (ADR 024): nothing was
+      // ever in them, and a link typed one letter at a time would fill the trash with its drafts.
       const pages = driver.all<PageRow>(
         `SELECT id, name, journal_day, deleted_at FROM page
-         WHERE deleted_at IS NOT NULL ${cursorSql}
+         WHERE deleted_at IS NOT NULL AND NOT ${HIDDEN_FROM_TRASH_SQL} ${cursorSql}
          ORDER BY deleted_at DESC, id DESC LIMIT ?`,
-        [...cursorParams, fetchN],
+        [REFERENCE_DEVICE_ID, REFERENCE_DEVICE_ID, REFERENCE_DEVICE_ID, ...cursorParams, fetchN],
       );
       for (const p of pages) {
         const blockCount =
