@@ -231,6 +231,10 @@ reads the stored blocks: on the branch before the fix all three got the text app
 (`gammabeta`, `konecstřed`, `druhýprostřední`); with it they read `alpha\nbeta\ngamma` and so on.
 The unit test stubs `caretRangeFromPoint` with the measured `(P, 2)` answer; it failed before
 (`null`). The text-node path is unchanged (`focus.spec.ts` "clicking inside a word…" still passes).
+Real graph (sqlite backup, production build, `tools/probes/render-views-blank-line-real-graph.mjs`):
+clicking the empty line of `2022-12-02`'s block `1m287mdbejacmc` (`🧵🐁🐀\n\nA problem…`, 6
+`<br>`s for 6 newlines, surrogate-pair emoji before the break) and typing put the marker at offset 7,
+on the empty line.
 
 ---
 
@@ -264,6 +268,8 @@ element, no "Loading references…" and the scroll kept; it failed on the branch
 Also re-run: render-views(+phone), journal-agenda, journals, page-identity, page-rename, pages,
 parity, references, references-cap, references-filters, tagged-pages, navigation, page-title-draft,
 link-unlinked, trash, follow-link, history — 89 passed.
+Real graph (same probe): `/page/book` scrolled, one unrelated `page.create` — same panel element,
+no "Loading references…", scroll kept.
 
 ---
 
