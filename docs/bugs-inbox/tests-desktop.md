@@ -452,3 +452,17 @@ then route the failure and load Trash / History (a warm start). Proof, under 56 
 pair `--repeat-each=8`, 16 of 16 (load average 39-63 as the loops started); and in one control run
 with the branch-head copy of the spec beside the fixed one, `--repeat-each=4` (load average
 59-69): the old tests failed 1 of 4 each (trash, history), the fixed ones passed 8 of 8.
+
+---
+
+### B-408 · `journal-stream-editing.spec.ts` cannot run with `--repeat-each`
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verification of m10/tests-desktop (a
+`--repeat-each=4` filter on `editing.spec.ts` also matched this spec) · **Test:** the spec itself
+
+The B-292 shape in another spec: "typing in an earlier day keeps editing across the write…" appends
+"- earlier day base" to the fixed day `isoOffset(-8)`, so repeat 1 finds repeat 0's block (by then
+"earlier day baseabcdef") beside its own and `section.locator(".vr-block-view", { hasText: "earlier
+day base" }).click()` is a strict-mode violation — repeats 1-3 failed that way, repeat 0 passed,
+under 56 busy loops. Not load: the locator matches two blocks. Likely fix: a per-repeat journal day
+(an offset derived from `repeatEachIndex`, kept clear of the days other specs use) or an exact-text
+match on this run's block. Not changed here: outside this branch's specs.
