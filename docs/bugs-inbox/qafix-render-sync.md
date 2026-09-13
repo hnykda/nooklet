@@ -92,12 +92,25 @@ edited by hand is not overwritten until its page changes.
 ---
 
 ### B-263 · Query `tag:task` / `#task` finds nothing, and `not #task` matches every task
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q4) · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q4) · **Test:**
+`e2e/tests/query-task-tag.spec.ts` (2 tests), `packages/core/src/query.test.ts` "a task marker is a
+reference to Task, with no #Task in the text" and the prefilter soundness cases `"tag:task"`,
+`"#task and (NOW or WAITING)"`, `"marker:open not #task"`, `"not [[Task]]"`
 
 On the real graph a ```` ```query ```` fence with `tag:task` (or `#task and (NOW or WAITING)`)
 says "0 blocks", while `page.backlinks {target: "Task"}` lists the 686 task-marked blocks — the
 server's `ref` table carries a derived `Task` tag for every block with a marker ("a tag query
 finds them", says the comment that adds it). `marker:open not #task` returns every open task.
+
+**Fixed 2026-09-13.** The `Task` tag is derived from `block.marker` on the server
+(`apply-ops.ts#rebuildRefRows`), but the client has no `ref` table and the query language read
+references from the block text alone (`query.ts#refKeys`), where the tag never is. The name is now
+defined once in core (`refs.ts#TASK_TAG`), the server imports it, `refKeys` adds `task` for any
+marked block, and the SQL prefilter for a `task` ref also admits `b.marker IS NOT NULL` — without
+that the prefilter dropped marked rows with no `#` or `[[` before the exact check ran (the
+soundness case `"tag:task"` fails if that half is removed; checked). Real graph (fresh copy, this
+build): `tag:task` → 686 blocks (the `ref` table says 686), `#task and (NOW or WAITING)` → 8,
+`marker:open not #task` → 0. `nooklet verify` OK (20,417 ops).
 
 ---
 

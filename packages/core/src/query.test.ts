@@ -351,6 +351,21 @@ describe("matchQuery", () => {
     expect(matches("tag:práce", block({ content: "úkol #Práce" }))).toBe(true);
   });
 
+  // B-263: the server's `ref` table gives every marked block a derived `Task` tag
+  // (`refs.ts#TASK_TAG`), so `[[Task]]` lists them all — and the query language must agree.
+  it("a task marker is a reference to Task, with no #Task in the text", () => {
+    expect(matches("tag:task", block({ content: "camp ČS", marker: "DONE" }))).toBe(true);
+    expect(matches("#Task", block({ content: "x", marker: "LATER" }))).toBe(true);
+    expect(matches("[[task]]", block({ content: "x", marker: "WAITING" }))).toBe(true);
+    expect(matches("tag:task", block({ content: "no marker" }))).toBe(false);
+    expect(matches("#task and (NOW or WAITING)", block({ content: "x", marker: "NOW" }))).toBe(
+      true,
+    );
+    expect(matches("marker:open not #task", block({ content: "x", marker: "NOW" }))).toBe(false);
+    // Only `Task` is derived: a marker is not a reference to any other page.
+    expect(matches("tag:todo", block({ content: "x", marker: "TODO" }))).toBe(false);
+  });
+
   it("page, namespace, journal", () => {
     const b = block({ pageName: "Projects/Aurora", pageJournalDay: null });
     expect(matches("page:[[projects/aurora]]", b)).toBe(true);
@@ -582,6 +597,10 @@ describe("queryPrefilter is a sound over-approximation of matchQuery", () => {
     "prop:type=film",
     "TODO tag:work or DONE",
     "(TODO or LATER) not tag:work",
+    "tag:task",
+    "#task and (NOW or WAITING)",
+    "marker:open not #task",
+    "not [[Task]]",
     "-(tag:work or prop:type)",
     "not (TODO and scheduled:today)",
   ];

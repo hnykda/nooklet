@@ -15,8 +15,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 | Q1 live mirror misses renames/moves/props | B-260 | high | fixed |
 | Q2 UI title rename skips link rewrite + alias | B-261 | high | fixed |
 | Q3 export trusts mirror_file over disk | B-262 | medium | fixed |
-| Q4 `tag:task` query finds nothing | B-263 | medium | next |
-| Q5 `$$…$$` display math | B-264 | low | queued |
+| Q4 `tag:task` query finds nothing | B-263 | medium | fixed |
+| Q5 `$$…$$` display math | B-264 | low | next |
 | Q6 collapsed template copy | B-265 | low | queued |
 | Q7 unpadded SCHEDULED dates | B-266 | low | queued |
 | Q8 page_merge dry-run text | B-267 | low | queued |
@@ -27,11 +27,12 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `693f000` inbox entries B-260..B-268 logged
 - `2577a3e` B-260 live mirror follows `changes` (unit + `e2e/tests/mirror-live.spec.ts` 3/3)
 - `2416e9e` B-261 title rename through `page.update` (`e2e/tests/page-rename.spec.ts` 2/2, `pages.spec.ts` 14/14)
-- B-262 export rewrites files missing on disk (unit; real graph copy 952/952)
+- `bd6ef6f` B-262 export rewrites files missing on disk (unit; real graph copy 952/952)
+- B-263 derived Task tag in queries (`core/refs.ts#TASK_TAG`; unit + `e2e/tests/query-task-tag.spec.ts` 2/2; real graph 686)
 
 ## In flight
 
-- Q4/B-263.
+- Q5/B-264.
 
 ## Decisions
 
@@ -49,3 +50,6 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
    never a nooklet command on `~/.nooklet/default`.
 3. Before each commit: biome on changed files, `pnpm -r typecheck`, unit tests of touched packages,
    e2e specs touched with `NOOKLET_E2E_PORT=6462`.
+4. Real-graph browser checks: `bash <scratch>/serve.sh <name>` then `node <scratch>/q4-real.mjs`
+   (helpers in `<scratch>/rlib.mjs`; the served client is whatever `apps/web/dist` the last e2e
+   run built). Kill with `lsof -ti :6462 | xargs kill`.
