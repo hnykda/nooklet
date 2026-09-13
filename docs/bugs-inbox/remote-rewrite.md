@@ -152,3 +152,18 @@ autocomplete and the slash menu, not the context menu, palette or pickers) count
 in B-192's verdict, so the newer version is offered on the row instead of taken under the popup. The
 pick lands in the buffer it measured (`alpha see [[…]]`, written), and **Use the other version**
 still takes the other text whole. The test failed before the fix (no notice: the text was taken).
+
+---
+
+### B-464 · "Keep mine", then a write elsewhere that leaves that version's text alone, brings the notice back
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, m11/remote-rewrite verification pass
+(scratch e2e) · **Test:** none yet
+
+Type into `TODO mine` without pausing; an agent writes `TODO theirs`; the notice comes; click **Keep
+mine** and keep typing. The agent then flips the marker (`old_str: TODO → new_str: DONE`, a
+`block.text` of the same content `theirs`): the notice is back, offering `theirs` again — the version
+just dismissed (scratch run: notice count 1 after the flip). Only within one burst of typing: once the
+typing is written, the database holds it and a later flip carries it (B-462's `untouched`).
+
+Cause: `TextVersions` remembers a dismissed version by its `content_hlc` only (`offered`), and the
+flip moved the HLC without changing the text.
