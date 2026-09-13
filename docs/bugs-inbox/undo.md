@@ -134,3 +134,32 @@ keyboard: with the store's editor commit disabled (the `cf08d19` behaviour) it f
 `Received: "TODO"` after Cmd+Z — so Cmd/Ctrl+Enter was never undoable either.
 
 ---
+
+### B-281 · A date picked from a chip in another journal day, with a block still selected in this one: Cmd/Ctrl+Z takes back the wrong thing
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verifying `m9/undo` (probe) ·
+**Tests:** `e2e/tests/undo-gaps.spec.ts` "a date picked from a chip in another journal day, with a
+block still selected in this one, is what Cmd/Ctrl+Z takes back (B-281)";
+`apps/web/src/app/editor-host.test.ts` "taken by another tree while a selection stands in the
+active one: that session ends (B-281)"
+
+Journal stream, two days on screen. Click into a block of day A, type " typed", press Escape (the
+block stays selected — and stays selected through clicks elsewhere, so its tree stays the active
+editor host). Click the deadline chip of a block in day B, pick "+31d". Cmd/Ctrl+Z: the date stays
+and " typed" is taken back in day A. The date's step sits in day B's history, where a later
+Cmd/Ctrl+Z in day B would take it back by surprise (the B-241 shape). The e2e test fails on
+`695af3a` (`deadline` still `+31d` 10 s after Cmd+Z).
+
+Cause: B-142's `commitThroughEditor` lands the batch in the tree that shows the block (day B) and
+makes it `recent`, but `historyEditorHost()` prefers `active` — day A, because of its standing
+selection. So "the tree that takes the batch becomes the undo target" only held when nothing was
+selected anywhere else. With editing (not a selection) in day A the chip's pointerdown already
+ends that session, so only the selection case is affected.
+
+**Fixed 2026-09-13.** `app/editor-host.ts#commitThroughEditor`: when a tree other than the active
+one takes a batch that does not move the caret, it calls `requestEditingEnd()` — every tree ends
+its editing session and drops its block selection, the selected tree withdraws as the active host,
+and Cmd/Ctrl+Z reaches the tree that took the step. Cost: the block left selected in day A is no
+longer selected after a date is picked in day B (a click into day B leaves it selected, P14 in the
+verification probe; that inconsistency predates this branch and is not touched). The e2e test
+fails before the change and passes after it, redo included; the unit test fails with the line
+removed.

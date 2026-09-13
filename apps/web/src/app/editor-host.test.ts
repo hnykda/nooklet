@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpBatch } from "../commands/hosts/editor-host.js";
 import type { CommandContext } from "../commands/types.js";
+import { editingEndRequest } from "../editor/focus-request.js";
 import {
   activeEditorHost,
   createEditorHost,
@@ -199,6 +200,38 @@ describe("a command's op batch reaches a tree that shows its block, focused or n
     expect(second.state.batches).toHaveLength(1);
     // Cmd/Ctrl+Z must reach the history the step landed in, not the tree edited last.
     expect(historyEditorHost()).toBe(b);
+    releaseEditorHost(a);
+    releaseEditorHost(b);
+  });
+
+  it("taken by another tree while a selection stands in the active one: that session ends (B-281)", () => {
+    const selected = backing();
+    const other = backing();
+    const a = createEditorHost(selected.b);
+    const b = createEditorHost(other.b);
+    registerEditorHost(a);
+    registerEditorHost(b);
+    setActiveEditorHost(a);
+    selected.state.acceptBatches = false;
+    const ticks = editingEndRequest();
+
+    expect(liveEditorHost.commitOps(batch)).toBe(true);
+    expect(other.state.batches).toHaveLength(1);
+    // Every tree drops its session on this request; the selected one then withdraws as active.
+    expect(editingEndRequest()).toBe(ticks + 1);
+    setActiveEditorHost(null);
+    expect(historyEditorHost()).toBe(b);
+
+    // The active tree taking it itself, or a batch that moves the caret, ends nothing.
+    setActiveEditorHost(a);
+    selected.state.acceptBatches = true;
+    expect(liveEditorHost.commitOps(batch)).toBe(true);
+    selected.state.acceptBatches = false;
+    expect(liveEditorHost.commitOps({ ...batch, focus: { blockId: "blk1", caret: "end" } })).toBe(
+      true,
+    );
+    expect(editingEndRequest()).toBe(ticks + 1);
+    setActiveEditorHost(null);
     releaseEditorHost(a);
     releaseEditorHost(b);
   });

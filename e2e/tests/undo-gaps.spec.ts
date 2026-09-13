@@ -161,6 +161,53 @@ test("priority and marker set from the palette are each one Cmd/Ctrl+Z (B-142)",
   await expect.poll(async () => (await firstBlock(page, name))?.marker).toBe("WAITING");
 });
 
+test("a date picked from a chip in another journal day, with a block still selected in this one, is what Cmd/Ctrl+Z takes back (B-281)", async ({
+  page,
+}) => {
+  // Two trees on one screen: the journal stream renders a BlockTree per day. Escape out of editing
+  // leaves the block selected, which keeps its tree the active host; a date picked from a chip in
+  // ANOTHER day lands in that other tree's history, and Cmd/Ctrl+Z went to the selected tree —
+  // it took back the typing there and left the date. Days -4 and -6: no other spec writes to them.
+  const dayA = isoOffset(-4);
+  const dayB = isoOffset(-6);
+  await api(page, "page.append", { page: dayA, markdown: "- undo gaps selected day" });
+  await api(page, "page.append", {
+    page: dayB,
+    markdown: `- undo gaps chip day\n  deadline:: ${isoOffset(-29)}`,
+  });
+  await page.goto("/journals");
+  const sectionA = page.locator(".journal-day", { hasText: "undo gaps selected day" });
+  const sectionB = page.locator(".journal-day", { hasText: "undo gaps chip day" });
+  await sectionA.locator(".vr-block-view", { hasText: "undo gaps selected day" }).click();
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" typed");
+  await page.keyboard.press("Escape");
+  await expect(sectionA.locator(".vr-row-selected")).toHaveCount(1);
+  const contentA = async () =>
+    (await readBlocks(page, dayA)).find((b) => b.content.startsWith("undo gaps selected day"))
+      ?.content;
+  await expect.poll(contentA).toBe("undo gaps selected day typed");
+
+  const deadlineB = async () =>
+    (await serverBlocks(page, dayB)).find((b) => b.content === "undo gaps chip day")?.properties
+      ?.deadline;
+  await sectionB.locator('.vr-date[data-field="deadline"]').click();
+  await expect(picker(page)).toBeVisible();
+  await page.keyboard.type("+31d");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect.poll(deadlineB).toBe(isoOffset(31));
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(deadlineB).toBe(isoOffset(-29));
+  expect(await contentA()).toBe("undo gaps selected day typed");
+
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  await expect.poll(deadlineB).toBe(isoOffset(31));
+  expect(await contentA()).toBe("undo gaps selected day typed");
+});
+
 // ── B-191 ─────────────────────────────────────────────────────────────────────────────────────────
 
 const LIBRARY = "Undo Gaps Library";

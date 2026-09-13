@@ -22,6 +22,7 @@ import type {
   ReplaceRangeSpec,
 } from "../commands/hosts/editor-host.js";
 import type { CommandContext, WhenContext } from "../commands/types.js";
+import { requestEditingEnd } from "../editor/focus-request.js";
 import { runOnOutlines } from "../editor/outline-registry.js";
 
 let active: EditorHost | null = null;
@@ -68,6 +69,12 @@ function commitThroughEditor(batch: OpBatch): boolean {
   for (const host of mounted) candidates.add(host);
   for (const host of candidates) {
     if (!host.commitOps(batch)) continue;
+    // Another tree took it while a session stands in the active one — a block left selected with
+    // Escape, which clicks elsewhere do not clear. `historyEditorHost` prefers `active`, so
+    // Cmd/Ctrl+Z took back that tree's last step and left the date (B-281). End the standing
+    // session, as a click on a locked tree does, so the undo goes where the step went. A batch that
+    // moves the caret needs none of this: attaching the editor makes its tree the active one.
+    if (active !== null && active !== host && !batch.focus) requestEditingEnd();
     recent = host;
     return true;
   }
