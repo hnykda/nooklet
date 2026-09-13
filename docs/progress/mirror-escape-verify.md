@@ -45,13 +45,21 @@ branch code, `reimport/` = that mirror re-imported, `outline-base.ts` = `52e5d20
   `BULLET_RE` (`.` stops at line separators), so the bullet line reads back as a paragraph with
   `- ` in its text. Same on base.
 
+## Done (committed)
+
+- `a3098dc` this file; `2d48ca1` inbox B-474, B-475.
+- `bd1d7f6` B-474 fixed: `withEditText` returns the block for its own editing text;
+  `flushPendingEdit` writes nothing for a buffer equal to `before`'s editing text (the second half
+  found by an undo/redo probe: the undo's buffer rewrite re-promoted the line 500 ms later and
+  emptied redo). Tests: `e2e/tests/text-property-line-keystroke.spec.ts` (4; 3 red before the fix,
+  the undo one red with only the first half), web `editText.test.ts` +1 (red before). Web unit
+  1139/1139, typecheck clean, biome clean.
+
 ## In flight
 
-- Fix B-474 in `apps/web/src/editor/editText.ts` (`withEditText` returns the block when the text is
-  exactly the block's own editing text) + unit test + e2e test.
+- Whole Chromium e2e suite in chunks on port 6413 (flushPendingEdit is on every typing path).
 
 ## Next steps
 
-1. Commit fix + tests; rerun web unit, the new e2e and related specs.
-2. Inbox entries B-474/B-475 in `docs/bugs-inbox/mirror-escape.md`; B-472 note updated.
-3. Final e2e run of related specs; report.
+1. Finish e2e chunks; rerun any failure once alone before debugging.
+2. Report: verdict fixed-up.
