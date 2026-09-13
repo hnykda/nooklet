@@ -55,7 +55,7 @@ import {
 import { openOnShelf } from "../app/shelf.js";
 import { dispatchPopupKey, isPopupOpen } from "../commands/popup-keys.js";
 import { displayPageName } from "../data/page-title.js";
-import { applyOps, usePageTree } from "../data/store.js";
+import { applyOps, usePageProperties, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
 import { BlockRowView } from "./BlockRowView.js";
 import { getClock } from "./clock.js";
@@ -86,6 +86,8 @@ import { deriveNumbering } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
 import { filterVisible } from "./pageFilter.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
+import { createReadOnlyNotice } from "./ReadOnlyNotice.js";
+import { isReadOnlyValue, READ_ONLY_PROPERTY } from "./readOnly.js";
 import type { NavigateTarget } from "./render/tokens.js";
 import { createSurface, type Surface } from "./surface.js";
 import { cycleMarker, toggleDone } from "./task.js";
@@ -170,6 +172,14 @@ export function BlockTree(props: {
   onFilterMatches?: (ids: readonly string[]) => void;
 }) {
   const treeResource = usePageTree(() => props.pageId);
+  // The read-only page lock (`./readOnly.ts`): the prop, or the page's own `read-only:: true`.
+  // Read here rather than passed in, so every tree showing the page — the page view, a day in the
+  // journal stream — honours it without each host remembering to.
+  const pageProperties = usePageProperties(() => props.pageId);
+  const readOnly = createMemo(
+    () => props.readOnly === true || isReadOnlyValue(pageProperties()[READ_ONLY_PROPERTY]),
+  );
+  const readOnlyNotice = createReadOnlyNotice();
   const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
   const deletedCache = new Map<string, EditableBlock>();
 
@@ -210,7 +220,7 @@ export function BlockTree(props: {
   // request lives outside any component.
   createEffect(() => {
     const want = blockFocusRequest();
-    if (!want || props.readOnly) return;
+    if (!want || readOnly()) return;
     if (!editorTree().byId.has(want)) return;
     // In the tree but not on screen — under a collapsed parent, or outside the zoom root. Find in
     // page can hand back such a block (it was showing while the filter was on); attaching to it
@@ -315,7 +325,7 @@ export function BlockTree(props: {
    * click into a popup, menu or the palette must NOT end editing — those belong to the session.
    */
   createEffect(() => {
-    if (editingId() === null || props.readOnly) return;
+    if (editingId() === null || readOnly()) return;
     const onPointerDown = (e: PointerEvent): void => {
       const target = e.target as Element | null;
       if (!target) return;
@@ -355,6 +365,17 @@ export function BlockTree(props: {
       { defer: true },
     ),
   );
+  createEffect(() => {
+    if (!readOnly()) return;
+    untrack(() => {
+      if (editingId() !== null) {
+        flushPendingEdit();
+        surface.detach();
+        setEditingId(null);
+      }
+      setSelection(null);
+    });
+  });
   const [clockSig, setClockSig] = createSignal<Clock | undefined>(undefined);
   onMount(() => void getClock().then(setClockSig));
 
@@ -447,7 +468,10 @@ export function BlockTree(props: {
   // Alt+Up/Alt+Down keys, run through the same `runStructural` commit path. A gesture must never
   // be a parallel implementation of these ops.
   function doIndent(id: BlockId): void {
-    if (props.readOnly) return;
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     if (!clock) return;
     const r = indentBlock(editorTree(), id, clock);
@@ -455,7 +479,10 @@ export function BlockTree(props: {
   }
 
   function doOutdent(id: BlockId): void {
-    if (props.readOnly) return;
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     if (!clock) return;
     const r = outdentBlock(editorTree(), id, clock, { zoomRootId: effectiveRoot() ?? null });
@@ -463,7 +490,10 @@ export function BlockTree(props: {
   }
 
   function doMoveStep(id: BlockId, direction: "up" | "down"): void {
-    if (props.readOnly) return;
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     if (!clock) return;
     const r = moveBlock(editorTree(), id, direction, clock);
@@ -983,7 +1013,7 @@ export function BlockTree(props: {
   }
 
   function onContainerKeyDown(e: KeyboardEvent): void {
-    if (props.readOnly) return;
+    if (readOnly()) return;
     if (editingId()) return; // the CM6 surface's own keymap already handles this
     // A key the editor already consumed must not be run again here. The Escape that ENTERS
     // selection mode detaches the surface and focuses this container mid-dispatch, then bubbles
@@ -1023,6 +1053,10 @@ export function BlockTree(props: {
   }
 
   function onToggleMarker(id: BlockId): void {
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     const block = editorTree().byId.get(id);
     if (!clock || !block) return;
@@ -1039,6 +1073,10 @@ export function BlockTree(props: {
   }
 
   function onSelectClick(id: BlockId): void {
+    // No block selection on a locked page: every block command — including the task commands,
+    // which write through the store rather than this tree — targets the selection published in
+    // the command context, so a selection here would be a way around the lock.
+    if (readOnly()) return;
     const ids = visibleIds();
     const existing = selection();
     if (existing) {
@@ -1088,6 +1126,7 @@ export function BlockTree(props: {
       <div
         ref={outlinerEl}
         class="vr-outliner"
+        classList={{ "vr-outliner-readonly": readOnly() }}
         role="tree"
         tabindex={-1}
         onKeyDown={onContainerKeyDown}
@@ -1126,7 +1165,14 @@ export function BlockTree(props: {
                             : undefined
                         }
                         surfaceHost={(el) => surfaceHostRef(el, id)}
-                        onEnterEdit={(offset) => !props.readOnly && attachEditing(id, { offset })}
+                        onEnterEdit={(offset) => {
+                          if (!readOnly()) attachEditing(id, { offset });
+                          // A click that ended a drag-select of text is copying, not editing.
+                          else if (window.getSelection()?.isCollapsed !== false) {
+                            readOnlyNotice.show();
+                          }
+                        }}
+                        readOnly={readOnly()}
                         onToggleCollapse={() => onToggleCollapse(id)}
                         onZoomIn={() => setLocalZoomRoot(id)}
                         onToggleMarker={() => onToggleMarker(id)}
@@ -1140,7 +1186,7 @@ export function BlockTree(props: {
                           // about the selection (Delete, indent, move), and entering edit mode
                           // would throw it away (B-73).
                           const inSelection = selection()?.ids.includes(id) ?? false;
-                          if (!props.readOnly && editingId() !== id && !inSelection)
+                          if (!readOnly() && editingId() !== id && !inSelection)
                             attachEditing(id, { at: "end" });
                           // A microtask, so the menu is built AFTER Solid's effects have run and
                           // registered this tree as the active editor host. Opening it in the same
@@ -1164,6 +1210,7 @@ export function BlockTree(props: {
           }}
         </For>
       </div>
+      <readOnlyNotice.View />
     </>
   );
 }

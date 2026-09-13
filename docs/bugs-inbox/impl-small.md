@@ -92,3 +92,59 @@ so not caused by this branch. All specs share ONE server per run (`global-setup.
 leaves two blocks in today's journal, and `editing.spec.ts`'s `openJournal` only seeds a VIRTUAL
 day. Presumably passes in the full suite only because of what the specs between them do — not
 checked. Fix: give that test its own page (as the next test in the file already does).
+
+---
+
+### B-234 · A page cannot be locked against accidental edits
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit §2 #17 · **Test:**
+`e2e/tests/read-only.spec.ts`, `apps/web/src/editor/readOnly.test.ts`
+
+"Lock a page as read-only" has 69 votes on the Logseq forum (research/13 §3.1). A reference page
+(a checklist template, an imported article) is one stray click and keystroke away from being
+changed. `BlockTree` has had a `readOnly` prop since M1, but nothing sets it and it does not cover
+the marker click, block selection, or commands that write through the store.
+
+**Fixed 2026-09-13.** `read-only:: true` on a page (only the value `true`) locks it in every
+`BlockTree` that shows it — the page view and the journal stream alike, because the tree reads the
+page's property itself: no edit mode (click, Enter, focus requests), no block selection, and the
+task-marker click, drag and swipe refuse with a toast ("This page is read-only. Remove
+read-only:: true from its properties to edit it."). The title input goes `readonly` and a
+"Read-only" badge sits in the title row. Collapsing, mouse text selection (the rendered view no
+longer cancels the drag on a locked page) and the properties panel stay usable. Locking while a
+block is being edited ends the edit and keeps what was typed; unlocking takes effect on the open
+page. UI-only by design, written into `docs/spec/markdown-grammar.md` OUT-21a: the API still writes
+(a test proves it). Blocking selection is load-bearing: with that one guard removed, a Cmd/Ctrl+
+click selection let Tab indent, Backspace delete and Cmd/Ctrl+Enter cycle the marker through the
+store (probe run 2026-09-13). Files: `editor/readOnly.ts` (+test), `editor/ReadOnlyNotice.tsx`,
+`editor/read-only.css`; hookups in `BlockTree.tsx` (the unused `readOnly` prop now also follows the
+property), `BlockRowView.tsx`, `PageView.tsx`. Tests that would have caught it:
+`e2e/tests/read-only.spec.ts` (6 tests), `apps/web/src/editor/readOnly.test.ts`. Not covered by a
+test: the drag (long-press) and swipe refusals — touch gestures, guarded in the same functions as
+the keyboard moves but not driven in a browser.
+
+---
+
+### B-235 · `page.create` with markdown silently drops a page-properties pre-block
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, impl-small (seeding a locked page) ·
+**Test:** none yet
+
+`POST /api/v1/page.create {"name": "X", "markdown": "read-only:: true\n\n- a\n- b"}` creates the
+page and both blocks, but no `read-only` page property — the pre-block is neither applied nor
+reported. Seen in `e2e/tests/read-only.spec.ts`'s first draft (the page rendered 3 rows, no lock).
+`prepareMarkdownInsert` (`packages/server/src/ops/outline-bridge.ts`) calls `parseMarkdownBlocks`,
+which by its name takes blocks only; not traced further. An agent that writes outline markdown the
+way the mirror does loses its page properties without an error. `page.append` goes through the
+same function — presumably the same, not checked. Fix: apply the pre-block's properties as
+`page.prop` ops (create), or reject/warn when markdown carries one.
+
+---
+
+### B-236 · `page.update` refuses to set properties on a journal day ("cannot rename a journal day")
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, impl-small · **Test:** none yet
+
+`POST /api/v1/page.update {"page": "<ISO day>", "properties": {"read-only": "true"}}` → 400
+`{"code":"invalid","message":"cannot rename a journal day"}` although no `new_name` was given.
+`packages/server/src/ops/page-update.ts` throws for any journal page before looking at what was
+asked. So an agent cannot favourite, give an icon to, or lock a journal day, while a person can (the
+properties panel writes `page.prop` locally). Fix: move the journal check inside the
+`new_name !== undefined` branch, plus a server test for a properties-only update on a journal.

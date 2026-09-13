@@ -43,6 +43,9 @@ export function BlockRowView(props: {
   /** Find in page: `true` for a match, `false` for an ancestor shown only as context, absent when
    * no find is active. */
   findMatch?: boolean;
+  /** A locked page (`./readOnly.ts`): the text can be selected with the mouse, since a click
+   * never turns into editing. */
+  readOnly?: boolean;
   surfaceHost: (el: HTMLDivElement) => void;
   onEnterEdit: (offset: number) => void;
   onToggleCollapse: () => void;
@@ -185,6 +188,9 @@ export function BlockRowView(props: {
                   // highlight. Cmd/Ctrl is not, since that gesture may be a real open-in-new-tab on
                   // whatever the pointer is over.
                   const target = e.target as HTMLElement;
+                  // Nothing to hand focus to on a locked page — and preventing the default here is
+                  // what stops a drag from selecting text, which is all a locked page offers.
+                  if (props.readOnly) return;
                   if (e.button !== 0 || e.metaKey || e.ctrlKey) return;
                   if (target.closest("a, button, input, label, summary")) return;
                   e.preventDefault();
