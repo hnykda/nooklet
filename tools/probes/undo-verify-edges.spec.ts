@@ -1,7 +1,7 @@
 /**
  * Probe (2026-09-13, verifying m9/undo): edge cases around the B-142/B-162/B-194 undo fixes, run
  * against the e2e server. Each test logs what it saw rather than asserting the answer, because
- * several of these were questions, not claims. Results at `4e55637` (e2e port 6400):
+ * several of these were questions, not claims. Results at `695af3a`, before the B-281 fix (e2e port 6400):
  *
  * - P1 editing one journal day, chip date in another, Cmd/Ctrl+Z: date undone, typing kept (at
  *   `cf08d19`: typing undone, date kept).
