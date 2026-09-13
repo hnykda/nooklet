@@ -56,9 +56,21 @@ and immediately `git reset --hard da85cfb` before any work (no commits lost; not
   references means no panel at all", 12 s timeout) — passed alone and in the same file order (83
   passed): load.
 
+- Probe commit `df36a2e`; B-201 commit `0ccd0a0`. Final unit: core 338/338, server 528/528, web
+  695/695; `pnpm -r typecheck` clean.
+
 ## In flight
 
 Nothing. B-89, B-104, B-111, B-201 fixed and committed; B-200 logged open.
+
+## Merge notes for the coordinator
+
+- `m8/rv-web-security` moves `pageRoutePath`/`pageZoomRoutePath` to `routes/page-path.ts` and
+  rewrites `api-client.ts#pageBacklinks` around `callOp`. After merging both: point
+  `views/canonicalPageRoute.ts`'s import at `../routes/page-path.js`, and re-add the two
+  `taggedPages`/`taggedTotal` lines to the rewritten `pageBacklinks` mapping (plus the wire type).
+- `m8/qafix-render-sync` edits `PageView.tsx` near the title effect; this branch adds only an import
+  and one `useCanonicalPageRoute(...)` line there.
 
 ## Next steps, in order
 
