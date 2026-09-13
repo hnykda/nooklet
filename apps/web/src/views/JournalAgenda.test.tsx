@@ -190,8 +190,18 @@ describe("JournalAgenda", () => {
     before[2]?.focus();
     expect(document.activeElement).toBe(before[2]);
 
+    const contentNodes = () =>
+      rowEls().map((r) => [...(r.querySelector(".journal-agenda-content")?.childNodes ?? [])]);
+    const contentBefore = contentNodes();
     setRows(snapshot("second"));
     expect(rowEls().every((el, i) => el === before[i])).toBe(true);
+    // Nothing changed, so nothing inside a row was re-rendered either.
+    expect(contentNodes()).toEqual(contentBefore);
+    expect(
+      contentNodes()
+        .flat()
+        .every((n, i) => n === contentBefore.flat()[i]),
+    ).toBe(true);
     // A keyboard user on a row keeps their place when an unrelated write lands.
     expect(document.activeElement).toBe(before[2]);
 

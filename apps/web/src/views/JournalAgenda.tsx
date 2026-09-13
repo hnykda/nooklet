@@ -100,6 +100,18 @@ function EntryRow(props: { entry: AgendaEntry; onNavigate: (t: NavigateTarget) =
 const sameKeys = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((k, i) => k === b[i]);
 
+/** Same field values, one level deep. */
+function shallowEqual<T extends object>(a: T, b: T): boolean {
+  const ka = Object.keys(a) as (keyof T)[];
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+}
+
+/** An entry whose task and dates did not change: its row has nothing to re-render. */
+const sameEntry = (a: AgendaEntry, b: AgendaEntry): boolean =>
+  shallowEqual(a.task, b.task) &&
+  a.dates.length === b.dates.length &&
+  a.dates.every((d, i) => shallowEqual(d, b.dates[i] as AgendaDate));
+
 export function JournalAgenda(props: JournalAgendaProps): JSX.Element {
   const groups = createMemo(() =>
     props.tasks.error ? [] : agendaForDay(props.tasks(), props.day, props.today),
@@ -109,7 +121,9 @@ export function JournalAgenda(props: JournalAgendaProps): JSX.Element {
   // keyed by reference: iterating objects tore down and rebuilt every row on every keystroke's
   // write anywhere in the graph, dropping keyboard focus or a text selection on a row (B-176, the
   // B-174 pattern). A row now lives as long as its task is listed, and reads its entry through a
-  // map, so a changed task updates in place.
+  // map, so a changed task updates in place — and only a changed one: each row's entry is a memo
+  // that ignores a refetch handing back the same values, or every row would re-render its text on
+  // every write.
   const groupByPage = createMemo(() => new Map(groups().map((g) => [g.pageId, g])));
   const pageIds = createMemo(() => groups().map((g) => g.pageId), [], { equals: sameKeys });
   return (
@@ -129,26 +143,35 @@ export function JournalAgenda(props: JournalAgendaProps): JSX.Element {
             const taskIds = createMemo(() => group().entries.map((e) => e.task.id), [], {
               equals: sameKeys,
             });
+            const heading = createMemo(
+              () => ({ name: group().pageName, journalDay: group().pageJournalDay }),
+              undefined,
+              { equals: shallowEqual },
+            );
             return (
               <div class="journal-agenda-group" data-page-id={pageId}>
                 <a
                   class="journal-agenda-page"
-                  href={pageRoutePath(group().pageName)}
+                  href={pageRoutePath(heading().name)}
                   onClick={(e) => {
                     e.preventDefault();
-                    props.onNavigate({ kind: "page", name: group().pageName });
+                    props.onNavigate({ kind: "page", name: heading().name });
                   }}
                 >
-                  {displayPageName({ name: group().pageName, journalDay: group().pageJournalDay })}
+                  {displayPageName(heading())}
                 </a>
                 <ul class="journal-agenda-list">
                   <For each={taskIds()}>
                     {(taskId) => {
                       let lastEntry = entryById().get(taskId) as AgendaEntry;
-                      const entry = (): AgendaEntry => {
-                        lastEntry = entryById().get(taskId) ?? lastEntry;
-                        return lastEntry;
-                      };
+                      const entry = createMemo(
+                        () => {
+                          lastEntry = entryById().get(taskId) ?? lastEntry;
+                          return lastEntry;
+                        },
+                        undefined,
+                        { equals: sameEntry },
+                      );
                       return <EntryRow entry={entry()} onNavigate={props.onNavigate} />;
                     }}
                   </For>
