@@ -60,6 +60,14 @@ Regression numbers (port 6460, Chromium): 15-spec run before the follow-up: 163 
 692/692 (one run had a 1-test flake in `page-title.test.ts` / `render-seams.test.tsx`, both pass
 alone and on rerun). `pnpm -r typecheck` clean.
 
+Final run on `4449d7d` (port 6460, Chromium, one server): a-fresh-journal, undo-redo,
+journal-draft-sync, autocomplete-busy-replica, focus, selection, editing, popups, autocomplete,
+journals, context-menu, phone, parity, pages, templates, references, history: **175 passed,
+0 failed, 1 skipped** (the pre-existing phone skip). `views.spec.ts` was not in it; its one
+failure (B-246) predates this branch. `pnpm nooklet verify` not run: nothing here touches ops,
+sync or schema (the one new write path, `appendToJournalDay`, is an ordinary `block.create`
+through `applyOps`).
+
 ## 2. In flight
 
 - (nothing)
