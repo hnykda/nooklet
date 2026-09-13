@@ -94,8 +94,9 @@ journals/selection/context-menu/navigation/focus/phone/tasks/views passed in the
 ---
 
 ### B-214 · Typing anywhere on a page collapses its embeds to the placeholder and back, and resets their expand toggles
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
-`m8/impl-embeds` on a copy of the owner's graph · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-embeds` on a copy of the owner's graph · **Test:** `e2e/tests/embeds.spec.ts` "typing
+elsewhere on the page leaves an embed in place, unfolded rows included (B-214)"
 
 On the owner's 2024-09-29 journal (an embed of 27 rows), one keystroke in the day's first block
 made the embed's host row measure 775 → 51 → 775 → 51 → 775 px (a `ResizeObserver` on the row):
@@ -112,3 +113,10 @@ page tree re-reads (every write), and `BlockRowView`'s `content` memo and its `c
 rebuilt, including a fresh `EmbedView` whose `useEmbed` resource starts unresolved and suspends. The
 same rebuild is what makes a ```` ```query ```` block flicker 78 → 45 → 78 px (pre-existing, same
 cause); for plain text it was invisible.
+
+**Fixed 2026-09-13.** `BlockRowView` memoizes `props.block.content` as a string and both the
+classification and `ctx.source` read that memo, so the rendered view is rebuilt only when the row's
+text changes. The e2e test (an unfolded embedded row, a tag on the outline element, the host row's
+minimum height) failed before the change — "about the car" folded away — and passes after. Re-run
+on the graph copy: the embed row's height stays 775 / 942 px through typing, the editor stays at one
+y, the unfolded row stays open, and the query block's 78 → 45 px flicker is gone with it.

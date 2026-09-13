@@ -94,6 +94,51 @@ test("clicking an embedded row opens that block; clicking the frame edits the ho
   await expect(page.locator(".vr-embed-item").first()).toBeVisible();
 });
 
+test("typing elsewhere on the page leaves an embed in place, unfolded rows included (B-214)", async ({
+  page,
+}) => {
+  const { outliner, embed } = await openBlockEmbed(page, "Embed Host Typing");
+  await embed.locator(".vr-embed-toggle[aria-expanded=false]").click();
+  await expect(embed).toContainText("about the car");
+  // Tag the rendered outline and watch the host row's height: a rebuilt embed is a new element,
+  // and on the way it shows the one-line placeholder, which is what made the page jump.
+  await embed.locator(".vr-embed-outline").evaluate((el) => {
+    (el as HTMLElement & { __b214?: boolean }).__b214 = true;
+    const row = el.closest(".vr-row") as HTMLElement;
+    const w = window as unknown as { __b214Min: number };
+    w.__b214Min = row.getBoundingClientRect().height;
+    new ResizeObserver(() => {
+      w.__b214Min = Math.min(w.__b214Min, row.getBoundingClientRect().height);
+    }).observe(row);
+  });
+  const tall = await outliner
+    .locator(".vr-row")
+    .nth(1)
+    .evaluate((r) => r.getBoundingClientRect().height);
+
+  await outliner.locator(".vr-row").first().locator(".vr-block-view").click();
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" and more");
+  // Wait for the write to land in the replica and the page tree to re-read.
+  await expect
+    .poll(async () => (await readBlocks(page, "Embed Host Typing"))[0]?.content)
+    .toBe("carried over: and more");
+  await clickAway(page);
+  await expect(outliner.locator(".vr-row").first().locator(".vr-block-view")).toHaveText(
+    "carried over: and more",
+  );
+
+  await expect(embed).toContainText("about the car");
+  expect(
+    await embed
+      .locator(".vr-embed-outline")
+      .evaluate((el) => (el as HTMLElement & { __b214?: boolean }).__b214 === true),
+  ).toBe(true);
+  const min = await page.evaluate(() => (window as unknown as { __b214Min: number }).__b214Min);
+  expect(min).toBeGreaterThan(tall / 2);
+});
+
 test("an embed follows edits to its target without a reload", async ({ page }) => {
   const { embed } = await openBlockEmbed(page, "Embed Host Live");
   const rent = await blockId(page, SOURCE, "pay rent");
