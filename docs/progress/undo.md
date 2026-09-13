@@ -74,3 +74,20 @@ answered "no" here and needs the owner's confirmation (see the inbox entry for h
 
 `git log --oneline cf08d19..m9/undo` in the worktree; this file's section 1 names each commit.
 Run `cd e2e && NOOKLET_E2E_PORT=6400 pnpm exec playwright test tests/undo-gaps.spec.ts --project=chromium`.
+
+## 6. Adversarial verification (second agent, 2026-09-13)
+
+Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m9/undo-verify/`, e2e port 6400.
+
+- Re-ran: web unit 1015/1015, `pnpm -r typecheck` 0, biome clean on touched files;
+  `undo-gaps.spec.ts` 9/9 (the spec has 9 tests, not the 10 reported above).
+- Browser probes (throwaway spec, not kept), all at the branch head: repeat-aware DOING→DONE via
+  Cmd/Ctrl+Enter undone and redone (marker, scheduled, done all restored on the server); selection
+  mode Cmd/Ctrl+Enter undo/redo keeps the selection; an unflushed property-line edit then
+  Cmd/Ctrl+Enter undoes in two steps (`kind:: ab` → `kind:: a`); a remote `block.delete` of the
+  last-edited block drops that step and undoes the older one; Czech + emoji text survives a date
+  undo; cross-tree chip pick with editing in another day is undone correctly. Rapid double
+  Cmd/Ctrl+Enter reads a stale marker (TODO twice) — the same on `cf08d19`, not this branch.
+- Found and fixed **B-281** (`9546dff`): a block left selected in another journal day kept its
+  tree the undo target over the tree that took a chip date. New e2e test in `undo-gaps.spec.ts`,
+  unit test in `editor-host.test.ts`.
