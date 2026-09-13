@@ -185,3 +185,28 @@ of `Megapage` (201 blocks) and waiting 1.5 s: the worker's event loop was blocke
 20 and 70 from other agents at the time, so how much of that is this machine is unknown. Not
 investigated: which queries the text flushes trigger (each `applyLocal` fires a change event that
 page views, references and the sync status re-query on).
+
+---
+
+### B-303 · Ending an edit shows the block's last-fetched text until the write comes back, and a Cut in that window copies the old text
+
+**Status:** open · **Severity:** high since B-245 (Cut deletes the block and puts the OLD text on
+the clipboard: paste it elsewhere and the words just typed are gone; undo restores them, if you
+notice) · **Found:** 2026-09-13, adversarial verify of `m9/clipboard-sync` ·
+**Test:** `e2e/tests/selection.spec.ts` "Cmd/Ctrl+X straight after typing cuts the text as typed,
+while the replica is still busy (B-303)"
+
+Type into a block and, within the 500 ms text debounce, press Escape (or Shift+Down) and Cmd+C /
+Cmd+X. Measured with a throwaway spec (MutationObserver on the first row, no artificial load):
+the row reads `one typed` while editing, flips to `one` the moment editing ends, and back to
+`one typed` 12–20 ms later; Cmd+C at gaps of 0, 100 and 300 ms after the last keystroke copied
+`- one` (4 of 4 for Escape, 4 of 4 for Shift+Down), at 700 ms (debounce already flushed) `- one
+typed`. Cmd+X in the same window put `- one\n- two\n` on the clipboard and deleted both blocks; the
+undo brought back `one typed`, so the replica had the text and only the clipboard lost it. With the
+worker busy (1.5 s loop, as on the real graph — B-302 measured 0.1–1.6 s stretches while typing),
+the old text stays on screen for the whole stretch.
+
+Cause: `BlockTree.tsx`'s tree effect reads `editingId()` tracked, so ending an edit re-runs it
+against the page tree fetched BEFORE `flushPendingEdit`'s write; without the editing overlay, that
+stale read replaces the optimistic text in `localBlocks` until the refetch after the write lands.
+`selectionMarkdown` reads that tree. Copy (B-84) had the same stale window but no loss.
