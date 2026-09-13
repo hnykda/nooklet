@@ -240,7 +240,7 @@ test("a page title too long for one printed line prints whole", async ({ page })
   await page.setViewportSize({ width: 720, height: 1000 });
   await page.emulateMedia({ media: "print" });
 
-  await expect(page.locator("input.page-title-input")).toBeHidden();
+  await expect(page.locator("textarea.page-title-input")).toBeHidden();
   const heading = page.getByRole("heading", { name, exact: true });
   await expect(heading).toBeVisible();
   const box = await heading.evaluate((el) => ({
@@ -254,7 +254,7 @@ test("a page title too long for one printed line prints whole", async ({ page })
 
   // On screen the input is still the title, and the print-only heading is not there to read.
   await page.emulateMedia({ media: "screen" });
-  await expect(page.locator("input.page-title-input")).toBeVisible();
+  await expect(page.locator("textarea.page-title-input")).toBeVisible();
   await expect(page.getByRole("heading", { name, exact: true })).toBeHidden();
 });
 

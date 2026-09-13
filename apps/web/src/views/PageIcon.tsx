@@ -8,8 +8,17 @@
  * (Ctrl/Cmd+Space, Win+.), and a popover of 1,800 glyphs is the kind of thing this app is not.
  */
 
-import { createEffect, createSignal, type JSX, Show } from "solid-js";
+import { createEffect, createSignal, type JSX, on, Show } from "solid-js";
 import { setPageIcon } from "../data/store.js";
+
+/** Asks the title row's icon editor for `pageId` to open, from somewhere other than its own
+ * button — the page "…" menu (`PageActions.tsx`), which is how a touch screen reaches it: the empty
+ * icon slot only shows on hover, so on a phone it is not in the row at all (B-225). A fresh object
+ * per request, so asking twice for the same page opens it twice. */
+const [iconEditRequest, setIconEditRequest] = createSignal<{ pageId: string } | null>(null);
+export function requestPageIconEdit(pageId: string): void {
+  setIconEditRequest({ pageId });
+}
 
 /** Trim to something that reads as one icon: the first grapheme, so a flag or a skin-toned emoji
  * survives intact but "🔥🔥🔥 wow" becomes "🔥". */
@@ -52,6 +61,18 @@ export function PageIconEditor(props: { pageId: string; icon: string | undefined
     setDraft(props.icon ?? "");
     setEditing(true);
   }
+
+  // `defer`: a request made before this editor mounted (another page's, or an old one) is not a
+  // request to open this one now.
+  createEffect(
+    on(
+      iconEditRequest,
+      (req) => {
+        if (req?.pageId === props.pageId) open();
+      },
+      { defer: true },
+    ),
+  );
 
   async function commit(): Promise<void> {
     const next = firstGrapheme(draft());

@@ -8,18 +8,32 @@
  * The star is always visible, filled when the page is a favourite. It is NOT hidden until hover
  * like the History link: the whole complaint (audit §1.7) was that nothing on a page says it can
  * be favourited, and a phone has no hover to reveal it with.
+ *
+ * The menu also carries the row's two hover-only controls, "Add icon" and "Page history" (B-225):
+ * on a touch screen they are not in the row at all (`page-title.css`), so this is the only way a
+ * phone reaches them. They open the row's own icon editor and route rather than a command —
+ * neither exists as one.
  */
 
-import { Copy, Ellipsis, FileDown, Printer, Star } from "lucide-solid";
+import { useNavigate } from "@solidjs/router";
+import { Copy, Ellipsis, FileDown, History, Printer, SmilePlus, Star } from "lucide-solid";
 import { createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { buildContextBase } from "../app/editor-host.js";
 import { createStore } from "../app/hosts.js";
 import { pageActionNotice } from "../app/page-actions.js";
 import { detectPlatformFromEnvironment, useCommands } from "../commands/index.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
+import { pageNameToPath } from "./navigateTarget.js";
+import { requestPageIconEdit } from "./PageIcon.js";
 import "./page-actions.css";
 
-export function PageActions(props: { pageName: string; favorite: boolean }): JSX.Element {
+export function PageActions(props: {
+  pageName: string;
+  favorite: boolean;
+  pageId: string;
+  hasIcon: boolean;
+}): JSX.Element {
+  const navigate = useNavigate();
   const { buildContext } = useCommands();
   const { platform, mobile } = detectPlatformFromEnvironment();
   const store = createStore();
@@ -128,6 +142,28 @@ export function PageActions(props: { pageName: string; favorite: boolean }): JSX
               onClick={() => run("app.printPage")}
             >
               <Printer size={15} /> Print / Save as PDF
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="page-actions-item"
+              onClick={() => {
+                setMenuOpen(false);
+                requestPageIconEdit(props.pageId);
+              }}
+            >
+              <SmilePlus size={15} /> {props.hasIcon ? "Change icon" : "Add icon"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="page-actions-item"
+              onClick={() => {
+                setMenuOpen(false);
+                navigate(`/history/${pageNameToPath(props.pageName)}`);
+              }}
+            >
+              <History size={15} /> Page history
             </button>
           </div>
         </Show>

@@ -1,0 +1,55 @@
+/* The page title row on top of `styles/views.css`'s `.page-title-row` / `.page-title-input`
+   (B-350). Every selector here carries one class more than the rule it adjusts, so the result
+   does not depend on which stylesheet the bundle happens to emit first. */
+
+/* The title is a growing `<textarea>` (`PageTitleField.tsx`). A textarea's UA font is monospace
+   and it is resizable by a drag handle; neither belongs on a heading. `anywhere` because imported
+   names like `hls__The_Logic_of_…` have no spaces to break at. */
+.page-title-row textarea.page-title-input {
+  display: block;
+  font-family: inherit;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* A two-line title keeps its controls on its first line rather than floating between the lines. */
+.page-view .page-title-row {
+  align-items: flex-start;
+}
+
+/* The first line's box: the title's line plus its own top padding. Each control centres itself on
+   it, whatever its own height (a 44px touch target is taller than the line). */
+.page-title-row > :not(.page-title-input, .page-title-print) {
+  margin-top: calc(
+    (var(--text-2xl) * var(--leading-tight) + 2 * var(--space-2xs) - var(--title-control-h, 30px)) /
+    2
+  );
+}
+
+.page-title-row > .page-icon-button,
+.page-title-row > .page-icon-input {
+  --title-control-h: 1.5em;
+  /* `1.5em` resolves against the control's own 26px type. */
+  font-size: var(--text-2xl);
+}
+
+.page-title-row > .page-history-link {
+  --title-control-h: 29px;
+}
+
+@media (pointer: coarse) {
+  .page-title-row > .page-actions {
+    --title-control-h: var(--touch);
+  }
+}
+
+/* A touch screen has no hover, so the two controls that only show on hover (the empty icon slot
+   and the History link) were invisible there and still took ~94px of a 366px row — the title got
+   what was left (B-225). They leave the row; the "…" menu offers both (`PageActions.tsx`). */
+@media (hover: none) {
+  .page-title-row .page-icon-button-empty,
+  .page-title-row .page-history-link {
+    display: none;
+  }
+}
