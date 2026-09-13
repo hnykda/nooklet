@@ -483,6 +483,9 @@ resolved labels are not kept across a refresh.
 
 **Owner, later the same day:** "that refresh with id might have been just one isolated case, don't over do it." Scope: fix the cause if it is the obvious one (the whole block-ref cache emptied on every block write), with one test; no broader re-rendering work under this entry.
 
+
+**Owner, 2026-09-13:** can no longer reproduce it. Unless the running branch found a concrete cause with a test, close as not reproducible.
+
 ---
 
 ### B-540 · Syncing is visible: every ordinary push and pull shows on screen
@@ -510,6 +513,13 @@ under the title bar; at the default 1100×800 the client's top-left controls (To
 Forward) are exactly where the traffic lights are, the sidebar starts collapsed, and Settings and
 Graph live only in the sidebar or the palette. Also checked: the app's WebKit store holds a service
 worker and precache from Sep 11, so a stale client is a second possible cause.
+
+
+**Owner, 2026-09-13:** "we also should have some icon for settings? or maybe three dots at top right with
+dropdown for these?" Decision: a "⋯" menu at the top right, as Logseq has — Settings, All pages, Graph,
+Trash, Keyboard shortcuts / Help, Diagnostics — next to the quiet sync icon and the agent-access icon
+(B-540). Settings also on Cmd+, (native menu). Built as a follow-up once `m11/desktop-shell` and
+`m11/quiet-topbar` land, so the three top-bar changes do not collide.
 
 ---
 

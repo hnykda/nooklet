@@ -69,6 +69,8 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
   reachability, native menu, service-worker updates in WKWebView; builds its own devtest app (never the owner's).
 - B-540 (sync must be silent): a duplicate agent instance was stopped; its recorder and notes are in
   `scratchpad/m11b/sync-quiet-handoff/`. Owner: "don't over do it" — when `m11/ref-label-flash` lands, keep only a proportionate fix (the block-ref cache no longer emptied on every write, one test) and drop broad re-render changes; the B-540 follow-up is just the quiet indicator.
+- `wf_1121291a-729` (m11d, port 6422): quiet-topbar — cloud sync icon with a status dot, agent-access badge as an icon (B-540).
+- Follow-up after desktop-shell + quiet-topbar land: top-right "⋯" menu (Settings, All pages, Graph, Trash, Help, Diagnostics) — owner request, B-541.
 - Held until M10 lands: B-380 option (c) (no tag popup inside an existing tag), mermaid out of the
   PWA precache, sidecar reusing the web build's mermaid.
 - Owner decisions recorded 2026-09-13: all twelve recommendations accepted (see BUGS.md B-194,
