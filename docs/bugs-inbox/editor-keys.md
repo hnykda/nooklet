@@ -95,3 +95,29 @@ in the block being left (B-295)" and the `((block ref))` form; red before (5 of 
 `app/hosts.test.ts` "nav.followLink ends editing before it leaves the page (B-295)" (4).
 
 ---
+
+### B-344 (existing)
+**Fixed 2026-09-13.** Of the entry's three ways out, the one that needed no new decision: the client
+plugin host now implements three `EditorApi` methods the plugin API already specifies (§5) —
+`editor.currentBlock()`, `editor.insertBlockAfter()` and `editor.focusBlock()` — and `/mermaid` uses
+them: on a block whose content is not blank it inserts the starter as a new next sibling and puts the
+caret inside the fence (where B-185 wants it); on an empty block it inserts at the caret as before.
+No grammar change (a fence still renders only as a block's first line) and no plugin-API change.
+Pieces: `EditorHost.currentBlock()` (new seam method; `BlockTree` builds the core `Block` through
+`editor/current-block.ts#toCoreBlock` from the tree block plus the live buffer, so unflushed text
+counts), `data/plugin-writes.ts#blockAfterOps` (place from the replica, as `/template` computes it),
+committed through `EditorHost.commitOps` so one Cmd/Ctrl+Z takes the diagram back, written with
+`applyOps` only when no editor shows the block; `focusBlock` goes through `requestBlockFocus`. Spec
+`api-and-plugin-types.md` §5's "what the v1 client host implements" updated. `editor.selection()` and
+`editor.replaceBlock()` still throw. **Test:** `e2e/tests/mermaid-after-text.spec.ts` "/mermaid after
+existing text puts the diagram in its own block, which renders (B-344)" (stored
+`["after text", starter, "next one"]`, caret inside the fence, `svg` drawn) and "undo takes the
+inserted diagram block back in one step (B-344)" — both red before (`after text ```mermaid…` in one
+block), green after; `plugins.spec.ts` (7) still green. Unit: `plugins/host.test.ts` "/mermaid in a
+block with text puts the diagram in a new block after it (B-344)", "/mermaid in an empty block …", and
+"editor.insertBlockAfter / focusBlock / currentBlock (B-344)" (4); `editor/current-block.test.ts` (3).
+Not covered: `blockAfterOps` reads the block's place from the replica, so `/mermaid` typed into a block
+created a moment earlier whose create has not reached the replica rejects with "no block with id"
+(the slash command then does nothing) — unmeasured how often; `/template` has the same dependency.
+
+---

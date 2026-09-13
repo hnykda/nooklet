@@ -1049,7 +1049,10 @@ halves from `<dataDir>/plugins`. Implemented: `plugin`, `host`, `on("page.opened
 command gated on `editorFocused`, plus a slash row after the core rows),
 `registerCodeBlockRenderer` (a fence whose info string matches; `query` is reserved; one renderer
 per language), `registerStatusItem` (top bar), `editor.currentPage` (the `/page/<name>` route's
-page, else `null`), `editor.insertText`, `editor.openPage` (not `sidebar`), `editor.navigate`,
+page, else `null`), `editor.insertText`, `editor.currentBlock` (the block being edited, its unflushed
+text included; `null` when none), `editor.insertBlockAfter` (next sibling, one undo step through the
+editor showing the block; added 2026-09-13 for `/mermaid` after text, B-344), `editor.focusBlock`
+(once a tree on screen shows the block), `editor.openPage` (not `sidebar`), `editor.navigate`,
 `rpc.call`, `log`, `subscriptions`, `experimental` (empty). Everything else — `data`, the
 server-shaped events, `block.focused`/`blurred`, `selection.changed`, keybindings, macros, panels,
 menus, toolbar, theme, dialogs, settings, the other `editor` methods — throws

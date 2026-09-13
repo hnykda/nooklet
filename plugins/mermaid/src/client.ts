@@ -68,7 +68,19 @@ export default {
       // The caret lands at the end of the starter's last line, inside the fence. Left at the end
       // of the insertion (after the closing ```), the next keystroke turned that line into "```x",
       // which closes nothing, and the diagram became a parse error (B-185).
-      run: (editor) => editor.insertText(STARTER, { cursor: STARTER.lastIndexOf("\n```") }),
+      async run(editor) {
+        const cursor = STARTER.lastIndexOf("\n```");
+        const block = editor.currentBlock();
+        // A fence renders only as the FIRST line of a block. Typed after existing text, the
+        // starter used to go inline and the diagram never rendered (B-344): it gets a block of its
+        // own right after, as `/template` does for a bullet that already has text.
+        if (block && block.content.trim() !== "") {
+          const created = await editor.insertBlockAfter(block.id, STARTER);
+          editor.focusBlock(created.id, { at: cursor });
+          return;
+        }
+        await editor.insertText(STARTER, { cursor });
+      },
     });
   },
 } satisfies ClientPluginModule;

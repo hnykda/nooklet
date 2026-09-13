@@ -176,13 +176,13 @@ function minterFor(clock: Clock): OpMinter {
     makeOp(clock.next(), clock.device, entity, payload);
 }
 
-interface PlaceRow {
+export interface PlaceRow {
   page_id: string;
   parent_id: string | null;
   order_key: string;
 }
 
-async function placeOf(blockId: string): Promise<PlaceRow | undefined> {
+export async function placeOf(blockId: string): Promise<PlaceRow | undefined> {
   const rows = await queryAs<PlaceRow>(
     "SELECT page_id, parent_id, order_key FROM block WHERE id = ? AND deleted_at IS NULL LIMIT 1",
     [blockId],
@@ -191,7 +191,7 @@ async function placeOf(blockId: string): Promise<PlaceRow | undefined> {
 }
 
 /** The order key of the sibling right after `order` under `parentId`, or `null` at the end. */
-async function nextSiblingOrder(place: PlaceRow): Promise<string | null> {
+export async function nextSiblingOrder(place: PlaceRow): Promise<string | null> {
   const rows = await queryAs<{ order_key: string }>(
     `SELECT order_key FROM block
      WHERE page_id = ? AND parent_id IS ? AND deleted_at IS NULL AND order_key > ?

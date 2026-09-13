@@ -25,16 +25,20 @@ first for each. Bug notes go to `docs/bugs-inbox/editor-keys.md`, not BUGS.md.
   Commit `86897db`.
 - B-295: `createNavigationHost` ends editing (`requestEditingEnd`) at the start of followLink
   (page/tag/block), openPage, openPageByRef. e2e `follow-link-typing.spec.ts` (2) red 5/5 before,
-  green 5/5 after; navigation/focus specs 74 passed.
+  green 5/5 after; navigation/focus specs 74 passed. Commit `5a4a851`.
+- B-344: client plugin host implements `editor.currentBlock/insertBlockAfter/focusBlock`
+  (new `EditorHost.currentBlock`, `editor/current-block.ts`, `data/plugin-writes.ts`); `/mermaid`
+  on a non-blank block inserts the starter as the next sibling. e2e `mermaid-after-text.spec.ts` (2)
+  red before, green after; plugins.spec green. Web unit 1,152.
 
 ## In flight
 
-- (next) B-344.
+- Full e2e run.
 
 ## Next
 
-1. B-344 (mermaid starter into its own block) — likely needs a plugin-host / EditorHost addition.
-2. Full e2e run at the end.
+1. Full chromium e2e run on port 6400; fix/record anything red.
+2. Re-check the rapid double-Cmd+Enter test in the full run (timing).
 
 ## Decisions
 

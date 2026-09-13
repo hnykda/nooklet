@@ -9,7 +9,8 @@
  * whose panel never appears should be told why on the first call, not left to find out. What is
  * implemented: `registerSlashCommand`, `registerCommand`, `registerCodeBlockRenderer`,
  * `registerStatusItem`, `on("page.opened" | "page.changed")`, `rpc.call`, `editor.currentPage`,
- * `editor.insertText`, `editor.openPage`, `editor.navigate`, `log`, `subscriptions`, `host`,
+ * `editor.currentBlock`, `editor.insertText`, `editor.insertBlockAfter`, `editor.focusBlock`,
+ * `editor.openPage`, `editor.navigate`, `log`, `subscriptions`, `host`,
  * `plugin`. Not yet: `data`, panels, menus, toolbar, keybindings, macros, theme, dialogs,
  * settings, and the server-shaped change events (`block.updated` & co. — the replica's change bus
  * knows which pages a write touched, not which rows, so any payload would be invented).
@@ -17,7 +18,7 @@
  * Every registration is tracked per plugin and disposed in reverse order on `stop()` or when
  * `activate()` throws part-way (spec rule 12), so a half-activated plugin leaves nothing behind.
  */
-import type { Page } from "@nooklet/core";
+import type { Block, Op, Page } from "@nooklet/core";
 import type {
   ClientPluginContext,
   ClientPluginModule,
@@ -62,6 +63,17 @@ export interface ClientPluginHostDeps {
     pluginId: string;
     item: Parameters<ClientPluginContext["registerStatusItem"]>[0];
   }) => () => void;
+  /** `editor.insertBlockAfter`: the ops for a new block after `blockId`, minted not applied, and the
+   * `Block` it will be; `undefined` when there is no such block (`data/plugin-writes.ts`). */
+  blockAfterOps: (
+    blockId: string,
+    content: string,
+  ) => Promise<{ ops: Op[]; block: Block } | undefined>;
+  /** Writes a batch no editor would take (the block's page is not open). */
+  applyOps: (ops: Op[]) => Promise<unknown>;
+  /** `editor.focusBlock`: puts the caret in `blockId` once a tree shows it
+   * (`editor/focus-request.ts#requestBlockFocus`). */
+  focusBlock: (blockId: string, caret: { at: "start" | "end" } | { offset: number }) => void;
   fetch?: typeof fetch;
   logger?: Pick<Console, "info" | "warn" | "error" | "debug">;
 }
@@ -144,7 +156,7 @@ export function createClientPluginHost(deps: ClientPluginHostDeps): ClientPlugin
 
     const editor: EditorApi = {
       currentPage: () => deps.currentPage(),
-      currentBlock: () => unsupported("editor.currentBlock()"),
+      currentBlock: () => deps.editor.currentBlock(),
       selection: () => unsupported("editor.selection()"),
       async insertText(text, opts) {
         const sel = deps.editor.getSelection();
@@ -152,8 +164,21 @@ export function createClientPluginHost(deps: ClientPluginHostDeps): ClientPlugin
         deps.editor.replaceRange({ from: sel.start, to: sel.end, text, caretOffset: opts?.cursor });
       },
       replaceBlock: async () => unsupported("editor.replaceBlock()"),
-      insertBlockAfter: async () => unsupported("editor.insertBlockAfter()"),
-      focusBlock: () => unsupported("editor.focusBlock()"),
+      // Needed so `/mermaid` can put its fence in a block of its own: a fence renders only as the
+      // first line of a block, and inserted after existing text it never did (B-344).
+      async insertBlockAfter(id, content) {
+        const built = await deps.blockAfterOps(id, content);
+        if (!built) throw new Error(`editor.insertBlockAfter(): no block with id "${id}"`);
+        // Through the editor that shows `id`, so one Cmd/Ctrl+Z takes the new block back (B-108).
+        if (!deps.editor.commitOps({ ops: built.ops, anchorId: id })) {
+          await deps.applyOps(built.ops);
+        }
+        return built.block;
+      },
+      focusBlock(id, opts) {
+        const at = opts?.at ?? "end";
+        deps.focusBlock(id, typeof at === "number" ? { offset: at } : { at });
+      },
       async openPage(ref, opts) {
         if (opts?.sidebar) unsupported("editor.openPage({ sidebar: true })");
         const pageName = typeof ref === "string" ? await deps.pageNameForId(ref) : ref.name;

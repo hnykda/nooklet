@@ -28,7 +28,7 @@
  *   sees what the tree commits, so Cmd/Ctrl+Z could not take them back (B-108).
  */
 
-import type { Op } from "@nooklet/core";
+import type { Block, Op } from "@nooklet/core";
 import type { CommandContext } from "../types.js";
 
 export interface EditorSelection {
@@ -96,6 +96,11 @@ export interface EditorHost {
    * `caretInLink`), or `null`. Only called by `nav.followLink`, whose `when` already requires
    * `caretInLink`, so a real editor need not implement this precisely for every other case. */
   getLinkAtCaret(): LinkAtCaret | null;
+
+  /** The block being edited as `@nooklet/core`'s `Block`, its live buffer split back into content
+   * and properties; `null` when nothing is edited. The client plugin host's `editor.currentBlock()`
+   * — `/mermaid` asks it whether the block already has text (B-344). */
+  currentBlock(): Block | null;
 }
 
 /** A working fake for this package's own tests: an in-memory single-block "document" that
@@ -168,6 +173,22 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
     },
     getLinkAtCaret() {
       return linkAtCaret;
+    },
+    currentBlock() {
+      if (!state) return null;
+      return {
+        id: state.blockId,
+        pageId: "page1",
+        parentId: null,
+        order: "a0",
+        content: state.content,
+        marker: null,
+        priority: null,
+        properties: {},
+        collapsed: false,
+        createdAt: 0,
+        updatedAt: 0,
+      };
     },
   };
 }

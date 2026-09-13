@@ -3,7 +3,7 @@
  * register lands in the registry, the slash rows and the renderer map; everything is taken back
  * on `stop()` or a failed activation; and what the host does not implement fails loudly.
  */
-import type { Page } from "@nooklet/core";
+import { type Block, makeOp, type Op, type Page } from "@nooklet/core";
 import type { ClientPluginContext, ClientPluginModule } from "@nooklet/plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createFakeEditorHost } from "../commands/hosts/editor-host.js";
@@ -36,6 +36,8 @@ function setup(overrides: Partial<ClientPluginHostDeps> = {}) {
   const renderers = new Map<string, unknown>();
   const statusItems: Array<{ pluginId: string; item: { id: string } }> = [];
   const disposed: string[] = [];
+  const applied: Op[][] = [];
+  const focused: Array<{ id: string; caret: unknown }> = [];
   const deps: ClientPluginHostDeps = {
     registry,
     editor,
@@ -69,10 +71,37 @@ function setup(overrides: Partial<ClientPluginHostDeps> = {}) {
         disposed.push(`status:${entry.item.id}`);
       };
     },
+    async blockAfterOps(blockId, content) {
+      if (blockId !== "b1") return undefined;
+      const block: Block = {
+        id: "new00000000001",
+        pageId: "page1",
+        parentId: null,
+        order: "a1",
+        content,
+        marker: null,
+        priority: null,
+        properties: {},
+        collapsed: false,
+        createdAt: 5,
+        updatedAt: 5,
+      };
+      const op = makeOp("hlc-1", "dev", block.id, {
+        kind: "block.create",
+        place: { pageId: "page1", parentId: null, order: "a1" },
+        content,
+        createdAt: 5,
+      });
+      return { ops: [op], block };
+    },
+    async applyOps(ops) {
+      applied.push(ops);
+    },
+    focusBlock: (id, caret) => focused.push({ id, caret }),
     logger: silent,
     ...overrides,
   };
-  return { deps, registry, editor, slashRows, renderers, statusItems, disposed };
+  return { deps, registry, editor, slashRows, renderers, statusItems, disposed, applied, focused };
 }
 
 function plugin(
@@ -119,16 +148,96 @@ describe("the built-in client halves (B-103)", () => {
     ]);
   });
 
-  it("/mermaid inserts the starter diagram at the caret through the editor host", async () => {
+  it("/mermaid in an empty block inserts the starter diagram at the caret through the editor host", async () => {
+    const t = setup();
+    t.editor.state = { blockId: "b1", content: "", start: 0, end: 0 };
+    await createClientPluginHost(t.deps).start(BUILTIN_CLIENT_PLUGINS);
+
+    await t.registry.get("plugin.mermaid.slashMermaid")?.run(commandContext());
+
+    expect(t.editor.state?.content).toBe("```mermaid\ngraph TD\n  A --> B\n```");
+    // Inside the fence, at the end of "  A --> B" — not after the closing ``` (B-185).
+    const caret = "```mermaid\ngraph TD\n  A --> B".length;
+    expect([t.editor.state?.start, t.editor.state?.end]).toEqual([caret, caret]);
+    expect(t.editor.committed).toEqual([]);
+  });
+
+  it("/mermaid in a block with text puts the diagram in a new block after it (B-344)", async () => {
+    // A fence renders only as a block's first line: inline after "before", it never rendered.
     const t = setup();
     await createClientPluginHost(t.deps).start(BUILTIN_CLIENT_PLUGINS);
 
     await t.registry.get("plugin.mermaid.slashMermaid")?.run(commandContext());
 
-    expect(t.editor.state?.content).toBe("before ```mermaid\ngraph TD\n  A --> B\n``` after");
-    // Inside the fence, at the end of "  A --> B" — not after the closing ``` (B-185).
-    const caret = "before ```mermaid\ngraph TD\n  A --> B".length;
-    expect([t.editor.state?.start, t.editor.state?.end]).toEqual([caret, caret]);
+    const starter = "```mermaid\ngraph TD\n  A --> B\n```";
+    expect(t.editor.state?.content).toBe("before  after");
+    // One batch through the editor showing b1, so one Cmd/Ctrl+Z takes the diagram back.
+    expect(t.editor.committed.map((b) => [b.anchorId, b.ops.map((o) => o.payload)])).toEqual([
+      [
+        "b1",
+        [
+          {
+            kind: "block.create",
+            place: { pageId: "page1", parentId: null, order: "a1" },
+            content: starter,
+            createdAt: 5,
+          },
+        ],
+      ],
+    ]);
+    expect(t.applied).toEqual([]);
+    expect(t.focused).toEqual([
+      { id: "new00000000001", caret: { offset: "```mermaid\ngraph TD\n  A --> B".length } },
+    ]);
+  });
+});
+
+describe("editor.insertBlockAfter / focusBlock / currentBlock (B-344)", () => {
+  it("writes the batch itself when no editor shows the block, and returns the new block", async () => {
+    const t = setup();
+    t.editor.acceptCommits = false;
+    let created: Block | undefined;
+    await createClientPluginHost(t.deps).start([
+      plugin("writer", async (ctx) => {
+        created = await ctx.editor.insertBlockAfter("b1", "hello");
+      }),
+    ]);
+    expect(created?.content).toBe("hello");
+    expect(t.applied.map((ops) => ops.map((o) => o.entity))).toEqual([["new00000000001"]]);
+  });
+
+  it("rejects an id with no block, naming it", async () => {
+    const t = setup();
+    const host = createClientPluginHost(t.deps);
+    await host.start([
+      plugin("writer", (ctx) => ctx.editor.insertBlockAfter("gone", "x").then(() => {})),
+    ]);
+    expect(host.list()[0]?.error).toContain('no block with id "gone"');
+  });
+
+  it("focusBlock maps start, end and an offset onto the caret request", async () => {
+    const t = setup();
+    await createClientPluginHost(t.deps).start([
+      plugin("focuser", (ctx) => {
+        ctx.editor.focusBlock("b1");
+        ctx.editor.focusBlock("b1", { at: "start" });
+        ctx.editor.focusBlock("b1", { at: 3 });
+      }),
+    ]);
+    expect(t.focused.map((f) => f.caret)).toEqual([{ at: "end" }, { at: "start" }, { offset: 3 }]);
+  });
+
+  it("currentBlock is the edited block from the editor host, null when nothing is edited", async () => {
+    const t = setup();
+    const seen: Array<string | null> = [];
+    await createClientPluginHost(t.deps).start([
+      plugin("reader", (ctx) => {
+        seen.push(ctx.editor.currentBlock()?.content ?? null);
+        t.editor.state = null;
+        seen.push(ctx.editor.currentBlock()?.content ?? null);
+      }),
+    ]);
+    expect(seen).toEqual(["before  after", null]);
   });
 });
 

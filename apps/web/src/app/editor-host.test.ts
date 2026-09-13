@@ -38,6 +38,7 @@ function backing(content = "hello world", anchor = 0, head = 0) {
       return state.acceptBatches;
     },
     linkAtCaret: () => ({ type: "page", name: "Target" }),
+    currentBlock: () => null,
   };
   return { state, b };
 }
