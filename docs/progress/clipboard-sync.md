@@ -107,4 +107,7 @@ copy in `graph/`, served on 16403 while probing, stopped).
   follower tab's edit behind a busy worker survives its reload and reaches the leader; a leader
   reload with a follower open keeps its edit; a selection in one journal day does not capture
   Cmd+X in another day's editor.
-- Next: full e2e in four chunks on the verified tree (in flight when this was written).
+- Full e2e on the verified tree (four chunks, each led by a-fresh-journal): 120+1 skipped / 82 /
+  121 / 123+1 failed+1 skipped — unique 443 passed, 1 failed, 2 skipped. The failure is views.spec
+  "opening the palette while editing…" (B-161), which also fails 4/4 on `cf08d19`'s web sources
+  here and at load average 2 — reproduced, not this branch; noted in the inbox.

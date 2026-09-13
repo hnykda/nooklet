@@ -237,3 +237,14 @@ Real graph (copy, 952 pages; `tools/probes/cut-just-typed.mjs`, no artificial lo
 pre-fix build put the OLD text on the clipboard all three times while the cut removed the block;
 the fixed build put the typed text there all three times (and on `2026-05-03`), and one undo
 restored the block with it each time. `nooklet verify` on the copy afterwards: OK, 20,485 ops.
+
+---
+
+### B-161 (existing) — reproduced, not load
+
+2026-09-13, verify pass of `m9/clipboard-sync`: "opening the palette while editing and closing it
+hands focus back to the editor" failed in chunk 3 of a full run and then **alone**, so it was
+repeated with a throwaway copy using a fresh page name each time: 8 of 8 failed on the branch,
+3 of 3 at load average 2.3, and 4 of 4 with `apps/web/src` checked out from `cf08d19` — so it is
+not this branch and not machine load. After Escape closes the palette, `document.activeElement` is
+`BODY` (`document.hasFocus()` true). Not investigated further here.
