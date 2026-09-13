@@ -146,10 +146,12 @@ export function planOrgDateRepair(ctx: ServerContext): OrgDateRepairPlan {
     }
 
     const drop = new Set(found.map((d) => d.index));
-    after.content = row.content
-      .split("\n")
-      .filter((_, i) => !drop.has(i))
-      .join("\n");
+    const kept = row.content.split("\n").filter((_, i) => !drop.has(i));
+    // The parser drops a block's trailing blank lines, so a re-import of `a⏎⏎SCHEDULED: <…>` is
+    // `a`. Taking only the date line out left `a⏎` — an empty last line in the editor that no
+    // import would ever write.
+    while (kept.length > 0 && (kept[kept.length - 1] as string).trim() === "") kept.pop();
+    after.content = kept.join("\n");
     repairs.push({ blockId: row.id, page, marker: row.marker, before, after });
   }
   return { repairs, skipped };

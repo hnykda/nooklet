@@ -27,7 +27,11 @@ fails if the clock is not seeded from the fields first, checked; all or nothing 
 `packages/server/src/cli-args.test.ts` › "parseRepairFlags" (2),
 `packages/core/src/outline-org-dates.test.ts` › "findOrgDateLines" (4).
 **Still for the coordinator:** run it on `~/.nooklet/default` with the app quit (dry run first).
-Not checked: whether a window left open during the repair shows it before its next reconnect.
+Checked since (verification, `tools/probes/repair-org-dates-open-window.mjs` on a fresh copy): with
+`serve` running and a window open, `--apply` succeeds (no busy error), but the open window shows
+nothing for 15 s — the server never learns of another process's write, so it pokes no client — and
+shows the chips only after a reload; `batch.undo` over HTTP then reaches open windows live (~0.5 s).
+So "quit the app first" is required, not a precaution.
 
 ---
 
@@ -44,3 +48,18 @@ one guess not checked: `page.unroute` and the click racing, so the retry went th
 route too but the error line had already been cleared. The trace is gone (the next run on 6414
 wiped `e2e/test-results/6414/`); the failure output is in the repair-agenda scratch dir,
 `e2e-chunk3.log`.
+
+---
+
+### B-481 · `repair org-dates` left a blank last line where a re-import leaves none
+**Status:** fixed · **Severity:** low (no block on the owner's graph has the shape) · **Found:**
+2026-09-13, repair-agenda verification · **Test:** `packages/server/src/repair-org-dates.test.ts`
+"leaves the text a re-import would: no blank last line where the date line was"
+
+The repair took only the date line out: `Mirek⏎⏎SCHEDULED: <2023-2-17 Fri>` became `Mirek⏎`, an
+empty last line in the editor. `parseOutline` drops a block's trailing blank lines, so a re-import
+of the same block gives `Mirek` — the repair's stated contract. Found by running `findOrgDateLines`
+plus the repair's line filter against `parseOutline` on nine shapes; the other eight agreed. Fixed by
+dropping trailing blank lines from the repaired text, as the parser does. The owner's 20 blocks are
+all `<title>⏎SCHEDULED: <…>`, so their dry run is unchanged (checked on a fresh copy after the fix).
+The new test fails with the trim disabled (checked).

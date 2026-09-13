@@ -5,7 +5,7 @@
  * nothing, whenever that is not clearly right.
  */
 
-import { formatHlc, newId, type Op, type OpPayload } from "@nooklet/core";
+import { formatHlc, newId, type Op, type OpPayload, parseOutline } from "@nooklet/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "./apply-ops.js";
 import {
@@ -220,6 +220,28 @@ describe("repair org-dates", () => {
     }
     expect(row(fenced).content).toBe("code\n```org\nSCHEDULED: <2023-2-17 Fri>\n```");
     expect(formatOrgDateReport(result, result)).toContain("3 left alone (see above)");
+  });
+
+  it("leaves the text a re-import would: no blank last line where the date line was", () => {
+    // parseOutline drops a block's trailing blank lines; the repair must end up in the same place.
+    const gap = oldBlock("Mirek\n\nSCHEDULED: <2023-2-17 Fri>", { marker: "DONE" });
+    const middle = oldBlock("a\nSCHEDULED: <2023-2-17 Fri>\n\nb");
+    const onlyDate = oldBlock("SCHEDULED: <2023-2-17 Fri>");
+
+    const plan = planOrgDateRepair(ctx);
+    const after = (id: string): string | undefined =>
+      plan.repairs.find((r) => r.blockId === id)?.after.content;
+    expect(after(gap)).toBe("Mirek");
+    expect(after(middle)).toBe("a\n\nb");
+    expect(after(onlyDate)).toBe("");
+    expect(
+      parseOutline("- DONE Mirek\n  \n  SCHEDULED: <2023-2-17 Fri>\n").blocks[0]?.content,
+    ).toBe(after(gap));
+
+    applyOrgDateRepair(ctx);
+    expect(row(gap)).toMatchObject({ content: "Mirek", scheduled_day: 20230217 });
+    expect(row(onlyDate)).toMatchObject({ content: "", scheduled_day: 20230217 });
+    expect(verifyRebuildParity(ctx.driver).ok).toBe(true);
   });
 
   it("wins over a field last written by a device whose clock ran ahead", () => {
