@@ -89,3 +89,13 @@ Re-ran everything claimed and tried to break it. Findings, in order:
   `spawn_capturing` + `watch_startup` → `{"state":"exited","code":1,"reason":"schema_too_new",…}`
   with the server's line as `stderr`. Tauri 2.11.5 `webview/mod.rs:1823` confirms app commands pass
   from local origins without an app manifest.
+- Full e2e on 6415 after `4d35352`, in six chunks (each its own server): 542 passed, 2 skipped,
+  3 failed — none in code this branch touches, each green on rerun: `popups.spec.ts` "Table on an
+  empty block…" (43/43 on rerun), `views.spec.ts` palette Cmd/Ctrl+K (green in the views+storage
+  rerun), and webkit `storage.spec.ts` "usable on an in-memory database", which fails whenever an
+  earlier spec on the same server has left another journal day on /journals (strict-mode `or`
+  matching both the draft and that day's outliner; 3 passed + 1 skipped run alone) — order
+  dependent, pre-existing, not logged as a product bug. Also: `cargo test` 6/6, `cargo check`
+  clean, desktop `node --test` 4/4, web vitest 1145/1145, `pnpm -r typecheck` clean, the launcher
+  page in Playwright WebKit renders schema_too_new / timed_out / external / starting correctly,
+  and `tools/probes/wkwebview-confirm.swift` re-run prints `confirm returned false after 0 ms`.
