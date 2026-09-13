@@ -832,7 +832,10 @@ an existing link — the caret walked in, or the link's name being retyped — r
 `((` does the same with `))`. `#` does not (no closer to find; B-380). There the "Create" row names
 the whole link, the query plus the rest of the name up to `]]` (`[[Walkin Unm|ade Page]]` offers
 `New page "Walkin Unmade Page"`, and none when that page exists), so picking it never deletes part of
-the name (B-382).
+the name (B-382). Inside a complete link the first row is the one that re-links what the link
+already names — its page when one has that whole name (ahead of shorter names and of the date
+shortcuts), else, only with an empty query, that "Create" row — so Enter on the popup a walk-in opened
+leaves the link as it was (B-384).
 
 **R57.** `#` (tag): triggers on `matchBefore(/(^|\s)#([^\s#]*)$/)` (start-of-run, same rule as the
 slash trigger, so `word#tag` does not open it). Matching and the "Create" affordance are identical
@@ -846,7 +849,9 @@ a full-text-style match, not the title-only match of R56/R57), each result shown
 snippet of the block's rendered text plus its page name/breadcrumb. There is no "Create" item
 (you cannot create a new block purely by referencing one). Selecting an item inserts `((<id>))`
 and moves the caret past the closing `))`. Closes on Escape (as R56, leaves typed text as-is),
-deleting back through either `(`, or selecting an item.
+deleting back through either `(`, or selecting an item. *As built (B-384):* with the caret inside a
+complete `((ref))` it lists nothing — the query there is a fragment of an id, which matches only
+blocks whose text contains that id — so Enter leaves the ref alone.
 
 **R59.** Keyboard navigation is identical across `[[`, `#`, `((`, and the slash menu: Up/Down move
 the highlight without wraparound; Enter selects the highlighted item; Tab also selects it (an

@@ -25,11 +25,19 @@ branch and worktree. Scratch: `scratchpad/m10/editor-keys-verify/`. e2e port 640
 - Unit (`pnpm -r test`) after `dc86f5b`: core 398, 17, server 667, web 1,154 — all passed.
   `pnpm -r typecheck` clean.
 
+- Probe round 2 (`e2e/tests/zz-ekv2-probe.spec.ts`, `zz-ekv3-probe.spec.ts`, not committed):
+  text typed straight before Alt+Enter is kept in the block left (and after reload); Clear marker on
+  a mixed selection writes only the marked blocks, undo restores `TODO/null/DONE`, redo clears;
+  Mark DOING from the palette while editing touches only the edited block, undo keeps typed text.
+- B-384 (fixed): Enter on the popup a walk into a complete link opened re-pointed the link — to a
+  shorter page name, to today's date (caret just after `[[`), or for `((ref))` to the edited block
+  itself. The row that keeps the link is now first; block variant lists nothing inside a closed ref.
+  3 e2e + 4 unit red before, green after. Web unit 1,159 passed; web typecheck clean.
+
 ## In flight
 
-- Full e2e run in halves on the head.
+- Commit B-384, then the full e2e run in halves on the head.
 
 ## Next
 
-1. Commit the guard test + B-383 entry.
-2. Full e2e `tests/[a-l]` and `tests/[m-z]`; rerun any failure alone once.
+1. Full e2e `tests/[a-l]` and `tests/[m-z]`; rerun any failure alone once.

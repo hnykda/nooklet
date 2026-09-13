@@ -97,3 +97,58 @@ async function pageNames(page: Page): Promise<string[]> {
   });
   return out.items.map((p) => p.name);
 }
+
+// B-384: the row Enter takes on a walk-in was ranked by the fragment before the caret, so a shorter
+// page name — or, with nothing before the caret, today's date — came first, and the B-294 pick
+// through `]]` then re-pointed the link without anything on screen looking wrong.
+test("Enter on the autocomplete a walk into a link opened keeps the link's page, not a shorter name (B-384)", async ({
+  page,
+}) => {
+  await seedPage(page, "Walkin Pat", "- short");
+  await seedPage(page, "Walkin Patio", "- other");
+  await seedPage(page, "Walkin Pat Novak", "- long");
+  const name = "Caret Inside Src Five";
+  await openEditing(page, name, "- met [[Walkin Pat Novak]] today");
+  await walkTo(page, "met [[Walkin Pat".length);
+  const popup = page.locator(".cmd-popup");
+  await expect(popup.locator(".cmd-row", { hasText: "Walkin Patio" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(popup).toHaveCount(0);
+  await page.keyboard.type("!");
+  await expect.poll(() => stored(page, name)).toEqual(["met [[Walkin Pat Novak]]! today"]);
+});
+
+test("Enter with the caret walked to just after [[ keeps the link, not today's date (B-384)", async ({
+  page,
+}) => {
+  await seedPage(page, "Walkin Pat Novak", "- long");
+  const name = "Caret Inside Src Six";
+  await openEditing(page, name, "- met [[Walkin Pat Novak]] today");
+  await walkTo(page, "met [[".length);
+  const popup = page.locator(".cmd-popup");
+  await expect(popup.locator(".cmd-row", { hasText: "Tomorrow" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(popup).toHaveCount(0);
+  await page.keyboard.type("!");
+  await expect.poll(() => stored(page, name)).toEqual(["met [[Walkin Pat Novak]]! today"]);
+});
+
+test("walking into a ((ref)) offers nothing to pick, so Enter leaves the ref alone (B-384)", async ({
+  page,
+}) => {
+  await seedPage(page, "Walkin Ref Goal", "- the referenced block");
+  const [ref] = await readBlocks(page, "Walkin Ref Goal");
+  const name = "Caret Inside Src Seven";
+  await openEditing(page, name, `- see ((${ref?.id})) end`);
+  await walkTo(page, "see ((".length + 3);
+  const popup = page.locator(".cmd-popup");
+  await expect(popup).toHaveCount(1);
+  // Past the search: without the fix its rows (the edited block itself first) replace "No results".
+  await page.waitForTimeout(600);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(popup).toHaveCount(0);
+  for (let i = 0; i < 4; i++) await page.keyboard.press("End");
+  await page.keyboard.type("!");
+  await expect.poll(() => stored(page, name)).toEqual([`see ((${ref?.id})) end!`]);
+});

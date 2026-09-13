@@ -192,3 +192,38 @@ the tree's root, or navigate out of the zoom. Probe: `e2e/tests/zz-ekv-probe.spe
 (throwaway, not committed).
 
 ---
+
+### B-384 · Enter on the autocomplete a walk into a complete link opened silently re-points the link
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+m10/editor-keys (made silent by the B-294 fix, `86897db`; the wrong pick itself is older) ·
+**Test:** `e2e/tests/autocomplete-inside-link.spec.ts` "…keeps the link's page, not a shorter name
+(B-384)", "Enter with the caret walked to just after [[ keeps the link, not today's date (B-384)",
+"walking into a ((ref)) offers nothing to pick, so Enter leaves the ref alone (B-384)"
+
+B-294 made a pick inside a complete link replace the whole link, but the row Enter takes is still
+ranked by the fragment before the caret, so on a walk-in it is often not the link's own page. Seeded
+pages `Ekvthree Jan`, `Ekvthree Jan Novak`, `Ekvthree Janitor`; block `- met [[Ekvthree Jan Novak]]
+today`; Home, ArrowRight to after `[[Ekvthree Jan` (also after `[[E`, after `[[Ekvthree`), Enter:
+stored `met [[Ekvthree Jan]] today` — the link now names another page, and nothing on screen looks
+broken. With the caret right after `[[` the query is empty, the date shortcuts come first, and Enter
+stores `met [[Sep 13th, 2026]] today`: the page name is gone. Walking into a `((ref))` queries a
+fragment of the id, which matches blocks whose TEXT contains the id — the block being edited first —
+and Enter stored `see ((<the edited block's own id>))! end`. Before `86897db` each of these left the
+old tail behind (`[[Ekvthree Jan]] Novak]]`), visibly wrong and one undo away; now the result looks
+like a valid link. Enter with the caret inside a link is a realistic slip (arrowing to split a block
+a couple of characters early). Probe: `e2e/tests/zz-ekv2-probe.spec.ts` P2, `zz-ekv3-probe.spec.ts`
+P5 (throwaway, not committed).
+
+**Fix:** `AutocompletePopup.tsx#rowKeepingClosedLink` puts first, inside a complete `[[link]]`, the
+row that re-links what the link already names: the page with that whole name, ahead of shorter names
+and the date shortcuts; with nothing before the caret and no such page, B-382's "New page" row for
+the whole name. The block variant lists nothing inside a complete `((ref))`, so Enter does nothing
+there (Escape closes it). Not covered: with text before the caret, a link to a page that does not
+exist, and another page fuzzy-matching that text (`[[Jan| Novak]]` with only "Janitor"), ranking
+still decides — that text may be a search typed to retarget the link (`[[Walkin Oth|Goal Page]]`)
+and nothing tells the two apart. All three e2e tests red before (`met [[Walkin Pat]]! today`,
+`met [[Sep 13th, 2026]]! today`, `see ((<own id>)) end`), green after. Unit:
+`AutocompletePopup.test.tsx` four "(B-384)" tests red before, plus the guard "with a query typed
+inside a link to no page, ranking still decides the active row (B-384)" (green before and after).
+
+---
