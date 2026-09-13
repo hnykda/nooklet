@@ -15,33 +15,12 @@
  */
 
 import type { SqlDriver } from "@nooklet/core";
-import { canonicalRefName, normalizePageName, splitList } from "@nooklet/core";
+import { aliasKeysOf } from "@nooklet/core";
 
-/** Strips the `[[…]]` or `#` an alias may be written with, so `[[Nick]]`, `#Nick` and `Nick` are
- * one alias — the same tolerance `page-tags.ts` extends to `tags::`. */
-function bareName(raw: string): string {
-  const trimmed = raw.trim();
-  const unwrapped =
-    trimmed.startsWith("[[") && trimmed.endsWith("]]")
-      ? trimmed.slice(2, -2)
-      : trimmed.startsWith("#")
-        ? trimmed.slice(1)
-        : trimmed;
-  return unwrapped.trim();
-}
-
-/** The normalised keys a page's `alias::` value names, excluding the page's own key. */
-export function aliasKeysOf(aliasValue: string | null | undefined, ownKey: string): string[] {
-  if (!aliasValue) return [];
-  const keys = new Set<string>();
-  for (const item of splitList(aliasValue)) {
-    const name = bareName(item);
-    if (name === "") continue;
-    const key = normalizePageName(canonicalRefName(name));
-    if (key !== ownKey) keys.add(key);
-  }
-  return [...keys];
-}
+// The parser itself is in core (`packages/core/src/page-alias.ts`) so the client's `/page/<alias>`
+// lookup (B-104) reads an `alias::` value exactly the way this index does. Re-exported so the ops
+// that already import it from here keep doing so.
+export { aliasKeysOf };
 
 /** Current alias keys of a page, from the index. */
 export function pageAliasKeys(driver: SqlDriver, pageId: string): string[] {

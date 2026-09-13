@@ -56,6 +56,7 @@ import {
   type SearchResult,
 } from "./api-client.js";
 import { invalidateBlockRefs } from "./block-ref-cache.js";
+import { type AliasCandidate, findPageByAlias } from "./page-alias.js";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult, TaskRow } from "./types.js";
 
 // ---------------------------------------------------------------------------------------------
@@ -322,7 +323,8 @@ export function usePageByName(
     () => {
       const n = name();
       if (n === undefined) return undefined;
-      return stamped(n, ["page"]);
+      // `page_prop` too: an alias added or removed changes what this name resolves to (B-104).
+      return stamped(n, ["page", "page_prop"]);
     },
     async ({ value: n }) => {
       const rows = await queryAs<PageSqlRow>(
@@ -344,6 +346,9 @@ export function usePageByName(
         );
         if (byDay[0]) return toPageRow(byDay[0]);
       }
+      // Last: a page that lists this name as an `alias::` (B-104; `./page-alias.ts`).
+      const aliased = await findPageByAlias<PageSqlRow & AliasCandidate>(n);
+      if (aliased) return toPageRow(aliased);
       return null;
     },
   );

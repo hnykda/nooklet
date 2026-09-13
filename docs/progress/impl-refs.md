@@ -27,15 +27,22 @@ and immediately `git reset --hard da85cfb` before any work (no commits lost; not
   `packages/server/src/block-create-bag.test.ts`; sql-schema.md rule 24 updated. Core 335/335,
   server 522/522, typecheck clean, verify OK on the real-graph copy (20,411 ops).
 
+- B-89 commit `03d8422`.
+- B-104 fixed: core `page-alias.ts` (parser moved from server), client `data/page-alias.ts` +
+  `usePageByName` fallback (stamped on `page_prop`), `views/canonicalPageRoute.ts` redirect hooked
+  into `PageView` (2 lines). e2e `page-identity.spec.ts` 5/5; all 5 fail on da85cfb's client; the
+  "no bounce" test fails with the loading guard removed. Neighbour specs (pages, navigation,
+  journals, references, refactor, shelf, history, page-icons + identity): 53 passed. Web unit
+  692/692.
+
 ## In flight
 
-- B-104.
+- B-111.
 
 ## Next steps, in order
 
-1. B-104: `aliasKeysOf` into core; client alias fallback + redirect; unit + e2e; commit.
-2. B-111: server output + MCP description + spec; panel section; unit + e2e; commit.
-3. `pnpm nooklet verify` on the real-graph copy; real-graph check of Journal tag page and an alias.
+1. B-111: server output (`tagged_pages`) + MCP description + spec; panel section; unit + e2e; commit.
+2. `pnpm nooklet verify` on the real-graph copy; real-graph check of Journal tag page and an alias.
 
 ## How to resume
 

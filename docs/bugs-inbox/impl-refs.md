@@ -32,12 +32,36 @@ afterwards: 20,411 ops replayed, OK.
 ---
 
 ### B-104 (existing) · `/page/<alias>` says the page does not exist
-**Status:** in progress · **Severity:** low · **Found:** 2026-09-12, exposure audit
-(`docs/review/2026-09-12-exposure-audit.md`, defect D10) · **Test:** (pending)
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md`, defect D10) · **Tests:** `e2e/tests/page-identity.spec.ts`
+(all five: "/page/<alias> opens the page and replaces the URL with its own name", "a [[wrapped]]
+alias with a comma resolves, and a zoomed block stays zoomed", "following [[alias]] lands on the
+page, and links onward from it do not bounce back", "an alias added while its URL is open turns
+'does not exist' into the page", "a page renamed over the API still opens from its old URL");
+`apps/web/src/data/page-alias.test.ts`; `apps/web/src/views/canonicalPageRoute.test.ts`;
+`packages/core/src/page-alias.test.ts`
 
 The client replica has no `page_alias` table (sql-schema.md rule 1: derived tables are
 server-only), contrary to the BUGS.md entry's "the table exists in the replica"; the fallback has to
 read `page_prop` `alias` rows and parse them the way `packages/server/src/page-aliases.ts` does.
+It also bit every page renamed through `page.update` (which keeps the old name as an alias): its
+old URL and bookmarks said the page did not exist.
+
+**Fixed 2026-09-13.** Three parts. (1) The `alias::` parser (`aliasKeysOf`, with `[[…]]`/`#`
+unwrapping and journal-date canonicalisation) moved from `server/src/page-aliases.ts` to
+`packages/core/src/page-alias.ts`, so the client reads a value exactly as the server's index does;
+the server module re-exports it. (2) `apps/web/src/data/page-alias.ts#findPageByAlias` scans live
+pages' `alias` rows in the replica; `store.ts#usePageByName` tries it last (after the key and the
+journal day, so an alias never shadows a real name) and is now also stamped on `page_prop`, so an
+alias added while its URL is open resolves without a reload. (3) `views/canonicalPageRoute.ts`
+(one hook call in `PageView`) replaces an alias URL with the page's own name, keeping `?block=`.
+Journal days are not redirected (they have always been addressable by any title format). The
+redirect waits for the resource to finish loading: while a new route loads, a Solid resource still
+returns the previous page, and comparing that with the new name bounced every link-follow back —
+the "links onward" e2e test fails with the guard removed (checked). All five e2e tests fail against
+`da85cfb`'s `store.ts`/`PageView.tsx` (checked). Known limit, unchanged: when two pages claim the
+same alias the client picks the older page, the server (`resolvePageIdForKey`) whichever row SQLite
+returns first.
 
 ---
 
