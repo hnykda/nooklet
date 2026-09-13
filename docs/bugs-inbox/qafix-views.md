@@ -94,3 +94,25 @@ since every row re-renders when the graph changes. `e2e/tests/references-cap.spe
 before on the heading (200, expected 205); `packages/server/src/ops/page-backlinks-totals.http.test.ts`.
 Real graph copy: CAMP heading 836 (API paged: 836), unlinked 189 = the 187 Link all would link +
 2 it skips; @Alex 756 / 465; 200 rows rendered with "Show 200 more"; no console errors.
+
+---
+
+### B-254 · Turn into page kept heading markers and link brackets in the new page's name
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA on the real graph
+(finding Q4) · **Test:** `packages/server/src/ops/block-to-page-name.test.ts`
+
+On Megapage, Turn into page on `## Plánování zahradních úprav` (3 children) created a new
+page named `## Plánování zahradních úprav` and left the block as
+`[[## Plánování zahradních úprav]]` — although a page `Plánování zahradních úprav` already
+existed and should have received the children. `[[Alex]] by chtěl něco jako:` likewise made a
+page with that literal name and the block `[[[[Alex]] by chtěl něco jako:]]`.
+
+Cause: `block.to_page` named the page after the raw trimmed first line; only a line that was
+exactly one `[[link]]` was special-cased.
+
+**Fixed 2026-09-13.** The name is the first line's text: a leading `#`–`######` heading marker is
+dropped (and stays on the block, so `## [[Plánování zahradních úprav]]` is still a heading in
+the page's outline), and inline `[[Page]]` / `[[Page|label]]` links are reduced to the text they
+show. The existing sole-link rule is applied after the heading marker comes off.
+`packages/server/src/ops/block-to-page-name.test.ts` — failed before with the page named
+`## Plánování zahradních úprav`.

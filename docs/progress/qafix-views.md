@@ -22,19 +22,25 @@ name conflict is a UI dead end (medium); Q6 trash restore ignores aliases (low).
   §4.3.17 + ADR 022 amendment. Found in passing: B-252 (`old_str` fails on blocks with
   properties) — logged, not fixed.
 
-- Q3 (B-253) — client follows `page.backlinks` cursor (500/page, cap 5000); server
+- Q3 (B-253) `58e7b85` — client follows `page.backlinks` cursor (500/page, cap 5000); server
   `unlinked_limit` (default 50, panel 500) + `unlinked_truncated` + `linked_total`; panel renders
   200 rows + "Show more" (`views/referenceWindow.ts`). Tests: `e2e/tests/references-cap.spec.ts`
   (failed before: 200 vs 205), `page-backlinks-totals.http.test.ts` (3), `referenceWindow.test.ts`
   (4). Real graph: CAMP 836/189, @Alex 756/465 match the API.
 
+- Q4 (B-254) — `block.to_page` names the page by `pageNameFromFirstLine`: heading marker off the
+  name (kept on the link block), inline links reduced to their text, sole link (with label) names
+  that page. Test: `block-to-page-name.test.ts` (4, all failed before). Real graph copy:
+  Megapage `## Plánování…` → existing page, `created: false`, block `## [[Plánování…]]`;
+  `[[Alex]] by chtěl…` → page `Alex by chtěl něco jako:`; verify OK (20,421 ops).
+
 ## In flight
 
-- Q4: starting — `packages/server/src/ops/block-to-page.ts` page name from first line.
+- Q5: starting — `apps/web/src/views/TrashView.tsx` restore with `new_name` on conflict.
 
 ## Next, in order
 
-Q4 → Q5 → Q6.
+Q5 → Q6.
 
 ## How to resume
 

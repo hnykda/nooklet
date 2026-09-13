@@ -15,15 +15,41 @@ import { defineOp, OpError } from "./registry.js";
 import { checkIfVersion } from "./resolve.js";
 import { BatchIdOut, BlockId, IdempotencyKey, IfVersion } from "./schemas.js";
 
-/** A first line that is already exactly one `[[link]]` names that page, not "[[link]]". */
-const SOLE_LINK_RE = /^\[\[([^[\]|]+)\]\]$/;
+/** A first line that is already exactly one `[[link]]` (or `[[link|label]]`) names that page. */
+const SOLE_LINK_RE = /^\[\[([^[\]|]+)(?:\|[^[\]]*)?\]\]$/;
+/** A Markdown heading marker at the start of the line: `#` to `######`, then space or the end. */
+const HEADING_RE = /^(#{1,6})(?:\s+|$)/;
+/** An inline `[[Page]]` or `[[Page|label]]`. */
+const INLINE_LINK_RE = /\[\[([^[\]|]+)(?:\|([^[\]]*))?\]\]/g;
+
+/**
+ * The page name a block's first line stands for, and the heading marker that stays on the block
+ * (B-254). The raw line used to be the name, so `## Plánování…` made a page called "## Plánování…"
+ * beside the existing "Plánování…", and `[[Alex]] by chtěl…` left the block as
+ * `[[[[Alex]] by chtěl…]]`. The name is what the line shows: no heading marker (it is the block's
+ * formatting, so it stays on the link block and the outline keeps its heading), and inline links
+ * reduced to their text — the label where there is one, since that is what was on screen.
+ */
+export function pageNameFromFirstLine(firstLine: string): { name: string; headingPrefix: string } {
+  const line = firstLine.trim();
+  const heading = HEADING_RE.exec(line);
+  const headingPrefix = heading ? `${heading[1]} ` : "";
+  const text = heading ? line.slice(heading[0].length).trim() : line;
+  const sole = SOLE_LINK_RE.exec(text);
+  const name = sole
+    ? (sole[1] as string)
+    : text.replace(INLINE_LINK_RE, (_m, page: string, label?: string) => label || page);
+  return { name: name.trim().replace(/\s+/g, " "), headingPrefix };
+}
 
 export const blockToPage = defineOp({
   name: "block.to_page",
   summary: "Turn a block into a page",
   description:
     "Turns a block into a page: the block's first line becomes the page name (or pass name to " +
-    "choose one; a first line that is already a single [[link]] names that page), every block " +
+    "choose one; a heading's # marker is not part of the name and stays on the block, inline " +
+    "[[links]] count as their text, and a first line that is a single [[link]] names that page), " +
+    "every block " +
     "nested under it becomes a top-level block of that page in the same order and nesting " +
     "(appended after any existing blocks if the page already exists), and the block itself is " +
     "replaced by a [[link]] to the page - keeping its id, task marker, priority and properties, " +
@@ -72,11 +98,9 @@ export const blockToPage = defineOp({
       checkIfVersion(row.updated_at, input.if_version);
 
       const lines = row.content.split("\n");
-      const firstLine = (lines[0] ?? "").trim();
       const rest = lines.slice(1).join("\n").trim();
-      const soleLink = SOLE_LINK_RE.exec(firstLine);
-      const rawName = input.name ?? (soleLink ? (soleLink[1] as string) : firstLine);
-      const name = rawName.trim().replace(/\s+/g, " ");
+      const fromLine = pageNameFromFirstLine(lines[0] ?? "");
+      const name = input.name?.trim().replace(/\s+/g, " ") ?? fromLine.name;
       if (name === "") {
         throw new OpError(
           "invalid",
@@ -117,7 +141,7 @@ export const blockToPage = defineOp({
         moved += place.length;
         ops.push(...place);
       });
-      const link = `[[${target.page.name}]]`;
+      const link = `${fromLine.headingPrefix}[[${target.page.name}]]`;
       if (row.content !== link)
         ops.push(ctx.mintOp(input.id, { kind: "block.text", content: link }));
 

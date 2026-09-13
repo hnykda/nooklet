@@ -1832,8 +1832,9 @@ M7's "turn block into page" (research/13 §4.2 item 3; ADR 020), behind the bull
 already `[[Name]]`, resolves that page, has no children left to move, and changes nothing.
 
 **Description**: "Turns a block into a page: the block's first line becomes the page name (or
-pass `name` to choose one; a first line that is already a single `[[link]]` names that page),
-every block nested under it becomes a top-level block of that page in the same order and nesting
+pass `name` to choose one; a heading's `#` marker is not part of the name and stays on the block,
+inline `[[links]]` count as their text, and a first line that is a single `[[link]]` names that
+page — B-254), every block nested under it becomes a top-level block of that page in the same order and nesting
 (appended after any existing blocks if the page already exists), and the block itself is replaced
 by a `[[link]]` to the page — keeping its id, task marker, priority and properties, so references
 to it still work. Continuation lines under the first line become the page's first block. The page
