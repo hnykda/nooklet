@@ -78,6 +78,18 @@ Measured with a throwaway Playwright spec on `m9/clipboard-sync` (Backspace: sto
 title unchanged; Meta+x: the same). Only a pointerdown while EDITING ends the session
 (`BlockTree.tsx`'s capture-phase listener); a standing selection has no equivalent.
 
+Not fixed on this branch — every candidate touches how the whole command system decides what a
+key means, and each has a cost that needs a decision:
+
+- End a standing selection on a pointerdown outside the outliner (as editing already ends): covers
+  the click into the title, not keyboard focus moving there (Tab), and a dialog opened FROM the
+  selection (Move to page…) must keep it.
+- Report `blockSelected: false` while a text input outside the outliner has focus: also hides the
+  selection commands from the palette, whose own input has focus when it asks.
+- Have `KeyboardDispatch` leave keys alone whose target is an `input`/`textarea`/contenteditable
+  outside the outliner: the most general, in `app/CommandLayer.tsx`, and needs checking against
+  every command that is meant to work from such a field.
+
 ### B-247 (existing)
 
 **Measured 2026-09-13 (clipboard-sync)** with `tools/probes/replica-busy-window.mjs` against a copy
@@ -128,6 +140,11 @@ it), `db/worker-core.test.ts` "applies and queues ops the replica never saw, and
 already recorded". Chromium only: WebKit/WKWebView and Capacitor are unverified (proposal §4). Not
 covered: a renderer crash inside the editor's 500 ms text debounce, where no `pagehide` runs.
 
+Re-measured on the real-graph copy with the fixed build: reloads 0, 100, 300, 700 and 1,500 ms
+after typing all kept the text in the replica AND on the server, without a further edit (before:
+100 and 300 ms lost it, 0 and 700 ms left it unpushed). `pnpm nooklet verify` on that copy
+afterwards: OK, 20,466 ops replayed, rebuild matches live state.
+
 ---
 
 ### B-301 · An edit written just before a reload never reaches the server until something else is edited
@@ -156,3 +173,15 @@ session as soon as it connects" and "pushes again when live sync reconnects afte
 
 ---
 
+### B-302 · Typing into a mid-sized page keeps the DB worker busy for most of a second at a time
+
+**Status:** needs-repro (measured on a loaded machine) · **Severity:** medium (every write waits
+behind it to become durable — B-247's window — and every read the UI makes waits too) · **Found:**
+2026-09-13, clipboard-sync, `tools/probes/replica-busy-window.mjs` · **Test:** —
+
+On a copy of the real graph, typing ` probe typing words` (60 ms between keys) into the first block
+of `Megapage` (201 blocks) and waiting 1.5 s: the worker's event loop was blocked in stretches of
+127 ms (1 run), then 250–1,602 ms adding up to 3,175 ms and 2,334 ms (2 runs) — load average between
+20 and 70 from other agents at the time, so how much of that is this machine is unknown. Not
+investigated: which queries the text flushes trigger (each `applyLocal` fires a change event that
+page views, references and the sync status re-query on).

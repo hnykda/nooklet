@@ -46,20 +46,20 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
   (`--repeat-each` is not valid for editing/selection: fixed page names and today's journal carry
   state between repeats.)
 
+- Real-graph check: probe re-run on the fixed build — nothing lost or unpushed at any delay;
+  `nooklet verify` OK (20,466 ops). Probe server stopped. B-300 left unfixed with three candidate
+  fixes written into its entry (each changes how keys resolve app-wide — owner/coordinator call).
+  Logged B-302 (typing on a 201-block page blocks the worker 0.1–1.6 s per stretch, loaded
+  machine, needs-repro).
+
 ## 2. In flight
 
 (nothing)
 
 ## 3. Next steps
 
-1. `pnpm nooklet verify --data <scratch>/graph` (touched sync), and rerun
-   `tools/probes/replica-busy-window.mjs` against the fixed build (expect nothing lost locally).
-2. B-300 if time allows: end a standing selection on a pointerdown outside the outliner (same
-   exclusions as the editing listener); probe spec kept in scratch
-   (`zz-probe-selection-input.spec.ts`) → turn into a regression test.
-3. E2E: selection, editing, a-fresh-journal, reload-durability, autocomplete-busy-replica,
-   journal-draft-sync, remote-device, connectivity, storage, history, redo; then the full suite
-   (a-fresh-journal now deterministically leaves 2 blocks in today's journal).
+1. Full e2e suite on port 6402 (a-fresh-journal now deterministically leaves 2 blocks in today's
+   journal; the unapplied-ops copy runs on every write). Record counts here and in the final report.
 
 ## 4. Decisions
 
