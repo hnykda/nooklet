@@ -102,6 +102,16 @@ the rejection with a `beforeWrite` hook that points one move at a missing page, 
 `op` and `changes` row counts are unchanged. All four tests fail without the fix. mcp-tools.md
 §4.3.25–27 errors updated.
 
+**Still open, found while fixing (same root cause as the trigger):** an ordinary page named like an
+ISO date is unreachable by that name over the wire. `resolvePageRef` step 1 routes a wire date to
+`DataApi.pages.journal`, which looks for a journal row only: `page.read {page: "2026-09-07"}` → 404,
+and `page.append` → **500** `journal: failed to read back created page`, because its journal
+`page.create` is rejected as a key collision. Probed with a throwaway test on this branch; not
+fixed (the refactor ops now look the page up by stored key, the read/append door is
+`ops/resolve.ts` and `DataApi.pages.journal`, shared by many ops). A fix would try the stored key
+before minting, as `resolveOrMintPage` now does, and decide whether a date-named ordinary page
+should shadow the journal day or be reported as a conflict.
+
 ---
 
 ### B-90 (existing)

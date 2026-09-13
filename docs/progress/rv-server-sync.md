@@ -28,7 +28,7 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 | F7 query `ref` prefilter drops property-only refs | low | B-124 | fixed b035d86 |
 | F8 recordChanges O(n²) | low | note under B-85 (existing) | fixed 33b4797; no unit test, probe |
 | F9 DataApi deletes: one timestamp per op | low | B-121 | fixed 0f404cc |
-| F10 asset GC ignores history snapshots | low | B-91 (existing) | fixed (see Done); policy flagged |
+| F10 asset GC ignores history snapshots | low | B-91 (existing) | fixed 5a8a440; policy flagged |
 | (found) cross-page move of a big subtree takes ~23 s: reindex walks unindexed | — | note under B-85 (existing) | fixed df6b6fc |
 
 ## Done
@@ -72,18 +72,26 @@ re-pointed at `da85cfb` before any work, as the brief requires.
   subtree move 23 s → 0.46 s. Server 540/540; verify OK.
 - F9 / B-121 — `0f404cc`: one `now` per `DataApi.pages.delete` / `blocks.delete`. Tests
   `data-api-delete-instant.test.ts` (2, fail before).
-- F10 / B-91 follow-up — (this commit): asset GC keeps assets referenced by page/block images in
+- F10 / B-91 follow-up — `5a8a440`: asset GC keeps assets referenced by page/block images in
   `changes` (`keptByHistoryOnly`); ADR 022 §5 amended with the cost (GC now collects only uploads
   no write referenced) and the rejected alternatives. Policy decision flagged for the owner.
-  (The B-91 inbox entry had been dropped by the renumbering rewrite in 6e1281f; restored here.)
+  (The B-91 inbox entry had been dropped by the renumbering rewrite in 6e1281f; restored there.)
+- e2e (`NOOKLET_E2E_PORT=6470`, chromium): trash, refactor, history, remote-device 18/18; editing,
+  query, references, context-menu, selection 49 passed + 1 pre-existing fixme skipped.
+- `pnpm -r test` at 5a8a440: core 336, plugin-api 17, server 544, web 684 — 1,581 passed.
+- Found in passing, logged under B-122 (open): an ordinary page named like an ISO date is
+  unreachable by name (`page.read` 404, `page.append` 500).
+- Review record `docs/review/2026-09-13-m7-rv-server-sync.md` — the last commit.
 
 ## In flight
 
-Nothing uncommitted beyond F10 (this commit). e2e and the review doc are next.
+Nothing. All ten findings are committed; the review record is the final commit.
 
 ## Next steps, in order
 
-e2e (trash, refactor, history, remote-device), then the review doc.
+For the coordinator, not this branch: merge `docs/bugs-inbox/rv-server-sync.md` into `docs/BUGS.md`
+(consider giving the B-85 note its own number); decide the ADR 022 §5 asset policy (F10); the
+date-named-page reachability bug under B-122 is open.
 
 ## How to resume
 
