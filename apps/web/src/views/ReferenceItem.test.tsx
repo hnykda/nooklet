@@ -7,7 +7,10 @@
 import { cleanup, fireEvent, render } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../data/block-ref-cache.js", () => ({ lookupBlockText: () => undefined }));
+vi.mock("../data/block-ref-cache.js", () => ({
+  lookupBlockText: () => undefined,
+  resolveBlockRef: () => undefined,
+}));
 
 import type { BlockTreeNode } from "../data/types.js";
 import { ReferenceBreadcrumb, ReferenceItem } from "./ReferenceItem.js";
