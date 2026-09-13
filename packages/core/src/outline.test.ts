@@ -374,3 +374,66 @@ describe("serializeOutline", () => {
     ).toBe("-\n");
   });
 });
+
+// Verification of B-310/B-390 (core-ops-verify): every serializer branch (OUT-14 head-and-id line,
+// B-151 placements, the plain line 1) against every head a block can carry, in both id modes, next
+// to a child and a following sibling. The two fixes each changed which line 1 the parser skips; a
+// matrix is what shows no other combination lost its marker, id, properties or text on the way.
+describe("serialize -> parse is lossless across heads, ids, properties and content shapes", () => {
+  const contents = [
+    "",
+    "text",
+    "```x``` inline",
+    "\nsecond line after an empty line 1",
+    "text\n```js\n- in a fence\nk:: in a fence\n```",
+    "```js\n- in a fence\nk:: in a fence\n```",
+    "~~~\ncode\n~~~\nafter the fence",
+    "```\nnever closes",
+  ];
+  const cases: Array<{ name: string; node: OutlineNode }> = [];
+  for (const content of contents)
+    for (const marker of [null, "TODO", "DONE"] as const)
+      for (const priority of [null, "B"] as const)
+        for (const properties of [{}, { k: "v", other: "w" }])
+          for (const collapsed of [false, true])
+            cases.push({
+              name: JSON.stringify({ content, marker, priority, properties, collapsed }),
+              node: { content, marker, priority, properties, collapsed, children: [] },
+            });
+
+  const withIds = (n: OutlineNode, ids: boolean, k: number): OutlineNode => {
+    const out: OutlineNode = {
+      ...n,
+      children: n.children.map((c, i) => withIds(c, ids, k * 7 + i)),
+    };
+    if (ids) out.id = `1k7f3q9xz2h${String(100 + k).slice(-3)}`;
+    return out;
+  };
+
+  for (const ids of [true, false]) {
+    it(`round-trips ${cases.length} blocks ${ids ? "with" : "without"} ids`, () => {
+      const failures: string[] = [];
+      cases.forEach(({ name, node }, k) => {
+        // A fence that never closes swallows every later line of the file, so that block goes last
+        // and childless — the only place such a block can round-trip at all.
+        const unclosed = node.content.startsWith("```\n");
+        const child: OutlineNode = { ...node, content: "child", marker: null, children: [] };
+        const block: OutlineNode = unclosed ? node : { ...node, children: [child] };
+        const blocks = unclosed
+          ? [{ ...child, content: "before" }, block]
+          : [{ ...child, content: "", properties: {} }, block, { ...child, content: "next" }];
+        for (const properties of [{}, { title: "Page" }]) {
+          const page: ParsedPage = {
+            properties,
+            blocks: blocks.map((b, i) => withIds(b, ids, k * 10 + i)),
+          };
+          const text = serializeOutline(page, ids ? {} : { ids: "none" });
+          if (JSON.stringify(parseOutline(text)) !== JSON.stringify(page)) {
+            failures.push(`${name}\n${text}`);
+          }
+        }
+      });
+      expect(failures).toEqual([]);
+    });
+  }
+});

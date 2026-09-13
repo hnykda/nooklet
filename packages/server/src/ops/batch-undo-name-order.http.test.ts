@@ -99,4 +99,45 @@ describe("batch.undo frees a page name before it claims it (B-370)", () => {
     expect(ops()).toBe(before);
     expect(livePages()).toEqual({ Left: ["r"], Right: ["l"] });
   });
+  // Verification (core-ops-verify): the order is a walk over name claims, so it has to follow a
+  // chain further than one step, and a page the batch CREATED can be the one holding the name.
+  it("undoes a three-step chain touched in the order that frees each name first", async () => {
+    await ok("page.create", { name: "Chain A", markdown: "- a" });
+    await ok("page.create", { name: "Chain B", markdown: "- b" });
+    await ok("page.create", { name: "Chain C", markdown: "- c" });
+    const batch = await ok("batch", {
+      ops: [
+        { op: "page.update", page: "Chain C", new_name: "Chain D", keep_alias: false },
+        { op: "page.update", page: "Chain B", new_name: "Chain C", keep_alias: false },
+        { op: "page.update", page: "Chain A", new_name: "Chain B", keep_alias: false },
+      ],
+    });
+    expect(livePages()).toEqual({ "Chain B": ["a"], "Chain C": ["b"], "Chain D": ["c"] });
+
+    const undo = await op("batch.undo", { batch_id: batch.batch_id });
+    expect(undo.status).toBe(200);
+    expect(livePages()).toEqual({ "Chain A": ["a"], "Chain B": ["b"], "Chain C": ["c"] });
+    const redo = await op("batch.undo", { batch_id: undo.json.batch_id });
+    expect(redo.status).toBe(200);
+    expect(livePages()).toEqual({ "Chain B": ["a"], "Chain C": ["b"], "Chain D": ["c"] });
+  });
+
+  it("undoes a new page renamed into the name another page gave up in the same batch", async () => {
+    await ok("page.create", { name: "Moved", markdown: "- first" });
+    const batch = await ok("batch", {
+      ops: [
+        { op: "page.create", name: "Moved Draft", markdown: "- second" },
+        { op: "page.update", page: "Moved", new_name: "Moved Away", keep_alias: false },
+        { op: "page.update", page: "Moved Draft", new_name: "Moved", keep_alias: false },
+      ],
+    });
+    expect(livePages()).toEqual({ Moved: ["second"], "Moved Away": ["first"] });
+
+    const undo = await op("batch.undo", { batch_id: batch.batch_id });
+    expect(undo.status).toBe(200);
+    expect(livePages()).toEqual({ Moved: ["first"] });
+    const redo = await op("batch.undo", { batch_id: undo.json.batch_id });
+    expect(redo.status).toBe(200);
+    expect(livePages()).toEqual({ Moved: ["second"], "Moved Away": ["first"] });
+  });
 });
