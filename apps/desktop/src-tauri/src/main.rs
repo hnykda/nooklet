@@ -23,6 +23,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use tauri::webview::NewWindowResponse;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 /// Where the app serves from. Matches the CLI's default, so an already-running `nooklet serve`
@@ -136,6 +137,146 @@ fn shell_script() -> String {
     )
 }
 
+const REPO: &str = "https://github.com/hnykda/nooklet";
+
+/// Menu item ids. The ones the CLIENT answers travel to it as a DOM event
+/// (`apps/web/src/platform/desktop-shell.ts` names the same strings); the rest the shell handles.
+const MENU_SETTINGS: &str = "settings";
+const MENU_SHORTCUTS: &str = "shortcuts";
+const MENU_RELOAD: &str = "reload";
+const MENU_DOCS: &str = "docs";
+const MENU_REPORT_BUG: &str = "report-bug";
+
+/// The macOS menu bar (B-533). Tauri's default had nothing that reaches the app: no Settings…, no
+/// Reload, an empty Help. A custom menu REPLACES that default, so everything else in it is carried
+/// over item for item — above all Edit: on macOS those items are how Cmd+C/V/X/A/Z reach a text
+/// field in a webview. The page should still see every key first — WebKit's
+/// `WebViewImpl::performKeyEquivalent` hands a key equivalent to the page and resends only what it
+/// leaves unhandled to the menu — so the client's own Cmd+Z undo and Cmd+, are not shadowed, and a
+/// Cmd+, that reaches both only opens Settings twice (opening is idempotent). That ordering is
+/// read from WebKit, not observed in this app: nothing here can send it keys (B-533).
+#[cfg(target_os = "macos")]
+fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
+    use tauri::menu::{
+        AboutMetadata, Menu, MenuItem, PredefinedMenuItem as P, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
+    };
+
+    let pkg = app.package_info();
+    let about = AboutMetadata {
+        name: Some(pkg.name.clone()),
+        version: Some(pkg.version.to_string()),
+        ..Default::default()
+    };
+    let item = |id: &str, text: &str, keys: Option<&str>| MenuItem::with_id(app, id, text, true, keys);
+
+    let app_menu = Submenu::with_items(
+        app,
+        pkg.name.clone(),
+        true,
+        &[
+            &P::about(app, None, Some(about))?,
+            &P::separator(app)?,
+            &item(MENU_SETTINGS, "Settings…", Some("CmdOrCtrl+,"))?,
+            &P::separator(app)?,
+            &P::services(app, None)?,
+            &P::separator(app)?,
+            &P::hide(app, None)?,
+            &P::hide_others(app, None)?,
+            &P::separator(app)?,
+            &P::quit(app, None)?,
+        ],
+    )?;
+    let file = Submenu::with_items(app, "File", true, &[&P::close_window(app, None)?])?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &P::undo(app, None)?,
+            &P::redo(app, None)?,
+            &P::separator(app)?,
+            &P::cut(app, None)?,
+            &P::copy(app, None)?,
+            &P::paste(app, None)?,
+            &P::select_all(app, None)?,
+        ],
+    )?;
+    let view = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &item(MENU_RELOAD, "Reload", Some("CmdOrCtrl+R"))?,
+            &P::separator(app)?,
+            &P::fullscreen(app, None)?,
+        ],
+    )?;
+    let window = Submenu::with_id_and_items(
+        app,
+        WINDOW_SUBMENU_ID,
+        "Window",
+        true,
+        &[&P::minimize(app, None)?, &P::maximize(app, None)?, &P::separator(app)?, &P::close_window(app, None)?],
+    )?;
+    let help = Submenu::with_id_and_items(
+        app,
+        HELP_SUBMENU_ID,
+        "Help",
+        true,
+        &[
+            &item(MENU_SHORTCUTS, "Keyboard Shortcuts", None)?,
+            &P::separator(app)?,
+            &item(MENU_DOCS, "nooklet Documentation", None)?,
+            &item(MENU_REPORT_BUG, "Report a Bug…", None)?,
+        ],
+    )?;
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window, &help])
+}
+
+fn on_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    match id {
+        // The client owns these; a page that is not the client (the launcher) just ignores it.
+        MENU_SETTINGS | MENU_SHORTCUTS => {
+            let _ = window.eval(format!(
+                "window.dispatchEvent(new CustomEvent(\"nooklet:desktop-menu\",{{detail:{id:?}}}))"
+            ));
+        }
+        MENU_RELOAD => {
+            let _ = window.reload();
+        }
+        MENU_DOCS => open_in_browser(&format!("{REPO}#readme")),
+        MENU_REPORT_BUG => open_in_browser(&format!("{REPO}/issues/new?template=bug_report.yml")),
+        _ => {}
+    }
+}
+
+/// Hands a link to the system browser. Only web and mail links: `open` asks nothing and would just
+/// as happily run a `file://` `.command` or mount an `smb://` share, and a link in a note — text an
+/// agent or another device can write — is not a reason to. That also leaves app links
+/// (`zotero://…`, which the client renders on purpose) dead here; widening it is an open owner
+/// decision in B-534, not an oversight.
+fn open_in_browser(url: &str) {
+    let Ok(parsed) = tauri::Url::parse(url) else {
+        return;
+    };
+    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
+        eprintln!("nooklet: not opening {url}: only http, https and mailto links leave the app");
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    let spawned = Command::new("open").arg(parsed.as_str()).spawn();
+    #[cfg(target_os = "windows")]
+    let spawned = Command::new("explorer").arg(parsed.as_str()).spawn();
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let spawned = Command::new("xdg-open").arg(parsed.as_str()).spawn();
+    if let Err(err) = spawned {
+        eprintln!("nooklet: could not open {url}: {err}");
+    }
+}
+
 fn wait_until_ready() -> bool {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     while Instant::now() < deadline {
@@ -148,7 +289,11 @@ fn wait_until_ready() -> bool {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(app_menu);
+    builder
+        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
         .manage(ServerProcess(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
@@ -176,6 +321,14 @@ fn main() {
                 .title_bar_style(tauri::TitleBarStyle::Transparent)
                 .hidden_title(true)
                 .initialization_script(shell_script())
+                // A link that asks for a new window — every `target="_blank"` link in a note, the
+                // help menu's, `window.open` — did NOTHING: WKWebView asks the UI delegate for a
+                // window, and wry answers "none" unless a handler is set (B-534). The system
+                // browser is where those links belong; the app keeps its one window.
+                .on_new_window(|url, _features| {
+                    open_in_browser(url.as_str());
+                    NewWindowResponse::Deny
+                })
                 .build()?;
 
             std::thread::spawn(move || {

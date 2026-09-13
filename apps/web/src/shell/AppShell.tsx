@@ -14,6 +14,7 @@ import { useSyncStatus } from "../data/store.js";
 import { storageInfo } from "../db/client.js";
 // ADR 015 §2.6: the persistent live-UI-control consent badge — see ../live/ConsentBadge.tsx.
 import { ConsentBadge } from "../live/index.js";
+import { listenToDesktopMenu } from "../platform/desktop-shell.js";
 import { platform } from "../platform/index.js";
 import { PluginStatusItems } from "../plugins/StatusItems.js";
 import {
@@ -22,8 +23,13 @@ import {
   diagnosticsOpen,
   openDiagnostics,
 } from "../views/DiagnosticsPanel.js";
-import { closeSettings, SettingsPanel, settingsOpen } from "../views/SettingsPanel.js";
-import { HelpMenu } from "./HelpMenu.js";
+import {
+  closeSettings,
+  openSettings,
+  SettingsPanel,
+  settingsOpen,
+} from "../views/SettingsPanel.js";
+import { HelpMenu, openShortcuts } from "./HelpMenu.js";
 import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
 import "../styles/shell.css";
@@ -63,6 +69,8 @@ export function AppShell(props: { children?: JSX.Element }) {
   onMount(() => {
     const handle = platform.startKeyboardWatcher();
     onCleanup(() => handle.stop());
+    // The desktop app's menu bar: Settings… and Help → Keyboard Shortcuts (B-533). No-op in a browser.
+    onCleanup(listenToDesktopMenu({ settings: openSettings, shortcuts: openShortcuts }));
   });
 
   return (

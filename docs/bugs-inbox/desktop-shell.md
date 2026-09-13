@@ -124,8 +124,10 @@ covered for browsers by `reload-durability.spec.ts`, not re-run in the app).
 ---
 
 ### B-533 · The desktop app's menu bar has no Settings…, no Reload and an empty Help menu
-**Status:** open (fix in progress) · **Severity:** medium · **Found:** 2026-09-13, desktop-shell ·
-**Test:** see the fix
+**Status:** fixed (the client half tested; the native half built and launched, not clicked) ·
+**Severity:** medium · **Found:** 2026-09-13, desktop-shell · **Test:**
+`e2e/tests/desktop-shell.spec.ts` › "the native menu's Settings… and Keyboard Shortcuts open the
+client's own panels (B-533)" (fails on the old code: nothing listens), `apps/web/src/platform/desktop-shell.test.ts` (5)
 
 `main.rs` sets no menu, so Tauri installs its macOS default (`tauri-2.11.5/src/menu/menu.rs`,
 `Menu::default`): *nooklet* (About, Services, Hide, Hide Others, Quit), *File* (Close Window),
@@ -140,11 +142,27 @@ on macOS those items are how Cmd+C/V/X/A/Z reach a text field in a webview (Taur
 default for that reason). Unverified here: that the keys work in the devtest window, before or
 after — no Accessibility permission to send them.
 
+**Fix.** `main.rs#app_menu` (macOS only — Tauri adds no default menu elsewhere, and neither do we):
+Tauri's default item for item, plus *nooklet → Settings…* (Cmd+,), *View → Reload* (Cmd+R) above
+Enter Full Screen, and *Help → Keyboard Shortcuts / nooklet Documentation / Report a Bug…*.
+`on_menu` handles Reload (`WebviewWindow::reload`) and the two links (system browser, B-534) itself;
+Settings… and Keyboard Shortcuts are the client's, so it evaluates
+`window.dispatchEvent(new CustomEvent("nooklet:desktop-menu", {detail}))` in the page, and
+`apps/web/src/platform/desktop-shell.ts#listenToDesktopMenu` (wired in `AppShell`) opens
+`openSettings()` / `HelpMenu`'s now module-level `openShortcuts()`. It listens only when the shell's
+`__NOOKLET_DESKTOP__` flag is present. The client binds nothing to Cmd+R, so Reload does not shadow
+a command; Cmd+, is bound in both, and by WebKit's `WebViewImpl::performKeyEquivalent` the page
+sees it first — opening Settings is idempotent either way.
+
+Verified: the menu builds (the devtest app launches with it; a failing `app_menu` aborts the Tauri
+build at startup) and the client half end to end in Chromium. **Not** verified: choosing the items
+in the real menu bar, or any key reaching the WKWebView — nothing here can click or type into it.
+
 ---
 
 ### B-534 · Links that open a new window do nothing in the desktop app — every external link in a note, and Help's Documentation / Report a bug
-**Status:** open (fix in progress) · **Severity:** high · **Found:** 2026-09-13, desktop-shell
-(reading Tauri's source for the Help menu) · **Test:** see the fix
+**Status:** believed fixed (no test can click in the app here) · **Severity:** high · **Found:**
+2026-09-13, desktop-shell (reading Tauri's source for the Help menu) · **Test:** none — see below
 
 Note links render as `<a target="_blank">` (`editor/render/tokens.tsx`), Alt+Enter on a link calls
 `window.open(url, "_blank")` (`app/hosts.ts`), and the help menu's Documentation / Report a bug /
@@ -155,5 +173,21 @@ new-window handler (`WebviewWindowBuilder::on_new_window`). `main.rs` sets none.
 
 Verified by reading the source of the exact versions in `Cargo.lock` (tauri 2.11.5, wry 0.55.1),
 NOT by clicking a link in the app: this environment cannot send clicks to it (see the top).
+
+**Fix.** `WebviewWindowBuilder::on_new_window` in `main.rs`: hand the URL to the system browser
+(`open` on macOS, `xdg-open` / `explorer` elsewhere) and deny the in-app window. Only `http`, `https`
+and `mailto` leave the app — `open file:///…/Some.app` launches a program, and a link in a note is
+not a reason to run one; anything else is logged and dropped. The Help menu's Documentation /
+Report a Bug items use the same function.
+
+**Owner decision needed:** app links (`zotero://select/…`, `obsidian://`, `things:`) stay dead in
+the desktop app. `editor/render/safe-href.ts` deliberately lets them render (B-268: people link to
+apps, and a browser hands them to the OS after its own prompt), but `open` has no prompt — letting
+any scheme through would open `file://` (a `.command` file runs in Terminal), `smb://`, `ssh://` the
+same way, from text an agent or another device can write. Options: keep the allowlist (current); add
+named app schemes to it; or ask with a native confirmation before any other scheme.
+
+Believed fixed, not tested: exercising it needs a click inside the WKWebView (or a key to Alt+Enter),
+which this environment cannot send. Worth a thirty-second manual check: click any web link in a note.
 
 ---

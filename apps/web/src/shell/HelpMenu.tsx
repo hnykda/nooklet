@@ -40,6 +40,13 @@ const REPO = "https://github.com/hnykda/nooklet";
  * which build it came from without anyone having to remember. */
 const APP_VERSION: string = __APP_VERSION__;
 
+/** Module-level, like `openSettings`, so the desktop app's Help → Keyboard Shortcuts menu item
+ * (`../platform/desktop-shell.ts`) can raise the same dialog the `?` menu does. */
+const [showKeys, setShowKeys] = createSignal(false);
+export function openShortcuts(): void {
+  setShowKeys(true);
+}
+
 interface Shortcut {
   keys: string;
   title: string;
@@ -49,7 +56,6 @@ interface Shortcut {
 export function HelpMenu(): JSX.Element {
   const { registry, bindings } = useCommands();
   const [open, setOpen] = createSignal(false);
-  const [showKeys, setShowKeys] = createSignal(false);
 
   const shortcuts = createMemo<Shortcut[]>(() => {
     const byCommand = new Map<string, string>();

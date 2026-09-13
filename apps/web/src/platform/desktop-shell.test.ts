@@ -1,0 +1,67 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DESKTOP_MENU_EVENT, desktopShell, listenToDesktopMenu } from "./desktop-shell.js";
+
+type ShellWindow = Window & { __NOOKLET_DESKTOP__?: unknown };
+
+/** What `shell_script` in apps/desktop/src-tauri/src/main.rs defines, byte for byte in shape. */
+function injectShell(value: unknown): void {
+  Object.defineProperty(window, "__NOOKLET_DESKTOP__", { value, configurable: true });
+}
+
+function menu(detail: unknown): void {
+  window.dispatchEvent(new CustomEvent(DESKTOP_MENU_EVENT, { detail }));
+}
+
+afterEach(() => {
+  delete (window as ShellWindow).__NOOKLET_DESKTOP__;
+});
+
+describe("desktopShell", () => {
+  it("is null in a browser", () => {
+    expect(desktopShell(window)).toBeNull();
+  });
+
+  it("reads the flag the Tauri shell injects", () => {
+    injectShell(Object.freeze({ platform: "macos", port: 6420 }));
+    expect(desktopShell(window)).toEqual({ platform: "macos", port: 6420 });
+  });
+
+  it("ignores a malformed flag rather than half-trusting it", () => {
+    injectShell({ platform: "macos" });
+    expect(desktopShell(window)).toBeNull();
+    injectShell("desktop");
+    expect(desktopShell(window)).toBeNull();
+  });
+});
+
+describe("listenToDesktopMenu (B-533)", () => {
+  it("routes Settings… and Keyboard Shortcuts from the native menu", () => {
+    injectShell({ platform: "macos", port: 6100 });
+    const settings = vi.fn();
+    const shortcuts = vi.fn();
+    const stop = listenToDesktopMenu({ settings, shortcuts }, window);
+
+    menu("settings");
+    expect(settings).toHaveBeenCalledTimes(1);
+    expect(shortcuts).not.toHaveBeenCalled();
+    menu("shortcuts");
+    expect(shortcuts).toHaveBeenCalledTimes(1);
+    // Items the shell handles itself (reload, docs, report-bug) and junk are not the client's.
+    menu("reload");
+    menu({ action: "settings" });
+    expect(settings).toHaveBeenCalledTimes(1);
+
+    stop();
+    menu("settings");
+    expect(settings).toHaveBeenCalledTimes(1);
+  });
+
+  it("listens to nothing outside the desktop shell", () => {
+    const settings = vi.fn();
+    const stop = listenToDesktopMenu({ settings, shortcuts: vi.fn() }, window);
+    menu("settings");
+    expect(settings).not.toHaveBeenCalled();
+    stop();
+  });
+});
