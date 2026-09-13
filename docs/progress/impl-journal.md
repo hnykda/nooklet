@@ -164,5 +164,22 @@ dated open tasks made by SQL, probes `probe1..5.mjs`). Port 6403.
 - Found and fixed: B-175 (web link in an agenda row opened the task), B-176 (every write rebuilt
   every agenda row, dropping keyboard focus), B-177 (a calendar pin equal to the new Today was
   rendered twice). Commits: `66b0fa3` (log), `d83610d` (B-177), `2b676b2` (B-175, B-176).
-- Next: rebuild, re-run the browser probes against the fixes, full web unit suite, e2e journal
-  specs + phone/focus/editing/query/tasks.
+- `97e00da` (B-176 follow-up): keyed rows alone still re-rendered every row's text on each write
+  (stress copy: ~22k DOM mutations over 8 edits, vs ~6k before); a by-value memo per entry brings
+  it to ~2.4-3.5k, rows 587/587 kept. Perf probe on the stress copy after all fixes: load median
+  183 ms, load-more 114 ms, 0 ms long tasks while editing.
+- Re-checked in the browser after the fixes: a web link in a row opens a new tab and the app stays
+  on /journals; Tab-focus on a row survives an API write; typing keeps all rows; the pinned day
+  disappears at midnight when it becomes Today.
+- `35e591a`, `a423286`: `e2e/tests/journal-midnight.spec.ts` (2 tests, fake clock at 23:59:45 then
+  fast-forward): Today's agenda and a `deadline:today` fence move to the new day. Both fail when
+  `day-clock.ts#check` stops moving the day. Seeds a DEADLINE because `query.spec.ts` counts every
+  open task scheduled for tomorrow (a scheduled seed broke it in a combined run).
+- `2f98421` (B-178): the B-174 spec shared its journal day with `graph.spec.ts` and failed in a full
+  run; now on its own day and its own block; still fails on `da85cfb`'s stream view.
+- Final: web unit 78 files / 718 tests; `pnpm -r typecheck` exit 0; biome clean on all 21 branch
+  files; full chromium e2e before B-178's fix: 294 passed, 2 failed (B-178, and `views.spec.ts:461`
+  = B-173), 2 skipped; after: a-fresh-journal, graph, journal-agenda, journal-midnight,
+  journal-stream-editing, journals, query, tasks, phone, focus — 76 passed.
+- Not done: `nooklet verify` (no op/sync/schema change); the query fence's own hit rows likely have
+  B-175 too (left open, logged).
