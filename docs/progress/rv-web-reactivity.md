@@ -24,16 +24,20 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   `HistoryView.tsx`; `views/TrashView.test.tsx`, `views/HistoryView.test.tsx` failed first (stuck
   on Loading…, unhandled rejection). e2e: review-reactivity (3) + trash + history — 13/13.
   Web unit 694/694.
+- F3 / B-131 (part) — `QueryFenceView.tsx` guarded `latest()`, `describeError`; new
+  `editor/render/QueryFenceView.test.tsx` (real resource, rejecting queryAs) failed first. e2e
+  query + render — 14/14 (no e2e for the failure itself: nothing found that makes the worker
+  query reject in a browser). Web unit 695/695.
 
 ## In flight
 
-- F3: `QueryFenceView.tsx` guarded `latest`.
+- F4: generation counter in `usePageHistory.loadMore`.
 
 ## Next steps, in order
 
 1. (done) F1.
 2. (done) F2.
-3. F3 — `QueryFenceView.tsx` guarded `latest`, `describeError`; render-seams test.
+3. (done) F3.
 4. F4 — generation counter in `usePageHistory.loadMore`; `data/history.test.ts`.
 5. F5 — `queries.ts` nested hits only when actually emitted; `queries.test.ts`.
 6. F6 — catch in Older changes; `HistoryView` test.

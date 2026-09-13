@@ -37,11 +37,14 @@ the fix; the `history.test.ts` case failed at the refetch-after-Trash assertion 
 ---
 
 ### B-131 · A failed load shows nothing: Trash and History stay on "Loading…", a query fence on "Running query…"
-**Status:** open (F2 fixed; F3, F6, F8 open) · **Severity:** medium · **Found:** 2026-09-13, web
+**Status:** open (F2, F3 fixed; F6, F8 open) · **Severity:** medium · **Found:** 2026-09-13, web
 reactivity review (F2, F3, F6, F8) · **Tests:** F2 — `e2e/tests/review-reactivity.spec.ts` "a
 failed trash load says so and Retry recovers, instead of Loading… forever (B-131)" and "a failed
 history load says so…"; `apps/web/src/views/TrashView.test.tsx`, `HistoryView.test.tsx` "shows the
-error with Retry instead of Loading…, and Retry recovers"
+error with Retry instead of Loading…, and Retry recovers". F3 —
+`apps/web/src/editor/render/QueryFenceView.test.tsx` 'says "Query failed" with the reason instead
+of "Running query…" forever' (unit only: no way found to make the worker's query reject in a real
+browser)
 
 Four paths where a failure never reaches the screen:
 
@@ -64,6 +67,12 @@ that returns `undefined` while the resource is errored: `TrashView`'s `list()`, 
 `usePageHistory`'s new `firstPage()` (which `batches`, `hasMore`, `loadMore` and HistoryView's
 `when`s read). The error lines render with `describeError`, so a server hint is not lost. The
 component tests failed first (stuck on "Loading…", unhandled "could not reach server").
+
+**Fixed 2026-09-13 — F3 (```query fence).** `QueryFenceView` reads `results.latest` through a guard
+that returns `undefined` while the resource is errored; "Running query…" shows only while there is
+no error, and "Query failed:" renders `describeError(results.error)` (no "Error: " prefix). The
+component test ran the real `useQueryResults` over a rejecting `queryAs` and failed first
+("Running query…", unhandled "worker gone").
 
 ---
 

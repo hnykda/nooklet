@@ -11,6 +11,7 @@
  */
 import { classifyBlockContent, parseQuery } from "@nooklet/core";
 import { createMemo, For, Show } from "solid-js";
+import { describeError } from "../../data/api-client.js";
 import { displayPageName } from "../../data/page-title.js";
 import {
   type QueryPageGroup,
@@ -144,6 +145,11 @@ export default function QueryFenceView(props: { code: string; ctx: RenderCtx }) 
     const p = parsed();
     return p.ok ? p.query : undefined;
   });
+  // `results.latest` re-throws while the resource is errored, exactly like calling it: an
+  // unguarded read in the head's `when` threw before "Query failed" could render, and the fence
+  // sat on "Running query…" forever (B-131). Every read goes through this.
+  const latest = (): QueryResults | undefined =>
+    results.error !== undefined ? undefined : results.latest;
   return (
     <div class="vr-query" data-lang="query">
       <Show
@@ -169,18 +175,23 @@ export default function QueryFenceView(props: { code: string; ctx: RenderCtx }) 
       >
         <div class="vr-query-head">
           <code class="vr-query-text">{props.code.trim()}</code>
-          <Show when={results.latest} fallback={<span class="vr-query-count">Running query…</span>}>
+          <Show
+            when={latest()}
+            fallback={
+              <Show when={results.error === undefined}>
+                <span class="vr-query-count">Running query…</span>
+              </Show>
+            }
+          >
             {(r) => <span class="vr-query-count">{describeCount(r())}</span>}
           </Show>
         </div>
-        <Show when={results.error}>
-          {(err) => (
-            <div class="vr-query-error" role="status">
-              <span class="vr-query-error-label">Query failed:</span> {String(err())}
-            </div>
-          )}
+        <Show when={results.error !== undefined}>
+          <div class="vr-query-error" role="status">
+            <span class="vr-query-error-label">Query failed:</span> {describeError(results.error)}
+          </div>
         </Show>
-        <Show when={results.latest}>
+        <Show when={latest()}>
           {(r) => (
             <Show
               when={r().groups.length > 0}
