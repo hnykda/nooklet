@@ -93,3 +93,33 @@ the previously frontmost app 1.5 s after each launch (`desktop-window give-back`
 Read this file, `git log --oneline 52e5d20..`, `docs/bugs-inbox/desktop-shell.md`. Rebuild the
 devtest app with `<scratch>/m11c/build-app.sh` (after `pnpm --filter @nooklet/desktop run sidecar`).
 Re-run the update proof: `tools/probes/desktop-sw-update.sh <old dist> OLD <new dist> NEW <out>`.
+
+## Verification pass (2026-09-13, second agent) — state: done
+
+Built a separate app from a COPY of `apps/desktop` wired with `tools/probes/desktop-harness/probe.rs`
+(`com.nooklet.desktop.devtest2`, `CARGO_TARGET_DIR=<scratch>/m11c/verify-target`, port 6421 proxy →
+6491 server, `NOOKLET_DATA=<scratch>/m11c/verify/data`, a fresh `sqlite3 .backup`). The harness posts
+NSEvents inside the app, so clicks, keys and menu choices were really performed. Launches waited for
+15 s of the owner's idleness and handed the keyboard straight back; the pasteboard was restored.
+
+Confirmed: B-531 (hit-tests and clicks, `shots/verify/v01…v06`), B-532 baseline (`update-A-baseline`),
+B-533 menu items and Cmd+, / Cmd+R / Edit keys in a textarea, B-534 links (`OPEN`/`REFUSED` log).
+
+Found and fixed (commits on this branch):
+- `611e00b` B-536 — Cmd/Ctrl+V into a block pasted nothing anywhere: the dispatcher matched
+  `edit.paste`'s informational row and cancelled the paste. `e2e/tests/keyboard-paste.spec.ts` (2),
+  dispatch unit test.
+- `8a76e44` B-537 — B-532's reload lost the race with WebKit's 1 s soft update whenever `/api/session`
+  was slow (`update-B-branch-slow-session`: OLD all session). Inline `controllerchange` listener in
+  `index.html`; `sw-update.spec.ts` B-537 test, `sw/takeover.test.ts` (4); `update-C-fix-slow-session`
+  reloads onto NEW at +1.1 s.
+- Logged only: B-538 (follower after a cross-document navigation in WKWebView; no user path).
+
+Unverified still: a real window drag (the window server ignores synthesized drags); Alt+Enter's
+`window.open`; the real `open` spawn. Merge: conflicts with `main` in `main.rs` and `AppShell.tsx`;
+main's launcher move makes B-530's tracked `apps/desktop/dist/` dead (see B-530).
+
+Tests on `8a76e44`: web unit 1,148 passed; `pnpm -r typecheck` clean; e2e chromium full suite in four
+chunks on 6497: 537 passed, 2 skipped, 3 failed — all three `editing.spec.ts` `openJournal` tests,
+B-453 (order-dependent helper, known on main), which pass 4/4 run alone. New tests fail without their
+fixes (keyboard-paste 2/2 fail, B-537 test fails with no reload in 20 s).

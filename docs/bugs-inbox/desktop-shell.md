@@ -12,6 +12,13 @@ entry. The window was only ever observed, never clicked: the process driving it 
 Accessibility permission, so synthetic clicks and keys are dropped (`tools/probes/desktop-window.swift`
 prints `accessibility trusted: false`). What that leaves unverified is said per entry.
 
+**Verification pass (same day, a second agent).** A separately built devtest app
+(`com.nooklet.desktop.devtest2`, port 6421, its own `sqlite3 .backup` copy) wired with
+`tools/probes/desktop-harness/probe.rs`, which posts `NSEvent`s through `NSApp` from INSIDE the app —
+AppKit's own hit-testing, WebKit's key handling and the menu bar's key equivalents, with no
+Accessibility permission needed. So clicks, keys and menu choices below marked "verified in the app"
+were actually performed. Screenshots: `shots/verify/` in the m11c scratchpad.
+
 ---
 
 ### B-530 · The desktop launcher page is not in git, so a clean checkout cannot build the desktop app
@@ -33,6 +40,11 @@ The release workflow (`.github/workflows/release.yml`) checks out fresh, so it c
 the app either. Fix: `!apps/desktop/dist/` after the desktop lines in `.gitignore`, and the page
 committed as it was in the main checkout (plus reading the port from the shell, below).
 
+**Merge note (verification pass):** `main` has since moved the launcher to `apps/desktop/launcher/`
+(`m11/delete-launcher`, `frontendDist` changed), so on merge this tracked `dist/index.html` and the
+`.gitignore` negation become dead and should be dropped, carrying the `__NOOKLET_DESKTOP__.port`
+read into the new launcher. `main.rs` and `AppShell.tsx` also conflict (`git merge-tree`).
+
 ---
 
 ### B-531 · Hypothesis refuted: the traffic lights do NOT cover Toggle sidebar / Back / Forward
@@ -52,8 +64,17 @@ size the current client offers Toggle sidebar → Graph / Pages, and `?` → Set
 shortcuts, without a shortcut. The owner's app builds from the same `main.rs`, so it has the same
 geometry. What the owner saw is B-532.
 
-Unverified: that those controls respond to a real click in WKWebView (see the note at the top).
-Their boxes are not covered by anything native, which is what the hypothesis was about.
+~~Unverified: that those controls respond to a real click in WKWebView.~~ **Verified in the app**
+(verification pass): the window's style mask has no full-size content view; `contentLayoutRect` and
+the web view both start at y = 32 pt; the traffic lights sit at y 9–23 pt. Native hit-tests at the
+centres of Toggle sidebar, Back, Forward and `?` land on the `WryWebView`; at (16, 16) on
+`_NSThemeCloseWidget`; in the empty strip on `NSThemeFrame`. Clicking Toggle sidebar → Graph → Pages →
+`?` → Settings at the default 1100×800 did each thing (`shots/verify/v01…v06`).
+
+Window dragging: the 32 pt strip is AppKit's own title bar (`NSThemeFrame`, `isMovable` true), which is
+what moves a window with this style; the web top bar has no drag region and needs none while
+nothing overlaps it. A synthesized drag moves nothing either way — the window server drags title
+bars from the real pointer — so a drag itself is still unverified.
 
 ---
 
@@ -157,8 +178,16 @@ a command; Cmd+, is bound in both, and by WebKit's `WebViewImpl::performKeyEquiv
 sees it first — opening Settings is idempotent either way.
 
 Verified: the menu builds (the devtest app launches with it; a failing `app_menu` aborts the Tauri
-build at startup) and the client half end to end in Chromium. **Not** verified: choosing the items
-in the real menu bar, or any key reaching the WKWebView — nothing here can click or type into it.
+build at startup) and the client half end to end in Chromium. ~~**Not** verified: choosing the items
+in the real menu bar, or any key reaching the WKWebView.~~
+
+**Verified in the app** (verification pass): the menu bar is as listed above (plus the items macOS
+adds itself: Writing Tools, AutoFill, Dictation, Emoji & Symbols, full screen). Chosen from the menu:
+Settings… and Help → Keyboard Shortcuts open the client's dialogs (`v10`, `v11`), View → Reload
+reloads. Keys: Cmd+, with a block focused opens Settings (`v09`); Cmd+R reloads. In a plain textarea
+Cmd+C, Cmd+V, Cmd+X, Cmd+Z, Shift+Cmd+Z and Cmd+A all work (the page leaves them unhandled, the Edit
+menu's items do them); in a block Cmd+C, Cmd+X, Cmd+Z and Shift+Cmd+Z work, and Cmd+V did NOT — a
+client bug, B-536, now fixed. The general pasteboard was snapshotted and restored around each run.
 
 ---
 
@@ -189,8 +218,12 @@ any scheme through would open `file://` (a `.command` file runs in Terminal), `s
 same way, from text an agent or another device can write. Options: keep the allowlist (current); add
 named app schemes to it; or ask with a native confirmation before any other scheme.
 
-Believed fixed, not tested: exercising it needs a click inside the WKWebView (or a key to Alt+Enter),
-which this environment cannot send. Worth a thirty-second manual check: click any web link in a note.
+~~Believed fixed, not tested.~~ **Verified in the app** (verification pass; the harness build logs
+the URL instead of running `open`): a click on an `https://` link in a journal block, the `?` menu's
+Documentation anchor, and Help → nooklet Documentation / Report a Bug… each logged `OPEN <url>` and
+the window stayed on the client; a `zotero://` link logged `REFUSED`; a `file://` link never reached
+the handler at all (WebKit refuses a file URL from an http page first). Still untested: Alt+Enter's
+`window.open`, and the real `open` spawn (deliberately — it would open the owner's browser).
 
 ---
 
