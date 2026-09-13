@@ -64,6 +64,11 @@ the real name back. Two `pages.spec.ts` assertions said the old name must be "mi
 rename — they encoded the bug and now check that it resolves to the renamed page. Both new tests
 failed before the fix (linker text unchanged; title kept the clashing name). Not done: an
 offline rename is refused rather than queued, since a local rename cannot rewrite links.
+Real graph (fresh copy, this build): renaming `Alex/Notes` (11 backlinks) from its title kept all
+11 under the new name, `page.read "Alex/Notes"` resolves to `Alex/Notes QA`, and the mirror file
+moved. That run also showed the "doesn't exist yet" view for one ~100 ms sample right after the
+navigation: the guard was reset in a `finally` before the new name's lookup had started. It is now
+cleared when the page resolves; a rerun sampled no flash (timing-based, one run — no test pins it).
 
 ---
 

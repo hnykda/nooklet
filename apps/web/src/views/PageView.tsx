@@ -45,12 +45,15 @@ export function PageView(props: PageViewProps): JSX.Element {
   };
 
   const [titleDraft, setTitleDraft] = createSignal(props.name());
-  /** Between the pull that renames the page locally and the navigation to its new name, this
-   * route's name resolves to nothing; without this the "doesn't exist yet" view flashes. */
+  /** From the pull that renames the page locally until the page resolves under its new name, the
+   * route's name resolves to nothing; without this the "doesn't exist yet" view flashes. Cleared
+   * by the page resolving, not right after `navigate` — the new name's lookup has not started by
+   * then, so a `finally` reset still showed the missing view for a frame (seen on the real graph). */
   const [renaming, setRenaming] = createSignal(false);
   createEffect(() => {
     const p = page();
     setTitleDraft(p ? p.name : props.name());
+    if (p) setRenaming(false);
   });
 
   async function commitTitle(): Promise<void> {
@@ -73,10 +76,9 @@ export function PageView(props: PageViewProps): JSX.Element {
     } catch (err) {
       // Nothing was written (a name another page already has, or no server to ask): say so and
       // put the real name back rather than leave the input claiming a rename that did not happen.
+      setRenaming(false);
       setTitleDraft(p.name);
       window.alert(`Rename failed: ${describeError(err)}`);
-    } finally {
-      setRenaming(false);
     }
   }
 

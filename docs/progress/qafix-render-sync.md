@@ -33,11 +33,24 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `8bc4179` B-265 template roots inserted unfolded (`core/templates.ts#templateRoots`; unit + `e2e/tests/template-collapsed.spec.ts` 1/1, `templates.spec.ts` 8/8; real graph Meeting)
 - `81bb2b2` B-266 unpadded org timestamps (`core/outline.ts`; unit + importer test; real data 20/20; existing DB rows not repaired — owner)
 - `8ae97c0` B-267 MCP text says "dry run, nothing written" for every dry-run op (`ops/dry-run.ts#renderToolText`; unit)
-- B-268 script-capable link schemes never become an href or a `window.open` (`editor/render/safe-href.ts`; unit + `e2e/tests/link-scheme.spec.ts` 1/1)
+- `dd2eb76` B-268 script-capable link schemes never become an href or a `window.open` (`editor/render/safe-href.ts`; unit + `e2e/tests/link-scheme.spec.ts` 1/1)
+- B-261 follow-up: the missing-view flash after a title rename (guard cleared on resolve)
+- Final pass on `dd2eb76`: `pnpm -r test` 343 + 17 + 529 + 688 passed; `pnpm -r typecheck` clean;
+  16 e2e specs together (the 7 new + pages, query, tasks, templates, render, rendering, editing,
+  refactor, references, parity) 88/88; `nooklet verify` on a real-graph copy OK (20,420 ops).
+  After the follow-up: `pages.spec.ts` + `page-rename.spec.ts` 15/16 then 16/16 on rerun (the one
+  failure was the sidebar "recently edited" test, a 15 s timeout, not rename-related).
 
 ## In flight
 
-- Final verification pass: every new/touched e2e spec together, unit suites, typecheck, verify.
+- Nothing. All nine findings fixed.
+
+## Next steps (for whoever merges)
+
+1. Move the nine inbox entries into `docs/BUGS.md` (all fixed); amend B-95's fix note there — it
+   describes the `onlyChanged` sweep that B-260 replaced.
+2. Owner: 20 already-imported blocks on the real graph still hold a literal `SCHEDULED:` line
+   (B-266) — re-import or a one-off repair.
 
 ## Decisions
 
