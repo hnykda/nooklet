@@ -68,10 +68,19 @@ export function CommandPalette(props: CommandPaletteProps) {
   // Whatever had focus when the palette opened gets it back when it closes, however it closes
   // (B-161). Captured in the effect that runs as `isOpen` flips — synchronously, before the
   // input's own focus microtask below — and given back in the same task as the closing key.
+  //
+  // Except when the chosen row leaves the page (a page, "Create page"): that navigation lands only
+  // after a replica read or a write, and an editor given focus meanwhile took the next keys into a
+  // block on a page no longer on screen (B-293). `selectRow` clears this for those rows.
   let overlayEl: HTMLDivElement | undefined;
+  let giveFocusBack = true;
   createEffect(() => {
     if (!palette.isOpen()) return;
-    onCleanup(rememberFocus(() => overlayEl));
+    giveFocusBack = true;
+    const giveBack = rememberFocus(() => overlayEl);
+    onCleanup(() => {
+      if (giveFocusBack) giveBack();
+    });
   });
 
   function refreshPages() {
@@ -169,6 +178,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     }
     if (row.kind === "create") {
       props.onCreatePage?.(palette.state().query.trim());
+      giveFocusBack = false; // leaving the page (B-293)
       palette.close();
       return;
     }
@@ -178,6 +188,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     } else if (row.page) {
       mru.record("page", row.page.id);
       props.onSelectPage?.(row.page);
+      giveFocusBack = false; // leaving the page (B-293)
     }
     palette.close();
   }

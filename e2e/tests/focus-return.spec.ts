@@ -180,3 +180,52 @@ test("pressing on a context-menu separator or on the menu's padding keeps the bl
     .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
     .toEqual(["first", "second!"]);
 });
+
+test("choosing a page in the palette while editing: what is typed before it shows never lands in the block being left", async ({
+  page,
+}, info) => {
+  // B-293. The palette gives focus back as it closes (B-161), but a page row and "Create page"
+  // leave the page only after a replica read or a write — focus given back to the editor here
+  // put the next keys into a block on a page that was no longer on screen.
+  const from = runName("Leave Page", info);
+  const target = runName("Leave Page Target", info);
+  const created = runName("Leave Page Created", info);
+  await seedPage(page, target, "- over there");
+
+  for (const [label, pick] of [
+    ["page row", target],
+    ["create row", created],
+  ] as const) {
+    await openEditing(page, from, "- origin");
+    await page.keyboard.press(`${MOD}+k`);
+    await expect(page.locator(".cmd-palette .cmd-input")).toBeFocused();
+    await page.keyboard.type(pick);
+    const wanted =
+      label === "page row"
+        ? page.locator(".cmd-palette .cmd-row", { hasText: pick }).first()
+        : page.locator(".cmd-palette .cmd-row", { hasText: "Create page" });
+    await expect(wanted).toBeVisible();
+    // Walk the highlight to the row wanted (the create row is last).
+    for (let i = 0; i < 20; i++) {
+      if (
+        (await page.locator(".cmd-palette .cmd-row--active").textContent())?.includes(
+          label === "page row" ? pick : "Create page",
+        )
+      )
+        break;
+      await page.keyboard.press("ArrowDown");
+    }
+    await page.keyboard.press("Enter");
+    // Straight after Enter, before the new page can have rendered: the editor on the page being
+    // left must not hold the keyboard.
+    const active = await activeElement(page);
+    expect(active, `${label}: focus straight after Enter`).not.toContain("cm-content");
+    await page.keyboard.type("qq");
+    await expect(page).toHaveURL(new RegExp(encodeURIComponent(pick).replace(/%20/g, "%20")));
+    await page.waitForTimeout(700); // past the 500 ms edit flush, had anything been typed
+    expect(
+      (await readBlocks(page, from)).map((b) => b.content),
+      label,
+    ).toEqual(["origin"]);
+  }
+});

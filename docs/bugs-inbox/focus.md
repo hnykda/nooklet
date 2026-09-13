@@ -234,8 +234,10 @@ branch's spec).
 ---
 
 ### B-293 · Choosing a page in the palette while editing: keys typed before the new page shows go into the block being left
-**Status:** open · **Severity:** medium (text lands on a page nobody is looking at) · **Found:**
-2026-09-13, adversarial verification of m9/focus · **Test:** to come
+**Status:** fixed · **Severity:** medium (text lands on a page nobody is looking at) · **Found:**
+2026-09-13, adversarial verification of m9/focus · **Test:** `e2e/tests/focus-return.spec.ts`
+"choosing a page in the palette while editing: what is typed before it shows never lands in the
+block being left"
 
 A regression from B-161's fix on this branch. The palette now gives focus back to whatever had it as
 it closes — including when the row chosen was a page (`selectRow` → `props.onSelectPage`) or
@@ -251,3 +253,14 @@ Enter is `.cm-content`, and the stored block on the page left is `originqq` (1 o
 Create page row (1 of 1). With `apps/web/src` checked out at `cf08d19`: focus on `<body>` and the
 block stays `origin` (both). "Open journals" run from the palette does not show it (that navigation
 is synchronous, so the editor is already detached when the palette closes).
+
+**Fixed 2026-09-13.** `commands/palette/CommandPalette.tsx#selectRow` skips the focus return for the
+two rows that leave the page (a page, "Create page"); Escape, Cmd/Ctrl+K, a backdrop click, a
+command row and Shift+Enter onto the shelf still give focus back. Focus after a page pick is where
+`cf08d19` left it (`<body>` until the new page is clicked into). The test runs both rows, reads
+`activeElement` straight after Enter, types `qq` and checks the stored block on the page left: it
+failed 3 of 3 (`--repeat-each=3`) before the change (`activeElement` `.cm-content`), and
+`focus-return.spec.ts` passed 24 of 24 (`--repeat-each=3`) after; views + shelf 35 passed.
+Not covered: a palette COMMAND that navigates asynchronously ("Follow link under cursor" run from
+the palette resolves the ref first) — rare from the palette, and Alt+Enter itself has always left
+the editor focused through the same gap.
