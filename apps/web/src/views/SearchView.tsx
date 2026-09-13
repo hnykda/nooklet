@@ -10,7 +10,7 @@ import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { describeError, type SearchHit, type SearchInput } from "../data/api-client.js";
 import { useSearchResults } from "../data/store.js";
-import { pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
+import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 import "./search-filters.css";
 import { SearchSnippet } from "./SearchSnippet.js";
 import {

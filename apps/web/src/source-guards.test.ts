@@ -1,7 +1,7 @@
 /**
  * Rules about the client's source that a behaviour test cannot hold on its own, because what they
  * forbid is the NEXT copy of something: each one below was fixed once, and then re-grown on a
- * parallel branch before the fix was merged (B-330).
+ * parallel branch before the fix was merged (B-330, B-331).
  *
  * The behaviour behind each rule is tested where it lives — see each `describe`.
  */
@@ -37,6 +37,8 @@ function offenders(files: readonly string[], pattern: RegExp): string[] {
 
 /** The UI: everything that puts text on screen. `data/` builds errors; these render them. */
 const UI = ["views", "app", "shell", "editor"].flatMap(sourceFiles);
+/** Every client source file. */
+const ALL = sourceFiles(".");
 
 describe("server calls and their failures (B-330)", () => {
   it("a shown error goes through describeError, never a formatter of its own", () => {
@@ -48,11 +50,18 @@ describe("server calls and their failures (B-330)", () => {
   });
 
   it("batch.undo has one wrapper, refactor-api.ts#undoBatch", () => {
-    const all = ["views", "app", "shell", "editor", "data", "commands", "plugins"].flatMap(
-      sourceFiles,
-    );
-    expect(offenders(all, /["']batch\.undo["']/).map((o) => o.split(":")[0])).toEqual([
+    expect(offenders(ALL, /["']batch\.undo["']/).map((o) => o.split(":")[0])).toEqual([
       "data/refactor-api.ts",
     ]);
+  });
+});
+
+describe("page route paths (B-331)", () => {
+  it("are built only by routes/page-path.ts", () => {
+    // A `/page/${…}` or `/history/${…}` template anywhere else is a path built by hand — six of
+    // them encoded the whole name and turned a namespace's "/" into %2F.
+    // Behaviour: `editor/render/page-hrefs.test.tsx`, `e2e/tests/namespace-paths.spec.ts`.
+    const files = ALL.filter((f) => f !== "routes/page-path.ts");
+    expect(offenders(files, /\/(page|history)\/\$\{/)).toEqual([]);
   });
 });

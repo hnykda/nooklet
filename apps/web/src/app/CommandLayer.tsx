@@ -64,7 +64,7 @@ import {
   setLiveConnected,
 } from "../live/index.js";
 import { ClientPlugins } from "../plugins/ClientPlugins.js";
-import { pathToPageName } from "../views/navigateTarget.js";
+import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { requestPluginsSection } from "../views/PluginsSection.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
@@ -76,7 +76,6 @@ import {
   createNavigationHost,
   createPageSource,
   createStore,
-  pagePath,
 } from "./hosts.js";
 import { createPageActionsHost } from "./page-actions-host.js";
 import { openPageFind, pageFindAvailable } from "./page-find.js";
@@ -365,7 +364,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
             journalDay: null,
             createdAt: Date.now(),
           });
-          navigate(pagePath(name));
+          navigate(pageRoutePath(name));
         }}
       />
       <Show when={triggers().slash}>

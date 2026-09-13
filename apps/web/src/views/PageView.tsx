@@ -19,10 +19,11 @@ import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
 import { isReadOnlyValue, READ_ONLY_NOTICE, READ_ONLY_PROPERTY } from "../editor/readOnly.js";
+import { historyRoutePath, pageRoutePath } from "../routes/page-path.js";
 import { useCanonicalPageRoute } from "./canonicalPageRoute.js";
 import { JournalAgenda } from "./JournalAgenda.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
-import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
+import { goToTarget } from "./navigateTarget.js";
 import { PageActions } from "./PageActions.js";
 import { usePageFind } from "./PageFindBar.js";
 import { PageIconEditor } from "./PageIcon.js";
@@ -205,7 +206,7 @@ export function PageView(props: PageViewProps): JSX.Element {
                   the empty icon slot — a control every page has but few visits need. */}
               <A
                 class="page-history-link"
-                href={`/history/${pageNameToPath(p().name)}`}
+                href={historyRoutePath(p().name)}
                 aria-label="Page history"
               >
                 History

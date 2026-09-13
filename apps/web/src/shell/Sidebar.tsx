@@ -15,6 +15,7 @@ import { CalendarDays, CircleCheck, FileText, Network, Search, Star, Trash2 } fr
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { displayPageName } from "../data/page-title.js";
 import { useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
+import { pageRoutePath } from "../routes/page-path.js";
 import { PageIconBadge } from "../views/PageIcon.js";
 import "./sidebar.css";
 
@@ -83,7 +84,7 @@ export function Sidebar(): JSX.Element {
               <For each={favorites()}>
                 {(page) => (
                   <li>
-                    <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
+                    <A href={pageRoutePath(page.name)}>
                       <PageIconBadge icon={icons().get(page.id)} />
                       {displayPageName(page)}
                     </A>
@@ -103,7 +104,7 @@ export function Sidebar(): JSX.Element {
               <For each={recent()}>
                 {(page) => (
                   <li>
-                    <A href={`/page/${page.name.split("/").map(encodeURIComponent).join("/")}`}>
+                    <A href={pageRoutePath(page.name)}>
                       <PageIconBadge icon={icons().get(page.id)} />
                       {displayPageName(page)}
                     </A>

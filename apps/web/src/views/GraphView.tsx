@@ -30,7 +30,7 @@ import { createEffect, createSignal, For, type JSX, onCleanup, onMount, Show } f
 import { describeError, type GraphEdge, type GraphNode } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { useGraphLinks } from "../data/store.js";
-import { pageRoutePath } from "./navigateTarget.js";
+import { pageRoutePath } from "../routes/page-path.js";
 import "./graph.css";
 
 // ---------------------------------------------------------------------------------------------

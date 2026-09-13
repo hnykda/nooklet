@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { goToTarget, pageNameToPath, pathToPageName } from "./navigateTarget.js";
+import { pageNameToPath, pathToPageName } from "../routes/page-path.js";
+import { goToTarget } from "./navigateTarget.js";
 
 vi.mock("../data/store.js", () => ({
   resolveBlockPageName: vi.fn(async (id: string) =>

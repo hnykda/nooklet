@@ -25,6 +25,7 @@ import { isSafeHref } from "../editor/render/safe-href.js";
 import { flashRemoteTouch } from "../live/flash-bus.js";
 import type { PageRefQuery } from "../live/resolve-page-ref.js";
 import { resolvePageRef } from "../live/resolve-page-ref.js";
+import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 
 // ---------------------------------------------------------------------------------------------
 // Store
@@ -210,15 +211,11 @@ function pageRefQuery(): PageRefQuery {
   };
 }
 
-export function pagePath(name: string): string {
-  return `/page/${name.split("/").map(encodeURIComponent).join("/")}`;
-}
-
 export function createNavigationHost(deps: NavDeps): NavigationHost {
   return {
     openPage(pageId) {
       void deps.pageNameForId(pageId).then((name) => {
-        if (name) deps.navigate(`/page/${name.split("/").map(encodeURIComponent).join("/")}`);
+        if (name) deps.navigate(pageRoutePath(name));
       });
     },
     openTodayJournal() {
@@ -246,8 +243,10 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
         return;
       }
       if ((link.type === "page" || link.type === "tag") && link.name) {
-        const name = normalizePageName(link.name);
-        deps.navigate(`/page/${name.split("/").map(encodeURIComponent).join("/")}`);
+        // The name as written, as a click on the rendered link navigates. Not
+        // `normalizePageName`: that is the lookup KEY, lowercased, and the canonical-route effect
+        // leaves a URL that differs from the page's name only in case (B-332).
+        deps.navigate(pageRoutePath(link.name));
         return;
       }
       if (link.type === "block" && link.id) {
@@ -255,7 +254,7 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
         // By BLOCK id. `deps.pageNameForId` takes a page id (B-82) and found nothing for a block,
         // so Alt+Enter on a ((ref)) silently went nowhere (B-139).
         void resolveBlockPageName(blockId).then((pageName) => {
-          if (pageName) deps.navigate(`${pagePath(pageName)}?block=${blockId}`);
+          if (pageName) deps.navigate(pageZoomRoutePath(pageName, blockId));
         });
       }
     },
@@ -263,8 +262,8 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
       void resolvePageRef(ref, pageRefQuery()).then((resolved) => {
         if (!resolved) return;
         const path = blockId
-          ? `${pagePath(resolved.name)}?block=${blockId}`
-          : pagePath(resolved.name);
+          ? pageZoomRoutePath(resolved.name, blockId)
+          : pageRoutePath(resolved.name);
         deps.navigate(path);
       });
     },
@@ -274,7 +273,7 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
         // "Without changing focus/navigation" (ADR 015 §2.5's ui_highlight): only navigate if the
         // block's page isn't already the one on screen, and never add `?block=` here — that param
         // means ZOOM (`../routes/PageRoute.tsx`), a bigger change than "point at this block."
-        const target = pagePath(pageName);
+        const target = pageRoutePath(pageName);
         if (decodeURIComponent(window.location.pathname) !== decodeURIComponent(target)) {
           deps.navigate(target);
         }

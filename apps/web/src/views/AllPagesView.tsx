@@ -11,7 +11,7 @@ import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { displayPageName } from "../data/page-title.js";
 import { setPageFavorite, useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
-import { pageRoutePath } from "./navigateTarget.js";
+import { pageRoutePath } from "../routes/page-path.js";
 import { PageIconBadge } from "./PageIcon.js";
 import "./all-pages.css";
 

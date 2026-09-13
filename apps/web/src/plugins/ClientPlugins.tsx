@@ -11,14 +11,13 @@
 import type { Page } from "@nooklet/core";
 import { useLocation, useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
-import { pagePath } from "../app/hosts.js";
 import { type EditorHost, useCommands } from "../commands/index.js";
 import { contributeSlashItem } from "../commands/slash/contributed.js";
 import { apiBaseUrl, authToken } from "../data/bootstrap.js";
 import { loadPage } from "../data/plugin-lookups.js";
 import { resolvePageName, serverCaughtUpVersion, stampedFor } from "../data/store.js";
 import { registerFenceRenderer } from "../editor/render/PluginFence.js";
-import { pathToPageName } from "../views/navigateTarget.js";
+import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { BUILTIN_CLIENT_PLUGINS } from "./builtins.js";
 import { createClientPluginHost } from "./host.js";
 import { addStatusItem } from "./StatusItems.js";
@@ -41,7 +40,7 @@ export function ClientPlugins(props: { editor: EditorHost; mobile: boolean }): n
     editor: props.editor,
     navigate: (path) => navigate(path),
     pageNameForId: resolvePageName,
-    pagePath,
+    pagePath: pageRoutePath,
     currentPage: page,
     baseUrl: apiBaseUrl,
     getToken: authToken,

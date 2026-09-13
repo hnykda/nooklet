@@ -13,7 +13,7 @@
 import { normalizePageName } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, type Resource } from "solid-js";
-import { pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
+import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 
 interface ResolvedPage {
   name: string;

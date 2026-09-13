@@ -19,6 +19,7 @@ import {
   type QueryResults,
   useQueryResults,
 } from "../../data/queries.js";
+import { pageRoutePath } from "../../routes/page-path.js";
 import { MARKER_GLYPH } from "../BlockRowView.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
 import "./query.css";
@@ -101,7 +102,7 @@ function GroupView(props: { group: QueryPageGroup; ctx: RenderCtx }) {
     <section class="vr-query-group" data-page-id={props.group.pageId}>
       <h4 class="vr-query-page">
         <a
-          href={`/page/${encodeURIComponent(props.group.pageName)}`}
+          href={pageRoutePath(props.group.pageName)}
           class="vr-page-ref"
           onClick={(e) => {
             if (!props.ctx.onNavigate) return;

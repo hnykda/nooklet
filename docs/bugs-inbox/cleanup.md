@@ -49,3 +49,55 @@ day and an ordinary page by its name" and `apps/web/src/editor/render/render-sea
 what is wrong, and where, for a query that does not parse". `embed.test.tsx` already works around the
 same lazy-chunk cost with a 5 s `waitFor`; left as it is.
 
+### B-331 · A rendered link to a namespaced page points at `/page/Area%2FLeaf`, not `/page/Area/Leaf`
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9 cleanup (review finding F9 of
+`m8/rv-web-security`, whose fix `373c654` was not merged; re-probed on the merged tree) · **Test:**
+`apps/web/src/editor/render/page-hrefs.test.tsx`, `e2e/tests/namespace-paths.spec.ts`,
+`apps/web/src/source-guards.test.ts`
+
+Hover, middle-click, "Copy link" or open-in-new-tab on `[[NSPath Area/Leaf Page]]` and the address
+is `/page/NSPath%20Area%2FLeaf%20Page`. The page still opens — the route is a splat and the name is
+decoded — which is why nobody saw it, but it is not the page's address as the app itself navigates
+to it (`/page/NSPath%20Area/Leaf%20Page`), and `pathToPageName` documents that the app never
+produces `%2F`. Probed with `e2e/tests/namespace-paths.spec.ts` on `a9ea71a`, every way into a
+page: the `href` of a `[[link]]`, a `#[[tag]]`, a `[label]([[page]])`, a query result's page heading
+and an embed's source line all carried `%2F` (six render sites: three in `editor/render/tokens.tsx`,
+one in `QueryFenceView.tsx`, two in `EmbedView.tsx`, each `encodeURIComponent` over the whole
+name), and so did every screen showing one of those links (a page's linked references, the shelf).
+The URL after navigating was right everywhere: palette, link click, shelf card, a reference, a
+tagged page, the trash and its restore notice, history and its back link, search, all pages.
+Page paths were still built inline in twelve places (`hosts.ts` twice plus its own exported
+`pagePath`, `Sidebar.tsx` twice, `PageView.tsx`'s history link, and the six above) besides
+`views/navigateTarget.ts`, the module that had the functions.
+
+**Fixed 2026-09-13.** Redoes `373c654` on the merged tree. `apps/web/src/routes/page-path.ts` (no
+imports, so the renderer does not pull in the data layer) holds `pageNameToPath`, `pathToPageName`,
+`pageRoutePath`, `pageZoomRoutePath` and `historyRoutePath`; `views/navigateTarget.ts` keeps only
+`goToTarget`; `hosts.ts#pagePath` is gone (the client plugin host gets `pageRoutePath`). All twelve
+inline sites and every importer go through it. A bookmarked `%2F` URL still opens the page (the
+route decodes its splat) and is not rewritten. **Tests that would have caught it:**
+`apps/web/src/editor/render/page-hrefs.test.tsx` (6 of 6 failed before with `%2F`: link, tag,
+label, query heading, embed source, embed at the depth limit); `e2e/tests/namespace-paths.spec.ts`
+(9 tests, one per way into a page; on `a9ea71a` 5 failed — the rendered hrefs, and the palette and
+shelf screens that show them; after, 9/9); the guard in `apps/web/src/source-guards.test.ts`
+"are built only by routes/page-path.ts" (failed before, listing the sites).
+
+### B-332 · Alt+Enter on `[[Some Page]]` opens `/page/some page` — the lowercased key, not the name
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9 cleanup, probing B-331 · **Test:**
+`apps/web/src/app/hosts.test.ts` "nav.followLink for page links", `e2e/tests/namespace-paths.spec.ts`
+"Alt+Enter on a [[namespaced link]] opens it at its path"
+
+Put the caret in `[[NSPath Area/Leaf Page]]` and press Alt+Enter ("Follow link under cursor"): the
+page opens, but the address bar reads `/page/nspath%20area/leaf%20page`, while clicking the same
+link gives `/page/NSPath%20Area/Leaf%20Page`. The canonical-route effect (B-104) deliberately leaves
+a URL that differs from the page's name only in case, so the lowercase URL stays — in the address
+bar, Back, a copied link, and the History link's comparisons. `createNavigationHost#followLink`
+passed the link through `normalizePageName`, which is the lookup KEY (NFC, whitespace collapsed,
+lowercased), not a display name.
+
+**Fixed 2026-09-13.** `followLink` navigates to `pageRoutePath(link.name)` — the name as written,
+exactly what a click on the rendered link does. **Tests that would have caught it:**
+`apps/web/src/app/hosts.test.ts` "nav.followLink for page links" (2 of 2 failed before) and
+`e2e/tests/namespace-paths.spec.ts` "Alt+Enter on a [[namespaced link]] opens it at its path"
+(failed on `a9ea71a` with `/page/nspath%20area/leaf%20page`).
+

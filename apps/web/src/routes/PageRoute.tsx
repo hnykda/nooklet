@@ -5,8 +5,8 @@
  */
 import { useParams, useSearchParams } from "@solidjs/router";
 import type { JSX } from "solid-js";
-import { pathToPageName } from "../views/navigateTarget.js";
 import { PageView } from "../views/PageView.js";
+import { pathToPageName } from "./page-path.js";
 
 export function PageRoute(): JSX.Element {
   const params = useParams<{ name: string }>();

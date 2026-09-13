@@ -50,6 +50,7 @@ import {
   Show,
   Suspense,
 } from "solid-js";
+import { pageRoutePath } from "../../routes/page-path.js";
 import { assetUrl } from "./asset-url.js";
 import { canHighlight, highlightCode, highlightSync, languageClass } from "./highlight.js";
 import { loadMath, renderTexSync } from "./math.js";
@@ -362,7 +363,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               <NavLink
                 class="vr-page-ref"
                 target={{ kind: "page", name: tok.target }}
-                href={`/page/${encodeURIComponent(tok.target)}`}
+                href={pageRoutePath(tok.target)}
                 from={tok.start}
                 to={tok.end}
                 onNavigate={ctx.onNavigate}
@@ -376,7 +377,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               <NavLink
                 class="vr-tag"
                 target={{ kind: "page", name: tok.name }}
-                href={`/page/${encodeURIComponent(tok.name)}`}
+                href={pageRoutePath(tok.name)}
                 from={tok.start}
                 to={tok.end}
                 onNavigate={ctx.onNavigate}
@@ -406,7 +407,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               <NavLink
                 class="vr-page-ref"
                 target={{ kind: "page", name: tok.target }}
-                href={`/page/${encodeURIComponent(tok.target)}`}
+                href={pageRoutePath(tok.target)}
                 from={tok.start}
                 to={tok.end}
                 onNavigate={ctx.onNavigate}

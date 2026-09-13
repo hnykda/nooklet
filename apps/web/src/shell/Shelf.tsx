@@ -47,7 +47,8 @@ import { usePageByName, usePageTree } from "../data/store.js";
 import type { BlockTreeNode, NavigateTarget } from "../data/types.js";
 import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { BlockContentView } from "../editor/render/tokens.js";
-import { goToTarget, pageRoutePath } from "../views/navigateTarget.js";
+import { pageRoutePath } from "../routes/page-path.js";
+import { goToTarget } from "../views/navigateTarget.js";
 import "./shelf.css";
 import { outlineEntries, type TocEntry } from "./shelfOutline.js";
 

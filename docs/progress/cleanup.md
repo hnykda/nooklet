@@ -31,6 +31,19 @@ Brief, four parts:
 - Part 3 / B-144 (commit "test(web): load the module a flaky first test waited on…"): both test
   files import the slow module statically (loaded at collection, no timeout). Probe: copies with
   the budget cut below the cold cost failed 3/3 cold, passed 3/3 warm. Web unit 1015/1015.
+- Part 3 commit `a9ea71a`.
+- Part 2 / B-331 + B-332 (commit "refactor(web): page paths from one module…"): probe spec
+  `e2e/tests/namespace-paths.spec.ts` (9 ways into a page) on `a9ea71a`: 5 failed — hrefs with
+  `%2F` from six render sites (tokens.tsx ×3, QueryFenceView, EmbedView ×2), shown on the page,
+  in references and on the shelf; and Alt+Enter went to the lowercased key (B-332). Every URL
+  after navigation was otherwise right. Fix: `routes/page-path.ts` (as `373c654`), all twelve
+  inline sites and all importers moved to it, `hosts.ts#pagePath` gone, `followLink` uses the
+  name as written. Tests: `page-hrefs.test.tsx` 6/6 failed before; `hosts.test.ts` page links
+  2/2 failed before; guard in `source-guards.test.ts` failed before (checked by restoring the
+  pre-fix sources and re-applying the patch). Web unit 1024/1024; typecheck clean; e2e
+  namespace-paths+navigation+pages+query+shelf+rendering+render+history+trash+refactor+
+  follow-link+embeds+tagged-pages+references+views+page-rename+page-identity+plugins+
+  untrusted-content 151/151 (views.spec.ts:461 passed this time).
 
 ## In flight
 
@@ -38,11 +51,9 @@ Brief, four parts:
 
 ## Next steps, in order
 
-1. Part 2 (page paths): probe namespaced pages (`a/b`) through palette, [[link]] click, Alt+Enter,
-   shelf, references, trash, history, tagged pages, sidebar favourites/recent, query/embeds; fix
-   what produces `%2F`; `routes/page-path.ts` as in `373c654`; e2e test.
-2. Part 4 (B-180).
-3. Final: `pnpm -r test`, e2e of touched specs, progress + return.
+1. Part 4 (B-180): sidecar ships built-in plugins; build sidecar, start with scratch NOOKLET_DATA,
+   check `page.wordcount` exists and a plugin client bundle is served.
+2. Final: `pnpm -r test`, progress + return.
 
 ## Decisions
 

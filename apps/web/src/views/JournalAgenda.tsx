@@ -17,8 +17,8 @@ import { displayPageName, journalTitleFormat } from "../data/page-title.js";
 import type { NavigateTarget } from "../data/types.js";
 import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { InlineContent } from "../editor/InlineContent.js";
+import { pageRoutePath } from "../routes/page-path.js";
 import { type AgendaDate, type AgendaEntry, type AgendaGroup, agendaForDay } from "./agendaDay.js";
-import { pageRoutePath } from "./navigateTarget.js";
 import "./journal-agenda.css";
 
 export interface JournalAgendaProps {

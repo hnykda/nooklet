@@ -32,9 +32,9 @@ import {
 } from "../data/history.js";
 import { displayRefName } from "../data/page-title.js";
 import { type KeptEdit, undoBatch } from "../data/refactor-api.js";
+import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { diffProperties, diffWords, formatWhen } from "./historyText.js";
 import { keptEditsSentence } from "./keptEdits.js";
-import { pageRoutePath, pathToPageName } from "./navigateTarget.js";
 import "./history.css";
 
 export function HistoryRoute(): JSX.Element {

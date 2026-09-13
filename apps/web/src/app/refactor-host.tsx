@@ -21,7 +21,7 @@ import { describeError } from "../data/api-client.js";
 import { refactorApi } from "../data/refactor-api.js";
 import { useAllPages } from "../data/store.js";
 import { forceSync } from "../db/client.js";
-import { pageRoutePath, pathToPageName } from "../views/navigateTarget.js";
+import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { fuzzyFindPages } from "../views/pageSearch.js";
 
 /** `/page/Projects/Aurora` -> `Projects/Aurora`; anything else -> `null`. */
