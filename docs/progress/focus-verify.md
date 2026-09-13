@@ -26,12 +26,25 @@ Bug numbers used: B-293, B-294 (inbox `docs/bugs-inbox/focus.md`).
   into the block being left, base 2/2). focus-return --repeat-each=2: 18/18; views+follow-link+
   commands 42 passed; commands unit 409/409; web tsc clean.
 
+- rAF-delayed (150 ms, injected in main.tsx temporarily, reverted) editing + focus + journal-stream
+  + selection + editing-row-leaves: HEAD 66-67/68 with `editing.spec` "typing immediately after
+  Enter" failing; the same failure with `cf08d19`'s `surface.ts` in `editing.spec` → not the B-290
+  guard (combined run with base surface passed once, 68/68; HEAD surface in isolation 10/10 on a
+  fresh-name copy). focus.spec + selection delayed: 60/60 twice.
+- Real graph copy (Megapage 201 blocks, Balení): palette page pick leaks nothing (fixed),
+  /scheduled type-ahead OK, context-menu separator OK; **B-296 found**: palette Escape then text
+  without keydown lands at block start (P14: insertText 8/8 at 0, keydown 8/8 right).
+- `379bbf9` logged B-296; `11d46b2` fix (`rememberFocus` restores the document selection inside
+  the element). e2e caret test failed 2/2 before, focus-return --repeat-each=2 20/20 after; web
+  unit 1024/1024; `pnpm -r typecheck` exit 0.
+
 ## In flight
 
 - (none)
 
 ## Next
 
-1. rAF-delayed run of editing/focus/journal specs (B-290 guard safety).
-2. Real-graph copy probe (palette Escape, date picker type-ahead on a Czech page).
-3. Load loop on the palette tests; final covering e2e set; report.
+1. Re-run real-graph probe on the fixed build (server on 6401 with the graph copy, `e2e/zz-real.config.ts`
+   — temporary, uncommitted).
+2. Load loop (busy node processes) on views palette test + focus-return.
+3. Final covering e2e set; remove temporary probe files; report.
