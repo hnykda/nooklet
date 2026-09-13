@@ -230,3 +230,24 @@ once per server, which is all a normal run does; it just cannot be looped to sep
 regression, which is the first thing a flaky-looking failure calls for. Fix: a page name per
 `repeatEachIndex`/`retry`, as `views.spec.ts`'s palette test now has. Not changed here (not this
 branch's spec).
+
+---
+
+### B-293 · Choosing a page in the palette while editing: keys typed before the new page shows go into the block being left
+**Status:** open · **Severity:** medium (text lands on a page nobody is looking at) · **Found:**
+2026-09-13, adversarial verification of m9/focus · **Test:** to come
+
+A regression from B-161's fix on this branch. The palette now gives focus back to whatever had it as
+it closes — including when the row chosen was a page (`selectRow` → `props.onSelectPage`) or
+"Create page …" (`props.onCreatePage`). Both leave the page, but not at once:
+`hosts.ts#createNavigationHost.openPage` resolves the page name with a replica read before it
+navigates, and creating a page is a write first. In that gap the editor on the page being left is
+focused again, so what is typed goes into its block — and is saved there, on a page that is no
+longer on screen.
+
+Probe (`e2e/tests/zz-verify-focus.spec.ts` in the verifier's run, port 6401): edit `- origin`,
+Cmd+K, type another page's name, Enter, type `qq` at once. On `2924c05`: `activeElement` right after
+Enter is `.cm-content`, and the stored block on the page left is `originqq` (1 of 1); same with the
+Create page row (1 of 1). With `apps/web/src` checked out at `cf08d19`: focus on `<body>` and the
+block stays `origin` (both). "Open journals" run from the palette does not show it (that navigation
+is synchronous, so the editor is already detached when the palette closes).
