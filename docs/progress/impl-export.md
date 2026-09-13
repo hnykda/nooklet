@@ -119,7 +119,15 @@ only, never committed.
   probe with `PER_QUERY=15`: 65/65 exports byte-identical, 15/15 prints with every row; UI copy of
   `OmnivoreSync` (1,759,043 chars) equals the mirror minus ids; `nooklet verify` OK (20,411 ops).
 - e2e batches on this branch: {page-export, pages, page-icons, views, phone, navigation, history}
-  72 passed; {editing, focus, selection, context-menu, popups, journals, shelf} 118 passed, 1 skipped.
+  72 passed; {editing, focus, selection, context-menu, popups, journals, shelf} 118 passed, 1 skipped;
+  {parity, refactor, render, rendering, templates, help, shelf-outline, a-fresh-journal,
+  references-filters, tasks, trash} 57 passed; {appearance, assets, autocomplete, connectivity,
+  diagnostics, graph, link-unlinked, query, references, remote-device, replace, settings} 47 passed.
+  Together every Chromium spec except `storage.spec.ts` (not run). Final: unit core 338 / server 521 /
+  web 698 / 17; `page-export.spec.ts` 9 passed; typecheck and Biome clean.
+- Still open / not checked: Tauri (WKWebView) and Capacitor shells; Safari's real gesture rule;
+  focus after a "…" menu item runs lands on `<body>`; Tab past the last menu item leaves the menu
+  open; a Copy of a page that no longer exists says "the browser refused clipboard access".
 - Checked OK in Chromium: print while editing (focus + typing survive, nothing written); keyboard
   path through the "…" menu; journal page export name; namespaced Czech name with quotes via the
   palette; rename-then-star race; `favorite:: false` page; empty page copy; phone layout.
