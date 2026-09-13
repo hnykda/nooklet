@@ -20,7 +20,8 @@ export const pageUpdate = defineOp({
   description:
     "Renames a page (every [[link]]/#tag to it is rewritten; the old name becomes an alias unless " +
     "keep_alias is false) and/or sets page-level properties (null unsets a property). Cannot " +
-    "rename journal days. To edit a page's content use the block tools, not this.",
+    "rename journal days (their properties can be set). To edit a page's content use the block " +
+    "tools, not this.",
   input: z
     .object({
       page: PageRef,
@@ -50,11 +51,19 @@ export const pageUpdate = defineOp({
   handler: async (input, ctx) => {
     return runWithDryRun(ctx, input.dry_run, async (ctx) => {
       const page = await requirePage(ctx, input.page);
-      if (page.journalDay !== null) {
+      // Only a rename is refused on a journal day. This check used to run for every journal
+      // update, before looking at what was asked, so a properties-only update (favourite, lock,
+      // icon — which a person sets on a day from the properties panel) failed "cannot rename a
+      // journal day" with no new_name given (B-236).
+      if (
+        page.journalDay !== null &&
+        input.new_name !== undefined &&
+        input.new_name !== page.name
+      ) {
         throw new OpError(
           "invalid",
           "cannot rename a journal day",
-          "journal pages are addressed by date, not renamed",
+          "journal pages are addressed by date, not renamed; set properties without new_name",
         );
       }
       checkIfVersion(page.updatedAt, input.if_version);

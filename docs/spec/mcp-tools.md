@@ -1251,7 +1251,8 @@ export const blockDelete = defineOp({
 
 **Description**: "Renames a page (every `[[link]]`/`#tag` to it is rewritten; the old name
 becomes an alias unless `keep_alias` is false) and/or sets page-level properties (null unsets a
-property). Cannot rename journal days. To edit a page's content use the block tools, not this."
+property). Cannot rename journal days (their properties can be set — B-236). To edit a page's
+content use the block tools, not this."
 
 ```ts
 export const pageUpdate = defineOp({

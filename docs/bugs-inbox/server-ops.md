@@ -66,3 +66,16 @@ three cases. `e2e/tests/journal-agenda.spec.ts`'s `properties: { marker: "DONE" 
 left as it is (it works either way).
 
 ---
+
+### B-236 (existing)
+
+**Fixed 2026-09-13.** `packages/server/src/ops/page-update.ts` refuses a journal day only when a
+`new_name` is given that differs from the day's name; a properties-only update on a journal applies
+its `page.prop` ops like on any page. The op description (and mcp-tools.md's copy) now says a
+journal's properties can be set, and the refusal's hint says how. Test that would have caught it:
+`packages/server/src/ops/page-update-journal.http.test.ts` — set and unset properties on a journal
+day (with rebuild parity), a real rename still refused with nothing written, `new_name` equal to
+the day's own name accepted (the first and third failed with "cannot rename a journal day" before
+the fix).
+
+---

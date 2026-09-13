@@ -18,20 +18,21 @@ B-310..B-319), never `docs/BUGS.md`.
 
 ## Done (committed)
 
-(nothing yet)
+- `f075d2a` B-151 — `core/outline.ts#serializeOutline` places a fence-first block's property lines
+  after the closed fence / on the bullet line (no ids). Test: `core/src/outline.test.ts` › "a block
+  that opens with a fence, without ids (B-151)". Core 396/396, server 608/608. Logged B-310 (same
+  block with a marker; probe `tools/probes/fence-first-task-roundtrip.ts`), not fixed.
+- `ba8aa99` B-172 — `outline-bridge.ts#parseSingleBlockGrammar(text, "flush"|"auto")`. Tests:
+  `server/src/ops/outline-bridge.test.ts` (13), `server/src/ops/block-update-text.http.test.ts` (9).
+  Server 630/630. Spec: mcp-tools.md §3.2 rule 10.
 
 ## In flight
 
-- Setup: inbox created with B-310 (found while reading B-151's serializer path; logged, not fixed).
+(nothing)
 
 ## Next steps
 
-1. B-151: `packages/core/src/outline.ts#serializeOutline` — fence-first block, no suffix id, no
-   head: property lines after the content when its fences close, else on the bullet line before the
-   fence (the placements `block-text.ts#joinBlockText` uses). Test in `outline.test.ts`.
-2. B-172: `packages/server/src/ops/outline-bridge.ts#parseSingleBlockGrammar` — indent lines 2..n
-   before parsing; `content` also accepts page_read's indented shape. Tests: outline-bridge unit +
-   `ops.http.test.ts` block.update with property / multi-line / fence.
+1. ~~B-151~~ done. 2. ~~B-172~~ done.
 3. B-236: `page-update.ts` — journal check only for a real rename. Test in `ops.http.test.ts`.
 4. B-235: page.create applies the markdown pre-block as page properties; page.append/block.insert
    reject one with a hint.
@@ -40,6 +41,13 @@ B-310..B-319), never `docs/BUGS.md`.
 6. `pnpm nooklet verify --data <scratch>/graph` with NOOKLET_DATA exported.
 
 ## Decisions
+
+- B-172: `content` accepts both flush-left later lines (what `before` shows) and page_read's
+  indented shape (every later non-blank line indented 2+ columns); `old_str` edits are always
+  read flush. Rejected: flush-only (silently turns an agent's indented `scheduled::` line, the
+  only shape that parsed before, into content text).
+- B-151: placements copied from `joinBlockText` (after closed content, else bullet line) rather than
+  always on the bullet line, so editing text and `ids: none` text agree.
 
 ## How to resume
 
