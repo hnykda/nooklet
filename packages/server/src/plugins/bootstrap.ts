@@ -23,6 +23,8 @@ export interface CreateAppWithPluginsOptions {
   /** Directories scanned for plugins, in order (e.g. `<dataDir>/plugins`, and in dev, the repo
    * root's `plugins/`). Non-existent directories are skipped silently. */
   pluginDirs: string[];
+  /** Plugins already bundled, scanned after `pluginDirs` — see `PluginHostDeps.bundledDirs`. */
+  bundledPluginDirs?: string[];
   /** Forwarded to `createApp` — serve the built web client on this origin. See ../http/app.ts. */
   webClientDir?: string;
 }
@@ -38,6 +40,7 @@ export async function createAppWithPlugins(
     app,
     hostVersion: opts.version,
     dirs: opts.pluginDirs,
+    bundledDirs: opts.bundledPluginDirs,
   });
   await pluginHost.loadAll();
   mountPluginClientRoute(app, pluginHost); // GET /plugins/:id/:file — unauthenticated, static

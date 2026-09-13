@@ -157,13 +157,19 @@ function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config:
 
 /**
  * Plugin discovery roots, in order: `<dataDir>/plugins` (where a real install's plugins live —
- * created lazily, so it needn't exist yet), then, in dev, the repo root's own `plugins/` (the 3
- * built-ins, M4/PLAN §13). The dev root is found relative to THIS file rather than `cwd()`, so
- * `nooklet serve` works the same from any directory; an installed build simply won't have a
- * `plugins/` three levels above `dist/cli.js`, so `discoverPlugins` (which skips missing
- * directories) silently finds none there.
+ * created lazily, so it needn't exist yet), then the 3 built-ins (M4/PLAN §13). Those are
+ * `$NOOKLET_BUNDLED_PLUGINS_DIR` when it is set, and otherwise the repo root's own `plugins/`,
+ * found relative to THIS file rather than `cwd()` so `nooklet serve` works the same from any
+ * directory. A build with neither — no `plugins/` three levels above it — silently finds none,
+ * which is how the desktop app shipped without them (B-180).
  */
-function pluginDirsFor(config: ServerConfig): string[] {
+function pluginDirsFor(config: ServerConfig): { dirs: string[]; bundled: string[] } {
+  const graphPlugins = join(config.dataDir, "plugins");
+  // The desktop sidecar's built-ins, bundled at build time: `apps/desktop/build-sidecar.mjs` points
+  // this at the `plugins/` beside its `server.mjs`. The repo's `plugins/` below are sources, which
+  // a bundled server cannot build — it has no `node_modules` to resolve their imports in.
+  const bundled = process.env.NOOKLET_BUNDLED_PLUGINS_DIR;
+  if (bundled) return { dirs: [graphPlugins], bundled: [resolve(bundled)] };
   const repoRootPlugins = resolve(
     dirname(fileURLToPath(import.meta.url)),
     "..",
@@ -171,7 +177,7 @@ function pluginDirsFor(config: ServerConfig): string[] {
     "..",
     "plugins",
   );
-  return [join(config.dataDir, "plugins"), repoRootPlugins];
+  return { dirs: [graphPlugins, repoRootPlugins], bundled: [] };
 }
 
 function die(message: string): never {
@@ -247,7 +253,8 @@ async function main(): Promise<void> {
         serverCtx: ctx,
         registry,
         config,
-        pluginDirs: pluginDirsFor(config),
+        pluginDirs: pluginDirsFor(config).dirs,
+        bundledPluginDirs: pluginDirsFor(config).bundled,
         webClientDir,
       });
       // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
@@ -525,7 +532,8 @@ async function main(): Promise<void> {
     case "plugin": {
       const sub = args._[1];
       const { ctx, config } = open(args);
-      const { found, errors } = discoverPlugins(pluginDirsFor(config));
+      const plugins = pluginDirsFor(config);
+      const { found, errors } = discoverPlugins([...plugins.dirs, ...plugins.bundled]);
       for (const d of found) ensurePluginRow(ctx.driver, d.id, d.version, ctx.hlc.next());
 
       if (sub === "list") {

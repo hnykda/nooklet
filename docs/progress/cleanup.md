@@ -44,6 +44,16 @@ Brief, four parts:
   namespace-paths+navigation+pages+query+shelf+rendering+render+history+trash+refactor+
   follow-link+embeds+tagged-pages+references+views+page-rename+page-identity+plugins+
   untrusted-content 151/151 (views.spec.ts:461 passed this time).
+- Part 2 commit `9402f31`.
+- Part 4 / B-180 (commit "fix(desktop): the sidecar ships the built-in plugins, bundled…"):
+  reproduced first (sidecar built at `9402f31`, copied out of the repo, started like `main.rs`:
+  plugins `[]`, `page.wordcount` 404). Fix: `plugins/bundled.ts#packageBundledPlugins` (the
+  loader's own bundler, at build time), `build-sidecar.mjs` step 6 into `sidecar/plugins/` +
+  banner setting `NOOKLET_BUNDLED_PLUGINS_DIR`, `cli.ts#pluginDirsFor` honours it,
+  `PluginHostDeps.bundledDirs` imports/serves those entries via `bundler.ts#alreadyBundled`.
+  Tests: `plugins/bundled.test.ts` 2/2 (loaded as ordinary dirs from the read-only copy: 2/2 fail);
+  probe `tools/probes/sidecar-plugins.mjs` before 0/4, after 4/4. Server unit 610/610; typecheck
+  clean; e2e plugins+settings 15/15; `nooklet plugin list` in dev still lists the repo's three.
 
 ## In flight
 
@@ -51,9 +61,7 @@ Brief, four parts:
 
 ## Next steps, in order
 
-1. Part 4 (B-180): sidecar ships built-in plugins; build sidecar, start with scratch NOOKLET_DATA,
-   check `page.wordcount` exists and a plugin client bundle is served.
-2. Final: `pnpm -r test`, progress + return.
+1. Final: `pnpm -r test` once, biome over touched files, progress + return.
 
 ## Decisions
 
@@ -63,6 +71,12 @@ Brief, four parts:
 - `describeError` also in ConnectView, GraphMismatchView and PluginFence, whose errors are not
   server errors: `describeError` is identical to `err instanceof Error ? err.message : String(err)`
   for those, and a guard with no exceptions is simpler than an allowlist.
+- B-180: bundle at build time with the loader's own functions rather than a second esbuild
+  config in `build-sidecar.mjs`; the env var is set by `server.mjs`'s banner rather than
+  `main.rs`, because the banner is what the probe exercises and `main.rs` could not be built here.
+  Client halves shipped too (+12 MB for mermaid) so the plugin list matches `nooklet serve` —
+  the owner may prefer to drop them (Settings would then show word-count as server-only and omit
+  mermaid); a small change in `bundled.ts`.
 - `biome check` reports 4 errors in `views/DiagnosticsPanel.tsx` lines 62-64 (a11y suppressions in
   a JSX comment) — present at `cf08d19` unchanged (checked by swapping the base file in); not
   touched here.

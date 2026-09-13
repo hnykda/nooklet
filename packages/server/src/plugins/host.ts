@@ -7,11 +7,12 @@
  * security boundary.
  */
 import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import type { ServerPluginModule } from "@nooklet/plugin-api";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import type { OpRegistry, ServerConfig } from "../ops/registry.js";
-import { bundleClientEntry, bundleServerEntry, importBundled } from "./bundler.js";
+import { alreadyBundled, bundleClientEntry, bundleServerEntry, importBundled } from "./bundler.js";
 import { DisposableTracker } from "./disposables.js";
 import { discoverPlugins, type PluginDescriptor, type PluginDiscoveryError } from "./manifest.js";
 import { createPluginServerContext } from "./server-context.js";
@@ -50,6 +51,14 @@ export interface PluginHostDeps {
   hostVersion?: string;
   /** Directories scanned for `<dir>/<name>/package.json#nooklet` plugins, in order. */
   dirs: string[];
+  /**
+   * Scanned after `dirs`: plugins whose `server`/`client` entries are ALREADY bundles
+   * (`./bundled.ts`) — the desktop sidecar's built-ins (B-180). Imported and served as they are:
+   * no esbuild, and nothing written into the directory, which there sits inside a code-signed app
+   * and is read-only when the app runs from its disk image. An entry here that is not a bundle
+   * fails to import, and the plugin shows as `error`.
+   */
+  bundledDirs?: string[];
 }
 
 export class PluginHost {
@@ -61,6 +70,12 @@ export class PluginHost {
 
   constructor(deps: PluginHostDeps) {
     this.deps = deps;
+  }
+
+  /** Whether `descriptor` was found in one of `deps.bundledDirs`. */
+  private isBundled(descriptor: PluginDescriptor): boolean {
+    const root = resolve(dirname(descriptor.dir));
+    return (this.deps.bundledDirs ?? []).some((d) => resolve(d) === root);
   }
 
   private get log() {
@@ -76,7 +91,9 @@ export class PluginHost {
    * and never aborts discovery or any other plugin's activation (ADR 007 / rule 15's "safe mode"
    * behavior, applied to the whole load path, not only the api-version check it names). */
   async loadAll(): Promise<void> {
-    const existingDirs = this.deps.dirs.filter((d) => existsSync(d));
+    const existingDirs = [...this.deps.dirs, ...(this.deps.bundledDirs ?? [])].filter((d) =>
+      existsSync(d),
+    );
     const { found, errors } = discoverPlugins(existingDirs);
     this.discoveryErrors = errors;
     for (const e of errors) this.log.warn(`plugin discovery error at ${e.source}: ${e.message}`);
@@ -106,7 +123,9 @@ export class PluginHost {
       const entry: ActivePlugin = { descriptor, tracker };
 
       if (descriptor.serverEntry) {
-        const bundle = await bundleServerEntry(descriptor.serverEntry, descriptor.dir);
+        const bundle = this.isBundled(descriptor)
+          ? await alreadyBundled(descriptor.serverEntry)
+          : await bundleServerEntry(descriptor.serverEntry, descriptor.dir);
         const mod = (await importBundled(bundle.file, bundle.hash)) as
           | ServerPluginModule
           | undefined;
@@ -192,7 +211,11 @@ export class PluginHost {
     const entry = this.active.get(id);
     const entryFile = entry?.descriptor.clientEntry;
     if (!entry || !entryFile) return Promise.resolve(undefined);
-    entry.clientBundle ??= bundleClientEntry(entryFile, entry.descriptor.dir).then(
+    entry.clientBundle ??= (
+      this.isBundled(entry.descriptor)
+        ? alreadyBundled(entryFile)
+        : bundleClientEntry(entryFile, entry.descriptor.dir)
+    ).then(
       ({ file, hash }) => {
         entry.clientBundleReady = { file, hash };
         return entry.clientBundleReady;

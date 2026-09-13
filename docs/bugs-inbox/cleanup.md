@@ -101,3 +101,38 @@ exactly what a click on the rendered link does. **Tests that would have caught i
 `e2e/tests/namespace-paths.spec.ts` "Alt+Enter on a [[namespaced link]] opens it at its path"
 (failed on `a9ea71a` with `/page/nspath%20area/leaf%20page`).
 
+### B-180 (existing)
+
+**Reproduced 2026-09-13** before fixing: built the sidecar at `9402f31` (`node
+apps/desktop/build-sidecar.mjs`), copied it out of the repo into an app-bundle layout and started it
+the way `main.rs` does on a scratch graph: `GET /api/v1/plugins` answered `{"plugins":[]}`,
+`page.wordcount` 404, 29 MCP tools and no `page_wordcount`. Shipping the `plugins/` sources would
+not have been enough: the loader bundles a plugin at startup, resolving `@nooklet/plugin-api` and
+`zod` through the server's `node_modules` (a bundled server has none) and writing
+`.nooklet-build/` into the plugin's directory (inside the signed app; read-only when the app runs
+from its disk image). Loading the packaged plugins from a read-only directory the ordinary way left
+word-count in `error` (checked with a throwaway copy of the test below).
+
+**Fixed 2026-09-13.** The built-ins ship already bundled, and the host takes them as they are.
+`packages/server/src/plugins/bundled.ts#packageBundledPlugins` bundles each built-in's halves with
+the loader's own `bundleServerEntry` / `bundleClientEntry` into `<out>/<name>/server.mjs` /
+`client.js` plus a `package.json` pointing at them; `build-sidecar.mjs` step 6 runs it (through
+`tsx`'s `tsImport`) into `sidecar/plugins/`, and fails the build if word-count is missing.
+`server.mjs`'s banner sets `NOOKLET_BUNDLED_PLUGINS_DIR` (unless already set) to the `plugins/`
+beside it, so `main.rs` needed no change; `cli.ts#pluginDirsFor` uses that directory instead of the
+repo's `plugins/` when the variable is set, for `serve` and `plugin list|enable|disable`.
+`PluginHostDeps.bundledDirs` (`createAppWithPlugins`'s `bundledPluginDirs`) marks such directories:
+their entries are imported and served through `bundler.ts#alreadyBundled` — hashed, never
+re-bundled, nothing written. Cost: the sidecar grows by ~13 MB (word-count's server half 1 MB with
+zod inlined; mermaid's client half 12 MB, which the web build also carries — the desktop web app
+compiles the client halves in and fetches none of these; shipped so Settings → Plugins lists the
+same three plugins with the same halves as `nooklet serve`). **Tests that would have caught it:**
+`packages/server/src/plugins/bundled.test.ts` (packages the repo's plugins, makes the output
+read-only, loads it from outside any `node_modules`: all three active with the same halves, no
+`.nooklet-build`, `page.wordcount` answers, word-count's client half served at its listed URL) and
+the re-runnable end-to-end check `tools/probes/sidecar-plugins.mjs` (a built sidecar, copied
+read-only to a temp app layout, started from `/`: before, 4 of 4 checks failed; after, 4 of 4 —
+three plugins listed, `page.wordcount` 200 with the right count, `page_wordcount` among 30 MCP
+tools, client half 200). The full Tauri app was not built; `tauri.conf.json` maps the whole
+`../sidecar` directory as a resource, so `plugins/` rides along by reading, not by a built `.app`.
+
