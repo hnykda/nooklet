@@ -11,53 +11,69 @@
  * the later HLC, LWW lets it win, `x` goes back to `Src` — and the children the server moved stay on
  * `Dst`. Only the server ever holds both ops, so the repair has to happen here.
  *
- * The repair is ordinary ops, never a raw UPDATE: every descendant of a block placed in this batch
- * that sits on a different page than its parent gets a server-HLC `block.place` keeping its parent
- * and order and taking the parent's page. Being ops, they are logged (so `verify`'s replay
- * reproduces them), recorded in `changes` with the batch (so `batch.undo` of a move undoes the
- * repair too) and returned as `corrections` (so the pushing device converges at once rather than on
- * its next pull).
+ * The repair is ordinary ops, never a raw UPDATE: every descendant (tombstoned ones too) of a
+ * block that changed page in this batch, sitting on a different page than its parent, gets a
+ * server-HLC `block.place` keeping its parent and order and taking the parent's page. Being ops,
+ * they are logged (so `verify`'s replay reproduces them), recorded in `changes` with the batch (so
+ * `batch.undo` of a move undoes the repair too) and returned as `corrections` (so the pushing
+ * device converges at once rather than on its next pull).
  *
- * Why every placed block and not only those whose page differs from the batch's pre-image: a batch
- * can move `x` away and back (`x → Dst`, `c1 → under x on Dst`, `x → Src`). `x` ends where it began,
- * yet `c1` is stranded on `Dst`. The walk is bounded by the placed blocks' subtrees, each block
- * visited once, and an ordinary reorder's subtree is small.
+ * Which blocks are walked: those with an applied `block.place` whose page differs from the block's
+ * page before the batch. That is exactly the set of blocks that changed page at SOME point in the
+ * batch — resolving a place never changes its `pageId` — so a batch that moves `x` away and back
+ * (`x → Dst`, `c1 → under x on Dst`, `x → Src`) still walks `x` and brings `c1` home. A child whose
+ * own op moved it is consistent with its parent at that moment (the reducer checks), so only a
+ * parent's page change can break an edge; walking page-changed blocks covers every broken edge.
+ * An ordinary reorder or indent within a page walks nothing.
  */
 
 import type { AppliedOpResult, BlockPlace, Op, SqlDriver } from "@nooklet/core";
+import type { BlockChangeSnapshot, PageChangeSnapshot } from "./rows.js";
+
+type Snapshots = ReadonlyMap<string, PageChangeSnapshot | BlockChangeSnapshot | null>;
 
 interface ChildRow {
   id: string;
+  parent_id: string;
   page_id: string;
   order_key: string;
 }
 
 /**
- * The `block.place` ops that bring every descendant of a block placed in this batch onto its
- * parent's page, minted in the order they must apply: parent before child, because the reducer
- * nulls a `parentId` whose block is not on the same page (rule 24's fallback) — a child repaired
- * before its parent would land at the top level.
+ * The `block.place` ops that bring every descendant of a page-changing block onto its parent's
+ * page, minted in the order they must apply: parent before child, because the reducer nulls a
+ * `parentId` whose block is not on the same page (rule 24's fallback) — a child repaired before its
+ * parent would land at the top level.
  *
- * Placed blocks are walked shallowest first. A placed block inside another placed block's subtree
- * is then reached from the outer walk, with the outer block's page, and not walked again.
+ * Page-changing blocks are walked shallowest first. One inside another's subtree is then reached
+ * from the outer walk, with the outer block's page, and not walked again.
  *
- * `mint` stamps a server HLC — passed in rather than imported to keep this module free of
- * `./apply-ops.ts`.
+ * `ops`/`results` are what the batch applied so far (incoming ops plus any cycle correction);
+ * `before` is its pre-image. `mint` stamps a server HLC — passed in rather than imported to keep
+ * this module free of `./apply-ops.ts`.
  */
 export function planSubtreePageRepair(
   driver: SqlDriver,
+  ops: readonly Op[],
   results: readonly AppliedOpResult[],
+  before: Snapshots,
   mint: (entity: string, place: BlockPlace) => Op,
 ): Op[] {
-  const placed = new Set<string>();
-  for (const one of results) {
-    if (one.status === "applied" && one.kind === "block.place") placed.add(one.entity);
+  const applied = new Set(results.filter((r) => r.status === "applied").map((r) => r.id));
+  const moved = new Set<string>();
+  for (const op of ops) {
+    if (op.payload.kind !== "block.place" || !applied.has(op.id)) continue;
+    const prior = before.get(op.entity);
+    if (prior && "place" in prior && prior.place.pageId !== op.payload.place.pageId) {
+      moved.add(op.entity);
+    }
   }
-  if (placed.size === 0) return [];
+  if (moved.size === 0) return [];
 
-  const depth = new Map([...placed].map((id) => [id, depthOf(driver, id)]));
-  const ordered = [...placed].sort((a, b) => (depth.get(a) ?? 0) - (depth.get(b) ?? 0));
-  const ops: Op[] = [];
+  const children = childLookup(driver);
+  const depth = new Map([...moved].map((id) => [id, depthOf(driver, id)]));
+  const ordered = [...moved].sort((a, b) => (depth.get(a) ?? 0) - (depth.get(b) ?? 0));
+  const repairs: Op[] = [];
   const visited = new Set<string>();
   for (const rootId of ordered) {
     if (visited.has(rootId)) continue;
@@ -69,24 +85,51 @@ export function planSubtreePageRepair(
     const queue: Array<[string, string]> = [[rootId, root.page_id]];
     while (queue.length > 0) {
       const [parentId, pageId] = queue.shift() as [string, string];
-      for (const child of childrenOf(driver, parentId)) {
+      for (const child of children(parentId)) {
         if (visited.has(child.id)) continue;
         visited.add(child.id);
         if (child.page_id !== pageId) {
-          ops.push(mint(child.id, { pageId, parentId, order: child.order_key }));
+          repairs.push(mint(child.id, { pageId, parentId, order: child.order_key }));
         }
         queue.push([child.id, pageId]);
       }
     }
   }
-  return ops;
+  return repairs;
 }
 
-function childrenOf(driver: SqlDriver, parentId: string): ChildRow[] {
-  return driver.all<ChildRow>(
-    "SELECT id, page_id, order_key FROM block WHERE parent_id = ? AND deleted_at IS NULL ORDER BY order_key, id",
-    [parentId],
-  );
+/**
+ * Children of a block, tombstoned ones included (B-120: a deleted child left on the old page kept
+ * `parent_id` pointing at a block on the new one, so `trash.list` still offered it and
+ * `trash.restore` brought it back onto neither page; core keeps its possibly-deleted parent because
+ * the repair op names the parent it already has).
+ *
+ * Two sources, because the only index on `parent_id` (`block_children`) is partial on
+ * `deleted_at IS NULL`: live children through the index, per parent; tombstoned children from ONE
+ * scan, taken only when a batch has a page-changing move at all. A per-parent query without the
+ * `deleted_at` filter cannot use the index — on the owner's graph, walking a 961-block subtree
+ * that way spent 6.4 s in full-table scans (tools/probes/subtree-page-repair-real-graph.ts).
+ */
+function childLookup(driver: SqlDriver): (parentId: string) => ChildRow[] {
+  const tombstoned = new Map<string, ChildRow[]>();
+  for (const row of driver.all<ChildRow>(
+    "SELECT id, parent_id, page_id, order_key FROM block WHERE deleted_at IS NOT NULL AND parent_id IS NOT NULL",
+  )) {
+    const list = tombstoned.get(row.parent_id);
+    if (list) list.push(row);
+    else tombstoned.set(row.parent_id, [row]);
+  }
+  return (parentId) => {
+    const live = driver.all<ChildRow>(
+      "SELECT id, parent_id, page_id, order_key FROM block WHERE parent_id = ? AND deleted_at IS NULL ORDER BY order_key",
+      [parentId],
+    );
+    const dead = tombstoned.get(parentId);
+    if (!dead) return live;
+    return [...live, ...dead].sort((a, b) =>
+      a.order_key === b.order_key ? (a.id < b.id ? -1 : 1) : a.order_key < b.order_key ? -1 : 1,
+    );
+  };
 }
 
 function depthOf(driver: SqlDriver, id: string): number {

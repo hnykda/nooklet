@@ -144,3 +144,71 @@ describe("children follow their parent's page, whoever moved the parent (B-120)"
     expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
   });
 });
+
+describe("tombstoned descendants move with their parent (B-120)", () => {
+  it("a deleted child follows a cross-page move and restores onto the parent's page, grandchild attached", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Src",
+      markdown: "- p\n  - c1\n    - g\n  - c2",
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Dst", markdown: "- d" });
+    const [p] = await tree("Src");
+    const c1 = p.children[0];
+    expect((await post(s.app, "/api/v1/block.delete", s.writeToken, { id: c1.id })).status).toBe(
+      200,
+    );
+    const mv = await post(s.app, "/api/v1/block.move_to_page", s.writeToken, {
+      id: p.id,
+      page: "Dst",
+    });
+    expect(mv.json.moved).toBe(2); // p and c2: the count is of live blocks
+
+    // Nothing is left on Src, live or not.
+    const onSrc = s.serverCtx.driver.all<{ content: string }>(
+      "SELECT content FROM block WHERE page_id = ?",
+      [pageId("Src")],
+    );
+    expect(onSrc).toEqual([]);
+
+    const trash = await post(s.app, "/api/v1/trash.list", s.writeToken, {});
+    expect(trash.json.items.map((i: JsonAny) => i.id)).toEqual([c1.id]);
+    const restore = await post(s.app, "/api/v1/trash.restore", s.writeToken, { id: c1.id });
+    expect(restore.status).toBe(200);
+    expect(restore.json.page).toBe("Dst");
+    expect(shape(await tree("Dst"))).toEqual([
+      ["d", []],
+      [
+        "p",
+        [
+          ["c1", [["g", []]]],
+          ["c2", []],
+        ],
+      ],
+    ]);
+    expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
+  });
+
+  it("page.merge carries a deleted child along too, so restoring it lands on the target", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Src",
+      markdown: "- p\n  - c1",
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Tgt", markdown: "- t" });
+    const [p] = await tree("Src");
+    const c1 = p.children[0];
+    await post(s.app, "/api/v1/block.delete", s.writeToken, { id: c1.id });
+    const merge = await post(s.app, "/api/v1/page.merge", s.writeToken, {
+      source: "Src",
+      target: "Tgt",
+    });
+    expect(merge.status).toBe(200);
+    const restore = await post(s.app, "/api/v1/trash.restore", s.writeToken, { id: c1.id });
+    expect(restore.status).toBe(200);
+    expect(restore.json.page).toBe("Tgt");
+    expect(shape(await tree("Tgt"))).toEqual([
+      ["t", []],
+      ["p", [["c1", []]]],
+    ]);
+    expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
+  });
+});

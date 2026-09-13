@@ -19,32 +19,35 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 
 | Finding | Severity | Bug | Status |
 |---|---|---|---|
-| F1 children orphaned when a later device place wins over a server cross-page move | high | B-120 | fixed (commit: see Done) |
-| F2 deleted descendants left behind by a cross-page move; restore → invisible | medium | B-121 | logged |
+| F1 children orphaned when a later device place wins over a server cross-page move | high | B-120 | fixed b913148 |
+| F2 deleted descendants left behind by a cross-page move; restore → invisible | medium | B-120 (same mechanism) | fixed (see Done) |
 | F3 to_page / move_to_page / merge commit, then throw | medium | B-122 | logged |
 | F4 batch.undo / trash.restore report success on a rejected un-delete | medium | B-90 (existing) | logged |
 | F5 verify replays rejected ops | medium | B-123 | logged |
 | F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | logged |
 | F7 query `ref` prefilter drops property-only refs | low | B-124 | logged |
-| F8 recordChanges O(n²) | low | none (range exhausted; review doc only) | logged |
-| F9 DataApi deletes: one timestamp per op | low | B-121 (same family: restore brings back less than was deleted) | logged |
-| F10 asset GC ignores history snapshots | low | B-91 (existing, a second hole of the same kind) | logged |
+| F8 recordChanges O(n²) | low | note under B-85 (existing) | logged |
+| F9 DataApi deletes: one timestamp per op | low | B-121 | logged |
+| F10 asset GC ignores history snapshots | low | B-91 (existing) | logged |
+| (found) cross-page move of a big subtree takes ~23 s: reindex walks unindexed | — | note under B-85 (existing), not fixed | logged |
 
 ## Done
 
-- F1 / B-120: `packages/server/src/subtree-page-repair.ts` + hookup in `apply-ops.ts`; tests
-  `subtree-page-repair.test.ts` (3, all fail without the pass). Server suite 524/524 (4 plugin
-  tests timed out at load 43 in the full run, passed on rerun). Real-graph copy: 0 page/parent
-  mismatches, verify OK over 20,411 ops.
-
-## In flight
-
-F2 (deleted descendants follow too; core `resolvePlace` must keep a tombstoned parent for a
-tombstoned child, or deleted grandchildren lose their parent).
+- F1 / B-120 — `b913148`: `packages/server/src/subtree-page-repair.ts` + hookup in `apply-ops.ts`;
+  tests `subtree-page-repair.test.ts` (3, all fail without the pass).
+- F2 / B-120 — (this commit): the walk includes tombstoned descendants (live via the partial
+  `block_children` index, tombstoned from one scan — a per-parent unfiltered query was 6.4 s of
+  full scans on a 961-block real subtree); walks only blocks that changed page in the batch; core
+  `resolvePlace` keeps a tombstoned parent the block already has. Tests: 2 more in
+  `subtree-page-repair.test.ts`, 3 in core `apply-ops.test.ts`. Probe
+  `tools/probes/subtree-page-repair-real-graph.ts` on a real-graph copy: 961-block subtree away and
+  back, 0 mismatches, verify ok. Suites: core 335, server 526, web 684 — all pass (flaky timeouts
+  under load 20–40 rerun green: core property test, tokens quadratic timing, plugin host, web
+  render-seams). `verify` on the real graph copy OK (20,411 ops).
 
 ## Next steps, in order
 
-F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, then the review doc.
+F3, F4, F5, F6, F7, F8, F9, F10, then the review doc.
 
 ## How to resume
 

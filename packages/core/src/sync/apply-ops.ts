@@ -312,17 +312,35 @@ interface ParentCandidate {
   deleted_at: number | null;
 }
 
-/** Rule 24: if `place.parentId` does not resolve to a live block on `place.pageId`, use `null`. */
-function resolvePlace(driver: SqlDriver, place: BlockPlace): BlockPlace {
+/**
+ * Rule 24: if `place.parentId` does not resolve to a block on `place.pageId` that is live — or is
+ * the parent the block already has — use `null`.
+ *
+ * The "already has" half (B-120): a tombstone hides a subtree, it does not dissolve it
+ * ("descendants stay attached and hidden; restoring the ancestor restores them",
+ * research/03-sync.md). When the server carries a deleted subtree to another page
+ * (`packages/server/src/subtree-page-repair.ts`), the grandchild's op names its deleted parent;
+ * without this exception it landed at the new page's top level, and restoring the child from the
+ * trash brought the child back without it. Likewise a reorder under a parent another device has
+ * since deleted keeps the block where it was instead of surfacing it at the top level. A move
+ * under a *different* deleted parent still falls back, so a new or moved block never disappears
+ * into the trash by being placed there.
+ */
+function resolvePlace(
+  driver: SqlDriver,
+  place: BlockPlace,
+  currentParentId?: string | null,
+): BlockPlace {
   if (place.parentId === null) return place;
   const parent = driver.get<ParentCandidate>(
     "SELECT id, page_id, deleted_at FROM block WHERE id = ?",
     [place.parentId],
   );
-  if (!parent || parent.deleted_at !== null || parent.page_id !== place.pageId) {
-    return { ...place, parentId: null };
-  }
-  return place;
+  const usable =
+    parent !== undefined &&
+    parent.page_id === place.pageId &&
+    (parent.deleted_at === null || parent.id === currentParentId);
+  return usable ? place : { ...place, parentId: null };
 }
 
 /** Server-only cycle check (sql-schema.md rule 24), applied uniformly here (see file header). */
@@ -415,9 +433,10 @@ function applyBlockPlace(
   entity: string,
   payload: Extract<OpPayload, { kind: "block.place" }>,
 ): OpOutcome {
-  const row = driver.get<{ place_hlc: string }>("SELECT place_hlc FROM block WHERE id = ?", [
-    entity,
-  ]);
+  const row = driver.get<{ place_hlc: string; parent_id: string | null }>(
+    "SELECT place_hlc, parent_id FROM block WHERE id = ?",
+    [entity],
+  );
   if (!row) return { status: "noop", reason: "no-such-block" };
   if (compareHlc(hlc, row.place_hlc) <= 0) return { status: "noop", reason: "stale" };
 
@@ -425,7 +444,7 @@ function applyBlockPlace(
     return { status: "rejected", reason: "no-such-page" };
   }
 
-  const place = resolvePlace(driver, payload.place);
+  const place = resolvePlace(driver, payload.place, row.parent_id);
   const samePlace =
     place.pageId === payload.place.pageId && place.parentId === payload.place.parentId;
   const loggedPayload: OpPayload = samePlace ? payload : { ...payload, place };

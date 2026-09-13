@@ -397,7 +397,11 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
       for `(block, entity)`, `(page, place.pageId)`, and every ancestor block id (their
       "flattened descendants" embedding text now includes this block).
     - **`block.place`** `{place}` — LWW on `(page_id, parent_id, order_key)` as one field via
-      `place_hlc`. Same missing/invalid-parent fallback as `block.create`. **Server-only** cycle
+      `place_hlc`. Same missing/invalid-parent fallback as `block.create`, with one exception
+      (B-120): a tombstoned parent on `place.pageId` is kept when it is the parent the block
+      already has — a tombstone hides a subtree, it does not dissolve it, so carrying a deleted
+      subtree to another page, or reordering under a parent deleted meanwhile, keeps the block
+      attached. A move under a *different* tombstoned parent still falls back to `null`. **Server-only** cycle
       check via the recursive CTE (verified, `check_cycle.mjs`):
       ```sql
       WITH RECURSIVE ancestors(id, parent_id) AS (

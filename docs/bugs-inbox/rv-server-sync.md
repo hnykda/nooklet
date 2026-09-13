@@ -4,14 +4,19 @@ Entries for `docs/BUGS.md`, written here so parallel branches do not conflict on
 M7 server/sync code review (findings F1–F10, each confirmed by an independent skeptic), fixed on
 branch `m8/rv-server-sync`. Record: `docs/review/2026-09-13-m7-rv-server-sync.md`.
 
+Numbering: this branch had B-120..B-124. F1 and F2 share B-120 (one mechanism, one fix); F4, F6
+and F10 are follow-ups to B-90, B-86 and B-91; F8 and a slowness found in passing are notes under
+B-85 (existing), since the range ran out.
+
 ---
 
 ### B-120 · A block moved to another page loses its children when a second device reorders it on the old page
-**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, M7 server/sync review (F1) ·
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, M7 server/sync review (F1, F2) ·
 **Test:** `packages/server/src/subtree-page-repair.test.ts` "a later device reorder on the old page
-wins, and the subtree comes back with it" (plus "a device moving a child to another page brings the
-grandchildren along", "a batch that moves a block away and back does not strand what was placed
-under it meanwhile")
+wins, and the subtree comes back with it" and "a deleted child follows a cross-page move and
+restores onto the parent's page, grandchild attached" (plus three more there, and
+`packages/core/src/sync/apply-ops.test.ts` "block.place keeps a tombstoned parent it already has
+(B-120)")
 
 Device B has page `Src` synced and reorders block `x` on `Src` (offline, or just before its next
 pull). Meanwhile an agent or the menu moves `x` to `Dst` with `block.move_to_page`, which moves the
@@ -25,36 +30,42 @@ B-85's fix lives in the op layer (`data-api.ts#subtreePlaceOps`) and so covers o
 server itself plans; any `block.place` arriving by sync that changes a block's page leaves the
 same orphans.
 
+The same walk also skipped **tombstoned descendants** (F2): `subtreePlaceOps` reads children
+through `siblingRows`, which filters `deleted_at IS NULL`. Delete `c1` under `p`, move `p` to
+`Dst`: `c1` keeps `page_id = Src` with `parent_id = p` (on `Dst`). `trash.list` still offers it
+(its page and parent are live); `trash.restore c1` answers 200 `{page: "Src"}`, and `c1` is then on
+neither page and no longer in the trash. Same for `block.move`, `block.to_page`, `page.merge`.
+
 **Fixed 2026-09-13.** A second server repair pass in `serverApplyOps`, next to rule 24's cycle
-correction (`packages/server/src/subtree-page-repair.ts`): after a batch applies, every descendant of
-a block placed in that batch which sits on a different page than its parent gets a server-HLC
-`block.place` keeping its parent and order and taking the parent's page, minted parent-first. They
-apply in the same transaction, are logged (replay parity holds), recorded in `changes` with the
-batch (so `batch.undo` of the move reverses them) and returned as `corrections` (so the pushing
-device converges). The walk covers every block placed in the batch, not only those whose page
-differs from the pre-image, because a batch can move a block away and back and strand what was
-placed under it meanwhile. All three tests fail without the pass. The owner's graph has 0 rows whose
-page differs from their parent's, so no migration; `verify` clean over 20,411 ops.
+correction (`packages/server/src/subtree-page-repair.ts`): for every block that changed page in
+the batch (an applied `block.place` whose page differs from the block's pre-batch page — which
+also catches a batch that moves a block away and back), each descendant, tombstoned ones included,
+that sits on a different page than its parent gets a server-HLC `block.place` keeping its parent
+and order and taking the parent's page, minted parent-first. They apply in the same transaction,
+are logged (replay parity holds), recorded in `changes` with the batch (so `batch.undo` of the move
+reverses them) and returned as `corrections` (so the pushing device converges). For the tombstoned
+half, core's `resolvePlace` now keeps a tombstoned parent when it is the parent the block already
+has (research/03-sync.md: "descendants stay attached and hidden"); without that, a deleted
+grandchild's repair op fell back to the top level. A move under a *different* deleted parent still
+falls back. sql-schema.md rule 24 updated. Every server test named above fails without the pass.
+Real graph (copy): 0 rows whose page differs from their parent's (no migration needed); moving the
+largest subtree (961 blocks, a 6-block tombstoned child) away and back with device ops leaves 0
+mismatches and `verify` clean (`tools/probes/subtree-page-repair-real-graph.ts`); `verify` clean
+over the owner's 20,411 ops with the new `resolvePlace`.
 
 ---
 
-### B-121 · Trash restore can bring a block back onto no page, or a page back without its blocks
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, M7 server/sync review (F2, F9) ·
+### B-121 · A page deleted by a plugin comes back from the trash without its blocks
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, M7 server/sync review (F9) ·
 **Test:** —
 
-Two ways the trash gives back less than was deleted:
-
-1. **Deleted descendants stay behind on a cross-page move (F2).** `subtreePlaceOps` walks children
-   with `siblingRows`, which skips tombstoned blocks. Delete `c1` under `p`, move `p` to `Dst`:
-   `c1` keeps `page_id = Src` with `parent_id = p` (on `Dst`). `trash.list` still offers it (its
-   page and parent are live); `trash.restore c1` answers 200 `{page: "Src"}`, and `c1` is then on
-   neither page and no longer in the trash. Same for `block.move`, `block.to_page`, `page.merge`.
-2. **Plugin deletes stamp one timestamp per op (F9).** `DataApi.pages.delete` and
-   `DataApi.blocks.delete` call `Date.now()` for every op. `trash.restore` brings back a page's
-   blocks (and a block's descendants) only when their `deleted_at` equals the root's, so a plugin
-   delete that spans a millisecond restores a page with no blocks; the blocks become separate trash
-   entries. Probe: `Date.now` advancing 1 ms per call, `api.pages.delete` on a 3-block page, then
-   `trash.restore` → 1 entity restored, page empty.
+`DataApi.pages.delete` and `DataApi.blocks.delete` (what plugins reach through `ctx.data`) call
+`Date.now()` for every op they mint. `trash.restore` brings back a page's blocks — and a block's
+descendants — only when their `deleted_at` equals the root's, which is how it recognises one delete
+action. A plugin delete that spans a millisecond therefore restores a page with no blocks; the
+blocks become separate trash entries. Probe: `Date.now` advancing 1 ms per call,
+`api.pages.delete` on a 3-block page, then `trash.restore` → 1 entity restored, page empty.
+`ops/page-delete.ts` and `ops/block-delete.ts` already take one `now`.
 
 ---
 
@@ -128,12 +139,20 @@ properties (`date-saved`, `date-published`).
 
 ---
 
-### B-91 (existing)
+### B-85 (existing)
 
-A second way asset GC collects an asset something still needs (F10): `referencedAssetIds` scans
-current block content and property values only. `batch.undo` — the mechanism `page.history`
-tells clients to restore a version with (ADR 022 §3) — rewrites block text from
-`changes.before_json`. Remove an image link by editing the block (nothing goes to the trash), run
-`nooklet gc` more than 7 days later: the asset row is tombstoned and the file unlinked; undoing
-the edit then brings back a link to nothing, recoverable only from the pre-GC backup archive.
-Found by reading the code, not probed.
+Big batches stall the server (F8, plus one found in passing while measuring B-120):
+
+- **`recordChanges` looked each op's result up with `results.find`**, once per op — quadratic in
+  the batch. `graph.replace` allows 20,000 blocks in one `applyOps`; a big `page.merge` or sync
+  push is one batch too. The skeptic measured the `find` alone at about 0.25 s at 8k ops and 1.1 s
+  at 20k.
+- **Open, not fixed here:** a cross-page move of a large subtree is slow on the code as it stands,
+  before this branch. Moving the owner's largest subtree (961 blocks) with `subtreePlaceOps`
+  through `serverApplyOps` took 23 s at `da85cfb` (load average ~24 on a shared machine).
+  `reindexTouchedEntities` calls `reindexBlockAndSubtree` for every placed block, which walks that
+  block's whole subtree with `SELECT id FROM block WHERE parent_id = ?` — no `deleted_at` filter,
+  so the partial `block_children` index cannot serve it and every step is a full scan — and
+  rebuilds `path_ref` for each descendant: roughly subtree² full scans. Fix direction: collect the
+  union of touched subtrees once per batch (live children via the index, tombstoned ones from one
+  scan, as `subtree-page-repair.ts#childLookup` does), then rebuild each block's `path_ref` once.

@@ -134,8 +134,13 @@ export function serverApplyOps(
     // B-120: a block that changed page takes its descendants with it, whoever moved it — see
     // `./subtree-page-repair.ts`. A repaired descendant `ops` never named has not changed yet, so
     // its snapshot taken now is its pre-batch image.
-    const repairs = planSubtreePageRepair(driver, r.results, (entity, place) =>
-      makeOp(ctx.hlc.next(), SERVER_DEVICE_ID, entity, { kind: "block.place", place }),
+    const repairs = planSubtreePageRepair(
+      driver,
+      ops.concat(corrections),
+      r.results,
+      beforeSnapshots,
+      (entity, place) =>
+        makeOp(ctx.hlc.next(), SERVER_DEVICE_ID, entity, { kind: "block.place", place }),
     );
     if (repairs.length > 0) {
       for (const op of repairs) {
