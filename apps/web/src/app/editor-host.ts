@@ -18,6 +18,7 @@ import type {
   EditorHost,
   EditorSelection,
   LinkAtCaret,
+  OpBatch,
   ReplaceRangeSpec,
 } from "../commands/hosts/editor-host.js";
 import type { CommandContext, WhenContext } from "../commands/types.js";
@@ -33,6 +34,7 @@ const NOOP_HOST: EditorHost = {
   getSelection: () => null,
   replaceRange: () => {},
   runStructuralCommand: () => {},
+  commitOps: () => false,
   getLinkAtCaret: () => null,
 };
 
@@ -57,6 +59,7 @@ export const liveEditorHost: EditorHost = {
   getSelection: () => activeEditorHost().getSelection(),
   replaceRange: (spec) => activeEditorHost().replaceRange(spec),
   runStructuralCommand: (id, ctx) => activeEditorHost().runStructuralCommand(id, ctx),
+  commitOps: (batch) => activeEditorHost().commitOps(batch),
   getLinkAtCaret: () => activeEditorHost().getLinkAtCaret(),
 };
 
@@ -70,6 +73,8 @@ export interface EditorHostBacking {
   /** `id` is null when no block is being edited — a selection-mode command arriving through the
    *  global dispatcher, which the tree resolves against its own selection. */
   runStructural(id: string | null, commandId: string, ctx: CommandContext): void | Promise<void>;
+  /** `EditorHost.commitOps`: the tree commits the batch through its own history, or says no. */
+  commitOps(batch: OpBatch): boolean;
   linkAtCaret(): LinkAtCaret | null;
 }
 
@@ -110,6 +115,10 @@ export function createEditorHost(backing: EditorHostBacking): EditorHost {
       // keydown already preventDefault'ed by the dispatcher. Returning early dropped them on the
       // floor — Enter from selection mode did nothing (B-44). The tree decides what a null id means.
       return backing.runStructural(backing.currentId(), id, ctx);
+    },
+
+    commitOps(batch: OpBatch): boolean {
+      return backing.commitOps(batch);
     },
 
     getLinkAtCaret(): LinkAtCaret | null {

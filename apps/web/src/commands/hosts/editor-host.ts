@@ -22,8 +22,13 @@
  *   this package's scope) — this package registers those ids (so the registry/keymap/palette see
  *   a complete command set, R1) but their `run()` is a one-line delegate to this method. The
  *   editor package supplies the real per-command behavior; `ctx` is forwarded unchanged.
+ * - `commitOps()` is for a command that builds its ops itself (from data the editor does not hold,
+ *   like `/template`'s copy of another page's subtree) but whose result belongs in the editor's
+ *   undo history. Writing them with `applyOps` directly is not the same thing: the history only
+ *   sees what the tree commits, so Cmd/Ctrl+Z could not take them back (B-108).
  */
 
+import type { Op } from "@nooklet/core";
 import type { CommandContext } from "../types.js";
 
 export interface EditorSelection {
@@ -48,6 +53,18 @@ export interface ReplaceRangeSpec {
   caretOffset?: number | { anchor: number; head: number };
 }
 
+/** A batch of ops a command built, for the editor to commit as ONE undo step (`commitOps`). */
+export interface OpBatch {
+  /** Minted but NOT yet applied. The editor re-mints them with its own clock when it commits. */
+  ops: Op[];
+  /** A block that exists before the batch — the one the command acted on. Only the editor showing
+   * it may commit the batch; a batch it cannot place is refused, never half-applied. */
+  anchorId: string;
+  /** Where the caret goes afterwards: `"end"` or an offset into that block's content. Omitted: it
+   * stays where it is. */
+  focus?: { blockId: string; caret: number | "end" };
+}
+
 /** What `nav.followLink` (R43) needs to know about the token under/adjacent to the caret. */
 export type LinkAtCaret =
   | { type: "page"; name: string }
@@ -70,6 +87,11 @@ export interface EditorHost {
    * `run()` received. */
   runStructuralCommand(id: string, ctx: CommandContext): void | Promise<void>;
 
+  /** Apply `batch` through the editor that shows `batch.anchorId`, as one step of its undo history.
+   * `false` — nothing applied — when no mounted editor shows that block; the caller then writes the
+   * ops itself (`applyOps`), which is still correct, just not undoable with Cmd/Ctrl+Z. */
+  commitOps(batch: OpBatch): boolean;
+
   /** The wikilink/tag/blockref/URL token the caret is in or immediately adjacent to (R43's
    * `caretInLink`), or `null`. Only called by `nav.followLink`, whose `when` already requires
    * `caretInLink`, so a real editor need not implement this precisely for every other case. */
@@ -81,6 +103,10 @@ export interface EditorHost {
 export function createFakeEditorHost(initial?: Partial<EditorSelection>): EditorHost & {
   state: EditorSelection | null;
   structuralCalls: Array<{ id: string; ctx: CommandContext }>;
+  /** Every `commitOps` batch, accepted or not. */
+  committed: OpBatch[];
+  /** What `commitOps` answers; `true` by default (an editor shows the anchor). */
+  acceptCommits: boolean;
   linkAtCaret: LinkAtCaret | null;
 } {
   let state: EditorSelection | null =
@@ -93,6 +119,8 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
           end: initial.end ?? 0,
         };
   const structuralCalls: Array<{ id: string; ctx: CommandContext }> = [];
+  const committed: OpBatch[] = [];
+  let acceptCommits = true;
   let linkAtCaret: LinkAtCaret | null = null;
 
   return {
@@ -108,7 +136,14 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
     set linkAtCaret(next) {
       linkAtCaret = next;
     },
+    get acceptCommits() {
+      return acceptCommits;
+    },
+    set acceptCommits(next) {
+      acceptCommits = next;
+    },
     structuralCalls,
+    committed,
     getSelection() {
       return state;
     },
@@ -126,6 +161,10 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
     },
     runStructuralCommand(id, ctx) {
       structuralCalls.push({ id, ctx });
+    },
+    commitOps(batch) {
+      committed.push(batch);
+      return acceptCommits;
     },
     getLinkAtCaret() {
       return linkAtCaret;

@@ -72,6 +72,7 @@ import {
   setCollapsed,
   splitBlock,
 } from "./commands.js";
+import { prepareExternalBatch } from "./external-batch.js";
 import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
@@ -440,7 +441,13 @@ export function BlockTree(props: {
       ? { id: curId, caret: { offset: surface.head() } }
       : null;
     commit(res.ops, treeBefore, "structure", before, res.focus ?? before);
-    if (res.focus) attachEditing(res.focus.id, res.focus.caret);
+    if (!res.focus) return;
+    // Focus staying on the block being edited (a command's batch written into it, B-108): the
+    // buffer was synced by `commit`, and `attachEditing` with the same id re-renders nothing, so
+    // the caret would never move. Same case as in `doUndo`.
+    if (res.focus.id === editingId() && surface.currentId() === res.focus.id)
+      surface.setCaret(res.focus.caret);
+    else attachEditing(res.focus.id, res.focus.caret);
   }
 
   function commitOne(op: Op): void {
@@ -751,6 +758,13 @@ export function BlockTree(props: {
       // nothing at all — Enter from selection mode never re-entered editing (B-44).
       const sel = selection();
       if (sel) runSelectionCommand(cmd, sel);
+    },
+    commitOps: (batch) => {
+      const clock = clockSig();
+      const prepared = clock && !props.readOnly && prepareExternalBatch(batch, editorTree(), clock);
+      if (!prepared) return false;
+      runStructural(prepared);
+      return true;
     },
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
   });

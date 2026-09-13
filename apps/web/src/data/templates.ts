@@ -213,13 +213,15 @@ async function firstChildOrder(pageId: string, parentId: string): Promise<string
 }
 
 /**
- * Insert a copy of template `templateId` as the next sibling(s) of `blockId`. Returns the first
- * created top-level block's id (to put the caret in), or `undefined` if either block is gone.
+ * The ops that insert a copy of template `templateId` as the next sibling(s) of `blockId`, and the
+ * first created top-level block's id (to put the caret in); `undefined` if either block is gone.
+ * Minted but NOT applied: the caller commits them through the editor, so the insertion is one
+ * step of its undo history (B-108), or applies them itself when no editor shows `blockId`.
  */
-export async function insertTemplateAfter(
+export async function templateAfterOps(
   templateId: string,
   blockId: string,
-): Promise<string | undefined> {
+): Promise<{ ops: Op[]; firstId: string } | undefined> {
   const [node, place] = await Promise.all([loadTemplate(templateId), placeOf(blockId)]);
   if (!node || !place) return undefined;
   const roots = templateRoots(node);
@@ -232,23 +234,25 @@ export async function insertTemplateAfter(
     expansionNow(),
     minterFor(clock),
   );
-  await applyOps(ops);
-  return created[0]?.id;
+  const firstId = created[0]?.id;
+  return firstId ? { ops, firstId } : undefined;
 }
 
 /**
- * Insert template `templateId` INTO `blockId`, an empty bullet the person is editing: the first
- * inserted node's marker, priority, collapsed state and properties are written onto that block,
- * its children are created beneath it, and any further top-level nodes follow as siblings. The
- * first node's expanded content is returned rather than written — the caller owns an open editor
- * buffer for that block and must set the text through it, or the editor's next flush would
- * overwrite whatever an op put there (`BlockTree` keeps the live buffer over a refetch on purpose).
- * `undefined` if either block is gone.
+ * The ops that put template `templateId` INTO `blockId`, an empty bullet the person is editing:
+ * the first inserted node's expanded text, marker, priority, collapsed state and properties are
+ * written onto that block, its children are created beneath it, and any further top-level nodes
+ * follow as siblings. `undefined` if either block is gone. Minted but NOT applied, as above.
+ *
+ * The text is a `block.text` op in the same batch. It used to be written apart, through
+ * `EditorHost.replaceRange`, because an op written beside the editor's open buffer is flushed
+ * over; the batch is now committed BY that editor (`EditorHost.commitOps`), which syncs its buffer
+ * to what it commits — and one batch is what makes one undo step.
  */
-export async function applyTemplateIntoBlock(
+export async function templateIntoBlockOps(
   templateId: string,
   blockId: string,
-): Promise<{ content: string } | undefined> {
+): Promise<{ ops: Op[] } | undefined> {
   const [node, place] = await Promise.all([loadTemplate(templateId), placeOf(blockId)]);
   if (!node || !place) return undefined;
   const [first, ...rest] = templateRoots(node);
@@ -258,11 +262,13 @@ export async function applyTemplateIntoBlock(
     nextSiblingOrder(place),
   ]);
   const expansion = expansionNow();
+  const content = expandTemplateTokens(first.content, expansion);
   const props = Object.entries(first.properties).filter(([k]) => !TEMPLATE_ONLY_PROPS.has(k));
   const fieldOps =
     (first.marker ? 1 : 0) + (first.priority ? 1 : 0) + (first.collapsed ? 1 : 0) + props.length;
+  // +1: the `block.text` op.
   const clock = await getOpClock(
-    fieldOps + countTemplateNodes(first.children) + countTemplateNodes(rest),
+    1 + fieldOps + countTemplateNodes(first.children) + countTemplateNodes(rest),
   );
   const mint = minterFor(clock);
 
@@ -295,8 +301,8 @@ export async function applyTemplateIntoBlock(
       mint,
     ).ops,
   );
-  if (ops.length > 0) await applyOps(ops);
-  return { content: expandTemplateTokens(first.content, expansion) };
+  ops.push(mint(blockId, { kind: "block.text", content }));
+  return { ops };
 }
 
 /**

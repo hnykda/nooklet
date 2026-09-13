@@ -1,3 +1,4 @@
+import { makeOp, type Op } from "@nooklet/core";
 import { describe, expect, it, vi } from "vitest";
 import type { TemplateSummary } from "../../data/templates.js";
 import { createFakeEditorHost } from "../hosts/editor-host.js";
@@ -9,20 +10,38 @@ import { createTemplateCommands } from "./templates.js";
 const daily: TemplateSummary = { id: "tpl-daily", name: "daily", journal: true };
 const meeting: TemplateSummary = { id: "tpl-meeting", name: "Meeting", journal: false };
 
+let n = 0;
+const op = (entity: string, content: string): Op =>
+  makeOp(
+    `2026-09-13T00:00:00.000Z-${(n++).toString(16).padStart(4, "0")}-dddddddd`,
+    "dddddddd",
+    entity,
+    {
+      kind: "block.text",
+      content,
+    },
+  );
+
 function setup(opts: {
   content?: string;
   pick?: (templates: TemplateSummary[]) => Promise<TemplateSummary | undefined>;
 }) {
   const editor = createFakeEditorHost({ blockId: "b1", content: opts.content ?? "" });
+  const afterOps = [op("new-root", "Daily plan")];
+  const intoOps = [op("child", "Gratitude"), op("b1", "Daily plan for [[Sep 12th, 2026]]")];
   const data = {
     listTemplates: vi.fn(async () => [daily, meeting]),
     findTemplateByName: vi.fn(async (name: string) =>
       [daily, meeting].find((t) => t.name.toLowerCase() === name.toLowerCase()),
     ),
-    insertTemplateAfter: vi.fn(async (_templateId: string, _blockId: string) => "new-root"),
-    applyTemplateIntoBlock: vi.fn(async (_templateId: string, _blockId: string) => ({
-      content: "Daily plan for [[Sep 12th, 2026]]",
+    templateAfterOps: vi.fn(async (_templateId: string, _blockId: string) => ({
+      ops: afterOps,
+      firstId: "new-root",
     })),
+    templateIntoBlockOps: vi.fn(async (_templateId: string, _blockId: string) => ({
+      ops: intoOps,
+    })),
+    applyOps: vi.fn(async (_ops: Op[]) => undefined),
   };
   const pick = opts.pick ?? vi.fn(async (list: TemplateSummary[]) => list[0]);
   const focusBlock = vi.fn();
@@ -44,7 +63,7 @@ function setup(opts: {
     await command.run(ctx(args));
     await new Promise((resolve) => setTimeout(resolve, 0));
   };
-  return { editor, data, pick, focusBlock, command, run };
+  return { editor, data, pick, focusBlock, command, run, afterOps, intoOps };
 }
 
 describe("block.insertTemplate", () => {
@@ -55,31 +74,52 @@ describe("block.insertTemplate", () => {
     expect(command.when).toBe("editorFocused");
   });
 
-  it("into an empty bullet: the template's first block becomes this block, written through the editor", async () => {
-    const { editor, data, run, focusBlock } = setup({ content: "" });
+  it("into an empty bullet: one batch through the editor, caret at the end of that bullet (B-108)", async () => {
+    const { editor, data, run, focusBlock, intoOps } = setup({ content: "" });
     await run();
     expect(data.listTemplates).toHaveBeenCalledTimes(1);
-    expect(data.applyTemplateIntoBlock).toHaveBeenCalledWith("tpl-daily", "b1");
-    expect(data.insertTemplateAfter).not.toHaveBeenCalled();
-    // The text went through `replaceRange` (the editor's buffer), caret at the end.
-    expect(editor.state?.content).toBe("Daily plan for [[Sep 12th, 2026]]");
-    expect(editor.state?.start).toBe("Daily plan for [[Sep 12th, 2026]]".length);
+    expect(data.templateIntoBlockOps).toHaveBeenCalledWith("tpl-daily", "b1");
+    expect(data.templateAfterOps).not.toHaveBeenCalled();
+    // Committed by the editor — so it is one undo step — and never written around it.
+    expect(editor.committed).toEqual([
+      { ops: intoOps, anchorId: "b1", focus: { blockId: "b1", caret: "end" } },
+    ]);
+    expect(data.applyOps).not.toHaveBeenCalled();
+    // Not through `replaceRange` any more: the text is an op in the batch, the editor syncs to it.
+    expect(editor.state?.content).toBe("");
     expect(focusBlock).not.toHaveBeenCalled();
   });
 
-  it("after a bullet with text: inserted as siblings, caret moves to the first new block", async () => {
-    const { editor, data, run, focusBlock } = setup({ content: "already here" });
+  it("after a bullet with text: one batch through the editor, caret to the first new block (B-108)", async () => {
+    const { editor, data, run, focusBlock, afterOps } = setup({ content: "already here" });
     await run();
-    expect(data.insertTemplateAfter).toHaveBeenCalledWith("tpl-daily", "b1");
-    expect(data.applyTemplateIntoBlock).not.toHaveBeenCalled();
+    expect(data.templateAfterOps).toHaveBeenCalledWith("tpl-daily", "b1");
+    expect(data.templateIntoBlockOps).not.toHaveBeenCalled();
+    expect(editor.committed).toEqual([
+      { ops: afterOps, anchorId: "b1", focus: { blockId: "new-root", caret: "end" } },
+    ]);
+    expect(data.applyOps).not.toHaveBeenCalled();
     expect(editor.state?.content).toBe("already here");
-    expect(focusBlock).toHaveBeenCalledWith("new-root");
+    expect(focusBlock).not.toHaveBeenCalled();
+  });
+
+  it("applies the ops itself when no editor takes the batch, and still moves the caret", async () => {
+    const after = setup({ content: "already here" });
+    after.editor.acceptCommits = false;
+    await after.run();
+    expect(after.data.applyOps).toHaveBeenCalledWith(after.afterOps);
+    expect(after.focusBlock).toHaveBeenCalledWith("new-root");
+
+    const into = setup({ content: "" });
+    into.editor.acceptCommits = false;
+    await into.run();
+    expect(into.data.applyOps).toHaveBeenCalledWith(into.intoOps);
   });
 
   it("a whitespace-only bullet counts as empty", async () => {
     const { data, run } = setup({ content: "   " });
     await run();
-    expect(data.applyTemplateIntoBlock).toHaveBeenCalled();
+    expect(data.templateIntoBlockOps).toHaveBeenCalled();
   });
 
   it("takes the template by name from args and skips the picker", async () => {
@@ -87,19 +127,20 @@ describe("block.insertTemplate", () => {
     const { data, run } = setup({ content: "x", pick });
     await run("MEETING");
     expect(pick).not.toHaveBeenCalled();
-    expect(data.insertTemplateAfter).toHaveBeenCalledWith("tpl-meeting", "b1");
+    expect(data.templateAfterOps).toHaveBeenCalledWith("tpl-meeting", "b1");
     await run({ name: "daily" });
-    expect(data.insertTemplateAfter).toHaveBeenLastCalledWith("tpl-daily", "b1");
+    expect(data.templateAfterOps).toHaveBeenLastCalledWith("tpl-daily", "b1");
   });
 
   it("does nothing for an unknown name or a cancelled picker", async () => {
     const pick = vi.fn(async () => undefined);
-    const { data, run } = setup({ content: "x", pick });
+    const { editor, data, run } = setup({ content: "x", pick });
     await run("nope");
     await run();
     expect(pick).toHaveBeenCalledTimes(1);
-    expect(data.insertTemplateAfter).not.toHaveBeenCalled();
-    expect(data.applyTemplateIntoBlock).not.toHaveBeenCalled();
+    expect(data.templateAfterOps).not.toHaveBeenCalled();
+    expect(data.templateIntoBlockOps).not.toHaveBeenCalled();
+    expect(editor.committed).toEqual([]);
   });
 
   it("does nothing without a focused editor", async () => {
@@ -109,14 +150,17 @@ describe("block.insertTemplate", () => {
     expect(data.listTemplates).not.toHaveBeenCalled();
   });
 
-  it("does not write into a block that stopped being the focused one meanwhile", async () => {
-    const { editor, data, run } = setup({ content: "" });
-    data.applyTemplateIntoBlock.mockImplementationOnce(async () => {
-      // Focus moved to another block while the ops were being applied.
+  it("does not pull the caret back into the bullet when focus moved on meanwhile", async () => {
+    const { editor, data, run, intoOps } = setup({ content: "" });
+    data.templateIntoBlockOps.mockImplementationOnce(async () => {
+      // Focus moved to another block while the template was being read.
       editor.state = { blockId: "b2", content: "", start: 0, end: 0 };
-      return { content: "late" };
+      return { ops: intoOps };
     });
     await run();
+    // Still inserted into b1 (the ops name it), but no caret target: b2 keeps the caret, and its
+    // buffer is untouched.
+    expect(editor.committed).toEqual([{ ops: intoOps, anchorId: "b1" }]);
     expect(editor.state?.content).toBe("");
   });
 });

@@ -5,23 +5,28 @@
  * whichever template is chosen; with a string argument (the template's name — what an agent
  * passes through `ui_run`, and what tests use) it inserts that one directly.
  *
- * Two shapes of insertion, both through `data/templates.ts`:
+ * Two shapes of insertion, both built by `data/templates.ts`:
  * - the caret's bullet is EMPTY (the usual case: a fresh bullet, `/template`, pick) — the template
  *   goes INTO that bullet: its first block's text replaces the empty text, its properties land on
- *   the bullet, its children hang beneath it. The text is written through `EditorHost`, never by
- *   an op, because the editor owns that block's buffer and would flush over an op's content;
+ *   the bullet, its children hang beneath it;
  * - the bullet has text — the template is inserted as the following sibling(s) and the caret
  *   moves to the first new block.
+ *
+ * Either way the ops are one batch committed through the editor (`EditorHost.commitOps`), so the
+ * whole insertion is one Cmd/Ctrl+Z (B-108). Only when no editor shows the block any more (the
+ * person left the page while the template was being read) are they applied directly.
  *
  * The data and picker seams are injectable so the command's own test needs neither a database
  * nor a DOM; `createCoreCommands` passes nothing and gets the real ones.
  */
+import type { Op } from "@nooklet/core";
+import { applyOps } from "../../data/store.js";
 import {
-  applyTemplateIntoBlock,
   findTemplateByName,
-  insertTemplateAfter,
   listTemplates,
   type TemplateSummary,
+  templateAfterOps,
+  templateIntoBlockOps,
 } from "../../data/templates.js";
 import { requestBlockFocus } from "../../editor/focus-request.js";
 import type { EditorHost, EditorSelection } from "../hosts/editor-host.js";
@@ -32,11 +37,16 @@ export interface TemplateCommandDeps {
   data?: {
     listTemplates: () => Promise<TemplateSummary[]>;
     findTemplateByName: (name: string) => Promise<TemplateSummary | undefined>;
-    insertTemplateAfter: (templateId: string, blockId: string) => Promise<string | undefined>;
-    applyTemplateIntoBlock: (
+    templateAfterOps: (
       templateId: string,
       blockId: string,
-    ) => Promise<{ content: string } | undefined>;
+    ) => Promise<{ ops: Op[]; firstId: string } | undefined>;
+    templateIntoBlockOps: (
+      templateId: string,
+      blockId: string,
+    ) => Promise<{ ops: Op[] } | undefined>;
+    /** The fallback write, for a batch no editor would take. */
+    applyOps: (ops: Op[]) => Promise<unknown>;
   };
   /** Opens the picker; resolves with the chosen template or `undefined` on cancel. */
   pick?: (templates: TemplateSummary[]) => Promise<TemplateSummary | undefined>;
@@ -71,8 +81,9 @@ export function createTemplateCommands(deps: TemplateCommandDeps): Command[] {
   const data = deps.data ?? {
     listTemplates,
     findTemplateByName,
-    insertTemplateAfter,
-    applyTemplateIntoBlock,
+    templateAfterOps,
+    templateIntoBlockOps,
+    applyOps,
   };
   const pick = deps.pick ?? defaultPick;
   const focusBlock = deps.focusBlock ?? requestBlockFocus;
@@ -82,16 +93,29 @@ export function createTemplateCommands(deps: TemplateCommandDeps): Command[] {
     // one captured when the command started is the fallback for a host that lost it meanwhile.
     const at = editor.getSelection() ?? opened;
     if (at.content.trim() === "") {
-      const result = await data.applyTemplateIntoBlock(template.id, at.blockId);
-      if (!result) return;
-      const latest = editor.getSelection();
-      if (latest && latest.blockId === at.blockId) {
-        editor.replaceRange({ from: 0, to: latest.content.length, text: result.content });
-      }
+      const built = await data.templateIntoBlockOps(template.id, at.blockId);
+      if (!built) return;
+      // The caret ends the inserted text only if it is still in that bullet: focus that moved on
+      // while the template was being read stays where the person put it.
+      const stillThere = editor.getSelection()?.blockId === at.blockId;
+      const batch = {
+        ops: built.ops,
+        anchorId: at.blockId,
+        ...(stillThere ? { focus: { blockId: at.blockId, caret: "end" as const } } : {}),
+      };
+      if (!editor.commitOps(batch)) await data.applyOps(built.ops);
       return;
     }
-    const firstId = await data.insertTemplateAfter(template.id, at.blockId);
-    if (firstId) focusBlock(firstId);
+    const built = await data.templateAfterOps(template.id, at.blockId);
+    if (!built) return;
+    const batch = {
+      ops: built.ops,
+      anchorId: at.blockId,
+      focus: { blockId: built.firstId, caret: "end" as const },
+    };
+    if (editor.commitOps(batch)) return;
+    await data.applyOps(built.ops);
+    focusBlock(built.firstId);
   }
 
   return [
