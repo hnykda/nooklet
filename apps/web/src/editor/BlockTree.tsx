@@ -87,6 +87,7 @@ import {
 } from "./editText.js";
 import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
 import { EditHistory } from "./history.js";
+import { insertAt, pickImageFile } from "./imagePicker.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
 import { deriveNumbering, isNumbered } from "./numbering.js";
@@ -717,19 +718,43 @@ export function BlockTree(props: {
     flushTimer = setTimeout(flushPendingEdit, 500);
   }
 
-  async function handleImagePaste(view: EditorView, file: File): Promise<void> {
+  /**
+   * Upload an image (paste, `/image`) and put its markdown into block `id`. The upload takes a
+   * network round trip, and the editor may have moved on by the time it lands: it used to dispatch
+   * into whatever block the single surface was attached to THEN, so clicking another block while a
+   * paste uploaded put the picture there. Still on `id`: insert at the live caret. Moved on: write
+   * it into `id`'s content at the caret it had when the insert was asked for.
+   */
+  async function insertUploadedImage(id: BlockId, file: File): Promise<void> {
+    const askedAt =
+      surface.currentId() === id ? contentOffsetOf(surface.content(), surface.head()) : 0;
     try {
       const asset = await uploadImageAsset(file);
-      const head = view.state.selection.main.head;
-      view.dispatch({ changes: { from: head, to: head, insert: asset.markdown } });
+      const view = surface.view();
+      if (view && surface.currentId() === id) {
+        const head = view.state.selection.main.head;
+        view.dispatch({ changes: { from: head, to: head, insert: asset.markdown } });
+        return;
+      }
+      const clock = clockSig();
+      const block = editorTree().byId.get(id);
+      if (!clock || !block) return;
+      const content = insertAt(block.content, askedAt, asset.markdown);
+      commitOne(makeOp(clock.next(), clock.device, id, { kind: "block.text", content }));
     } catch (err) {
-      // R33: "the paste is not applied" — satisfied by not dispatching above. A user-visible
+      // R33: "the paste is not applied" — satisfied by not inserting above. A user-visible
       // error notification is app-chrome this package does not own; logged for now.
-      console.error("nooklet: image paste upload failed", err);
+      console.error("nooklet: image upload failed", err);
     }
   }
 
-  function onPaste(id: BlockId, event: ClipboardEvent, view: EditorView): boolean {
+  /** `/image` (B-99): the platform's own file chooser, then the same upload-and-insert as paste. */
+  async function insertImageFromPicker(id: BlockId): Promise<void> {
+    const file = await pickImageFile();
+    if (file) await insertUploadedImage(id, file);
+  }
+
+  function onPaste(id: BlockId, event: ClipboardEvent, _view: EditorView): boolean {
     const clipboard = event.clipboardData;
     if (!clipboard) return false;
     const imageItem = [...clipboard.items].find((it) => it.type.startsWith("image/"));
@@ -737,7 +762,7 @@ export function BlockTree(props: {
       const file = imageItem.getAsFile();
       if (file) {
         event.preventDefault();
-        void handleImagePaste(view, file);
+        void insertUploadedImage(id, file);
         return true;
       }
     }
@@ -794,6 +819,11 @@ export function BlockTree(props: {
       surface.setCaret(typeof caret === "number" ? { offset: caret } : { offset: caret.head });
     },
     runStructural: (id, commandId, _ctx) => {
+      // `/image` (B-99) was delegated here and fell through `runCommand`'s default: no chooser.
+      if (commandId === "block.insertImage") {
+        if (id) void insertImageFromPicker(id as BlockId);
+        return;
+      }
       const view = surface.view();
       const cmd = commandId as ReturnType<typeof resolveCommand>;
       if (view && id) {

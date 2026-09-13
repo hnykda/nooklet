@@ -20,6 +20,7 @@ import {
   ordersBetween,
   parseOutline,
 } from "@nooklet/core";
+import { callOp } from "../data/api-client.js";
 import { getBlock, nextSiblingOrder } from "./tree.js";
 import type { BlockId, CaretSpec, Clock, EditorTree } from "./types.js";
 
@@ -114,29 +115,27 @@ export interface AssetUploadResponse {
   deduped: boolean;
 }
 
-/** Uploads one clipboard image file via `POST /api/v1/asset.upload` (`docs/spec/mcp-tools.md`
- * §4.3.18) and returns the ready-to-paste markdown. Throws on any non-2xx response; the caller
- * (per R33) must not apply the paste and must surface an error notification instead. */
-export async function uploadImageAsset(file: File, apiBase = ""): Promise<AssetUploadResponse> {
+/** Uploads one image file via `POST /api/v1/asset.upload` (`docs/spec/mcp-tools.md` §4.3.18) and
+ * returns the ready-to-paste markdown. Used by image paste and by `/image`. Throws (`ApiError`) on
+ * any failure; the caller (per R33) must not apply the insertion.
+ *
+ * Through `callOp`, which carries this device's token. This used to be a bare `fetch` with no
+ * `authorization` header — and every `/api/v1/*` route is behind `bearerAuth`, so in the served app
+ * every image paste got a 401 and was dropped with only a console line to show for it (B-150). */
+export async function uploadImageAsset(file: File): Promise<AssetUploadResponse> {
   const dataBase64 = await fileToBase64(file);
-  const res = await fetch(`${apiBase}/api/v1/asset.upload`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      filename: file.name || "pasted-image",
-      mime_type: file.type || "application/octet-stream",
-      data_base64: dataBase64,
-    }),
-  });
-  if (!res.ok) throw new Error(`asset upload failed: ${res.status} ${res.statusText}`);
-  const json = (await res.json()) as {
+  const json = await callOp<{
     id: string;
     url: string;
     markdown: string;
     mime_type: string;
     byte_size: number;
     deduped: boolean;
-  };
+  }>("asset.upload", {
+    filename: file.name || "pasted-image",
+    mime_type: file.type || "application/octet-stream",
+    data_base64: dataBase64,
+  });
   return {
     id: json.id,
     url: json.url,

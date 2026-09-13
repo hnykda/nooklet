@@ -57,13 +57,25 @@ generic properties (`commands.test.ts`).
 ---
 
 ### B-99 (existing)
-`/image` does nothing.
+`/image` does nothing. **Test:** `e2e/tests/image-insert.spec.ts` "/image opens a file chooser and
+inserts the uploaded image at the caret (B-99)"; `apps/web/src/editor/imagePicker.test.ts`
+
+**Fixed 2026-09-13.** `block.insertImage` is now handled where it is delegated
+(`BlockTree.tsx`'s editor host `runStructural`): `editor/imagePicker.ts#pickImageFile` opens the
+platform's own chooser through a hidden, connected `<input type="file" accept="image/*">` (no
+Tauri/Capacitor-specific host needed), and the picked file goes through the paste path's
+`uploadImageAsset` and the new `insertUploadedImage`, which inserts at the live caret — or, if the
+editor moved to another block while the upload ran, into the original block at the caret it had
+(paste used to drop the image into whichever block was being edited when the upload landed).
+The e2e test was red before the fix (`page.waitForEvent("filechooser")` timed out). Not done:
+drag-and-drop of an image file onto a block (the audit's "can follow").
 
 ---
 
 ### B-150 · Image paste uploads without a credential, so it cannot work in the served app
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, reading `editor/paste.ts` while
-wiring `/image` (B-99) · **Test:** (pending)
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, reading `editor/paste.ts` while
+wiring `/image` (B-99) · **Test:** `e2e/tests/image-insert.spec.ts` "pasting an image uploads it
+with the client's credential and inserts it (B-150)"
 
 `editor/paste.ts#uploadImageAsset` calls `fetch("/api/v1/asset.upload")` with no `authorization`
 header. Every `/api/v1/*` route sits behind `bearerAuth` (`packages/server/src/http/app.ts`), so
@@ -71,6 +83,13 @@ the served app gets a 401 and the paste is silently dropped (the catch only logs
 Nothing covered it: no e2e test pastes an image, and `assets.spec.ts` uploads through its own
 authenticated helper. Same class of defect as the "client has no API credential" bug the e2e suite
 was created for.
+
+Confirmed at runtime before the fix: a synthetic image paste in the served app produced
+`asset.upload -> 401` with no `authorization` header, and the block kept only its text.
+
+**Fixed 2026-09-13.** `uploadImageAsset` goes through `data/api-client.ts#callOp`, which sends this
+device's token and turns failures into `ApiError`. The e2e test pastes a PNG through a real
+`ClipboardEvent` and reads the stored markdown back through `page.read`; it was red before the fix.
 
 ---
 
