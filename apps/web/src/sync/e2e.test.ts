@@ -29,6 +29,7 @@ import {
   openDb,
   type ServerConfig,
   type ServerContext,
+  verifyRebuildParity,
 } from "@nooklet/server";
 import type { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -298,6 +299,103 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
     expect(clientC.isBootstrapped()).toBe(true);
     expect(dumpState(driverC)).toEqual(dumpState(server.serverCtx.driver));
   });
+
+  /**
+   * ADR 024's two-device race. Device B writes `[[Race Page]]`, so the server creates that page;
+   * device A, which has not heard of it, creates "Race Page" itself and types into it. Whichever
+   * A does first after that — push (the server refuses A's page and names its own) or pull (the
+   * server's page arrives while A's holds the name) — every replica must end with ONE page under
+   * the name, holding A's blocks, and the server's op log must still replay exactly.
+   */
+  for (const order of ["push first", "pull first"] as const) {
+    it(`a page created offline under a name the server already made from a reference converges, ${order}`, async () => {
+      const { driver: driverB, client: clientB } = makeReplicaClient(server.app, server.token);
+      const home = newId();
+      clientB.applyLocal([
+        makeOp(clientB.nextHlc(), clientB.getDeviceId(), home, {
+          kind: "page.create",
+          name: "Home B",
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+        makeOp(clientB.nextHlc(), clientB.getDeviceId(), newId(), {
+          kind: "block.create",
+          place: { pageId: home, parentId: null, order: "a0" },
+          content: "see [[Race Page]]",
+          createdAt: Date.now(),
+        }),
+      ]);
+
+      // A, "offline": its ops are minted before B's push reaches the server, so they are OLDER.
+      const { driver: driverA, client: clientA } = makeReplicaClient(server.app, server.token);
+      const refused = newId();
+      const parent = newId();
+      const child = newId();
+      clientA.applyLocal([
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), refused, {
+          kind: "page.create",
+          name: "Race Page",
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), parent, {
+          kind: "block.create",
+          place: { pageId: refused, parentId: null, order: "a0" },
+          content: "typed offline",
+          createdAt: Date.now(),
+        }),
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), child, {
+          kind: "block.create",
+          place: { pageId: refused, parentId: parent, order: "a0" },
+          content: "and a child",
+          createdAt: Date.now(),
+        }),
+      ]);
+      clientA.applyLocal([
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), parent, {
+          kind: "block.text",
+          content: "typed offline, then edited",
+        }),
+      ]);
+
+      await clientB.flush();
+      const serverPage = server.serverCtx.driver.get<{ id: string }>(
+        "SELECT id FROM page WHERE key = 'race page' AND deleted_at IS NULL",
+      );
+      expect(serverPage).toBeDefined();
+      const winner = serverPage?.id as string;
+
+      if (order === "push first") {
+        await clientA.flush(); // refused; A moves onto the server's page and re-queues its blocks
+        await clientA.flush(); // the re-sent blocks
+        await clientA.pull();
+      } else {
+        await clientA.pull(); // the server's page arrives while A's still holds the name
+        await clientA.flush();
+        await clientA.pull();
+      }
+      await clientB.pull();
+
+      const s = server.serverCtx.driver;
+      expect(s.all("SELECT id FROM page WHERE key = 'race page' AND deleted_at IS NULL")).toEqual([
+        { id: winner },
+      ]);
+      expect(s.get("SELECT id FROM page WHERE id = ?", [refused])).toBeUndefined();
+      expect(
+        s.all<{ id: string; page_id: string; parent_id: string | null; content: string }>(
+          "SELECT id, page_id, parent_id, content FROM block WHERE page_id = ? ORDER BY content DESC",
+          [winner],
+        ),
+      ).toEqual([
+        { id: parent, page_id: winner, parent_id: null, content: "typed offline, then edited" },
+        { id: child, page_id: winner, parent_id: parent, content: "and a child" },
+      ]);
+      expect(driverA.all("SELECT * FROM pending_op")).toHaveLength(0);
+      expect(dumpState(driverA)).toEqual(dumpState(s));
+      expect(dumpState(driverB)).toEqual(dumpState(s));
+      expect(verifyRebuildParity(s).divergences).toEqual([]);
+    });
+  }
 
   it("a rejected cycle-creating block.place corrects locally: the client applies the server's corrective op and converges", async () => {
     const { driver: driverA, client: clientA } = makeReplicaClient(server.app, server.token);

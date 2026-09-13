@@ -28,6 +28,31 @@ ancestors) in 464 ms, 17 keys left dangling — all journal days, by design — 
 
 ---
 
+### B-442 · A page created on one device under a name the server already has never syncs, and nothing written on it reaches the server
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, ref-pages (designing ADR 024's
+two-device case) · **Test:** `apps/web/src/sync/e2e.test.ts` "a page created offline under a name
+the server already made from a reference converges, push first" and "…, pull first" (both fail
+without the fix: checked by running them against the previous `sync-client.ts`)
+
+Device A, offline, creates "X" and types blocks into it; meanwhile the server gets a page "X" from
+another device (before ADR 024 only by an explicit create on both sides; with it, by any `[[X]]`).
+On sync the server rejects A's `page.create` (`page-key-collision`) and every block on it
+(`no-such-page`); the client dropped the rejected ops from its outbox and kept its own page, and
+when the server's "X" arrived by pull it was rejected locally for the same collision. A kept a page
+nobody else had, its text existed on A only, and the replicas never converged. (B-410 was the
+journal-day face of this, fixed then by not offering a draft before the first sync.)
+
+**Fixed 2026-09-13:** `POST /sync/push` names the live page for each refused `page.create`
+(`refused_pages`, a snapshot row); a pull that brings a `page.create`/`page.rename` for a name a
+local page holds is detected too (`apps/web/src/sync/refused-page.ts#pagesDisplacedByPull`). Either
+way the client removes its refused page and what was on it, takes the server's page, and re-sends
+the blocks' current state onto it as fresh ops. The server does not rewrite the late ops itself:
+their HLCs are older than the page's `page.create`, and `verify`'s HLC-ordered replay would reject
+them (the test asserts `verifyRebuildParity` stays empty). Not covered: a block the server already
+had, moved onto the refused page and deleted there, keeps its old place.
+
+---
+
 ### B-440 · Every page write scanned `path_ref`: ~50 ms per page op on the owner's graph
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, ref-pages (the ADR 024 migration
 took 13.9 s for 259 page creates) · **Test:** `packages/server/src/db.test.ts` (schema version and

@@ -33,6 +33,13 @@ export interface PushResponse {
   corrections: Op[];
   /** Server's current head after this push; useful as a cursor floor. */
   server_seq: number;
+  /** For each `page.create` refused with `page-key-collision`: the server's page holding the name
+   * (ADR 024's two-device race). Absent when there were none. See `./refused-page.ts`. */
+  refused_pages?: Array<{
+    refused_id: string;
+    page: SnapshotPageRow;
+    page_props: SnapshotPagePropRow[];
+  }>;
 }
 
 export interface PullResponse {
