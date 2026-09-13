@@ -17,7 +17,8 @@
  * `mirror_file.written_at`, and only `block.text` moves `updated_at`, so renames, properties,
  * markers, indents and moves never reached the file (B-260). A seq also cannot lose a commit that
  * lands in the same millisecond as the sweep before it. Reading the head and exporting happen in
- * one synchronous turn, so no commit can slip between them.
+ * one synchronous turn, so no commit can slip between them. A page whose file could not be written
+ * is carried over and offered again on the next sweep, touched or not (B-365).
  *
  * Failures are logged, never thrown: the mirror is a projection, and a full disk or a permission
  * error on it must not take down the server that owns the source of truth.
@@ -49,18 +50,28 @@ export function startLiveMirror(
   const log = opts.log ?? ((m: string) => process.stderr.write(`${m}\n`));
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
-  /** `changes.seq` the last successful sweep covered; `undefined` until the full first sweep ran. */
+  /** `changes.seq` the last completed sweep covered; `undefined` until the full first sweep ran. */
   let cursor: number | undefined;
+  /** Pages whose file the last sweep could not write. `exportAll` reports a page's failure rather
+   * than throwing (B-126), so the sweep completes and the cursor moves past that page; without
+   * handing these back, a page that failed once (full disk, permissions) stayed missing from the
+   * mirror until it was edited again or the server restarted (B-365). */
+  let retry: string[] = [];
 
   const sweep = (): void => {
     timer = undefined;
     if (stopped) return;
     try {
       const head = changesHead(ctx.driver);
-      const r = exportAll(ctx.driver, dataDir, cursor === undefined ? {} : { sinceSeq: cursor });
-      // Only after success: a sweep that threw part-way (full disk) is retried from the same
-      // cursor on the next commit rather than forgetting the pages it did not get to.
+      const r = exportAll(
+        ctx.driver,
+        dataDir,
+        cursor === undefined ? {} : { sinceSeq: cursor, alsoPageIds: retry },
+      );
+      // Only once `exportAll` returned: a sweep that threw part-way (the database, not a page
+      // file) keeps the old cursor and runs again from it on the next commit.
       cursor = head;
+      retry = r.failed.map((f) => f.pageId);
       if (r.exported + r.deleted > 0) {
         log(`mirror: wrote ${r.exported} page file(s), removed ${r.deleted}`);
       }

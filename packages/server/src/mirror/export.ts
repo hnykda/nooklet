@@ -67,6 +67,13 @@ export interface ExportAllOptions {
    * same-millisecond race either.
    */
   sinceSeq?: number;
+  /**
+   * With `sinceSeq`: pages to export as well, touched or not — the live mirror passes the pages
+   * whose file the previous sweep could not write. The cursor moves past them either way (B-365),
+   * so without this a failed page is not looked at again until it changes. Ids that are no longer
+   * live pages are ignored.
+   */
+  alsoPageIds?: Iterable<string>;
 }
 
 function sha256Hex(data: string | Buffer): string {
@@ -245,6 +252,7 @@ export function exportAll(
   let candidates = allLivePages;
   if (opts.sinceSeq !== undefined) {
     const touched = new Set(pagesTouchedSince(driver, opts.sinceSeq));
+    for (const id of opts.alsoPageIds ?? []) touched.add(id);
     candidates = allLivePages.filter((p) => touched.has(p.id));
   }
 
@@ -254,7 +262,8 @@ export function exportAll(
   for (const p of candidates) {
     // One page that cannot be written must not cost every page after it, or the prune below: a
     // throw here used to end the sweep, so deleted pages kept their files for as long as one bad
-    // page existed (B-126). The failure is reported and retried on the next sweep.
+    // page existed (B-126). The failure is reported; retrying it is the caller's (the live mirror
+    // passes it back as `alsoPageIds`, B-365).
     try {
       const result = exportPage(driver, dataDir, p.id);
       if (result.changed) exported++;
