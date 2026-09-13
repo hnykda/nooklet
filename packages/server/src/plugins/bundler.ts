@@ -16,9 +16,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as esbuild from "esbuild";
@@ -85,28 +84,43 @@ export async function bundleServerEntry(
  * Bundles a plugin's CLIENT entry for the browser: fully bundled (browser code has no
  * `node_modules` to resolve against at runtime, so everything the plugin imports must be inlined
  * — host-provided packages aliased as above, third-party deps resolved from the plugin's own
- * `node_modules` same as the server bundle). Written to a fresh temp file per bundle (rather than
- * into the plugin dir) since the served URL is content-hashed
- * (`/plugins/<id>/client.<hash>.js`, `./routes.ts`) and callers key the in-memory cache by that
- * hash, not by path.
+ * `node_modules` same as the server bundle).
+ *
+ * Output is content-addressed inside the plugin's own `.nooklet-build/` (`client.<hash>.js`, the
+ * same name the served URL carries). It used to go to a fresh `mkdtemp` directory per call that
+ * nothing removed (B-181): every server start and every plugin test left one behind, thousands on
+ * a developer machine, and since a client half can bundle a real library (mermaid, 12 MB) that is
+ * not a rounding error. Content addressing also makes concurrent servers on one checkout safe:
+ * two writers of the same hash write the same bytes, each through its own temp name + rename.
  */
-export async function bundleClientEntry(entryFile: string): Promise<BundleResult> {
-  const outDir = mkdtempSync(join(tmpdir(), "nooklet-plugin-client-"));
-  const outFile = join(outDir, "client.js");
+export async function bundleClientEntry(
+  entryFile: string,
+  pluginDir: string,
+): Promise<BundleResult> {
+  const outDir = join(pluginDir, ".nooklet-build");
   const result = await esbuild.build({
     entryPoints: [entryFile],
-    outfile: outFile,
+    outfile: join(outDir, "client.js"),
     bundle: true,
     platform: "browser",
     format: "esm",
     target: "es2022",
     alias: hostAliasMap(),
-    write: true,
+    write: false,
     logLevel: "silent",
     metafile: false,
   });
-  const hash = await hashFile(outFile);
-  return { file: outFile, hash, warnings: result.warnings };
+  const js = result.outputFiles.find((f) => f.path.endsWith(".js"));
+  if (!js) throw new Error(`esbuild produced no JavaScript for client entry "${entryFile}"`);
+  const hash = createHash("sha256").update(js.contents).digest("hex").slice(0, 12);
+  const file = join(outDir, `client.${hash}.js`);
+  if (!existsSync(file)) {
+    mkdirSync(outDir, { recursive: true });
+    const partial = `${file}.${process.pid}.tmp`;
+    writeFileSync(partial, js.contents);
+    renameSync(partial, file);
+  }
+  return { file, hash, warnings: result.warnings };
 }
 
 async function hashFile(path: string): Promise<string> {

@@ -19,7 +19,11 @@ A nooklet plugin is a directory with a `nooklet` key in its `package.json`, or a
   HTTP routes, OpenAPI operations, and MCP tools all at once), subscribe to write events, veto or
   rewrite writes before they land, run background jobs, and register importers/exporters.
 - a **client half** — runs inside the nooklet UI. It can render code blocks and macros, add slash
-  commands, palette commands, panels, and menu items, and talk to the editor.
+  commands, palette commands, panels, and menu items, and talk to the editor. **Today** (ADR 023)
+  the web app runs only the built-in plugins' client halves, compiled into its build, and
+  implements part of `ClientPluginContext` — slash and palette commands, code-block renderers,
+  status items, `page.opened`/`page.changed`, `rpc`; the rest throws naming itself. The list is in
+  `docs/spec/api-and-plugin-types.md` §5, "What the v1 client host implements".
 
 Both halves see the same `ctx.data` (`DataApi`): blocks, pages, query, all as one atomic
 `transact`. A client half calls into its own server half over `ctx.rpc` — that is a private,

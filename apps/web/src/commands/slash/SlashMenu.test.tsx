@@ -5,6 +5,7 @@ import { createFakeEditorHost } from "../hosts/editor-host.js";
 import { createFakeStore } from "../hosts/store.js";
 import { CommandProvider } from "../provider/CommandProvider.js";
 import { type Command, type CommandContext, DEFAULT_WHEN_CONTEXT } from "../types.js";
+import { contributeSlashItem } from "./contributed.js";
 import { SLASH_ITEMS } from "./items.js";
 import { SlashMenu } from "./SlashMenu.js";
 
@@ -97,6 +98,52 @@ describe("<SlashMenu>", () => {
     await waitFor(() => expect(run).toHaveBeenCalledOnce());
     expect(editor.state?.content).toBe(""); // "/tab" removed before the command ran
     await waitFor(() => expect(onDismiss).toHaveBeenCalledOnce());
+  });
+
+  it("shows a row contributed while it is open, after the core rows, and runs its command (B-103)", async () => {
+    const editor = createFakeEditorHost({ content: "/", start: 1, end: 1 });
+    const run = vi.fn();
+    const commands: Command[] = [
+      {
+        id: "plugin.mermaid.slashMermaid",
+        title: "Mermaid",
+        category: "Mermaid",
+        defaultKeys: {},
+        run,
+      },
+    ];
+    render(() => (
+      <CommandProvider commands={commands} platform="mac">
+        <SlashMenu
+          editor={editor}
+          trigger={{ from: 0, query: "" }}
+          position={{ top: 0, left: 0 }}
+          getContext={baseContext}
+          onDismiss={() => {}}
+        />
+      </CommandProvider>
+    ));
+    expect(screen.queryByText("Mermaid diagram")).toBeNull();
+
+    // A plugin activating after the menu module loaded — the menu used to rank a constant.
+    const remove = contributeSlashItem({
+      label: "Mermaid diagram",
+      command: "plugin.mermaid.slashMermaid",
+      keywords: ["diagram"],
+    });
+    try {
+      const options = await waitFor(() => {
+        const rows = screen.getAllByRole("option");
+        expect(rows).toHaveLength(SLASH_ITEMS.length + 1);
+        return rows;
+      });
+      expect(options.at(-1)?.textContent).toBe("Mermaid diagram");
+      fireEvent.click(screen.getByText("Mermaid diagram"));
+      await waitFor(() => expect(run).toHaveBeenCalledOnce());
+    } finally {
+      remove();
+    }
+    await waitFor(() => expect(screen.queryByText("Mermaid diagram")).toBeNull());
   });
 
   it("Escape calls onDismiss without running anything", () => {

@@ -1003,6 +1003,8 @@ export interface ClientPluginContext {
 
   on<E extends keyof ServerChangeEvents>(event: E, handler: (p: ServerChangeEvents[E]) => void): Disposable;
   on(event: "page.opened", handler: (p: { page: Page }) => void): Disposable;
+  // Added 2026-09-13 (ADR 023): what editor.currentPage() answers changed — another page, no page, a change to its rows, or the server caught up with a local edit to it
+  on(event: "page.changed", handler: (p: { page: Page | null }) => void): Disposable;
   on(event: "block.focused" | "block.blurred", handler: (p: { block: Block }) => void): Disposable;
   on(event: "selection.changed", handler: (p: { blocks: BlockId[] }) => void): Disposable;
 
@@ -1039,6 +1041,21 @@ Design notes: renderers accept either `render(el)` (trusted, full DOM — v1 def
 `html()` form and paints it into a sandboxed iframe. `ctx.rpc.call` is the client→server bridge
 for a plugin's own private functions (`ctx.rpc.expose` on the server half); it is not the same
 path as `ctx.data`, which talks to core, not to the plugin's own server code.
+
+**What the v1 client host implements (2026-09-13, ADR 023).** `apps/web` compiles the built-in
+plugins' client halves into its build and activates them at startup; it does not load client
+halves from `<dataDir>/plugins`. Implemented: `plugin`, `host`, `on("page.opened")`,
+`on("page.changed")`, `registerCommand`, `registerSlashCommand` (a `plugin.<id>.slash<Item>`
+command gated on `editorFocused`, plus a slash row after the core rows),
+`registerCodeBlockRenderer` (a fence whose info string matches; `query` is reserved; one renderer
+per language), `registerStatusItem` (top bar), `editor.currentPage` (the `/page/<name>` route's
+page, else `null`), `editor.insertText`, `editor.openPage` (not `sidebar`), `editor.navigate`,
+`rpc.call`, `log`, `subscriptions`, `experimental` (empty). Everything else — `data`, the
+server-shaped events, `block.focused`/`blurred`, `selection.changed`, keybindings, macros, panels,
+menus, toolbar, theme, dialogs, settings, the other `editor` methods — throws
+`"<member> is not supported by nooklet's client plugin host yet (ADR 023)"`; thrown inside
+`activate()`, that marks the plugin `error` and leaves the others running.
+`RenderInfo.block`/`page` come from the local replica.
 
 ### 6. `Disposable` and the lifecycle contract
 

@@ -102,6 +102,7 @@ describe("word-count", () => {
 
   it("bundles a client entry servable from /plugins/word-count/client.<hash>.js", async () => {
     const setup = await makePluginTestSetup([REPO_PLUGINS_DIR]);
+    await setup.host.ensureClientBundles();
     const info = setup.host.list().find((p) => p.id === "word-count");
     expect(info?.clientUrl).toMatch(/^\/plugins\/word-count\/client\.[0-9a-f]{12}\.js$/);
     const res = await setup.app.request(info?.clientUrl as string);
@@ -113,18 +114,35 @@ describe("word-count", () => {
 });
 
 describe("mermaid", () => {
-  it("bundles a client-only entry that registers the mermaid code-block renderer", async () => {
+  it("activating plugins bundles no client half — server start does not pay for mermaid", async () => {
     const setup = await makePluginTestSetup([REPO_PLUGINS_DIR]);
-    const info = setup.host.list().find((p) => p.id === "mermaid");
-    expect(info?.clientUrl).toBeTruthy();
-    const res = await setup.app.request(info?.clientUrl as string);
+    expect(setup.host.list().find((p) => p.id === "mermaid")?.status).toBe("active");
+    // No URL yet means nothing was bundled: `clientUrl` only exists once a bundle does.
+    expect(setup.host.list().every((p) => p.clientUrl === undefined)).toBe(true);
+  });
+
+  // Bundles the real mermaid library (~12 MB of esbuild output): seconds, not milliseconds, on a
+  // machine busy with other builds.
+  it("bundles a client-only entry that registers the mermaid code-block renderer", {
+    timeout: 60_000,
+  }, async () => {
+    const setup = await makePluginTestSetup([REPO_PLUGINS_DIR]);
+    const listed = await setup.app.request("/api/v1/plugins", {
+      headers: { authorization: `Bearer ${setup.readToken}` },
+    });
+    expect(listed.status).toBe(200);
+    const { plugins } = (await listed.json()) as {
+      plugins: Array<{ id: string; client_url: string | null }>;
+    };
+    const url = plugins.find((p) => p.id === "mermaid")?.client_url;
+    expect(url).toMatch(/^\/plugins\/mermaid\/client\.[0-9a-f]{12}\.js$/);
+    const res = await setup.app.request(url as string);
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain("registerCodeBlockRenderer");
-    // No "mermaid" npm dependency: the real library is fetched from a CDN via a non-literal
-    // `import()` at render time, so the CDN URL string appears in the bundle, but nothing named
-    // "mermaid" was ever resolved as an npm package at bundle time.
-    expect(body).toContain("cdn.jsdelivr.net");
+    // ADR 023: the renderer library is the plugin's own dependency, bundled — nothing is fetched
+    // from a CDN at render time any more.
+    expect(body).not.toContain("cdn.jsdelivr.net");
   });
 });
 

@@ -2,6 +2,9 @@
   "name": "nooklet-plugin-word-count",
   "version": "0.1.0",
   "type": "module",
+  "devDependencies": {
+    "@nooklet/plugin-api": "workspace:*"
+  },
   "nooklet": {
     "id": "word-count",
     "name": "Word count",

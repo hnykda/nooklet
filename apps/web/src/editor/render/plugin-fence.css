@@ -1,0 +1,20 @@
+/* A plugin-drawn fence (`PluginFence.tsx`): the renderer's output sits where the code block
+   would, and scrolls sideways rather than widening the page when a diagram is wide. */
+.vr-plugin-fence {
+  margin: var(--space-xs) 0;
+}
+
+.vr-plugin-fence-output {
+  overflow-x: auto;
+}
+
+.vr-plugin-fence-output > svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.vr-plugin-fence-error {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}

@@ -63,6 +63,7 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
+import { ClientPlugins } from "../plugins/ClientPlugins.js";
 import { pathToPageName } from "../views/navigateTarget.js";
 import { requestPluginsSection } from "../views/PluginsSection.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
@@ -345,6 +346,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     <CommandProvider commands={commands} platform={platform} palette={palette}>
       <KeyboardDispatch getContext={getContext} />
       <LiveConnection getContext={getContext} editor={editor} />
+      <ClientPlugins editor={editor} mobile={mobile} />
       <RemoteFlashOverlay />
       {props.children}
       <CommandPalette

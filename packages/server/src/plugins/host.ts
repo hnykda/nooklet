@@ -28,7 +28,8 @@ export interface LoadedPluginInfo {
   error?: string;
   hasServer: boolean;
   hasClient: boolean;
-  /** `/plugins/<id>/client.<hash>.js` once the client half has been bundled at least once. */
+  /** `/plugins/<id>/client.<hash>.js` once the client half has been bundled at least once
+   * (`PluginHost.clientBundle` / `ensureClientBundles`). */
   clientUrl?: string;
 }
 
@@ -36,7 +37,9 @@ interface ActivePlugin {
   descriptor: PluginDescriptor;
   serverModule?: ServerPluginModule;
   tracker: DisposableTracker;
-  clientBundle?: { file: string; hash: string };
+  /** Built on first request, see `PluginHost.clientBundle`. */
+  clientBundle?: Promise<{ file: string; hash: string }>;
+  clientBundleReady?: { file: string; hash: string };
 }
 
 export interface PluginHostDeps {
@@ -92,12 +95,10 @@ export class PluginHost {
   }
 
   /**
-   * Bundles and (server half only) `import()`s + `activate()`s a discovered plugin. Client halves
-   * are bundled for the browser but never executed here — they run in `apps/web`, which fetches
-   * them from `/plugins/<id>/client.<hash>.js` (`./routes.ts`, `list()`'s `clientUrl`). A tracker
-   * is created up front so a failure partway through (e.g. the server half throws inside
-   * `activate()` after registering three things) still disposes whatever DID get registered,
-   * rather than leaking it.
+   * Bundles, `import()`s and `activate()`s a discovered plugin's server half. Client halves are
+   * never executed here, and not bundled here either — see `clientBundle()`. A tracker is created
+   * up front so a failure partway through (e.g. the server half throws inside `activate()` after
+   * registering three things) still disposes whatever DID get registered, rather than leaking it.
    */
   private async activate(descriptor: PluginDescriptor): Promise<void> {
     let tracker = new DisposableTracker();
@@ -133,11 +134,6 @@ export class PluginHost {
         entry.tracker = tracker;
         await mod.activate(built.ctx);
         entry.serverModule = mod;
-      }
-
-      if (descriptor.clientEntry) {
-        const bundle = await bundleClientEntry(descriptor.clientEntry);
-        entry.clientBundle = { file: bundle.file, hash: bundle.hash };
       }
 
       this.active.set(descriptor.id, entry);
@@ -180,8 +176,39 @@ export class PluginHost {
     await this.activate(descriptor);
   }
 
-  getClientBundle(id: string): { file: string; hash: string } | undefined {
-    return this.active.get(id)?.clientBundle;
+  /**
+   * An active plugin's client half bundled for the browser — built on first request, then cached
+   * until the plugin deactivates or reloads. `undefined` when the plugin is not active or has no
+   * client half; rejects when esbuild does, and keeps rejecting until a reload: the URL that asks
+   * for it is unauthenticated, and forgetting a failure let every request run esbuild again
+   * (B-186). `nooklet plugin reload` activates a fresh entry, which bundles afresh.
+   *
+   * Not built at activation any more. The web app compiles the built-in client halves into its own
+   * build (ADR 023) and requests none of these, while a client half may bundle a real library:
+   * mermaid made this 12 MB and ~0.6 s of esbuild on every server start, before the first request
+   * was answered (`tools/probes/mermaid-client-bundle-cost.mjs`; much more on a busy machine).
+   */
+  clientBundle(id: string): Promise<{ file: string; hash: string } | undefined> {
+    const entry = this.active.get(id);
+    const entryFile = entry?.descriptor.clientEntry;
+    if (!entry || !entryFile) return Promise.resolve(undefined);
+    entry.clientBundle ??= bundleClientEntry(entryFile, entry.descriptor.dir).then(
+      ({ file, hash }) => {
+        entry.clientBundleReady = { file, hash };
+        return entry.clientBundleReady;
+      },
+      (e: unknown) => {
+        this.log.error(`plugin "${id}" client half failed to bundle:`, e);
+        throw e;
+      },
+    );
+    return entry.clientBundle;
+  }
+
+  /** Bundles every active client half — what `GET /api/v1/plugins` awaits so its `client_url`s
+   * are filled in. One failing leaves only that plugin's URL out. */
+  async ensureClientBundles(): Promise<void> {
+    await Promise.allSettled([...this.active.keys()].map((id) => this.clientBundle(id)));
   }
 
   list(): LoadedPluginInfo[] {
@@ -199,8 +226,8 @@ export class PluginHost {
         error,
         hasServer: Boolean(descriptor.serverEntry),
         hasClient: Boolean(descriptor.clientEntry),
-        clientUrl: activeEntry?.clientBundle
-          ? `/plugins/${id}/client.${activeEntry.clientBundle.hash}.js`
+        clientUrl: activeEntry?.clientBundleReady
+          ? `/plugins/${id}/client.${activeEntry.clientBundleReady.hash}.js`
           : undefined,
       });
     }

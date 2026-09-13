@@ -2,6 +2,12 @@
   "name": "nooklet-plugin-mermaid",
   "version": "0.1.0",
   "type": "module",
+  "dependencies": {
+    "mermaid": "12.0.0"
+  },
+  "devDependencies": {
+    "@nooklet/plugin-api": "workspace:*"
+  },
   "nooklet": {
     "id": "mermaid",
     "name": "Mermaid diagrams",

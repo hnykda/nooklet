@@ -1,6 +1,10 @@
 packages:
   - packages/*
   - apps/*
+  # Built-in plugins are workspace members so each can declare its own dependencies (mermaid's
+  # renderer library) and resolve `@nooklet/plugin-api` types, exactly like a plugin author's
+  # `npm install` in their own plugin directory (ADR 007, ADR 023).
+  - plugins/*
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:

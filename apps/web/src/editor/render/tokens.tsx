@@ -53,6 +53,7 @@ import {
 import { assetUrl } from "./asset-url.js";
 import { canHighlight, highlightCode, highlightSync, languageClass } from "./highlight.js";
 import { loadMath, renderTexSync } from "./math.js";
+import { fenceRenderer, PluginFence } from "./PluginFence.js";
 import { safeHref } from "./safe-href.js";
 
 export type NavigateTarget =
@@ -582,6 +583,9 @@ export function BlockContentView(props: { content: BlockContent; ctx: RenderCtx 
             if (c.lang === "query" && (ctx.refDepth ?? 0) === 0) {
               return <QueryFence code={c.code} ctx={ctx} />;
             }
+            // A client plugin's renderer (mermaid, ADR 023) wins over syntax highlighting.
+            const plugin = fenceRenderer(c.lang);
+            if (plugin) return <PluginFence code={c.code} lang={c.lang} renderer={plugin} />;
             return <CodeFence code={c.code} lang={c.lang} ctx={ctx} />;
           }
           case "quote":
