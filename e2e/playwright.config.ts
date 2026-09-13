@@ -50,16 +50,20 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    // WebKit runs ONE spec: the storage fallback (B-43). Its build has no OPFS inside workers, so
-    // the whole suite would run against an in-memory replica — a different app from the one
-    // shipped — and the Mac app's WKWebView, which does have OPFS, is what WebKit coverage would
-    // be for anyway. This keeps the engine exercised without pretending it is a faithful stand-in.
-    // `ref-label-flash` (B-500) also runs here: the owner sees it in the Mac app, and what it pins
-    // — what a refresh leaves on screen between two renders — does not depend on the storage tier.
+    // WebKit runs a few specs, not the suite: the storage fallback (B-43). Its build has no OPFS
+    // inside workers, so the whole suite would run against an in-memory replica — a different app
+    // from the one shipped — and the Mac app's WKWebView, which does have OPFS, is what WebKit
+    // coverage would be for anyway. This keeps the engine exercised without pretending it is a
+    // faithful stand-in. Also the specs for a bug reported from the Mac app only (B-42): focus
+    // across a sync refresh with the `[[` popup open, and the focus log that records it there —
+    // an in-memory replica changes nothing about focus. And the caret across a move of the row
+    // being edited, which WebKit alone lost (B-501, B-502). And `ref-label-flash` (B-500): what a refresh
+    // leaves on screen between two renders does not depend on the storage tier.
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
-      testMatch: /(storage|ref-label-flash)\.spec\.ts/,
+      testMatch:
+        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash)\.spec\.ts/,
     },
   ],
 });

@@ -134,3 +134,43 @@
   background: var(--surface-2);
   color: var(--fg);
 }
+
+/* Focus log (`FocusLogSection`). */
+.diag-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0;
+  cursor: pointer;
+}
+
+.diag-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.diag-actions .diag-refresh {
+  margin-top: var(--space-md);
+}
+
+.diag-actions [role="status"] {
+  margin-top: var(--space-md);
+}
+
+.diag-log {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: var(--space-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+  white-space: pre;
+  resize: vertical;
+}

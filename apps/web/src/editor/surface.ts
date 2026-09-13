@@ -20,6 +20,7 @@
 import { defaultKeymap } from "@codemirror/commands";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { noteFocus } from "../app/focus-log.js";
 import type { KeyDescriptor } from "./keydown.js";
 import { livePreview } from "./livePreview.js";
 import type { CaretSpec } from "./types.js";
@@ -151,8 +152,44 @@ export function createSurface(deps: SurfaceDeps): Surface {
     view.dispatch({ selection: { anchor: pos } });
   }
 
+  /** Writes the state's main selection into the document selection if the two disagree. Only
+   * while the content element holds focus and no composition is running (the IME owns it then). */
+  function syncDomSelectionToState(): void {
+    const doc = view.contentDOM.ownerDocument;
+    if (doc.activeElement !== view.contentDOM || view.composing) return;
+    const sel = doc.getSelection();
+    if (!sel) return;
+    const { anchor, head } = view.state.selection.main;
+    const content = view.contentDOM;
+    if (
+      sel.rangeCount > 0 &&
+      sel.anchorNode &&
+      sel.focusNode &&
+      content.contains(sel.anchorNode) &&
+      content.contains(sel.focusNode)
+    ) {
+      try {
+        if (
+          view.posAtDOM(sel.anchorNode, sel.anchorOffset) === anchor &&
+          view.posAtDOM(sel.focusNode, sel.focusOffset) === head
+        )
+          return;
+      } catch {
+        // A node CM6 cannot map: treat as disagreeing and write the state's selection.
+      }
+    }
+    const a = view.domAtPos(anchor);
+    const h = view.domAtPos(head);
+    try {
+      sel.setBaseAndExtent(a.node, a.offset, h.node, h.offset);
+    } catch {
+      // An offset the DOM rejects: leave the caret to CM6 rather than throw out of a refocus.
+    }
+  }
+
   return {
     attach(host, id, content, caret = { at: "end" }) {
+      noteFocus("editor attach", `block ${id}; host connected=${host.isConnected}`);
       current = id;
       const focusedBefore = typeof document === "undefined" ? null : document.activeElement;
       view.setState(EditorState.create({ doc: content, extensions }));
@@ -196,6 +233,9 @@ export function createSurface(deps: SurfaceDeps): Surface {
     },
     detach() {
       if (!current) return null;
+      // With the stack: several paths end editing (a click away, a block gone from the page, a
+      // selection, a lock), and the log has to say which one did (B-42).
+      noteFocus("editor detach", `block ${current}`, { stack: true });
       const out = {
         id: current,
         content: view.state.doc.toString(),
@@ -226,7 +266,20 @@ export function createSurface(deps: SurfaceDeps): Surface {
     setCaret: setCaretInternal,
     currentId: () => current,
     view: () => (current === null ? null : view),
-    focus: () => view.focus(),
+    focus() {
+      view.focus();
+      // Put the DOM caret where the editor state says, in the same task as the focus, before any
+      // `selectionchange` is delivered. Needed in WebKit (the Mac app's engine), where this is
+      // called after the edited row's DOM node MOVED (`BlockTree.tsx#refocusAfterReorder`: a keyed
+      // `<For>` reorder after Alt+Up/Down, its undo, or a refresh bringing another device's move).
+      // Chromium fires `blur` on the move, CM6 drops its cached DOM selection, and `view.focus()`
+      // writes the caret back. WebKit fires no `blur`: CM6 compares the state with its stale cache,
+      // finds them equal and writes nothing, while WebKit's focus has put the DOM caret at the start
+      // of the content — and the next `selectionchange` read that into the state. The next key was
+      // typed at the start of the block, with a `[[` popup left open over a caret that had left its
+      // trigger (B-501, B-502). The same repair as `commands/focus-return.ts` (B-296).
+      syncDomSelectionToState();
+    },
     replaceContent(id, content) {
       if (current !== id) return;
       const doc = view.state.doc;
