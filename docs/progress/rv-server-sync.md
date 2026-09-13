@@ -23,8 +23,8 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 | F2 deleted descendants left behind by a cross-page move; restore → invisible | medium | B-120 (same mechanism) | fixed 6e1281f |
 | F3 to_page / move_to_page / merge commit, then throw | medium | B-122 | fixed 05e0145 |
 | F4 batch.undo / trash.restore report success on a rejected un-delete | medium | B-90 (existing) | fixed a6cd161 |
-| F5 verify replays rejected ops | medium | B-123 | fixed (see Done) |
-| F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | logged |
+| F5 verify replays rejected ops | medium | B-123 | fixed 79c1b70 |
+| F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | fixed (see Done) |
 | F7 query `ref` prefilter drops property-only refs | low | B-124 | logged |
 | F8 recordChanges O(n²) | low | note under B-85 (existing) | logged |
 | F9 DataApi deletes: one timestamp per op | low | B-121 | logged |
@@ -52,14 +52,17 @@ re-pointed at `da85cfb` before any work, as the brief requires.
   applies all-or-nothing; `trash.restore` refuses `new_name` on a journal day and applies
   all-or-nothing. Tests `ops/undelete-collision.http.test.ts` (2) + 2 guard tests in
   `ops/refactor-atomicity.test.ts`; all four fail before.
-- F5 / B-123 — (this commit): `verify.ts#loadOps` skips `status = 'rejected'`; report gains
+- F5 / B-123 — `79c1b70`: `verify.ts#loadOps` skips `status = 'rejected'`; report gains
   `rejectedSkipped`. Tests `verify-rejected.test.ts` (2, fail before with 3 and 4 divergences).
   Note: `verify.ts` holds a literal NUL byte (the key separator in `keyOf`), so diff tools treat
   it as binary — pre-existing, left alone.
+- F6 / B-86 follow-up — (this commit): `ref-reindex.ts` rebuilds `ref` + subtree `path_ref` via the
+  now-exported `reindexBlockAndSubtree`, finds candidates in both tables, new done-flag key so
+  graphs that ran v1 re-run. Tests: 2 new in `ref-reindex.test.ts`.
 
 ## Next steps, in order
 
-F6, F7, F8, F9, F10, then the review doc.
+F7, F8, F9, F10, then the review doc.
 
 ## How to resume
 

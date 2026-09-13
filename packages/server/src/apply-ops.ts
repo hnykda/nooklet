@@ -211,8 +211,9 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
   }
 }
 
-/** Recompute `ref` for one block and `path_ref` for it and every descendant (sql-schema.md rule 12). */
-function reindexBlockAndSubtree(driver: SqlDriver, blockId: string): void {
+/** Recompute `ref` for one block and `path_ref` for it and every descendant (sql-schema.md rule 12).
+ * Exported for the one-time re-index in `./ref-reindex.ts`, which must rebuild both. */
+export function reindexBlockAndSubtree(driver: SqlDriver, blockId: string): void {
   const block = driver.get<{
     id: string;
     page_id: string;

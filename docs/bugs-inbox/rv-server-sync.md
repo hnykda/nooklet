@@ -155,6 +155,16 @@ from `Target`'s backlinks. Probe: after resetting `ref` and `path_ref` to the pr
 running the migration (returns 1), `page.backlinks {target: "Target"}` → `linked: []`. The owner's
 graph has 0 such rows; other graphs are affected.
 
+**Fixed 2026-09-13.** The re-index rebuilds each candidate block with `reindexBlockAndSubtree`
+(now exported from `apply-ops.ts`) — `ref` for the block, `path_ref` for it and every descendant —
+and finds candidates through either table (a `|` in `ref.dst_page_key` or `path_ref.page_key`).
+Its done-flag is a new key (`refs.pipe_alias.path_ref`), because a graph that already ran the first
+version has clean `ref` rows and stale `path_ref` rows, and must run once more. Tests:
+`packages/server/src/ref-reindex.test.ts` "rebuilds path_ref too, so the old links show in
+backlinks again, children included" (fails on the old code: stale `path_ref` rows remain) and "runs
+again on a graph whose first re-index fixed ref but left path_ref stale". The owner's graph copy:
+0 rows with `|` in either table.
+
 ---
 
 ### B-124 · A query for `[[X]]` misses blocks whose only reference to X is in a property
