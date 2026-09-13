@@ -31,14 +31,20 @@ first for each. Bug notes go to `docs/bugs-inbox/editor-keys.md`, not BUGS.md.
   on a non-blank block inserts the starter as the next sibling. e2e `mermaid-after-text.spec.ts` (2)
   red before, green after; plugins.spec green. Web unit 1,152.
 
+- Full chromium e2e on `30e9a71`: 531 passed, 2 failed, 2 skipped (10.0 min). Both failures were
+  `link-unlinked.spec.ts` counting 4 unlinked mentions of "Link Target" instead of 2 — my
+  `autocomplete-inside-link.spec.ts` page names contained "Walk Link Target". Renamed to
+  "Walkin Goal Page"/"Caret Inside Src …"; the two specs together (plus references, views,
+  autocomplete, follow-link-popup) green on rerun. `references.spec.ts:77` timed out once in that
+  rerun and passed alone (load).
+
 ## In flight
 
-- Full e2e run.
+- Final full e2e rerun after the rename.
 
 ## Next
 
-1. Full chromium e2e run on port 6400; fix/record anything red.
-2. Re-check the rapid double-Cmd+Enter test in the full run (timing).
+1. Full chromium e2e rerun; record numbers.
 
 ## Decisions
 
