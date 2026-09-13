@@ -195,3 +195,42 @@ stored). With the old `message-handler.ts` built into the client it failed exact
 500 `internal`, "window … did not respond in time", hint "try again".
 
 ---
+
+### B-313 · `block.update` `content` copied from `page_read` for a nested block turns its property lines into text and deletes the properties
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, verifying m9/server-ops · **Test:**
+`outline-bridge.test.ts` › "reads `content` copied from page_read at any depth (auto)…",
+`block-update-text.http.test.ts` › "takes content copied from page_read for a nested block without
+losing its properties (B-313)"
+
+`page_read` prints a block at depth *d* with its later lines indented `2·(d+1)` columns:
+
+```
+- a ^…
+  - b ^…
+    - TODO c ^…
+      scheduled:: 2026-09-13
+      more c
+```
+
+An agent that replaces block `c` with `block.update {content: "TODO c2\n      scheduled:: 2026-09-14\n      more c"}`
+— the shape it just read, bullet and `^id` dropped, which mcp-tools.md §3.2 rule 10 now says `content`
+accepts — gets 200, and the stored block is `content: "c2\n    scheduled:: 2026-09-14\n    more c"`
+with **no** `scheduled` property: `applyTextReplace` unsets every key the parsed text lacks. B-172's
+`"auto"` reading only recognises page_read's shape for a top-level block (it leaves the lines as
+they are and lets the parser strip one 2-column continuation indent; 4 or 6 columns stay behind, and
+an indented `key:: value` line is not a property line). Not new — the pre-B-172 parser
+(`parseOutline("- " + text)`) produced the identical block, checked with a throwaway tsx probe —
+but a silent data loss on the path the branch documents. Fix direction: under `"auto"`, remove the
+later lines' common leading whitespace rather than assuming exactly one 2-column unit.
+
+**Fixed 2026-09-13.** `outline-bridge.ts#singleBlockBullet` under `"auto"` removes the common
+leading whitespace of the later non-blank lines (then indents them like flush text); a mix with no
+common prefix (`"  a"` / `"\tb"`) keeps the old one-unit reading. Both tests failed on the branch
+before the change (the HTTP one: stored `"c\n    scheduled:: 2026-09-20\n    more c"`, no property).
+Measured on a copy of the owner's graph with `tools/probes/block-update-content-indent-graph.mts`
+(every live block as `page_read` prints it at depth 0/1/2, copied into `content`): the one-unit
+reading changed the properties of **866** blocks at depth 1 and 2; the common-prefix reading
+changes none at any depth. Its cost: 14 blocks whose every later line carries its own indent
+(e.g. a packing list indented three spaces) lose that indent when copied — whitespace, where the
+one-unit reading lost the same whitespace at depth ≥ 1 plus properties. mcp-tools.md §3.2 rule 10
+updated.

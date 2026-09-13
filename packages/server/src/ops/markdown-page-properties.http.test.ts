@@ -69,6 +69,16 @@ describe("page.create applies a markdown pre-block as page properties (B-235)", 
     });
   });
 
+  it("an alias:: in the pre-block resolves in the same call's batch (page_alias derives from page.prop)", async () => {
+    const r = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "B235 Aliased",
+      markdown: "alias:: B235 Přezdívka\n\n- a",
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect((await readPage("B235 Přezdívka")).page.name).toBe("B235 Aliased");
+    expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
+  });
+
   it("creates a page from a pre-block alone, with no blocks", async () => {
     const r = await post(s.app, "/api/v1/page.create", s.writeToken, {
       name: "B235 Props Only",

@@ -116,6 +116,22 @@ describe("single-block text round trip (B-172)", () => {
     });
   });
 
+  // B-313: page_read indents a nested block's later lines 2·(depth+1) columns. Stripping only one
+  // 2-column unit left `scheduled::` indented — literal text — and block.update then unset the
+  // property the text no longer carried.
+  it("reads `content` copied from page_read at any depth (auto), keeping the content's own indent", () => {
+    for (const depth of [1, 2, 5]) {
+      const cont = "  ".repeat(depth + 1);
+      const text = `TODO c\n${cont}scheduled:: 2026-09-13\n${cont}more\n\n${cont}  own indent`;
+      expect(fields(parseSingleBlockGrammar(text, "auto")), `depth ${depth}`).toEqual({
+        content: "c\nmore\n\n  own indent",
+        marker: "TODO",
+        priority: null,
+        properties: { scheduled: "2026-09-13" },
+      });
+    }
+  });
+
   it("reads flush `content` as flush under auto, keeping an indented line that is not alone", () => {
     const node = parseSingleBlockGrammar("notes\nscheduled:: 2026-09-13\n  indented", "auto");
     expect(fields(node)).toEqual({

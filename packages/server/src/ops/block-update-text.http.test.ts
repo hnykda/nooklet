@@ -108,6 +108,27 @@ describe("block.update on multi-line raw text (B-172)", () => {
     expect(b.properties.scheduled).toBe("2026-09-15");
   });
 
+  it("takes content copied from page_read for a nested block without losing its properties (B-313)", async () => {
+    const created = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "B313 Nested",
+      markdown: "- a\n  - b\n    - TODO c\n      scheduled:: 2026-09-13\n      more c",
+    });
+    const id = created.json.created[2] as string;
+    const read = await post(s.app, "/api/v1/page.read", s.writeToken, { page: "B313 Nested" });
+    // The block's own lines as page_read printed them, bullet and ^id dropped from line 1.
+    const lines = (read.json.text as string).split("\n").slice(2, 5);
+    const content = [lines[0]?.replace(/^\s*- /, "").replace(/ \^\w+$/, ""), ...lines.slice(1)]
+      .join("\n")
+      .replace("scheduled:: 2026-09-13", "scheduled:: 2026-09-20");
+    expect(content).toBe("TODO c\n      scheduled:: 2026-09-20\n      more c");
+    const { status, json } = await update({ id, content });
+    expect(status, JSON.stringify(json)).toBe(200);
+    const b = await readBlock(id);
+    expect(b.content).toBe("c\nmore c");
+    expect(b.properties).toEqual({ scheduled: "2026-09-20" });
+    expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
+  });
+
   it("edits an empty block that has only a property line (not a page pre-block)", async () => {
     const created = await post(s.app, "/api/v1/page.create", s.writeToken, {
       name: "B172 Empty",
@@ -128,6 +149,50 @@ describe("block.update on multi-line raw text (B-172)", () => {
     expect(status).toBe(400);
     expect(json.error.code).toBe("invalid");
     expect(json.error.hint).toMatch(/block_insert/);
+  });
+
+  it("edits, then removes, a property line by old_str (Czech content)", async () => {
+    const id = await seed(
+      "B172 Stav",
+      "- TODO zavolat Petrovi\n  stav:: čeká\n  scheduled:: 2026-09-13\n  pokračování řádku",
+    );
+    const edit = await update({ id, old_str: "stav:: čeká", new_str: "stav:: hotovo" });
+    expect(edit.status, JSON.stringify(edit.json)).toBe(200);
+    expect(edit.json.before).toBe(
+      "TODO zavolat Petrovi\nstav:: čeká\nscheduled:: 2026-09-13\npokračování řádku",
+    );
+    let b = await readBlock(id);
+    expect(b.properties).toEqual({ stav: "hotovo", scheduled: "2026-09-13" });
+    expect(b.content).toBe("zavolat Petrovi\npokračování řádku");
+
+    const drop = await update({ id, old_str: "\nscheduled:: 2026-09-13", new_str: "" });
+    expect(drop.status, JSON.stringify(drop.json)).toBe(200);
+    b = await readBlock(id);
+    expect(b.properties).toEqual({ stav: "hotovo" });
+    expect(b.marker).toBe("TODO");
+  });
+
+  it("keeps a collapsed block's children and collapsed state, and batch.undo restores the edit", async () => {
+    const created = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "B172 Collapsed",
+      markdown: "- TODO parent\n  collapsed:: true\n  scheduled:: 2026-09-13\n  - child",
+    });
+    const [id, child] = created.json.created as string[];
+    const r = await update({ id, old_str: "TODO parent", new_str: "DONE rodič" });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    let b = await readBlock(id as string);
+    expect(b).toMatchObject({ content: "rodič", marker: "DONE", collapsed: true });
+    expect(b.properties.scheduled).toBe("2026-09-13");
+    expect((await readBlock(child as string)).content).toBe("child");
+
+    const undo = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: r.json.batch_id,
+    });
+    expect(undo.status, JSON.stringify(undo.json)).toBe(200);
+    b = await readBlock(id as string);
+    expect(b).toMatchObject({ content: "parent", marker: "TODO", collapsed: true });
+    expect(b.properties).toEqual({ scheduled: "2026-09-13" });
+    expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
   });
 
   it("leaves state a replay of the op log reproduces", async () => {

@@ -74,9 +74,12 @@ export function parseMarkdownPage(markdown: string): ParsedPage {
  *    what `old_str`/`new_str` edits, so any indent a line has is the content's own.
  *  - `"auto"`: for `content` an agent wrote. Flush as above, unless every later non-blank line is
  *    indented by two spaces or a tab — `page_read`'s shape, which an agent copies, and the only
- *    multi-line shape `content` accepted before B-172. A content whose every later line really
- *    starts with two spaces is read as that shape and loses those two; that is the price of not
- *    turning an agent's indented `scheduled::` line into literal text.
+ *    multi-line shape `content` accepted before B-172. Then the whitespace those lines have in
+ *    common is removed first: page_read indents a block at depth d by 2·(d+1) columns, and taking
+ *    off only one 2-column unit left a nested block's `scheduled::` line indented — literal text —
+ *    so `block.update` unset the property (B-313). A content whose every later line really starts
+ *    with the same indent is read as that shape and loses it; that is the price of not turning an
+ *    agent's indented `scheduled::` line into literal text.
  */
 export type SingleBlockIndent = "flush" | "auto";
 
@@ -84,12 +87,29 @@ export type SingleBlockIndent = "flush" | "auto";
  * continuation indent before every later non-empty line. */
 function singleBlockBullet(text: string, indent: SingleBlockIndent): string {
   const [first = "", ...rest] = text.split(/\r\n?|\n/);
+  const nonBlank = rest.filter((line) => line.trim() !== "");
   const alreadyIndented =
     indent === "auto" &&
-    rest.some((line) => line.trim() !== "") &&
-    rest.every((line) => line.trim() === "" || line.startsWith("  ") || line.startsWith("\t"));
-  const body = rest.map((line) => (alreadyIndented || line === "" ? line : `  ${line}`));
+    nonBlank.length > 0 &&
+    nonBlank.every((line) => line.startsWith("  ") || line.startsWith("\t"));
+  // The leading whitespace every non-blank later line shares (B-313). Empty only for a mix like
+  // "  a" / "\tb", which keeps the parser's own one-unit strip below, as before.
+  const common = alreadyIndented ? commonLeadingWhitespace(nonBlank) : "";
+  const body = rest.map((line) => {
+    if (common !== "") return line.trim() === "" ? line : `  ${line.slice(common.length)}`;
+    return alreadyIndented || line === "" ? line : `  ${line}`;
+  });
   return [`- ${first}`, ...body].join("\n");
+}
+
+function commonLeadingWhitespace(lines: readonly string[]): string {
+  let prefix = /^[ \t]*/.exec(lines[0] ?? "")?.[0] ?? "";
+  for (const line of lines) {
+    let i = 0;
+    while (i < prefix.length && line[i] === prefix[i]) i++;
+    prefix = prefix.slice(0, i);
+  }
+  return prefix;
 }
 
 /** `block.update`'s "single-block grammar" (mcp-tools.md §3.2 rule 10): the same grammar as one

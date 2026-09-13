@@ -158,10 +158,11 @@ Rules:
     block; use block_insert to add children"`). Lines after the first are written **flush-left**
     — the shape `block_update`'s `before` output has, and the text `old_str`/`new_str` edit, where
     any indent a line has is the content's own. `content` additionally accepts `page_read`'s
-    indented shape: when every non-blank line after the first starts with two spaces or a tab,
-    one indent unit is removed from each (so a content whose every later line genuinely starts
-    with two spaces loses them — the price of not reading an agent's indented `scheduled::` line
-    as literal text). Before 2026-09-13 only the indented shape parsed, and any `old_str` edit of
+    indented shape, at any depth: when every non-blank line after the first starts with two spaces
+    or a tab, the leading whitespace those lines have in common is removed from each (so a content
+    whose every later line genuinely starts with the same indent loses it — the price of not
+    reading an agent's indented `scheduled::` line as literal text and unsetting the property;
+    B-313: removing only one 2-column unit did exactly that for any block below the top level). Before 2026-09-13 only the indented shape parsed, and any `old_str` edit of
     a block with a second line or a property line failed "content must describe exactly one
     block" (B-172).
 
