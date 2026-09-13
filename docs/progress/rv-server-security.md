@@ -34,9 +34,14 @@ start, you were restarted: read it, then continue from "Next steps".
   copy: the three 60 s-killed patterns answer `invalid` in 2.1–2.3 s, `TODO` dry run ~120–250 ms at
   load 24 vs ~75 ms before.
 
+- F2 (B-126) — commit "fix(server): the mirror survives a page name past NAME_MAX". Red: 3 export
+  tests (ENAMETOOLONG, EISDIR, `%XX` cut) and the live test (leaked `.tmp`) on the old
+  `export.ts`. Green: server suite 57 files / 527; real-graph copy `nooklet export`: 952 exported,
+  `failed: []`.
+
 ## 2. In flight
 
-- F2.
+- F3.
 
 ## 3. Next steps, in order
 

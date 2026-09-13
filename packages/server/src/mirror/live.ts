@@ -52,6 +52,13 @@ export function startLiveMirror(
       if (r.exported + r.deleted > 0) {
         log(`mirror: wrote ${r.exported} page file(s), removed ${r.deleted}`);
       }
+      if (r.failed.length > 0) {
+        const first = r.failed[0] as { pageId: string; error: string };
+        log(
+          `mirror: could not write ${r.failed.length} page file(s), will retry after the next ` +
+            `commit (page ${first.pageId}: ${first.error})`,
+        );
+      }
     } catch (err) {
       log(`mirror: export failed (${err instanceof Error ? err.message : String(err)})`);
     }

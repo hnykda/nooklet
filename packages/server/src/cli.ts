@@ -286,6 +286,8 @@ async function main(): Promise<void> {
       const { ctx, config } = open(args);
       const result = exportAll(ctx.driver, config.dataDir);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      // Every other page was still written; say so in the exit status too.
+      if (result.failed.length > 0) process.exitCode = 1;
       return;
     }
 

@@ -46,8 +46,10 @@ within the time budget, and the server answers meanwhile (B-125)"; `graph-replac
 ---
 
 ### B-126 · A page name longer than NAME_MAX stalls the live mirror, leaks a temp file per sweep, and makes `nooklet export` throw
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, server security review (F2) ·
-**Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, server security review (F2) ·
+**Test:** `packages/server/src/mirror/export.test.ts` "pages whose file cannot be written as named
+(B-126)"; `mirror/live.test.ts` "a page name past NAME_MAX neither stalls later sweeps nor leaves
+temp files behind (B-126)"
 
 `pageFilePath` names the file `pageNameToFileName(name) + ".md"` with no byte limit. Page names
 may be 512 characters, Czech letters take 2 UTF-8 bytes and unsafe characters become 3-byte
@@ -58,6 +60,18 @@ never runs (deleted pages keep their `.md`). The live mirror (B-95) sweeps after
 the failing page never gets a `mirror_file` row, so each sweep leaves another `.xxxx.tmp` in
 `pages/`; `nooklet export` aborts. `block.to_page` names a page after a block's first line, and
 921 live blocks on the owner's graph have a first line over 252 bytes.
+
+**Fixed 2026-09-13.** Three changes in `mirror/export.ts`. `pageFilePath` shortens a file-name base
+past 200 UTF-8 bytes to a prefix cut on a code-point boundary (never inside a `%XX` escape) plus
+`~<8 hex of sha256(name)>`, and `exportPage` then writes the full name into the file as `title::`
+(what the Logseq importer reads a page name from), so the mirror stays lossless. `exportAll`
+catches per page, reports `failed: [{ pageId, error }]` and still runs the prune; the live mirror
+logs failures, `nooklet export` exits 1 when there were any. `exportPage` unlinks its temp file
+when the rename throws. The new tests fail on the old code with `ENAMETOOLONG`, `EISDIR` and a
+leaked `.tmp`. On a copy of the owner's graph (longest page name 111 bytes) `nooklet export` wrote
+all 952 pages with `failed: []` and no shortened names. Tests: `mirror/export.test.ts` "pages whose
+file cannot be written as named (B-126)" (3); `mirror/live.test.ts` "a page name past NAME_MAX
+neither stalls later sweeps nor leaves temp files behind (B-126)".
 
 ---
 

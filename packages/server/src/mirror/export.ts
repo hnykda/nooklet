@@ -56,10 +56,17 @@ export interface ExportResult {
   changed: boolean;
 }
 
+export interface ExportFailure {
+  pageId: string;
+  error: string;
+}
+
 export interface ExportAllResult {
   exported: number;
   skipped: number;
   deleted: number;
+  /** Pages whose file could not be written this time; the rest of the sweep still ran. */
+  failed: ExportFailure[];
 }
 
 export interface ExportAllOptions {
@@ -180,10 +187,40 @@ export function renderPageToOutline(driver: SqlDriver, pageId: string): Rendered
   };
 }
 
+/**
+ * Longest file-name base, in UTF-8 bytes, that `pageFilePath` leaves alone. APFS and ext4 cap a
+ * name at 255 bytes (NAME_MAX), NTFS at 255 UTF-16 units; a page name may be 512 characters, a
+ * Czech letter is 2 bytes and an escaped character 3 (`%23`). Past the limit the rename failed
+ * with ENAMETOOLONG on every mirror sweep (B-126). 200 leaves room for `.md` and the suffix.
+ */
+const MAX_FILE_BASE_BYTES = 200;
+
+/** A page's file-name base, shortened past `MAX_FILE_BASE_BYTES` to a prefix plus
+ * `~<8 hex of sha256(name)>`, so two long names sharing a prefix still get different files. The
+ * mirror is one-way and `mirror_file` maps path to page, so nothing needs to decode it; the full
+ * name travels inside the file as `title::` (see `exportPage`). */
+function pageFileBase(name: string): { base: string; shortened: boolean } {
+  const base = pageNameToFileName(name);
+  if (Buffer.byteLength(base, "utf8") <= MAX_FILE_BASE_BYTES) return { base, shortened: false };
+  const suffix = `~${sha256Hex(name).slice(0, 8)}`;
+  let kept = "";
+  let bytes = 0;
+  // `for…of` walks code points, so a surrogate pair or a 2-byte letter is never split.
+  for (const ch of base) {
+    const n = Buffer.byteLength(ch, "utf8");
+    if (bytes + n > MAX_FILE_BASE_BYTES - suffix.length) break;
+    kept += ch;
+    bytes += n;
+  }
+  // Nor is a `%XX` escape: a dangling `%` or `%2` would not decode back.
+  kept = kept.replace(/%[0-9A-F]?$/, "");
+  return { base: `${kept}${suffix}`, shortened: true };
+}
+
 /** Mirror-relative file path for a page (PLAN.md sec. 5). Forward-slash, relative to the data dir. */
 export function pageFilePath(page: { name: string; journalDay: number | null }): string {
   if (page.journalDay !== null) return `journals/${journalDayToFileName(page.journalDay)}.md`;
-  return `pages/${pageNameToFileName(page.name)}.md`;
+  return `pages/${pageFileBase(page.name).base}.md`;
 }
 
 /**
@@ -196,6 +233,15 @@ export function pageFilePath(page: { name: string; journalDay: number | null }):
 export function exportPage(driver: SqlDriver, dataDir: string, pageId: string): ExportResult {
   const rendered = renderPageToOutline(driver, pageId);
   const relPath = pageFilePath(rendered);
+  // A shortened file name no longer says what the page is called. `title::` does, and it is what
+  // the Logseq importer reads a page's name from, so the mirror stays lossless.
+  if (
+    rendered.journalDay === null &&
+    rendered.parsed.properties.title === undefined &&
+    pageFileBase(rendered.name).shortened
+  ) {
+    rendered.parsed.properties = { title: rendered.name, ...rendered.parsed.properties };
+  }
   const text = serializeOutline(rendered.parsed);
   const contentHash = sha256Hex(text);
 
@@ -212,7 +258,17 @@ export function exportPage(driver: SqlDriver, dataDir: string, pageId: string): 
   mkdirSync(dirname(absPath), { recursive: true });
   const tmpPath = join(dirname(absPath), `.${randomBytes(8).toString("hex")}.tmp`);
   writeFileSync(tmpPath, text, "utf8");
-  renameSync(tmpPath, absPath);
+  try {
+    renameSync(tmpPath, absPath);
+  } catch (err) {
+    // Without this, every live-mirror sweep that retried a failing page left another temp file.
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // Nothing more to clean up.
+    }
+    throw err;
+  }
 
   if (existing && existing.path !== relPath) {
     const oldAbsPath = join(dataDir, existing.path);
@@ -274,10 +330,18 @@ export function exportAll(
 
   let exported = 0;
   let skipped = allLivePages.length - candidates.length;
+  const failed: ExportFailure[] = [];
   for (const p of candidates) {
-    const result = exportPage(driver, dataDir, p.id);
-    if (result.changed) exported++;
-    else skipped++;
+    // One page that cannot be written must not cost every page after it, or the prune below: a
+    // throw here used to end the sweep, so deleted pages kept their files for as long as one bad
+    // page existed (B-126). The failure is reported and retried on the next sweep.
+    try {
+      const result = exportPage(driver, dataDir, p.id);
+      if (result.changed) exported++;
+      else skipped++;
+    } catch (err) {
+      failed.push({ pageId: p.id, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   let deleted = 0;
@@ -297,7 +361,7 @@ export function exportAll(
     deleted++;
   }
 
-  return { exported, skipped, deleted };
+  return { exported, skipped, deleted, failed };
 }
 
 /**
