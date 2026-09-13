@@ -82,3 +82,61 @@ test("a newer service worker takes over an open page and reloads it onto the new
   ).toBe(false);
   await expect(page.locator(".app-topbar")).toBeVisible();
 });
+
+test("a newer worker that takes the page over before the page registered its own still reloads it (B-537)", async ({
+  page,
+}) => {
+  await page.goto("/journals");
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.reload();
+  await expect.poll(() => swState(page).then((s) => s?.controlled), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator(".app-topbar")).toBeVisible();
+
+  // The desktop app's slow start, made deterministic: `/api/session` does not answer, so `main.tsx`
+  // never reaches `registerServiceWorker()` — the state WebKit's soft update (one second after the
+  // navigation) finds a page in when the session request is slow.
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/session", async (route) => {
+    await gate;
+    await route.continue().catch(() => {}); // the request of a document that has since reloaded
+  });
+  const sessionRequested = page.waitForRequest("**/api/session");
+  await page.reload({ waitUntil: "commit" });
+  await sessionRequested;
+  await page.evaluate(() => {
+    (window as unknown as { __beforeTakeover: boolean }).__beforeTakeover = true;
+  });
+
+  // A newer worker installs and claims the page (this build's worker, as in the test above).
+  const reloaded = page.waitForEvent("load", { timeout: 20_000 });
+  await page
+    .evaluate(() =>
+      navigator.serviceWorker
+        .register("/sw.js?e2e-next-build", { scope: "/" })
+        .then(() => undefined),
+    )
+    .catch(() => {});
+  // The reload must come while the session request is STILL held: nothing in the bundle has
+  // registered yet, so only the listener in index.html can have done it. (Without it the page did
+  // reload — but only after the session answered and registerSW found a script URL to update.)
+  await reloaded.catch((err) => {
+    throw new Error(`no reload while /api/session was held; state: ${String(err)}`);
+  });
+  expect(
+    await page
+      .evaluate(
+        () => (window as unknown as { __beforeTakeover?: boolean }).__beforeTakeover ?? false,
+      )
+      .catch(() => false),
+  ).toBe(false);
+
+  release();
+  await page.unroute("**/api/session");
+  await expect(page.locator(".app-topbar")).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(() => swState(page), { timeout: 60_000 })
+    .toMatchObject({ controlled: true, waiting: false, installing: false });
+});

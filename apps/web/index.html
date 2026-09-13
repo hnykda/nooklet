@@ -13,6 +13,22 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <title>nooklet</title>
+    <script>
+      // A newer build's service worker takes this page over (skipWaiting + clientsClaim): reload onto
+      // it. Inline and first, not in the bundle: the check that finds a new build is the browser's own
+      // soft update, one second after this document was requested, and the bundle's registerSW only
+      // hears about updates found after it registered — which waits on /api/session. A slow start lost
+      // that race and ran the old client for the whole session (B-537, src/sw/register.ts).
+      // `controlled` stays false until a worker first controls the page, so the claim that follows a
+      // first install — this page IS the newest build — never reloads.
+      if ("serviceWorker" in navigator) {
+        let controlled = navigator.serviceWorker.controller !== null;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (controlled) location.reload();
+          controlled = true;
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

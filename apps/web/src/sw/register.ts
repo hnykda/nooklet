@@ -15,15 +15,21 @@ export function registerServiceWorker(): void {
   if (!("serviceWorker" in navigator)) return;
 
   // No `onNeedRefresh`: under `registerType: "autoUpdate"` it is never called. What applies an
-  // update is the worker itself (`skipWaiting` + `clientsClaim`, `vite.config.ts`) and then
-  // `registerSW`, which reloads the page when a newer worker activates. There used to be an
-  // `onNeedRefresh` here that "applied" the update — dead code, which is how B-532 (the new worker
-  // waiting forever) hid behind B-20's fix.
+  // update is the worker itself (`skipWaiting` + `clientsClaim`, `vite.config.ts`), which takes the
+  // page over, and the `controllerchange` listener inline in `index.html`, which reloads onto it.
+  // There used to be an `onNeedRefresh` here that "applied" the update — dead code, which is how
+  // B-532 (the new worker waiting forever) hid behind B-20's fix.
   //
   // That reload is safe with respect to unsaved text: a pending edit is flushed on `pagehide` and
   // `visibilitychange` (`editor/BlockTree.tsx`), both of which fire before it.
   registerSW({
     immediate: true,
+    // Not workbox's `window.location.reload()` on `activated`: that only fires for an update found
+    // AFTER this call registered, and this call waits on `/api/session` (`main.tsx`). WebKit's soft
+    // update finds a new build one second after navigation, so a slow session request meant no
+    // reload at all (B-537). The inline listener sees every takeover; a second reload here would only
+    // restart the navigation it already began.
+    onNeedReload() {},
     onOfflineReady() {
       console.info("[nooklet] ready to work offline.");
     },

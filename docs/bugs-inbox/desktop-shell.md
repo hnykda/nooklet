@@ -207,3 +207,97 @@ on `m11/delete-launcher`; the natural fix is to try the shell's port first and k
 as the fallback the retry box edits.
 
 ---
+
+### B-536 · Cmd/Ctrl+V into a block pastes nothing — the command dispatcher swallows the key for `edit.paste`
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, desktop-shell verification (checking
+that Cmd+C/V/X/A/Z reach the webview, step 3) · **Tests:** `e2e/tests/keyboard-paste.spec.ts` (2, both
+fail on the old dispatcher: "hello" stays "hello"), `commands/keymap/dispatch.test.ts` › "never
+matches edit.paste's Cmd+V…"
+
+In the block editor a real Cmd+V (Ctrl+V elsewhere) inserts nothing, in the desktop app and in
+Chromium alike. `commands/registrations/structural.ts` registers `edit.paste` with
+`mac: "Cmd+V"`, `when: "editorFocused"`; `buildKeymap` compiles it like any other row, so
+`CommandLayer`'s capture-phase dispatcher matches it, calls `preventDefault()` — which cancels the
+browser's paste, so the `paste` event the editor actually handles (`surface.ts`
+`domEventHandlers.paste` → `BlockTree#onPaste`) never fires — and runs `edit.paste`, whose editor
+side does nothing (no `case "edit.paste"` anywhere). Spec R33 says the row is informational and
+"never matched by the keydown dispatcher"; the code did not do that. Every e2e paste test builds a
+synthetic `ClipboardEvent("paste")`, which is why none caught it.
+
+Evidence:
+- Chromium, Playwright against a real server (`paste-probe2.cjs` in the verify scratch): a plain
+  `<textarea>` gets "PASTED" from `Meta+V`; the block editor stays `"hello "`, and a document
+  capture listener sees the `V` keydown with `defaultPrevented: true` after the dispatcher.
+- WKWebView, devtest2 app, keys sent in-process through `NSApp postEvent` (probe harness): in
+  Settings → Custom CSS (a textarea) Cmd+C / Cmd+V / Cmd+X / Cmd+Z / Shift+Cmd+Z / Cmd+A all work
+  through the native Edit menu; in a block Cmd+C, Cmd+X, Cmd+Z, Shift+Cmd+Z work and Cmd+V inserts
+  nothing (`shots/verify/v08-block-editor-clipboard.png`).
+
+**Fix** (`commands/keymap/dispatch.ts`): the dispatcher skips `edit.paste` rows when matching a key
+(R33's "never matched"), so the key's default — the native `paste` event — happens. The row stays
+in the compiled keymap, so the palette and Help → Keyboard shortcuts still show Cmd+V. After the fix,
+in the devtest2 app: copy a word in a block, Cmd+V → `"hello world world"`, Cmd+Z takes it back
+(`shots/verify/v13-block-editor-paste-after-fix.png`).
+
+---
+
+### B-537 · The update reload is a race the page loses when `/api/session` takes over a second — B-532 is not fixed under a slow start
+**Status:** fixed (for every client from this fix on; see below) · **Severity:** high · **Found:**
+2026-09-13, desktop-shell verification · **Tests:** `e2e/tests/sw-update.spec.ts` › "a newer worker that
+takes the page over before the page registered its own still reloads it (B-537)" (fails before: no
+reload in 20 s), `apps/web/src/sw/takeover.test.ts` (4) · **Evidence:** `shots/verify/update-A-baseline/`,
+`shots/verify/update-B-branch-slow-session/`, `shots/verify/update-C-fix-slow-session/`
+
+B-532's fix (worker `skipWaiting` + `clientsClaim`) relies on the OLD page's `registerSW`
+(workbox-window) seeing the new worker's `updatefound` and reloading on its `activated`. Workbox only
+tracks an update whose `updatefound` fires AFTER `wb.register()` has attached its listener — and
+`main.tsx` calls `registerServiceWorker()` only after `await initBootstrap()`, a round trip to
+`/api/session`. `register()` of an already-registered, unchanged script URL does not itself check
+for an update (spec: resolves with the existing registration); the check that finds a new build is
+WebKit's navigation soft update, which the request log shows exactly one second after the document
+request (`GET / … GET /sw.js dest=-` at +1.02 s, every launch). If the page has not registered by
+then, the new worker installs and claims the page unseen — workbox's `activated` never fires, no
+reload — and the page runs the previous client for the whole session again.
+
+Reproduced in the devtest2 app with the same probe shape as B-532 (fresh store, graceful quits,
+harness reading the loaded `index-*.js` and `performance` navigation type):
+- baseline, OLD `adadff1` → NEW this branch, no delay: the first launch after the update reloads
+  (`nav: "reload"`) onto NEW within ~1.2 s — B-532's claim holds;
+- OLD this branch → NEW this branch with index.html's precache revision bumped, `/api/session`
+  delayed 2 s by the logging proxy: the first launch after the update shows **OLD for the whole 30 s
+  session** (`nav: "navigate"`, never reloaded) although the new worker was fetched at +1.04 s; the
+  next launch shows NEW.
+
+A two-second `/api/session` is not exotic for the desktop app: a server the app has just spawned, or
+one busy with a large graph at start, answers its first requests slowly, and a slower Mac spends
+part of that second evaluating the bundle.
+
+**Fix.** A six-line classic `<script>` in `apps/web/index.html`'s `<head>` listens for
+`controllerchange` and reloads when a worker takes over a page that a worker already controlled.
+It runs while the HTML is parsed — long before the soft update a second later — so it sees every
+takeover, tracked by workbox or not; the first install's claim (page not controlled yet, already the
+newest build) does not reload. `sw/register.ts` passes a no-op `onNeedReload` so workbox does not
+restart the navigation the listener began.
+
+Proven in the devtest2 app, same slow-session shape (`/api/session` +2 s, OLD = this fix, NEW = this
+fix with index.html's revision bumped): the first launch after the update requests the document again
+at +1.09 s, right after the soft update's `GET /sw.js` at +1.03 s, and shows NEW (`nav: "reload"`)
+for the session; the following launch is a plain `navigate` (no reload loop), and so is the first
+launch on a fresh store.
+
+Not rescued: a page still running a client from BEFORE this fix (every build up to and including
+B-532's) decides with its old code, so it can lose the race once more on the launch that installs
+this fix — the result of `update-B` again. From then on the listener is in the page.
+
+---
+
+### B-538 · In WKWebView a same-origin cross-document navigation leaves the new page a sync follower
+**Status:** open (observed, no user path found) · **Severity:** low · **Found:** 2026-09-13,
+desktop-shell verification · **Test:** none
+
+After `location.assign("/page/…")` in the desktop app (the verification harness did this), the
+indicator read "synced via another tab" and stayed so across three View → Reload; a fresh launch
+followed by three reloads stayed "synced". Probably WebKit's page cache keeping the previous
+document — and its DB worker holding the leader lock (B-81) — alive. The client only ever reloads
+(`location.reload()`) and navigates in-app, so nothing a user does is known to hit this; logged in
+case one appears (a plugin, a future full navigation).
