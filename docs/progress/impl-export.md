@@ -43,7 +43,17 @@ before any work, as the brief says everyone starts there.
   last one with baseline sources checked out) — pre-existing, not this branch. Spec: E.6 rows +
   R52a for the four commands.
 
-- (next commit) `tools/probes/page-export-real-graph.mjs` — real-graph check, results below.
+- `a764284` `tools/probes/page-export-real-graph.mjs` — real-graph check, results below.
+
+## Final numbers (2026-09-13)
+
+- Unit: core 338 passed, server 521 passed, web 697 passed. `pnpm -r typecheck` clean. Biome clean
+  on every file this branch touched (the repo has pre-existing findings elsewhere).
+- e2e Chromium, port 6408, batch 1 (page-export, pages, page-icons, views, editing, selection,
+  context-menu, parity, focus, shelf, journals, refactor): 146 passed, 1 failed, 1 skipped — the
+  failure is B-226, which also fails with `da85cfb` sources. Batch 2 (page-export, help, popups,
+  phone, navigation, history, shelf-outline, render, rendering, a-fresh-journal, templates): 87
+  passed. The whole suite was not run.
 
 ## Real-graph results (owner's graph copy, 2026-09-13; 952 pages, 20,411 ops)
 
@@ -59,11 +69,18 @@ before any work, as the brief says everyone starts there.
 
 ## In flight
 
-- nothing uncommitted after the probe commit.
+- nothing. Task complete; left for later / others:
 
-## Next steps, in order
+## Not done / left
 
-1. Final e2e run of the specs touched + at risk; report.
+- WebKit/Safari and the Tauri (WKWebView) and Capacitor shells are unverified: clipboard write
+  with a promised `ClipboardItem`, `<a download>` of a blob URL (WKWebView may need a download
+  handler; iOS likely ignores it — a share-sheet path via `platform.share` would be the fix),
+  `beforeprint` expansion and the print stylesheet.
+- Off a page route (journal stream, search) Copy/Export/Toggle favourite do nothing silently.
+- The "…" menu has no arrow-key navigation (Tab works). A page-delete branch may want to add its
+  entry to this menu rather than a second one.
+- B-224 (multi-line render), B-225 (touch-invisible History link), B-226 (palette focus e2e) open.
 
 ## Decisions
 
