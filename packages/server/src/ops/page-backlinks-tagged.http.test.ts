@@ -121,6 +121,38 @@ describe("page.backlinks tagged_pages (B-111)", () => {
     expect(call.result.content[0].text).toContain("1 page(s) tagged Book");
   });
 
+  it("follows the tagged page through delete and undo, and answers the same for an alias target", async () => {
+    // The index is rebuilt on page writes; a soft delete and its undo are page writes too, and the
+    // join on `deleted_at` is the only thing between a trashed page and a tag page listing it.
+    await create({ name: "Recipe", properties: { alias: "recepty" } });
+    // Tagged by the name AND by the alias: one page, listed once.
+    await create({ name: "Svíčková", properties: { tags: "Recipe, [[recepty]]" } });
+    await create({ name: "Guláš", properties: { tags: "#recepty" } });
+
+    const both = await backlinks({ target: "Recipe" });
+    expect(both.tagged_pages.map((t: { page: string }) => t.page)).toEqual(["Guláš", "Svíčková"]);
+    expect(both.tagged_total).toBe(2);
+    // Asking by the alias is asking about the page.
+    expect(await backlinks({ target: "RECEPTY" })).toMatchObject({
+      target: "Recipe",
+      tagged_total: 2,
+    });
+
+    const del = await post(s.app, "/api/v1/page.delete", s.writeToken, { page: "Guláš" });
+    expect(del.status).toBe(200);
+    expect(
+      (await backlinks({ target: "Recipe" })).tagged_pages.map((t: { page: string }) => t.page),
+    ).toEqual(["Svíčková"]);
+
+    const undo = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: del.json.batch_id,
+    });
+    expect(undo.status).toBe(200);
+    const back = await backlinks({ target: "Recipe" });
+    expect(back.tagged_pages.map((t: { page: string }) => t.page)).toEqual(["Guláš", "Svíčková"]);
+    expect(back.tagged_total).toBe(2);
+  });
+
   it("drops a page whose tag is removed, and is empty for a block target", async () => {
     await create({ name: "Idea", markdown: "- a block" });
     await create({ name: "Draft", properties: { tags: "Idea" } });

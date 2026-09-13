@@ -34,10 +34,13 @@ afterwards: 20,411 ops replayed, OK.
 ### B-104 (existing) · `/page/<alias>` says the page does not exist
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit
 (`docs/review/2026-09-12-exposure-audit.md`, defect D10) · **Tests:** `e2e/tests/page-identity.spec.ts`
-(all five: "/page/<alias> opens the page and replaces the URL with its own name", "a [[wrapped]]
+(all seven: "/page/<alias> opens the page and replaces the URL with its own name", "a [[wrapped]]
 alias with a comma resolves, and a zoomed block stays zoomed", "following [[alias]] lands on the
 page, and links onward from it do not bounce back", "an alias added while its URL is open turns
-'does not exist' into the page", "a page renamed over the API still opens from its old URL");
+'does not exist' into the page", "a page renamed over the API still opens from its old URL"; and two
+added by the verification pass: "renaming a page from its title after an alias redirect stays on
+it, and the alias still finds it", "an alias two pages claim moves to the survivor when its page is
+deleted, without bouncing the open view");
 `apps/web/src/data/page-alias.test.ts`; `apps/web/src/views/canonicalPageRoute.test.ts`;
 `packages/core/src/page-alias.test.ts`
 
@@ -76,9 +79,11 @@ afterwards: 20,411 ops, OK.
 drift) · **Tests:** `e2e/tests/tagged-pages.spec.ts` "a tag's page lists the pages tagged with it,
 above linked references (B-111)", "a page with tagged pages but no linked references still shows
 the panel (B-111)", "a page tagged later, by a property update, appears on the tag's page (B-111)";
-`packages/server/src/ops/page-backlinks-tagged.http.test.ts` (6: property tags by name, `Journal`
+`packages/server/src/ops/page-backlinks-tagged.http.test.ts` (7: property tags by name, `Journal`
 intrinsic newest-first after named pages, alias-written tags and self-exclusion, shared
-limit/cursor, tag removal and block targets, MCP description + `tools/call`);
+limit/cursor, tag removal and block targets, MCP description + `tools/call`, and — added by the
+verification pass — "follows the tagged page through delete and undo, and answers the same for an
+alias target");
 `apps/web/src/views/TaggedPages.test.tsx`
 
 **Fixed 2026-09-13.** Server: `page-tags.ts#pagesTaggedWith` reads `page_tag` for the target's own

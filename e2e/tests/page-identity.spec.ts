@@ -101,3 +101,82 @@ test("a page renamed over the API still opens from its old URL (B-104)", async (
   await expect(page).toHaveURL(new RegExp(`${pagePath(after)}$`));
   await expect(page.locator(".page-title-input")).toHaveValue(after);
 });
+
+test("renaming a page from its title after an alias redirect stays on it, and the alias still finds it (B-104)", async ({
+  page,
+}) => {
+  // Two navigations race here: the title commit's own "follow the rename" (B-78) and the alias
+  // redirect, which re-evaluates whenever the page row changes. Either landing on the old name, or
+  // the redirect firing against the pre-rename route, would leave the view on a name that no
+  // longer resolves — or bounce between the two.
+  const n = test.info().retry;
+  const before = `Alias Rename Before ${n}`;
+  const after = `Alias Rename After ${n}`;
+  const nick = `alias rename nick ${n}`;
+  await api(page, "page.create", {
+    name: before,
+    if_exists: "return",
+    properties: { alias: nick },
+    markdown: "- kept body",
+  });
+  await page.goto("/journals");
+  await page.goto(pagePath(nick));
+  await expect(page).toHaveURL(new RegExp(`${pagePath(before)}$`));
+
+  const title = page.locator(".page-title-input");
+  await expect(title).toHaveValue(before);
+  await title.fill(after);
+  await title.press("Enter");
+
+  await expect(page).toHaveURL(new RegExp(`${pagePath(after)}$`));
+  await expect(title).toHaveValue(after);
+  await page.waitForTimeout(750);
+  await expect(page).toHaveURL(new RegExp(`${pagePath(after)}$`));
+  await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  expect((await readBlocks(page, after)).map((b) => b.content)).toEqual(["kept body"]);
+
+  // Both hops replaced their entry, so Back skips the alias and the old name alike.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/journals$/);
+
+  // The rename did not touch `alias::`, so the nickname still leads to the page.
+  await page.goto(pagePath(nick));
+  await expect(page).toHaveURL(new RegExp(`${pagePath(after)}$`));
+  await expect(title).toHaveValue(after);
+});
+
+test("an alias two pages claim moves to the survivor when its page is deleted, without bouncing the open view (B-104)", async ({
+  page,
+}) => {
+  const n = test.info().retry;
+  const nick = `contested nick ${n}`;
+  const names = [`Contested One ${n}`, `Contested Two ${n}`];
+  for (const name of names) {
+    await api(page, "page.create", {
+      name,
+      if_exists: "return",
+      properties: { alias: nick },
+      markdown: `- body of ${name}`,
+    });
+  }
+  await page.goto(pagePath(nick));
+  const title = page.locator(".page-title-input");
+  await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  await expect(title).toHaveValue(new RegExp(`^Contested (One|Two) ${n}$`));
+  // Which claimant wins is an arbitrary rule (see apps/web/src/data/page-alias.ts); what matters
+  // is that the route settled on one of them.
+  const winner = await title.inputValue();
+  const survivor = names.find((x) => x !== winner) as string;
+  await expect(page).toHaveURL(new RegExp(`${pagePath(winner)}$`));
+
+  // Deleting the open page: the view says so where it is, rather than chasing the alias to the
+  // other claimant — the URL names the deleted page, not the alias.
+  await api(page, "page.delete", { page: winner });
+  await expect(page.locator(".page-view-missing")).toBeVisible();
+  await page.waitForTimeout(750);
+  await expect(page).toHaveURL(new RegExp(`${pagePath(winner)}$`));
+
+  await page.goto(pagePath(nick));
+  await expect(page).toHaveURL(new RegExp(`${pagePath(survivor)}$`));
+  await expect(title).toHaveValue(survivor);
+});

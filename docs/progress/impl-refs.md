@@ -92,3 +92,28 @@ Nothing. B-89, B-104, B-111, B-201 fixed and committed; B-200 logged open.
 `git log --oneline da85cfb..m8/impl-refs`, then this file, then `docs/bugs-inbox/impl-refs.md`.
 Real-graph copy: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-refs/graph`
 (re-create with `sqlite3 ~/.nooklet/default/graph.sqlite ".backup '<dir>/graph.sqlite'"` if gone).
+
+## Verification pass (2026-09-13, adversarial review of this branch)
+
+Re-ran, same worktree: unit core 338/338, server 529/529 (one test added), web 695/695;
+`pnpm -r typecheck` clean. E2E on 6406: the branch's three specs 9/9; neighbours (references,
+references-filters, pages, navigation, journals, refactor, shelf, history, page-icons,
+link-unlinked, popups, trash, focus) 134 passed, 0 failed; page-identity with two added tests 7/7.
+
+Real-graph copy (fresh `.backup`, served on 6406, probes kept in the verifier's scratch): alias
+redirect + Back/Forward, following `[[daně]]`/`#zahrada` from a block, UI title rename on a page
+reached through an alias, renaming a page to its own alias, `page.create` of an alias name (server
+returns the aliased page), two pages aliasing each other, NFD route, names with `%`, `#`, `?` and
+`/`, a namespaced alias, tag add/remove through the properties panel then following the link, an
+alias-written tag, a self-tag: all behaved, 0 console errors. `nooklet verify` on the copy after
+the probes: OK, 20,439 ops. Page keys on the copy: 0 of 952 differ from `normalizePageName(name)`,
+so the redirect cannot ping-pong on inconsistent keys there.
+
+Added tests: `e2e/tests/page-identity.spec.ts` "renaming a page from its title after an alias
+redirect…" and "an alias two pages claim moves to the survivor…" (the second fails with
+`findPageByAlias`'s `deleted_at` filter removed — checked); `page-backlinks-tagged.http.test.ts`
+"follows the tagged page through delete and undo, and answers the same for an alias target".
+Wiki "References and tags" no longer implies a `Journal` page exists on every graph (B-200).
+
+Observed, not changed (design calls, not defects): on the owner's `journal` page the tagged list is
+200 pills (~40 rows) above the linked references, open by default.
