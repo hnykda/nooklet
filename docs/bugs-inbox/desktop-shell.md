@@ -56,9 +56,11 @@ Their boxes are not covered by anything native, which is what the hypothesis was
 ---
 
 ### B-532 · The service worker never takes over while an older one controls the page — the desktop app runs the previous client for a whole session after every update
-**Status:** open (fix in progress) · **Severity:** high · **Found:** 2026-09-13, the owner ("seems way
-behind"), reproduced in desktop-shell · **Test:** probe `tools/probes/desktop-sw-update.sh`;
-screenshots `shots/update-before-fix/`
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, the owner ("seems way behind"),
+reproduced in desktop-shell · **Test:** `e2e/tests/sw-update.spec.ts` › "a newer service worker takes
+over an open page and reloads it onto the new build (B-532)" (fails on the old code with the new
+worker in `waiting`); probe `tools/probes/desktop-sw-update.sh`, screenshots `shots/update-before-fix/`
+and `shots/update-after-fix/` (label crops in each `labels/`)
 
 B-20 switched `vite-plugin-pwa` to `registerType: "autoUpdate"` so a new build would apply itself.
 It does not, because `vite.config.ts` also sets `injectRegister: false`, and the plugin only turns on
@@ -91,8 +93,33 @@ the same waiting worker again). A guess, not checked: the owner's store still ho
 fits B-430 — the Sep 11 app could not start its own server against the migrated graph, so it may
 never have reached a newer client before this build's first launch.
 
-Unverified: the owner's own store (not inspected, by the rules of this task); whether an app that
-is killed rather than quit also activates the waiting worker on the next launch.
+Which client the owner's app shows is also not decided by the app build at all: the shell uses any
+nooklet already answering on 6100, and on the owner's machine that is `pnpm nooklet serve` from the
+main checkout (`lsof`/`ps`, read-only: pid started 17:22, serving that checkout's `apps/web/dist`).
+A rebuilt `.app` alone changes nothing the window loads; rebuilding the client that server serves does.
+
+**Fix** (`apps/web/vite.config.ts`): `workbox.skipWaiting: true` and `workbox.clientsClaim: true`,
+explicitly, with the reason beside them; `sw/register.ts` loses the never-called `onNeedRefresh`
+whose comment claimed it applied updates. The generated `sw.js` now calls `self.skipWaiting()` on
+install and `clientsClaim()`. Nothing else was needed: the old page's own `registerSW` reloads when
+a newer worker activates, and that code is already in every installed client since B-20.
+
+Proven twice:
+- Chromium (`e2e/tests/sw-update.spec.ts`): a page controlled by this build's worker, a newer
+  registration of the same `sw.js` → before: no reload in 60 s, state
+  `{"controlled":true,"scriptURL":".../sw.js","waiting":true,"installing":false}`; after: the page
+  reloads by itself in ~2 s and settles with nothing waiting (3/3 with `--repeat-each=3`).
+- WKWebView, the devtest app (`desktop-sw-update.sh`, same OLD `adadff1` client installed first,
+  graceful quits, 6 s / 30 s screenshots): the **first** launch after the server has the fixed client
+  already shows `shell: NEW with B-532 fix · index-B8cDJY3A.js` at 6 s, and so do both later
+  launches. The request log shows the extra `GET /sw.js` of the reloaded page registering again.
+
+This also rescues clients installed before the fix: the old page's worker never needed to change,
+only the NEW worker has to skip waiting, and that is the code the server now serves.
+
+Unverified: the owner's own store (not inspected, by the rules of this task); an app killed rather
+than quit (probe quits normally); the reload landing mid-typing in WKWebView (pagehide flush is
+covered for browsers by `reload-durability.spec.ts`, not re-run in the app).
 
 ---
 
