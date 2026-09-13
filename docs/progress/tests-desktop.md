@@ -103,6 +103,15 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
 
 - Done: B-333's new line-length ratio test failed 2 of 95 under 84 busy loops (8.16, 8.32 > 8) —
   logged and fixed as B-405, commit `79d5f0b` (equal sub-quantum windows, least of 15, limit 2).
-- Next, in order: unit/typecheck/biome on HEAD; B-402's field check against every real plugin op;
-  sidecar build + probes + a user plugin importing `@nooklet/core`/`hono`; B-323 before/after in a
-  real browser; e2e specs under load with `--repeat-each`.
+- Done: B-402 check matches plugin-api's required OpDef fields and every in-repo/doc op; found
+  B-406 (REST alias without method/path still crashes startup) — fixed, commit `2698260`, test in
+  `host.test.ts`.
+- Done: sidecar rebuilt (freshness probe "fresh"), `sidecar-user-plugin` 200, `sidecar-plugins` ok;
+  scratch `sidecar-kitchen.mjs` — user plugin importing all four host modules (op via
+  `@nooklet/core`, OpError 400, Hono sub-app 200, client bundle 200 w/o node_modules), B-402 and
+  B-406 plugins isolated, server healthy.
+- Done: B-323 — `opfs-pool.spec` pass at HEAD, fail with fix commented out; probes for a real
+  interrupted start and an already-broken profile (commit `7558ace`).
+- Next, in order: e2e specs (editing, page-icons, references, opfs-pool, review-reactivity) under
+  56 busy loops with `--repeat-each`; page-icons single-read variant still fails with the route;
+  `pnpm -r typecheck`, `pnpm -r test`, biome on HEAD.
