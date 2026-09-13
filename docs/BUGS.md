@@ -780,10 +780,11 @@ text; clicking it should open that day's page (`/page/<ISO date>`), as Logseq do
 **Status:** open (test order) · **Severity:** low · **Found:** 2026-09-13, the coordinator's two
 final full Chromium runs on the merged tree · **Test:** the spec itself
 
-Failed at the same place (test 488, 15.4 s timeout on the result text) in both full runs, passed 4/4
-when `search-fallback.spec.ts` ran on its own. Consistent position rather than load, so most likely
-state an earlier spec leaves on the shared e2e server (an embeddings setting or a search-index
-state) — not traced.
+Failed at the same place in both full runs, passed 4/4 when `search-fallback.spec.ts` ran on its own.
+The assertion saw "2 results" where it expects "1 result": something else on the shared e2e server
+matches the test's search word by the time it runs — another spec seeding the same word, or (new
+since ADR 024) a page created from a reference that contains it. Fix: give the test a word no other
+spec uses, the same way B-356/B-243's specs were made order-proof.
 
 ---
 
