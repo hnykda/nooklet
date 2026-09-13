@@ -298,3 +298,51 @@ test("while the picker is open, the structural keys never reach the tree, and a 
   ]);
   expect(pageErrors).toEqual([]);
 });
+
+test("with several blocks selected the date commands are not offered, since they date one block (B-345)", async ({
+  page,
+}) => {
+  const name = "Dates Multi Selection";
+  const outliner = await openEditing(
+    page,
+    name,
+    "- TODO multi one\n- TODO multi two\n- TODO multi three",
+  );
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+ArrowDown");
+  await expect(outliner.locator(".vr-row-selected")).toHaveCount(2);
+
+  const palette = page.locator(".cmd-palette").first();
+  /** How many palette rows `title` gets for the typed query. One palette per query, closed with
+   * Escape: clearing the input with `fill("")` presses Delete, and Delete in the palette input
+   * deletes the selected blocks (B-347). */
+  const offered = async (query: string, title: string): Promise<number> => {
+    await page.mouse.move(4, 700);
+    await page.keyboard.press(`${MOD}+k`);
+    await expect(palette).toBeVisible();
+    // Typed, so the `>` command-mode prefix is read.
+    await page.keyboard.type(`>${query}`);
+    // The leading `>` switches the palette to command mode and is not kept in the input.
+    await expect(palette.locator(".cmd-input")).toHaveValue(query);
+    await expect(palette.locator(".cmd-row, .cmd-empty").first()).toBeVisible();
+    const n = await palette.locator(".cmd-row", { hasText: title }).count();
+    await page.keyboard.press("Escape");
+    await expect(palette).toHaveCount(0);
+    return n;
+  };
+  // A block command IS listed for the selection, so the zeros below are not an empty palette.
+  expect(await offered("Mark DONE", "Mark DONE")).toBe(1);
+  expect(await offered("Set scheduled", "Set scheduled date")).toBe(0);
+  expect(await offered("Set deadline", "Set deadline date")).toBe(0);
+  await expect(outliner.locator(".vr-row-selected")).toHaveCount(2);
+
+  // One block selected: offered again.
+  await page.keyboard.press("Shift+ArrowUp");
+  await expect(outliner.locator(".vr-row-selected")).toHaveCount(1);
+  expect(await offered("Set scheduled", "Set scheduled date")).toBe(1);
+  expect((await propsOf(page, name)).map((p) => p.scheduled)).toEqual([
+    undefined,
+    undefined,
+    undefined,
+  ]);
+});

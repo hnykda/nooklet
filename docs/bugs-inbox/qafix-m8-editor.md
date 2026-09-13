@@ -71,3 +71,61 @@ maps a cursor that sits exactly at an insertion point to before the inserted tex
 were red before (`look  Z![](assets/….png)`, `pasted  Z![](…)`) and green after. The other branch of
 that function (the editor has moved to another block; the text is written into the old block's
 content) has no caret to place and is unchanged.
+
+---
+
+### B-345 · "Set scheduled date" with several blocks selected dates only the first one
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA of M8 editor features
+(Q6, `scratchpad/m9/qa-m8-editor/final.mjs`) · **Test:** `e2e/tests/dates.spec.ts` "with several
+blocks selected the date commands are not offered, since they date one block (B-345)"
+
+`- TODO m1` / `- TODO m2` / `- TODO m3`: click m1, Escape, Shift+ArrowDown (two rows selected),
+Cmd+K, "Set scheduled date", `tomorrow`, Enter. Only m1 got `scheduled::`; m2 stayed selected with no
+date, and nothing said that only one block would be dated. "Set deadline date" is the same command
+shape.
+
+Cause: both commands were enabled for `editorFocused || blockSelected` and open one picker for
+`targetBlockId(ctx)` — the first selected id (R38 speaks of "the selected block's row", singular).
+
+**Fixed 2026-09-13.** The smaller of the two fixes QA offered: `task.setScheduled`/`task.setDeadline`
+are gated on `editorFocused || (blockSelected && selectionCount == 1)`, like `task.cycle`, so a
+multi-selection is not offered them (spec table and R38 updated). Dating every selected block would
+need a picker with no single starting date and a multi-block write; not done. The e2e test was red
+on the old `when` (the palette listed "Set scheduled date" for two selected blocks) and green after;
+unit: `commands/registrations/index.test.ts` "the date commands date one block (B-345)" (2/2 red
+before).
+
+---
+
+### B-346 · The marker commands (Mark TODO/DOING/DONE/…, Clear marker) act on one block of a multi-selection
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, reading `commands/registrations/task.ts`
+while fixing B-345 · **Test:** none yet
+
+Same shape as B-345, inferred from the code and not reproduced in a browser: `setMarker`,
+`task.setMarkerDone` and `task.clearMarker` are enabled for `editorFocused || blockSelected` and act
+on `targetBlockId(ctx)`, which is `selectedBlockIds[0]`. With three blocks selected, "Mark TODO"
+should therefore mark only the first. Not fixed with B-345 because the right answer is less clear
+here: marking every selected block is a plausible and useful meaning (Logseq cycles the marker of
+every selected block on Cmd+Enter — from memory, not checked), where a date picker opened for several
+blocks has no single date to start from. Owner decision: gate on `selectionCount == 1` like
+`task.cycle`, or apply to all.
+
+---
+
+### B-347 · With blocks selected, Backspace or Delete typed in the command palette deletes the selected blocks
+**Status:** open · **Severity:** high · **Found:** 2026-09-13, writing the B-345 e2e test (its
+`fill("")` on the palette input deleted two selected blocks) · **Test:** none yet; probe
+`tools/probes/palette-keys-delete-selection.spec.ts`
+
+Select two blocks (Escape, Shift+ArrowDown), Cmd/Ctrl+K, type `abc`, press Backspace to fix a typo:
+the two selected blocks are deleted — on the server too — and the palette input still reads `abc`.
+Delete does the same. Probe output: `PROBE Backspace: rows=1 input="abc" stored=["p three"]`, same
+for Delete. Anyone correcting a palette query while blocks are selected loses those blocks, and the
+palette covers the page, so they may not see it happen.
+
+Likely cause (read, not traced): `app/CommandLayer.tsx#KeyboardDispatch` runs every keydown on
+`document` in the capture phase through `keymap/dispatch.ts`, whose context still says
+`blockSelected` while the palette is open; `block.deleteSelected` (Backspace, and Delete as a
+secondary binding) matches and preventDefaults before the input sees the key. The date picker
+avoids this by claiming keys itself (B-145); the palette does not. Other text inputs over a standing
+selection (page title, search, page properties) probably behave the same — not probed.

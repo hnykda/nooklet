@@ -4,6 +4,9 @@ import { createFakeAppHost, createFakeNavigationHost } from "../hosts/nav-host.j
 import { createFakeStore } from "../hosts/store.js";
 import { createPaletteController } from "../palette/palette-controller.js";
 import { createCommandRegistry } from "../registry.js";
+import type { WhenContext } from "../types.js";
+import { compileWhen } from "../when/compile.js";
+import { evaluateWhen } from "../when/evaluate.js";
 import { createFakeDatePickerHost } from "./date-picker-host.js";
 import { createCoreCommands } from "./index.js";
 
@@ -178,4 +181,23 @@ describe("createCoreCommands — spot-check real behavior end-to-end", () => {
     open?.run(ctx);
     expect(deps.palette.isOpen()).toBe(false);
   });
+});
+
+describe("the date commands date one block (B-345)", () => {
+  // They open ONE picker for ONE block (`targetBlockId` is the first selected id). Offered for a
+  // multi-selection, they dated the first block and left the others as they were, silently.
+  const base = {
+    editorFocused: false,
+    blockSelected: false,
+    selectionCount: 0,
+  } as unknown as WhenContext;
+  for (const id of ["task.setScheduled", "task.setDeadline"]) {
+    it(`${id} is enabled while editing or with one block selected, not with several`, () => {
+      const cmd = createCoreCommands(makeDeps()).find((c) => c.id === id);
+      const when = compileWhen(cmd?.when ?? "false");
+      expect(evaluateWhen(when, { ...base, editorFocused: true })).toBe(true);
+      expect(evaluateWhen(when, { ...base, blockSelected: true, selectionCount: 1 })).toBe(true);
+      expect(evaluateWhen(when, { ...base, blockSelected: true, selectionCount: 2 })).toBe(false);
+    });
+  }
 });

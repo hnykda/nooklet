@@ -178,7 +178,9 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
       title: "Set scheduled date",
       category: "Task",
       defaultKeys: {},
-      when: "editorFocused || blockSelected",
+      // One picker for one block (`targetBlockId`): offered for a multi-selection it dated the
+      // first block and silently left the rest (B-345).
+      when: "editorFocused || (blockSelected && selectionCount == 1)",
       run(ctx) {
         return runDateCommand(ctx, deps.datePicker, "scheduled");
       },
@@ -188,7 +190,8 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
       title: "Set deadline date",
       category: "Task",
       defaultKeys: {},
-      when: "editorFocused || blockSelected",
+      // One block only, like `task.setScheduled` (B-345).
+      when: "editorFocused || (blockSelected && selectionCount == 1)",
       run(ctx) {
         return runDateCommand(ctx, deps.datePicker, "deadline");
       },

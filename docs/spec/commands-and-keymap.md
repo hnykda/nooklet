@@ -428,8 +428,8 @@ back to its `text/plain` sibling) except behind a future "paste as markdown" plu
 | `task.setPriorityA` | Set priority A | — | — | `isTask` |
 | `task.setPriorityB` | Set priority B | — | — | `isTask` |
 | `task.setPriorityC` | Set priority C | — | — | `isTask` |
-| `task.setScheduled` | Set scheduled date | — | — | `editorFocused \|\| blockSelected` |
-| `task.setDeadline` | Set deadline date | — | — | `editorFocused \|\| blockSelected` |
+| `task.setScheduled` | Set scheduled date | — | — | `editorFocused \|\| (blockSelected && selectionCount == 1)` |
+| `task.setDeadline` | Set deadline date | — | — | `editorFocused \|\| (blockSelected && selectionCount == 1)` |
 | `task.setMarkerTodo` | Mark TODO | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerDoing` | Mark DOING | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerDone` | Mark DONE | — | — | `editorFocused \|\| blockSelected` |
@@ -495,7 +495,8 @@ that is not a date says why instead of writing. The editor keeps focus throughou
 claimed and does nothing; a Cmd/Ctrl shortcut closes the picker and runs as usual. Clearing the
 last remaining date also clears `repeat`. With a command argument (a date string, `null`, or
 `{date}`) both commands write without opening a picker (ADR 015 agents). A block's dates also
-show as chips on its row; clicking one opens this picker.
+show as chips on its row; clicking one opens this picker. Both commands act on one block, so they are not offered for a selection of
+several (B-345): the picker would open on the first block's date and write only to it.
 
 **R39.** `task.setMarkerTodo/Doing/Waiting/Canceled` set `marker` to that literal value with no
 side effects beyond that (no `done` stamping — only reaching `DONE` triggers R35).
