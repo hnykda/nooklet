@@ -12,7 +12,8 @@
  *
  * Result on 52e5d20 + m11/webkit-focus (before the B-502 fix): every scenario kept focus and caret
  * in both engines EXCEPT `move-edited-block` in WebKit — caret 57 → 0, popup left open, the next
- * key typed at the start of the block (B-502).
+ * key typed at the start of the block (B-502). After the fix (3973aa1), WebKit: all 7 scenarios keep
+ * focus and caret, `move-edited-block` head 57 → 57 and the key appends.
  *
  * Not part of the suite. To re-run: copy it into a directory next to `e2e/helpers/` (e.g.
  * `e2e/verify-probes/`), start `nooklet serve --port <port>` on a scratch data dir serving a fresh
