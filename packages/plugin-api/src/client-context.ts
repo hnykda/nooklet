@@ -108,6 +108,15 @@ export interface ClientPluginContext {
     handler: (p: ServerChangeEvents[E]) => void,
   ): Disposable;
   on(event: "page.opened", handler: (p: { page: Page }) => void): Disposable;
+  /**
+   * What `editor.currentPage()` answers has changed: another page was opened, no page is open any
+   * more (`page: null`), a block on the open page changed (on this device or another), or the
+   * server caught up with a local change to it — so a `rpc.call`/HTTP read now sees the edit.
+   * Client-only, like `page.opened`: the local replica knows which pages a write touched, not which
+   * rows, and this is what a client half can be told honestly (ADR 023). The server-shaped events
+   * above are not delivered by the v1 client host.
+   */
+  on(event: "page.changed", handler: (p: { page: Page | null }) => void): Disposable;
   on(event: "block.focused" | "block.blurred", handler: (p: { block: Block }) => void): Disposable;
   on(event: "selection.changed", handler: (p: { blocks: BlockId[] }) => void): Disposable;
 

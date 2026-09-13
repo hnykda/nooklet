@@ -1,35 +1,39 @@
 /**
  * `mermaid`'s client half (M4 built-in #1): a ```mermaid code-block renderer, plus a `/mermaid`
  * slash command that inserts a starter block (`docs/spec/api-and-plugin-types.md` §5's worked
- * example, adapted to be client-only per this milestone's task list — `word-count`, not this
- * plugin, is what pairs a server op with a client half).
+ * example — `word-count`, not this plugin, is what pairs a server op with a client half).
  *
- * No `mermaid` npm dependency: the real `mermaid` library is fetched from a CDN at first render,
- * via a NON-literal `import()` specifier. esbuild only rewrites/bundles a dynamic `import("literal
- * string")`; a computed specifier (a variable) is left as an opaque runtime expression, so this
- * plugin bundles cleanly with no `node_modules` copy of `mermaid` anywhere, exactly like any other
- * plugin dependency a plugin author is expected to `npm install` for themselves — except here
- * there's nothing to install. In an actual browser with network access this renders the real
- * mermaid output; a future v2 sandboxed client host could instead pin a host-bundled copy.
+ * The `mermaid` library is this plugin's own npm dependency (`package.json`), imported lazily so
+ * it becomes separate chunks that load on the first diagram, never at startup. It used to be
+ * fetched from jsdelivr at render time through a computed `import()` specifier (so no bundler
+ * would see it); ADR 023 replaced that: a local-first app that draws diagrams only when online,
+ * running whatever `mermaid@11` the CDN served that day, is not what anyone asked for.
  */
 import type { ClientPluginModule } from "@nooklet/plugin-api";
+import type { Mermaid } from "mermaid";
 
-interface MermaidModule {
-  initialize(opts: { startOnLoad: boolean; theme?: string }): void;
-  render(id: string, source: string): Promise<{ svg: string }>;
-}
+let mermaidPromise: Promise<Mermaid> | undefined;
 
-const MERMAID_CDN_URL = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
-
-let mermaidPromise: Promise<MermaidModule> | undefined;
-
-function loadMermaid(): Promise<MermaidModule> {
+function loadMermaid(theme: "light" | "dark"): Promise<Mermaid> {
   if (!mermaidPromise) {
-    const specifier = MERMAID_CDN_URL; // see file header: kept in a variable on purpose
-    mermaidPromise = import(/* @vite-ignore */ specifier).then((m: { default: MermaidModule }) => {
-      m.default.initialize({ startOnLoad: false, theme: "default" });
-      return m.default;
-    });
+    mermaidPromise = import("mermaid").then(
+      ({ default: mermaid }) => {
+        // `strict` is mermaid's default, spelled out because the SVG goes in through `innerHTML`:
+        // strict sanitises labels and disables click handlers in the diagram source.
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: theme === "dark" ? "dark" : "default",
+        });
+        return mermaid;
+      },
+      (e: unknown) => {
+        // A chunk that failed to load (offline before the service worker cached it) must not stay
+        // failed for the whole session: forget the promise so the next diagram tries again.
+        mermaidPromise = undefined;
+        throw e;
+      },
+    );
   }
   return mermaidPromise;
 }
@@ -37,12 +41,13 @@ function loadMermaid(): Promise<MermaidModule> {
 export default {
   async activate(ctx) {
     ctx.registerCodeBlockRenderer("mermaid", {
-      async render(source, el) {
+      async render(source, el, info) {
         try {
-          const mermaid = await loadMermaid();
+          const mermaid = await loadMermaid(ctx.host.theme);
           const { svg } = await mermaid.render(`nooklet-mermaid-${crypto.randomUUID()}`, source);
-          el.innerHTML = svg;
+          if (!info.signal.aborted) el.innerHTML = svg;
         } catch (e) {
+          if (info.signal.aborted) return;
           el.textContent = `mermaid: render failed (${e instanceof Error ? e.message : String(e)})`;
           ctx.log.warn("mermaid render failed:", e);
         }

@@ -15,6 +15,7 @@ import { storageInfo } from "../db/client.js";
 // ADR 015 §2.6: the persistent live-UI-control consent badge — see ../live/ConsentBadge.tsx.
 import { ConsentBadge } from "../live/index.js";
 import { platform } from "../platform/index.js";
+import { PluginStatusItems } from "../plugins/StatusItems.js";
 import {
   closeDiagnostics,
   DiagnosticsPanel,
@@ -97,6 +98,7 @@ export function AppShell(props: { children?: JSX.Element }) {
           </button>
         </div>
         <SyncIndicator />
+        <PluginStatusItems />
         <ConsentBadge />
       </div>
       <div class="app-shell-body">

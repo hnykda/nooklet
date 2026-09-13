@@ -1,7 +1,8 @@
 /**
  * The two plugin-related HTTP surfaces that aren't per-plugin `registerRoute` calls: a static file
- * route serving a plugin's bundled client entry, and a listing endpoint so `apps/web` knows which
- * plugins to `import()` on startup. Split into `mountPluginClientRoute` (unauthenticated, mounted
+ * route serving a plugin's bundled client entry, and a listing endpoint naming each active plugin
+ * and its client bundle URL. (`apps/web` requests neither since ADR 023 — it compiles the built-in
+ * client halves into its own build; these remain for a future runtime client host.) Split into `mountPluginClientRoute` (unauthenticated, mounted
  * before the `/api/v1/*` bearer-auth gate — same reasoning as `../http/assets.ts`: a `<script
  * src>` tag can't carry a bearer token) and `mountPluginListRoute` (authenticated, mounted after
  * it, alongside the op registry's own `mountHttp`) so `../http/app.ts`'s two call sites stay next
@@ -12,10 +13,16 @@ import type { Hono } from "hono";
 import type { PluginHost } from "./host.js";
 
 export function mountPluginClientRoute(app: Hono, host: PluginHost): void {
-  app.get("/plugins/:id/:file", (c) => {
+  app.get("/plugins/:id/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-    const bundle = host.getClientBundle(id);
+    let bundle: { file: string; hash: string } | undefined;
+    try {
+      bundle = await host.clientBundle(id);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return c.text(`plugin "${id}" client half failed to bundle: ${message}`, 500);
+    }
     if (!bundle || file !== `client.${bundle.hash}.js`) return c.notFound();
     let bytes: Buffer;
     try {
@@ -34,8 +41,10 @@ export function mountPluginClientRoute(app: Hono, host: PluginHost): void {
 }
 
 export function mountPluginListRoute(app: Hono, host: PluginHost): void {
-  app.get("/api/v1/plugins", (c) =>
-    c.json({
+  app.get("/api/v1/plugins", async (c) => {
+    // Client halves are bundled on first request, not at startup (`PluginHost.clientBundle`).
+    await host.ensureClientBundles();
+    return c.json({
       plugins: host
         .list()
         .filter((p) => p.status === "active")
@@ -47,6 +56,6 @@ export function mountPluginListRoute(app: Hono, host: PluginHost): void {
           has_server: p.hasServer,
           client_url: p.clientUrl ?? null,
         })),
-    }),
-  );
+    });
+  });
 }

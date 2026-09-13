@@ -700,3 +700,10 @@ export function stampedFor<T>(
   ensureWired();
   return stamped(value, tables, pageId);
 }
+
+/** `syncVersion` for callers outside this module (the client plugin host's `page.changed`, whose
+ * listeners read through the server): bumped each time the push queue drains, the moment the
+ * server can see local writes it could not before (B-83). Tracked. */
+export function serverCaughtUpVersion(): number {
+  return syncVersion();
+}

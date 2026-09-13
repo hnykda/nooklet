@@ -11,7 +11,7 @@ import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import type { CommandContext } from "../types.js";
-import { SLASH_ITEMS } from "./items.js";
+import { slashItems } from "./contributed.js";
 import type { SlashMatch } from "./trigger.js";
 import "../styles.css";
 
@@ -24,20 +24,20 @@ export interface SlashMenuProps {
   onDismiss: () => void;
 }
 
-const RANKABLE_ITEMS = SLASH_ITEMS.map((it) => ({
-  id: it.command,
-  title: it.label,
-  aliases: it.keywords,
-}));
-
 export function SlashMenu(props: SlashMenuProps) {
   const { mru, buildContext } = useCommands();
   const [highlight, setHighlight] = createSignal(0);
 
+  // Core rows plus plugin-contributed ones (`./contributed.ts`) — tracked, so a row registered
+  // after this module loaded still shows up (B-103).
+  const rankable = createMemo(() =>
+    slashItems().map((it) => ({ id: it.command, title: it.label, aliases: it.keywords })),
+  );
+
   const results = createMemo(() => {
     const trig = props.trigger;
     if (!trig) return [];
-    return rankItems({ query: trig.query, items: RANKABLE_ITEMS, mru, kind: "command" });
+    return rankItems({ query: trig.query, items: rankable(), mru, kind: "command" });
   });
 
   async function selectIndex(index: number) {
