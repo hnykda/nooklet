@@ -43,7 +43,10 @@ replaced mechanism.
 ---
 
 ### B-261 · Renaming a page from its title in the web UI breaks every link to it
-**Status:** open · **Severity:** high · **Found:** 2026-09-13, exploratory QA (Q2) · **Test:** —
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, exploratory QA (Q2) · **Test:**
+`e2e/tests/page-rename.spec.ts` "renaming from the title rewrites every link and tag, and keeps the
+old name as an alias", "a title rename onto an existing page's name is refused and the title goes
+back"
 
 Set a page's title input to a new name and press Enter: backlinks to the new name go from 1 to 0,
 the linking block still says `[[Old Name]]` and `#[[Old Name]]`, `page.read` on the old name is a
@@ -51,6 +54,16 @@ the linking block still says `[[Old Name]]` and `#[[Old Name]]`, `page.read` on 
 The same rename through the API (`page.update new_name`) rewrites every link (`refs_rewritten: 1`)
 and keeps the old name as an alias, as its description promises. On the owner's graph (many
 `@person` pages, Czech and English) one title edit silently orphans every reference to the page.
+
+**Fixed 2026-09-13.** `PageView.tsx` applied a bare local `page.rename`; the link rewrite and the
+`alias::` op exist only in the server's `page.update`, because the rewrite needs the `ref` index
+the client does not have. The title now calls `page.update` through `data/page-rename.ts` —
+push, call, pull, then navigate, the bracket the M7 refactors use (ADR 020 §1). A rename onto a
+name another page has used to leave the input showing the rejected name; it now alerts and puts
+the real name back. Two `pages.spec.ts` assertions said the old name must be "missing" after a
+rename — they encoded the bug and now check that it resolves to the renamed page. Both new tests
+failed before the fix (linker text unchanged; title kept the clashing name). Not done: an
+offline rename is refused rather than queued, since a local rename cannot rewrite links.
 
 ---
 

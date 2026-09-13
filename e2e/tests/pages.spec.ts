@@ -233,14 +233,13 @@ test("renaming a page from its title keeps you on the page under its new name", 
   await title.press("Enter");
 
   await expect.poll(() => pageKind(page, "Pages Rename After")).toBe("page");
-  await expect.poll(() => pageKind(page, "Pages Rename Before")).toBe("missing");
   // The view follows the rename rather than reporting its own page as missing.
   await expect(page.locator(".page-view-missing")).toHaveCount(0);
   await expect(page.locator(".vr-outliner").first()).toContainText("body text");
   await expect(page).toHaveURL(/Pages%20Rename%20After/);
 });
 
-test("a rename really renames: the new name reads back and the old one is gone", async ({
+test("a rename really renames: the new name reads back and the old one is its alias", async ({
   page,
 }) => {
   await openPage(page, "Pages Rename Data", "- body text");
@@ -248,7 +247,11 @@ test("a rename really renames: the new name reads back and the old one is gone",
   await title.fill("Pages Rename Data Done");
   await title.press("Enter");
   await expect.poll(() => pageKind(page, "Pages Rename Data Done")).toBe("page");
-  await expect.poll(() => pageKind(page, "Pages Rename Data")).toBe("missing");
+  // The old name is kept as an alias (B-261), so it still reads — as the renamed page.
+  const old = await api<{ page: { name: string } }>(page, "page.read", {
+    page: "Pages Rename Data",
+  });
+  expect(old.page.name).toBe("Pages Rename Data Done");
   await page.goto(pagePath("Pages Rename Data Done"));
   await expect(page.locator(".vr-outliner").first()).toContainText("body text");
 });

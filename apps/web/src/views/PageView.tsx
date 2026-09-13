@@ -1,6 +1,6 @@
 /**
  * The page view (BUILD item 2) and, scoped to one block via `rootBlockId`, the zoom view (BUILD
- * item 3). Page title (editable, `page.rename`), properties panel, `BlockTree`, and — only for the
+ * item 3). Page title (editable, through `page.update` — B-261), properties panel, `BlockTree`, and — only for the
  * full page, not the zoomed-in one — the namespace section and linked/unlinked references below
  * it. Resolves the page by name, case-insensitively (`normalizePageName`, via
  * `../data/store.ts#usePageByName`), since that is what refs navigate to (PLAN.md §4).
@@ -8,6 +8,8 @@
 import { isoJournalName, newId, orderBetween, parseJournalTitle } from "@nooklet/core";
 import { A, useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
+import { describeError } from "../data/api-client.js";
+import { renamePage } from "../data/page-rename.js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
 import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
@@ -43,6 +45,9 @@ export function PageView(props: PageViewProps): JSX.Element {
   };
 
   const [titleDraft, setTitleDraft] = createSignal(props.name());
+  /** Between the pull that renames the page locally and the navigation to its new name, this
+   * route's name resolves to nothing; without this the "doesn't exist yet" view flashes. */
+  const [renaming, setRenaming] = createSignal(false);
   createEffect(() => {
     const p = page();
     setTitleDraft(p ? p.name : props.name());
@@ -56,11 +61,23 @@ export function PageView(props: PageViewProps): JSX.Element {
       setTitleDraft(p.name);
       return;
     }
-    await applyOp(p.id, { kind: "page.rename", name: value });
-    // Routes are name-addressed, so the page has just moved out from under its own URL: left
-    // there, this view resolved the OLD name, found nothing, and said the page did not exist
-    // (B-78). Follow it. `replace`, so Back does not lead to a name that no longer resolves.
-    navigate(pageRoutePath(value), { replace: true });
+    // Through the server, which rewrites every link to the page and keeps the old name as an
+    // alias (B-261). A local `page.rename` did neither.
+    setRenaming(true);
+    try {
+      const stored = await renamePage(p.id, value);
+      // Routes are name-addressed, so the page has just moved out from under its own URL: left
+      // there, this view resolved the OLD name, found nothing, and said the page did not exist
+      // (B-78). Follow it. `replace`, so Back does not lead to a name that no longer resolves.
+      navigate(pageRoutePath(stored), { replace: true });
+    } catch (err) {
+      // Nothing was written (a name another page already has, or no server to ask): say so and
+      // put the real name back rather than leave the input claiming a rename that did not happen.
+      setTitleDraft(p.name);
+      window.alert(`Rename failed: ${describeError(err)}`);
+    } finally {
+      setRenaming(false);
+    }
   }
 
   async function createThisPage(): Promise<void> {
@@ -111,7 +128,7 @@ export function PageView(props: PageViewProps): JSX.Element {
         <p class="page-view-loading">Loading…</p>
       </Show>
 
-      <Show when={!page.loading && page() === null}>
+      <Show when={!page.loading && page() === null && !renaming()}>
         <div class="page-view-missing">
           <h1>{displayRefName(props.name())}</h1>
           <p>This page doesn't exist yet.</p>
