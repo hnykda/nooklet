@@ -10,7 +10,7 @@
  */
 import type { Page } from "@nooklet/core";
 import { useLocation, useNavigate } from "@solidjs/router";
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import { pagePath } from "../app/hosts.js";
 import { type EditorHost, useCommands } from "../commands/index.js";
 import { contributeSlashItem } from "../commands/slash/contributed.js";
@@ -88,11 +88,15 @@ export function ClientPlugins(props: { editor: EditorHost; mobile: boolean }): n
       stampedFor(null, [], current.id);
       serverCaughtUpVersion();
     }
-    if (id !== openedId) {
-      openedId = id;
-      if (current) host.emit("page.opened", { page: current });
-    }
-    host.emit("page.changed", { page: current });
+    // Plugin handlers run synchronously here; untracked, so a signal one of them happens to read
+    // never becomes a dependency of this effect (and re-fires every plugin's handlers with it).
+    untrack(() => {
+      if (id !== openedId) {
+        openedId = id;
+        if (current) host.emit("page.opened", { page: current });
+      }
+      host.emit("page.changed", { page: current });
+    });
   });
 
   return null;
