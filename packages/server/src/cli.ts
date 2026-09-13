@@ -41,6 +41,7 @@ import {
   parseArgs,
   parseGcFlags,
   RESTORE_FLAGS,
+  wantsHelp,
 } from "./cli-args.js";
 import { openDb } from "./db.js";
 import {
@@ -214,6 +215,14 @@ const USAGE = `nooklet — a local-first outliner server
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
+
+  // `--help` / `-h` anywhere prints usage and touches nothing (B-146). It used to be a flag nobody
+  // read, so `nooklet serve --help` served the default graph with migrations and the live mirror
+  // on — an agent reading the flags did exactly that to the owner's real graph for ten minutes.
+  if (wantsHelp(args, process.argv.slice(2))) {
+    process.stdout.write(USAGE);
+    return;
+  }
 
   switch (cmd) {
     case "serve": {

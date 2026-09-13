@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CliArgError, checkFlags, parseArgs, parseGcFlags } from "./cli-args.js";
+import { CliArgError, checkFlags, parseArgs, parseGcFlags, wantsHelp } from "./cli-args.js";
 
 describe("parseArgs", () => {
   it("separates positionals from flags and takes the next token as a flag's value", () => {
@@ -61,5 +61,13 @@ describe("checkFlags", () => {
     expect(() =>
       checkFlags(parseArgs(["restore", "x", "--force"]), ["data", "force"]),
     ).not.toThrow();
+  });
+
+  it("--help, -h or help in any position is a request for usage, never a command (B-146)", () => {
+    for (const argv of [["serve", "--help"], ["import", "x", "-h"], ["help"], ["--help"]]) {
+      expect(wantsHelp(parseArgs(argv), argv)).toBe(true);
+    }
+    const plain = ["serve", "--port", "6100"];
+    expect(wantsHelp(parseArgs(plain), plain)).toBe(false);
   });
 });

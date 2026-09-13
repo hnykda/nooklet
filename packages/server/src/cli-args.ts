@@ -104,3 +104,9 @@ export function parseGcFlags(args: Args): GcFlags {
     assetGraceDays,
   };
 }
+
+/** True for `--help`, `-h` or `help` in any position — checked before any command opens a graph
+ * (B-146). `-h` is not a `--` flag, so `parseArgs` would file it as a positional; look at argv. */
+export function wantsHelp(args: Args, argv: readonly string[]): boolean {
+  return args.flags.has("help") || argv.includes("-h") || args._[0] === "help";
+}
