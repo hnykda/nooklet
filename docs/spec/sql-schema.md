@@ -415,7 +415,14 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
       own reserved device id, applied and logged with `origin = 'system'`. Clients never
       rebase; they just apply this corrective op like any other and the renderer's transient
       "Unplaced" pseudo-node (a client-side rendering concern, not a schema one) resolves within
-      one round trip. On acceptance: update the four place columns + `place_hlc`; recompute
+      one round trip. **Server-only subtree repair (B-120):** after the batch (and any cycle
+      correction) applies, every descendant of a block placed in the batch that sits on a
+      different page than its parent gets a server-authored `block.place` keeping its
+      `parentId`/`order` and taking the parent's `pageId`, minted parent-first with
+      `serverHlc.next()`, applied in the same transaction and returned with the corrections —
+      the reducer itself stays one-op-one-row, so a move that wins LWW over a server-planned
+      subtree move (or arrives by sync at all) cannot strand the children on the old page. On
+      acceptance: update the four place columns + `place_hlc`; recompute
       `path_ref` for the moved block and its **entire subtree** (rule 12b); refresh
       `dst_page_key`/`dst_page_id` on every `ref` row with `dst_block_id = movedBlockId`
       (rule 11); if `page_id` changed, enqueue `embed_dirty` for the page unit of both the old

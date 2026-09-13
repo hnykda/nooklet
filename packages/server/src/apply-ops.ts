@@ -5,6 +5,8 @@
  *
  *  - emit a **corrective op** with a server-owned HLC when a `block.place` is rejected for a
  *    cycle, so every client converges on the same decision (core deliberately does not do this);
+ *  - emit server-HLC `block.place` ops that bring a page-changing block's descendants onto its
+ *    new page, whoever authored the move (B-120, `./subtree-page-repair.ts`);
  *  - maintain the derived `ref`/`path_ref` tables from `extractRefs`/`tokenizeContent`;
  *  - enqueue `embed_dirty` for anything whose text a future embeddings worker (M3) should re-index;
  *  - write one `changes` row per touched entity, for `changes_since`/audit/attribution.
@@ -32,6 +34,7 @@ import {
   snapshotBlock,
   snapshotPage,
 } from "./rows.js";
+import { planSubtreePageRepair } from "./subtree-page-repair.js";
 import { notifyCommit } from "./sync/realtime.js";
 
 /** Reserved device id for ops the server itself authors (corrective moves). Never a real device. */
@@ -65,7 +68,9 @@ export interface ServerApplyOptions {
 
 export interface ServerApplyResult extends ApplyOpsResult {
   batchId: string;
-  /** Corrective ops the server generated in response to a rejected `block.place` (rule 24). */
+  /** Ops the server authored and applied in the same transaction: the correction for a rejected
+   * `block.place` (rule 24), and the moves that bring a page-changing block's descendants along
+   * (B-120, `./subtree-page-repair.ts`). */
   corrections: Op[];
 }
 
@@ -99,9 +104,9 @@ export function serverApplyOps(
   const result = driver.transaction(() => {
     // `batch.undo` (ADR 013) needs a full pre-image of every entity this call is about to touch,
     // so it can generate compensating ops later without re-deriving state from op payloads (which
-    // are per-field deltas, not full snapshots). Snapshot BEFORE applying — `corrections` (below)
-    // never introduce a new entity beyond what `ops` already touches, so `ops`'s own entity set is
-    // complete for this purpose.
+    // are per-field deltas, not full snapshots). Snapshot BEFORE applying. A cycle correction
+    // (below) only touches an entity `ops` already names; the subtree repair can touch
+    // descendants `ops` never named, and snapshots those itself just before it applies.
     const beforeSnapshots = snapshotEntities(driver, ops);
 
     const r = coreApplyOps(driver, ops);
@@ -124,6 +129,21 @@ export function serverApplyOps(
       corrections.push(correction);
       const cr = coreApplyOps(driver, [correction]);
       for (const cone of cr.results) r.results.push(cone);
+    }
+
+    // B-120: a block that changed page takes its descendants with it, whoever moved it — see
+    // `./subtree-page-repair.ts`. A repaired descendant `ops` never named has not changed yet, so
+    // its snapshot taken now is its pre-batch image.
+    const repairs = planSubtreePageRepair(driver, r.results, (entity, place) =>
+      makeOp(ctx.hlc.next(), SERVER_DEVICE_ID, entity, { kind: "block.place", place }),
+    );
+    if (repairs.length > 0) {
+      for (const op of repairs) {
+        if (!beforeSnapshots.has(op.entity))
+          beforeSnapshots.set(op.entity, snapshotBlock(driver, op.entity));
+      }
+      corrections.push(...repairs);
+      for (const one of coreApplyOps(driver, repairs).results) r.results.push(one);
     }
 
     const allOps = ops.concat(corrections);
