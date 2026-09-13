@@ -2,7 +2,7 @@
 
 import { todayJournalDay } from "@nooklet/core";
 import { Route, Router } from "@solidjs/router";
-import { cleanup, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JournalDayEntry } from "../data/types.js";
@@ -20,9 +20,9 @@ let streamValue: JournalDayEntry[] | undefined;
 // A signal on top, for tests that refetch: the stream hands back NEW entry objects on every write.
 const [refetched, setRefetched] = createSignal<JournalDayEntry[] | undefined>(undefined);
 let blockTreeMounts = 0;
-const usePinnedJournalDay = vi.fn((..._args: unknown[]) =>
-  Object.assign(() => undefined, { loading: false, error: undefined }),
-);
+const noPin = (..._args: unknown[]) =>
+  Object.assign((): JournalDayEntry | undefined => undefined, { loading: false, error: undefined });
+const usePinnedJournalDay = vi.fn(noPin);
 
 vi.mock("../data/store.js", () => ({
   useJournalStream: () =>
@@ -70,6 +70,7 @@ afterEach(() => {
   blockTreeMounts = 0;
   setClockDay(today);
   useAgendaTasks.mockClear();
+  usePinnedJournalDay.mockImplementation(noPin);
 });
 
 async function renderStream() {
@@ -250,5 +251,54 @@ describe("JournalStreamView", () => {
     expect(blockTreeMounts).toBe(4);
     // The very same DOM nodes, not look-alikes: an editor inside them would have survived.
     expect(screen.getAllByTestId("block-tree")).toEqual(trees);
+  });
+
+  it("drops a calendar pin once midnight makes the pinned day Today, so the day is not rendered twice (B-177)", async () => {
+    // Fixed days, so the calendar opens on a month that contains both of them.
+    const sat = 20260912;
+    const sun = 20260913;
+    const page = (id: string, day: number) => ({
+      id,
+      graphId: "default",
+      name: String(day),
+      key: String(day),
+      journalDay: day,
+      createdAt: 0,
+      updatedAt: 0,
+      deletedAt: null,
+      nameHlc: "",
+      deletedHlc: null,
+    });
+    usePinnedJournalDay.mockImplementation((...args: unknown[]) => {
+      const pinned = args[0] as () => number | undefined;
+      return Object.assign(
+        (): JournalDayEntry | undefined => {
+          const d = pinned();
+          return d === undefined ? undefined : { day: d, page: page(`p-${d}`, d), blocks: [] };
+        },
+        { loading: false, error: undefined },
+      );
+    });
+    setClockDay(sat);
+    streamValue = [
+      { day: sun, page: page(`p-${sun}`, sun), blocks: [] },
+      { day: sat, page: page(`p-${sat}`, sat), blocks: [] },
+    ];
+    await renderStream();
+
+    // Late on Saturday, jump to Sunday from the calendar.
+    fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
+    fireEvent.click(screen.getByRole("button", { name: "13" }));
+    expect(screen.getByRole("region", { name: "Jumped-to day" })).toBeTruthy();
+
+    // Midnight: Sunday is Today now.
+    setClockDay(sun);
+    expect(screen.getByRole("region", { name: "Today" }).textContent).toContain(
+      `block-tree:p-${sun}`,
+    );
+    expect(screen.queryByRole("region", { name: "Jumped-to day" })).toBeNull();
+    expect(
+      screen.getAllByTestId("block-tree").filter((el) => el.textContent === `block-tree:p-${sun}`),
+    ).toHaveLength(1);
   });
 });

@@ -158,11 +158,17 @@ down.
 ---
 
 ### B-177 · After midnight, a day pinned from the calendar can be Today too, rendered twice
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal (B-170's
-rollover with Playwright's fake clock) · **Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal (B-170's
+rollover with Playwright's fake clock) · **Test:** `apps/web/src/views/JournalStreamView.test.tsx`
+"drops a calendar pin once midnight makes the pinned day Today, so the day is not rendered twice
+(B-177)"
 
 At 23:59 pin tomorrow from the stream's calendar (allowed: it is not today). At 00:00 B-170 moves
 Today to that day, and the pinned section stays — the same journal page is rendered by two
 editable `BlockTree`s one above the other (seen: Today and "Back to stream" sections both listing
 block `1m2cv41ffra8gm`). Before B-170 "today" never changed while the view was mounted, so a pin
 could never equal it.
+
+**Fixed 2026-09-13.** `JournalStreamView` clears the pin when Today becomes the pinned day — the
+pin's whole meaning was "a day that is not Today". The test fails without the fix (the "Jumped-to
+day" region is still there after the fake clock moves to the pinned day).

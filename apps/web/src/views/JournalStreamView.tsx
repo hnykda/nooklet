@@ -7,7 +7,17 @@
  */
 import { formatJournalTitle } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
-import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+  untrack,
+} from "solid-js";
 import { useAgendaTasks } from "../data/agenda.js";
 import { journalTitleFormat } from "../data/page-title.js";
 import { useJournalStream, usePinnedJournalDay } from "../data/store.js";
@@ -38,6 +48,13 @@ export function JournalStreamView(): JSX.Element {
   const [maxDays, setMaxDays] = createSignal(INITIAL_MAX_DAYS);
   const [calendarOpen, setCalendarOpen] = createSignal(false);
   const [pinnedDay, setPinnedDay] = createSignal<number | undefined>(undefined);
+
+  // A pin is "a day other than Today" (the calendar never pins today itself), but Today moves at
+  // midnight: a day pinned late the evening before would then be rendered twice — two editable
+  // outlines of one page, one above the other (B-177). Once Today catches up, the pin is spent.
+  createEffect(() => {
+    if (untrack(pinnedDay) === today()) setPinnedDay(undefined);
+  });
 
   const stream = useJournalStream(() => ({ today: today(), maxDays: maxDays() }));
   const pinned = usePinnedJournalDay(pinnedDay);
