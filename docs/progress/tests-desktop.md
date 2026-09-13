@@ -124,4 +124,7 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
   (plugins, storage incl. WebKit, review-reactivity, editing, page-icons, references, opfs-pool,
   a-fresh-journal, journal-draft-sync) 41 passed, 1 skipped; `nooklet verify` on a backup of the
   owner's graph: 20,477 ops OK.
-- Next: full e2e in chunks on 6402 as a last regression pass; then report.
+- Done: full e2e at `2a55ce4`, all 93 spec files in four chunks on 6402 (idle apart from other
+  agents): 147 + 92 + 151 + 137 = 527 passed, 2 skipped, 0 failed.
+- Nothing left in flight. Open from this pass: B-408. The B-403 product question is still the
+  owner's.
