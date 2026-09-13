@@ -74,6 +74,19 @@ empty block with only properties, collapsed" in `outline-bridge.test.ts` (failed
 describe exactly one block" before) and "edits an empty block that has only a property line (not a
 page pre-block)" in `block-update-text.http.test.ts`.
 
+In a browser: `e2e/tests/agent-ops.spec.ts` › "block.update flips TODO to DONE by old_str on a
+scheduled task, and the row follows (B-172)". On real data: `tools/probes/single-block-roundtrip-graph.ts`
+over a copy of the owner's graph — of 18,628 live blocks, the pre-fix parser refused **1,929** (every
+block whose before-text has a second line); now 0 are refused and every block's content, marker,
+priority, properties and collapsed survive the round trip, except the 20 blocks that still hold a
+literal `SCHEDULED: <…>` line from the pre-B-266 import: re-parsing reads that line as `scheduled::`
+(what the same text in a file means), so an `old_str` edit of one of those blocks moves the date into
+the property. Those blocks were uneditable this way before; their repair is already an open owner
+decision. Real edits through `nooklet serve` on that copy (DONE→LATER→DONE on a scheduled task,
+a multi-line block with properties, an empty block with only properties, a fence-first block given a
+property then edited inside the fence): all as expected, and `nooklet verify` OK afterwards
+(20,442 ops).
+
 ---
 
 ### B-236 (existing)
@@ -85,7 +98,8 @@ journal's properties can be set, and the refusal's hint says how. Test that woul
 `packages/server/src/ops/page-update-journal.http.test.ts` — set and unset properties on a journal
 day (with rebuild parity), a real rename still refused with nothing written, `new_name` equal to
 the day's own name accepted (the first and third failed with "cannot rename a journal day" before
-the fix).
+the fix). In a browser: `e2e/tests/agent-ops.spec.ts` › "page.update sets a property on a journal
+day (B-236)" (a `read-only:: true` day shows the lock badge).
 
 ---
 
@@ -110,7 +124,10 @@ never looked at `.properties`. `page.append` and `block.insert` dropped a pre-bl
 
 `MarkdownInput`'s description and mcp-tools.md §4.3.8–10 say so. Test that would have caught it:
 `packages/server/src/ops/markdown-page-properties.http.test.ts` (7 of its 8 cases failed before the
-fix — every one but "still takes block properties under a bullet").
+fix — every one but "still takes block properties under a bullet"). In a browser:
+`e2e/tests/agent-ops.spec.ts` › "page.create applies a markdown read-only:: pre-block: the page opens
+locked (B-235)". `e2e/tests/read-only.spec.ts`'s `openLocked` still sets the lock through
+`properties` with a comment citing B-235; left alone (another branch's spec; it works either way).
 
 An ordering trap met on the way, recorded because the obvious code hits it: minting the block ops
 before the `page.create` op (to fold the pre-block into its `properties`) gives the page a later HLC,
