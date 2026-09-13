@@ -177,6 +177,16 @@ block"):
    no `when`) against the current `WhenContext` wins; run its command and `preventDefault()`.
 4. If no row matched, return false (native/CM6 default behavior applies).
 
+**R12a (text fields, B-347).** A keydown whose target is a text field other than the block
+editor's surface — an `<input>` of a text type, a `<textarea>`, a contenteditable outside
+`.cm-editor` (the palette's query, a page title, search) — is never dispatched when it is a
+text-editing key: Backspace, Delete, the arrows, Home, End, PageUp, PageDown (with any modifier,
+except Alt+Left/Right outside macOS, which are `nav.back`/`nav.forward`), and Mod+A/C/X/V/Z (Z with
+or without Shift). The field handles them natively. Every other key still dispatches from a text
+field (Escape, Enter, Tab, Mod+K and the other global shortcuts). Without this, Backspace typed
+into the palette with blocks selected ran `block.deleteSelected`. As built:
+`apps/web/src/app/text-field-keys.ts`, called by `CommandLayer`'s global keydown listener.
+
 **R13.** When no `Surface` is mounted (block-selection mode), the same table and the same
 resolution algorithm apply; the outliner container (`tabindex="-1"`) is the event target instead
 of a CM6 view, and `composing`/`popupOpen` are always `false`.
@@ -292,6 +302,14 @@ If `content !== ''`, set `prev.content = prev.content + this.content`, re-parent
 children (if any) to become `prev`'s children, appended after `prev`'s pre-existing children,
 delete this block, and move focus to `prev` at the offset equal to `prev`'s original content
 length (the join point).
+**R20a (fields travel with a merge, B-340).** In both the empty and the non-empty case, `prev`
+takes every field of the deleted block that `prev` does not set itself: `marker`, `priority`,
+`scheduled`, `deadline`, `repeat`, `done`, and each generic property (`list:: number`,
+`owner:: dan`). The marker stays a marker (it is not written into the text at the join). If both
+blocks set one of `marker`/`priority`/`scheduled`/`deadline`/`repeat`/a generic property to
+*different* values, the merge is **refused**: no op is written and the outliner's notice names the
+field and both values. `done` never refuses (the staying block's own timestamp wins), and
+`collapsed` is not carried. Applies to R21 with `next` as the deleted block.
 
 **R21.** `block.deleteForwardMerge` (Delete when `atLineEnd && !hasSelection`) is the mirror of
 R20: let `next` be the block immediately after this one in flattened visible order. If there is
@@ -428,8 +446,8 @@ back to its `text/plain` sibling) except behind a future "paste as markdown" plu
 | `task.setPriorityA` | Set priority A | — | — | `isTask` |
 | `task.setPriorityB` | Set priority B | — | — | `isTask` |
 | `task.setPriorityC` | Set priority C | — | — | `isTask` |
-| `task.setScheduled` | Set scheduled date | — | — | `editorFocused \|\| blockSelected` |
-| `task.setDeadline` | Set deadline date | — | — | `editorFocused \|\| blockSelected` |
+| `task.setScheduled` | Set scheduled date | — | — | `editorFocused \|\| (blockSelected && selectionCount == 1)` |
+| `task.setDeadline` | Set deadline date | — | — | `editorFocused \|\| (blockSelected && selectionCount == 1)` |
 | `task.setMarkerTodo` | Mark TODO | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerDoing` | Mark DOING | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerDone` | Mark DONE | — | — | `editorFocused \|\| blockSelected` |
@@ -495,7 +513,8 @@ that is not a date says why instead of writing. The editor keeps focus throughou
 claimed and does nothing; a Cmd/Ctrl shortcut closes the picker and runs as usual. Clearing the
 last remaining date also clears `repeat`. With a command argument (a date string, `null`, or
 `{date}`) both commands write without opening a picker (ADR 015 agents). A block's dates also
-show as chips on its row; clicking one opens this picker.
+show as chips on its row; clicking one opens this picker. Both commands act on one block, so they are not offered for a selection of
+several (B-345): the picker would open on the first block's date and write only to it.
 
 **R39.** `task.setMarkerTodo/Doing/Waiting/Canceled` set `marker` to that literal value with no
 side effects beyond that (no `done` stamping — only reaching `DONE` triggers R35).

@@ -264,3 +264,36 @@ test("right-clicking a locked block offers no command aimed at a selection in an
   await page.keyboard.press("Escape");
   await expect(page.locator(".ctx-menu")).toHaveCount(0);
 });
+
+test("a date chip on a locked page refuses with the notice and never opens the picker (B-341)", async ({
+  page,
+}) => {
+  // The chips came in on one branch and the lock on another; the chip's click opened the picker,
+  // and a date typed there or its Remove button wrote to the locked block without a word.
+  const date = isoOffset(9);
+  const outliner = await openLocked(
+    page,
+    "Locked Date Chip",
+    `- TODO locked dated task\n  scheduled:: ${date}\n- numbered\n  list:: number`,
+  );
+  const chip = outliner.locator(".vr-row").first().locator('.vr-date[data-field="scheduled"]');
+  await expect(chip).toHaveAttribute("data-value", date);
+  await chip.click();
+  await expect(notice(page)).toBeVisible();
+  // The picker module is imported on click; give it the moment it would need before calling it
+  // absent.
+  await page.waitForTimeout(300);
+  await expect(page.locator(".date-picker")).toHaveCount(0);
+  // Keys that would have picked a date, had the picker opened.
+  await page.keyboard.type("+10d");
+  await page.keyboard.press("Enter");
+  await expect(editor(page)).toHaveCount(0);
+  await expect(chip).toHaveAttribute("data-value", date);
+
+  const out = await api<{ tree: Array<{ properties?: Record<string, string> }> }>(
+    page,
+    "page.read",
+    { page: "Locked Date Chip", format: "json" },
+  );
+  expect(out.tree[0]?.properties?.scheduled).toBe(date);
+});

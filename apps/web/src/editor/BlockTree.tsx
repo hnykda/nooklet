@@ -92,6 +92,7 @@ import { EditHistory, type UndoRedoResult } from "./history.js";
 import { insertAt, pickImageFile } from "./imagePicker.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
+import { mergeRefusedMessage } from "./merge-fields.js";
 import { deriveNumbering, isNumbered } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
 import { registerOutline } from "./outline-registry.js";
@@ -818,12 +819,14 @@ export function BlockTree(props: {
         return true;
       case "block.mergeWithPrevious": {
         const r = mergeWithPrevious(tree, outlineOrder(), id, clock);
-        if (r) runStructural(r);
+        if (r && "refused" in r) readOnlyNotice.show(mergeRefusedMessage(r.refused));
+        else if (r) runStructural(r);
         return true;
       }
       case "block.deleteForwardMerge": {
         const r = deleteForwardMerge(tree, outlineOrder(), id, clock);
-        if (r) runStructural({ ops: r.ops });
+        if (r && "refused" in r) readOnlyNotice.show(mergeRefusedMessage(r.refused));
+        else if (r) runStructural({ ops: r.ops });
         return true;
       }
       case "block.moveUp":
@@ -964,7 +967,12 @@ export function BlockTree(props: {
       const view = surface.view();
       if (view && surface.currentId() === id) {
         const head = view.state.selection.main.head;
-        view.dispatch({ changes: { from: head, to: head, insert: asset.markdown } });
+        // With no `selection`, CM6 maps a caret sitting exactly at the insertion point to BEFORE
+        // the inserted text, so the next keystroke landed in front of the image (B-343).
+        view.dispatch({
+          changes: { from: head, to: head, insert: asset.markdown },
+          selection: { anchor: head + asset.markdown.length },
+        });
         return;
       }
       const clock = clockSig();
@@ -1411,6 +1419,7 @@ export function BlockTree(props: {
                           }
                         }}
                         readOnly={readOnly()}
+                        onReadOnlyRefused={() => readOnlyNotice.show()}
                         onToggleCollapse={() => onToggleCollapse(id)}
                         onZoomIn={() => setLocalZoomRoot(id)}
                         onToggleMarker={() => onToggleMarker(id)}

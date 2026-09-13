@@ -82,6 +82,7 @@ import { openPageFind, pageFindAvailable } from "./page-find.js";
 import { createRefactorHost } from "./refactor-host.js";
 import { openOnShelf } from "./shelf.js";
 import { createShelfHost } from "./shelf-host.js";
+import { textFieldOwnsKey } from "./text-field-keys.js";
 import { useTheme } from "./theme.js";
 
 type ContextBase = Omit<CommandContext, "exec" | "args">;
@@ -91,7 +92,10 @@ function KeyboardDispatch(props: { getContext: () => ContextBase }): null {
   const { dispatcher, buildContext } = useCommands();
   onMount(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (dispatcher.handleKeyDown(e, buildContext(props.getContext()))) {
+      const base = props.getContext();
+      // Backspace in the palette's input deleted the selected blocks (B-347).
+      if (textFieldOwnsKey(e, base.platform === "mac")) return;
+      if (dispatcher.handleKeyDown(e, buildContext(base))) {
         e.preventDefault();
         e.stopPropagation();
       }

@@ -29,6 +29,7 @@ import {
   orderBetween,
   ordersBetween,
 } from "@nooklet/core";
+import { carryFields, type MergeConflict } from "./merge-fields.js";
 import { isNumbered } from "./numbering.js";
 import {
   applyPlaceInPlace,
@@ -213,49 +214,60 @@ function reparentChildrenAsTrailing(
   }
 }
 
+/** A merge that would have to drop one of two different values of the same field (B-340): nothing
+ * is written, and the caller tells the user which fields (`merge-fields.ts#mergeRefusedMessage`). */
+export interface MergeRefused {
+  refused: MergeConflict[];
+}
+
 /** `block.mergeWithPrevious` (Backspace at offset 0, R20). `visibleRows` is the flattened,
  * collapse-and-zoom-aware reading order (`tree.ts#flattenVisible`) — "previous" here is the
  * previous *visible* row, which may be the parent or a deep descendant of the previous sibling,
  * not necessarily a tree-sibling. Returns `null` for every no-op case R20 defines (no previous
- * row; empty block with children). */
+ * row; empty block with children).
+ *
+ * `prev` takes over whatever this block carries that it lacks — marker, priority, dates, generic
+ * properties — and the merge is refused when both set one differently (`merge-fields.ts`, B-340).
+ * An empty content is not an empty block: `list:: number` + `source:: book` on an empty row used
+ * to vanish with it. */
 export function mergeWithPrevious(
   tree: EditorTree,
   visibleRows: readonly BlockId[],
   id: BlockId,
   clock: Clock,
   now: number = Date.now(),
-): OpsFocusResult | null {
+): OpsFocusResult | MergeRefused | null {
   const idx = visibleRows.indexOf(id);
   if (idx <= 0) return null;
   const prevId = visibleRows[idx - 1] as BlockId;
   const b = getBlock(tree, id);
   const prev = getBlock(tree, prevId);
   const kids = childrenIds(tree, id);
-
-  if (b.content === "" && kids.length === 0) {
-    return {
-      ops: [op(clock, id, { kind: "block.delete", deletedAt: now })],
-      focus: { id: prevId, caret: { at: "end" } },
-    };
-  }
   if (b.content === "" && kids.length > 0) return null;
 
-  const joinOffset = prev.content.length;
-  const ops: Op[] = [op(clock, prevId, { kind: "block.text", content: prev.content + b.content })];
+  const carried = carryFields(prev, b);
+  if (!carried.ok) return { refused: carried.conflicts };
+  const ops: Op[] = [];
+  if (b.content !== "") {
+    ops.push(op(clock, prevId, { kind: "block.text", content: prev.content + b.content }));
+  }
+  for (const payload of carried.payloads) ops.push(op(clock, prevId, payload));
   reparentChildrenAsTrailing(tree, clock, kids, prevId, ops);
   ops.push(op(clock, id, { kind: "block.delete", deletedAt: now }));
-  return { ops, focus: { id: prevId, caret: { offset: joinOffset } } };
+  const caret: CaretSpec = b.content === "" ? { at: "end" } : { offset: prev.content.length };
+  return { ops, focus: { id: prevId, caret } };
 }
 
 /** `block.deleteForwardMerge` (Delete at end, R21): the mirror of `mergeWithPrevious`, folding the
- * *next* visible block into this one. No focus change (the merge happens forward). */
+ * *next* visible block into this one — its fields included, refused on a conflict (B-340). No focus
+ * change (the merge happens forward). */
 export function deleteForwardMerge(
   tree: EditorTree,
   visibleRows: readonly BlockId[],
   id: BlockId,
   clock: Clock,
   now: number = Date.now(),
-): OpsResult | null {
+): OpsResult | MergeRefused | null {
   const idx = visibleRows.indexOf(id);
   if (idx === -1 || idx === visibleRows.length - 1) return null;
   const nextId = visibleRows[idx + 1] as BlockId;
@@ -263,7 +275,13 @@ export function deleteForwardMerge(
   const next = getBlock(tree, nextId);
   const nextKids = childrenIds(tree, nextId);
 
-  const ops: Op[] = [op(clock, id, { kind: "block.text", content: b.content + next.content })];
+  const carried = carryFields(b, next);
+  if (!carried.ok) return { refused: carried.conflicts };
+  const ops: Op[] = [];
+  if (next.content !== "") {
+    ops.push(op(clock, id, { kind: "block.text", content: b.content + next.content }));
+  }
+  for (const payload of carried.payloads) ops.push(op(clock, id, payload));
   reparentChildrenAsTrailing(tree, clock, nextKids, id, ops);
   ops.push(op(clock, nextId, { kind: "block.delete", deletedAt: now }));
   return { ops };
