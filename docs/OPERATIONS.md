@@ -338,5 +338,7 @@ the normal write path, so every device syncs it and `nooklet verify` stays exact
 with the `batch_id`, and `batch_undo` with it (MCP, or `POST /api/v1/batch.undo`) restores every
 block. It writes all of it or nothing. A block whose text disagrees with a date it already has, or
 names two different dates of one kind, is listed as left alone and not touched. Running it again
-finds nothing. Quit the app (or stop `serve`) first: the repair runs in its own process, and whether
-an open window shows the change before its next reconnect is not checked.
+finds nothing. Quit the app (or stop `serve`) first: the repair runs in its own process, so a running
+server never hears of it — an open window keeps showing the old text (checked for 15 s) until it
+reloads, the live mirror stays stale until `serve` restarts, and an edit made in that stale window
+can put the line back (`tools/probes/repair-org-dates-open-window.mjs`).

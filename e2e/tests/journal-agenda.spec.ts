@@ -12,7 +12,7 @@
  */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { api, isoOffset, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import { api, isoOffset, MOD, pagePath, readBlocks, seedPage } from "../helpers/index.js";
 
 const PROJECT = "Agenda Project";
 const ERRANDS = "Agenda Errands";
@@ -284,5 +284,135 @@ test("today holds overdue tasks past ten behind 'Show all N overdue', and the co
     for (const b of backlog) {
       await api(page, "block.update", { id: b.id, properties: { marker: "DONE" } });
     }
+  }
+});
+
+/** A stored block's marker, read from the server (`page.read`), never from the DOM. */
+async function storedMarker(page: Page, name: string, id: string): Promise<string | null> {
+  interface Node {
+    id: string;
+    marker?: string | null;
+    children?: Node[];
+  }
+  const out = await api<{ tree?: Node[] }>(page, "page.read", { page: name, format: "json" });
+  const find = (nodes: Node[] | undefined): Node | undefined => {
+    for (const n of nodes ?? []) {
+      const hit = n.id === id ? n : find(n.children);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  return find(out.tree)?.marker ?? null;
+}
+
+test("a note turned into a task on another device joins today's overdue list live, and undo takes it back off", async ({
+  page,
+  browser,
+}) => {
+  // A second browser context is a second device: its own OPFS replica, reaching this page's
+  // replica only through the server. A namespaced Czech page name, and a date ~24 years back —
+  // older than anything another spec leaves — so the row leads the overdue list and is never
+  // behind "Show all N overdue".
+  const NOTES = "Agenda/Poznámky čáp";
+  const longAgo = isoOffset(-9000);
+  await seedPage(page, NOTES, `- agx přečíst smlouvu\n  deadline:: ${longAgo}`);
+  const [note] = await readBlocks(page, NOTES);
+  expect(note).toBeDefined();
+
+  await page.goto("/journals");
+  const agenda = todayAgenda(page);
+  // Loaded (the beforeEach seed puts this spec's own task there), so the absence below is real.
+  await expect(agenda).toContainText("agx due today");
+  const row = agenda.locator(".journal-agenda-item", { hasText: "agx přečíst smlouvu" });
+  await expect(row).toHaveCount(0);
+
+  const other = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+  try {
+    const b = await other.newPage();
+    await b.goto(pagePath(NOTES));
+    const outliner = b.locator(".vr-outliner").first();
+    await expect(outliner.locator(".vr-row").first()).toContainText("agx přečíst smlouvu");
+    await outliner.locator(".vr-block-view").first().click();
+    await expect(b.locator(".cm-content")).toBeFocused();
+
+    await b.keyboard.press(`${MOD}+Enter`);
+    await expect.poll(() => storedMarker(page, NOTES, note?.id as string)).toBe("TODO");
+    // The first device, without a reload: now a task, so overdue under today.
+    await expect(row).toHaveCount(1);
+    await expect(row.locator(".vr-marker")).toHaveCount(1);
+    await expect(row.locator(".journal-agenda-bullet")).toHaveCount(0);
+    await expect(row.locator(".journal-agenda-date-overdue")).toHaveCount(1);
+    const group = agenda.locator(".journal-agenda-group", {
+      has: page.locator(".journal-agenda-item", { hasText: "agx přečíst smlouvu" }),
+    });
+    await expect(group.locator(".journal-agenda-page")).toHaveText(NOTES);
+
+    // Undo on the device that made it a task: a note again, off today's list everywhere.
+    await expect(b.locator(".cm-content")).toBeFocused();
+    await b.keyboard.press(`${MOD}+z`);
+    await expect.poll(() => storedMarker(page, NOTES, note?.id as string)).toBeNull();
+    await expect(row).toHaveCount(0);
+
+    // Still listed on its own day, as a note; its heading opens the namespaced Czech page.
+    await page.goto(pagePath(longAgo));
+    const onItsDay = page.locator(".journal-agenda .journal-agenda-item", {
+      hasText: "agx přečíst smlouvu",
+    });
+    await expect(onItsDay.locator(".journal-agenda-bullet")).toHaveCount(1);
+    await expect(onItsDay.locator(".journal-agenda-date-overdue")).toHaveCount(0);
+    await page.locator(".journal-agenda-page", { hasText: NOTES }).click();
+    await expect(page).toHaveURL(new RegExp(`${pagePath(NOTES)}$`));
+    await expect(page.locator(".page-title-input")).toHaveValue(NOTES);
+  } finally {
+    await other.close();
+    if ((await storedMarker(page, NOTES, note?.id as string)) !== null) {
+      await api(page, "block.update", { id: note?.id, properties: { marker: "DONE" } });
+    }
+  }
+});
+
+test("a date picked on a note on another device lists it under today with a bullet, live; undo removes it", async ({
+  page,
+  browser,
+}) => {
+  const NOTES = "Agenda Picker Notes";
+  await seedPage(page, NOTES, "- agx zavolat podlaháři");
+
+  await page.goto("/journals");
+  const agenda = todayAgenda(page);
+  await expect(agenda).toContainText("agx due today");
+  const row = agenda.locator(".journal-agenda-item", { hasText: "agx zavolat podlaháři" });
+  await expect(row).toHaveCount(0);
+
+  const other = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+  try {
+    const b = await other.newPage();
+    await b.goto(pagePath(NOTES));
+    const outliner = b.locator(".vr-outliner").first();
+    await expect(outliner.locator(".vr-row").first()).toContainText("agx zavolat podlaháři");
+    await outliner.locator(".vr-block-view").first().click();
+    await expect(b.locator(".cm-content")).toBeFocused();
+    await b.keyboard.press("End");
+
+    await b.keyboard.type(" /deadl");
+    const menu = b.locator(".cmd-popup").first();
+    await expect(menu.locator(".cmd-row--active")).toHaveText("Deadline");
+    await b.keyboard.press("Enter");
+    await expect(b.locator(".date-picker")).toBeVisible();
+    await b.keyboard.type("today");
+    await b.keyboard.press("Enter");
+    await expect(b.locator(".date-picker")).toHaveCount(0);
+    // The picker handed the caret back: typing goes on in the block.
+    await expect(b.locator(".cm-content")).toBeFocused();
+
+    await expect(row).toHaveCount(1);
+    await expect(row.locator(".journal-agenda-bullet")).toHaveCount(1);
+    await expect(row.locator(".vr-marker")).toHaveCount(0);
+    await expect(row.locator(".journal-agenda-date")).toHaveText("Deadline");
+
+    await b.keyboard.press(`${MOD}+z`);
+    await expect(row).toHaveCount(0);
+  } finally {
+    await other.close();
   }
 });

@@ -176,6 +176,35 @@ now wait for my own "nooklet serving <my dir>" log line before probing.
 - `verify` on the repaired real-graph copy: OK (20,482 and 20,666 ops). The server schema did not
   change (the index is client-only).
 
+## Adversarial verification (2026-09-13, ~18:50-19:30, second agent)
+
+Scratch `…/scratchpad/m11/repair-agenda-verify/`; fresh `.backup` of the owner's graph at 18:53
+(20,463 ops — the owner kept writing since 17:28; still exactly the same 20 blocks).
+
+- Unit, re-run: core 412/412, server 684/684 → 685/685 with B-481's test, web 1,146/1,146;
+  `pnpm -r typecheck` clean.
+- CLI flags: `repair`, `repair org-date`, `--aply`, `--apply --dry-run`, `--no-dry-run`, an extra
+  positional all stop with a message and exit 1; `--apply=false` / `--no-apply` are dry runs.
+- Real copy: dry run = the 20-block table above, 0 writes; `--apply` 40 ops, one batch, 20 `changes`
+  rows (origin `system`, actor `repair:org-dates`); `verify` OK (20,503); FTS: `SCHEDULED` hits 28 → 8
+  (the rest are prose); `nooklet export` writes `scheduled:: 2023-02-17` under each block, no
+  `SCHEDULED:` left; 2022-12-16's block shows a "Dec 8, 2022" chip (`vr-date-closed`).
+- Open window during the repair (`tools/probes/repair-org-dates-open-window.mjs`, run twice on fresh
+  copies): `--apply` succeeds while `serve` runs, but an open window shows nothing for 15 s (no poke);
+  after reload 19 chips; a fresh context 19 chips; `batch.undo` over HTTP reaches both windows live
+  (~0.5 s); `verify` OK. After a restart the live mirror renders the repaired pages. OPERATIONS §10
+  now says why quitting the app first is required.
+- B-481 (fixed, `dfc07ed`): trailing blank line left where a re-import leaves none; not a shape on the
+  owner's graph — `--apply` output on a fresh copy is byte-identical before and after the fix.
+- E2E, ONE run of the whole Chromium suite on 6414 (not chunked, so cross-spec state carries all the
+  way): 536 passed, 2 skipped, 0 failed (12.8 min). Then journal-agenda + journal-midnight with two new
+  tests: 12/12 — a note made a task on a second browser context (its own OPFS replica) joins
+  today's overdue list live and `Mod+z` there takes it back off, heading "Agenda/Poznámky čáp" opens
+  that page; a `/deadline` picked "today" on a note in a second context lists it under today with a
+  bullet, caret back in the editor, undo removes it.
+- `tools/probes/agenda-sql-cost.mjs` on the repaired copy: new read 0.007 ms via `block_dated`
+  (6.9 ms without the index under load ~80), base 0.012 ms.
+
 ## Next steps
 
 1. (done) Part 1 code + unit tests.
