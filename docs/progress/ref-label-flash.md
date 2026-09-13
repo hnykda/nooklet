@@ -47,7 +47,9 @@ never `docs/BUGS.md`.
   `data/block-ref-cache.test.ts` 8/8 (8/8 fail against the old file); e2e `ref-label-flash.spec.ts`
   3/3 chromium, 3/3 webkit; web unit 1146/1146; typecheck clean.
 
-- `158b893` B-500 fix committed.
+- `158b893` B-500 fix committed. `5e57646` B-510 + B-511 committed.
+- Step 3 measured before/after (table below); probe gained a Chromium main-thread pass and a
+  `treeUpdateMs` counter; both patches regenerated (before → `3f070e9` sources, after → `5e57646`).
 - Step 2b, B-510 + B-511: `data/same-json.ts` (`sameJson` memo equality, unit test 2) on
   `DateChips` chips, `BlockProperties` entries, `QueryFenceView` latest, `ReferencesPanel` data;
   `InlineContent` gets an optional `resolveBlockRef`, `ReferencesPanel` passes
@@ -58,21 +60,41 @@ never `docs/BUGS.md`.
 
 ## Measurements (per refresh, averages of 5)
 
-| page (rows on screen) | build | resolver calls | ref queries | DOM records | elements created | snapshots with a flashed label |
-|---|---|---|---|---|---|---|
-| 2022-12-16 (90, 2 refs) | before | 6 | 2 | 16 | 29.6 | 5 |
-| OmnivoreSync (57, 556 props) | before | 0 | 0 | 402 | 855.6 | 0 |
-| Ref Heavy (150, 50 refs) | before | 2,550 | 50 | 3,230.6 | 1,880.2 | 53 (max 50 at once) |
+Real-graph copy (`<scratch>/graph`, backup of the owner's graph 2026-09-13 17:42), `nooklet serve`
+on 6417, Chromium, `tools/probes/refresh-render-count.mjs`: 5 API `block.update`s of the last
+visible block on the page. "before" = client source of `3f070e9` (pre-fix) +
+`refresh-render-count.before.patch`; "after" = `5e57646` + `refresh-render-count.after.patch`.
+`Ref Heavy` is a page the probe adds to the copy (150 rows, 50 `((refs))` to real blocks) — the
+real graph has only 43 blocks with a block ref, at most 2 on a page. Raw JSON:
+`<scratch>/before-full.json`, `<scratch>/after-full.json`.
 
-Before, also per refresh on every page: `rowBlockRead`, `dateChips`, `propEntries` = one per row
-(and `propEntries` 112 on OmnivoreSync), `treeEffect` 1, `contentView` 1, `tokenView` 9.6 / 256.6 /
-1,878.2.
+| page (rows shown) | build | resolver calls | ref queries | DOM mutation records | elements created | snapshots with a resolved label back at `((id))` | main-thread task ms | layout ms |
+|---|---|---|---|---|---|---|---|---|
+| Ref Heavy (150; 50 refs) | before | 2,550 | 50 | 3,206 | 1,883 | 53 (max 50 labels at once) | 22.1 | 1.7 |
+| | after | 0 | 1 | 4 | 3 | 0 | 6.6 | 0.1 |
+| OmnivoreSync (57; 556 props) | before | 0 | 0 | 402 | 856 | 0 | 17.3 | 1.7 |
+| | after | 0 | 0 | 4 | 4.6 | 0 | 11.2 | 0.2 |
+| Megapage (201; big references panel) | before | 0 | 0 | 7 | 306 | 0 | 11.1 | 0.4 |
+| | after | 0 | 1 | 5 | 3 | 0 | 9.5 | 0.1 |
+| 2022-12-16 (90; 2 refs, 33 tasks) | before | 6 | 2 | 16 | 29.6 | 5 | 7.9 | 0.5 |
+| | after | 0 | 1 | 4 | 8.6 | 0 | 5.2 | 0.2 |
+| 2023-01-11 (252) | before | 0 | 0 | 4 | 3 | 0 | 8.2 | 0.1 |
+| | after | 0 | 0 | 4 | 3 | 0 | 7.6 | 0.1 |
+
+"resolver calls" is `lookupBlockText` calls after the first render (0 after: a label whose text
+did not change never re-runs). "task ms" is DevTools' `TaskDuration` delta on a second pass with no
+MutationObserver, fixed 1.5 s waits; it includes the sync round trip's own main-thread work, which
+is the same before and after. `contentView` stays at 1 (only the edited row re-renders) and
+`treeEffect` at 1 in both builds. Unchanged by these fixes: `rowBlockRead`, `dateChips`,
+`propEntries` still run once per row per refresh, and the synchronous tree update
+(`setLocalBlocks` to the end of Solid's flush) is 1.3 / 2.9 / 3.3 ms on 90 / 201 / 252 rows, before
+and after alike.
 
 ## In flight
 
-- Step 3 "after" measurement, then decide on cutting per-row memo re-runs in `BlockTree` (each
-  refresh re-runs `row`/`block` memos for every row and pushes new objects into every
-  `BlockRowView`).
+- Deciding on the per-row re-runs (`rowBlockRead`/`dateChips`/`propEntries` once per row per
+  refresh): an `equals` on `BlockTree`'s per-row `row`/`block` memos would stop them. Small hunk in
+  `BlockTree.tsx`, which other branches also change — its own commit, measured, or dropped.
 
 ## How to resume
 

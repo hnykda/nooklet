@@ -1,39 +1,36 @@
 diff --git a/apps/web/src/data/block-ref-cache.ts b/apps/web/src/data/block-ref-cache.ts
-index a027cbc..4ee3ac9 100644
+index 104060d..abb853d 100644
 --- a/apps/web/src/data/block-ref-cache.ts
 +++ b/apps/web/src/data/block-ref-cache.ts
-@@ -22,6 +22,7 @@ const inFlight = new Set<string>();
- function fetchBlockText(id: string): void {
-   if (inFlight.has(id)) return;
-   inFlight.add(id);
+@@ -92,6 +92,7 @@ function flush(): void {
+ }
+ 
+ function readChunk(ids: string[], at: number): void {
 +  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("refQuery");
-   void queryAs<{ content: string }>(
-     "SELECT content FROM block WHERE id = ? AND deleted_at IS NULL LIMIT 1",
-     [id],
-@@ -39,6 +40,7 @@ function fetchBlockText(id: string): void {
-  * falls back to a muted placeholder in the meantime, then re-renders).
+   void queryAs<{ id: string; content: string }>(
+     `SELECT id, content FROM block WHERE id IN (${ids.map(() => "?").join(",")}) AND deleted_at IS NULL`,
+     ids,
+@@ -137,6 +138,7 @@ function pruneUnwatched(): void {
+  * through every later re-read and changes only when the block's text does.
   */
  export function lookupBlockText(id: string): string | undefined {
 +  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("lookup");
-   const known = texts()[id];
-   if (known !== undefined) return known ?? undefined;
-   fetchBlockText(id);
+   const entry = entryFor(id);
+   if (getListener()) {
+     entry.watchers++;
 diff --git a/apps/web/src/editor/BlockProperties.tsx b/apps/web/src/editor/BlockProperties.tsx
-index a5b60bf..a90dd50 100644
+index 2e1bd1f..a45e83b 100644
 --- a/apps/web/src/editor/BlockProperties.tsx
 +++ b/apps/web/src/editor/BlockProperties.tsx
-@@ -61,7 +61,10 @@ export function BlockProperties(props: {
-   /** A click that is not on a link inside a value: edit the block. */
-   onActivate: () => void;
+@@ -64,7 +64,7 @@ export function BlockProperties(props: {
  }) {
--  const entries = () => visibleProperties(props.properties);
-+  const entries = () => {
-+    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("propEntries");
-+    return visibleProperties(props.properties);
-+  };
+   // A memo compared by value: the row gets a new properties object on every refresh, and a fresh
+   // array of the same pairs made `<For>` rebuild every property row each time (B-511).
+-  const entries = createMemo(() => visibleProperties(props.properties), undefined, {
++  const entries = createMemo(() => ((globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("propEntries"), visibleProperties(props.properties)), undefined, {
+     equals: sameJson,
+   });
    return (
-     <Show when={entries().length > 0}>
-       {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: the row's own `.vr-block-view` is the keyboard route into edit mode (Enter); this is a pointer shortcut onto the same action, not a second control. */}
 diff --git a/apps/web/src/editor/BlockRowView.tsx b/apps/web/src/editor/BlockRowView.tsx
 index 67fb2d6..09f729a 100644
 --- a/apps/web/src/editor/BlockRowView.tsx
@@ -75,27 +72,17 @@ index 209c034..7b2529e 100644
    });
  
 diff --git a/apps/web/src/editor/DateChips.tsx b/apps/web/src/editor/DateChips.tsx
-index f1fbcc1..a5ab0e2 100644
+index b058cb5..68078ff 100644
 --- a/apps/web/src/editor/DateChips.tsx
 +++ b/apps/web/src/editor/DateChips.tsx
-@@ -59,12 +59,13 @@ export function DateChips(props: {
-   onLocked?: () => void;
- }): JSX.Element {
-   watchToday();
--  const chips = createMemo(() =>
--    dateChips(
-+  const chips = createMemo(() => {
-+    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("dateChips");
-+    return dateChips(
-       { scheduled: props.scheduled, deadline: props.deadline, marker: props.marker },
-       today(),
--    ),
--  );
-+    );
-+  });
- 
-   return (
-     <Show when={chips().length > 0}>
+@@ -64,6 +64,7 @@ export function DateChips(props: {
+   // array of equal chips made `<For>` rebuild the buttons each time (B-511).
+   const chips = createMemo(
+     () =>
++      ((globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("dateChips"), 0) ||
+       dateChips(
+         { scheduled: props.scheduled, deadline: props.deadline, marker: props.marker },
+         today(),
 diff --git a/apps/web/src/editor/render/tokens.tsx b/apps/web/src/editor/render/tokens.tsx
 index 81d3c44..cfbe724 100644
 --- a/apps/web/src/editor/render/tokens.tsx

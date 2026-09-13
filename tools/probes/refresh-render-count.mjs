@@ -1,33 +1,38 @@
 /**
  * Probe (B-500, B-511): how much does ONE refresh re-render on a real page, and does a resolved
- * `((ref))` label ever fall back to `((id))` on the way?
+ * `((ref))` label ever fall back to `((id))` on the way? Written 2026-09-13 (ref-label-flash); the
+ * numbers it gave are in `docs/progress/ref-label-flash.md` › Measurements.
  *
  * A "refresh" here is what the owner sees all day: another client writes one block on the open
  * page (an agent over the API, the phone), the server pokes, this tab pulls, and the page tree
- * re-reads. The probe makes that write N times and, per refresh, reports:
+ * re-reads. The probe makes that write N times per page and reports, per refresh:
  *
  *  - DOM: MutationObserver records, elements created, and snapshots in which a `.vr-block-ref`
  *    that was resolved before recording showed its `((id))` placeholder;
- *  - reactive work (only with the instrumentation patch applied, see below): `lookup` resolver
+ *  - reactive work (only with an instrumentation patch applied, see below): `lookup` resolver
  *    calls, `refQuery` worker queries for ref text, `contentView`/`tokenView` rebuilds of rendered
  *    content, `rowBlockRead` per-row re-reads, `rowMount` row components created, `dateChips` and
- *    `propEntries` recomputations, `treeEffect` BlockTree tree effect runs.
+ *    `propEntries` recomputations, `treeEffect` BlockTree tree effect runs, `treeUpdateMs` from the
+ *    tree effect's `setLocalBlocks` to the end of Solid's synchronous flush;
+ *  - Chromium only, on a second pass with no observer and fixed waits: main-thread time from the
+ *    DevTools `Performance.getMetrics` deltas (`TaskDuration`, `ScriptDuration`, layout, style).
  *
- * The counters are lines of the form `globalThis.__rlfc?.("name")` added to the client source by
- * `refresh-render-count.before.patch` / `refresh-render-count.after.patch` (the code differs
- * before and after the B-500 fix, so the patch does too). Without the patch the DOM half still
- * runs; the counters come back empty. Never commit the patched source.
+ * The counters are `globalThis.__rlfc?.("name")` lines added to the client source by a patch:
+ * `refresh-render-count.before.patch` applies to the client source of `3f070e9` (before the fixes),
+ * `refresh-render-count.after.patch` to `5e57646`. Without a patch the DOM and Chromium halves
+ * still run; the counters come back empty. Never commit the patched source.
  *
- * Usage (never point it at ~/.nooklet/default — copy the graph first):
+ * Usage (never point it at ~/.nooklet/default — copy the graph first; never port 6100):
  *   sqlite3 ~/.nooklet/default/graph.sqlite ".backup '<dir>/graph.sqlite'"
- *   git apply tools/probes/refresh-render-count.<before|after>.patch
+ *   git checkout 3f070e9 -- apps/web/src && git apply tools/probes/refresh-render-count.before.patch
+ *     (or, on 5e57646 or a descendant it still applies to: git apply ….after.patch)
  *   pnpm --filter @nooklet/web build
- *   NOOKLET_DATA=<dir> pnpm --filter @nooklet/server exec tsx src/cli.ts serve --data <dir> --port 6417 --no-mirror
- *   URL=http://127.0.0.1:6417 PAGES="2022-12-16,OmnivoreSync,Ref Heavy" node tools/probes/refresh-render-count.mjs
- *   git apply -R tools/probes/refresh-render-count.<before|after>.patch
+ *   NOOKLET_DATA=<scratch> pnpm --filter @nooklet/server exec tsx src/cli.ts serve --data <dir> --port 6417 --no-mirror
+ *   REF_IDS=<ids> URL=http://127.0.0.1:6417 PAGES="2022-12-16,OmnivoreSync,Ref Heavy" node tools/probes/refresh-render-count.mjs
+ *   git checkout HEAD -- apps/web/src
  *
- * `Ref Heavy` is created on the copy by the probe if missing (needs REF_IDS, real block ids from
- * the copy — see below): 150 blocks, every third quoting one of them by `((id))` — the owner's graph has only 43
+ * `Ref Heavy` is created on the copy by the probe if missing: 150 blocks, every third quoting one
+ * of REF_IDS (real block ids from the copy, see below) by `((id))`. The owner's graph has only 43
  * blocks with a block ref, none with more than two per page, so without it the resolver numbers
  * would measure almost nothing.
  */
@@ -78,8 +83,8 @@ const browser = await engine.launch();
 const context = await browser.newContext({ viewport: { width: 1200, height: 1600 } });
 await context.addInitScript(() => {
   window.__rlf = {};
-  window.__rlfc = (k) => {
-    window.__rlf[k] = (window.__rlf[k] ?? 0) + 1;
+  window.__rlfc = (k, n = 1) => {
+    window.__rlf[k] = (window.__rlf[k] ?? 0) + n;
   };
 });
 const page = await context.newPage();
@@ -167,29 +172,69 @@ for (const name of pages) {
     window.__rlf = {};
   });
 
-  const times = [];
-  for (let i = 0; i < N; i++) {
-    const next = i % 2 === 0 ? `${plain} ·` : plain;
-    const started = Date.now();
-    await api(page, "block.update", { id: target.id, old_str: text, new_str: next });
-    text = next;
-    // The rendered text is not the source (links, emphasis), so wait on the marker only.
-    await page.waitForFunction(
-      ([id, marked]) =>
+  /** N writes to `target`, each waited out. With `poll`, waits on the row's marker and returns
+   * how long each took to reach the screen; without, sleeps a fixed 1.5 s and checks once — a
+   * polling wait runs script in the page, which would be billed to the refresh. */
+  const refreshes = async (poll) => {
+    const times = [];
+    for (let i = 0; i < N; i++) {
+      const next = i % 2 === 0 ? `${plain} ·` : plain;
+      const started = Date.now();
+      await api(page, "block.update", { id: target.id, old_str: text, new_str: next });
+      text = next;
+      // The rendered text is not the source (links, emphasis), so wait on the marker only.
+      const marked = ([id, want]) =>
         (
           document.querySelector(`.page-view .vr-row[data-block-id="${id}"] .vr-block-view`)
             ?.textContent ?? ""
-        ).endsWith(" ·") === marked,
-      [target.id, i % 2 === 0],
-      { timeout: 30_000, polling: 10 },
-    );
-    times.push(Date.now() - started);
-    await page.waitForTimeout(600);
-  }
+        ).endsWith(" ·") === want;
+      if (poll) {
+        await page.waitForFunction(marked, [target.id, i % 2 === 0], {
+          timeout: 30_000,
+          polling: 10,
+        });
+        times.push(Date.now() - started);
+        await page.waitForTimeout(600);
+      } else {
+        await page.waitForTimeout(1500);
+        if (!(await page.evaluate(marked, [target.id, i % 2 === 0])))
+          throw new Error(`${name}: write ${i} not on screen after 1.5 s`);
+      }
+    }
+    return times;
+  };
+
+  const times = await refreshes(true);
   const { dom, counters } = await page.evaluate(() => ({
     dom: window.__dom,
     counters: window.__rlf,
   }));
+
+  // Second pass, Chromium only: main-thread time per refresh from the DevTools metrics, on a fresh
+  // load with no MutationObserver (its own callbacks would be billed to the refresh).
+  let mainThread;
+  if (engine === chromium) {
+    await page.goto(`${base}${pagePath(name)}`);
+    await page.locator(".page-view .vr-outliner .vr-row").first().waitFor({ timeout: 120_000 });
+    await page.waitForTimeout(4000);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Performance.enable");
+    const metrics = async () =>
+      Object.fromEntries(
+        (await cdp.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]),
+      );
+    const m0 = await metrics();
+    await refreshes(false);
+    const m1 = await metrics();
+    const ms = (k) => Math.round(((m1[k] - m0[k]) / N) * 10000) / 10;
+    mainThread = {
+      scriptMs: ms("ScriptDuration"),
+      layoutMs: ms("LayoutDuration"),
+      styleMs: ms("RecalcStyleDuration"),
+      taskMs: ms("TaskDuration"),
+    };
+    await cdp.detach();
+  }
   const per = (v) => Math.round((v / N) * 10) / 10;
   report.push({
     page: name,
@@ -201,6 +246,7 @@ for (const name of pages) {
       ),
       ...Object.fromEntries(Object.entries(counters).map(([k, v]) => [k, per(v)])),
     },
+    mainThreadPerRefresh: mainThread,
     writeToScreenMs: times,
   });
 }
