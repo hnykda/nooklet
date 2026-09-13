@@ -51,12 +51,14 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
   bundle, built-ins all fine. Server unit 669/669. New open bug B-402 (op without `annotations`
   crashes server at startup, dev and sidecar).
 
+- **B-402** (new, fixed) — commit "fix(server): a plugin op missing required fields is that
+  plugin's error, not a crash at startup (B-402)". `plugins/ops-bridge.ts#assertCompleteOpDef`;
+  test in `host.test.ts`; server unit 670/670; checked in dev and in a rebuilt sidecar.
+
 ## 2. In flight
 
 - nothing (between steps).
 
 ## 3. Next steps
 
-1. B-402 — small: validate plugin op shape at register so it is a per-plugin error. Decide: fix
-   (with a host.test) if it stays small, else leave logged.
-2. Final: full e2e run of touched specs + opfs-pool, `pnpm -r test` once, return summary.
+1. Final: e2e of touched specs + neighbours once more, `pnpm -r test` once, return summary.

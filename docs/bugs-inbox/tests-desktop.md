@@ -254,8 +254,9 @@ The probe's own plugin had to change: it declared an op without `summary`, `anno
 ---
 
 ### B-402 · A plugin op missing `annotations` stops the whole server from starting
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, m10/tests-desktop (verifying B-336)
-· **Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, m10/tests-desktop (verifying B-336)
+· **Test:** `packages/server/src/plugins/host.test.ts` "an op missing required OpDef fields is that
+plugin's error, and the server still starts (B-402)"
 
 A plugin whose `ctx.ops.register(defineOp({...}))` leaves out `annotations` does not just fail to
 load: `nooklet serve` exits at startup with `nooklet: Cannot read properties of undefined (reading
@@ -269,6 +270,20 @@ which does not type-check. `ops/registry.ts#register` checks the name, MCP tool-
 `op.annotations.readOnlyHint` (`registry.ts`, the `GET` alias) and throws outside any per-plugin
 guard. The policy the host already follows for other plugin faults (`host.test.ts` "an unsupported
 api major is a per-plugin error that never aborts the server") says this should be that plugin's
-error, not the server's. Likely fix: validate a plugin op's shape in `register` (or
-`plugins/ops-bridge.ts#wrapPluginOp`) and throw a message naming the missing fields, so activation
-fails for that plugin alone.
+error, not the server's.
+
+**Fixed 2026-09-13.** `packages/server/src/plugins/ops-bridge.ts#wrapPluginOp` — the one path every
+plugin op takes into the registry (`server-context.ts`'s `ctx.ops.register`) — first checks the
+fields the registry relies on (`name`, `summary`, `description`, `input`/`output` as schemas with
+`safeParse`, `annotations`, `scopes`, `handler`) and throws `op "hello.say" is missing summary,
+annotations, scopes — see defineOp's OpDef in @nooklet/plugin-api`. Thrown inside `activate()`, the
+host records it as that plugin's error; core ops (TypeScript-checked, and not wrapped) are
+untouched. Test that would have caught it: `host.test.ts` "an op missing required OpDef fields is
+that plugin's error, and the server still starts (B-402)" — before the fix the test setup itself
+threw `TypeError: Cannot read properties of undefined (reading 'readOnlyHint')` at
+`registry.ts:493`; after, the plugin is `error` with the fields named and a sibling plugin's op
+answers 200. Server unit 670/670. By hand: the same scratch-data `pnpm nooklet serve` that exited
+now comes up healthy and logs `plugin "hello" failed to activate: op "hello.say" is missing summary,
+annotations, scopes …`; and a rebuilt sidecar, started on a scratch `NOOKLET_DATA` holding that
+plugin beside a working one, came up healthy, logged the same error, and served the working plugin's
+op and client half.
