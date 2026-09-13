@@ -142,10 +142,18 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     const shape = VARIANT_SHAPE[props.variant];
 
     if (row.isCreate && props.pages) {
-      const created = await props.pages.createPage(trig.query);
-      replaceQueryWith(trig, shape, created.title);
-      mru.record("page", created.id);
+      // Link first, create second. The text used to wait for `createPage`, a round trip to the
+      // replica's worker, which on a fresh client is busy with its first sync for seconds: the
+      // editor kept showing `[[title` with the popup open, and whatever was typed meanwhile raced
+      // the late insertion, which then landed on a buffer that had moved on (B-244). A `[[link]]`
+      // to a page that does not exist yet is an ordinary state — references are keyed by name,
+      // not id — so nothing depends on the page being there first.
+      replaceQueryWith(trig, shape, trig.query);
       props.onDismiss();
+      void props.pages.createPage(trig.query).then(
+        (created) => mru.record("page", created.id),
+        (err) => console.error("nooklet: creating the linked page failed", err),
+      );
       return;
     }
 

@@ -86,6 +86,35 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
     expect(editor.state?.content).toBe("[[Recipes]]");
   });
 
+  it("New page links and dismisses at once, without waiting for the page to be created (B-244)", async () => {
+    const editor = createFakeEditorHost({ content: "[[new/page", start: 10, end: 10 });
+    const pages = createFakePageSource([]);
+    // A replica too busy to answer: the create never resolves during this test.
+    const createPage = vi.fn((_title: string) => new Promise<never>(() => {}));
+    pages.createPage = createPage;
+    const onDismiss = vi.fn();
+    render(() => (
+      <CommandProvider commands={[]} platform="mac">
+        <AutocompletePopup
+          variant="page"
+          editor={editor}
+          trigger={{ from: 0, query: "new/page" }}
+          position={{ top: 0, left: 0 }}
+          pages={pages}
+          onDismiss={onDismiss}
+        />
+      </CommandProvider>
+    ));
+    await screen.findByText('New page "new/page"');
+    // Enter on the listbox rather than a click on the row: the row re-renders when the page list
+    // resolves, and a click on the stale node would reach nothing.
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    // Synchronously, not after `waitFor`: nothing may sit between the key and the link.
+    expect(editor.state?.content).toBe("[[new/page]]");
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(createPage).toHaveBeenCalledWith("new/page");
+  });
+
   it("Escape dismisses without inserting", async () => {
     const editor = createFakeEditorHost({ content: "[[Rec", start: 5, end: 5 });
     const pages = createFakePageSource([{ id: "p1", title: "Recipes", aliases: [], updatedAt: 1 }]);

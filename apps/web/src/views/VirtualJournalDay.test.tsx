@@ -30,6 +30,14 @@ vi.mock("../data/store.js", () => ({
   getOpClock: (n?: number) => getOpClock(n),
 }));
 
+const appendToJournalDay = vi.fn(
+  async (_day: number, _content: string): Promise<string | null> => null,
+);
+
+vi.mock("../data/journal-day.js", () => ({
+  appendToJournalDay: (day: number, content: string) => appendToJournalDay(day, content),
+}));
+
 const loadJournalTemplate = vi.fn(
   async (): Promise<{ node: TemplateNode; count: number } | null> => null,
 );
@@ -53,6 +61,7 @@ afterEach(() => {
   cleanup();
   applyOps.mockClear();
   getOpClock.mockClear();
+  appendToJournalDay.mockClear();
   loadJournalTemplate.mockReset();
   loadJournalTemplate.mockResolvedValue(null);
 });
@@ -211,5 +220,57 @@ describe("VirtualJournalDay", () => {
     expect(blockFocusRequest()).toBeUndefined();
     unmount();
     expect(blockFocusRequest()).toBeUndefined();
+    expect(appendToJournalDay).not.toHaveBeenCalled();
+  });
+});
+
+describe("VirtualJournalDay torn down with text nobody committed (B-243)", () => {
+  it("appends it to the day the replica now has, and puts the caret after it", async () => {
+    appendToJournalDay.mockResolvedValueOnce("appended-block");
+    const { unmount } = render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    textarea.focus();
+    fireEvent.input(textarea, { target: { value: "ztracený text" } });
+    // The first sync says the day exists: the stream swaps this draft out, no blur, no Enter.
+    unmount();
+    await settle();
+
+    expect(appendToJournalDay).toHaveBeenCalledWith(20260910, "ztracený text");
+    // Nothing creates a second page for a day that already has one.
+    expect(applyOps).not.toHaveBeenCalled();
+    expect(blockFocusRequest()).toBe("appended-block");
+    clearBlockFocusRequest();
+  });
+
+  it("does not take the caret anywhere if the draft did not have it", async () => {
+    appendToJournalDay.mockResolvedValueOnce("appended-block");
+    const { unmount } = render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "typed, then looked away" } });
+    unmount();
+    await settle();
+    expect(appendToJournalDay).toHaveBeenCalledTimes(1);
+    expect(blockFocusRequest()).toBeUndefined();
+  });
+
+  it("creates the day the normal way when the replica still has no page for it", async () => {
+    appendToJournalDay.mockResolvedValueOnce(null);
+    const { unmount } = render(() => <VirtualJournalDay day={20260910} />);
+    const textarea = screen.getByPlaceholderText("Start typing…") as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "still mine" } });
+    unmount();
+    await settle();
+    expect(applyOps).toHaveBeenCalledTimes(1);
+    const ops = applyOps.mock.calls[0]?.[0] ?? [];
+    expect(ops.map((op) => op.payload.kind)).toEqual(["page.create", "block.create"]);
+    expect(ops[1]?.payload).toMatchObject({ content: "still mine" });
+  });
+
+  it("an empty draft leaves nothing behind", async () => {
+    const { unmount } = render(() => <VirtualJournalDay day={20260910} />);
+    unmount();
+    await settle();
+    expect(appendToJournalDay).not.toHaveBeenCalled();
+    expect(applyOps).not.toHaveBeenCalled();
   });
 });

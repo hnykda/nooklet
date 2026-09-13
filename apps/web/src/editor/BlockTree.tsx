@@ -48,6 +48,7 @@ import {
 import { blockMenuRequest, openBlockMenu } from "../app/context-menu.js";
 import {
   createEditorHost,
+  releaseEditorHost,
   setActiveContextSnapshot,
   setActiveEditorHost,
 } from "../app/editor-host.js";
@@ -188,7 +189,13 @@ export function BlockTree(props: {
         if (local) flat.push({ ...local, content: live });
       }
     }
+    // A refetch reorders the edited row too. One that READ before an Alt+Up/Down (or its undo)
+    // and RESOLVED after it puts the old order back for a frame, and the next one restores the
+    // new order: two DOM moves, each blurring the editor, with nothing to refocus it. Traced
+    // 10-40 ms after an undo, where a keystroke typed in that window was lost (B-242).
+    const hadFocus = editingBlockId !== null && surface.view()?.hasFocus === true;
     setLocalBlocks(flat);
+    if (hadFocus && editingBlockId !== null) refocusAfterReorder(editingBlockId);
   });
 
   const editorTree = createMemo<EditorTree>(() => buildEditorTree(props.pageId, localBlocks()));
@@ -417,14 +424,27 @@ export function BlockTree(props: {
     const r = moveBlock(editorTree(), id, direction, clock);
     if (!r) return;
     runStructural({ ops: r.ops });
-    // Keyed `<For>` reorders by MOVING the row's DOM node, and a moved node loses focus — so after
-    // the move the editor was still attached to a block nobody was focused on (B-48). The move
-    // happens when Solid reconciles, after this function returns, so the refocus has to be
-    // deferred past it: a microtask for the common case and a frame later as the backstop, the
-    // same two-stage dance `surface.attach` does, guarded so a genuine click-away is not fought.
+    refocusAfterReorder(id);
+  }
+
+  /**
+   * Keyed `<For>` reorders by MOVING the row's DOM node, and a moved node loses focus — so after
+   * a move the editor was still attached to a block nobody was focused on (B-48). The move
+   * happens when Solid reconciles, after the caller returns, so the refocus has to be deferred
+   * past it: a microtask for the common case and a frame later as the backstop, the same two-stage
+   * dance `surface.attach` does, guarded so a genuine click-away is not fought. Undo and redo of a
+   * move reorder the edited row just the same, and so does a refetch (B-242).
+   *
+   * Only focus that fell to `<body>` is taken back, which is where a moved node leaves it. Since
+   * a refetch can land at any moment, focus that went somewhere real in the same frame (Cmd+K
+   * into the palette's input) must stay there.
+   */
+  function refocusAfterReorder(id: BlockId): void {
     if (editingId() !== id) return;
     const refocus = (): void => {
-      if (editingId() === id && !surface.view()?.hasFocus) surface.focus();
+      const active = document.activeElement;
+      const fellToBody = active === null || active === document.body;
+      if (editingId() === id && fellToBody && !surface.view()?.hasFocus) surface.focus();
     };
     queueMicrotask(refocus);
     requestAnimationFrame(refocus);
@@ -465,6 +485,7 @@ export function BlockTree(props: {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
       surface.setCaret(res.focus.caret);
+      refocusAfterReorder(res.focus.id);
     } else {
       attachEditing(res.focus.id, res.focus.caret);
     }
@@ -488,6 +509,7 @@ export function BlockTree(props: {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
       surface.setCaret(res.focus.caret);
+      refocusAfterReorder(res.focus.id);
     } else {
       attachEditing(res.focus.id, res.focus.caret);
     }
@@ -751,6 +773,9 @@ export function BlockTree(props: {
       // nothing at all — Enter from selection mode never re-entered editing (B-44).
       const sel = selection();
       if (sel) runSelectionCommand(cmd, sel);
+      // Neither: undo/redo after the session ended (`historyEditorHost`, B-241).
+      else if (cmd === "edit.undo") doUndo();
+      else if (cmd === "edit.redo") doRedo();
     },
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
   });
@@ -804,7 +829,7 @@ export function BlockTree(props: {
     }
   });
   onCleanup(() => {
-    setActiveEditorHost(null);
+    releaseEditorHost(editorHost);
     setActiveContextSnapshot(null);
   });
 

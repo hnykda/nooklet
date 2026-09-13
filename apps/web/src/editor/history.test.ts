@@ -1,3 +1,5 @@
+import { applyOps, initSchema, makeOp, type Op } from "@nooklet/core";
+import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 import { describe, expect, it } from "vitest";
 import { EditHistory } from "./history.js";
 import { tree as buildTree, makeBlock, makeFakeClock } from "./test-helpers.js";
@@ -291,6 +293,48 @@ describe("EditHistory — block.create / block.delete invert to each other", () 
     });
 
     const redo = h.redo(c);
-    expect(redo?.ops[1]).toMatchObject({ entity: "NEW", payload: { kind: "block.create" } });
+    // Revives the tombstone rather than re-sending the create, which `applyOps` would ignore
+    // because the id already exists (B-240; the round trip below proves it against real SQLite).
+    expect(redo?.ops[1]).toMatchObject({
+      entity: "NEW",
+      payload: { kind: "block.delete", deletedAt: null },
+    });
+  });
+
+  it("create -> undo -> redo leaves the block alive in a real database, every time (B-240)", () => {
+    const driver = createNodeSqliteDriver(openNodeSqlite(":memory:"));
+    initSchema(driver);
+    const c = clock();
+    const apply = (ops: readonly Op[]): string[] =>
+      applyOps(driver, ops).results.map((r) => r.status);
+    const alive = (id: string): boolean =>
+      driver.get<{ deleted_at: number | null }>("SELECT deleted_at FROM block WHERE id = ?", [id])
+        ?.deleted_at === null;
+
+    apply([
+      makeOp(c.next(), c.device, "page1", {
+        kind: "page.create",
+        name: "Redo Round Trip",
+        journalDay: null,
+        createdAt: 1,
+      }),
+    ]);
+    const create = makeOp(c.next(), c.device, "NEW", {
+      kind: "block.create",
+      place: { pageId: "page1", parentId: null, order: "a0" },
+      content: "",
+      createdAt: 2,
+    });
+    expect(apply([create])).toEqual(["applied"]);
+    const h = new EditHistory(500);
+    h.record([create], buildTree(), "structure", null, { id: "NEW", caret: { at: "start" } });
+
+    // Twice: the second cycle is where replaying a stored op (rather than minting) would also fail.
+    for (let i = 0; i < 2; i++) {
+      expect(apply(h.undo(c)?.ops ?? [])).toEqual(["applied"]);
+      expect(alive("NEW")).toBe(false);
+      expect(apply(h.redo(c)?.ops ?? [])).toEqual(["applied"]);
+      expect(alive("NEW")).toBe(true);
+    }
   });
 });
