@@ -101,3 +101,56 @@ test("the palette opened from block selection gives the outliner its keys back",
   await page.keyboard.press("Shift+ArrowDown");
   await expect(outliner.locator(".vr-row-selected")).toHaveCount(2);
 });
+
+test("Move to page… onto the block's own page while editing it leaves the editor focused and typeable", async ({
+  page,
+}, info) => {
+  const name = runName("Move Own Page", info);
+  const outliner = await openEditing(page, name, "- first\n- second");
+  await outliner.locator(".vr-row").first().click({ button: "right" });
+  await expect(page.locator(".ctx-menu")).toBeVisible();
+  await page.locator(".ctx-menu .ctx-item", { hasText: "Move to page…" }).click();
+  const picker = page.locator(".page-picker");
+  await expect(picker.locator(".cmd-input")).toBeFocused();
+  await picker.locator(".cmd-input").fill(name);
+  await expect(picker.locator(".cmd-row--active")).toHaveText(name);
+  await page.keyboard.press("Enter");
+  await expect(picker).toHaveCount(0);
+  await expectEditorFocusedNow(page, "straight after the picker closed");
+  // The block goes to the end of its own page (the server op, then a pull), and its row with it.
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["second", "first"]);
+  await expect
+    .poll(() => outliner.locator(".vr-row").last().locator(".cm-content").count())
+    .toBe(1);
+  await expectEditorFocusedNow(page, "after the row moved to the end");
+  await page.keyboard.press("End");
+  await page.keyboard.type("!");
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["second", "first!"]);
+});
+
+test("Move to page… run from the palette hands focus through the palette and the picker back to the editor", async ({
+  page,
+}, info) => {
+  const name = runName("Move Via Palette", info);
+  const outliner = await openEditing(page, name, "- alpha\n- beta");
+  await page.keyboard.press(`${MOD}+k`);
+  await expect(page.locator(".cmd-palette .cmd-input")).toBeFocused();
+  await page.keyboard.type(">Move to page");
+  await expect(page.locator(".cmd-palette .cmd-row--active")).toContainText("Move to page");
+  await page.keyboard.press("Enter");
+  const picker = page.locator(".page-picker");
+  await expect(picker.locator(".cmd-input")).toBeFocused();
+  await expect(page.locator(".cmd-palette:not(.page-picker)")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+  await expectEditorFocusedNow(page, "straight after Escape closed the picker");
+  await page.keyboard.type("!");
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["alpha!", "beta"]);
+  expect(await outliner.locator(".vr-row").count()).toBe(2);
+});

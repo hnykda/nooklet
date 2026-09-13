@@ -5,9 +5,10 @@ Entries in `docs/BUGS.md`'s format, for the coordinator to fold in. New numbers 
 ---
 
 ### B-290 · Clicking into a block and pressing Cmd/Ctrl+K before the next frame: the editor takes focus back from the open palette
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, m9/focus (diagnosing B-161) ·
-**Test:** none yet; `tools/probes/palette-escape-focus.spec.ts` "a late frame after entering
-editing vs an open palette" reproduces it
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9/focus (diagnosing B-161) ·
+**Test:** `e2e/tests/focus-return.spec.ts` "a click into a block then Cmd/Ctrl+K before the next
+frame: what is typed goes to the palette"; probe `tools/probes/palette-escape-focus.spec.ts` "a
+late frame after entering editing vs an open palette"
 
 The mirror image of B-161, from the same line of code. `editor/surface.ts#attach` re-asserts focus
 twice after entering edit mode — a microtask and a `requestAnimationFrame` backstop — and the frame
@@ -79,3 +80,21 @@ those e2e tests failed (`activeElement is body`). Loop under 20 busy node proces
 the fix, same load (36 → 64), `--repeat-each=10` over the original test, the four palette tests in
 `views.spec.ts` and the four in `focus-return.spec.ts`: 90 of 90 passed. Duplicates closed by this:
 B-173, B-182, B-193, B-213, B-226, B-246, B-270.
+
+---
+
+### B-195 (existing)
+
+**Fixed 2026-09-13.** Reproduced first as an e2e test (failed on `cf08d19`: `activeElement is body`
+straight after the picker closed). Same cause as B-161: the "Move to page…" picker
+(`app/refactor-host.tsx#pickPage`) puts focus in its input and nothing gave it back. It now records
+what had focus before it mounts (`commands/focus-return.ts#rememberFocus`) and gives it back as it
+closes, after its root leaves the document and before the command's server op — so when the pull
+moves the row to the end of the page, the editor is focused again and `BlockTree`'s
+`refocusAfterReorder` keeps it through the DOM move. Run from the palette, the palette gives focus
+back to the editor as `closePalette` runs, so the picker records the editor, not `<body>`. Tests that
+would have caught it: `e2e/tests/focus-return.spec.ts` "Move to page… onto the block's own page
+while editing it leaves the editor focused and typeable" (right-click, pick its own page, focus
+read straight after Enter and again after the row moved, `End` + `!` lands in the stored block) and
+"Move to page… run from the palette hands focus through the palette and the picker back to the
+editor" (Escape out of the picker); both failed with `refactor-host.tsx` at `cf08d19`.

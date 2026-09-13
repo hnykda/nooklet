@@ -16,8 +16,8 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
 
 ## 1. Done (committed)
 
-- **B-161 + new B-290** — commit "fix(web): overlays give focus back when they close; a late frame
-  no longer steals it (B-161, B-290)" (hash in the next progress update). Diagnosis: nothing gave
+- **B-161 + new B-290** — `d69414f` "fix(web): the palette gives focus back when it closes; a late
+  frame no longer steals it (B-161, B-290)". Web unit 1005/1005 after the commit. Diagnosis: nothing gave
   focus back when the palette closed; the test passed only when `surface.attach`'s
   requestAnimationFrame backstop (armed by the click that entered editing) landed after Escape —
   i.e. on a machine loaded enough for frames to lag input. The same backstop stole focus from an
@@ -27,19 +27,21 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
   new `e2e/tests/focus-return.spec.ts` (4 tests), probe `tools/probes/palette-escape-focus.spec.ts`.
   Numbers: see the inbox entry. Broad e2e (19 specs): 214 passed, 1 skipped. Typecheck clean.
 
+- **B-195** — commit "fix(web): the Move to page picker gives focus back (B-195)" (hash in the
+  next update). `app/refactor-host.tsx#pickPage` uses `rememberFocus`; two e2e tests in
+  `focus-return.spec.ts` (context menu path, palette path), both failed on `cf08d19`'s
+  refactor-host. focus-return + refactor + context-menu + editing-row-leaves: 29 passed, 1 skipped.
+
 ## 2. In flight
 
 (nothing)
 
 ## 3. Next steps
 
-1. B-195: `app/refactor-host.tsx#pickPage` — `rememberFocus` at open, give back after `root.remove()`;
-   e2e in `focus-return.spec.ts` (right-click the edited block, Move to page…, pick its own page,
-   `expectEditorFocusedNow`, type, stored text).
-2. B-231: `onMouseDown` preventDefault on `.ctx-menu` (`app/BlockContextMenu.tsx`); e2e pressing a
+1. B-231: `onMouseDown` preventDefault on `.ctx-menu` (`app/BlockContextMenu.tsx`); e2e pressing a
    `.ctx-sep`.
-3. B-147: date picker type-ahead / beforeinput.
-4. B-203: Alt+Enter under Playwright on macOS.
+2. B-147: date picker type-ahead / beforeinput.
+3. B-203: Alt+Enter under Playwright on macOS.
 
 ## 4. Decisions
 
