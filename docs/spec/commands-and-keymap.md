@@ -698,6 +698,11 @@ behavior exactly rather than special-casing mobile.
 `history()` extension is never installed, per that spec); they undo/redo the last **local**-origin
 transaction regardless of whether it was a text edit, a split, an indent, a move, a paste of five
 blocks, or a subtree delete, and restore the caret/selection recorded with that transaction.
+Commands that write through the `Store` (markers, priorities, dates — B-142) are such transactions
+too. A transaction that would write to a block no longer on the page (moved or deleted elsewhere)
+is dropped and the next older one is undone instead (B-194). A transaction with no recorded caret,
+or one whose block has no row, leaves the editor where it is while its row is still on screen
+(B-162).
 
 **R52.** `app.toggleSidebar` shows/hides the navigation sidebar (page tree, journals, tags).
 `app.openSettings` opens the settings view (which includes the keybindings editor, § G).

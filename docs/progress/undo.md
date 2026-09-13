@@ -21,7 +21,7 @@ Bugs go to `docs/bugs-inbox/undo.md` (never `docs/BUGS.md`).
   Base run of the full new spec (7 tests incl. B-194/B-162): 6 failed, 1 passed (B-191; it fails
   with `invert.ts#propValueBefore`'s default put back to `null`). After the change: B-142 3/3;
   dates, tasks, templates, template-undo, undo-redo, redo, selection 55/55; web unit 1006/1006.
-- (this commit) B-194, B-162, B-280 fixed: `history.ts` undo/redo take `present(id)` and drop
+- `6628f12` B-194, B-162, B-280 fixed: `history.ts` undo/redo take `present(id)` and drop
   steps on blocks that left (`reachable`); new `editor/undo-focus.ts#focusAfterStep` (follow a
   caret only into a block with a row; no caret → keep the editor while its row is on screen);
   `BlockTree#applyHistoryStep` shared by `doUndo`/`doRedo`; `BlockTree#commitStep` flushes typing
@@ -33,17 +33,22 @@ Bugs go to `docs/bugs-inbox/undo.md` (never `docs/BUGS.md`).
 
 ## 2. In flight
 
-Nothing uncommitted.
+- Full e2e in two runs on port 6400: `tests/[a-o]` done — 157 passed, 1 skipped (the pre-existing
+  skip). `tests/[p-z]` running; one failure so far, `popups.spec.ts` "Code block wraps the content
+  in a fence" (fence missing after an immediate reload) — rerun that spec alone before judging.
+- Uncommitted: `docs/spec/commands-and-keymap.md` R51 gains four lines (store commands are undo
+  steps; steps on blocks that left are dropped; null caret keeps the editor);
+  `tools/probes/undo-real-graph.spec.ts` (real-graph probe, not run yet).
 
 ## 3. Next steps, in order
 
-1. Wider e2e pass (the rest of the specs that edit: templates, popups, context-menu, phone, embeds,
-   shelf, journals, parity, views, history-later-edits, remote-device, replace) to catch anything
-   the null-focus rule or the store routing changed.
-2. `pnpm nooklet verify` is not needed: no ops/sync/schema change (the ops written are the same
+1. Finish the `[p-z]` run; rerun any failing spec once (load until proven otherwise).
+2. Real-graph probe: backup at `<scratch>/graph/graph.sqlite`; serve it on 6401 with
+   `NOOKLET_DATA=<scratch>/data`; copy the probe into `e2e/tests/`, run with
+   `NOOKLET_E2E_URL=http://127.0.0.1:6401`, delete the copy, kill 6401.
+3. Commit spec note + probe + progress.
+4. `pnpm nooklet verify` is not needed: no ops/sync/schema change (the ops written are the same
    kinds, only routed through the tree).
-3. Consider (not required): `docs/spec/commands-and-keymap.md` R51 note that undo covers store
-   commands and skips blocks that left — shared file, so only if small; otherwise coordinator.
 
 ## 4. Decisions (and why)
 
