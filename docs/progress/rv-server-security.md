@@ -64,9 +64,14 @@ start, you were restarted: read it, then continue from "Next steps".
   parser (fences rendered as raw code, no error). Green: core 16 files / 334, web 72 / 684,
   e2e `query.spec.ts` + `query-limits.spec.ts` 11/11 on 6471.
 
+- F7 hash `e377269`.
+- F8 (B-128) — commit "fix(server,web): graph.replace regexes run in Unicode mode". Red: op
+  test (0 matches), new e2e `replace-unicode.spec.ts` ("No matches."). Green: server 58 / 543,
+  web 72 / 684, e2e `replace-unicode` + `replace` 4/4 on 6471; real graph `Č\p{Ll}+` 0 → 17.
+
 ## 2. In flight
 
-- F8.
+- Review doc + final checks (verify on graph-fix, broader e2e).
 
 ## 3. Next steps, in order
 

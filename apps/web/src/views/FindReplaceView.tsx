@@ -39,7 +39,9 @@ function escapeRegExp(s: string): string {
  * pattern does not compile (the server's error says why). */
 function previewMatcher(query: string, regex: boolean, caseSensitive: boolean): RegExp | null {
   try {
-    return new RegExp(regex ? query : escapeRegExp(query), caseSensitive ? "g" : "gi");
+    // Same flags as the server's `compileQuery`, Unicode mode included (B-128), or the highlight
+    // would disagree with the preview it decorates.
+    return new RegExp(regex ? query : escapeRegExp(query), caseSensitive ? "gu" : "giu");
   } catch {
     return null;
   }

@@ -116,14 +116,26 @@ and third failed on the old code with an asset row created, the second with `ENO
 ---
 
 ### B-128 · `graph.replace` regexes are compiled without the `u` flag, so Unicode classes silently match nothing
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, server security review (F8) ·
-**Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, server security review (F8) ·
+**Test:** `packages/server/src/ops/graph-replace.test.ts` "regexes run in Unicode mode, so \p{…}
+classes and whole-word lookarounds work on Czech (B-128)"; `e2e/tests/replace-unicode.spec.ts`
 
 Flags are `g`/`gi`. Without `u`, `\p{Lu}` is an identity escape for the literal text `p{Lu}`, so
 `\p{Lu}\p{Ll}+` previews zero matches on "Schůzka s Alešem: Černá kniha" with no error. `\w` and
 `\b` are ASCII-only either way, so `Ale\w+` misses "Alešem" and `\bAleš\b` matches inside it — a
 real run would rewrite part of a longer word — and the op description does not say so.
 `FindReplaceView`'s highlight matcher uses the same flags.
+
+**Fixed 2026-09-13.** `compileQuery` compiles with `gu`/`giu`, and `FindReplaceView`'s highlight
+matcher uses the same flags so the marks agree with the preview. The op description (and
+`mcp-tools.md` §4.3.28) now says the regex is in Unicode mode, that `\w`/`\b` are still ASCII-only,
+and gives the whole-word form `(?<![\p{L}\p{N}_])word(?![\p{L}\p{N}_])` that `page.link_unlinked`
+already uses. A pattern that was only valid without `u` (`\-`, a lone `{`) is now `invalid` with
+the engine's message. On the copy of the owner's graph `Č\p{Ll}+` (case-sensitive) matched 0
+blocks before and 17 after; a literal `TODO` still matches 437. Tests: `graph-replace.test.ts`
+"regexes run in Unicode mode, so \p{…} classes and whole-word lookarounds work on Czech (B-128)"
+(0 matches before); `e2e/tests/replace-unicode.spec.ts` (showed "No matches." before; passes after,
+with `replace.spec.ts` 3/3).
 
 ---
 

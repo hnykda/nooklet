@@ -35,7 +35,10 @@ function escapeRegExp(s: string): string {
 /** Compile the query, refusing a pattern that could not be meant: invalid, or one that matches
  * the empty string (which would insert `replacement` between every two characters of the graph). */
 export function compileQuery(query: string, regex: boolean, caseSensitive: boolean): RegExp {
-  const flags = caseSensitive ? "g" : "gi";
+  // `u`, or the dialect is the ASCII one on a half-Czech graph (B-128): `\p{Lu}` silently became
+  // the literal text "p{Lu}" and matched nothing. `escapeRegExp`'s output is valid under `u`.
+  // `\w` and `\b` stay ASCII-only even so; the description says how to write a whole word.
+  const flags = caseSensitive ? "gu" : "giu";
   let re: RegExp;
   try {
     re = new RegExp(regex ? query : escapeRegExp(query), flags);
@@ -68,8 +71,10 @@ export const graphReplace = defineOp({
   description:
     "Finds query in the text of every block (or only blocks on pages, if given) and replaces " +
     "each occurrence with replacement. Literal text by default, case-insensitive unless " +
-    "case_sensitive; regex: true reads query as a JavaScript regular expression, in which case " +
-    "replacement may use $1-style group references. ALWAYS call with dry_run: true first: it " +
+    "case_sensitive; regex: true reads query as a JavaScript regular expression in Unicode (u) " +
+    "mode, in which case replacement may use $1-style group references. \\p{L} matches any " +
+    "letter, but \\w and \\b are ASCII-only: for a whole word write " +
+    "(?<![\\p{L}\\p{N}_])word(?![\\p{L}\\p{N}_]). ALWAYS call with dry_run: true first: it " +
     "returns every block that would change with its text before and after, and writes nothing. " +
     "Then call again without dry_run to apply. The real run changes every matched block in ONE " +
     "batch and returns its batch_id, so batch_undo reverses the whole replacement at once. Only " +

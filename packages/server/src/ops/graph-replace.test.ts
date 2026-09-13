@@ -95,6 +95,34 @@ describe("graph.replace", () => {
     expect(json.matches[0].after).toBe("the money-colour");
   });
 
+  it("regexes run in Unicode mode, so \\p{…} classes and whole-word lookarounds work on Czech (B-128)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Czech",
+      markdown: "- Schůzka s Alešem: Černá kniha\n- Aleš přišel",
+    });
+    // Without the u flag `\p{Lu}` is the literal text "p{Lu}": zero matches, no error.
+    const words = await replace({
+      query: "\\p{Lu}\\p{Ll}+",
+      regex: true,
+      case_sensitive: true,
+      replacement: "<$&>",
+      dry_run: true,
+    });
+    expect(words.status).toBe(200);
+    expect(words.json.matches.map((m: JsonAny) => m.after).sort()).toEqual([
+      "<Aleš> přišel",
+      "<Schůzka> s <Alešem>: <Černá> kniha",
+    ]);
+    // The whole-word form the description recommends does not rewrite part of "Alešem".
+    const whole = await replace({
+      query: "(?<![\\p{L}\\p{N}_])Aleš(?![\\p{L}\\p{N}_])",
+      regex: true,
+      replacement: "Petr",
+      dry_run: true,
+    });
+    expect(whole.json.matches.map((m: JsonAny) => m.after)).toEqual(["Petr přišel"]);
+  });
+
   it("a literal replacement containing $1 stays literal", async () => {
     await seed();
     const { json } = await replace({ query: "money", replacement: "$1 & $&", dry_run: true });
