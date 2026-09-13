@@ -13,14 +13,27 @@ Branch `m11/delete-launcher` from `52e5d20`. Two owner-approved items:
   (`index.html` + pure `status.js`), `frontendDist` → `../launcher`; `main.rs` pipes stderr,
   `watch_startup`, `server_status` command; `serde` dep (+ `serde_json` dev). Tests: `cargo test`
   6/6, `pnpm --filter @nooklet/desktop test` 4/4, `e2e/tests/desktop-launcher.spec.ts` 4/4.
-
-- (this commit) Delete page: `app/confirm-dialog.tsx` (+css), `data/page-delete.ts` (server
+- `ef642fe` Delete page: `app/confirm-dialog.tsx` (+css), `data/page-delete.ts` (server
   `page.delete` dry run + real, forceSync around), `app/page-delete.ts` flow (+ test, 7),
   `app.deletePage` in `commands/registrations/page-actions.ts` (remoteInvocable false; tests
   updated), menu item in `views/PageActions.tsx` (hidden on journals via `journal` prop from
   `PageView.tsx`), host in `app/page-actions-host.ts` (`navigate` dep from `CommandLayer.tsx`),
   spec row + R52b. Tests: web unit 1145/1145, `e2e/tests/page-delete.spec.ts` 3/3,
   `pnpm -r typecheck` clean.
+- `5d4c4d3` B-492: the dialog no longer prints `backlinks_affected` (98 for a page 3 blocks link to
+  on the real graph — it counts `path_ref`, i.e. child blocks too); logged for the op's owners.
+- Real-graph copy (`<scratch>/real-graph.sh`, port 16415, own listener checked): "Balení" deleted
+  through the UI — dialog, /journals, All pages 0 rows, Trash row "23 blocks … api", Restore
+  "Restored "Balení" and 23 blocks with it", 23 rows back; `nooklet verify` exact, 20,494 ops.
+- Full e2e on 6415 in two halves: 247 passed + 1 skipped, 294 passed + 1 skipped, 0 failed.
+
+## Status: complete. Final report delivered to the coordinator.
+
+Left for others (logged, not done): B-491 (HistoryView's two `window.confirm`s and four
+`window.alert`s are dead in the desktop app — `app/confirm-dialog.tsx` is the drop-in), B-492
+(`backlinkCount`). The stale untracked `apps/desktop/dist/` in the main checkout can be deleted.
+Not verified: a built desktop app (`server_status` inside WKWebView; the real schema-too-new
+launch).
 
 ## Findings / decisions
 
@@ -49,8 +62,3 @@ Branch `m11/delete-launcher` from `52e5d20`. Two owner-approved items:
   journal guard) like `page-rename.ts`; the dialog focuses the destructive button (undoable via
   Trash); no post-delete toast (the dialog already says where it goes) — possible follow-up.
   A `read-only:: true` page can still be deleted (the server op does not check it either).
-
-## Next steps
-
-1. Full e2e suite run on 6415 (private output), fix/log anything of mine.
-2. Final report.
