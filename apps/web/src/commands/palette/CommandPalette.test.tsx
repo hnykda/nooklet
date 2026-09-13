@@ -125,6 +125,41 @@ describe("<CommandPalette>", () => {
     expect(screen.queryByText("Recipes")).toBeNull();
   });
 
+  // B-105: `nav.openPage`/`nav.revealBlock` need a page/block argument only an agent or a
+  // keybinding row supplies; listed, they were rows that did nothing when chosen.
+  it("never lists a command that requires arguments, even when the query matches it", async () => {
+    const run = vi.fn();
+    function HarnessWithArgsOnly() {
+      const cmds: Command[] = [
+        ...commands(),
+        {
+          id: "nav.openPage",
+          title: "Open page",
+          category: "Navigation",
+          defaultKeys: {},
+          requiresArgs: true,
+          run,
+        },
+      ];
+      return (
+        <CommandProvider commands={cmds} platform="mac">
+          <Opener />
+          <CommandPalette pages={createFakePageSource([])} getContext={baseContext} />
+        </CommandProvider>
+      );
+    }
+    render(() => <HarnessWithArgsOnly />);
+    fireEvent.click(screen.getByTestId("opener"));
+    const input = await screen.findByRole("combobox");
+    expect(screen.getByText("Toggle sidebar")).toBeTruthy();
+    expect(screen.queryByText("Open page")).toBeNull();
+    fireEvent.input(input, { target: { value: ">" } });
+    fireEvent.input(input, { target: { value: "open page" } });
+    expect(screen.queryByText("Open page")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("selecting a page calls onSelectPage and closes", async () => {
     const onSelectPage = vi.fn();
     render(() => <Harness onSelectPage={onSelectPage} />);

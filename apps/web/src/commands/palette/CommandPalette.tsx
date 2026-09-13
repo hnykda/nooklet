@@ -74,7 +74,9 @@ export function CommandPalette(props: CommandPaletteProps) {
     const commandCandidates =
       mode === "pages" || mode === "tags"
         ? []
-        : registry.list().filter((c) => matchesWhen(c.when, ctxBase));
+        : // A palette row runs its command with no payload, so one that needs a payload would
+          // be a row that does nothing (B-105).
+          registry.list().filter((c) => !c.requiresArgs && matchesWhen(c.when, ctxBase));
     const pageCandidates = mode === "commands" ? [] : pages(); // a tag is a page (ADR 017); see B-69
 
     const rankedCommands = rankItems({ query, items: commandCandidates, mru, kind: "command" });

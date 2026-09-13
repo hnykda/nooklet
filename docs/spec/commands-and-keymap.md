@@ -55,6 +55,12 @@ never has to guess.
 meaning the command has no default keyboard shortcut on that platform (it remains reachable via
 the palette, slash menu, a menu item, or the mobile toolbar).
 
+**R1a.** A command whose `run` does nothing without `ctx.args` (an agent primitive such as
+`nav.openPage`, which needs a page) MUST set `requiresArgs: true`. A surface that invokes commands
+with no payload — the palette, the block context menu, the mobile toolbar — MUST NOT list such a
+command; `ctx.exec(id, args)`, the live-UI channel (ADR 015 §2.4) and a `keybindings.json` row
+carrying `args` (§ I) still run it. (Listed, it is a row that does nothing when chosen — B-105.)
+
 **R2.** `id` MUST match `^[a-z][a-zA-Z0-9]*\.[a-zA-Z][a-zA-Z0-9]*$` — one `area` segment, a dot,
 one `verb` segment (`camelCase`), per the conventions doc (`block.indent`, `task.cycle`,
 `nav.journals`, `search.open`). Core uses the areas `block`, `task`, `nav`, `palette`, `search`,
@@ -854,6 +860,8 @@ interface Command {
   when?: string;                                 // grammar in § B; absent = always enabled
   defaultKeys: { mac?: string; other?: string }; // resolved-form tokens, see R15
   icon?: string;                                 // icon-set key, palette/menu/toolbar glyph
+  remoteInvocable?: boolean;                     // ADR 015 §2.4; absent = true
+  requiresArgs?: boolean;                        // R1a; never listed by the palette/menus
   run: (ctx: CommandContext) => void | Promise<void>;
 }
 
