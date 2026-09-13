@@ -203,9 +203,10 @@
   font-size: 1.1em;
 }
 
-/* Same "a finished task reads as finished" rule the outliner applies (`../editor/editor.css`). */
-.shelf-block:has(.vr-marker-DONE) .shelf-block-text,
-.shelf-block:has(.vr-marker-CANCELED) .shelf-block-text {
+/* Same "a finished task reads as finished" rule the outliner applies (`../editor/editor.css`), and
+   likewise only for the card block's own marker, not one inside a rendered embed or query (B-212). */
+.shelf-block:has(> .shelf-marker.vr-marker-DONE) .shelf-block-text,
+.shelf-block:has(> .shelf-marker.vr-marker-CANCELED) .shelf-block-text {
   color: var(--muted);
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, currentcolor 45%, transparent);

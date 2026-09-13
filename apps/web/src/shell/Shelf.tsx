@@ -98,6 +98,9 @@ function ShelfOutline(props: {
                     ctx={{
                       source: node.content,
                       onNavigate: props.onNavigate,
+                      // As on an outliner row: an `{{embed}}` that would render this block again
+                      // shows its notice instead of a copy of the page (`render/EmbedView.tsx`).
+                      embedPath: [node.id],
                       // Same miss-triggered cache the outliner reads `((id))` through, so a block
                       // reference on the shelf shows text rather than an opaque id.
                       resolveBlockRef: (id) => {

@@ -69,7 +69,14 @@ export function BlockRowView(props: {
    * crossed — see `Bullet.tsx`. */
   onDragStep?: (direction: "up" | "down") => void;
 }) {
-  const content = createMemo(() => classifyBlockContent(props.block.content));
+  // The string first, and everything rendered reads THAT: `BlockTree` hands this row a new `block`
+  // object on every re-read of the page (every write anywhere on it), and reading
+  // `props.block.content` directly rebuilt the whole rendered view each time — invisible for text,
+  // but an `{{embed}}` was torn down to its one-line placeholder and back twice per keystroke in
+  // another block, and lost its unfolded rows (B-214). A memo on a string only notifies when the
+  // text actually changed.
+  const text = createMemo(() => props.block.content);
+  const content = createMemo(() => classifyBlockContent(text()));
   let rowEl: HTMLDivElement | undefined;
 
   // Skip the swipe gesture while this row is the one being edited: the CM6 surface owns touch
@@ -207,9 +214,11 @@ export function BlockRowView(props: {
                 <BlockContentView
                   content={content()}
                   ctx={{
-                    source: props.block.content,
+                    source: text(),
                     onNavigate: props.onNavigate,
                     onShelfOpen: props.onShelfOpen,
+                    // So an `{{embed}}` that would render this very row again stops (render/EmbedView.tsx).
+                    embedPath: [props.id],
                     // `((id))` renders the referenced block's own text rather than an opaque id.
                     // Resolved through a cache that fetches on a miss and re-renders when the
                     // text lands (`../data/block-ref-cache.ts`).

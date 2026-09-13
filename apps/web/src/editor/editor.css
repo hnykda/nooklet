@@ -331,9 +331,11 @@
   text-decoration: line-through;
 }
 
-/* Finished work recedes: struck through and dimmed, so open items stand out. */
-.vr-row:has(.vr-marker-DONE) .vr-block-view,
-.vr-row:has(.vr-marker-CANCELED) .vr-block-view {
+/* Finished work recedes: struck through and dimmed, so open items stand out. The row's OWN marker
+   only (child combinators): a bare `:has(.vr-marker-DONE)` also matched a done task rendered inside
+   the content — a query result, an embedded row — and struck the whole block through (B-212). */
+.vr-row:has(> .vr-row-main > .vr-marker-DONE) .vr-block-view,
+.vr-row:has(> .vr-row-main > .vr-marker-CANCELED) .vr-block-view {
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, currentcolor 45%, transparent);
   color: var(--muted);

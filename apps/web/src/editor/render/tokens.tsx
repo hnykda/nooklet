@@ -23,14 +23,15 @@
  *  - `blockRef`/`linkToBlock` render the target block's own tokens through `resolveBlockRef`
  *    (`BlockRowView` and the Shelf pass `data/block-ref-cache.ts`'s lookup); a caller that
  *    supplies none, or a block not in the replica, gets a muted `((id))`-style placeholder.
- *  - `embed` renders a placeholder (not a live nested `BlockTree`) — same gap (needs a
- *    page-name/block-id -> page/tree resolver the data seam doesn't expose yet).
+ *  - `embed` renders the target READ-ONLY (`./EmbedView.tsx`, B-210), not the contract's
+ *    read-write nested tree: rows click through to the block, editing happens where it lives.
  *
  * Wired in M7 (research/13 §4.2 items 1 and 9), each behind a lazy import so a page without it
  * pays nothing (numbers in docs/research/14-render-seams.md):
  *  - `fence` with `lang === "query"` renders live results (`./QueryFenceView.tsx`, ADR 011).
  *  - other fences are syntax-highlighted (`./highlight.ts`, highlight.js, per-language chunks).
  *  - `math` renders through KaTeX (`./math.ts`); `$tex$` text until the chunk lands.
+ *  - `embed` renders the embedded page/block (`./EmbedView.tsx`); the placeholder box until then.
  */
 import {
   type Align,
@@ -54,7 +55,16 @@ import { canHighlight, highlightCode, highlightSync, languageClass } from "./hig
 import { loadMath, renderTexSync } from "./math.js";
 import { safeHref } from "./safe-href.js";
 
-export type NavigateTarget = { kind: "page"; name: string } | { kind: "block"; id: string };
+export type NavigateTarget =
+  | { kind: "page"; name: string }
+  | {
+      kind: "block";
+      id: string;
+      /** The block's own page, when the renderer knows it. An embedded row does (`./EmbedView.tsx`),
+       * and must say so: the tree it is drawn inside belongs to the HOST page, and a shelf card
+       * given that page's id cannot find the block (B-215). */
+      pageId?: string;
+    };
 export type Navigate = (t: NavigateTarget) => void;
 
 export interface RenderCtx {
@@ -69,6 +79,10 @@ export interface RenderCtx {
    * 2"); defaults to 0 and increments on recursion — callers normally never set this. */
   refDepth?: number;
   resolveBlockRef?: (id: string) => { content: string } | undefined;
+  /** Ids of the blocks this render is nested inside: the outliner row it belongs to, then each
+   * embedded block on the way down. An embed whose target contains one of them would render
+   * itself forever, and shows a notice instead (`./EmbedView.tsx`). Absent = no known host. */
+  embedPath?: readonly string[];
   /** Override for syntax highlighting (a plugin, or a test): returns highlighted HTML for
    * `code`/`lang`, or `null` to defer to the default. The default is the bundled, lazily-loaded
    * highlight.js (`./highlight.ts`); an override that returns non-null wins and is rendered as
@@ -76,9 +90,10 @@ export interface RenderCtx {
   highlightCode?: (code: string, lang: string) => string | null;
 }
 
-const MAX_REF_DEPTH = 2;
+export const MAX_REF_DEPTH = 2;
 
 const QueryFenceView = lazy(() => import("./QueryFenceView.js"));
+const EmbedView = lazy(() => import("./EmbedView.js"));
 
 /** A ```` ```query ```` fence: the lazily-loaded live view, with the raw fence as the Suspense
  * fallback so the page never blanks while the chunk loads. Only at depth 0 — a query fence that
@@ -274,7 +289,26 @@ function RefPreview(props: { content: string; ctx: RenderCtx; depth: number }) {
   );
 }
 
-function EmbedView(props: {
+/** `{{embed}}` with a target: the lazily-loaded live view (`./EmbedView.tsx`), with the placeholder
+ * box as the Suspense fallback while the chunk and the first read land. */
+function Embed(props: {
+  target: { kind: "page"; name: string } | { kind: "block"; id: string } | null;
+  from: number;
+  to: number;
+  ctx: RenderCtx;
+}) {
+  return (
+    <Show when={props.target} keyed fallback={<EmbedPlaceholder {...props} />}>
+      {(target) => (
+        <Suspense fallback={<EmbedPlaceholder {...props} />}>
+          <EmbedView target={target} from={props.from} to={props.to} ctx={props.ctx} />
+        </Suspense>
+      )}
+    </Show>
+  );
+}
+
+function EmbedPlaceholder(props: {
   target: { kind: "page"; name: string } | { kind: "block"; id: string } | null;
   from: number;
   to: number;
@@ -359,7 +393,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               <BlockRefView id={tok.id} label={tok.label} from={tok.start} to={tok.end} ctx={ctx} />
             );
           case "embed":
-            return <EmbedView target={tok.target} from={tok.start} to={tok.end} />;
+            return <Embed target={tok.target} from={tok.start} to={tok.end} ctx={ctx} />;
           case "macro":
             return (
               <span class="vr-macro-unknown" data-from={tok.start} data-to={tok.end}>

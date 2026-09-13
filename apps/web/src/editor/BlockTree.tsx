@@ -1259,10 +1259,13 @@ export function BlockTree(props: {
 
   /** Shift+click, from a row or from a `[[page]]` link inside one (`BlockRowView.tsx` explains why
    * Shift and not something else). The shelf wants a block's page id as well as its own, and this
-   * tree is the last place that knows it for free — every row here belongs to `props.pageId`. */
+   * tree is the last place that knows it for free — every row here belongs to `props.pageId`.
+   * Except a row drawn inside an `{{embed}}`, which lives on another page and names it (B-215). */
   function onShelfOpen(target: NavigateTarget): void {
     openOnShelf(
-      target.kind === "page" ? target : { kind: "block", id: target.id, pageId: props.pageId },
+      target.kind === "page"
+        ? target
+        : { kind: "block", id: target.id, pageId: target.pageId ?? props.pageId },
     );
   }
 

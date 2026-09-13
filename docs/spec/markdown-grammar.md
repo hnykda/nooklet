@@ -614,8 +614,8 @@ export function extractRefs(content: string, properties?: Properties): Extracted
 | `wikilink` (unresolved, page doesn't exist) | `<a href="/page/<key>">` | `.vr-page-ref.vr-ref-new` |
 | `tag` | `<a href="/page/<key>" class="vr-tag">` | `.vr-tag` |
 | `blockRef` | inline render of the target block's own tokens, depth-limited to 2 | `.vr-block-ref` |
-| `embed` (page) | the target page's top-level blocks, rendered read-write in place | `.vr-embed.vr-embed-page` |
-| `embed` (block) | the target block and its children, rendered read-write in place | `.vr-embed.vr-embed-block` |
+| `embed` (page) | the target page's top-level blocks (with their children), rendered read-only in place: a row navigates to its block, the frame edits the host; depth-limited to 2 and cycle-guarded (a notice where the target contains a block already being rendered). Read-write is not built (2026-09-13, B-210) | `.vr-embed.vr-embed-page` (+ `-cycle` / `-missing` / `-limit` / `-failed`) |
+| `embed` (block) | the target block and its children, as above; the root always shows its children even when stored collapsed | `.vr-embed.vr-embed-block` (same state classes) |
 | `embed` (target `null`) | literal `{{embed …}}` text, dimmed | `.vr-embed.vr-embed-error` |
 | `macro` | plugin-provided renderer for `name`, else the literal `{{name args}}` text | `.vr-macro` / `.vr-macro-unknown` |
 | `linkToPage` | `<a href="/page/<key>">label</a>` | `.vr-page-ref` |
@@ -652,7 +652,7 @@ it stays editable) — Obsidian's Live Preview behavior.
 | `wikilink` | `Decoration.replace` the `[[`/`]]`/`\|alias` part; `Decoration.mark(.vr-page-ref)` on `target` | none — raw text shown |
 | `tag` | `Decoration.mark(.vr-tag)` on the whole token (the `#` stays visible, styled) | same (tags don't hide markers — the `#` is the point) |
 | `blockRef` / `linkToBlock` | `Decoration.replace` the whole token with a `Decoration.widget` showing the target's first line | none |
-| `embed` | `Decoration.widget` rendering the embed inline (editable) | n/a — embeds are block-structural, not text the cursor sits "inside" the same way |
+| `embed` | not built: the raw `{{embed …}}` text shows while editing; the rendered view (§4) is the only place an embed renders | n/a — embeds are block-structural, not text the cursor sits "inside" the same way |
 | `linkToPage` / `link` | `Decoration.replace` the `](...)")` part; `Decoration.mark(.vr-link)` on the label | none |
 | `autolink` | `Decoration.mark(.vr-link)` | same (nothing to hide) |
 | `image` | `Decoration.widget` (rendered `<img>`) replacing the whole token | none (edit the markdown) |
