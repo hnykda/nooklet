@@ -24,22 +24,24 @@ to `docs/bugs-inbox/impl-commands.md` (never `docs/BUGS.md`). e2e port 6402.
   `data/plugins.ts`, one-line hookup in `SettingsPanel.tsx`, `AppDeps.openPluginManager` wired in
   `CommandLayer.tsx`; spec R52. e2e commands.spec (5) + settings.spec (8) = 13 passed on 6402.
 
-- B-160 / audit item 6 (commit after b9c4b48, "feat(web): Open on shelf…"):
+- `0cbf5bd` B-160 / audit item 6:
   `commands/registrations/shelf.ts` (+ test), `app/shelf-host.ts`, hookups in
   `registrations/index.ts`, `CommandLayer.tsx`, `BlockContextMenu.tsx` ENTRIES, palette
   Shift+Enter/Shift+click + `.cmd-hint` (`commands/styles.css`); spec R32a/R43a + table rows;
   `context-menu.spec.ts` pinned list. e2e on 6402: commands+context-menu+shelf = 27 passed,
   1 skipped (pre-existing fixme); views+navigation+pages = 50 passed.
 
+- B-106 (commit after 0cbf5bd, "docs(spec): …"): `registrations/spec-tables.test.ts` (fails 2/4
+  on da85cfb's spec, verified), eight missing rows + rules, R54 slash table, DiagnosticsPanel
+  comment, wiki generator (optional hosts, requiresArgs section) + regenerated wiki page.
+
 ## 2. In flight
 
-- Nothing uncommitted after the B-160 commit.
+- Nothing uncommitted after the B-106 commit.
 
 ## 3. Next steps, in order
 
-1. B-106: a test that diffs the spec's E-tables against the registrations; fix the tables;
-   DiagnosticsPanel's `app.diagnostics` comment.
-2. Final: full related e2e, `pnpm -r test`, typecheck, report.
+1. Final: related e2e sweep on 6402, `pnpm -r test`, `pnpm -r typecheck`, report.
 
 ## 4. Decisions
 

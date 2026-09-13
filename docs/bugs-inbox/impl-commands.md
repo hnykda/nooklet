@@ -67,7 +67,27 @@ that ignores a delegate (B-97's shape); `e2e/tests/commands.spec.ts` covers that
 ---
 
 ### B-106 (existing) · Comment and spec drift around commands
-**Status:** in progress · **Severity:** low · **Found:** 2026-09-12, exposure audit
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit · **Test:**
+`apps/web/src/commands/registrations/spec-tables.test.ts` (spec §E tables vs the registered
+commands: ids, section/category, title, keys, `when`; spec R54's slash table vs `SLASH_ITEMS`)
+
+What was still true at `da85cfb`: the nine `format.*` and the `task.setMarker*` rows had already
+been added (the audit read an older spec), but eight registered commands had no row —
+`nav.openPage`, `nav.revealBlock`, `block.insertQueryFence`, `block.insertTemplate`,
+`block.turnIntoPage`, `block.moveToPage`, `edit.mergePage`, `search.findReplace` — and R54's slash
+table lacked the Template and Query items while still saying templates are "not a core slash item",
+which ADR 019 reversed. `DiagnosticsPanel.tsx` still named a nonexistent `app.diagnostics` command.
+Every title, key and `when` of the rows that did exist matched the code.
+
+**Fixed 2026-09-13.** Rows and short rules added for all eight (R32b, R43b, R49a, R52), plus this
+branch's own `block.openOnShelf` / `nav.openPageOnShelf` (R32a, R43a) and `requiresArgs` (R1a);
+R54 gains Template and Query and cites ADR 019. The DiagnosticsPanel comment now names the two real
+ways in (the top bar's sync indicator, Settings → About). `spec-tables.test.ts` fails against
+`da85cfb`'s spec (2 of 4 tests: the eight missing ids, and the slash table) and will fail the next
+time a command is added without its row — which is the intent; the fix is a spec row. Also: the
+wiki generator (`docs/wiki/tools/generate-shortcuts.mjs`) now passes the optional refactor and shelf
+hosts (their commands were missing from the wiki page) and lists `requiresArgs` commands apart from
+the palette-reachable ones; `docs/wiki/pages/Keyboard shortcuts.md` regenerated (90 commands).
 
 ---
 

@@ -8,7 +8,8 @@
  * → "it works for me" before anyone could see the actual state.
  *
  * Local state (token, sync) comes from the client; backend state comes from `system.diagnostics`.
- * Opened from the sidebar, or with the `app.diagnostics` command.
+ * Opened by clicking the sync indicator in the top bar (`shell/AppShell.tsx#SyncIndicator`), or
+ * from Settings → About → "Open diagnostics". There is no palette command for it.
  */
 
 import { createResource, createSignal, type JSX, Show } from "solid-js";

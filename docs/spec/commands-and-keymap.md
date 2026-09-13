@@ -236,6 +236,8 @@ only, which is itself a deliberate, unambiguous choice, not an omission).
 | `block.duplicate` | Duplicate block | Cmd+Shift+D | Ctrl+Shift+D | `editorFocused \|\| blockSelected` |
 | `block.copyRef` | Copy block reference | Cmd+Shift+C | Ctrl+Shift+C | `editorFocused \|\| blockSelected` |
 | `block.openOnShelf` | Open on shelf | — | — | `editorFocused \|\| blockSelected` |
+| `block.turnIntoPage` | Turn into page | — | — | `editorFocused \|\| blockSelected` |
+| `block.moveToPage` | Move to page… | — | — | `editorFocused \|\| blockSelected` |
 | `edit.paste` | Paste | Cmd+V | Ctrl+V | `editorFocused` |
 
 **R16.** `block.split` MUST split the block's `content` at the caret offset into `before`/`after`
@@ -379,6 +381,13 @@ right-hand shelf, exactly as a Shift+click on its bullet does: newest card first
 on the shelf moves back to the top. It is also a bullet context-menu entry. No focus or selection
 change.
 
+**R32b.** `block.turnIntoPage` and `block.moveToPage` are the M7 block refactors (ADR 020), each a
+server op (`block.to_page`, `block.move_to_page`) on the focused block or the first selected one,
+bracketed by a sync push and pull. "Turn into page" makes the block's first line a page, its
+children that page's blocks, and leaves a link in its place; "Move to page…" asks for a page with a
+fuzzy picker (creating one is allowed) and moves the block with its subtree to that page's end.
+Both leave editing first. Both are bullet context-menu entries.
+
 **R33.** `edit.paste`'s keybinding row is informational: `Cmd+V`/`Ctrl+V` is the OS/browser paste
 gesture and is never matched by the keydown dispatcher (R12); the actual trigger is the editor's
 native `paste` DOM event (`EditorView.domEventHandlers({ paste })`, research 04 §3.7), listed here
@@ -480,6 +489,9 @@ the palette, the block's context menu, and (for Todo only) the slash menu's "TOD
 | `nav.followLink` | Follow link under cursor | Alt+Enter | Alt+Enter | `editorFocused && caretInLink` |
 | `search.open` | Open search | Cmd+Shift+F | Ctrl+Shift+F | `true` |
 | `nav.openPageOnShelf` | Open this page on shelf | — | — | `true` |
+| `nav.openPage` | Open page | — | — | `true` |
+| `nav.revealBlock` | Reveal block | — | — | `true` |
+| `search.findReplace` | Find and replace… | — | — | `true` |
 
 **R40.** `palette.open` opens one shared palette component (§ Interfaces, `PaletteState`) in
 **mixed mode**: as the user types, results interleave fuzzy-matched pages/journals and fuzzy-
@@ -515,6 +527,14 @@ form exists specifically for the editing case.
 page route — `when` cannot see the route). In the palette, Shift+Enter or Shift+click on a page row
 puts that page on the shelf instead of opening it, and the palette shows a one-line hint saying so
 while a page row is highlighted.
+
+**R43b.** `nav.openPage` (`args: { page, blockId? }`) and `nav.revealBlock` (`args: { blockId }`)
+are the live-UI channel's primitives (ADR 015 §2.4): open a page by name, id, ISO date or
+`today`/`yesterday`/`tomorrow` with no picker (zooming to `blockId` if given), and scroll a block
+into view and flash it without changing zoom or focus. Without their arguments they do nothing, so
+both are `requiresArgs` (R1a) and never listed in the palette — "Switch page" is the human form.
+`search.findReplace` opens the Find and replace view (ADR 020): a text or pattern search across
+every block with an undoable replace-all.
 
 **R44.** `search.open` opens the full-text/semantic/hybrid search view (PLAN §9) — filterable by
 tag/page/namespace/date/marker, with snippets. This is **not** the excluded graph-view feature
@@ -568,6 +588,8 @@ exist for the palette, the slash menu ("page ref" / "tag" items), and the mobile
 | `block.embedBlock` | Embed block | — | — | `editorFocused` |
 | `block.insertToday` | Today's date | — | — | `editorFocused` |
 | `block.insertProperty` | Property | — | — | `editorFocused` |
+| `block.insertTemplate` | Insert template… | — | — | `editorFocused` |
+| `block.insertQueryFence` | Query | — | — | `editorFocused` |
 | `block.openSlashMenu` | Open slash menu | — | — | `editorFocused && atLineStart` |
 
 **R48.** `block.setHeading1/2/3` prefix the block's content with `# `/`## `/`### ` (replacing any
@@ -590,6 +612,13 @@ property-key picker (fuzzy list of existing property-definition pages, plus "Cre
 inserts a `key:: ` line at the correct position (a contiguous property-line run at the very start
 or very end of the block's content — the parser's rule, research 04 §4.2 — never in the middle).
 
+**R49a.** `block.insertTemplate` (ADR 019) opens a picker over the graph's templates (any block with
+`template:: <name>`) and copies the chosen template's blocks at the caret, filling `<% today %>`,
+`<% yesterday %>`, `<% tomorrow %>` and `<% time %>`; `args: { name }` (or the name as a string)
+skips the picker. `block.insertQueryFence` (ADR 011) wraps the block's current text in a
+```` ```query ```` fence — the text becomes the query — with the caret at the end of the query
+line.
+
 **R50.** `block.openSlashMenu` inserts the literal character `/` at the caret and lets the normal
 slash-trigger matcher (§ F) pick it up — it exists solely so the mobile toolbar can offer a `/`
 button without the user first tapping to position the caret at a valid trigger spot; its `when`
@@ -608,6 +637,7 @@ behavior exactly rather than special-casing mobile.
 | `sync.now` | Sync now | — | — | `true` |
 | `app.toggleTheme` | Toggle theme | — | — | `true` |
 | `app.hideKeyboard` | Hide keyboard | — | — | `mobile && editorFocused` |
+| `edit.mergePage` | Merge this page into… | — | — | `true` |
 
 **R51.** `edit.undo` / `edit.redo` operate the document-level history manager of ADR 006 / research
 04 §7 (a document-level history of inverse ops with 500 ms text coalescing — CM6's own
@@ -625,7 +655,10 @@ is automatic; this is a rare manual escape hatch, reachable from the palette and
 icon click). `app.toggleTheme` cycles light → dark → system. `app.hideKeyboard` calls
 `platform.keyboard.hide()` (research 08 §3.2's `KeyboardAdapter`) and commits/unmounts the
 surface without navigating away from the block; it only appears (as the toolbar's rightmost
-button, § Mobile) when `mobile`.
+button, § Mobile) when `mobile`. `edit.mergePage` (ADR 020; `edit.`, because R2's areas are closed
+and an unknown one blanks the app — B-87) asks for a target page and merges the current page into
+it (`page.merge`: blocks moved, links rewritten, the old name kept as an alias). Off a page route it
+does nothing; `when` cannot see the route.
 
 ### F. Slash menu
 
@@ -660,10 +693,12 @@ the block first.
 | Tag | `format.insertTag` | `#` |
 | Today's date | `block.insertToday` | journal, now |
 | Property | `block.insertProperty` | metadata, `::` |
+| Template | `block.insertTemplate` | snippet, insert, tpl |
+| Query | `block.insertQueryFence` | query, filter, tasks, search, ```` ```query ```` |
 
-Templates are **not** a core slash item (PLAN §2 cuts templates from core entirely — "later as a
-plugin or slash command"); a plugin that adds one contributes it declaratively the same way any
-plugin command joins the slash menu (PLAN §12/§13), appearing under its own category once loaded.
+Templates **are** a core slash item: ADR 019 reversed PLAN §2's "later as a plugin or slash
+command". A plugin that adds an item contributes it declaratively the same way any plugin command
+joins the slash menu (PLAN §12/§13), appearing under its own category once loaded.
 
 **R55.** Items are filtered by the typed query (the text after `/`) against `Label` **and**
 `Keywords` using the same fuzzy scorer as the palette (§ H); with an empty query, items show in
