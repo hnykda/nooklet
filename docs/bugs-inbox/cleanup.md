@@ -33,3 +33,19 @@ before: Find & Replace hint, Search address, History Undo hint), and the guard
 `apps/web/src/source-guards.test.ts` (2 of 2 failed before: a hand-rolled formatter in a UI file,
 `"batch.undo"` outside `refactor-api.ts`).
 
+### B-144 (existing)
+
+**Fixed 2026-09-13.** Both tests spent their own timeout loading a module cold: `page-title.test.ts`'s
+first `vi.resetModules()` + `import("./page-title.js")` (the first test measured 609–724 ms here,
+every later one 1–3 ms), and `render-seams.test.tsx`'s first query fence, whose `lazy()`
+`import("./QueryFenceView.js")` had to transform the view and its imports inside `waitFor`'s 1 s.
+Each file now imports that module statically, so it is loaded while the file is collected, where no
+timeout runs; the tests then wait on a cached module (3 ms). Evidence that this removes the load
+dependency rather than widening a margin: copies of both tests with the budget cut below the cold
+cost — a 150 ms test timeout for the page-title test, an 8 ms `waitFor` for the fence — failed 3 of
+3 runs cold and passed 3 of 3 with the static import (probe copies deleted after; numbers only).
+**Test:** the two tests themselves, `apps/web/src/data/page-title.test.ts` "renders a journal by its
+day and an ordinary page by its name" and `apps/web/src/editor/render/render-seams.test.tsx` "says
+what is wrong, and where, for a query that does not parse". `embed.test.tsx` already works around the
+same lazy-chunk cost with a 5 s `waitFor`; left as it is.
+

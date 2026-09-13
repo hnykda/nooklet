@@ -23,6 +23,11 @@ vi.mock("../../data/queries.js", () => ({
 import { _resetHighlightCache } from "./highlight.js";
 import { _setMathForTests } from "./math.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
+// `tokens.tsx` loads the query fence lazily. Loading it here, while the file is collected (no
+// timeout runs), leaves the first query test's `waitFor` (1 s) waiting on a cached import — 3 ms —
+// rather than on transforming the module and its imports, which took over a second under load
+// and failed that test with the plain `<pre>` fallback still on screen (B-144).
+import "./QueryFenceView.js";
 
 afterEach(() => {
   cleanup();

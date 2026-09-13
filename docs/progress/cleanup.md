@@ -25,18 +25,24 @@ Brief, four parts:
   views+replace+graph+history+trash+references+link-unlinked+diagnostics+settings+refactor+
   plugins+connectivity+search-filters 95/96 — the one failure is `views.spec.ts:461` (palette
   focus: `.cm-content` "inactive" after Escape), failed on rerun too; same test rv-web-security
-  saw failing at `da85cfb`. Checking it against `cf08d19` next.
+  saw failing at `da85cfb`. It fails at `cf08d19` too (1/1, `git switch --detach cf08d19`): it is
+  B-161 (logged five times already), not caused here; not logged again.
+- Part 1 commit `6812379`.
+- Part 3 / B-144 (commit "test(web): load the module a flaky first test waited on…"): both test
+  files import the slow module statically (loaded at collection, no timeout). Probe: copies with
+  the budget cut below the cold cost failed 3/3 cold, passed 3/3 warm. Web unit 1015/1015.
 
 ## In flight
 
-- Is `views.spec.ts:461` failing at `cf08d19` too? `git switch --detach cf08d19`, run that one
-  test on port 6405, `git switch m9/cleanup`. If the worktree is found detached, switch back first.
+- nothing uncommitted.
 
 ## Next steps, in order
 
-1. Part 3 (B-144).
-2. Part 2 (page paths) — probe first.
-3. Part 4 (B-180).
+1. Part 2 (page paths): probe namespaced pages (`a/b`) through palette, [[link]] click, Alt+Enter,
+   shelf, references, trash, history, tagged pages, sidebar favourites/recent, query/embeds; fix
+   what produces `%2F`; `routes/page-path.ts` as in `373c654`; e2e test.
+2. Part 4 (B-180).
+3. Final: `pnpm -r test`, e2e of touched specs, progress + return.
 
 ## Decisions
 
