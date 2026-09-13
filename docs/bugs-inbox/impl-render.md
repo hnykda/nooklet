@@ -22,7 +22,37 @@ their properties too (it wrote `properties: {}`).
 ---
 
 ### B-101 (existing)
-Block properties are invisible in the UI, and `/property` writes literal text.
+Block properties are invisible in the UI, and `/property` writes literal text. **Test:**
+`e2e/tests/block-properties.spec.ts` "show as chips under the block, and as key:: value lines while
+it is edited", "a typed key:: value line is stored as a property, not as text", "/property inserts a
+line that becomes a real property (the audit's D7 repro)", "editing a value and deleting a line
+change and remove properties; undo restores"; unit `packages/core/src/block-text.test.ts`,
+`apps/web/src/editor/editText.test.ts`, `commands/registrations/insert-logic.test.ts`
+
+**Fixed 2026-09-13.** Both halves, on the seam B-100 opened (`EditableBlock.properties`):
+- *Seeing them.* `editor/BlockProperties.tsx` renders a block's properties as compact muted
+  `key: value` chips under its rendered content (values through `InlineContent`, so `[[links]]`
+  navigate; clicking elsewhere on the chips enters edit mode). Hidden: `list` (the ordinal says it)
+  and the keys Logseq's own `hidden-built-in-properties` hides (`hl-*`, `ls-type`, `query-*`,
+  timestamps). Chips sit under the *whole* content, not between line 1 and line 2 as in Logseq —
+  the rendered view's click-to-caret mapping needs one view over the whole content.
+- *Editing them.* While a block is edited its buffer is its editing text — content plus
+  `key:: value` lines (new `markdown-grammar.md` OUT-22a, `packages/core/src/block-text.ts`). On
+  flush the buffer is split back with the outline parser's own line rules and written as a
+  `block.text` if the text moved plus one `block.prop` per property added, changed or removed,
+  diffed against the block as the edit began (so a property set elsewhere meanwhile survives).
+  `BlockTree.tsx` maps carets between buffer and content at the surface boundary (split at the
+  caret, history carets, attach). Undo works on properties: `invert.ts` reads the prior value from
+  `properties` (it inverted generic keys to `null`), `optimistic.ts` models generic `block.prop`,
+  and `history.ts` merges coalesced transactions per field (replacing wholesale lost a property
+  written earlier in the same typing burst).
+- `/property` inserts `:: ` under line 1 and the existing property lines with the caret before it
+  (type the key, End, the value); a `key` placeholder would itself be written as a property.
+Reserved keys (`scheduled::` etc.) and `heading::` typed in the buffer stay text, as before (B-96/
+B-102 own dates). Literal `key:: value` lines already sitting in some block's content (the old
+`/property` output) become real properties the first time that block is edited — which is what the
+same text in a file means. Also: Enter in a numbered item continues the list, and duplicate copies
+generic properties (`commands.test.ts`).
 
 ---
 

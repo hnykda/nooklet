@@ -32,7 +32,14 @@
  * where they bite in `render/tokens.tsx`.
  */
 import type { EditorView } from "@codemirror/view";
-import { formatDayTime, makeOp, type Op, type OutlineNode, serializeOutline } from "@nooklet/core";
+import {
+  blockTextPayloads,
+  formatDayTime,
+  makeOp,
+  type Op,
+  type OutlineNode,
+  serializeOutline,
+} from "@nooklet/core";
 import "./editor.css";
 import {
   createEffect,
@@ -71,6 +78,13 @@ import {
   setCollapsed,
   splitBlock,
 } from "./commands.js";
+import {
+  caretInEditText,
+  contentOffsetOf,
+  editTextMatches,
+  editTextOf,
+  withEditText,
+} from "./editText.js";
 import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
@@ -175,7 +189,9 @@ export function BlockTree(props: {
         // disagrees", and doing that here reverted a split mid-keystroke (found fixing B-66).
         // Local operations that change this block's text — undo, redo, a merge — update the
         // editor themselves at commit time (`commit`), where there is nothing to guess.
-        flat[idx] = { ...(flat[idx] as EditableBlock), content: live };
+        // The buffer holds property lines too (B-101), so it is split back into content and
+        // properties rather than copied into `content`.
+        flat[idx] = withEditText(flat[idx] as EditableBlock, live);
       } else {
         // The block being edited is not in this query result yet — it was just created
         // optimistically (Enter for a new sibling) and the write has not committed by the time
@@ -184,7 +200,7 @@ export function BlockTree(props: {
         // Enter followed by "second bullet" landing as "cond bullet". Keep the local row and let
         // the next refetch, which will contain it, take over.
         const local = untrack(localBlocks).find((b) => b.id === editingBlockId);
-        if (local) flat.push({ ...local, content: live });
+        if (local) flat.push(withEditText(local, live));
       }
     }
     setLocalBlocks(flat);
@@ -341,8 +357,12 @@ export function BlockTree(props: {
   function syncSurfaceFromTree(): void {
     const cur = editingId();
     if (cur === null || surface.currentId() !== cur || pendingEdit !== null) return;
-    const next = untrack(editorTree).byId.get(cur)?.content;
-    if (next !== undefined && next !== surface.content()) surface.replaceContent(cur, next);
+    const block = untrack(editorTree).byId.get(cur);
+    // Compared as content + properties, not as text: the buffer may list property lines in another
+    // order, or anywhere below line 1, and rewriting it for that would jump the caret mid-edit.
+    if (block && !editTextMatches(block, surface.content())) {
+      surface.replaceContent(cur, editTextOf(block));
+    }
   }
 
   function flushPendingEdit(): void {
@@ -359,20 +379,30 @@ export function BlockTree(props: {
     // typed was silently thrown away. Absent from the snapshot is not "unchanged": fall back to
     // the live tree, and only skip when the content genuinely has not moved.
     const before = treeBefore.byId.get(id) ?? editorTree().byId.get(id);
-    if (before && before.content === content) return;
+    // `content` here is the whole buffer: the block's text plus its `key:: value` lines. What gets
+    // written is the difference from `before` — a `block.text` if the text moved, one `block.prop`
+    // per property line added, changed or removed (B-101). Writing the buffer verbatim is what made
+    // `/property` (and any typed property line) land in the text, where nothing reads it as one.
+    const payloads = blockTextPayloads(before ?? { content: "", properties: {} }, content);
+    if (before && payloads.length === 0) return;
     const clock = clockSig();
     if (!clock) return;
+    const ops =
+      payloads.length > 0
+        ? payloads.map((p) => makeOp(clock.next(), clock.device, id, p))
+        : [makeOp(clock.next(), clock.device, id, { kind: "block.text", content })];
+    // Carets in history are content offsets, like every other `CaretSpec` in this file; they are
+    // mapped back into the buffer when the surface re-attaches (`caretInEditText`).
     const headAfter = surface.currentId() === id ? surface.head() : content.length;
-    const op = makeOp(clock.next(), clock.device, id, { kind: "block.text", content });
     history.record(
-      [op],
+      ops,
       treeBefore,
       "text",
       { id, caret: { offset: headBefore } },
-      { id, caret: { offset: headAfter } },
+      { id, caret: { offset: contentOffsetOf(content, headAfter) } },
       id,
     );
-    void applyOps([op]);
+    void applyOps(ops);
   }
 
   function attachEditing(id: BlockId, caret: CaretSpec): void {
@@ -383,9 +413,21 @@ export function BlockTree(props: {
     setEditingId(id);
   }
 
+  /** A content-relative caret for block `id`, as an offset into its buffer. */
+  function bufferCaret(id: BlockId, caret: CaretSpec): CaretSpec {
+    const block = editorTree().byId.get(id);
+    return block ? caretInEditText(block, caret) : caret;
+  }
+
   function surfaceHostRef(el: HTMLDivElement, forId: BlockId): void {
     const block = editorTree().byId.get(forId);
-    surface.attach(el, forId, block?.content ?? "", pendingCaret);
+    // The buffer is the block's editing text — content plus its property lines — and the caret,
+    // computed against content by whoever asked for this block, is moved to match (B-101).
+    if (!block) {
+      surface.attach(el, forId, "", pendingCaret);
+      return;
+    }
+    surface.attach(el, forId, editTextOf(block), caretInEditText(block, pendingCaret));
   }
 
   // Shared by the keyboard dispatch below AND the mobile gestures (swipe-to-indent/outdent,
@@ -436,7 +478,7 @@ export function BlockTree(props: {
     const treeBefore = editorTree();
     const curId = editingId();
     const before: FocusChange | null = curId
-      ? { id: curId, caret: { offset: surface.head() } }
+      ? { id: curId, caret: { offset: contentOffsetOf(surface.content(), surface.head()) } }
       : null;
     commit(res.ops, treeBefore, "structure", before, res.focus ?? before);
     if (res.focus) attachEditing(res.focus.id, res.focus.caret);
@@ -463,7 +505,7 @@ export function BlockTree(props: {
     } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
-      surface.setCaret(res.focus.caret);
+      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
     } else {
       attachEditing(res.focus.id, res.focus.caret);
     }
@@ -486,7 +528,7 @@ export function BlockTree(props: {
     } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
-      surface.setCaret(res.focus.caret);
+      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
     } else {
       attachEditing(res.focus.id, res.focus.caret);
     }
@@ -523,7 +565,15 @@ export function BlockTree(props: {
     const tree = editorTree();
     switch (cmd) {
       case "block.split":
-        runStructural(splitBlock(tree, id, view.state.selection.main.head, clock));
+        // The caret is in the buffer, which may hold property lines; the split divides content.
+        runStructural(
+          splitBlock(
+            tree,
+            id,
+            contentOffsetOf(view.state.doc.toString(), view.state.selection.main.head),
+            clock,
+          ),
+        );
         return true;
       case "block.newline":
         // R17: a newline inside the block. Not "return false and let CM6 insert it": the global
@@ -652,11 +702,17 @@ export function BlockTree(props: {
 
   function onTextChange(id: BlockId, content: string): void {
     if (!pendingEdit || pendingEdit.id !== id) {
-      pendingEdit = { id, content, treeBefore: editorTree(), headBefore: surface.head() };
+      pendingEdit = {
+        id,
+        content,
+        treeBefore: editorTree(),
+        headBefore: contentOffsetOf(content, surface.head()),
+      };
     } else {
       pendingEdit.content = content;
     }
-    setLocalBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, content } : b)));
+    // `content` is the buffer: split it, so the tree keeps content and properties apart (B-101).
+    setLocalBlocks((prev) => prev.map((b) => (b.id === id ? withEditText(b, content) : b)));
     if (flushTimer !== undefined) clearTimeout(flushTimer);
     flushTimer = setTimeout(flushPendingEdit, 500);
   }

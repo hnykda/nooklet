@@ -29,6 +29,7 @@ import {
   orderBetween,
   ordersBetween,
 } from "@nooklet/core";
+import { isNumbered } from "./numbering.js";
 import {
   applyPlaceInPlace,
   childrenIds,
@@ -87,6 +88,9 @@ export function splitBlock(
       kind: "block.create",
       place: newPlace,
       content: after,
+      // Enter in a numbered list continues it, as in every editor with numbered lists (B-100).
+      // Only as a sibling: a first child under a numbered item starts its own (plain) list.
+      ...(isNumbered(b) && !asFirstChild ? { properties: { list: "number" } } : {}),
       createdAt: now,
     }),
   );
@@ -346,6 +350,8 @@ export function duplicateBlock(
         marker: src.marker,
         priority: src.priority,
         collapsed: src.collapsed,
+        // A copy is a copy: its generic properties too, not only the task fields below.
+        ...(Object.keys(src.properties).length > 0 ? { properties: { ...src.properties } } : {}),
         createdAt: now,
       }),
     );

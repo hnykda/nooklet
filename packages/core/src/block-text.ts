@@ -106,7 +106,10 @@ export function joinBlockText(content: string, properties: Readonly<Properties>)
   const lines = Object.entries(editable).map(([key, value]) => `${key}:: ${value}`);
   if (lines.length === 0) return content;
   const props = lines.join("\n");
-  if (content === "") return props;
+  // An empty content still gets its (empty) line 1. Without it the caret of a fresh block — a new
+  // numbered item after Enter — sits at the start of `list:: number`, and the first word typed
+  // lands inside the property line instead of before it.
+  if (content === "") return `\n${props}`;
 
   const nl = content.indexOf("\n");
   const first = nl === -1 ? content : content.slice(0, nl);

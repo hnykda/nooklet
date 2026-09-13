@@ -128,11 +128,12 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       when: "editorFocused",
       // A real implementation opens a fuzzy key picker ("existing property-definition pages, plus
       // 'Create <key>'") before inserting; `ctx.args` lets a caller that already resolved a key
-      // (e.g. the picker UI) skip straight to insertion. Defaults to an empty key placeholder.
+      // (e.g. the picker UI) skip straight to insertion. Without one the line is `:: ` with the
+      // caret where the key goes (`insertProperty` explains why not a `key` placeholder).
       run(ctx) {
         const sel = editor.getSelection();
         if (!sel) return;
-        const key = typeof ctx.args === "string" && ctx.args ? ctx.args : "key";
+        const key = typeof ctx.args === "string" ? ctx.args : "";
         editor.replaceRange(insertProperty(sel.content, key));
       },
     },

@@ -9,6 +9,7 @@
 import { classifyBlockContent } from "@nooklet/core";
 import { createEffect, createMemo, onCleanup, Show } from "solid-js";
 import { lookupBlockText } from "../data/block-ref-cache.js";
+import { BlockProperties } from "./BlockProperties.js";
 import { Bullet } from "./Bullet.js";
 import { resolveClickOffset } from "./caret.js";
 import { attachSwipeRow } from "./gestures/swipeAttach.js";
@@ -207,6 +208,13 @@ export function BlockRowView(props: {
             }
           >
             <div class="vr-surface-host" ref={props.surfaceHost} />
+          </Show>
+          <Show when={!props.editing}>
+            <BlockProperties
+              properties={props.block.properties}
+              onNavigate={props.onNavigate}
+              onActivate={() => props.onEnterEdit(props.block.content.length)}
+            />
           </Show>
         </div>
       </div>

@@ -77,6 +77,14 @@ describe("joinBlockText", () => {
     expect(joinBlockText("title\nbody", { foo: "bar" })).toBe("title\nfoo:: bar\nbody");
   });
 
+  it("keeps an empty line 1 for an empty block, so typing at the caret is not typed into a property", () => {
+    const text = joinBlockText("", { list: "number" });
+    expect(text).toBe("\nlist:: number");
+    expect(contentOffsetToEditText(text, 0)).toBe(0);
+    const typed = `two${text}`;
+    expect(splitBlockText(typed)).toEqual({ content: "two", properties: { list: "number" } });
+  });
+
   it("puts a fenced block's properties after the fence, not inside it (B-151)", () => {
     expect(joinBlockText("```js\ncode\n```", { k: "v" })).toBe("```js\ncode\n```\nk:: v");
     expect(joinBlockText("```js\nnever closed", { k: "v" })).toBe("k:: v\n```js\nnever closed");

@@ -6,14 +6,24 @@ before any work). Task: B-100 numbered lists render, B-101 block properties visi
 writes a real property, B-99 `/image` opens a picker and uploads. e2e port 6401.
 
 ## Done
-(nothing but this file yet)
-
-## In flight
+- `6fb7ae6` core `block-text.ts` (split/join/offset maps/diff for editing text) + tests; B-151
+  logged with probe `tools/probes/serialize-fence-props.ts`.
+- `4d3750f` B-100: worker tree carries `properties`; `EditableBlock.properties` replaces
+  `listNumber`; e2e `block-properties.spec.ts` numbered-list tests (2/2 green on 6401).
 - Logged B-150 (paste upload has no token) in `docs/bugs-inbox/impl-render.md`.
 
+- (next commit) B-101: editing text in the buffer, chips (`BlockProperties.tsx`), `/property`,
+  undo/optimistic/history for generic props, Enter continues numbering, duplicate copies props,
+  spec OUT-22a. e2e `block-properties.spec.ts` 7/7; regression specs editing/popups/focus/
+  selection/parity/tasks/templates/rendering/render/assets/shelf/context-menu 156 passed,
+  1 skipped. Web unit 698–699/699: one different test failed in each of two full runs
+  (`render-seams.test.tsx`, then `page-title.test.ts`), both pass alone — load, not this change.
+
+## In flight
+- B-99 `/image`.
+
 ## Next, in order
-1. Data seam: worker page tree carries generic `properties`; `EditableBlock.properties`;
-   numbering from `list:: number` (B-100) + e2e.
+1. (done) Data seam + numbering.
 2. Editor buffer = content + property lines, split on flush (B-101), chips in `BlockRowView`,
    `/property` placeholder selected; undo/optimistic/history for generic props.
 3. `/image` (B-99) + B-150.

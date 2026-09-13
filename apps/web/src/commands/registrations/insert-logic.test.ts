@@ -69,6 +69,12 @@ describe("insertToday (R49)", () => {
 });
 
 describe("insertProperty (R49)", () => {
+  const apply = (content: string, key?: string) => {
+    const r = insertProperty(content, key);
+    const text = content.slice(0, r.from) + r.text + content.slice(r.to);
+    return { text, caret: r.from + (r.caretOffset as number) };
+  };
+
   it("appends key:: on a new line when the block already has content", () => {
     const result = insertProperty("Some text", "status");
     expect(result.text).toBe("\nstatus:: ");
@@ -83,6 +89,21 @@ describe("insertProperty (R49)", () => {
   it("does not double a trailing newline", () => {
     const result = insertProperty("line1\n", "status");
     expect(result.text).toBe("status:: ");
+    expect(result.from).toBe(6);
+  });
+
+  it("goes under line 1 and the properties already there, not below the paragraph (B-101)", () => {
+    expect(apply("title\na:: 1\nbody text", "b").text).toBe("title\na:: 1\nb:: \nbody text");
+  });
+
+  it("goes after a fence a block opens with, never inside it", () => {
+    expect(apply("```js\ncode\n```", "lang").text).toBe("```js\ncode\n```\nlang:: ");
+  });
+
+  it("with no key, leaves `:: ` and the caret where the key is typed", () => {
+    const { text, caret } = apply("start here");
+    expect(text).toBe("start here\n:: ");
+    expect(text.slice(caret)).toBe(":: ");
   });
 });
 
