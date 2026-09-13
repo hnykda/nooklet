@@ -204,6 +204,35 @@ describe("MCP tools/call", () => {
     expect(real.body.result.content[0].text).toMatch(/^merged /);
   });
 
+  // ADR 024: what an agent links, it can list and read, without creating it first.
+  it("a page an agent's block_update links is in page_list and readable with page_read", async () => {
+    const created = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_create",
+      arguments: { name: "MCP Notes", markdown: "- a thought" },
+    });
+    const blockId = created.body.result.structuredContent.created[0] as string;
+    const update = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "block_update",
+      arguments: { id: blockId, content: "a thought about [[Agent Made Page]]" },
+    });
+    expect(update.body.result.isError).toBeFalsy();
+
+    const list = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_list",
+      arguments: {},
+    });
+    expect(list.body.result.isError).toBeFalsy();
+    const names = (list.body.result.structuredContent.items as Array<{ name: string }>).map(
+      (p) => p.name,
+    );
+    expect(names).toContain("Agent Made Page");
+    const read = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_read",
+      arguments: { page: "Agent Made Page" },
+    });
+    expect(read.body.result.isError).toBeFalsy();
+  });
+
   it("returns isError for a not_found case", async () => {
     const { body } = await rpc(s.app, s.writeToken, "tools/call", {
       name: "page_read",
