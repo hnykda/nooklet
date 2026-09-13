@@ -16,6 +16,7 @@ import {
   openPage,
   pagePath,
   readBlocks,
+  seedPage,
 } from "../helpers/index.js";
 
 const notice = (page: Page) => page.locator(".vr-remote-notice");
@@ -213,4 +214,35 @@ test("with this tab's clock behind, typing into a block the row showed rewritten
   await page.keyboard.press("End");
   await page.keyboard.type(" more");
   await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe("rewritten more");
+});
+
+test("a rewrite while the [[ popup is open does not garble the pick", async ({ page }) => {
+  // The popup keeps the trigger's offset and re-detects only on keyup/pointerup; a rewrite taken
+  // into the buffer under it made Enter replace the wrong range (B-463).
+  const target = unique("Remote Edge Popup Target");
+  await seedPage(page, target, "- x");
+  const name = unique("Remote Edge Popup");
+  await openEditing(page, name, "- alpha\n- other");
+  const id = await idOf(page, name, "alpha");
+  const query = target.slice(0, "Remote Edge Popup Ta".length);
+  await page.keyboard.type(` see [[${query}`, { delay: 30 });
+  await expect(page.locator(".cmd-popup").first()).toBeVisible();
+  // Past the write debounce: nothing unsaved in the buffer, only the open popup.
+  await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe(`alpha see [[${query}`);
+
+  await api(page, "block.update", { id, old_str: "alpha", new_str: "ALPHA BETA" });
+  await expect(notice(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".cmd-popup").first()).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => editorText(page)).toBe(`alpha see [[${target}]]`);
+  await expect
+    .poll(() => storedText(page, name), { timeout: 15_000 })
+    .toBe(`alpha see [[${target}]]`);
+
+  // And the other version is still there to take, whole.
+  await notice(page).getByRole("button", { name: "Use the other version" }).click();
+  await expect.poll(() => editorText(page)).toBe(`ALPHA BETA see [[${query}`);
+  await expect
+    .poll(() => storedText(page, name), { timeout: 15_000 })
+    .toBe(`ALPHA BETA see [[${query}`);
 });

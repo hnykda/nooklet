@@ -59,7 +59,7 @@ import {
 } from "../app/editor-host.js";
 import { isPrinting } from "../app/print.js";
 import { openOnShelf } from "../app/shelf.js";
-import { dispatchPopupKey, isPopupOpen } from "../commands/popup-keys.js";
+import { dispatchPopupKey, isEditorPopupOpen, isPopupOpen } from "../commands/popup-keys.js";
 import { displayPageName } from "../data/page-title.js";
 import { applyOps, usePageProperties, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
@@ -294,7 +294,10 @@ export function BlockTree(props: {
         const verdict = untrack(() =>
           textVersions.decide(editingBlockId, hlc, {
             sameText: editTextMatches(fetchedEdited, live),
-            unsaved: hasUnsavedTyping(editingBlockId),
+            // An open `[[`/`/` popup is an edit in progress too: it replaces a range it measured
+            // when it opened, and re-measures only on a key, so the text must not move under it —
+            // Enter then garbled the rewrite (B-463). The newer version is offered instead.
+            unsaved: hasUnsavedTyping(editingBlockId) || isEditorPopupOpen(),
             sameAsBeforeTyping: sameAsBeforeTyping(editingBlockId, fetchedEdited),
           }),
         );

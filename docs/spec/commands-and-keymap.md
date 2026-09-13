@@ -742,7 +742,8 @@ editor made to that block; an older one is a read from before the editor's own w
 reaches the buffer. With no typing waiting in the write debounce, the editor takes the new text and
 maps the caret through the change: before the changed span it keeps its offset, after it keeps its
 distance from the end, inside it goes to the end of the new span, and at the end of the text it
-stays at the end. With typing waiting, the buffer keeps the typing and the row shows "This block
+stays at the end. With typing waiting — or with a `[[`/`#`/`((` or `/` popup open, which acts on
+offsets into the buffer (B-463) — the buffer keeps the typing and the row shows "This block
 changed elsewhere." with **Use the other version** (writes that text as one undo step; the waiting
 keystrokes are dropped, and Cmd/Ctrl+Z brings them back) and **Keep mine** (dismisses; the typing is
 written as usual, and that version is not offered again). A newer version whose text is the text

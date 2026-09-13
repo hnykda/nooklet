@@ -85,3 +85,16 @@ Scratch `…/scratchpad/m11/remote-rewrite-verify/`, same port 6412.
   `content_hlc` into the editor clock, replacing the offer-only receive) and `decide`'s
   `sameAsBeforeTyping` → `untouched`. Both specs 17/17; mutation of each fix fails its tests
   (4/4 with both mutated); web unit 1158/1158; `pnpm -r typecheck` clean.
+- `a1e3995` B-461/B-462 fix. Regression after it on 6412: editing, focus, undo-redo, redo,
+  undo-gaps, remote-device, refactor, editing-row-leaves 64/64; journal-stream-editing,
+  journal-day-start, journal-draft-sync, template-undo, templates, block-properties,
+  merge-keeps-fields, reload-durability, context-menu, tasks 62 passed + 1 skipped; autocomplete,
+  autocomplete-busy-replica, selection, replace-stale, trash-conflict, dates, connectivity,
+  agent-ops, popups, a-fresh-journal, history, history-later-edits 98/98.
+- B-463 (logged 814be5a): a take under an open `[[` popup garbled the pick (`ALPHA BETA sZz Target
+  Page]]z Tar` written). Fix: an editor-fed popup counts as unsaved in the verdict → offered. Test
+  in the edges spec, red before. Then remote-rewrite ×2 specs + autocomplete, autocomplete-busy,
+  commands, context-menu, refactor, popups: 93 passed, 1 skipped; web unit 1158/1158; typecheck.
+- Phone width (390 px, scratch run, not kept): the notice wraps inside the row (330 px wide, no
+  horizontal scroll); "Use the other version" works there.
+- Next: real-graph copy — the author's probe with these fixes, then `pnpm nooklet verify`.

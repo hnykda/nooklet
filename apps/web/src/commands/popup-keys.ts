@@ -46,6 +46,13 @@ export function isPopupOpen(): boolean {
   return claim() !== null;
 }
 
+/** Reactive: true while a popup the editor feeds — the `[[`/`#`/`((` autocomplete or the slash menu —
+ * is open. Those act on offsets into the buffer taken when they opened, so a document change that
+ * came from no key (a rewrite from elsewhere, B-463) must not happen under them. */
+export function isEditorPopupOpen(): boolean {
+  return claim()?.editorFed === true;
+}
+
 /** Claim the popup keys. Returns the release function; call it when the popup closes. Only one
  * popup is ever open at a time (CommandLayer renders at most one), so the latest claim wins. */
 export function claimPopupKeys(fn: PopupKeyHandler, options: PopupKeyClaim = {}): () => void {

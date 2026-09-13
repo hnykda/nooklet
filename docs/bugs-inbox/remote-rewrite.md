@@ -133,8 +133,9 @@ lost to it is followed on the next refetch with nothing unsaved. Mutation-checke
 ---
 
 ### B-463 · A rewrite taken into the editor while the `[[` popup is open garbles the pick
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, m11/remote-rewrite verification pass
-(scratch e2e) · **Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, m11/remote-rewrite verification pass
+(scratch e2e) · **Test:** `e2e/tests/remote-rewrite-edges.spec.ts` "a rewrite while the [[ popup is
+open does not garble the pick"
 
 Type ` see [[Zz Tar` into `alpha` and pause past the write debounce, popup open. An agent's
 `block.update {old_str: "alpha", new_str: "ALPHA BETA"}` lands; with nothing unsaved the editor takes
@@ -145,3 +146,9 @@ Cause: the `[[`/`#`/`((`/`/` popups keep the trigger's `from` offset, and `Comma
 triggers only on keyup and pointerup. The take (`BlockTree#takeRemoteText`) changes the document
 with neither, so the pick replaces a range computed against the text before the rewrite. Undo with
 a popup open does not hit this: Cmd/Ctrl+Z's own keyup re-detects.
+
+Fixed 2026-09-13: an open editor-fed popup (`commands/popup-keys.ts#isEditorPopupOpen` — the
+autocomplete and the slash menu, not the context menu, palette or pickers) counts as unsaved typing
+in B-192's verdict, so the newer version is offered on the row instead of taken under the popup. The
+pick lands in the buffer it measured (`alpha see [[…]]`, written), and **Use the other version**
+still takes the other text whole. The test failed before the fix (no notice: the text was taken).
