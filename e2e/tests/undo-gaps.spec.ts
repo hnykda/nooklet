@@ -5,7 +5,9 @@
  * - B-142: a date set with the picker, a priority or a marker set from the palette, were written
  *   through the command `Store` straight to `applyOps`, which the tree's `EditHistory` never sees.
  * - B-191: undo of `/template` into a bullet that already had one of the template's properties.
- * (B-194 and B-162 tests are added with their fixes.)
+ * - B-194: Cmd/Ctrl+Z after the block with the last edit left the page.
+ * - B-162: undo of a collapse (and of Collapse all) ended editing, so redo had no keyboard target.
+ * - B-280: a collapse right after typing was undone after the typing, not before it.
  *
  * Every claim about what was stored reads the server (`page.read`), never the DOM. Page names
  * start `Undo Gaps` and the template is `undogapsprop`, so nothing collides with another spec on
@@ -17,12 +19,15 @@ import {
   api,
   clickRow,
   editingRowIndex,
+  editor,
   editorText,
   expectEditorFocusedNow,
   isoOffset,
   MOD,
   openEditing,
   openPage,
+  readBlocks,
+  rowTexts,
   seedPage,
 } from "../helpers/index.js";
 
@@ -210,4 +215,125 @@ test.describe("template into a bullet with a property", () => {
       ]);
     await expect.poll(() => editorText(page)).toBe("\nkind:: a");
   });
+});
+
+// ── B-194 ─────────────────────────────────────────────────────────────────────────────────────────
+
+test("Cmd/Ctrl+Z after the edited block left the page neither reaches it nor loses the editor (B-194)", async ({
+  page,
+}) => {
+  const name = "Undo Gaps Left Src";
+  const dst = "Undo Gaps Left Dst";
+  await seedPage(page, dst, "- already here");
+  const outliner = await openEditing(page, name, "- keep\n- goes\n  - child");
+  await clickRow(page, outliner, 1);
+  const goes = (await readBlocks(page, name)).find((b) => b.content === "goes");
+  if (!goes) throw new Error("no block goes");
+  await page.keyboard.press("End");
+  await page.keyboard.type(" typed");
+
+  await api(page, "block.move_to_page", { id: goes.id, page: dst });
+  await expect.poll(() => rowTexts(page, outliner), { timeout: 15_000 }).toEqual(["keep"]);
+  await expect
+    .poll(async () => (await readBlocks(page, dst)).map((b) => b.content), { timeout: 15_000 })
+    .toEqual(["already here", "goes typed", "child"]);
+
+  await clickRow(page, outliner, 0);
+  await page.keyboard.press("End");
+  await page.keyboard.press(`${MOD}+z`);
+  await page.keyboard.type("Z");
+
+  // The editor stayed in "keep" and took the keystroke…
+  await expect(editor(page)).toHaveText("keepZ");
+  expect(await editingRowIndex(page, outliner)).toBe(0);
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["keepZ"]);
+  // …and the block on the other page, where nobody is looking, kept what was typed into it.
+  expect((await readBlocks(page, dst)).map((b) => b.content)).toEqual([
+    "already here",
+    "goes typed",
+    "child",
+  ]);
+});
+
+// ── B-162 ─────────────────────────────────────────────────────────────────────────────────────────
+
+test("undoing a collapse keeps editing, so redo collapses it again from the keyboard (B-162)", async ({
+  page,
+}) => {
+  const name = "Undo Gaps Collapse";
+  const outliner = await openEditing(page, name, "- parent\n  - kid\n  - kid two");
+  await page.keyboard.press(`${MOD}+ArrowUp`);
+  await expect(outliner.locator(".vr-row")).toHaveCount(1);
+  await expect.poll(async () => (await firstBlock(page, name))?.collapsed).toBe(true);
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect(outliner.locator(".vr-row")).toHaveCount(3);
+  await expect.poll(async () => (await firstBlock(page, name))?.collapsed ?? false).toBe(false);
+  await expectEditorFocusedNow(page, "after undoing the collapse");
+  expect(await editingRowIndex(page, outliner)).toBe(0);
+
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  await expect(outliner.locator(".vr-row")).toHaveCount(1);
+  await expect.poll(async () => (await firstBlock(page, name))?.collapsed).toBe(true);
+  await expectEditorFocusedNow(page, "after redoing the collapse");
+});
+
+test("undoing Collapse all keeps editing a block that stayed on screen, and redo folds again (B-162)", async ({
+  page,
+}) => {
+  const name = "Undo Gaps Collapse All";
+  const outliner = await openEditing(page, name, "- top\n  - inner\n- other\n  - deep");
+  await runFromPalette(page, "Collapse all");
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  expect(await editingRowIndex(page, outliner)).toBe(0);
+  // Back into the row that stayed: the palette does not hand focus back (the B-270 family).
+  await clickRow(page, outliner, 0);
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect(outliner.locator(".vr-row")).toHaveCount(4);
+  await expectEditorFocusedNow(page, "after undoing Collapse all");
+
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await expect
+    .poll(async () => (await serverBlocks(page, name)).map((b) => b.collapsed === true))
+    .toEqual([true, false, true, false]);
+});
+
+// ── B-280 ─────────────────────────────────────────────────────────────────────────────────────────
+
+test("typing then collapsing inside the write debounce: Cmd/Ctrl+Z undoes the collapse first (B-280)", async ({
+  page,
+}) => {
+  const name = "Undo Gaps Type Then Collapse";
+  const outliner = await openEditing(page, name, "- parent\n  - kid");
+  await page.keyboard.type(" more");
+  await page.keyboard.press(`${MOD}+ArrowUp`); // well inside the 500 ms debounce
+  await expect(outliner.locator(".vr-row")).toHaveCount(1);
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await expect(editor(page)).toHaveText("parent more");
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect(editor(page)).toHaveText("parent");
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+});
+
+test("typing then Cmd/Ctrl+Enter inside the write debounce: Cmd/Ctrl+Z takes back the marker first (B-142, B-280)", async ({
+  page,
+}) => {
+  // The block ends up with no marker: `query.spec.ts` counts open tasks on the shared graph.
+  const name = "Undo Gaps Type Then Cycle";
+  await openEditing(page, name, "- errand");
+  await page.keyboard.type(" run");
+  await page.keyboard.press(`${MOD}+Enter`);
+  await expect.poll(async () => (await firstBlock(page, name))?.marker).toBe("TODO");
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(async () => (await firstBlock(page, name))?.marker ?? null).toBeNull();
+  await expect(editor(page)).toHaveText("errand run");
+  await expect.poll(async () => (await firstBlock(page, name))?.content).toBe("errand run");
 });

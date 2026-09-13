@@ -8,7 +8,8 @@ Entries in `docs/BUGS.md` format, to be folded in by the coordinator. Every test
 **Status:** fixed · **Tests:** `e2e/tests/undo-gaps.spec.ts` "Cmd/Ctrl+Z takes back a date set
 with the picker, keeps editing, and redo sets it again (B-142)", "Cmd/Ctrl+Z takes back a date
 picked from a chip, with nothing being edited (B-142)", "priority and marker set from the palette
-are each one Cmd/Ctrl+Z (B-142)"; `apps/web/src/app/hosts.test.ts` "createStore block-property
+are each one Cmd/Ctrl+Z (B-142)", "typing then Cmd/Ctrl+Enter inside the write debounce:
+Cmd/Ctrl+Z takes back the marker first (B-142, B-280)"; `apps/web/src/app/hosts.test.ts` "createStore block-property
 writes (B-142)" (3); `apps/web/src/app/editor-host.test.ts` "a command's op batch reaches a tree
 that shows its block, focused or not (B-142)" (3)
 
@@ -22,7 +23,9 @@ builds every `setBlockProp`/`setBlockProps` write as one `OpBatch` and hands it 
 `EditorHost.commitOps` (the method `/template` already used, B-108), falling back to `applyOps`
 only when no tree takes it. Every store-routed write is covered at once: the date picker (slash
 item, palette row, chip), `task.cycle`/`task.toggleDone`/`task.setMarker*`/`task.clearMarker`
-from the palette or menu, and `task.setPriorityA/B/C`. `liveEditorHost.commitOps`
+from the palette or menu, and `task.setPriorityA/B/C`. That includes Cmd/Ctrl+Enter itself, which
+the global dispatcher runs as the `task.cycle` command through the store, not through
+`BlockTree#runCommand`: it was not undoable on `cf08d19` either (see B-280's second test). `liveEditorHost.commitOps`
 (`app/editor-host.ts#commitThroughEditor`) now tries the active tree, then the tree whose session
 ended last, then every mounted one (`registerEditorHost`, one line in `BlockTree`), and the tree
 that takes the batch becomes the undo target. Without that, a date picked from a chip — nothing
@@ -54,20 +57,78 @@ caught it.
 
 ### B-194 (existing)
 
-**Status:** in progress · **Test:** `e2e/tests/undo-gaps.spec.ts` "Cmd/Ctrl+Z after the edited block
-left the page neither reaches it nor loses the editor (B-194)"
+**Status:** fixed · **Tests:** `e2e/tests/undo-gaps.spec.ts` "Cmd/Ctrl+Z after the edited block
+left the page neither reaches it nor loses the editor (B-194)"; `apps/web/src/editor/history.test.ts`
+"EditHistory — steps on blocks that left the tree are dropped (B-194)" (4);
+`apps/web/src/editor/undo-focus.test.ts` (5)
 
 Reproduced on `cf08d19`: after the move, click into "keep", End, Cmd+Z, type "Z" — no
 `.cm-content` anywhere (`element(s) not found`).
+
+**Fixed 2026-09-13.** Both halves the entry offered, since they answer different questions:
+- *Should an undo reach a block that left?* No. `EditHistory.undo`/`redo` take a `present(id)`
+  predicate (`BlockTree#stillInTree`: in the tree, or created here and not yet returned by a
+  refetch) and drop, not skip, every step on top whose recipes write to a block that is not present
+  and is not revived by the step itself (`history.ts#reachable`) — then apply the next older one.
+  Cmd/Ctrl+Z in a page only changes what that page shows; the text typed into "goes" stays on the
+  page it was moved to. Dropped rather than kept for later: if the block comes back, an undo
+  reaching it then would be a surprise, not an undo.
+- *Where does the editor go?* A recorded caret is followed only into a block that has a row
+  (`editor/undo-focus.ts#focusAfterStep`), so it can no longer be attached to a block nothing
+  renders (also: under a collapsed parent, outside the zoom root, filtered out by find in page).
+
+**Owner's call, flagged:** the entry left "should an undo reach a block that left?" to the owner.
+This branch answers no. If the answer should be yes, delete the `present` argument in `doUndo`/
+`doRedo` (two call sites); the focus rule stays either way. The e2e test fails on `cf08d19` and
+passes with the change.
 
 ---
 
 ### B-162 (existing)
 
-**Status:** in progress · **Test:** `e2e/tests/undo-gaps.spec.ts` "undoing a collapse keeps editing,
-so redo collapses it again from the keyboard (B-162)", "undoing Collapse all keeps editing a block
-that stayed on screen, and redo folds again (B-162)"
+**Status:** fixed · **Tests:** `e2e/tests/undo-gaps.spec.ts` "undoing a collapse keeps editing, so
+redo collapses it again from the keyboard (B-162)", "undoing Collapse all keeps editing a block that
+stayed on screen, and redo folds again (B-162)"; `apps/web/src/editor/undo-focus.test.ts`
 
 Reproduced on `cf08d19` by both: after Cmd+Z the active element is `<body>`.
+
+**Fixed 2026-09-13.** The cause was the one the entry read: `doUndo`/`doRedo` treated a step with
+no recorded caret as "detach the surface", and collapse, expand, Collapse all, a keyboard marker
+cycle and a command's batch all record none. Rather than record a caret at each of those call
+sites, the rule itself changed (`editor/undo-focus.ts#focusAfterStep`, used by the one
+`BlockTree#applyHistoryStep` both now share): no caret to follow leaves the editor where it is
+while its row is on screen, and ends editing only when the step took that row away (an undone
+create, an undone expand folding it back). That covers every null-focus step at once, including
+ones nobody listed (Cmd/Ctrl+Enter then Cmd/Ctrl+Z also ended editing). Both e2e tests fail on
+`cf08d19` and pass with the change.
+
+---
+
+### B-280 · Typing then collapsing within half a second: Cmd/Ctrl+Z undoes the typing before the collapse
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9/undo (reading `BlockTree#commitOne`
+while fixing B-162) · **Tests:** `e2e/tests/undo-gaps.spec.ts` "typing then collapsing inside the
+write debounce: Cmd/Ctrl+Z undoes the collapse first (B-280)", "typing then Cmd/Ctrl+Enter inside
+the write debounce: Cmd/Ctrl+Z takes back the marker first (B-142, B-280)"
+
+Edit "parent" (it has a child), type " more", press Cmd/Ctrl+Up within 500 ms: the block
+collapses. Cmd/Ctrl+Z: the typing goes ("parent"), the block stays collapsed; the second Cmd/Ctrl+Z
+expands it. Undo order is the reverse of what was done. The e2e test fails on this branch before
+the fix (`Expected: 2, Received: 1` rows after the first Cmd+Z).
+
+Cause: `commitOne` (collapse and expand from the keyboard or the bullet arrow, an image upload
+that lands after the editor moved on) and the marker commits (`task.cycle` in `runCommand` and
+`runSelectionCommand`, `onToggleMarker`, the marker click) push their step without flushing the
+pending text edit first. The keystrokes are recorded later — on the debounce timer, or by the
+flush at the start of `doUndo` — so they land ABOVE the step that came after them. Every other
+structural path goes through `runStructural`, which flushes first.
+
+**Fixed 2026-09-13.** `BlockTree#commitStep` flushes the pending edit and stops capturing before it
+commits, like `runStructural`; `commitOne`, the `task.cycle` case of `runCommand` and
+`onToggleMarker` go through it. The collapse test fails before the change and passes after it.
+The Cmd/Ctrl+Enter test does not isolate B-280: Cmd/Ctrl+Enter is taken by the global command
+dispatcher (document capture phase) and runs `task.cycle` through the command `Store`, which since
+B-142 commits through `runStructural` and so already flushed. What it does pin is B-142 for the
+keyboard: with the store's editor commit disabled (the `cf08d19` behaviour) it fails —
+`Received: "TODO"` after Cmd+Z — so Cmd/Ctrl+Enter was never undoable either.
 
 ---

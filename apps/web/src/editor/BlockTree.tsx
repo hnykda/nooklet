@@ -94,7 +94,7 @@ import {
   editingEndRequest,
   requestEditingEnd,
 } from "./focus-request.js";
-import { EditHistory } from "./history.js";
+import { EditHistory, type UndoRedoResult } from "./history.js";
 import { insertAt, pickImageFile } from "./imagePicker.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
@@ -110,6 +110,7 @@ import { createSurface, type Surface } from "./surface.js";
 import { cycleMarker, toggleDone } from "./task.js";
 import { buildEditorTree, childrenIds, flattenVisible, getBlock } from "./tree.js";
 import type { BlockId, CaretSpec, Clock, EditableBlock, EditorTree, FocusChange } from "./types.js";
+import { focusAfterStep } from "./undo-focus.js";
 import { UnseenCreations } from "./unseen-creations.js";
 
 interface SelectionState {
@@ -629,7 +630,17 @@ export function BlockTree(props: {
   }
 
   function commitOne(op: Op): void {
-    commit([op], editorTree(), "structure", null, null);
+    commitStep([op]);
+  }
+
+  /** A write from a key or a click that records no caret — collapse, expand, a marker — as its own
+   * undo step. Keystrokes still inside the write debounce are flushed FIRST, as `runStructural`
+   * does: recorded later, they landed above this step, and Cmd/Ctrl+Z took back the typing before
+   * the collapse that came after it (B-280). */
+  function commitStep(ops: Op[]): void {
+    flushPendingEdit();
+    history.stopCapturing();
+    commit(ops, editorTree(), "structure", null, null);
   }
 
   /** `block.collapseAll`/`block.expandAll` (R26, B-97) over this page, or the zoomed subtree. */
@@ -667,32 +678,24 @@ export function BlockTree(props: {
     const clock = clockSig();
     if (!clock) return;
     flushPendingEdit();
-    const res = history.undo(clock);
-    if (!res) return;
-    unseenCreations.note(res.ops);
-    setLocalBlocks((prev) =>
-      applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
-    );
-    void applyOps(res.ops);
-    syncSurfaceFromTree();
-    if (!res.focus) {
-      surface.detach();
-      setEditingId(null);
-    } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
-      // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
-      // the buffer was synced above and only the caret is left to place.
-      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
-      refocusAfterReorder(res.focus.id);
-    } else {
-      attachEditing(res.focus.id, res.focus.caret);
-    }
+    applyHistoryStep(history.undo(clock, stillInTree));
   }
 
   function doRedo(): void {
     const clock = clockSig();
     if (!clock) return;
     flushPendingEdit();
-    const res = history.redo(clock);
+    applyHistoryStep(history.redo(clock, stillInTree));
+  }
+
+  /** A block an undo or redo may write to (B-194, `history.ts#reachable`): in this tree, or created
+   * here and not yet returned by a refetch — a stale refetch can leave such a block out for a
+   * moment, and its step is not gone for that. */
+  function stillInTree(id: BlockId): boolean {
+    return untrack(editorTree).byId.has(id) || unseenCreations.has(id);
+  }
+
+  function applyHistoryStep(res: UndoRedoResult | null): void {
     if (!res) return;
     unseenCreations.note(res.ops);
     setLocalBlocks((prev) =>
@@ -700,16 +703,21 @@ export function BlockTree(props: {
     );
     void applyOps(res.ops);
     syncSurfaceFromTree();
-    if (!res.focus) {
+    // Rows as they are AFTER the step (B-162, B-194: `./undo-focus.ts`).
+    const next = focusAfterStep(res.focus, editingId(), (id) => untrack(rowById).has(id));
+    if (next.kind === "detach") {
       surface.detach();
       setEditingId(null);
-    } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
+    } else if (next.kind === "keep") {
+      const cur = editingId();
+      if (cur !== null) refocusAfterReorder(cur);
+    } else if (next.focus.id === editingId() && surface.currentId() === next.focus.id) {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
-      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
-      refocusAfterReorder(res.focus.id);
+      surface.setCaret(bufferCaret(next.focus.id, next.focus.caret));
+      refocusAfterReorder(next.focus.id);
     } else {
-      attachEditing(res.focus.id, res.focus.caret);
+      attachEditing(next.focus.id, next.focus.caret);
     }
   }
 
@@ -859,7 +867,7 @@ export function BlockTree(props: {
       case "task.cycle": {
         const block = tree.byId.get(id);
         if (!block) return false;
-        commit(cycleMarker(block, clock), tree, "structure", null, null);
+        commitStep(cycleMarker(block, clock));
         return true;
       }
       case "edit.undo":
@@ -1263,7 +1271,7 @@ export function BlockTree(props: {
     const clock = clockSig();
     const block = editorTree().byId.get(id);
     if (!clock || !block) return;
-    commit(toggleDone(block, clock), editorTree(), "structure", null, null);
+    commitStep(toggleDone(block, clock));
   }
 
   /** Shift+click, from a row or from a `[[page]]` link inside one (`BlockRowView.tsx` explains why

@@ -338,3 +338,104 @@ describe("EditHistory — block.create / block.delete invert to each other", () 
     }
   });
 });
+
+describe("EditHistory — steps on blocks that left the tree are dropped (B-194)", () => {
+  const text = (entity: string, content: string, n: number): Op => ({
+    id: `t${n}`,
+    hlc: `h${n}`,
+    device: "d",
+    entity,
+    payload: { kind: "block.text", content },
+  });
+  const at = (id: string) => ({ id, caret: { offset: 0 } });
+
+  it("undo skips past a step on a block that is gone, to the newest one it can apply", () => {
+    const h = new EditHistory(500);
+    const c = clock();
+    const before = buildTree(
+      makeBlock({ id: "KEEP", order: "a0", content: "keep" }),
+      makeBlock({ id: "GOES", order: "a1", content: "goes" }),
+    );
+    h.record([text("KEEP", "keep!", 1)], before, "text", at("KEEP"), at("KEEP"), "KEEP", 0);
+    h.record([text("GOES", "goes typed", 2)], before, "text", at("GOES"), at("GOES"), "GOES", 1000);
+
+    // "GOES" was moved to another page: only "KEEP" is here.
+    const present = (id: string) => id === "KEEP";
+    const undo = h.undo(c, present);
+    expect(undo?.ops.map((o) => [o.entity, o.payload])).toEqual([
+      ["KEEP", { kind: "block.text", content: "keep" }],
+    ]);
+    expect(undo?.focus).toEqual(at("KEEP"));
+    // The dropped step is gone for good: not left behind for a redo, or for a later undo.
+    expect(h.depths()).toEqual({ undo: 0, redo: 1 });
+    expect(h.redo(c, present)?.ops.map((o) => o.entity)).toEqual(["KEEP"]);
+    expect(h.undo(c, present)?.ops.map((o) => o.entity)).toEqual(["KEEP"]);
+    expect(h.undo(c, present)).toBeNull();
+  });
+
+  it("nothing reachable: null, and the stack is emptied of what can never apply", () => {
+    const h = new EditHistory(500);
+    const before = buildTree(makeBlock({ id: "GOES", order: "a0", content: "goes" }));
+    h.record([text("GOES", "goes typed", 1)], before, "text", at("GOES"), at("GOES"), "GOES", 0);
+    expect(h.undo(clock(), () => false)).toBeNull();
+    expect(h.depths()).toEqual({ undo: 0, redo: 0 });
+  });
+
+  it("a block the step itself brings back counts as present: undo of a delete, redo of a create", () => {
+    const h = new EditHistory(500);
+    const c = clock();
+    const before = buildTree(makeBlock({ id: "X", order: "a0", content: "x" }));
+    const del: Op = {
+      id: "d1",
+      hlc: "h1",
+      device: "d",
+      entity: "X",
+      payload: { kind: "block.delete", deletedAt: 5 },
+    };
+    h.record([del], before, "structure", null, null);
+    // X is deleted, so not in the tree — but the undo revives it.
+    const none = () => false;
+    expect(h.undo(c, none)?.ops.map((o) => o.payload)).toEqual([
+      { kind: "block.delete", deletedAt: null },
+    ]);
+
+    const h2 = new EditHistory(500);
+    const create: Op = {
+      id: "c1",
+      hlc: "h2",
+      device: "d",
+      entity: "NEW",
+      payload: {
+        kind: "block.create",
+        place: { pageId: "page1", parentId: null, order: "a0" },
+        content: "",
+        createdAt: 1,
+      },
+    };
+    h2.record([create], buildTree(), "structure", null, null);
+    // Undo of the create needs NEW present (it tombstones it)…
+    expect(h2.undo(c, (id) => id === "NEW")?.ops[0]?.payload.kind).toBe("block.delete");
+    // …and its redo revives the tombstone, so an absent NEW is fine.
+    expect(h2.redo(c, none)?.ops.map((o) => o.payload)).toEqual([
+      { kind: "block.delete", deletedAt: null },
+    ]);
+  });
+
+  it("a created block deleted elsewhere: undoing its creation is dropped rather than sent", () => {
+    const h = new EditHistory(500);
+    const create: Op = {
+      id: "c1",
+      hlc: "h1",
+      device: "d",
+      entity: "NEW",
+      payload: {
+        kind: "block.create",
+        place: { pageId: "page1", parentId: null, order: "a0" },
+        content: "",
+        createdAt: 1,
+      },
+    };
+    h.record([create], buildTree(), "structure", null, null);
+    expect(h.undo(clock(), () => false)).toBeNull();
+  });
+});
