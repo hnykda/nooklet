@@ -36,21 +36,31 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
   the `.ctx-sep` div (present at `cf08d19`, like several others repo-wide) — left alone.
 
 - **B-147 (type-ahead + insertText) and new B-291 (composition, open, owner's call)** — commit
-  "fix(web): the date picker takes keys typed before it listens, and text with no keydown (B-147)"
-  (hash in the next update). New `commands/date-picker/type-ahead.ts` (+ test); hookups in
+  `f4d63d9` "fix(web): the date picker takes keys typed before it listens, and text with no
+  keydown (B-147)". New `commands/date-picker/type-ahead.ts` (+ test); hookups in
   `date-picker/host.ts` (hold starts in `open()`) and `DatePicker.tsx` (shared key reading,
   `beforeinput`, replay after render). e2e `date-picker-type-ahead.spec.ts` (4; chunk delayed with
   `page.route`, service workers blocked) failed on `cf08d19`; probe
   `tools/probes/date-picker-composition.spec.ts` shows composition still lands in the block.
   Broad e2e (13 specs): 133 passed. Date-picker unit: 47/47.
 
+- **B-203 diagnosis** — REAL bug, not the harness (probe `tools/probes/alt-enter-follow-link.spec.ts`,
+  entry in the inbox). Arrowing into a link opens the `[[` autocomplete; the global keymap yields
+  every Enter to it, Alt+Enter included, and the editor never offers the popup modified keys.
+
 ## 2. In flight
 
-(nothing)
+- B-203 fix. Plan: `commands/popup-keys.ts` — `claimPopupKeys(fn, { editorFed: true })` for the
+  popups the editor feeds (AutocompletePopup, SlashMenu); `popupTakesKey(event)` = popup key AND
+  (not editor-fed OR no Cmd/Ctrl/Alt). `keymap/dispatch.ts` step 2 uses an injectable
+  `popupTakesKey` (default: today's rule); `provider/CommandProvider.tsx` passes the real one.
+  Focus-owning overlays (palette, page picker) keep taking modified keys — their input gets
+  every key. e2e `e2e/tests/follow-link-popup.spec.ts` written (uncommitted), fails on base as
+  expected (URL stays on the page).
 
 ## 3. Next steps
 
-1. B-203: Alt+Enter under Playwright on macOS — real bug or harness artifact.
+1. Finish B-203 (above), unit tests in `popup-keys`/`dispatch.test.ts`, spec R12 one-line note.
 2. Final: full web unit suite, typecheck, a last broad e2e run, return summary.
 
 ## 4. Decisions

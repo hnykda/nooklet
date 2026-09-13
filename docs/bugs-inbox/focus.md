@@ -173,3 +173,29 @@ not the block" — the gap is made deterministic by delaying the picker's chunk 
 `page.route` (service workers blocked so the request is routable), not by typing fast. Unit:
 `commands/date-picker/type-ahead.test.ts` (10), `host.test.ts` "createDatePickerHost.open holds
 type-ahead (B-147)" (2). With `dates.spec.ts`: 11 of 11 passed at load average 82.
+
+---
+
+### B-203 (existing)
+
+**Diagnosis 2026-09-13 (m9/focus): a real bug, not a test-harness artifact.** Probe
+`tools/probes/alt-enter-follow-link.spec.ts`, Chromium on macOS, port 6401, five cases:
+
+- A — the entry's exact steps (`alpha [[…]] omega`, Home, ArrowRight ×9, `Alt+Enter`): nothing.
+  The window saw `keydown key=Enter code=Enter altKey=true`, and it bubbled back up with
+  `defaultPrevented=false` — no handler took it. A `.cmd-popup` was open before the key.
+- B — caret at the end of a trailing `[[link]]`: followed. No popup open.
+- C — A's caret, the key sent as a raw CDP `Input.dispatchKeyEvent` (`modifiers: 1`), the way a
+  real keyboard's event reaches the renderer: nothing — so not Playwright's Alt handling.
+- D — the caret further inside the link: nothing, popup open.
+- E — A's caret, the popup dismissed with Escape first, then `Alt+Enter`: followed.
+
+Cause: walking the caret into an existing link re-detects the `[[` trigger before the caret
+(`CommandLayer`'s keyup re-detection) and opens the page autocomplete, which claims the popup keys.
+The global keymap (`commands/keymap/dispatch.ts`, R12 step 2) then yielded every `Enter` to the
+popup, modifiers or not — but the editor, which is what hands that popup its keys, only offers it
+keys without Cmd/Ctrl/Alt (`BlockTree.tsx#dispatchKey`). So `Alt+Enter` belonged to nobody. The
+same holds for anything else bound to a modified Enter/Tab/arrow while the autocomplete or slash
+menu is open (Cmd/Ctrl+Enter `task.cycle`, Alt+Up/Down `block.moveUp/Down`). A real keyboard
+takes the same path; only "put the caret in a link without opening the popup" (End after a
+trailing link, as in `follow-link.spec.ts`) avoided it.
