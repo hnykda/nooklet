@@ -27,10 +27,14 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
   new `e2e/tests/focus-return.spec.ts` (4 tests), probe `tools/probes/palette-escape-focus.spec.ts`.
   Numbers: see the inbox entry. Broad e2e (19 specs): 214 passed, 1 skipped. Typecheck clean.
 
-- **B-195** — commit "fix(web): the Move to page picker gives focus back (B-195)" (hash in the
-  next update). `app/refactor-host.tsx#pickPage` uses `rememberFocus`; two e2e tests in
+- **B-195** — `8d08778` "fix(web): the Move to page picker gives focus back when it closes (B-195)". `app/refactor-host.tsx#pickPage` uses `rememberFocus`; two e2e tests in
   `focus-return.spec.ts` (context menu path, palette path), both failed on `cf08d19`'s
   refactor-host. focus-return + refactor + context-menu + editing-row-leaves: 29 passed, 1 skipped.
+
+- **B-231** — commit "fix(web): a press anywhere in the context menu keeps editor focus (B-231)"
+  (hash in the next update). `onMouseDown` preventDefault on `.ctx-menu`; e2e in
+  `focus-return.spec.ts`. Note: `biome check` reports a pre-existing `useSemanticElements` error on
+  the `.ctx-sep` div (present at `cf08d19`, like several others repo-wide) — left alone.
 
 ## 2. In flight
 
@@ -38,10 +42,8 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
 
 ## 3. Next steps
 
-1. B-231: `onMouseDown` preventDefault on `.ctx-menu` (`app/BlockContextMenu.tsx`); e2e pressing a
-   `.ctx-sep`.
-2. B-147: date picker type-ahead / beforeinput.
-3. B-203: Alt+Enter under Playwright on macOS.
+1. B-147: date picker type-ahead / beforeinput.
+2. B-203: Alt+Enter under Playwright on macOS.
 
 ## 4. Decisions
 

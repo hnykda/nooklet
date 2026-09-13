@@ -154,3 +154,29 @@ test("Move to page… run from the palette hands focus through the palette and t
     .toEqual(["alpha!", "beta"]);
   expect(await outliner.locator(".vr-row").count()).toBe(2);
 });
+
+test("pressing on a context-menu separator or on the menu's padding keeps the block in edit mode", async ({
+  page,
+}, info) => {
+  const name = runName("Menu Separator", info);
+  const outliner = await openEditing(page, name, "- first\n- second");
+  await outliner.locator(".vr-row").nth(1).click({ button: "right" });
+  const menu = page.locator(".ctx-menu");
+  await expect(menu).toBeVisible();
+  await expectEditorFocusedNow(page, "with the menu open");
+
+  await menu.locator(".ctx-sep").first().click();
+  await expect(menu).toBeVisible(); // a press inside the menu is not a dismissal
+  await expectEditorFocusedNow(page, "after a press on a separator");
+  await menu.click({ position: { x: 2, y: 2 } }); // inside the border, outside every item
+  await expectEditorFocusedNow(page, "after a press on the menu's padding");
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expectEditorFocusedNow(page, "after Escape closed the menu");
+  await page.keyboard.press("End");
+  await page.keyboard.type("!");
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["first", "second!"]);
+});

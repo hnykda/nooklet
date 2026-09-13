@@ -98,3 +98,20 @@ while editing it leaves the editor focused and typeable" (right-click, pick its 
 read straight after Enter and again after the row moved, `End` + `!` lands in the stored block) and
 "Move to page… run from the palette hands focus through the palette and the picker back to the
 editor" (Escape out of the picker); both failed with `refactor-host.tsx` at `cf08d19`.
+
+---
+
+### B-231 (existing)
+
+**Fixed 2026-09-13.** Reproduced first (the entry had it inferred only): right-click a block being
+edited, press on the first `.ctx-sep` — `activeElement is body`, the menu still open. One
+correction to the entry: the row KEEPS the editor (the snapshot at the failure still shows the
+"Block content" textbox) — editing does not end, but nothing can type into it until a click, which
+from the keyboard is the same thing. Fix as the entry proposed: `onMouseDown` `preventDefault` on
+the `.ctx-menu` container in `app/BlockContextMenu.tsx`, so no press anywhere in the menu moves
+focus (the items' own guard from B-71 and the timestamps footer's from B-230 stay; they are now
+redundant but harmless). Test that would have caught it: `e2e/tests/focus-return.spec.ts`
+"pressing on a context-menu separator or on the menu's padding keeps the block in edit mode"
+(a separator, then the menu's padding at (2, 2), focus read after each, Escape, `End` + `!` in the
+stored block); failed before the change, passes after. context-menu + block-timestamps +
+focus-return + selection: 41 passed, 1 skipped.
