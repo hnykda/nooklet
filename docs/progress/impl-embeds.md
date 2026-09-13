@@ -90,6 +90,13 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `65a1b8f` + `6812e1e`: **B-214 found and fixed** — typing anywhere on a page rebuilt its embeds
   (placeholder flash, page jumps, unfolded rows fold). Fix in `BlockRowView.tsx` (string memo); e2e
   test added, seen failing first. Web unit 709/709, web typecheck 0.
-- In flight: broader e2e on 6407 over the row change (render, rendering, editing, references,
-  tasks, query, shelf, selection, undo), then more probes (Czech/journal page embeds, large page
-  embed typing latency, undo of the host, keyboard on embedded rows).
+- `3b9512d` + `1b7755f`: **B-215** — Shift+click on an embedded row shelved a "This block is gone."
+  card (BlockTree filled in the host page id). `NavigateTarget` block kind takes an optional `pageId`.
+- `b4ed719` (inbox entry in its predecessor): **B-216** — web links inside embedded rows were dead
+  (row handler's `preventDefault`); `EmbedRow#go` lets `a[href]` targets through. e2e + component test.
+- Probes that found nothing wrong: Czech page name in another case, `[[Sep 29th, 2024]]` journal
+  title, 961-block page embed (842 ms page load, keystroke paint 5–24 ms, no long tasks), trashed
+  target page, undo/redo of the host block, Enter on a focused row, zoomed host, phone width in dark.
+- Not fixed, noted: right-click on an embedded row opens the HOST block's menu (same as query hits);
+  `nooklet serve --help` ignores `--help` and serves the default graph (B-217).
+- In flight: broader e2e on 6407 over the `BlockRowView`/`BlockTree` changes.
