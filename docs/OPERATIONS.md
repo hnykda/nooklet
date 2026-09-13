@@ -137,8 +137,10 @@ Practically, upgrading nooklet is:
 There's no separate `nooklet migrate` command — opening the database *is* the migration step.
 
 **The client updates itself.** Once the server serves a new web build, an open page reloads onto
-it within seconds (the service worker takes over and reloads, B-532), and the desktop app shows it
-on its next launch — one reload flash, then the new client. Two things that look like "the update
+it within seconds (the new service worker takes the page over and a listener in `index.html`
+reloads onto it, B-532/B-537), and the desktop app shows it on its next launch — one reload flash,
+then the new client. The one exception is the launch that installs a client from before B-537: that
+page decides with its old code and, if `/api/session` was slow, shows the old client once more. Two things that look like "the update
 did not arrive" and are not:
 
 - The desktop app uses whatever nooklet already answers on its port (6100). If that is a

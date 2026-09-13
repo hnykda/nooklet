@@ -14,7 +14,8 @@ Date: 2026-09-11. Status: accepted. Supersedes the desktop half of ADR 005.
 > items reach it as a `nooklet:desktop-menu` DOM event); and sends new-window links to the system
 > browser (http, https, mailto only). "One client, one build" has a cost this ADR did not name: the
 > window runs whatever client its service worker holds, so an update depends on the worker taking
-> over (B-532).
+> over (B-532) and on the page noticing it did — which it must do before WebKit's own update check,
+> one second after launch, not after its first API round trip (B-537).
 
 ## Decision
 
