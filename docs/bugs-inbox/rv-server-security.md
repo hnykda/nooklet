@@ -59,10 +59,12 @@ build is too_large, and the server carries on (B-125)" (200 before); `replace-sc
 **Corrected 2026-09-13 — the heap cap in that fix aborted the process.** Found while checking which
 limit the last test above actually hit (`scratchpad/.../p12-explode-path.mts`): it was the
 per-block cap, after a 200 M-character string had been built in 39 ms. One block of 199,000
-characters (page.create allows 200,000) times a 2,000-character replacement is a single 398 M
-allocation, and past `resourceLimits.maxOldGenerationSizeMb` V8 did not end the worker with
+characters (page.create allows 200,000) times a 2,000-character replacement is ~398 M characters,
+and at `resourceLimits.maxOldGenerationSizeMb: 256` V8 did not end the worker with
 `ERR_WORKER_OUT_OF_MEMORY` — it aborted the whole process ("FATAL ERROR: Reached heap limit",
-SIGABRT, exit 134), over plain HTTP. The heap cap is gone (it would also have aborted the server
+SIGABRT, exit 134), over plain HTTP. `tools/probes/worker-heap-cap-abort.mjs one` reproduces it
+(many small allocations, `many`, do end only the worker; the replace alone, without the scan's
+preceding `matchAll`, survives — whether it aborts depends on what else is on the heap). The heap cap is gone (it would also have aborted the server
 on a graph whose text alone outgrew 256 MB). Instead the worker computes each block's replaced
 length from its matches before building it — `replacement.length − match` for literal text, and
 ECMA-262 GetSubstitution lengths (`` $$ $& $` $' $n $nn $<name> ``) for templates — refuses an

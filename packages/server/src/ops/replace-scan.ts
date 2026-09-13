@@ -24,11 +24,12 @@
  * unbuilt; held text stops the moment the op is bound to be refused (`too_many_blocks` still
  * counts, for the error's details); and the call stops outright past an output budget.
  *
- * Why not simply cap the worker's heap (`resourceLimits`): tried, and it is worse. A single
- * allocation larger than the cap — one 200,000-character block times a 2,000-character
- * replacement — does not end the worker with `ERR_WORKER_OUT_OF_MEMORY`; V8 aborts the whole
- * process ("Reached heap limit", exit 134). A cap would also abort the server on a graph whose
- * text alone outgrew it. The limits have to be in the algorithm.
+ * Why not simply cap the worker's heap (`resourceLimits`): tried, and it is worse. Building one
+ * 199,000-character block times a 2,000-character replacement (~400 M characters) under a 256 MB
+ * cap did not end the worker with `ERR_WORKER_OUT_OF_MEMORY`; V8 aborted the whole process
+ * ("Reached heap limit", exit 134) — `tools/probes/worker-heap-cap-abort.mjs`. Whether it aborts
+ * depends on what else is on the heap, and a cap would also abort the server on a graph whose text
+ * alone outgrew it. The limits have to be in the algorithm.
  */
 
 import { Worker } from "node:worker_threads";
