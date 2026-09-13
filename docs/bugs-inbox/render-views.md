@@ -204,3 +204,15 @@ fix: show both dates when both are set, labelled as the journal agenda does
 (`views/JournalAgenda.tsx`). Not done here: a display change beyond the filter bug.
 
 ---
+
+### B-161 (existing)
+**Status:** still failing (not fixed here)
+
+Another data point, 2026-09-13 on port 6404: "opening the palette while editing and closing it hands
+focus back to the editor" failed in every run on this branch — inside a 4-spec run, `views.spec.ts`
+alone (28/29), and the full n–z half (295 passed, 1 failed) — and then failed 2/2
+(`--repeat-each=2`) with every `apps/web/src` source file this branch changes restored to
+`cf08d19`. So it fails on `cf08d19`'s client here too, though the coordinator's full run on the same
+commit passed it; machine load (a dozen agents) is the difference in sight.
+
+---
