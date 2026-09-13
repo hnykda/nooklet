@@ -27,15 +27,25 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 /// Where the app serves from. Matches the CLI's default, so an already-running `nooklet serve`
 /// is found rather than duplicated.
-const PORT: u16 = 6100;
+const DEFAULT_PORT: u16 = 6100;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The spawned server, kept so it can be stopped when the app quits. A child process that
 /// outlives its window is a file lock nobody can see.
 struct ServerProcess(Mutex<Option<Child>>);
 
+/// `NOOKLET_PORT` moves the app off 6100 — the only way to run a second copy (a test build) beside
+/// the one in daily use without the two sharing one server, one graph and one precached client.
+/// Read per call rather than cached: it is a handful of lookups per launch.
+fn port() -> u16 {
+    std::env::var("NOOKLET_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_PORT)
+}
+
 fn addr() -> SocketAddr {
-    ([127, 0, 0, 1], PORT).into()
+    ([127, 0, 0, 1], port()).into()
 }
 
 /// Is *nooklet* answering on the port — as opposed to something else entirely? A bare TCP connect
@@ -45,7 +55,7 @@ fn nooklet_is_listening() -> bool {
         return false;
     };
     let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
-    let request = format!("GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nConnection: close\r\n\r\n");
+    let request = format!("GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n", port());
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
     }
@@ -81,7 +91,7 @@ fn spawn_server(resource_dir: &PathBuf, data_dir: &PathBuf) -> std::io::Result<C
         .arg("--data")
         .arg(data_dir)
         .arg("--port")
-        .arg(PORT.to_string())
+        .arg(port().to_string())
         .arg("--web")
         .arg(sidecar.join("web"))
         // sqlite-vec normally resolves its dylib out of node_modules, which does not exist in an
@@ -109,6 +119,21 @@ fn graph_dir(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Erro
         }
     }
     Ok(app.path().home_dir()?.join(".nooklet").join("default"))
+}
+
+/// Runs before any page script in every document the window loads — the launcher and the server's
+/// client alike, whatever their origin. It is how a page learns it is inside this shell; the
+/// launcher (`../dist/index.html`) reads which port to wait for from it, so `NOOKLET_PORT` moves
+/// the launcher too.
+///
+/// A flag we inject rather than sniffing Tauri's own globals: `__TAURI_INTERNALS__` is an
+/// implementation detail of Tauri's IPC, not a statement about this app.
+fn shell_script() -> String {
+    format!(
+        "Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{:?},port:{}}})}});",
+        std::env::consts::OS,
+        port()
+    )
 }
 
 fn wait_until_ready() -> bool {
@@ -150,6 +175,7 @@ fn main() {
                 .min_inner_size(480.0, 400.0)
                 .title_bar_style(tauri::TitleBarStyle::Transparent)
                 .hidden_title(true)
+                .initialization_script(shell_script())
                 .build()?;
 
             std::thread::spawn(move || {
