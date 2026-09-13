@@ -152,3 +152,23 @@ title is being typed would still reset the draft — guarding the effect on `pag
 `PageView` would close that.
 
 ---
+
+### B-202 · An open tag page's "Pages tagged X" does not follow a `tags::` change made elsewhere
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verifying B-111 on a copy of the real
+graph · **Test:** `e2e/tests/tagged-pages.spec.ts` "an open tag page follows another device
+untagging and re-tagging a page (B-202)"
+
+With `VerifyTag`'s page open, an agent's `page.update {page: "Remote Tagger", properties: {tags:
+null}}` left "Remote Tagger" listed under "Pages tagged VerifyTag" for the 15 s the probe waited
+(and indefinitely: nothing else on the page changed), while a `page.create` carrying the same tag
+appeared in ~25 ms. Cause: the panel's `page.backlinks` resource (`data/store.ts#
+useLinkedReferences`) is stamped on the `block` and `page` tables plus the local-push signal, and a
+pulled `page.prop` op only bumps `page_prop` (`db/worker-core.ts#notifyFromOps`). Until B-111 the
+panel showed nothing a page property could change except linked references through an `alias::`
+edit, which had the same gap unnoticed.
+
+**Fixed 2026-09-13.** `useLinkedReferences` is also stamped on `page_prop`, so a pulled `tags::` or
+`alias::` change refetches the panel like a block edit does. Costs one `page.backlinks` call (8–14 ms
+on the real graph for `journal`) per page-property write while a page is open. The e2e test failed
+before the change (the untagged page stayed listed) and passes after; the references, link-unlinked,
+page-icons, pages, tagged-pages, page-identity and page-title-draft specs pass with it (38).

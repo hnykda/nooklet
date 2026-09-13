@@ -637,7 +637,10 @@ export function useLinkedReferences(
       // …and on `syncVersion`: a push landing means the server can see a write it could not
       // when this was last fetched (B-83).
       syncVersion();
-      return stamped(t, ["block", "page"]);
+      // …and on `page_prop`: "Pages tagged X" comes from other pages' `tags::`, and a page's
+      // `alias::` decides which links count. Another device changing either arrives as a pulled
+      // `page.prop` op, which bumps `page_prop` and nothing else — the list stayed stale (B-202).
+      return stamped(t, ["block", "page", "page_prop"]);
     },
     ({ value: t }) => apiClient.pageBacklinks(t),
   );

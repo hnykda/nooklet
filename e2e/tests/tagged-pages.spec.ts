@@ -86,3 +86,29 @@ test("a page tagged later, by a property update, appears on the tag's page (B-11
   const section = page.getByRole("region", { name: "Pages tagged Tagged Person" });
   await expect(section.locator(".tagged-page-link")).toContainText([`Tagged Late ${suffix}`]);
 });
+
+test("an open tag page follows another device untagging and re-tagging a page (B-202)", async ({
+  page,
+}) => {
+  // A `tags::` edit on an existing page is a `page.prop` op and nothing else — no block, no page
+  // row — so a panel that only listens to those tables never hears it. Seeded before the visit, so
+  // every change below arrives as a pull while the page is open.
+  const n = test.info().retry;
+  const tag = `Tagged Live ${n}`;
+  const [first, second] = [`Tagged Live One ${n}`, `Tagged Live Two ${n}`];
+  await api(page, "page.create", { name: tag, if_exists: "return", markdown: "- the tag" });
+  for (const name of [first, second]) {
+    await api(page, "page.create", { name, if_exists: "return", properties: { tags: tag } });
+  }
+
+  await page.goto(pagePath(tag));
+  const section = page.getByRole("region", { name: `Pages tagged ${tag}` });
+  await expect(section.locator(".tagged-page-link")).toHaveText([first, second]);
+
+  await api(page, "page.update", { page: first, properties: { tags: null } });
+  await expect(section.locator(".tagged-page-link")).toHaveText([second]);
+  await expect(section.locator(".reference-count")).toHaveText("1");
+
+  await api(page, "page.update", { page: first, properties: { tags: `[[${tag}]]` } });
+  await expect(section.locator(".tagged-page-link")).toHaveText([first, second]);
+});

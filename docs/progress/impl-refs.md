@@ -117,3 +117,9 @@ Wiki "References and tags" no longer implies a `Journal` page exists on every gr
 
 Observed, not changed (design calls, not defects): on the owner's `journal` page the tagged list is
 200 pills (~40 rows) above the linked references, open by default.
+
+Found and fixed in the pass: **B-202** — an open tag page did not follow another device's `tags::`
+change (a pulled `page.prop` bumps only `page_prop`; the backlinks resource was not stamped on it).
+One-line stamp in `data/store.ts#useLinkedReferences`; e2e `tagged-pages.spec.ts` "an open tag page
+follows another device untagging and re-tagging a page (B-202)" fails without it.
+
