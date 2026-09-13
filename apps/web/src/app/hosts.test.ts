@@ -1,5 +1,6 @@
 /**
- * `createNavigationHost#followLink` (Alt+Enter, `nav.followLink`).
+ * `createNavigationHost#followLink` (Alt+Enter, `nav.followLink`), and `createStore`'s
+ * block-property writes going through the editor's undo history (B-142).
  *
  * - An asset path opens from the API origin's `/assets/` route, like the rendered `<a>` does —
  *   raw, `window.open` resolved `assets/x.pdf` against the current `/page/...` URL and the SPA
@@ -21,7 +22,9 @@ vi.mock("../live/resolve-page-ref.js", () => ({}));
 const open = vi.fn();
 vi.stubGlobal("window", { open });
 
-import { createNavigationHost } from "./hosts.js";
+import type { Op } from "@nooklet/core";
+import type { OpBatch } from "../commands/hosts/editor-host.js";
+import { createNavigationHost, createStore } from "./hosts.js";
 
 const navigate = vi.fn();
 
@@ -80,4 +83,61 @@ describe("nav.followLink for page links", () => {
       expect(navigate).toHaveBeenCalledWith("/page/Projects/Aurora%20Launch");
     },
   );
+});
+
+describe("createStore block-property writes (B-142)", () => {
+  function store(accept: boolean) {
+    const batches: OpBatch[] = [];
+    const applied: Op[][] = [];
+    let n = 0;
+    return {
+      batches,
+      applied,
+      store: createStore({
+        editor: {
+          commitOps: (batch) => {
+            batches.push(batch);
+            return accept;
+          },
+        },
+        applyOps: async (ops) => {
+          applied.push(ops);
+        },
+        getOpClock: async () => ({ next: () => `hlc${n++}`, device: "dev" }),
+      }),
+    };
+  }
+
+  it("commits a picked date and its repeat through the editor that shows the block, as one batch", async () => {
+    const s = store(true);
+    await s.store.setBlockProps("blk1", { scheduled: "2026-09-14", repeat: "1w" });
+    expect(s.batches).toHaveLength(1);
+    expect(s.batches[0]?.anchorId).toBe("blk1");
+    // No focus: the caret stays wherever it is (a picker over the edited block, or none at all).
+    expect(s.batches[0]?.focus).toBeUndefined();
+    expect(s.batches[0]?.ops.map((o) => [o.entity, o.payload])).toEqual([
+      ["blk1", { kind: "block.prop", key: "scheduled", value: "2026-09-14" }],
+      ["blk1", { kind: "block.prop", key: "repeat", value: "1w" }],
+    ]);
+    // The editor took it: writing it here too would be a second copy the history never saw.
+    expect(s.applied).toEqual([]);
+  });
+
+  it("a single property — a priority or marker from the palette — goes the same way", async () => {
+    const s = store(true);
+    await s.store.setBlockProp("blk2", "priority", "A");
+    expect(s.batches.map((b) => b.ops.map((o) => o.payload))).toEqual([
+      [{ kind: "block.prop", key: "priority", value: "A" }],
+    ]);
+    expect(s.applied).toEqual([]);
+  });
+
+  it("writes straight to the replica when no editor shows the block", async () => {
+    const s = store(false);
+    await s.store.setBlockProp("blk3", "marker", null);
+    expect(s.batches).toHaveLength(1);
+    expect(s.applied.map((ops) => ops.map((o) => o.payload))).toEqual([
+      [{ kind: "block.prop", key: "marker", value: null }],
+    ]);
+  });
 });

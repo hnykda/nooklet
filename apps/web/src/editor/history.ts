@@ -69,6 +69,40 @@ function mint(recipes: OpRecipe[], clock: Clock): Op[] {
   return recipes.map((r) => makeOp(clock.next(), clock.device, r.entity, r.payload));
 }
 
+/**
+ * Whether `recipes` only write to blocks the tree still shows — or to blocks they bring back
+ * themselves (the revive that undoes a delete, or that redoes a create).
+ *
+ * The history outlives the blocks in it: another device, an agent or a server-side refactor can
+ * move a block to another page or delete it, and the steps that touched it stay on the stack.
+ * Applied anyway, Cmd/Ctrl+Z in this page rewrote a block on a page nobody was looking at — the
+ * text typed into a block just before it was moved away was taken back over there — and the caret
+ * was sent to a block with no row, which unmounted the editor (B-194). Such a step is dropped,
+ * not kept for later: it undoes nothing anyone here can see, and a later arrival of the block
+ * would make it a surprise rather than an undo.
+ */
+function reachable(recipes: readonly OpRecipe[], present: (id: BlockId) => boolean): boolean {
+  const revived = new Set(
+    recipes
+      .filter((r) => r.payload.kind === "block.delete" && r.payload.deletedAt === null)
+      .map((r) => r.entity),
+  );
+  return recipes.every((r) => present(r.entity) || revived.has(r.entity));
+}
+
+/** Pop the newest transaction whose `recipes` are `reachable`, discarding the ones above it that
+ * are not. */
+function popReachable(
+  stack: Tx[],
+  recipes: (tx: Tx) => OpRecipe[],
+  present: ((id: BlockId) => boolean) | undefined,
+): Tx | undefined {
+  for (let tx = stack.pop(); tx; tx = stack.pop()) {
+    if (!present || reachable(recipes(tx), present)) return tx;
+  }
+  return undefined;
+}
+
 export class EditHistory {
   private undoStack: Tx[] = [];
   private redoStack: Tx[] = [];
@@ -129,21 +163,27 @@ export class EditHistory {
     return this.redoStack.length > 0;
   }
 
-  undo(clock: Clock): UndoRedoResult | null {
-    const tx = this.undoStack.pop();
+  /**
+   * The newest step, inverted. `present` says which blocks the caller still shows; a step that
+   * would write to a block it does not (and does not bring back itself) is dropped, and the next
+   * older step is tried instead — see `reachable`. Omitted, every step is applied.
+   */
+  undo(clock: Clock, present?: (id: BlockId) => boolean): UndoRedoResult | null {
+    const tx = popReachable(this.undoStack, (t) => t.inverse, present);
     if (!tx) return null;
     this.redoStack.push(tx);
     this.captureUntil = 0;
     return { ops: mint(tx.inverse, clock), focus: tx.before };
   }
 
-  redo(clock: Clock): UndoRedoResult | null {
-    const tx = this.redoStack.pop();
+  redo(clock: Clock, present?: (id: BlockId) => boolean): UndoRedoResult | null {
+    // Not `tx.forward` verbatim: a create in it would be a no-op against its own tombstone.
+    const replay = (t: Tx): OpRecipe[] => t.forward.map(redoRecipe);
+    const tx = popReachable(this.redoStack, replay, present);
     if (!tx) return null;
     this.undoStack.push(tx);
     this.captureUntil = 0;
-    // Not `tx.forward` verbatim: a create in it would be a no-op against its own tombstone.
-    return { ops: mint(tx.forward.map(redoRecipe), clock), focus: tx.after };
+    return { ops: mint(replay(tx), clock), focus: tx.after };
   }
 
   /** Test/debug helper: current stack depths. */
