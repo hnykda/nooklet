@@ -121,3 +121,23 @@ created a moment earlier whose create has not reached the replica rejects with "
 (the slash command then does nothing) — unmeasured how often; `/template` has the same dependency.
 
 ---
+
+### B-381 · `page-icons.spec.ts` fails intermittently: it reads the server and the page token without waiting
+**Status:** open (test flake) · **Severity:** low · **Found:** 2026-09-13, m10/editor-keys full e2e run
+(port 6400, `tests/[m-z]` half) · **Test:** —
+
+Two of its three tests failed in one run and passed in the next, with nothing they touch changed on
+the branch (page icons, the title row, `page.read`/`page.update`):
+- "only the first grapheme is kept, and clearing the field removes the icon": `page.read` straight
+  after Enter on the cleared field still returned `icon: "🇨🇿"` — a one-shot read with no
+  `expect.poll`, racing the client's push of the clear. Passed 3 of 3 alone right after.
+- "an icon written as a property by an agent shows in the title row": `page.update -> 401 missing or
+  invalid bearer token`. The spec's own `api()` reads `window.__NOOKLET__.token` inside
+  `page.evaluate` right after `page.goto` to the page; by reading, the new document had not set it
+  yet. Passed 3 of 3 alone right after.
+Also: the first test ("setting an icon from the title row…") fails on `--repeat-each` because its
+page keeps the icon from the previous repeat — not a product bug, but the spec is not re-run safe.
+Fix direction (not done, outside this branch's scope): poll the read, and use `helpers/api.ts#api`
+(token from `/api/session`) instead of the page's window.
+
+---

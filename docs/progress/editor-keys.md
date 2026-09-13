@@ -38,13 +38,21 @@ first for each. Bug notes go to `docs/bugs-inbox/editor-keys.md`, not BUGS.md.
   autocomplete, follow-link-popup) green on rerun. `references.spec.ts:77` timed out once in that
   rerun and passed alone (load).
 
+- Final e2e on `d3e6d85`, in two halves (the whole suite is ~10 min, the tool's foreground limit):
+  `tests/[a-l]` 181 passed, 1 skipped (4.5 min); `tests/[m-z]` 350 passed, 2 failed, 1 skipped
+  (7.3 min). The 2 were `page-icons.spec.ts` (grapheme/clear read without a poll; agent icon got a
+  401 from the page's window token) — both passed 3/3 alone straight after; logged as B-381.
+
 ## In flight
 
-- Final full e2e rerun after the rename.
+- Nothing. Branch done; see "Left for the owner".
 
-## Next
+## Left for the owner
 
-1. Full chromium e2e rerun; record numbers.
+- B-380: `#tag` form of B-294 (options in the inbox entry).
+- B-295 covers followLink/openPage/openPageByRef; back/forward/openJournals/openSearch unmeasured.
+- B-344: `/mermaid` into a block whose create has not reached the replica rejects (by reading).
+- B-381: page-icons spec flake (not this branch's code).
 
 ## Decisions
 
