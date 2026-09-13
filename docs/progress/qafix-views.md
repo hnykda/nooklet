@@ -39,18 +39,30 @@ name conflict is a UI dead end (medium); Q6 trash restore ignores aliases (low).
   rows keep their objects across refetches. Test: `e2e/tests/trash-conflict.spec.ts` (2, both
   failed before). Real graph: `@Sam Example` restored under the suggested name from the form.
 
-- Q6 (B-256) — `trash.restore` refuses a name a live page uses as an alias (`livePageAliasing`,
+- Q6 (B-256) `58cfb8d` — `trash.restore` refuses a name a live page uses as an alias (`livePageAliasing`,
   `assertNameFree`), own name and `new_name`. Tests: `trash-restore-alias.http.test.ts` (2; the
   merge case failed before), alias case in `e2e/tests/trash-conflict.spec.ts`. Real graph: merge
   Alex → @Alex, restore Alex → 409, `new_name` works; verify OK.
 
+- Final pass (2026-09-13): one e2e run over the 16 touched/nearby specs (replace-stale, replace,
+  history-later-edits, history, references-cap, references-filters, references, link-unlinked,
+  trash-conflict, trash, refactor, context-menu, views, navigation, shelf-outline, pages):
+  100 passed, 1 skipped. `pnpm -r test`: 332 + 17 + 536 + 692 passing. `pnpm -r typecheck` clean.
+  Biome clean on every file the branch changed.
+
 ## In flight
 
-- Final pass: all touched e2e specs in one run, full unit suites, verify on a fresh copy.
+Nothing. All six findings fixed.
 
-## Next, in order
+## Left for the coordinator / owner
 
-Final pass, then hand back.
+- Merge `docs/bugs-inbox/qafix-views.md` (B-250–B-256) into `docs/BUGS.md`.
+- B-252 open: `block.update` `old_str` fails on any block with a property (found in passing).
+- Owner's call: should `batch.undo` default to `keep_later_edits` for agents too (ADR 022
+  amendment keeps LWW as the default)? Find & Replace's Undo and Link all's Undo still call plain
+  `batch.undo` (LWW) — right after the write that is harmless, but they could pass the flag.
+- Owner's call: `page.create` with a name another page uses as an alias takes that alias's links
+  over silently (noted under B-256, not changed).
 
 ## How to resume
 
