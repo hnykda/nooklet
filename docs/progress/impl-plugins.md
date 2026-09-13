@@ -22,15 +22,11 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
   machine was at load 44, parallel runs time out at vitest's 5 s in files I did not touch too).
 - `1cf6d2c` `e2e/tests/plugins.spec.ts` (5 tests then) + `popups.spec.ts` SLASH_ORDER gains
   "Mermaid diagram".
-- (next commit) ADR 023, spec §5 note, B-103 fixed + B-182 in the inbox, plugins.spec.ts lazy-chunk
-  and same-origin assertions (6/6), `tools/probes/web-build-weight.mjs`,
-  `tools/probes/mermaid-client-bundle-cost.mjs`.
-
 e2e on 6404 (Chromium): plugins 6/6; popups + render + rendering + templates + query + navigation +
 diagnostics 77/77; editing + views + shelf + parity + a-fresh-journal + focus 82/83 — the one
 failure, views "opening the palette while editing…", also fails on `da85cfb` → B-182, not mine.
 
-- `66c2fee` ADR 023, spec §5, inbox (B-103 fixed, B-182), probes, plugins.spec.ts 6/6.
+- `66c2fee` ADR 023, spec §5 note, inbox (B-103 fixed, B-182), plugins.spec.ts lazy-chunk and same-origin assertions (6/6), `tools/probes/web-build-weight.mjs`, `tools/probes/mermaid-client-bundle-cost.mjs`.
 - `b255b62` page events emitted `untrack`ed; plugin-api README points at what runs today.
   Re-verified: typecheck clean; unit web 703/703, plugin-api 17/17, server 523/523; e2e plugins +
   popups 49/49.
