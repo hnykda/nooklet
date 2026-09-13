@@ -87,3 +87,19 @@ updates while the condition stays truthy. No other `{(x) => x()}` render callbac
 **Fixed 2026-09-13.** The Match renders `{invalidMessage()}` as JSX, which Solid tracks. The test
 named above now asserts the whole `"banana" is not a date`; run against the old line it failed
 with `Received: ""b" is not a date — try tomorrow, fri, +3d or 2026-09-20"`.
+
+---
+
+### B-142 · Cmd/Ctrl+Z does not undo a date set with the date picker
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, impl-dates · **Test:** none yet;
+probe `tools/probes/picked-date-undo.spec.ts`
+
+`/scheduled`, `tomorrow`, Enter, then Cmd+Z: the chip stays and the server still has
+`scheduled:: <tomorrow>` 1.5 s later (probe output: `scheduled after Cmd+Z: 2026-09-14`). The picker
+writes through the command `Store` (`app/hosts.ts#setBlockProps` → `applyOps`), and undo is
+`BlockTree`'s `EditHistory`, which only records what goes through `BlockTree#commit`. By reading
+the code, every `ctx.store` task command has the same gap — `task.setPriorityA/B/C` and the
+palette's `task.setMarker*` use `ctx.store.setBlockProp` — but only the date case was run.
+Fix needs a seam, not a patch in the picker: an `EditorHost` (or store) method that commits ops
+through the active tree's history, used by every store-routed command. `BlockTree.tsx` is a
+shared file this milestone, so not done on this branch.
