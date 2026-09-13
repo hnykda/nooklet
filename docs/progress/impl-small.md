@@ -130,3 +130,17 @@ Confirmed by browser probes (throwaway spec, not committed):
    children (same semantics as a collapsed parent). -> log only.
 Not bugs (checked): Czech/Turkish/emoji highlight ranges are right (an early reading was taken
 before the rAF paint); a 20k-char query is fine; timestamps show on a locked page.
+
+Verification progress:
+- Committed `e1f9cc6` (server: `constructor` key 500) and `f304f3f` (web: filtered merges, find
+  close button, locked right-click context), each with a test that failed before the fix.
+- Also found and fixed: Search view Show kept "Pages only" selected over task blocks after a marker
+  was chosen (`withMarker`). Logged open: Cmd+F from an uncommitted title rename closes the bar;
+  core `normalizePropertyKey` mangles a `constructor::` property (pre-existing, under B-238).
+- Real graph copy (952 pages) served by `nooklet serve` on 6409 with the production build: startup
+  verify OK (20,411 ops); search marker DONE/LATER/NOW → 55/8/1 hits for "a"; 10 random jumps all
+  non-journal pages with content; find on Megapage ("ž", "že", "ře", "the") counted and
+  highlighted, Escape restored 201 rows, page version unchanged; context-menu timestamp on an
+  imported block "Created 29 Apr 2026 08:30"; no page errors.
+- Next: full unit + typecheck, full e2e suite in two halves, final report.
+

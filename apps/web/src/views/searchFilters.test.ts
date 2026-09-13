@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NO_SEARCH_FILTERS, searchFilterInput } from "./searchFilters.js";
+import { NO_SEARCH_FILTERS, searchFilterInput, withMarker } from "./searchFilters.js";
 
 describe("searchFilterInput", () => {
   it("adds nothing beyond the default scope when no filter is chosen", () => {
@@ -24,5 +24,15 @@ describe("searchFilterInput", () => {
       properties: { marker: "DONE" },
       journalsOnly: true,
     });
+  });
+});
+
+describe("withMarker", () => {
+  it("moves Show off a pages-only choice that a marker cannot honour, and leaves others alone", () => {
+    // Before: Show kept reading "Pages only" (a disabled, selected option) over task blocks.
+    const pages = { ...NO_SEARCH_FILTERS, kind: "pages" as const };
+    expect(withMarker(pages, "TODO")).toEqual({ ...pages, marker: "TODO", kind: "blocks" });
+    expect(withMarker({ ...NO_SEARCH_FILTERS, kind: "all" }, "TODO").kind).toBe("all");
+    expect(withMarker(pages, "")).toEqual(pages);
   });
 });

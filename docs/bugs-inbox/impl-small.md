@@ -101,6 +101,9 @@ all taken, so what the pass found in this feature is recorded here rather than u
   same subtree semantics as deleting a collapsed parent, but nothing on screen shows them. Undo
   restores. Probe only: page "parent ctx / match kid / hidden kid / other hidden / match two",
   filter "match", select all, Backspace → only "other hidden" left.
+- *Open:* Cmd/Ctrl+F while the page title input holds an uncommitted rename commits it on blur,
+  the route follows the new name, and the name change closes the bar it just opened — Cmd+F seems
+  to do nothing (probe: title "X" appended, Cmd+F → URL `…%20X`, no bar, focus on body).
 
 ---
 
@@ -256,3 +259,10 @@ the client's `SearchInput` (`data/api-client.ts`); styles in `views/search-filte
 filter (restrict to named pages) is still not exposed — the audit's list for #11 did not ask for
 it. Depends on the B-238 server fix: before it, the marker filter would have shown "0 results".
 Tests named above.
+
+**Verification follow-up, 2026-09-13 (second agent).** *Fixed:* with Show on "Pages only", choosing a
+Task marker searched task blocks (right) but Show kept reading "Pages only" — the option disabled
+yet still selected — over a list of blocks. Choosing a marker now moves a pages-only Show to
+"Blocks only" (`views/searchFilters.ts#withMarker`). Tests: `e2e/tests/search-filters.spec.ts`
+"choosing a task marker from pages only shows blocks only, not a pages-only label over tasks"
+(failed before: value "pages") and `views/searchFilters.test.ts` "withMarker".

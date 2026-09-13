@@ -35,3 +35,17 @@ export function searchFilterInput(
   if (choice.journalsOnly) out.journalsOnly = true;
   return out;
 }
+
+/**
+ * Pick a task marker. "Pages only" cannot hold alongside one (a task is a block), and leaving it
+ * chosen kept the Show control reading "Pages only" — a disabled option, still selected — over a
+ * list of task blocks. Choosing a marker from "pages only" moves Show to "blocks only", which is
+ * what is being searched, and it stays there when the marker is cleared.
+ */
+export function withMarker(
+  choice: SearchFilterChoice,
+  marker: SearchFilterChoice["marker"],
+): SearchFilterChoice {
+  const kind = marker !== "" && choice.kind === "pages" ? "blocks" : choice.kind;
+  return { ...choice, marker, kind };
+}

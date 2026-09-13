@@ -62,3 +62,19 @@ test("pages only and blocks only choose what kind of hit comes back", async ({ p
   await expect(summary(page)).toHaveText("1 result");
   await expect(page.locator(".search-result-snippet")).toContainText("sightings");
 });
+
+test("choosing a task marker from pages only shows blocks only, not a pages-only label over tasks", async ({
+  page,
+}) => {
+  // Show kept reading "Pages only" (a disabled option, still selected) over a list of task
+  // blocks (verification probe, 2026-09-13).
+  await seedPage(page, "Kinkajou Chores", "- TODO kinkajou feeding\n- kinkajou nap");
+  await searchFor(page, "kinkajou");
+  await page.locator(".search-filter-kind").selectOption("pages");
+  await expect(summary(page)).toHaveText("1 result");
+
+  await page.locator(".search-filter-marker").selectOption("TODO");
+  await expect(summary(page)).toHaveText("1 result");
+  await expect(page.locator(".search-result-snippet")).toContainText("feeding");
+  await expect(page.locator(".search-filter-kind")).toHaveValue("blocks");
+});

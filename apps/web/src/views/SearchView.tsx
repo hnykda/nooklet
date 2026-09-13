@@ -18,6 +18,7 @@ import {
   SEARCH_MARKERS,
   type SearchFilterChoice,
   searchFilterInput,
+  withMarker,
 } from "./searchFilters.js";
 
 const MODES = ["hybrid", "keyword", "semantic"] as const;
@@ -127,9 +128,10 @@ export function SearchView(): JSX.Element {
           <select
             class="search-filter-marker"
             value={filters().marker}
-            onChange={(e) =>
-              patchFilters({ marker: e.currentTarget.value as SearchFilterChoice["marker"] })
-            }
+            onChange={(e) => {
+              const marker = e.currentTarget.value as SearchFilterChoice["marker"];
+              setFilters((f) => withMarker(f, marker));
+            }}
           >
             <option value="">Any block</option>
             <For each={SEARCH_MARKERS}>{(m) => <option value={m}>{m}</option>}</For>
