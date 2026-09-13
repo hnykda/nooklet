@@ -37,7 +37,9 @@ committed as it was in the main checkout (plus reading the port from the shell, 
 
 ### B-531 · Hypothesis refuted: the traffic lights do NOT cover Toggle sidebar / Back / Forward
 **Status:** not a bug · **Severity:** — · **Found:** 2026-09-13, desktop-shell ·
-**Evidence:** `shots/01-base-default-size.png`
+**Evidence:** `shots/01-base-default-size.png` (client `52e5d20`), `shots/10-final-default-size.png`
+(this branch's app, menu and client) · **Test (guard):** `e2e/tests/desktop-shell.spec.ts` › "at the
+desktop window's size, Settings, Graph, All pages and Help are reachable by pointer"
 
 The suspicion was that `TitleBarStyle::Transparent` + `hidden_title` puts web content under the
 title bar, so the macOS window buttons would sit on the top bar's first three controls and leave
@@ -189,5 +191,19 @@ named app schemes to it; or ask with a native confirmation before any other sche
 
 Believed fixed, not tested: exercising it needs a click inside the WKWebView (or a key to Alt+Enter),
 which this environment cannot send. Worth a thirty-second manual check: click any web link in a note.
+
+---
+
+### B-535 · The launcher prefers a server URL it saved last time over the port the shell says
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, desktop-shell (reading
+`apps/desktop/dist/index.html` while passing it the port) · **Test:** none
+
+`serverUrl()` is `localStorage.getItem("nooklet.desktop.serverUrl") || DEFAULT_URL`, and every
+successful connect saves the URL. So once the launcher has connected anywhere, the port the shell
+reports (`__NOOKLET_DESKTOP__.port`, i.e. `NOOKLET_PORT` or 6100) is never used again for that
+WebKit store: moving the app to another port, or a URL typed into the retry box once, sticks.
+Harmless while everything is 6100. Not changed here — the launcher is also being reworked for B-430
+on `m11/delete-launcher`; the natural fix is to try the shell's port first and keep the saved URL
+as the fallback the retry box edits.
 
 ---
