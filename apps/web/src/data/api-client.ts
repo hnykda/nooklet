@@ -44,10 +44,36 @@ export interface SearchInput {
   cursor?: string;
 }
 
+/** Why the server fell back to keyword search (B-520). Mirrors `search`'s `fallback` output; the
+ * server's `SemanticFallbackReason` in `packages/server/src/embeddings/semantic-search.ts` is the
+ * list. Kept as `string` beyond the known values so a newer server's reason still renders its own
+ * `message` instead of failing a type the client compiled against. */
+export interface SearchFallback {
+  reason:
+    | "sqlite_vec_unavailable"
+    | "not_configured"
+    | "indexing"
+    | "index_incomplete"
+    | "provider_unreachable"
+    | "model_missing"
+    | "query_embedding_failed"
+    | (string & {});
+  message: string;
+  provider?: string;
+  model?: string;
+  host?: string;
+  indexed?: number;
+  total?: number;
+  errors?: number;
+  error?: string;
+}
+
 export interface SearchResult {
   hits: SearchHit[];
   cursor?: string;
   modeUsed: "hybrid" | "keyword" | "semantic";
+  /** Present exactly when `modeUsed` is not the mode that was asked for. */
+  fallback?: SearchFallback;
 }
 
 export interface BacklinkRef {
@@ -197,6 +223,8 @@ interface SearchWireOutput {
   hits: SearchWireHit[];
   cursor?: string;
   mode_used: "hybrid" | "keyword" | "semantic";
+  /** Every key already camel-free (`indexed`, `total`, `host`…), so it maps through unchanged. */
+  fallback?: SearchFallback;
 }
 
 interface BacklinksWireOutput {
@@ -256,6 +284,7 @@ export const apiClient: ApiClient = {
       })),
       cursor: out.cursor,
       modeUsed: out.mode_used,
+      fallback: out.fallback,
     };
   },
 

@@ -13,7 +13,9 @@ import { displayRefName } from "../data/page-title.js";
 import { useSearchResults } from "../data/store.js";
 import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 import "./search-filters.css";
+import { SearchFallbackNote } from "./SearchFallbackNote.js";
 import { SearchSnippet } from "./SearchSnippet.js";
+import { openEmbeddingsSettings } from "./SettingsPanel.js";
 import {
   NO_SEARCH_FILTERS,
   SEARCH_MARKERS,
@@ -190,10 +192,18 @@ export function SearchView(): JSX.Element {
       <Show when={safeResults()}>
         {(r) => (
           <>
+            {/* Why it fell back, and the one next step that fits (B-520). "Try again" refetches:
+                an index still building or an Ollama just started is fixed by time, not a click
+                elsewhere. */}
+            <Show when={r().modeUsed !== mode()}>
+              <SearchFallbackNote
+                modeUsed={r().modeUsed}
+                fallback={r().fallback}
+                onOpenSettings={openEmbeddingsSettings}
+                onRetry={() => refetch()}
+              />
+            </Show>
             <p class="search-summary">
-              <Show when={r().modeUsed !== mode()}>
-                <span class="search-mode-fallback">Fell back to {r().modeUsed} search. </span>
-              </Show>
               {r().hits.length} result{r().hits.length === 1 ? "" : "s"}
             </p>
             <ul class="search-results">
