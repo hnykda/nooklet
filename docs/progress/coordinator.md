@@ -4,6 +4,65 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
+## Session end — 2026-09-13 evening (READ THIS FIRST)
+
+Everything from the M8–M11 runs is merged into `main` and nothing is running. No agent, workflow or
+server of this session is left. Nothing has been pushed: `main` is 626 commits ahead of `origin/main`.
+All 43 `m8/*`–`m11/*` branches are merged except `m8/rv-web-security`, of which only a subset was
+cherry-picked on purpose (see "Integration choices" under M8); the branches are kept, the worktrees
+are removed.
+
+### State of `main` at the end
+- Unit: core 423, plugin-api 17, server 744, web 1,300 — all green. `pnpm -r typecheck` clean.
+- `pnpm nooklet verify` on a fresh copy of the live graph: OK.
+- Full Chromium e2e: see the last line of this section (run at the end).
+- Schema is v7 now (ADR 024's indexes). A desktop `.app` built before this is v6 and its bundled
+  server would refuse the migrated graph (B-430's case) — rebuild the app after the owner's server
+  has run the new code.
+
+### What the owner does to see today's work (in this order)
+1. Stop the running `pnpm nooklet serve` (port 6100) and quit the desktop app.
+2. `pnpm install && pnpm --filter @nooklet/web build` in the repo, then `pnpm nooklet serve`.
+   First start runs the migrations: pages for the 259 referenced-but-missing names (ADR 024), schema
+   v7. The service-worker fix (B-532) means the next app/browser load picks up the new client.
+3. Optional, the SCHEDULED text repair (owner approved): with the server stopped,
+   `pnpm nooklet repair org-dates` (dry run, expect 20 blocks, 0 left alone), then
+   `pnpm nooklet repair org-dates --apply` (keep the batch_id; `batch_undo` reverses it), then
+   `pnpm nooklet verify`. Backups: `~/.nooklet/backup-2026-09-13-before-accidental-serve.sqlite`.
+4. Desktop app: `export PATH="$HOME/.cargo/bin:$PATH"; pnpm --filter @nooklet/desktop sidecar &&
+   pnpm --filter @nooklet/desktop exec tauri build --bundles app`, then
+   `open apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app`. Never copy it into
+   /Applications unless the owner asks.
+5. B-42 (focus lost in the desktop app): Diagnostics (click the sync cloud) → Focus log → "Record
+   focus changes" → reproduce → Copy log → hand it to the next session. Not reproducible in
+   Playwright WebKit or Chromium (dozens of scenarios, real-graph copy).
+6. `/goal clear` — the "maximize the last hour" goal is still set and will keep a session going.
+
+### To-dos agreed with the owner but NOT started (do these next, in this order)
+1. B-560: journal date headings open that day's page.
+2. B-541 follow-up: a top-right "⋯" menu — Settings, All pages, Graph, Trash, Keyboard shortcuts /
+   Help, Diagnostics — next to the sync cloud and agent icon.
+3. B-380 option (c): no `#` autocomplete when the caret is inside an existing tag.
+4. Mermaid out of the PWA precache (lazy on first use) and the desktop sidecar reusing the web
+   build's copy instead of shipping a second (~12 MB).
+5. The references heading count: stays "blocks" unless the owner picks Logseq's top-level count.
+
+### Owner decisions still open (each in its BUGS.md entry)
+- B-534: app links (`zotero://`) from the desktop app — prompt, allowlist, or stay dead.
+- B-450: Enter on a focused button while a block selection stands.
+- B-472: a typed `foo:: bar` line becoming a real property on first edit.
+- "synced via another tab" label: keep or drop (sync indicator is now an icon; the text is its tooltip).
+
+### Incidents today (so they are not repeated)
+- An agent ran `nooklet serve --help`, which served the live graph for ~10 min (content unchanged,
+  verified; B-146 fixed). Every agent prompt now exports `NOOKLET_DATA=<scratch>` first.
+- SendMessage to a running workflow agent resumed a duplicate in the same worktree; the duplicate
+  was stopped. Do not message running workflow agents.
+- A devtest desktop app took keyboard focus from the owner's window (~17:56); a few keystrokes went
+  into a scratch graph. Devtest launches must not steal focus while the owner works.
+- The inbox fold script duplicated 120 BUGS.md entries once (section boundary found by any "## "
+  line); fixed and redone from the pre-fold copy.
+
 ## Done today (all on `main`, none pushed — 60+ commits ahead of origin)
 
 - ADR 018 journal names + display-format setting; page icons; asset import + B-51; B-43 storage
