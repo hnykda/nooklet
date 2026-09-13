@@ -21,19 +21,26 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
   red on base, all green after), inbox entry. Web unit 1156/1156, typecheck clean.
 - Whole e2e suite on 6412 in five chunks + storage: 543 tests, 541 passed, 2 skipped, 1 failure
   (`views.spec.ts` "the sidebar toggles with Cmd/Ctrl+\…") that passed on rerun (29/29) — load.
-- commit "test(e2e): remote-rewrite page names per repeat": `--repeat-each=3` 21/21.
+- `a628fb9` test(e2e): remote-rewrite page names per repeat: `--repeat-each=3` 21/21.
+- `f824ee9` B-460 logged, open (a property-only rewrite stays stale in the editor until editing
+  ends); probe `tools/probes/remote-property-while-editing.spec.ts`.
+- next commit (spec + tests): `commands-and-keymap.md` R32b corrected ("Both leave editing first"
+  was wrong), R51b added; `remote-rewrite.spec.ts` now 9 tests (undo/redo of the take, leaving the
+  block, Keep mine through a refetch while still typing, own writes after Tab never offered).
+  Mutation checks: `hold` removed → Keep mine fails 2/2; own writes unrecorded → the Tab test fails
+  2/2, while editing/focus/undo-redo/journal-day-start (46 tests) did NOT catch that mutation.
+  `--repeat-each=2`: 18/18.
 
 ## 2. In flight
 
-- Spec update (next step 1).
+- Real-graph check (next step 1).
 
 ## 3. Next steps, in order
 
-1. (done) Property-only probe → B-460 logged, open; probe `tools/probes/remote-property-while-editing.spec.ts`.
-2. Spec: `docs/spec/commands-and-keymap.md` R32b ("Both leave editing first" is wrong now) + a rule
-   for rewrites from elsewhere.
-3. Real graph: copy `~/.nooklet/default/graph.sqlite`, serve, edit a journal block while an API
-   `block.update` rewrites it (clean and typing); `pnpm nooklet verify` (no ops/schema touched).
+1. Real graph: copy `~/.nooklet/default/graph.sqlite`, serve, open a journal day with Czech text,
+   edit a block while an API `block.update` rewrites it (clean and typing); `pnpm nooklet verify`
+   (no ops/schema touched, cheap).
+2. Final: web unit + typecheck + biome; rerun editor e2e chunks once more.
 
 ## Design notes
 

@@ -420,7 +420,9 @@ server op (`block.to_page`, `block.move_to_page`) on the focused block or the fi
 bracketed by a sync push and pull. "Turn into page" makes the block's first line a page, its
 children that page's blocks, and leaves a link in its place; "Move to page…" asks for a page with a
 fuzzy picker (creating one is allowed) and moves the block with its subtree to that page's end.
-Both leave editing first. Both are bullet context-menu entries.
+Neither leaves editing: text typed into the block and not yet written is written before the push,
+the editor follows the rewrite when the pull brings it (R51b), and a block moved off the page ends
+editing as it goes (B-88). Both are bullet context-menu entries.
 
 **R33.** `edit.paste`'s keybinding row is informational: `Cmd+V`/`Ctrl+V` is the OS/browser paste
 gesture and is never matched by the keydown dispatcher (R12); the actual trigger is the editor's
@@ -732,6 +734,19 @@ too. A transaction that would write to a block no longer on the page (moved or d
 is dropped and the next older one is undone instead (B-194). A transaction with no recorded caret,
 or one whose block has no row, leaves the editor where it is while its row is still on screen
 (B-162).
+
+**R51b.** A write from elsewhere — another device, an API or MCP caller, a server op such as R32b's
+— that changes the text of the block being edited (B-192). It counts only if the text it brings is
+newer, by `content_hlc`, than both the text the editor was loaded with and every text write the
+editor made to that block; an older one is a read from before the editor's own write and never
+reaches the buffer. With no typing waiting in the write debounce, the editor takes the new text and
+maps the caret through the change: before the changed span it keeps its offset, after it keeps its
+distance from the end, inside it goes to the end of the new span, and at the end of the text it
+stays at the end. With typing waiting, the buffer keeps the typing and the row shows "This block
+changed elsewhere." with **Use the other version** (writes that text as one undo step; the waiting
+keystrokes are dropped, and Cmd/Ctrl+Z brings them back) and **Keep mine** (dismisses; the typing is
+written as usual, and that version is not offered again). The notice goes when editing leaves the
+block. A write that changes only a property line is not covered yet (B-460).
 
 **R52.** `app.toggleSidebar` shows/hides the navigation sidebar (page tree, journals, tags).
 `app.openSettings` opens the settings view (which includes the keybindings editor, § G).

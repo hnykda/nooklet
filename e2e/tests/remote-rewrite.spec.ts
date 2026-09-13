@@ -19,6 +19,7 @@ import {
   clickRow,
   editor,
   editorText,
+  MOD,
   openEditing,
   pagePath,
   readBlocks,
@@ -126,9 +127,37 @@ test.describe("an agent's block.update on the block being edited", () => {
     await expect(editor(page)).toBeFocused();
     await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe("theirs");
 
+    // Taking it is one undo step, and its undo brings the typing back; redo takes it again.
+    await page.keyboard.press(`${MOD}+z`);
+    await expect.poll(() => editorText(page)).toBe(`mine typed${typed}`);
+    await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe(`mine typed${typed}`);
+    await page.keyboard.press(`${MOD}+Shift+z`);
+    await expect.poll(() => editorText(page)).toBe("theirs");
+
     // And the editor is live on the taken text.
+    await page.keyboard.press("End");
     await page.keyboard.type(" too");
     await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe("theirs too");
+  });
+
+  test("with unsaved typing, the notice goes when editing moves on, and the typing is written", async ({
+    page,
+  }) => {
+    const name = unique("Remote Rewrite Agent Leave");
+    const outliner = await openEditing(page, name, "- mine\n- other");
+    const id = await idOf(page, name, "mine");
+
+    await page.keyboard.type(" typed");
+    const write = api(page, "block.update", { id, content: "theirs" });
+    const typed = await typeWhile(page, async () => (await notice(page).count()) > 0);
+    await write;
+
+    await clickRow(page, outliner, 1);
+    await expect(notice(page)).toHaveCount(0);
+    await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe(`mine typed${typed}`);
+    await expect
+      .poll(() => outliner.locator(".vr-row").first().textContent())
+      .toBe(`mine typed${typed}`);
   });
 
   test("with unsaved typing, Keep mine writes the typing and the notice stays gone", async ({
@@ -137,27 +166,76 @@ test.describe("an agent's block.update on the block being edited", () => {
     const name = unique("Remote Rewrite Agent Keep");
     await openEditing(page, name, "- mine\n- other");
     const id = await idOf(page, name, "mine");
+    const other = await idOf(page, name, "other");
 
     await page.keyboard.type(" typed");
     const write = api(page, "block.update", { id, content: "theirs" });
     const typed = await typeWhile(page, async () => (await notice(page).count()) > 0);
-    await write;
-
+    // No pause from here to the next typing: the version must be dismissed while still unsaved.
     await notice(page).getByRole("button", { name: "Keep mine" }).click();
+
+    // Still typing, a write to another block refetches the page — which still holds "theirs" for
+    // this block, as nothing typed has been written yet. The dismissed version is not offered again.
+    const otherWrite = api(page, "block.update", { id: other, content: "other changed" });
+    const more = await typeWhile(
+      page,
+      async () => (await page.locator(".vr-row").nth(1).textContent()) === "other changed",
+      "y",
+    );
+    const serverMeanwhile = await storedText(page, name);
+    await Promise.all([write, otherWrite]);
     await expect(notice(page)).toHaveCount(0);
     await expect(editor(page)).toBeFocused();
-    await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe(`mine typed${typed}`);
-    // A later write elsewhere on the page refetches the tree; the dismissed version is not offered
-    // again, and the editor keeps the typing.
-    const other = await idOf(page, name, "other");
-    await api(page, "block.update", { id: other, content: "other changed" });
+    expect(await editorText(page)).toBe(`mine typed${typed}${more}`);
+    // Otherwise the typing was written in a gap between keystrokes, and the refetch above compared
+    // against that write instead of against the dismissed version: this test proved nothing.
+    expect(serverMeanwhile, "the typing stayed unsaved through the refetch").toBe("theirs");
+
     await expect
       .poll(async () => (await readBlocks(page, name)).map((b) => b.content), { timeout: 15_000 })
-      .toEqual([`mine typed${typed}`, "other changed"]);
-    await expect.poll(() => page.locator(".vr-row").nth(1).textContent()).toBe("other changed");
+      .toEqual([`mine typed${typed}${more}`, "other changed"]);
     await expect(notice(page)).toHaveCount(0);
-    expect(await editorText(page)).toBe(`mine typed${typed}`);
   });
+});
+
+// The other half of the rule: this tab's OWN writes are never a change from elsewhere. Tab writes
+// the typed text (a flush before the structural op) and typing carries straight on, so the refetch
+// that brings the flushed text back arrives while newer typing is unsaved — the case a comparison
+// that forgot this tab's writes would offer back as "changed elsewhere", or take over the typing.
+test("typing straight on after Tab is never offered back as a change from elsewhere", async ({
+  page,
+}) => {
+  const name = unique("Remote Rewrite Own Writes");
+  const outliner = await openEditing(page, name, "- parent\n- child");
+  await page.evaluate(() => {
+    const w = window as unknown as { __noticeSeen?: boolean };
+    w.__noticeSeen = false;
+    new MutationObserver(() => {
+      if (document.querySelector(".vr-remote-notice")) w.__noticeSeen = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await clickRow(page, outliner, 1);
+  await page.keyboard.press("End");
+
+  let expected = "child";
+  for (let round = 0; round < 4; round++) {
+    await page.keyboard.type(` r${round}`);
+    await page.keyboard.press(round % 2 === 0 ? "Tab" : "Shift+Tab");
+    const deadline = Date.now() + 700;
+    let typed = "";
+    while (Date.now() < deadline) {
+      await page.keyboard.type("z");
+      typed += "z";
+      await page.waitForTimeout(40);
+    }
+    expected += ` r${round}${typed}`;
+  }
+
+  await expect.poll(() => storedText(page, name, 1), { timeout: 15_000 }).toBe(expected);
+  expect(await editorText(page)).toBe(expected);
+  expect(await page.evaluate(() => (window as { __noticeSeen?: boolean }).__noticeSeen)).toBe(
+    false,
+  );
 });
 
 test.describe("another device rewrites the block being edited", () => {

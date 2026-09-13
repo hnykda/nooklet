@@ -29,12 +29,18 @@ the workaround also did — flush the keystrokes still inside the 500 ms debounc
 (the context menu keeps focus in the editor, so nothing else flushed them). `refactor-host.tsx`'s
 `write` now calls `editor/outline-registry.ts#flushTyping` before its push.
 
-Tests: `e2e/tests/remote-rewrite.spec.ts` (7; all 7 fail on the old code — the clean cases showed
+Tests: `e2e/tests/remote-rewrite.spec.ts` (9): an agent's `block.update` with nothing typed; with an
+edit before the caret; with unsaved typing then "Use the other version" (Cmd/Ctrl+Z brings the typing
+back, redo takes it again); with unsaved typing then leaving the block; with unsaved typing then
+"Keep mine" while typing continues through another refetch; a second browser context (its own
+replica and device) with nothing typed and with unsaved typing; "Turn into page" on the edited row
+with typing inside the debounce; and "typing straight on after Tab is never offered back as a change
+from elsewhere". Run against the old code, the first seven written all failed (the clean cases showed
 `"original text"` / `"shared start"` where the rewrite was, the unsaved cases never showed a notice,
-"Turn into page" ended editing): an agent's `block.update` with nothing typed, with an edit before
-the caret, with unsaved typing then "Use the other version", with unsaved typing then "Keep mine";
-a second browser context (its own replica and device) with nothing typed and with unsaved typing;
-"Turn into page" on the edited row with typing inside the debounce.
+"Turn into page" ended editing); "leaving the block" was added later and waits for a notice the old
+code never shows (not run against it). Two guard the new comparison itself, mutation-checked
+2026-09-13 (2/2 failing each): "Keep mine…" with the verdict's `hold` removed, and "…after Tab…" (which
+passes on the old code) with this tree's own writes left unrecorded.
 `apps/web/src/editor/remote-text.test.ts` (17) › "a refetch that read before this tab's own write is
 not a remote change" and the rest of the verdict table, plus `mapThroughRewrite`;
 `apps/web/src/editor/outline-registry.test.ts` › "typing flush (B-192)";
