@@ -12,8 +12,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 
 | QA | Bug | Sev | State |
 |---|---|---|---|
-| Q1 live mirror misses renames/moves/props | B-260 | high | next |
-| Q2 UI title rename skips link rewrite + alias | B-261 | high | queued |
+| Q1 live mirror misses renames/moves/props | B-260 | high | fixed |
+| Q2 UI title rename skips link rewrite + alias | B-261 | high | next |
 | Q3 export trusts mirror_file over disk | B-262 | medium | queued |
 | Q4 `tag:task` query finds nothing | B-263 | medium | queued |
 | Q5 `$$…$$` display math | B-264 | low | queued |
@@ -28,11 +28,14 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 
 ## In flight
 
-- Q1/B-260.
+- Q2/B-261.
 
 ## Decisions
 
-- (none yet)
+- B-260: the mirror follows `changes` rows by seq cursor, not `updated_at` timestamps; core reducer
+  untouched. First sweep after start is a full render (~200 ms on the real graph).
+- Scripts for real-graph checks: `<scratch>/serve.sh <name>` (fresh copy served on 6462) and
+  `<scratch>/q1-real.mjs`. The sandbox refuses `bash $VAR/...`; call scripts by literal path.
 
 ## How to resume
 

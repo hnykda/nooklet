@@ -8,7 +8,10 @@ logged here before any fix started.
 ---
 
 ### B-260 · The live mirror never picks up renames, moves, marker, indent or property changes
-**Status:** open · **Severity:** high · **Found:** 2026-09-13, exploratory QA (Q1) · **Test:** —
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, exploratory QA (Q1) · **Test:**
+`e2e/tests/mirror-live.spec.ts` (3 tests), `packages/server/src/mirror/live.test.ts` "follows a
+rename…", "follows page and block properties, markers and indentation", "follows a block moved to
+another page…", `packages/server/src/mirror/export.test.ts` "exportAll with sinceSeq (B-260)"
 
 While `nooklet serve` runs, only block text edits, creates and deletes reach `pages/`. Rename a
 page (title input or `page.update new_name`) and the old file stays while no new file appears
@@ -19,6 +22,23 @@ marker with Cmd/Ctrl+Enter: none of it shows up in the file. The stored page rea
 `nooklet export` of a copy of the same DB wrote the right files and `nooklet verify` passed, so
 the data is right and only the live mirror is stale. B-95's fix note says the sweep "moves renamed
 ones" — true of `exportPage`, but the sweep never offers it the page.
+
+**Fixed 2026-09-13.** The sweep chose pages whose `page.updated_at` or newest `block.updated_at`
+was later than `mirror_file.written_at`, and in `core/sync/apply-ops.ts` only `block.text` moves
+`updated_at` — rename, `page.prop`, `block.prop` (marker, priority, collapsed, reserved columns)
+and `block.place` never did, and a block moved off a page leaves nothing on that page to compare.
+Bumping `updated_at` in the reducer was rejected: it would change `if_version` and "recently
+updated" semantics for every client and still miss the page a block left. The mirror now follows
+the `changes` table instead (`mirror/export.ts#pagesTouchedSince`): a page row written after the
+cursor, or any page a written block was on before or after. The cursor is a `changes.seq`, not a
+clock, so a commit in the same millisecond as the previous sweep cannot be lost. The first sweep
+after `serve` starts renders every live page (952 pages on the real graph: ~200 ms cold, ~85 ms
+warm with nothing to write), which catches up writes made while the server was down and repairs a
+mirror an older build left stale. Real graph: renaming `Alex/Ideas` with a property reached
+`pages/Alex___Ideas QA.md` in 588 ms and removed the old file. The three e2e tests failed on the
+unfixed server (new file never appeared, `qaprop:: hello` missing, `  - two` never indented).
+Coordinator: B-95's fix note in BUGS.md ("moves renamed ones", `onlyChanged`) describes the
+replaced mechanism.
 
 ---
 
