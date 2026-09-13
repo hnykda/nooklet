@@ -9,9 +9,31 @@
  * "Alias"), this lands the caret at the token's `data-from` rather than mid-alias — an accepted
  * approximation for v1 (documented, not silently wrong: it never lands *outside* the token).
  *
- * Needs a real DOM (`caretPositionFromPoint`/`caretRangeFromPoint`) so it is not unit-tested here;
- * see the package summary's "needs manual browser verification" list.
+ * The hit test itself needs a real browser (`caretPositionFromPoint`/`caretRangeFromPoint`):
+ * `caret.test.tsx` stubs it with answers measured in Chromium, and the real gestures are e2e
+ * (`e2e/tests/focus.spec.ts`, `e2e/tests/render-views.spec.ts`).
  */
+
+/**
+ * The offset of a point that fell BETWEEN an element's children rather than inside a text node:
+ * the child just after it, or failing that the one just before, when that child carries offsets.
+ * An empty line inside a block (`a\n\nb`, two `<br>`s — `render/tokens.tsx#Lines`) has no text to
+ * land in, so the browser answers `(p, <index of the second br>)` for a click anywhere on it, and
+ * walking up from the `<p>` finds no `[data-from]` at all — the caret went to the end of the
+ * block (B-325). `null` when neither neighbour says where it is, as before.
+ */
+function offsetBetweenChildren(node: Node, index: number): number | null {
+  if (!(node instanceof Element)) return null;
+  const after = node.childNodes[index];
+  if (after instanceof Element && after.hasAttribute("data-from")) {
+    return Number(after.getAttribute("data-from"));
+  }
+  const before = node.childNodes[index - 1];
+  if (before instanceof Element && before.hasAttribute("data-to")) {
+    return Number(before.getAttribute("data-to"));
+  }
+  return null;
+}
 
 function nearestOffsetAttr(node: Node | null): HTMLElement | null {
   let el = node instanceof HTMLElement ? node : (node?.parentElement ?? null);
@@ -44,6 +66,9 @@ export function resolveClickOffset(container: HTMLElement, x: number, y: number)
     }
   }
   if (!node || !container.contains(node)) return null;
+
+  const between = offsetBetweenChildren(node, offsetInNode);
+  if (between !== null && !Number.isNaN(between)) return between;
 
   const el = nearestOffsetAttr(node);
   if (!el) return null;

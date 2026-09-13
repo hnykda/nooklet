@@ -205,6 +205,35 @@ fix: show both dates when both are set, labelled as the journal agenda does
 
 ---
 
+### B-325 · Clicking the empty line of a multi-line block puts the caret at the end of the block
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m9/render-views` · **Test:** `e2e/tests/render-views.spec.ts` ("clicking the empty line of a
+multi-line block puts the caret on that line, not at the block's end"),
+`apps/web/src/editor/caret.test.tsx` ("a point between a paragraph's children on an empty line…")
+
+B-224's fix renders an empty line inside a block (`alpha\n\ngamma`) as two `<br>`s, and gives each
+`<br>` its newline's offsets with the comment that "a click beside it resolves to a caret offset
+(`../caret.ts`)". It does not. Measured in Chromium (production build, this branch): anywhere on the
+empty line `caretRangeFromPoint` answers `(P, 2)` — a position between the paragraph's children,
+before the second `<br>`, since there is no text node on that line to land in. `caret.ts` only walks
+UP from the node it is given to the nearest `[data-from]`; a `<p>` has none, so
+`resolveClickOffset` returned `null` and `BlockRowView` fell back to `content.length`. Clicking the
+empty line and typing "beta" stored `alpha\n\ngammabeta`. Before B-224 the empty line was not drawn
+at all, so this is new with the fix. The owner's graph has 214 non-fence blocks with an empty line
+(sqlite backup, `content like '%\n\n%'`).
+
+**Fixed 2026-09-13.** `caret.ts#offsetBetweenChildren`: when the hit test answers a position
+between an element's children, the child just after it gives its `data-from` (or, at the end, the
+child just before gives its `data-to`); only when neither carries offsets does the old walk-up run.
+The e2e clicks the empty line of three blocks — plain, Czech with hidden `**` markup, and one with
+a property line (whose editing buffer puts `rvblank:: ano` after the first line, B-101) — types, and
+reads the stored blocks: on the branch before the fix all three got the text appended at the end
+(`gammabeta`, `konecstřed`, `druhýprostřední`); with it they read `alpha\nbeta\ngamma` and so on.
+The unit test stubs `caretRangeFromPoint` with the measured `(P, 2)` answer; it failed before
+(`null`). The text-node path is unchanged (`focus.spec.ts` "clicking inside a word…" still passes).
+
+---
+
 ### B-161 (existing)
 **Status:** still failing (not fixed here)
 

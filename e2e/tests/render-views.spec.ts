@@ -234,3 +234,57 @@ test("the Tasks view's due window finds a deadline on a task that is also schedu
   await expect(rows.filter({ hasText: "scheduled inside" })).toHaveCount(1);
   await expect(rows.filter({ hasText: "scheduled early only" })).toHaveCount(0);
 });
+
+test("clicking the empty line of a multi-line block puts the caret on that line, not at the block's end (B-325)", async ({
+  page,
+}) => {
+  // B-224 made an empty line inside a block visible (two `<br>`s). There is no text on it for the
+  // browser to hit, so a click there resolves to a position BETWEEN the paragraph's children, and
+  // `caret.ts` — which only knew how to walk up from a text node — sent the caret to the end of the
+  // block. 214 blocks in the owner's graph have an empty line like this.
+  const name = "RV Blank Line Click";
+  const outliner = await openPage(
+    page,
+    name,
+    [
+      "- alpha",
+      "  ",
+      "  gamma",
+      "- Úvod **tučně**",
+      "  ",
+      "  konec",
+      "- první",
+      "  ",
+      "  druhý",
+      "  rvblank:: ano",
+    ].join("\n"),
+  );
+  const before = await readBlocks(page, name);
+  expect(before.map((b) => b.content)).toEqual([
+    "alpha\n\ngamma",
+    "Úvod **tučně**\n\nkonec",
+    "první\n\ndruhý",
+  ]);
+
+  const typed = ["beta", "střed", "prostřední"];
+  for (const [index, text] of typed.entries()) {
+    const view = outliner.locator(".vr-row .vr-block-view").nth(index);
+    await expect(view.locator("br")).toHaveCount(2);
+    // The middle of the empty line: halfway between the two breaks' tops is still the first line,
+    // so aim at the second break's own line box.
+    const point = await view.evaluate((el) => {
+      const second = el.querySelectorAll("br")[1] as HTMLBRElement;
+      const b = second.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      return { x: box.width / 2, y: b.top + b.height / 2 - box.top };
+    });
+    await view.click({ position: point });
+    await expect(page.locator(".cm-content")).toBeFocused();
+    await page.keyboard.type(text);
+    await page.keyboard.press("Escape");
+  }
+
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["alpha\nbeta\ngamma", "Úvod **tučně**\nstřed\nkonec", "první\nprostřední\ndruhý"]);
+});
