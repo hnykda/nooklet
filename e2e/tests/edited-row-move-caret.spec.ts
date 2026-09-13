@@ -23,6 +23,7 @@ import {
   clickRow,
   editingRowIndex,
   editorText,
+  MOD,
   openEditing,
   readBlocks,
   rowTexts,
@@ -75,4 +76,24 @@ test("Alt+Up moves the block being edited without moving the caret (B-501)", asy
   expect(await caret(page)).toEqual({ anchor: 3, head: 3 });
   await page.keyboard.type("X");
   await expect.poll(() => editorText(page)).toBe("twoX");
+});
+
+test("undoing Alt+Up moves the block back without moving the caret (B-501)", async ({
+  page,
+  browserName,
+}) => {
+  const outliner = await openEditing(page, `Alt Up Undo Caret ${browserName}`, "- one\n- two");
+  await clickRow(page, outliner, 1);
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["two", "one"]);
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["one", "two"]);
+  expect(await editingRowIndex(page, outliner)).toBe(1);
+  await page.waitForTimeout(300);
+  await expect(page.locator(".cm-content")).toBeFocused();
+  expect(await caret(page)).toEqual({ anchor: 2, head: 2 });
+  await page.keyboard.type("X");
+  await expect.poll(() => editorText(page)).toBe("twXo");
 });
