@@ -90,6 +90,9 @@ branch's code. Evidence, all re-run rather than read from above:
   only the new "a block brought back by undo keeps its row…" test fails — no earlier e2e covered it.
 - Added: two tests in `editing-row-leaves.spec.ts`, one in `template-undo.spec.ts` (named in the
   B-88/B-108 entries). Logged B-194 and B-195 (both pre-existing or edge, low).
+- Every Chromium spec again after those additions (`06c42ea`), three server runs: 87 passed +
+  1 skipped; 122 passed (views.spec included — B-193's test passed this time); 86 passed +
+  1 skipped. Total 295 passed, 0 failed, 2 skipped. WebKit (`storage.spec.ts`): 2 passed.
 
 ## How to resume
 

@@ -144,6 +144,10 @@ machine was running a dozen agents' builds and browsers) or that run passed it b
 step: run the single test on an idle machine; if it still fails, trace focus on Escape
 (`e2e/helpers/focus.ts#installFocusTrace`).
 
+Verification pass, same branch and port, later the same day: `views.spec.ts` passed in full (with
+parity, popups, autocomplete, journals, a-fresh-journal, tasks, replace, query and phone: 122 of
+122), so the failure is intermittent or load-dependent rather than deterministic.
+
 ---
 
 ### B-194 · Cmd/Ctrl+Z after the edited block left the page reverts it out of sight and unmounts the editor
