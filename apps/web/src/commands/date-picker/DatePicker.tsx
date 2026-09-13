@@ -338,7 +338,9 @@ function DatePicker(props: DatePickerOptions & { close: () => void }) {
             </>
           }
         >
-          <Match when={invalidMessage()}>{(message) => message()}</Match>
+          {/* Not `{(message) => message()}`: Switch calls that once, untracked, so the line kept
+              the first keystroke's message (B-141). A JSX read stays live. */}
+          <Match when={invalidMessage()}>{invalidMessage()}</Match>
           <Match when={parsed().kind === "clear"}>
             {props.current ? "Enter removes the date" : "No date to remove"}
           </Match>

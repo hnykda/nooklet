@@ -100,7 +100,11 @@ describe("openDatePicker (R38)", () => {
     type("banana");
     press("Enter");
     expect(onPick).not.toHaveBeenCalled();
-    expect(document.querySelector(".dp-preview--error")?.textContent).toContain("not a date");
+    // The message is about the WHOLE text. It once said `"b" is not a date`: the first
+    // keystroke's message, kept by a `<Match>` whose condition stayed truthy (B-141).
+    expect(document.querySelector(".dp-preview--error")?.textContent).toContain(
+      '"banana" is not a date',
+    );
     for (let i = 0; i < 6; i++) press("Backspace");
     type("+3d");
     press("Enter");

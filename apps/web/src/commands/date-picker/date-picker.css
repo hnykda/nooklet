@@ -4,7 +4,8 @@
    app's tokens with the same light-mode fallbacks the rest of `commands/` uses. */
 
 .cmd-popup.date-picker {
-  width: 272px;
+  /* Wide enough for Today · Tomorrow · Next week · Remove on one line. */
+  width: 296px;
   min-width: 0;
   max-width: calc(100vw - 16px);
   max-height: none;
@@ -43,6 +44,9 @@
 }
 
 .dp-text {
+  /* `min-width: 0` so a long query ("fri 14:00 every 2 weeks from done") wraps inside the popup
+     instead of widening it past its border. */
+  min-width: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--text-sm, 13px);
   color: var(--cmd-fg, #111);

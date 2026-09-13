@@ -69,3 +69,21 @@ Vite tree-shakes the barrel, so this is a test-time cost, not a bundle one (not 
 (`lucide-solid/icons/calendar-clock` …). It also loads `app/date-picker.ts` (and with it the data
 layer) on click rather than at module load — not needed for the timeout, but a row renderer that
 the shelf and the query fence share should not drag the replica client in.
+
+---
+
+### B-141 · The date picker's error line names only the first letter typed
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, impl-dates (screenshot review of
+this branch's own picker; never on main) · **Test:** `apps/web/src/commands/date-picker/DatePicker.test.tsx`
+"Enter on text that is not a date does nothing but say so; Backspace edits the text"
+
+Type `bananas` into the picker and press Enter: the red line says `"b" is not a date — …`. The
+line was `<Match when={invalidMessage()}>{(message) => message()}</Match>`. Solid's `Switch`
+calls a Match's render function once, inside `untrack`; a function that returns the accessor's
+value as a bare string (rather than JSX that reads it) captures the first message and never
+updates while the condition stays truthy. No other `{(x) => x()}` render callback exists in
+`apps/web/src` (grep, 2026-09-13).
+
+**Fixed 2026-09-13.** The Match renders `{invalidMessage()}` as JSX, which Solid tracks. The test
+named above now asserts the whole `"banana" is not a date`; run against the old line it failed
+with `Received: ""b" is not a date — try tomorrow, fri, +3d or 2026-09-20"`.
