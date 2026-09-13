@@ -5,8 +5,11 @@ Entries in `docs/BUGS.md` format, to be merged by the coordinator. Numbers from 
 ---
 
 ### B-210 · `{{embed [[Page]]}}` and `{{embed ((id))}}` show a box with the target's name, never its content
-**Status:** open · **Severity:** medium · **Found:** 2026-09-12, exposure audit
-(`docs/review/2026-09-12-exposure-audit.md` §1.9 and §2 item 8) · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md` §1.9 and §2 item 8) · **Tests:** `e2e/tests/embeds.spec.ts`
+(eight tests, from "a block embed shows the block and its children, read-only, root unfolded" to
+"an embed of a block that does not exist says so"); `apps/web/src/editor/render/embed.test.tsx`;
+`apps/web/src/editor/render/embedRows.test.ts`; `apps/web/src/data/embeds.test.ts`
 
 Write `{{embed ((id))}}` in a block (or pick "Embed block" from the slash menu): the rendered
 block is a dashed box reading `Embed: ((1m287mdbkcaggj))` — the id, not the embedded block or its
@@ -15,6 +18,22 @@ each a journal day carrying forward an earlier day's task list (6–60 blocks); 
 reads as an opaque id. `editor/render/tokens.tsx#EmbedView` is a placeholder with no data seam
 behind it (its header lists it under "Known gaps"), and `docs/spec/markdown-grammar.md` §4 promises
 the target's blocks.
+
+**Fixed 2026-09-13.** Read-only, as the audit proposed; editable transclusion is not built.
+`data/embeds.ts#loadEmbed` reads the target through the worker's `getPageTree` (a block embed finds
+its node in its page's tree; a page resolves by key, then by journal day), `useEmbed` re-reads on any
+page/block/block_prop change and never rejects. `editor/render/EmbedView.tsx`, lazy behind its own
+Suspense in `tokens.tsx`, renders an outline: a row click navigates to the block (Shift shelves it),
+the source line opens the page, a click on the frame still edits the host. The embedded root always
+shows its children (two of the owner's five working embeds point at a block collapsed on its own
+day); deeper collapsed blocks stay folded with a view-local toggle; 250 rows at most. Termination:
+`MAX_REF_DEPTH` (2, shared with block refs) and `RenderCtx.embedPath` — `BlockRowView` passes the row's
+id, each embedded row adds its own, and an embed whose target tree contains one of them shows a
+notice (`embedRows.ts#embedReachesPath`). Rows carry `data-embed-block-id`, not `data-block-id`
+(see B-211). On a copy of the owner's graph (`tools/probes/embeds-real-graph.mjs`) all five
+well-formed embeds render (6, 12, 27, 27 and 31 rows, no page errors); the sixth, written
+`{{embed ((id))}` with one closing brace, is not an embed to the tokenizer and still renders as text
+plus a block reference. The e2e tests would have caught it: on `da85cfb` there is no `.vr-embed-item`.
 
 ---
 
@@ -30,3 +49,28 @@ order. A query block above its own results on the same page (a page of tasks wit
 `TODO` query at the top) therefore makes "reveal this block" from the shelf outline, and an agent's
 change flash, land on the result inside the query instead of on the block. Fix: a distinct
 attribute on hits (`data-query-hit-id`), as embedded rows use `data-embed-block-id`.
+
+---
+
+### B-212 · A finished task inside a query result strikes through the whole query block
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, rendering the owner's embeds on a
+copy of the real graph · **Test:** `e2e/tests/embeds.spec.ts` "a finished task inside an embed or a
+query result does not strike through its host (B-212)"
+
+A ```` ```query ```` block whose results include a DONE or CANCELED task renders struck through
+and dimmed from its first line to its last — the query text, the count, every open result. The
+same happened to the new embeds on the owner's 2024-09-29 journal: one checked item in the
+embedded list struck through the source line and every open item around it. The rule is
+`editor/editor.css` `.vr-row:has(.vr-marker-DONE) .vr-block-view`: `:has()` with a descendant
+combinator matches a marker anywhere inside the row, including the rendered results and embedded
+rows nested in its content, not just the row's own marker pill. `shell/shelf.css`
+`.shelf-block:has(.vr-marker-DONE) .shelf-block-text` has the same shape (a shelved block holding
+an embed or a query).
+
+**Fixed 2026-09-13.** Both rules now look only at the block's own marker through child combinators:
+`.vr-row:has(> .vr-row-main > .vr-marker-DONE) .vr-block-view` and
+`.shelf-block:has(> .shelf-marker.vr-marker-DONE) .shelf-block-text` (CANCELED likewise). The test
+reads computed `text-decoration-line` on the host row of an embed, the host row of a query, and a
+shelf card holding the embed; before the fix each of the three read `line-through` (checked one at a
+time by reordering/reverting), after it `none`, while the finished item itself is still struck.
+`tasks.spec.ts`'s own-marker strike test still passes.

@@ -38,28 +38,36 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
 
 ## Done
 
-- Step 1 (this commit, "feat(web): embeds render…"): `data/embeds.ts` + `data/embeds.test.ts` (6),
-  `editor/render/embedRows.ts` + test (5), `editor/render/EmbedView.tsx` + `embed.css` +
-  `embed.test.tsx` (14), hookup in `tokens.tsx` (lazy `Embed` + `RenderCtx.embedPath`, exported
-  `MAX_REF_DEPTH`) and one line in `BlockRowView.tsx`. Web unit suite 709/709 (one earlier full run
-  had a single waitFor timeout, unidentified; the embed test's waits now allow 5 s for the lazy
-  chunk). Mutation check: with the cycle guard disabled the three cycle tests fail and the depth
-  limit still terminates.
-- Inbox: B-210 (this feature, open until e2e is green), B-211 (query hits' `data-block-id`, open).
+- `63cb3d9` feat(web): `{{embed}}` renders the embedded page/block read-only (B-210) —
+  `data/embeds.ts` + `data/embeds.test.ts` (6), `editor/render/embedRows.ts` + test (5),
+  `editor/render/EmbedView.tsx` + `embed.css` + `embed.test.tsx` (14), hookup in `tokens.tsx` (lazy
+  `Embed` + `RenderCtx.embedPath`, exported `MAX_REF_DEPTH`) and one line in `BlockRowView.tsx`.
+  Mutation check: with the cycle guard disabled the three cycle tests fail and the depth limit still
+  terminates.
+- Step 2 (next commit): `e2e/tests/embeds.spec.ts` (9 tests, green on 6407); B-212 fix in
+  `editor/editor.css` + `shell/shelf.css` (done-strike selectors scoped to the block's own marker),
+  each of its three halves seen failing first; `tools/probes/embeds-real-graph.mjs` run on a copy of
+  the owner's graph: 5 well-formed embeds render (31/6/12/27/27 rows), the malformed one tokenizes as
+  text+blockRef+text, no page errors; spec rows in `docs/spec/markdown-grammar.md` §4/§5 say
+  read-only; inbox B-210 and B-212 fixed, B-211 open.
+- Neighbouring e2e run after step 1: render, rendering, query, shelf, shelf-outline, editing,
+  references, popups — 73/73. After step 2: embeds + tasks + shelf — 26/26.
 - Lint note: `biome check apps/web/src/editor/BlockRowView.tsx` reports
   `noStaticElementInteractions` on `.vr-row` — present at `da85cfb` too, not from this branch.
 
 ## In flight
 
-- `e2e/tests/embeds.spec.ts` on port 6407.
+- nothing; final checks (web unit suite, typecheck) before the step-2 commit.
 
-## Next
+## Not done (and why)
 
-1. e2e spec: block embed renders subtree; row click navigates (URL `?block=`); frame click edits
-   host (raw `{{embed ((id))}}`); page self-embed shows the cycle notice and the page stays usable;
-   nested depth limit; an edit to the target shows up in the embed without reload.
-2. Real graph copy: serve it on a spare port, open the six embed days, screenshot/DOM-check.
-3. Spec row in `docs/spec/markdown-grammar.md` §4 (read-only, not read-write), inbox B-210 → fixed.
+- Editable transclusion (editing embedded blocks in place): a nested `BlockTree` with its own
+  surface, a day+ per the audit; read-only is what was asked first.
+- Alias resolution for `{{embed [[alias]]}}`: `data/embeds.ts#findPageId` mirrors
+  `store.ts#usePageByName` (key, then journal day); when aliases land there (audit §2 item 5), the
+  same fallback belongs here.
+- B-211 (query hits' `data-block-id`) is logged, not fixed — QueryFenceView is not this task.
+- Live preview while editing still shows the raw `{{embed …}}` (spec §5 row updated to say so).
 
 ## How to resume
 
