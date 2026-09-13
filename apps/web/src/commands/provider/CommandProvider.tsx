@@ -19,6 +19,7 @@ import { detectConflicts } from "../keymap/conflicts.js";
 import { createDispatcher, type Dispatcher } from "../keymap/dispatch.js";
 import { detectPlatformFromEnvironment } from "../keymap/platform.js";
 import { createPaletteController, type PaletteController } from "../palette/palette-controller.js";
+import { popupTakesKey } from "../popup-keys.js";
 import { createMruStore, type MruStorageAdapter, type MruStore } from "../ranking/mru.js";
 import { type CommandRegistry, createCommandRegistry } from "../registry.js";
 import type {
@@ -87,7 +88,7 @@ export function CommandProvider(props: CommandProviderProps): JSX.Element {
   );
   const conflicts = createMemo(() => detectConflicts(bindings()));
 
-  const dispatcher = createDispatcher({ getBindings: () => bindings() });
+  const dispatcher = createDispatcher({ getBindings: () => bindings(), popupTakesKey });
 
   function buildContext(base: Omit<CommandContext, "exec" | "args">): CommandContext {
     return createCommandContext(base, registry, mru);

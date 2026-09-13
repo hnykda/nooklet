@@ -15,6 +15,7 @@
 
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { render } from "solid-js/web";
+import { rememberFocus } from "../commands/focus-return.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
 import type { RefactorHost } from "../commands/registrations/refactor.js";
 import { describeError } from "../data/api-client.js";
@@ -150,6 +151,10 @@ export function pickPage(opts: { title: string; allowCreate: boolean }): Promise
   return new Promise((resolve) => {
     document.querySelector(".page-picker-overlay")?.remove(); // never two at once
     const root = document.createElement("div");
+    // Before the picker's input takes focus: whatever had it (the editor, when "Move to page…" ran
+    // on the block being edited) gets it back as the picker closes. Without this, moving a block
+    // onto its own page left its row holding the editor with focus on <body> (B-195).
+    const giveFocusBack = rememberFocus(() => root);
     document.body.appendChild(root);
     let settled = false;
     let dispose = (): void => {};
@@ -158,6 +163,7 @@ export function pickPage(opts: { title: string; allowCreate: boolean }): Promise
       settled = true;
       dispose();
       root.remove();
+      giveFocusBack();
       resolve(name);
     };
     dispose = render(

@@ -229,7 +229,9 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
   // editor believing it is still open.
   createEffect(() => {
     if (props.trigger === null) return;
-    const release = claimPopupKeys(handleKey);
+    // `editorFed`: the editor keeps focus and offers this popup only keys without Cmd/Ctrl/Alt,
+    // so Alt+Enter (follow the link under the caret) and friends stay the keymap's (B-203).
+    const release = claimPopupKeys(handleKey, { editorFed: true });
     onCleanup(release);
   });
 

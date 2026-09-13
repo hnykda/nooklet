@@ -79,7 +79,9 @@ export function SlashMenu(props: SlashMenuProps) {
   // on unmount alike.
   createEffect(() => {
     if (props.trigger === null) return;
-    const release = claimPopupKeys(handleKey);
+    // `editorFed`: its keys come through the editor, which never offers it a Cmd/Ctrl/Alt key
+    // (B-203) — see `../popup-keys.ts`.
+    const release = claimPopupKeys(handleKey, { editorFed: true });
     onCleanup(release);
   });
 

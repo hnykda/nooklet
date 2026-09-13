@@ -128,6 +128,10 @@ export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.
             top: `${Math.min(req().y, Math.max(0, window.innerHeight - 320))}px`,
           }}
           onContextMenu={(e) => e.preventDefault()}
+          // The whole menu, not only its items (B-71): a press on a separator or the padding moved
+          // focus to <body> too, and since a press inside the menu does not dismiss it, the menu
+          // stayed open over an editor nothing could type into (B-231).
+          onMouseDown={(e) => e.preventDefault()}
         >
           <For each={visible()}>
             {(entry) =>

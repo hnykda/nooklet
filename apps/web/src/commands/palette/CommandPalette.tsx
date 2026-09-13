@@ -9,6 +9,7 @@
  * exactly where the integrator should mount it.
  */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { rememberFocus } from "../focus-return.js";
 import type { PageSource, PageSummary } from "../hosts/page-source.js";
 import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
@@ -63,6 +64,24 @@ export function CommandPalette(props: CommandPaletteProps) {
       return true;
     });
     onCleanup(release);
+  });
+  // Whatever had focus when the palette opened gets it back when it closes, however it closes
+  // (B-161). Captured in the effect that runs as `isOpen` flips — synchronously, before the
+  // input's own focus microtask below — and given back in the same task as the closing key.
+  //
+  // Except when the chosen row leaves the page (a page, "Create page", a Navigation command): that
+  // navigation lands only after a replica read, a write or a `popstate`, and an editor given focus
+  // meanwhile took the next keys into a block on a page no longer on screen (B-293). `selectRow`
+  // clears this for those rows.
+  let overlayEl: HTMLDivElement | undefined;
+  let giveFocusBack = true;
+  createEffect(() => {
+    if (!palette.isOpen()) return;
+    giveFocusBack = true;
+    const giveBack = rememberFocus(() => overlayEl);
+    onCleanup(() => {
+      if (giveFocusBack) giveBack();
+    });
   });
 
   function refreshPages() {
@@ -160,15 +179,20 @@ export function CommandPalette(props: CommandPaletteProps) {
     }
     if (row.kind === "create") {
       props.onCreatePage?.(palette.state().query.trim());
+      giveFocusBack = false; // leaving the page (B-293)
       palette.close();
       return;
     }
     if (row.kind === "command") {
       const ctx = buildContext(props.getContext());
       await ctx.exec(row.id);
+      // Same for a navigation command: following a link resolves it first, Back waits for
+      // `popstate` — the page is left after `exec` returns (B-293).
+      if (registry.get(row.id)?.category === "Navigation") giveFocusBack = false;
     } else if (row.page) {
       mru.record("page", row.page.id);
       props.onSelectPage?.(row.page);
+      giveFocusBack = false; // leaving the page (B-293)
     }
     palette.close();
   }
@@ -201,7 +225,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     <Show when={palette.isOpen()}>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-to-dismiss (a standard pattern); keyboard users dismiss via Escape on the input below, per onKeyDown. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: see above. */}
-      <div class="cmd-overlay" onClick={() => palette.close()}>
+      <div ref={overlayEl} class="cmd-overlay" onClick={() => palette.close()}>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the overlay's click-to-dismiss from firing for clicks inside the palette itself. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: no keyboard action needed here — it only stops propagation. */}
         <div class="cmd-palette" onClick={(e) => e.stopPropagation()}>

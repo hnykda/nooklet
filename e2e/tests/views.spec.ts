@@ -9,7 +9,7 @@ import { expect, type Page, test } from "@playwright/test";
 import {
   api,
   clickRow,
-  editor,
+  expectEditorFocusedNow,
   isoOffset,
   MOD,
   openEditing,
@@ -460,15 +460,22 @@ test("Escape and a backdrop click both close the palette", async ({ page }) => {
 
 test("opening the palette while editing and closing it hands focus back to the editor", async ({
   page,
-}) => {
-  await openEditing(page, "Views Palette Focus", "- keep typing");
+}, info) => {
+  // A page per repeat and retry: typing "!" into a page an earlier run already typed into made
+  // `--repeat-each` fail on the text instead of on what it is testing.
+  const name = `Views Palette Focus ${info.repeatEachIndex}-${info.retry}`;
+  await openEditing(page, name, "- keep typing");
   await page.keyboard.press(`${MOD}+k`);
-  await expect(page.locator(".cmd-palette")).toBeVisible();
+  // Focus really left the editor — otherwise "it came back" proves nothing.
+  await expect(page.locator(".cmd-palette .cmd-input")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.locator(".cmd-palette")).toHaveCount(0);
-  await expect(editor(page)).toBeFocused();
+  // Now, not eventually (B-161). This was `toBeFocused()`, which retries for 10 s: nothing gave
+  // focus back, and the test passed only when a frame-later refocus left over from the click that
+  // started editing landed after the Escape — on a machine loaded enough for frames to lag keys.
+  await expectEditorFocusedNow(page, "straight after Escape closed the palette");
   await page.keyboard.type("!");
-  await expect(editor(page)).toHaveText("keep typing!");
+  await expect.poll(async () => (await readBlocks(page, name))[0]?.content).toBe("keep typing!");
 });
 
 // ── Zoom and collapse ────────────────────────────────────────────────────────────────────────────

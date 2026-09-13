@@ -154,6 +154,7 @@ export function createSurface(deps: SurfaceDeps): Surface {
   return {
     attach(host, id, content, caret = { at: "end" }) {
       current = id;
+      const focusedBefore = typeof document === "undefined" ? null : document.activeElement;
       view.setState(EditorState.create({ doc: content, extensions }));
       host.appendChild(view.dom);
       view.focus();
@@ -175,7 +176,17 @@ export function createSurface(deps: SurfaceDeps): Surface {
       //    `.vr-block-view`, or the previous row's host). The browser resets focus to `<body>`
       //    when that happens, potentially after the current event finishes dispatching, so a
       //    frame-later backstop is still needed on top of the microtask.
-      requestAnimationFrame(refocus);
+      //
+      //    But a frame is not "soon" on a loaded machine: the browser keeps dispatching input while
+      //    it drops frames, so this can run after keystrokes that came later — after Cmd+K put
+      //    focus in the palette's input — and it took focus back from the open palette, so typing
+      //    went into the block underneath (B-290). It may take focus only from where entering
+      //    edit mode leaves it: `<body>`, or the element that still had it when this attach ran.
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (active !== null && active !== document.body && active !== focusedBefore) return;
+        refocus();
+      });
       view.dispatch({
         effects: EditorView.scrollIntoView(view.state.selection.main.head, {
           y: "nearest",

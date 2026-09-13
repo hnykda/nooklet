@@ -26,25 +26,49 @@ export const POPUP_OWNED_KEYS: ReadonlySet<string> = new Set([
   "Tab",
 ]);
 
-const [handler, setHandler] = createSignal<PopupKeyHandler | null>(null);
+export interface PopupKeyClaim {
+  /**
+   * The popup gets its keys from the editor (`BlockTree#dispatchKey` → `dispatchPopupKey`), which
+   * offers it only keys WITHOUT Cmd/Ctrl/Alt — the autocomplete and the slash menu. A modified
+   * Enter/Tab/arrow is then not the popup's, and the keymap must not hold it back for the popup:
+   * it did, so Alt+Enter on a link the caret had walked into (which opens the `[[` autocomplete)
+   * went to nobody (B-203). Leave it unset for an overlay whose own focused input receives every
+   * key (the palette, the page picker): there, yielding modified keys is what keeps Cmd/Ctrl+Enter
+   * or Alt+Up typed into the input from running against the block behind it.
+   */
+  editorFed?: boolean;
+}
+
+const [claim, setClaim] = createSignal<{ fn: PopupKeyHandler; editorFed: boolean } | null>(null);
 
 /** Reactive: true while some popup has claimed the keys. Read by both dispatch contexts. */
 export function isPopupOpen(): boolean {
-  return handler() !== null;
+  return claim() !== null;
 }
 
 /** Claim the popup keys. Returns the release function; call it when the popup closes. Only one
  * popup is ever open at a time (CommandLayer renders at most one), so the latest claim wins. */
-export function claimPopupKeys(fn: PopupKeyHandler): () => void {
-  setHandler(() => fn);
+export function claimPopupKeys(fn: PopupKeyHandler, options: PopupKeyClaim = {}): () => void {
+  const entry = { fn, editorFed: options.editorFed ?? false };
+  setClaim(() => entry);
   return () => {
-    if (handler() === fn) setHandler(null);
+    if (claim() === entry) setClaim(null);
   };
+}
+
+/** Is this keydown the open popup's to take (so the keymap must leave it alone)? False when no
+ * popup is open. */
+export function popupTakesKey(
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey">,
+): boolean {
+  const current = claim();
+  if (!current || !POPUP_OWNED_KEYS.has(e.key)) return false;
+  return !current.editorFed || !(e.metaKey || e.ctrlKey || e.altKey);
 }
 
 /** Offer a key to the open popup. `true` means it was consumed and must go no further. */
 export function dispatchPopupKey(key: string): boolean {
-  const fn = handler();
-  if (!fn || !POPUP_OWNED_KEYS.has(key)) return false;
-  return fn(key);
+  const current = claim();
+  if (!current || !POPUP_OWNED_KEYS.has(key)) return false;
+  return current.fn(key);
 }

@@ -11,6 +11,7 @@ import { type JournalDay, todayJournalDay } from "@nooklet/core";
 import type { DatePickerField, DatePickerHost } from "../registrations/date-picker-host.js";
 import type { BlockTaskSnapshot, Store } from "../types.js";
 import { formatStoredDate, parseDateInput, parseStoredDate } from "./parse.js";
+import { holdPickerInput, type PickerInputHold } from "./type-ahead.js";
 
 export interface DatePickRequest {
   blockId: string;
@@ -21,6 +22,9 @@ export interface DatePickRequest {
   repeat: string | null;
   today: JournalDay;
   anchor: { top: number; left: number } | undefined;
+  /** Keys typed since `open()` was called, held until the picker listens (B-147). The picker
+   * replays and releases it; the host releases it too, whatever happens. */
+  typeAhead?: PickerInputHold;
 }
 
 /** What the person chose. On `set`, an absent `repeat` leaves the block's repeat alone and `null`
@@ -34,6 +38,9 @@ export interface DatePickerHostDeps {
   /** Show the picker; resolve with the choice, or `undefined` on cancel. */
   pick?: (req: DatePickRequest) => Promise<DatePickResult | undefined>;
   today?: () => JournalDay;
+  /** Start holding keys for a picker that is not listening yet (`./type-ahead.ts`). Defaults to
+   * the window's when there is one; `null` turns it off. */
+  holdInput?: (() => PickerInputHold) | null;
   /** Where a failed write is reported. A pick completes long after the command that opened it
    * has returned, so there is no caller left to reject to. */
   onError?: (error: unknown) => void;
@@ -70,6 +77,12 @@ export function patchForPick(
 
 export function createDatePickerHost(deps: DatePickerHostDeps): DatePickerHost {
   const pick = deps.pick ?? defaultPick;
+  const holdInput =
+    deps.holdInput === undefined
+      ? typeof window === "undefined"
+        ? null
+        : () => holdPickerInput(window)
+      : deps.holdInput;
   const today = deps.today ?? (() => todayJournalDay());
   const onError = deps.onError ?? ((e: unknown) => console.error("date picker:", e));
 
@@ -85,22 +98,31 @@ export function createDatePickerHost(deps: DatePickerHostDeps): DatePickerHost {
 
   return {
     open({ blockId, field, anchor }) {
+      // Hold keys from THIS moment: the read and the picker's lazy import below take long enough
+      // for a fast typist's next keys to land in the block otherwise (B-147).
+      const typeAhead = holdInput?.();
       // Deliberately not returned to the command: the pick is a person's decision and can take a
       // minute, and the slash menu stays mounted until the command it ran settles.
       void (async () => {
-        const snapshot = await deps.store.getBlockTaskState(blockId);
-        const result = await pick({
-          blockId,
-          field,
-          current: parseStoredDate(snapshot?.[field]),
-          repeat: snapshot?.repeat ?? null,
-          today: today(),
-          anchor,
-        });
-        if (!result) return;
-        // Re-read: the block may have changed while the picker was open (another device, an
-        // agent), and the repeat rule must judge the block as it is now.
-        await write(blockId, field, await deps.store.getBlockTaskState(blockId), result);
+        try {
+          const snapshot = await deps.store.getBlockTaskState(blockId);
+          if (typeAhead?.cancelled()) return;
+          const result = await pick({
+            blockId,
+            field,
+            current: parseStoredDate(snapshot?.[field]),
+            repeat: snapshot?.repeat ?? null,
+            today: today(),
+            anchor,
+            ...(typeAhead ? { typeAhead } : {}),
+          });
+          if (!result) return;
+          // Re-read: the block may have changed while the picker was open (another device, an
+          // agent), and the repeat rule must judge the block as it is now.
+          await write(blockId, field, await deps.store.getBlockTaskState(blockId), result);
+        } finally {
+          typeAhead?.release();
+        }
       })().catch(onError);
     },
 

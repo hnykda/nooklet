@@ -95,3 +95,19 @@ export async function pressWatchingFocus(page: Page, keys: string[]): Promise<Fo
   }
   return losses;
 }
+
+/**
+ * Make every `requestAnimationFrame` callback run `ms` late, from the next page load on.
+ *
+ * What a loaded machine does: the browser keeps dispatching input while it drops frames, so a
+ * frame-later "take focus back" can land after keystrokes typed later. Two focus bugs lived in
+ * exactly that gap (B-161 passed only when a stale frame rescued it; B-290 was that frame stealing
+ * focus from the palette), and neither shows on an idle machine. This makes the gap deterministic
+ * instead of hoping for load. Call before `page.goto`.
+ */
+export async function delayAnimationFrames(page: Page, ms: number): Promise<void> {
+  await page.addInitScript((delay) => {
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => raf((t) => void setTimeout(() => cb(t), delay));
+  }, ms);
+}
