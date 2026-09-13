@@ -104,7 +104,10 @@ text typed immediately after Enter on a just-materialised day lost (second block
 ---
 
 ### B-244 · `[[` "New page" on a client still pulling its first sync writes `]]` to the database but not the editor
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q5) · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q5) · **Tests:**
+`e2e/tests/autocomplete-busy-replica.spec.ts` "New page links at once and keeps what is typed next,
+even while the replica is busy (B-244)"; `apps/web/src/commands/autocomplete/AutocompletePopup.test.tsx`
+"New page links and dismisses at once, without waiting for the page to be created (B-244)"
 
 Fresh browser profile on the real graph, within the first seconds after load: type ` [[new/page`
 and accept the "New page" row (Enter, Tab or click). The page is created and the server briefly
@@ -112,6 +115,21 @@ stores `x [[new/page]]`, but the editor still shows `x [[new/page` and the popup
 next keystroke commits the editor's buffer over it: stored `...testing [[new/pages/child after`,
 an unclosed link. Accepting an existing page works; a warm client works (0/4). The owner's B-42
 report was exactly `testing [[new/page`, so this may be what they hit.
+
+**Fixed 2026-09-13.** Reproduced on a copy of the real graph with QA's `t2.mjs` against this
+branch's build: EnterNew and ClickNew left `x [[qa-new/…/a` with the popup open. A timeline probe
+showed why: `selectRow` awaited `pages.createPage()` before inserting the link, and that call is a
+round trip to the replica worker, which answered after ~3.3 s while busy (a cold bootstrap, and
+the popup's own per-keystroke block search over 18.6k blocks); after the worker went idle the same
+accept took one frame. Nothing about the link needs the page to exist first (refs are keyed by
+page name, `ref.dst_page_key`), so the popup now inserts `[[title]]` and dismisses synchronously
+and creates the page in the background (failure is logged; a link to a missing page is an
+ordinary state). The e2e test keeps the worker busy for 3 s with a synchronous loop evaluated in
+it (`worker.evaluate`), presses Enter, and requires the link within 1.5 s: it failed before
+("x [[busy-replica/…" after 1.5 s) and passes 3/3 after. Rerun of `t2.mjs` on the real graph after
+the fix: EnterNew, TabNew, ClickNew, EnterExisting all show `x [[…]]` with the popup closed. The
+same rerun is what exposed B-247 below. Whether this is what the owner saw as B-42 (focus loss) is
+not established: focus stayed in the editor in every run here.
 
 ---
 

@@ -14,7 +14,7 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
 | Q2 Cmd+Z after deleting a selection does nothing | B-241 | high | fixed (second commit) |
 | Q3 undo of Alt+Up/Down drops focus | B-242 | medium | fixed (third commit) |
 | Q4 cold client: journal draft text lost when pull says today exists | B-243 | medium | fixed (fourth commit) |
-| Q5 cold client: `[[` New page writes `]]` to DB not editor | B-244 | medium | todo |
+| Q5 cold client: `[[` New page writes `]]` to DB not editor | B-244 | medium | fixed (fifth commit) |
 | Q6 Cmd+X on selection does nothing | B-245 | low | feature gap: logged, skipped |
 
 ## 1. Done (committed)
@@ -48,6 +48,15 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
   + pages + templates + views + storage: 57 passed, 1 failed, 1 skipped; the failure is
   `views.spec.ts` palette focus, which also fails with `apps/web/src` at da85cfb (logged B-246).
 - Side bug logged, not fixed: B-246 (above).
+- Q4/B-243 committed as `e1ecefe`.
+- Q5/B-244 `fix(web): the [[ popup's New page links at once instead of waiting on the replica`:
+  `commands/autocomplete/AutocompletePopup.tsx` inserts + dismisses synchronously, creates in the
+  background. Unit test in `AutocompletePopup.test.tsx` (fails without the fix); e2e
+  `e2e/tests/autocomplete-busy-replica.spec.ts` busies the db worker with `worker.evaluate` (failed
+  before, 3/3 after). E2E busy-replica + popups + autocomplete + references: 49 other tests passed.
+  Verified on a real-graph copy (probe server on 6460, killed) with QA's `t2.mjs`.
+- New bug found while verifying Q5, logged not fixed: B-247 (edit queued behind a busy worker
+  lost on reload), probe `tools/probes/busy-replica-reload.mjs`.
 
 ## 2. In flight
 
@@ -55,11 +64,11 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
 
 ## 3. Next steps, in order
 
-1. (done) Q1, Q2, Q3, Q4.
+1. (done) Q1, Q2, Q3, Q4, Q5. Q6 is a logged feature gap (B-245), skipped by instruction.
 2. Unverified side observation, not fixed: the global keydown dispatcher matches `edit.undo`
    (`when: "true"`) and preventDefaults it everywhere, so native Cmd+Z inside a plain `<input>`
    (search, page title) is probably swallowed. Probe it before logging as a bug.
-3. Q5 (B-244): popup New page during initial pull. Needs a slow-pull fixture.
+3. Final regression run of the specs touched, then the report.
 
 ## 4. How to resume
 
