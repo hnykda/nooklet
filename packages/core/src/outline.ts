@@ -401,6 +401,16 @@ export function serializeOutline(page: ParsedPage, opts: SerializeOptions = {}):
   return `${out.join("\n")}\n`;
 }
 
+/** The parser's own line rules, for `block-text.ts` — which splits one block's raw editing text
+ * the way `finalizeNode` does. Re-exported rather than copied so the two can never disagree about
+ * what a property line or a fence is. */
+export {
+  closesFence as closesCodeFence,
+  normalizePropertyKey,
+  openingFence as openingCodeFence,
+  PROPERTY_RE as PROPERTY_LINE_RE,
+};
+
 /** Depth-first walk of an outline tree. */
 export function* walkOutline(
   nodes: OutlineNode[],

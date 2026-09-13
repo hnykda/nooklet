@@ -1,3 +1,4 @@
+export * from "./block-text.js";
 export * from "./blocks.js";
 export * from "./hlc.js";
 export * from "./ids.js";
