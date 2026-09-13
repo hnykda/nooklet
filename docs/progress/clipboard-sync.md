@@ -88,3 +88,23 @@ Task complete on this branch. Left for outside it:
 - Real-graph copy: `<scratch>/graph/graph.sqlite` (sqlite3 .backup of the owner's graph, 952 pages,
   18,628 blocks, op max seq 20,411). Served by `<scratch>/bin/serve-real.sh` on port 16402 (log
   `<scratch>/server.log`); kill with `lsof -ti :16402 | xargs kill` when done (stopped).
+
+## 6. Adversarial verify pass (2026-09-13, second agent)
+
+Scratch `.../scratchpad/m9/clipboard-sync-verify/` (`bin/e2e.sh <specs…>`, port 6402; real-graph
+copy in `graph/`, served on 16403 while probing, stopped).
+
+- Re-ran: web unit 1021/1021; typecheck + biome clean; e2e a-fresh-journal + editing +
+  reload-durability + selection 27/27.
+- Found and fixed **B-303** (a cut straight after typing copied the last-fetched text and deleted
+  the block with the new text): `BlockTree.tsx#unansweredText`, test in `selection.spec.ts`,
+  real-graph before/after with `tools/probes/cut-just-typed.mjs`. Commits `7bc3cd2`, `771dfa9`,
+  `eea8eeb`. After the fix: 100/100 on 16 editor/undo/sync specs; web unit 1021/1021; verify OK.
+- Added palette evidence to **B-300** (`59cf6c1`), not fixed (owner decision stands).
+- Checked and fine (throwaway specs, not kept): cut/undo/redo of a subtree with property lines,
+  a marker and Czech text; Cmd+X on text inside the editor still cuts text; Enter + typing + Tab
+  behind a busy worker survive a reload; a cut behind a busy worker stays cut after a reload; a
+  follower tab's edit behind a busy worker survives its reload and reaches the leader; a leader
+  reload with a follower open keeps its edit; a selection in one journal day does not capture
+  Cmd+X in another day's editor.
+- Next: full e2e in four chunks on the verified tree (in flight when this was written).
