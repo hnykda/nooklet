@@ -92,6 +92,21 @@ export function PageView(props: PageViewProps): JSX.Element {
     if (p) setRenaming(false);
   });
 
+  /** The route name the page lookup last settled for. `usePageByName` refetches on EVERY write to
+   * the `page` or `page_prop` table, whichever page it was, and `page.loading` is true meanwhile —
+   * so a missing view shown only while `!page.loading` was torn down and rebuilt each time. Nobody
+   * could see that while it held a heading and a button; since B-200 it holds a fetched references
+   * panel, which fell back to "Loading references…" with the scroll at the top whenever an agent or
+   * another device wrote any page (B-326). A refetch for the SAME name keeps the view; a new
+   * name's lookup must not inherit the previous name's `null`. An effect rather than a memo: it runs
+   * after the lookup has flagged itself loading for a new name, never in between. */
+  const [settledName, setSettledName] = createSignal<string | undefined>();
+  createEffect(() => {
+    if (!page.loading) setSettledName(props.name());
+  });
+  const missing = (): boolean =>
+    page() === null && !renaming() && (!page.loading || settledName() === props.name());
+
   async function commitTitle(): Promise<void> {
     const p = page();
     if (!p) return;
@@ -166,7 +181,7 @@ export function PageView(props: PageViewProps): JSX.Element {
         <p class="page-view-loading">Loading…</p>
       </Show>
 
-      <Show when={!page.loading && page() === null && !renaming()}>
+      <Show when={missing()}>
         <div class="page-view-missing">
           <h1>{displayRefName(props.name())}</h1>
           <p>This page doesn't exist yet.</p>

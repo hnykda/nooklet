@@ -234,6 +234,39 @@ The unit test stubs `caretRangeFromPoint` with the measured `(P, 2)` answer; it 
 
 ---
 
+### B-326 · Any page written anywhere rebuilds a missing page's references panel: "Loading references…" and the scroll jumps to the top
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
+`m9/render-views` · **Test:** `e2e/tests/render-views.spec.ts` ("a page that does not exist yet
+keeps its references panel, and its place in it, when another page is written")
+
+Reproduced in Chromium (production build, this branch) before touching anything: on
+`/page/RVZ Scroll Target` (not created; 6 pages × 4 blocks link to it), scrolled 623 px down the
+linked references in `.page-scroll`, one `page.create` of an unrelated page through the API — what
+an agent or another device does — removed and re-added `.page-view-missing` and
+`.references-panel` (a MutationObserver saw both), showed "Loading references…" again, and left
+`.page-scroll` at 0. Three writes, three rebuilds.
+
+Cause: `PageView.tsx` shows the missing view under `!page.loading && page() === null`, and
+`usePageByName` refetches — `loading` true — on every write to the `page` or `page_prop` table,
+whatever page it was. The existing-page view avoided exactly this (`<Show when={page()}>`, B-201's
+same-object return); the missing view never had to, because until B-200 it held only a heading and
+a button, whose rebuild nobody could see. B-200 put a fetched, scrollable, stateful panel inside
+it.
+
+**Fixed 2026-09-13.** `PageView.tsx` remembers the route name the lookup last settled for (an
+effect, so it never sees a new name before that name's lookup has flagged itself loading) and keeps
+the missing view up through a refetch for that same name: `page() === null && !renaming() &&
+(!page.loading || settledName() === name)`. A new name still waits for its own answer. The e2e
+scrolls a missing page's linked references, marks the panel element, writes a page through the API
+that tags the target (so the panel listing it proves the write arrived), and asserts the same panel
+element, no "Loading references…" and the scroll kept; it failed on the branch before the fix
+(`samePanel: false, loadingSeen: true`) and passes. It then navigates to a linking page and back.
+Also re-run: render-views(+phone), journal-agenda, journals, page-identity, page-rename, pages,
+parity, references, references-cap, references-filters, tagged-pages, navigation, page-title-draft,
+link-unlinked, trash, follow-link, history — 89 passed.
+
+---
+
 ### B-161 (existing)
 **Status:** still failing (not fixed here)
 

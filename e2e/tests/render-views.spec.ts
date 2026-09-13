@@ -288,3 +288,64 @@ test("clicking the empty line of a multi-line block puts the caret on that line,
     .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
     .toEqual(["alpha\nbeta\ngamma", "Úvod **tučně**\nstřed\nkonec", "první\nprostřední\ndruhý"]);
 });
+
+test("a page that does not exist yet keeps its references panel, and its place in it, when another page is written (B-326)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 500 });
+  const name = "RV Keep Place Target";
+  for (let p = 0; p < 6; p++) {
+    await seedPage(
+      page,
+      `RV Keep Place Linker ${p}`,
+      Array.from({ length: 4 }, (_, i) => `- řádek ${i} o [[${name}]]`).join("\n"),
+    );
+  }
+  await page.goto(pagePath(name));
+  await expect(page.locator(".page-view-missing")).toBeVisible();
+  const groups = page.locator(".linked-references .reference-group-page");
+  await expect(groups).toHaveCount(6);
+
+  // Read far enough down the list that losing the place would show.
+  const scroller = page.locator(".page-scroll");
+  await groups.last().evaluate((el) => el.scrollIntoView({ block: "end" }));
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+  await page.evaluate(() => {
+    const w = window as unknown as { rvPanel: Element | null; rvLoadingSeen: boolean };
+    w.rvPanel = document.querySelector(".references-panel");
+    w.rvLoadingSeen = false;
+    new MutationObserver(() => {
+      if (document.querySelector(".references-loading")) w.rvLoadingSeen = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+
+  // Another page written elsewhere, the way an agent or another device does. It tags the target, so
+  // the panel showing it is proof the write has arrived and been re-read — every page write
+  // refetches the page lookup, and that refetch is what used to take the view down.
+  await api(page, "page.create", {
+    name: "RV Keep Place Tagger",
+    if_exists: "return",
+    properties: { tags: name },
+  });
+  await expect(
+    page.getByRole("region", { name: `Pages tagged ${name}` }).locator(".tagged-page-link"),
+  ).toHaveText(["RV Keep Place Tagger"]);
+
+  const after = await page.evaluate(() => {
+    const w = window as unknown as { rvPanel: Element | null; rvLoadingSeen: boolean };
+    return {
+      samePanel: w.rvPanel !== null && w.rvPanel === document.querySelector(".references-panel"),
+      loadingSeen: w.rvLoadingSeen,
+    };
+  });
+  expect(after).toEqual({ samePanel: true, loadingSeen: false });
+  expect(await scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+
+  // Navigating on to a page that exists still leaves the missing view, and back again shows it.
+  await groups.first().click();
+  await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  await expect(page.locator(".page-title-input")).toHaveValue(/RV Keep Place Linker/);
+  await page.goBack();
+  await expect(page.locator(".page-view-missing")).toBeVisible();
+  await expect(groups).toHaveCount(6);
+});
