@@ -192,6 +192,10 @@ export function BlockTree(props: {
   filter?: string;
   /** The matching block ids in reading order, on every change while `filter` is set. */
   onFilterMatches?: (ids: readonly string[]) => void;
+  /** A batch the caller has just applied to this page, drawn before the first fetch answers, so a
+   * focus request for a block in it is claimed on mount rather than a worker round trip later —
+   * keys typed in that gap had no editor (B-411, `views/VirtualJournalDay.tsx`). Read once. */
+  initialOps?: readonly Op[];
 }) {
   const treeResource = usePageTree(() => props.pageId);
   // The read-only page lock (`./readOnly.ts`): the prop, or the page's own `read-only:: true`.
@@ -202,9 +206,13 @@ export function BlockTree(props: {
     () => props.readOnly === true || isReadOnlyValue(pageProperties()[READ_ONLY_PROPERTY]),
   );
   const readOnlyNotice = createReadOnlyNotice();
-  const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
   const deletedCache = new Map<string, EditableBlock>();
+  const initialOps = (props.initialOps ?? []) as unknown as OptimisticOp[];
+  const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>(
+    applyOptimistic([], initialOps, deletedCache),
+  );
   const unseenCreations = new UnseenCreations();
+  unseenCreations.note(props.initialOps ?? []);
   /**
    * The buffer of each block whose flushed text write the worker has not answered yet (B-303).
    * The effect below also re-runs when editing ENDS, against the page tree it fetched before that

@@ -7,8 +7,8 @@
  * - B-411: on a calendar-opened day, text typed in the first moments after Enter on the draft was
  *   garbled or lost, because the block tree holding the editor was swapped for another one.
  *
- * Day offsets -71..-76 are this file's own (other specs use their own offsets; today is shared and
- * only read here).
+ * Day offsets -101..-105 are this file's own, shifted by 10 per `--repeat-each` run (`ownDay`). They
+ * stay clear of `pages.spec.ts`, which writes the 2nd of the month two months back (32-92 days).
  */
 
 import { expect, type Page, test } from "@playwright/test";
@@ -28,6 +28,11 @@ async function calendarPick(page: Page, iso: string): Promise<void> {
   await calendar.locator(".calendar-day", { hasText: new RegExp(`^${d}$`) }).click();
 }
 
+/** This file's day `offset`, moved back 10 days per repetition so a repeat never finds it written. */
+function ownDay(offset: number): string {
+  return isoOffset(offset - 10 * test.info().repeatEachIndex);
+}
+
 async function contents(page: Page, name: string): Promise<string[]> {
   try {
     return (await readBlocks(page, name)).map((b) => b.content);
@@ -39,7 +44,7 @@ async function contents(page: Page, name: string): Promise<string[]> {
 test("a journal day whose blocks were all deleted still has somewhere to type (B-410)", async ({
   page,
 }) => {
-  const day = isoOffset(-71);
+  const day = ownDay(-101);
   await api(page, "page.append", { page: day, markdown: "- b410 deleted soon" });
   for (const b of await readBlocks(page, day)) {
     if (b.depth === 0) await api(page, "block.delete", { id: b.id });
@@ -80,4 +85,100 @@ test("a page an agent created empty has somewhere to type (B-410)", async ({ pag
   await expect
     .poll(() => contents(page, name), { timeout: 15_000 })
     .toEqual(["typed into an empty page", "and a second block"]);
+});
+
+/** Blocks the replica's worker for `ms` (the technique of `autocomplete-busy-replica.spec.ts`). */
+function occupyReplica(page: Page, ms: number): Promise<void> {
+  const worker = page.workers().find((w) => w.url().includes("db.worker"));
+  if (!worker) throw new Error(`no db worker among ${page.workers().map((w) => w.url())}`);
+  return worker.evaluate((duration) => {
+    const end = Date.now() + duration;
+    while (Date.now() < end) {
+      // busy: nothing else runs on this thread until the loop ends
+    }
+  }, ms);
+}
+
+/** Opens `iso` from the calendar and returns its still-virtual draft. */
+async function openVirtualDay(page: Page, iso: string) {
+  expect(await contents(page, iso)).toEqual([]);
+  await page.goto("/journals");
+  await calendarPick(page, iso);
+  const pinned = page.locator(".journal-day-pinned");
+  const draft = pinned.locator(".vr-draft-input");
+  await expect(draft).toBeVisible();
+  return { pinned, draft };
+}
+
+async function typeThreeLines(page: Page, pauseMs = 0): Promise<void> {
+  await page.keyboard.type("first line", { delay: 30 });
+  await page.keyboard.press("Enter");
+  if (pauseMs > 0) await page.waitForTimeout(pauseMs);
+  await page.keyboard.type("second line", { delay: 30 });
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("third line", { delay: 30 });
+}
+
+for (const [offset, pauseMs] of [
+  [-102, 0],
+  [-103, 300],
+] as const) {
+  test(`text typed ${pauseMs} ms after Enter on a calendar-opened day's draft lands intact (B-411)`, async ({
+    page,
+  }) => {
+    const day = ownDay(offset);
+    const { pinned, draft } = await openVirtualDay(page, day);
+    await draft.click();
+    await typeThreeLines(page, pauseMs);
+
+    await expect
+      .poll(() => contents(page, day), { timeout: 15_000 })
+      .toEqual(["first line", "second line", "third line"]);
+    await expect(pinned.locator(".cm-content")).toBeFocused();
+  });
+}
+
+// The window QA hit on the real graph was the replica answering slowly: Enter wrote the day, and
+// until the worker came back there was no editor anywhere, then a second tree replaced the first.
+test("typing straight on after Enter while the replica is busy keeps every key (B-411)", async ({
+  page,
+}) => {
+  const day = ownDay(-104);
+  const { pinned, draft } = await openVirtualDay(page, day);
+  await draft.click();
+  await page.keyboard.type("first line", { delay: 30 });
+  const busy = occupyReplica(page, 1_500);
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("second line", { delay: 30 });
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("third line", { delay: 30 });
+  await busy;
+
+  await expect
+    .poll(() => contents(page, day), { timeout: 15_000 })
+    .toEqual(["first line", "second line", "third line"]);
+  await expect(pinned.locator(".cm-content")).toBeFocused();
+});
+
+test("a day started while the replica is busy from the first key keeps every line (B-411)", async ({
+  page,
+}) => {
+  const day = ownDay(-105);
+  const { pinned, draft } = await openVirtualDay(page, day);
+  // Busy before the draft is even focused: nothing the day needs from the worker is ready when
+  // Enter is pressed.
+  const busy = occupyReplica(page, 2_000);
+  await draft.click();
+  await typeThreeLines(page);
+  await busy;
+
+  await expect
+    .poll(() => contents(page, day), { timeout: 15_000 })
+    .toEqual(["first line", "second line", "third line"]);
+  await expect(pinned.locator(".cm-content")).toBeFocused();
+  // The caret is where the typing stopped: at the end of the last line.
+  await page.keyboard.type(" and on");
+  await expect
+    .poll(() => contents(page, day), { timeout: 15_000 })
+    .toEqual(["first line", "second line", "third line and on"]);
 });
