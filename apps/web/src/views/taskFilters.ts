@@ -50,6 +50,37 @@ export function inDueWindow(
   );
 }
 
+export interface TaskDateLabel {
+  kind: "scheduled" | "deadline";
+  /** `Scheduled 2026-09-01`, `Deadline 2026-09-20 14:00`. */
+  label: string;
+}
+
+/**
+ * The dates a Tasks view row shows: the scheduled date and the deadline, each labelled, both when
+ * both are set. The row used to show `dueDay` alone — the scheduled date whenever there is one —
+ * so a task the Due window found by its deadline (B-171) was listed under a date outside the
+ * window, with nothing saying which kind of date it was (B-324). Labelled the way the journal
+ * agenda labels them (`./JournalAgenda.tsx`).
+ */
+export function taskDateLabels(
+  task: Pick<TaskRow, "scheduledDay" | "scheduledTime" | "deadlineDay" | "deadlineTime">,
+): TaskDateLabel[] {
+  const iso = (day: number): string => {
+    const s = String(day).padStart(8, "0");
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  };
+  const out: TaskDateLabel[] = [];
+  const add = (kind: TaskDateLabel["kind"], day: number | null, time: string | null): void => {
+    if (day === null) return;
+    const word = kind === "scheduled" ? "Scheduled" : "Deadline";
+    out.push({ kind, label: [word, iso(day), time ?? ""].filter((s) => s !== "").join(" ") });
+  };
+  add("scheduled", task.scheduledDay, task.scheduledTime);
+  add("deadline", task.deadlineDay, task.deadlineTime);
+  return out;
+}
+
 export function filterTasks(tasks: readonly TaskRow[], filters: TaskFilters): TaskRow[] {
   const wantedStates =
     filters.states && filters.states.length > 0 ? new Set(filters.states) : undefined;

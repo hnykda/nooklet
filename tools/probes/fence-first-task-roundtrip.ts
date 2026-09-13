@@ -4,6 +4,10 @@
  *
  * Run from packages/server (for its tsx and module resolution):
  *   pnpm exec tsx ../../tools/probes/fence-first-task-roundtrip.ts
+ *
+ * Before the fix: ids=present came back with marker null; ids=none with content "```js" and two
+ * children. After (core-ops, 2026-09-13): both come back as written — marker TODO, the whole fence,
+ * properties {foo: bar}, one child.
  */
 import type { OutlineNode } from "../../packages/core/src/model.js";
 import { parseOutline, serializeOutline } from "../../packages/core/src/outline.js";

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { OutlineNode, ParsedPage, Properties } from "./model.js";
 import { parseOutline, serializeOutline } from "./outline.js";
 
 const roundTrip = (text: string) => serializeOutline(parseOutline(text));
@@ -168,6 +169,135 @@ describe("serializeOutline", () => {
     expect(roundTrip(text)).toBe(text);
   });
 
+  // B-310: a task whose content opens with a fence. With ids, OUT-14 wrote the id alone and dropped
+  // the marker; without ids, `- TODO ```js` never opened the fence on re-read, so the code's `- `
+  // lines became child blocks and the content shrank to its first line.
+  describe("a task block that opens with a fence (B-310)", () => {
+    const node = (over: Partial<OutlineNode>): OutlineNode => ({
+      content: "",
+      marker: null,
+      priority: null,
+      properties: {},
+      collapsed: false,
+      children: [],
+      ...over,
+    });
+    const fenceTask = (withIds: boolean): ParsedPage => ({
+      properties: {},
+      blocks: [
+        node({
+          ...(withIds ? { id: "1k7f3q9xz2hav4" } : {}),
+          content: "```js\n- not a bullet\nfoo:: not a property\n```",
+          marker: "TODO",
+          priority: "A",
+          properties: { foo: "bar" },
+          children: [node({ ...(withIds ? { id: "1k7f3q9xz2hav5" } : {}), content: "child" })],
+        }),
+        node({ content: "next" }),
+      ],
+    });
+
+    it("keeps the marker and priority in the mirror: head and id alone on line 1", () => {
+      const page = fenceTask(true);
+      const text = serializeOutline(page);
+      expect(text).toBe(
+        "- TODO [#A] ^1k7f3q9xz2hav4\n  foo:: bar\n  ```js\n  - not a bullet\n  foo:: not a property\n  ```\n  - child ^1k7f3q9xz2hav5\n- next\n",
+      );
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("keeps the fence whole without ids, properties after the closed fence", () => {
+      const page = fenceTask(false);
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe(
+        "- TODO [#A] ```js\n  - not a bullet\n  foo:: not a property\n  ```\n  foo:: bar\n  - child\n- next\n",
+      );
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("writes the head alone before a fence that never closes, when there are properties", () => {
+      const page: ParsedPage = {
+        properties: {},
+        blocks: [node({ content: "```js\ncode", marker: "LATER", properties: { foo: "bar" } })],
+      };
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe("- LATER\n  foo:: bar\n  ```js\n  code\n");
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("writes a task without properties or ids as typed: `- TODO ```js`", () => {
+      const page: ParsedPage = {
+        properties: {},
+        blocks: [node({ content: "```js\n- x\n```", marker: "DONE" }), node({ content: "next" })],
+      };
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe("- DONE ```js\n  - x\n  ```\n- next\n");
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("still reads inline code after a marker as text, not as a fence", () => {
+      const p = parseOutline("- TODO ```x``` later\n- next\n");
+      expect(p.blocks.map((b) => [b.marker, b.content])).toEqual([
+        ["TODO", "```x``` later"],
+        [null, "next"],
+      ]);
+    });
+  });
+
+  // B-390: a line 1 holding nothing but `^id` (after any marker/priority) kept the id only when
+  // another line followed, so every empty block in the mirror (`- ^id`) and the owner's one task
+  // whose content opens with a blank line (`- LATER ^id` + text) came back with `^id` as text.
+  describe("a block whose line 1 is only its id (B-390)", () => {
+    const node = (over: Partial<OutlineNode>): OutlineNode => ({
+      content: "",
+      marker: null,
+      priority: null,
+      properties: {},
+      collapsed: false,
+      children: [],
+      ...over,
+    });
+
+    it("round-trips empty blocks with ids, including a page's first block", () => {
+      const page: ParsedPage = {
+        properties: { title: "X" },
+        blocks: [
+          node({ id: "1k7f3q9xz2hav4" }),
+          node({ id: "1k7f3q9xz2hav5", content: "a", children: [node({ id: "1k7f3q9xz2hav6" })] }),
+          node({ id: "1k7f3q9xz2hav7", marker: "TODO" }),
+          node({ id: "1k7f3q9xz2hav8", priority: "B", collapsed: true, properties: { k: "v" } }),
+        ],
+      };
+      const text = serializeOutline(page);
+      expect(text).toBe(
+        "title:: X\n- ^1k7f3q9xz2hav4\n- a ^1k7f3q9xz2hav5\n  - ^1k7f3q9xz2hav6\n- TODO ^1k7f3q9xz2hav7\n- [#B] ^1k7f3q9xz2hav8\n  collapsed:: true\n  k:: v\n",
+      );
+      expect(parseOutline(text)).toEqual(page);
+      // With no page properties the empty first block is still a block, not a pre-block.
+      const bare: ParsedPage = { properties: {}, blocks: page.blocks.slice(0, 1) };
+      expect(parseOutline(serializeOutline(bare))).toEqual(bare);
+    });
+
+    it("round-trips a content whose line 1 is empty, with and without a marker", () => {
+      const page: ParsedPage = {
+        properties: {},
+        blocks: [
+          node({ id: "1m287mdbgs5v8t", marker: "LATER", content: "\n> Hm, quoted" }),
+          node({ id: "1k7f3q9xz2hav4", content: "\nsecond" }),
+        ],
+      };
+      const text = serializeOutline(page);
+      expect(text).toBe("- LATER ^1m287mdbgs5v8t\n  > Hm, quoted\n- ^1k7f3q9xz2hav4\n  second\n");
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("keeps a page-level `id::` pre-block line a page property (OUT-15)", () => {
+      const p = parseOutline("id:: 64f1a2b3-0000-4000-8000-000000000001\n\n- ^1k7f3q9xz2hav4\n");
+      expect(p.properties).toEqual({ id: "64f1a2b3-0000-4000-8000-000000000001" });
+      expect(p.blocks).toEqual([node({ id: "1k7f3q9xz2hav4" })]);
+    });
+  });
+
   // B-151: without an id to stand alone on line 1, property lines written straight after a
   // fence-opening line 1 landed inside the fence and came back as code.
   describe("a block that opens with a fence, without ids (B-151)", () => {
@@ -243,4 +373,67 @@ describe("serializeOutline", () => {
       }),
     ).toBe("-\n");
   });
+});
+
+// Verification of B-310/B-390 (core-ops-verify): every serializer branch (OUT-14 head-and-id line,
+// B-151 placements, the plain line 1) against every head a block can carry, in both id modes, next
+// to a child and a following sibling. The two fixes each changed which line 1 the parser skips; a
+// matrix is what shows no other combination lost its marker, id, properties or text on the way.
+describe("serialize -> parse is lossless across heads, ids, properties and content shapes", () => {
+  const contents = [
+    "",
+    "text",
+    "```x``` inline",
+    "\nsecond line after an empty line 1",
+    "text\n```js\n- in a fence\nk:: in a fence\n```",
+    "```js\n- in a fence\nk:: in a fence\n```",
+    "~~~\ncode\n~~~\nafter the fence",
+    "```\nnever closes",
+  ];
+  const cases: Array<{ name: string; node: OutlineNode }> = [];
+  for (const content of contents)
+    for (const marker of [null, "TODO", "DONE"] as const)
+      for (const priority of [null, "B"] as const)
+        for (const properties of [{}, { k: "v", other: "w" }] as Properties[])
+          for (const collapsed of [false, true])
+            cases.push({
+              name: JSON.stringify({ content, marker, priority, properties, collapsed }),
+              node: { content, marker, priority, properties, collapsed, children: [] },
+            });
+
+  const withIds = (n: OutlineNode, ids: boolean, k: number): OutlineNode => {
+    const out: OutlineNode = {
+      ...n,
+      children: n.children.map((c, i) => withIds(c, ids, k * 7 + i)),
+    };
+    if (ids) out.id = `1k7f3q9xz2h${String(100 + k).slice(-3)}`;
+    return out;
+  };
+
+  for (const ids of [true, false]) {
+    it(`round-trips ${cases.length} blocks ${ids ? "with" : "without"} ids`, () => {
+      const failures: string[] = [];
+      cases.forEach(({ name, node }, k) => {
+        // A fence that never closes swallows every later line of the file, so that block goes last
+        // and childless — the only place such a block can round-trip at all.
+        const unclosed = node.content.startsWith("```\n");
+        const child: OutlineNode = { ...node, content: "child", marker: null, children: [] };
+        const block: OutlineNode = unclosed ? node : { ...node, children: [child] };
+        const blocks = unclosed
+          ? [{ ...child, content: "before" }, block]
+          : [{ ...child, content: "", properties: {} }, block, { ...child, content: "next" }];
+        for (const properties of [{}, { title: "Page" }] as Properties[]) {
+          const page: ParsedPage = {
+            properties,
+            blocks: blocks.map((b, i) => withIds(b, ids, k * 10 + i)),
+          };
+          const text = serializeOutline(page, ids ? {} : { ids: "none" });
+          if (JSON.stringify(parseOutline(text)) !== JSON.stringify(page)) {
+            failures.push(`${name}\n${text}`);
+          }
+        }
+      });
+      expect(failures).toEqual([]);
+    });
+  }
 });

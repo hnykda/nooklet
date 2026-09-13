@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TaskRow } from "../data/types.js";
-import { filterTasks, groupTasksByPage, sortTasksByDue } from "./taskFilters.js";
+import { filterTasks, groupTasksByPage, sortTasksByDue, taskDateLabels } from "./taskFilters.js";
 
 function task(overrides: Partial<TaskRow> & Pick<TaskRow, "id" | "pageId" | "pageName">): TaskRow {
   return {
@@ -136,6 +136,29 @@ describe("filterTasks", () => {
   it("combines filters", () => {
     const result = filterTasks(tasks, { states: ["TODO"], namespace: "Projects" });
     expect(result.map((t) => t.id)).toEqual(["t1"]);
+  });
+});
+
+// B-324: the row showed `dueDay` alone — the scheduled date whenever there is one — so a task the
+// window found by its deadline was labelled with a date outside that window.
+describe("taskDateLabels", () => {
+  const base = { scheduledDay: null, scheduledTime: null, deadlineDay: null, deadlineTime: null };
+
+  it("labels both dates when a task is scheduled and has a deadline, scheduled first", () => {
+    expect(taskDateLabels({ ...base, scheduledDay: 20310301, deadlineDay: 20310320 })).toEqual([
+      { kind: "scheduled", label: "Scheduled 2031-03-01" },
+      { kind: "deadline", label: "Deadline 2031-03-20" },
+    ]);
+  });
+
+  it("labels a lone date with its kind, and adds a time when there is one", () => {
+    expect(taskDateLabels({ ...base, deadlineDay: 20260920, deadlineTime: "14:00" })).toEqual([
+      { kind: "deadline", label: "Deadline 2026-09-20 14:00" },
+    ]);
+    expect(taskDateLabels({ ...base, scheduledDay: 20260901 })).toEqual([
+      { kind: "scheduled", label: "Scheduled 2026-09-01" },
+    ]);
+    expect(taskDateLabels(base)).toEqual([]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { normalizePageName, refKeyOf } from "@nooklet/core";
+import { refKeyOf } from "@nooklet/core";
 import { z } from "zod";
 import { unlinkedMentionRows } from "../data-api.js";
 import { pageLookupKeys } from "../page-aliases.js";
@@ -134,7 +134,11 @@ export const pageBacklinks = defineOp({
         // An unknown name simply has no backlinks, so the answer is an empty list rather than an
         // error: a caller can tell the difference, and "this page has nothing pointing at it" is a
         // true and useful answer.
-        const key = normalizePageName(input.target);
+        //
+        // Keyed the way refs are indexed (`refKeyOf`, ADR 018): a journal day named by any title
+        // format collapses to its ISO key. The raw name found nothing for `Sep 20th, 2026` while
+        // `2026-09-20` worked, and listed blocks linking that day as unlinked mentions (B-322).
+        const key = refKeyOf(input.target);
         targetWire = input.target;
         linkedRows = driver.all(
           `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
@@ -144,9 +148,8 @@ export const pageBacklinks = defineOp({
           [key],
         );
         // `Journal` usually has no page of its own, yet every journal day carries it: a tag that
-        // only exists as an index key must still list its pages (B-111). Keyed the way `page_tag`
-        // is (`refKeyOf`), which differs from `key` only for a date-shaped name.
-        taggedRows = pagesTaggedWith(driver, [refKeyOf(input.target)], null);
+        // only exists as an index key must still list its pages (B-111).
+        taggedRows = pagesTaggedWith(driver, [key], null);
         if (input.include_unlinked) {
           const plainName = input.target.split("/").pop() ?? input.target;
           if (plainName.length >= 3) {

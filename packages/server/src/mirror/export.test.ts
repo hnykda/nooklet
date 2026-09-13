@@ -201,6 +201,28 @@ describe("renderPageToOutline / exportPage: basic round trip", () => {
     expect(childNode.priority).toBe("A");
   });
 
+  // B-390: 441 of the owner's 952 mirror files read back differently — every empty block (`- ^id`)
+  // came back as the text `^id` with no id. B-310: a task opening with a code fence lost its marker.
+  it("reads back empty blocks, a fence-first task and a blank-line-first task as written", () => {
+    const pageId = createPage("Mirror Shapes");
+    createBlock(pageId, "", { order: "a0" });
+    const task = createBlock(pageId, "```js\n- not a bullet\n```", {
+      order: "a1",
+      marker: "TODO",
+      priority: "B",
+      properties: { foo: "bar" },
+    });
+    createBlock(pageId, "", { order: "a0", parentId: task, marker: "LATER" });
+    createBlock(pageId, "\n> quoted after an empty line 1", { order: "a2", marker: "LATER" });
+
+    const result = exportPage(ctx.driver, dataDir, pageId);
+    const text = readFileSync(join(dataDir, result.path), "utf8");
+    expect(text).toContain(`- TODO [#B] ^${task}\n  foo:: bar\n  \`\`\`js\n`);
+    const written = renderPageToOutline(ctx.driver, pageId).parsed;
+    expect(written.blocks).toHaveLength(3);
+    expect(parseOutline(text)).toEqual(written);
+  });
+
   it("exports a journal page to journals/<file>.md", () => {
     const day = 20260910;
     const pageId = createPage("2026-09-10", { journalDay: day });
