@@ -52,6 +52,32 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
 4. Publish-a-graph (2–3 days per the audit) — the wiki is the first candidate. Owner's call.
 5. `changes-since.ts`: classify asset rows beyond "uploaded" (GC deletions, dedupe touches).
 
+## M8 run — 2026-09-13 07:55 (in flight)
+
+One workflow, run `wf_69b4f9a8-ee2` (script:
+`~/.claude/projects/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/workflows/scripts/m8-verify-review-build-wf_69b4f9a8-ee2.js`;
+resume with `Workflow({scriptPath, resumeFromRunId})` — finished agents return cached results).
+Base for every branch: `da85cfb`.
+
+| Track | Agents | Branches (`m8/<slug>`) | e2e ports | New bug numbers |
+|---|---|---|---|---|
+| QA on a copy of the real graph → fixer per area | qa-editor, qa-views, qa-render-sync | `m8/qafix-editor`, `m8/qafix-views`, `m8/qafix-render-sync` | serve 6450–6452, fix 6460–6462 | B-240–269 |
+| Review → skeptic refutes each finding → fixer per dimension | rv-server-sync, rv-server-security, rv-web-reactivity, rv-web-security | `m8/rv-*` | 6470–6473 | B-120–139 |
+| Build → adversarial verify in the same worktree | impl-dates (B-96/102), impl-render (B-99/100/101), impl-commands (B-97/98/105/106), impl-plugins (B-103), impl-editor (B-88/108), impl-journal (scheduled section, B-94), impl-refs (B-89/104/111), impl-embeds, impl-export (md/print/favourites), impl-small (timestamps, find-in-page, read-only, random page) | `m8/impl-*` | 6400–6409 | B-140–239 |
+
+Conventions for this run: agents never edit `docs/BUGS.md`; each writes `docs/bugs-inbox/<slug>.md`
+(BUGS.md entry format; `### B-NN (existing)` for fixes to existing entries). Each keeps
+`docs/progress/<slug>.md` on its branch.
+
+### Integration (coordinator, after the run)
+1. For each branch in priority order (qafix, rv, impl-editor, impl-dates, impl-render,
+   impl-commands, impl-plugins, then the rest): `git merge --no-ff m8/<slug>` on main; resolve
+   conflicts (expected in shared files only); typecheck + unit after each merge.
+2. Fold `docs/bugs-inbox/*.md` into BUGS.md (existing → move to Fixed with the note; new → Open or
+   Fixed by status), delete the inbox dir, one commit.
+3. Full unit, full e2e, `verify` on a fresh real-graph copy; record numbers here.
+4. Remove the worktrees (`git worktree list`), keep branches until the owner has seen the result.
+
 ## Pending on the owner
 
 - B-42 (needs-repro): which runtime — `/Applications/nooklet.app` (built Sep 11 14:38, predates
