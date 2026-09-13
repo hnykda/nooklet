@@ -136,3 +136,31 @@ the grace, so a future "touched on deduplicated re-upload" audit row (B-91) need
   idiom; `store.ts` keeps its signals private and is owned by another workstream this milestone.
 - Open follow-ups, logged: B-90 (core should reject a colliding un-delete the way it rejects a
   colliding rename), B-91 (record a deduplicated re-upload so the asset GC sees it as recent).
+
+## Amendment (2026-09-13): the walk keeps later edits (B-251)
+
+Decision 4 said the walk is "not page-scoped" and left it there. Exploratory QA on the real graph
+showed what that costs: restoring one journal day walked back through a graph-wide replace and its
+undo, and `batch.undo`'s last-writer-wins before-images overwrote every later edit to the 835
+blocks the replace had touched — a page merge's 19 link rewrites, a Turn-into-page link — with
+nothing on screen saying so. The confirm's one sentence about other pages did not describe that.
+
+`batch.undo` now takes `keep_later_edits` and `ignore_batches`. With the flag, a field another
+batch changed after the one being undone is left as it is and reported in `kept`; the walk passes
+its own batches and the undo batches it has written so far as `ignore_batches`, so its earlier
+steps are not mistaken for later edits. The History view passes both for Undo and for Restore and
+names the pages where something was kept. The walk is still not page-scoped — a replace is still
+undone on the other pages it touched, where nothing has changed since — but it no longer
+destroys work there.
+
+**Default stays last-writer-wins** for the API and MCP (ADR 013's contract: an agent undoing its
+own last write gets exactly the before-state). Whether agents should default to keeping later
+edits too is left to the owner; the tool description now tells them when to pass the flag.
+
+**Rejected: a whole-entity version check (`if_version`).** A later collapse toggle or an unrelated
+property would then block restoring a block's text. The `changes` rows already carry each later
+batch's before/after image, so the check is per field at no extra storage.
+
+**Rejected: page-scoping the walk** (undo only this page's entities). It would leave a cross-page
+batch half-undone — a merge's moved blocks back but its link rewrites not, a replace undone on one
+page of the 300 it touched — which is a state no write ever produced.

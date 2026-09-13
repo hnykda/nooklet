@@ -54,10 +54,23 @@ export interface BacklinkRef {
 
 export interface BacklinksResult {
   target: string;
+  /** Every linked reference, up to `MAX_LINKED_REFERENCES` (see `linkedTotal`). */
   linked: BacklinkRef[];
+  /** How many linked references there are, whether or not all of them are in `linked`. */
+  linkedTotal: number;
   unlinked: BacklinkRef[];
-  cursor?: string;
+  /** More unlinked mentions exist than `unlinked` holds. */
+  unlinkedTruncated: boolean;
 }
+
+/** Linked references fetched per page (the server's `Limit` ceiling). */
+const BACKLINKS_PAGE = 500;
+/** Linked references a panel holds at most. The real graph's busiest page ("task") has 1,074; a
+ * page past this still shows its true count, and says the list is partial. */
+export const MAX_LINKED_REFERENCES = 5000;
+/** Unlinked mentions asked for: the most one `mentions.link` call rewrites, so what the panel
+ * counts is what Link all changes. */
+export const MAX_UNLINKED_MENTIONS = 500;
 
 export interface GraphNode {
   id: string;
@@ -193,7 +206,9 @@ interface SearchWireOutput {
 interface BacklinksWireOutput {
   target: string;
   linked: Array<{ id: string; page: string; text: string; updated_at: string }>;
+  linked_total?: number;
   unlinked: Array<{ id: string; page: string; text: string }>;
+  unlinked_truncated?: boolean;
   cursor?: string;
 }
 
@@ -251,22 +266,48 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
     },
 
     async pageBacklinks(target: string, includeUnlinked = true): Promise<BacklinksResult> {
-      const out = await post<BacklinksWireOutput>(
+      // Follow the cursor to the end (B-253): the panel's count, its filter and Link all all work
+      // on the whole set, and a first page of 200 presented as the whole said "200" on a page
+      // with 836 references and let a filter report "No references match" when matches existed.
+      // Unlinked mentions are not paginated server-side, so they come with the first page only.
+      const first = await post<BacklinksWireOutput>(
         base,
         "page.backlinks",
-        { target, include_unlinked: includeUnlinked, limit: 200 },
+        {
+          target,
+          include_unlinked: includeUnlinked,
+          unlinked_limit: MAX_UNLINKED_MENTIONS,
+          limit: BACKLINKS_PAGE,
+        },
         opts.getToken,
       );
+      const linkedWire = [...first.linked];
+      let cursor = first.cursor;
+      while (cursor && linkedWire.length < MAX_LINKED_REFERENCES) {
+        const next = await post<BacklinksWireOutput>(
+          base,
+          "page.backlinks",
+          { target, limit: BACKLINKS_PAGE, cursor },
+          opts.getToken,
+        );
+        linkedWire.push(...next.linked);
+        cursor = next.cursor;
+      }
+      // The cursor is an offset into a list an edit can shift between two requests; a row seen
+      // twice would be counted twice.
+      const seen = new Set<string>();
+      const unique = linkedWire.filter((r) => !seen.has(r.id) && seen.add(r.id));
       return {
-        target: out.target,
-        linked: out.linked.map((r) => ({
+        target: first.target,
+        linked: unique.slice(0, MAX_LINKED_REFERENCES).map((r) => ({
           id: r.id,
           page: r.page,
           text: r.text,
           updatedAt: r.updated_at,
         })),
-        unlinked: out.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
-        cursor: out.cursor,
+        linkedTotal: first.linked_total ?? linkedWire.length,
+        unlinked: first.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
+        unlinkedTruncated: first.unlinked_truncated ?? false,
       };
     },
 

@@ -22,6 +22,12 @@
  * — and a recent/by-name sort; and on the unlinked half a "Link all" button that runs
  * `mentions.link` (one batch) and offers `batch.undo` on the result. The count on each heading is
  * the count of what is under it, filter applied — a "12" over three visible rows is a lie.
+ *
+ * "What is under it" means every reference, not the first page of them (B-253): the panel used to
+ * hold the first 200 linked and 50 unlinked rows and count, filter and Link-all over that slice.
+ * It now holds them all (up to `MAX_LINKED_REFERENCES`, the heading saying so beyond that) and
+ * RENDERS a window of `REFERENCE_ROWS_STEP` rows with a "Show more" button
+ * (`./referenceWindow.ts` says why rendering is windowed but counting is not).
  */
 import { normalizePageName } from "@nooklet/core";
 import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
@@ -48,6 +54,7 @@ import {
   type ReferenceFilter,
   type ReferenceSort,
 } from "./referenceGrouping.js";
+import { countLabel, firstRows, REFERENCE_ROWS_STEP } from "./referenceWindow.js";
 import "./references.css";
 
 export interface ReferencesPanelProps {
@@ -94,6 +101,18 @@ function ReferenceGroups(props: {
         </div>
       )}
     </For>
+  );
+}
+
+/** "Show N more" under a windowed list; nothing when every row is already shown. */
+function ShowMore(props: { shown: number; total: number; onMore: () => void }): JSX.Element {
+  const next = () => Math.min(REFERENCE_ROWS_STEP, props.total - props.shown);
+  return (
+    <Show when={props.shown < props.total}>
+      <button type="button" class="references-retry references-more" onClick={props.onMore}>
+        Show {next()} more ({props.total - props.shown} not shown)
+      </button>
+    </Show>
   );
 }
 
@@ -190,9 +209,14 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   // write every change straight back so it is there on the next visit.
   const pageKey = createMemo(() => normalizePageName(props.target));
   const [filter, setFilterState] = createSignal<ReferenceFilter>(EMPTY_FILTER);
+  // How many rows of each list are rendered; a new page starts from one step again.
+  const [linkedRows, setLinkedRows] = createSignal(REFERENCE_ROWS_STEP);
+  const [unlinkedRows, setUnlinkedRows] = createSignal(REFERENCE_ROWS_STEP);
   createEffect(() => {
     setFilterState(loadReferenceFilter(pageKey()));
     setFilterOpen(false);
+    setLinkedRows(REFERENCE_ROWS_STEP);
+    setUnlinkedRows(REFERENCE_ROWS_STEP);
   });
   const setFilter = (next: ReferenceFilter): void => {
     setFilterState(next);
@@ -215,6 +239,20 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   const unlinkedGroups = createMemo(() => groupUnlinkedReferences(data()?.unlinked ?? []));
   const linkedCount = createMemo(() => filteredLinked().length);
   const unlinkedCount = createMemo(() => data()?.unlinked.length ?? 0);
+  /** The client stopped short of every linked reference (`MAX_LINKED_REFERENCES`). */
+  const linkedPartial = createMemo(() => allLinked().length < (data()?.linkedTotal ?? 0));
+  // Unfiltered, the heading can give the server's true total even past the fetch cap; filtered,
+  // it can only count what was fetched, and says "+" when that is not everything.
+  const linkedCountText = createMemo(() =>
+    isFilterEmpty(filter())
+      ? String(Math.max(data()?.linkedTotal ?? 0, linkedCount()))
+      : countLabel(linkedCount(), linkedPartial()),
+  );
+  const unlinkedCountText = createMemo(() =>
+    countLabel(unlinkedCount(), data()?.unlinkedTruncated ?? false),
+  );
+  const linkedWindow = createMemo(() => firstRows(linkedGroups(), linkedRows()));
+  const unlinkedWindow = createMemo(() => firstRows(unlinkedGroups(), unlinkedRows()));
   const activeFilterCount = createMemo(() => filter().include.length + filter().exclude.length);
   /** Display name for a key in a chip: the candidate's spelling if it is still around, else the
    * key itself (a stale filter must still be removable). */
@@ -316,7 +354,7 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
                   {linkedOpen() ? "▾" : "▸"}
                 </span>
                 Linked references
-                <span class="reference-count">{linkedCount()}</span>
+                <span class="reference-count">{linkedCountText()}</span>
               </button>
               <div class="references-tools">
                 <button
@@ -410,7 +448,18 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
                 when={linkedCount() > 0}
                 fallback={<p class="references-empty">No references match this filter.</p>}
               >
-                <ReferenceGroups groups={linkedGroups()} onNavigate={props.onNavigate} />
+                <ReferenceGroups groups={linkedWindow().groups} onNavigate={props.onNavigate} />
+                <ShowMore
+                  shown={linkedWindow().shown}
+                  total={linkedWindow().total}
+                  onMore={() => setLinkedRows((n) => n + REFERENCE_ROWS_STEP)}
+                />
+                <Show when={linkedPartial()}>
+                  <p class="references-empty">
+                    Only the {allLinked().length} most recent of {data()?.linkedTotal} references
+                    are listed and filtered here.
+                  </p>
+                </Show>
               </Show>
             </Show>
           </section>
@@ -429,7 +478,7 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
                   {unlinkedOpen() ? "▾" : "▸"}
                 </span>
                 Unlinked references
-                <span class="reference-count">{unlinkedCount()}</span>
+                <span class="reference-count">{unlinkedCountText()}</span>
               </button>
               <div class="references-tools">
                 <button
@@ -445,7 +494,12 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
               </div>
             </div>
             <Show when={unlinkedOpen()}>
-              <ReferenceGroups groups={unlinkedGroups()} onNavigate={props.onNavigate} />
+              <ReferenceGroups groups={unlinkedWindow().groups} onNavigate={props.onNavigate} />
+              <ShowMore
+                shown={unlinkedWindow().shown}
+                total={unlinkedWindow().total}
+                onMore={() => setUnlinkedRows((n) => n + REFERENCE_ROWS_STEP)}
+              />
             </Show>
           </section>
         </Show>

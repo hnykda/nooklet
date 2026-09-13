@@ -233,7 +233,9 @@ export const pageHistory = defineOp({
     "compute a diff. To reverse one batch call batch_undo with its batch_id. To restore the " +
     "page as it was right after some batch, call batch_undo on every NEWER batch in this list, " +
     "newest first - there is no single restore call, and a batch that also touched other pages " +
-    "reverts there too. Works for a deleted page as well (its deletion is the newest batch). " +
+    "reverts there too. Pass keep_later_edits: true and ignore_batches (every batch in the walk " +
+    "plus each undo's batch_id so far) so edits made since, on any page, are not overwritten. " +
+    "Works for a deleted page as well (its deletion is the newest batch). " +
     "Blocks are attributed to the page they are on now. Paginate with cursor.",
   input: z
     .object({

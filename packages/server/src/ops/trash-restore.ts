@@ -21,8 +21,9 @@
  * Two things are refused rather than guessed at. A page whose name is now taken by a live page
  * cannot be restored as-is: core's `applyPageDelete` does not re-check the live-name unique index
  * (docs/BUGS.md B-90), so the write would fail on a SQL constraint mid-transaction; this op checks
- * first and asks for `new_name`. And a block whose page is itself in the trash is refused with a
- * pointer at the page — restoring one block onto a deleted page would "succeed" invisibly.
+ * first and asks for `new_name` (also when a live page uses the name as an alias, B-256). And a
+ * block whose page is itself in the trash is refused with a pointer at the page — restoring one
+ * block onto a deleted page would "succeed" invisibly.
  */
 
 import type { Op, SqlDriver } from "@nooklet/core";
@@ -112,6 +113,50 @@ function livePageWithKey(driver: SqlDriver, key: string): { id: string; name: st
   );
 }
 
+/**
+ * The live page, other than `exceptPageId`, that answers to `key` as an alias (B-256). A page's
+ * own key wins over an alias when a link resolves (`page-aliases.ts#resolvePageIdForKey`), so
+ * restoring a page under a name another page aliases silently re-points every `[[name]]` at the
+ * restored page — which is exactly what un-merging "Alex" from "@Alex" (`alias:: Alex`) did.
+ */
+function livePageAliasing(
+  driver: SqlDriver,
+  key: string,
+  exceptPageId: string,
+): { id: string; name: string } | undefined {
+  return driver.get<{ id: string; name: string }>(
+    `SELECT p.id, p.name FROM page_alias pa JOIN page p ON p.id = pa.page_id
+     WHERE pa.alias_key = ? AND p.deleted_at IS NULL AND p.id != ? LIMIT 1`,
+    [key, exceptPageId],
+  );
+}
+
+/** Refuse a restored name that a live page already has, or uses as an alias. `liveHint` is the
+ * hint for the first case; the alias case always says how to get past it. */
+function assertNameFree(
+  driver: SqlDriver,
+  name: string,
+  restoringPageId: string,
+  liveHint: string | undefined,
+): void {
+  const key = normalizePageName(name);
+  const clash = livePageWithKey(driver, key);
+  if (clash) {
+    throw new OpError("conflict", `a live page is already named "${clash.name}"`, liveHint, {
+      live_page_id: clash.id,
+    });
+  }
+  const aliasing = livePageAliasing(driver, key, restoringPageId);
+  if (aliasing) {
+    throw new OpError(
+      "conflict",
+      `a live page, "${aliasing.name}", uses "${name}" as an alias`,
+      `restore under another name with new_name, or remove "${name}" from ${aliasing.name}'s alias:: first`,
+      { live_page_id: aliasing.id },
+    );
+  }
+}
+
 export const trashRestore = defineOp({
   name: "trash.restore",
   summary: "Restore a deleted page or block from the trash",
@@ -120,9 +165,10 @@ export const trashRestore = defineOp({
     "and its ids). A page comes back with every block that was deleted along with it; a block " +
     "comes back with the subtree deleted along with it, plus any deleted ancestor it needs in " +
     "order to be visible. Pass id (a page or block id from trash_list) or page (the name of a " +
-    "deleted page). If a live page now has the restored page's name, this fails with conflict - " +
-    "pass new_name to restore it under another name instead. A block whose whole page is in the " +
-    "trash is refused with conflict: restore the page. The restore is itself a normal write " +
+    "deleted page). If a live page now has the restored page's name, or uses it as an alias, this " +
+    "fails with conflict - pass new_name to restore it under another name instead. A block whose " +
+    "whole page is in the trash is refused with conflict: restore the page. The restore is " +
+    "itself a normal write " +
     "with its own batch_id, so batch_undo reverses it. The trash has no expiry (ADR 022): " +
     "nothing is ever purged, so anything trash_list shows can be restored. Use dry_run to see " +
     "what would come back without writing anything.",
@@ -226,21 +272,14 @@ export const trashRestore = defineOp({
         kind = "page";
         pageId = page.id;
         if (input.new_name === undefined) {
-          const clash = livePageWithKey(driver, page.key);
-          if (clash) {
-            throw new OpError(
-              "conflict",
-              `a live page is already named "${clash.name}"`,
-              "pass new_name to restore this page under a different name, or rename/delete the live page first",
-              { live_page_id: clash.id },
-            );
-          }
+          assertNameFree(
+            driver,
+            page.name,
+            page.id,
+            "pass new_name to restore this page under a different name, or rename/delete the live page first",
+          );
         } else {
-          const newKey = normalizePageName(input.new_name);
-          const clash = livePageWithKey(driver, newKey);
-          if (clash) {
-            throw new OpError("conflict", `a live page is already named "${clash.name}"`);
-          }
+          assertNameFree(driver, input.new_name, page.id, undefined);
           // Rename lands while the page is still tombstoned (core's rename only guards against
           // LIVE pages with the key), then the un-delete brings it back under the new name.
           ops.push(ctx.mintOp(page.id, { kind: "page.rename", name: input.new_name }));

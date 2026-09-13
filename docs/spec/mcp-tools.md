@@ -803,8 +803,10 @@ is never returned as an error — that case degrades silently to `mode_used: 'ke
 
 **Description**: "Lists blocks that reference a page or block: `[[page]]` links, `#tags`,
 `((block refs))`, and — if `include_unlinked` — plain-text mentions of the page's name that are
-not already a link. Each item has the referencing block's id, page, and text. Paginated. Use this
-before renaming or deleting a page to see what points at it."
+not already a link. Each item has the referencing block's id, page, and text. Linked references
+are paginated (`linked_total` counts them all); unlinked mentions are not — up to `unlinked_limit`
+are returned, with `unlinked_truncated` saying whether there are more. Use this before renaming or
+deleting a page to see what points at it."
 
 ```ts
 export const pageBacklinks = defineOp({
@@ -812,12 +814,15 @@ export const pageBacklinks = defineOp({
   input: z.object({
     target: z.union([PageRef, BlockId]).describe('Page name/date/alias, a page id, or a block id'),
     include_unlinked: z.boolean().default(false),
+    unlinked_limit: z.number().int().min(1).max(500).default(50), // B-253; 500 = one mentions_link call
     limit: Limit, cursor: Cursor.optional(),
   }).strict(),
   output: z.object({
     target: z.string(),
     linked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() })),
+    linked_total: z.number().int(),          // across every page of results
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
+    unlinked_truncated: z.boolean().default(false),
     cursor: z.string().optional(),
   }),
   annotations: { readOnlyHint: true, idempotentHint: true }, scopes: ['read'],
@@ -841,9 +846,11 @@ export const pageBacklinks = defineOp({
   "linked": [
     { "id": "1k7f3qc4d8ktv6", "page": "2026-09-10", "text": "Reviewed [[Projects/Aurora]] launch checklist with the team", "updated_at": "2026-09-10T08:00:00.000Z" }
   ],
+  "linked_total": 1,
   "unlinked": [
     { "id": "1k7f3qc59mgxr4", "page": "Vendors/Acme Supply", "text": "Quoted pricing for the Aurora launch" }
-  ]
+  ],
+  "unlinked_truncated": false
 }
 ```
 
@@ -1382,9 +1389,11 @@ immediately before that batch, or soft-deleting it (undoable in turn) if the bat
 Works from the before/after snapshot every write already records for audit purposes (ADR 013) — it
 never re-parses Markdown or guesses at the reverse edit. This call is itself a brand-new,
 separately-audited batch: to undo the undo, call `batch_undo` again with THIS call's
-`batch_id` (there is no separate redo concept). It does NOT check whether the entity changed
-again after the original batch — it applies the restore unconditionally, and since every field is
-last-writer-wins by a fresh timestamp (ADR 003), the undo always wins over anything in between.
+`batch_id` (there is no separate redo concept). By default it does NOT check whether the entity
+changed again after the original batch — it applies the restore unconditionally, and since every
+field is last-writer-wins by a fresh timestamp (ADR 003), the undo always wins over anything in
+between. Pass `keep_later_edits: true` to leave alone every field some other batch changed after
+this one (listed in `kept`) — use it when undoing anything but your own latest write.
 Cannot undo `asset_upload` (assets are not in the op log); such a `batch_id` fails with an
 `invalid` error. Use `dry_run` to preview what would be restored/deleted without writing anything."
 
@@ -1393,11 +1402,16 @@ export const batchUndo = defineOp({
   name: 'batch.undo', summary: 'Undo every page/block change from a previous batch_id',
   input: z.object({
     batch_id: z.string().min(1).max(64).describe('A batch_id from a previous write\'s response or a changes_since item\'s batch_id field'),
+    keep_later_edits: z.boolean().default(false),   // B-251: skip fields another batch changed since
+    ignore_batches: z.array(BatchId).max(10_000).default([]), // a walk's own batches and undos
     dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
   }).strict(),
   // `batch_id` in the result is this undo's OWN batch, like every other write's — pass it back to
   // batch_undo to undo the undo.
-  output: WriteResult,
+  output: WriteResult.extend({
+    kept: z.array(z.object({ entity_type: z.enum(['page', 'block']), id: z.string(),
+      page: z.string(), fields: z.array(z.string()) })).default([]),
+  }),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, scopes: ['write'],
   render: renderBatchUndo, handler: (i, ctx) => ctx.graph.undoBatch(i, ctx),
 });
@@ -1411,6 +1425,16 @@ properties/`deleted_at` for a block) is written back via ordinary `page.*`/`bloc
 `ctx.applyOps` — never raw SQL — so the undo is itself a normal, fully-audited write. When one
 `batch_id` touched the same entity more than once, the entity's original pre-batch state is taken
 from its *first* (lowest-`seq`) `changes` row under that `batch_id`, not any later one.
+
+**`keep_later_edits`** (B-251, 2026-09-13). For each entity, every `changes` row with a higher
+`seq` whose `batch_id` is neither this one nor in `ignore_batches` is diffed before-vs-after, field
+by field (`place`, `content`, `marker`, `priority`, `collapsed`, `name`, `deleted`, `prop:<key>`);
+those fields are not written back. An entity the batch created is not soft-deleted if any such
+row exists. `kept` lists, per entity, the skipped fields that the undone batch itself had changed
+(a field it never touched is skipped silently — restoring it was never part of the reversal). To
+restore a page to an older version, undo each newer batch newest first with
+`keep_later_edits: true` and `ignore_batches` = every batch in the walk plus each undo's own
+`batch_id` so far; otherwise the walk's own first step counts as a later edit to the second.
 
 **HTTP**: `POST /api/v1/batch.undo`.
 
@@ -1808,8 +1832,9 @@ M7's "turn block into page" (research/13 §4.2 item 3; ADR 020), behind the bull
 already `[[Name]]`, resolves that page, has no children left to move, and changes nothing.
 
 **Description**: "Turns a block into a page: the block's first line becomes the page name (or
-pass `name` to choose one; a first line that is already a single `[[link]]` names that page),
-every block nested under it becomes a top-level block of that page in the same order and nesting
+pass `name` to choose one; a heading's `#` marker is not part of the name and stays on the block,
+inline `[[links]]` count as their text, and a first line that is a single `[[link]]` names that
+page — B-254), every block nested under it becomes a top-level block of that page in the same order and nesting
 (appended after any existing blocks if the page already exists), and the block itself is replaced
 by a `[[link]]` to the page — keeping its id, task marker, priority and properties, so references
 to it still work. Continuation lines under the first line become the page's first block. The page
@@ -2141,8 +2166,8 @@ page is back.
 what is there and its ids). A page comes back with every block that was deleted along with it; a
 block comes back with the subtree deleted along with it, plus any deleted ancestor it needs in
 order to be visible. Pass `id` (a page or block id from `trash_list`) or `page` (the name of a
-deleted page). If a live page now has the restored page's name, this fails with `conflict` — pass
-`new_name` to restore it under another name instead. A block whose whole page is in the trash is
+deleted page). If a live page now has the restored page's name, or uses it as an alias, this fails
+with `conflict` — pass `new_name` to restore it under another name instead. A block whose whole page is in the trash is
 refused with `conflict`: restore the page. The restore is itself a normal write with its own
 `batch_id`, so `batch_undo` reverses it. The trash has no expiry (ADR 022): nothing is ever
 purged, so anything `trash_list` shows can be restored. Use `dry_run` to see what would come
@@ -2197,7 +2222,9 @@ against LIVE pages with the key.
 
 **Errors**: `invalid` — neither or both of `id`/`page` given, `new_name` on a block, or the target
 exists but is not in the trash; `not_found` — no such id, or no deleted page with that name;
-`conflict` — a live page has the (new) name (`details.live_page_id`, `hint` mentions `new_name`),
+`conflict` — a live page has the (new) name or lists it in `alias::` (B-256: a page's own key wins
+over an alias, so restoring would re-point that alias's links; `details.live_page_id`, `hint`
+mentions `new_name`),
 or the block's page is itself in the trash (`details.page_id`, `hint` gives the `trash_restore`
 call for the page).
 

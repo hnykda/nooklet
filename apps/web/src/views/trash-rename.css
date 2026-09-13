@@ -1,0 +1,78 @@
+/* The rename-and-restore form on a refused Trash row (`TrashRenameForm.tsx`, B-255). Tokens from
+   `../styles/shell.css`; sized to sit under the row's meta line without shifting the button. */
+
+.trash-rename {
+  margin-top: var(--space-sm);
+}
+
+.trash-rename-reason {
+  margin: 0 0 var(--space-xs);
+  color: var(--danger);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.trash-rename-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.trash-rename-input {
+  flex: 1 1 14em;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.trash-rename-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.trash-rename-submit,
+.trash-rename-cancel {
+  flex: none;
+  min-height: 30px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.trash-rename-submit {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: var(--weight-medium);
+}
+
+.trash-rename-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.trash-rename-cancel {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.trash-rename-cancel:hover {
+  color: var(--fg);
+}
+
+@media (pointer: coarse) {
+  .trash-rename-input,
+  .trash-rename-submit,
+  .trash-rename-cancel {
+    min-height: var(--touch);
+  }
+}

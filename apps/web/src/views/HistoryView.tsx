@@ -11,6 +11,12 @@
  *    a batch that also touched another page is undone there too. Each undo is its own audited
  *    batch, so the walk itself shows up in the timeline and can be undone again.
  *
+ * Both pass `keep_later_edits` (B-251): without it every undo writes its before-images back
+ * last-writer-wins, and restoring one page walked back through a graph-wide replace and overwrote
+ * every later edit to the 835 blocks it had touched, on every page, silently. The walk also names
+ * its own batches (`ignore_batches`) so its earlier steps do not count as later edits. What was
+ * left alone is said in the status line, with the pages it is on.
+ *
  * The route is `/history/*name` rather than `/page/*name/history`: the page route is a splat, so
  * the latter would resolve as a page called "name/history".
  */
@@ -21,17 +27,26 @@ import {
   type HistoryBatch,
   type HistoryEntry,
   type HistorySnapshot,
+  type KeptEdit,
   undoBatch,
   usePageHistory,
 } from "../data/history.js";
 import { displayRefName } from "../data/page-title.js";
 import { diffProperties, diffWords, formatWhen } from "./historyText.js";
+import { keptEditsSentence } from "./keptEdits.js";
 import { pageRoutePath, pathToPageName } from "./navigateTarget.js";
 import "./history.css";
 
 export function HistoryRoute(): JSX.Element {
   const params = useParams<{ name: string }>();
   return <HistoryView name={() => pathToPageName(params.name)} />;
+}
+
+/** A status line plus, when an undo left later edits alone, the sentence saying which. */
+function withKept<T extends string | null>(status: T, kept: readonly KeptEdit[]): string | T {
+  const sentence = keptEditsSentence(kept);
+  if (sentence === "") return status;
+  return status === null ? sentence : `${status} ${sentence}`;
 }
 
 const KIND_LABEL: Record<HistoryEntry["kind"], string> = {
@@ -147,13 +162,17 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
   const title = () => displayRefName(props.name());
 
   async function undoOne(batch: HistoryBatch): Promise<void> {
-    if (!window.confirm(`Undo this change to "${title()}"?\n\n${batch.summary}`)) return;
+    const ok = window.confirm(
+      `Undo this change to "${title()}"?\n\n${batch.summary}\n\n` +
+        "Anything edited again since, here or on another page, is left as it is.",
+    );
+    if (!ok) return;
     setBusy(batch.batchId);
     setError(null);
     setStatus(null);
     try {
-      await undoBatch(batch.batchId);
-      setStatus("Undone.");
+      const { kept } = await undoBatch(batch.batchId, { keepLaterEdits: true });
+      setStatus(withKept("Undone.", kept));
       history.refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -170,22 +189,29 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
     const ok = window.confirm(
       `Restore "${title()}" as it was after this change?\n\n` +
         `This undoes the ${n} newer change${n === 1 ? "" : "s"} above it, newest first. ` +
-        "A change that also touched another page is undone there too. " +
+        "A change that also touched other pages is undone there too, except where something " +
+        "was edited again since: later edits, on any page, are left as they are. " +
         "The undos are themselves recorded, so you can undo them in turn.",
     );
     if (!ok) return;
     setBusy(history.batches()[index]?.batchId ?? "restore");
     setError(null);
     let done = 0;
+    // The walk's own batches, and the undo batches it writes as it goes: a change by any of these
+    // is a step of this restore, not an edit someone made later.
+    const ignoreBatches = newer.map((b) => b.batchId);
+    const kept: KeptEdit[] = [];
     try {
       for (const batch of newer) {
         setStatus(`Undoing ${done + 1} of ${n}…`);
-        await undoBatch(batch.batchId);
+        const step = await undoBatch(batch.batchId, { keepLaterEdits: true, ignoreBatches });
+        if (step.batchId) ignoreBatches.push(step.batchId);
+        kept.push(...step.kept);
         done++;
       }
-      setStatus(`Restored: ${n} change${n === 1 ? "" : "s"} undone.`);
+      setStatus(withKept(`Restored: ${n} change${n === 1 ? "" : "s"} undone.`, kept));
     } catch (err) {
-      setStatus(null);
+      setStatus(withKept(null, kept));
       setError(
         `Stopped after undoing ${done} of ${n}: ${err instanceof Error ? err.message : String(err)}`,
       );
