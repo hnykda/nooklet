@@ -37,7 +37,7 @@ the fix; the `history.test.ts` case failed at the refetch-after-Trash assertion 
 ---
 
 ### B-131 · A failed load shows nothing: Trash and History stay on "Loading…", a query fence on "Running query…"
-**Status:** open (F2, F3, F6 fixed; F8 open) · **Severity:** medium · **Found:** 2026-09-13, web
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, web
 reactivity review (F2, F3, F6, F8) · **Tests:** F2 — `e2e/tests/review-reactivity.spec.ts` "a
 failed trash load says so and Retry recovers, instead of Loading… forever (B-131)" and "a failed
 history load says so…"; `apps/web/src/views/TrashView.test.tsx`, `HistoryView.test.tsx` "shows the
@@ -46,7 +46,10 @@ error with Retry instead of Loading…, and Retry recovers". F3 —
 of "Running query…" forever' (unit only: no way found to make the worker's query reject in a real
 browser). F6 — `e2e/tests/review-reactivity.spec.ts` "a failed Older changes says so instead of
 silently re-enabling the button (B-131)"; `HistoryView.test.tsx` "a failed Older changes says so,
-and the button still works afterwards"
+and the button still works afterwards". F8 — `apps/web/src/views/VirtualJournalDay.test.tsx`
+"keeps the typed line and says why when the journal template cannot be loaded (B-131)", "keeps the
+typed line, drops its caret request, and can try again when the write fails (B-131)" (unit only:
+the local worker cannot be made to fail from Playwright)
 
 Four paths where a failure never reaches the screen:
 
@@ -80,6 +83,13 @@ component test ran the real `useQueryResults` over a rejecting `queryAs` and fai
 and shows "Could not load older changes: <reason>" in the view's alert line; the button is
 re-enabled and a second click retries. `loadMore` itself still rejects, so any other caller can
 tell a failure from "nothing older". The component test failed first (no alert, unhandled
+rejection).
+
+**Fixed 2026-09-13 — F8 (new journal day).** `materialize` wraps loading the template, the clock
+and `applyOps` in one try; on failure it clears the caret request it made, puts the placeholder back
+(`draft()` still holds the text) and shows "Could not start this day: <reason>" under it. The next
+blur or Enter tries again. `SyncClient.applyLocal` is one transaction, so a failure there leaves
+nothing half-written. The component tests failed first (no alert, textarea gone, unhandled
 rejection).
 
 ---

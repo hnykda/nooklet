@@ -50,22 +50,20 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   against the unfixed view ("wombat" written) and passes. e2e review-reactivity (7) + replace (3)
   — 10/10. Web unit 702/702.
 
+- F8 / B-131 (last part) — `VirtualJournalDay#materialize` catches, restores the placeholder and
+  says why; two cases in `views/VirtualJournalDay.test.tsx` failed first. e2e a-fresh-journal +
+  journals + templates — 13/13 (no e2e for the failure itself). Web unit 704/704.
+
 ## In flight
 
-- F8: VirtualJournalDay restores the draft when materializing fails.
+- Final verification pass, then the review doc.
 
 ## Next steps, in order
 
-1. (done) F1.
-2. (done) F2.
-3. (done) F3.
-4. (done) F4.
-5. (done) F5.
-6. (done) F6.
-7. (done) F7.
-8. F8 — `VirtualJournalDay` catch + restore draft; its test.
-9. e2e: trash, history, query, find-replace (if a spec exists), journal specs on port 6472.
-10. Review doc, commit last.
+1. (done) F1–F8.
+2. Broader e2e pass over the specs that could be affected (editing, pages, tasks, views,
+   references, diagnostics, remote-device, sync-ish ones) on port 6472.
+3. Review doc `docs/review/2026-09-13-m7-rv-web-reactivity.md`, commit last.
 
 ## How to resume
 

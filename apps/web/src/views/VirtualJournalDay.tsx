@@ -13,11 +13,16 @@ import {
   orderBetween,
 } from "@nooklet/core";
 import { createSignal, type JSX, onCleanup, Show } from "solid-js";
+import { describeError } from "../data/api-client.js";
 import { applyOps, getOpClock } from "../data/store.js";
 import { journalTemplateOpsFor, loadJournalTemplate } from "../data/templates.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
-import { blockFocusRequest, requestBlockFocus } from "../editor/focus-request.js";
+import {
+  blockFocusRequest,
+  clearBlockFocusRequest,
+  requestBlockFocus,
+} from "../editor/focus-request.js";
 
 export interface VirtualJournalDayProps {
   day: number;
@@ -27,6 +32,7 @@ export interface VirtualJournalDayProps {
 export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   const [pageId, setPageId] = createSignal<string | undefined>(undefined);
   const [draft, setDraft] = createSignal("");
+  const [error, setError] = createSignal<string | undefined>(undefined);
 
   // The block Enter asked to put the caret in.
   let focusTarget: string | undefined;
@@ -76,8 +82,30 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
     // below would be thrown away before the block it names ever appears.
     if (nextBlockId) requestBlockFocus(nextBlockId);
     focusTarget = nextBlockId;
+    setError(undefined);
     setPageId(newPageId);
 
+    try {
+      await writeDay(value, newPageId, firstBlockId, nextBlockId);
+    } catch (err) {
+      // The swap above is optimistic. The write is the last step and one transaction
+      // (`SyncClient.applyLocal`), so a failure anywhere means nothing was written: the tree just
+      // shown is for a page that does not exist, and the textarea holding the typed line is gone —
+      // the line was lost with no word said (B-131). Put the placeholder back (`draft()` still
+      // holds the text), drop the caret request for the block that was never created, and say why.
+      if (nextBlockId && blockFocusRequest() === nextBlockId) clearBlockFocusRequest();
+      focusTarget = undefined;
+      setPageId(undefined);
+      setError(`Could not start this day: ${describeError(err)}`);
+    }
+  }
+
+  async function writeDay(
+    value: string,
+    newPageId: string,
+    firstBlockId: string,
+    nextBlockId: string | undefined,
+  ): Promise<void> {
     // ADR 019: a new day starts with the journal template, if one is chosen, and what was typed
     // follows it — the same shape a day created through the API gets (`data-api.ts#journal`).
     // One batch, one clock: page, template and typed block land together, and the stream sees one
@@ -160,6 +188,13 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
               </div>
             </div>
           </div>
+          <Show when={error()}>
+            {(e) => (
+              <div class="vr-draft-error" role="alert">
+                {e()}
+              </div>
+            )}
+          </Show>
         </div>
       }
     >
