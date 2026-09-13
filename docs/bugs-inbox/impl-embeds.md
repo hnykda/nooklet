@@ -7,8 +7,9 @@ Entries in `docs/BUGS.md` format, to be merged by the coordinator. Numbers from 
 ### B-210 · `{{embed [[Page]]}}` and `{{embed ((id))}}` show a box with the target's name, never its content
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, exposure audit
 (`docs/review/2026-09-12-exposure-audit.md` §1.9 and §2 item 8) · **Tests:** `e2e/tests/embeds.spec.ts`
-(eight tests, from "a block embed shows the block and its children, read-only, root unfolded" to
-"an embed of a block that does not exist says so"); `apps/web/src/editor/render/embed.test.tsx`;
+(nine tests, from "a block embed shows the block and its children, read-only, root unfolded" to
+"an embed of a block that does not exist says so", including "on the shelf, a self-embedding block
+shows the notice rather than a copy of its page"); `apps/web/src/editor/render/embed.test.tsx`;
 `apps/web/src/editor/render/embedRows.test.ts`; `apps/web/src/data/embeds.test.ts`
 
 Write `{{embed ((id))}}` in a block (or pick "Embed block" from the slash menu): the rendered
@@ -28,8 +29,9 @@ the source line opens the page, a click on the frame still edits the host. The e
 shows its children (two of the owner's five working embeds point at a block collapsed on its own
 day); deeper collapsed blocks stay folded with a view-local toggle; 250 rows at most. Termination:
 `MAX_REF_DEPTH` (2, shared with block refs) and `RenderCtx.embedPath` — `BlockRowView` passes the row's
-id, each embedded row adds its own, and an embed whose target tree contains one of them shows a
-notice (`embedRows.ts#embedReachesPath`). Rows carry `data-embed-block-id`, not `data-block-id`
+id (so does the shelf's `ShelfOutline`, whose card otherwise painted the page inside itself once —
+seen failing with 2 rows before that line), each embedded row adds its own, and an embed whose
+target tree contains one of them shows a notice (`embedRows.ts#embedReachesPath`). Rows carry `data-embed-block-id`, not `data-block-id`
 (see B-211). On a copy of the owner's graph (`tools/probes/embeds-real-graph.mjs`) all five
 well-formed embeds render (6, 12, 27, 27 and 31 rows, no page errors); the sixth, written
 `{{embed ((id))}` with one closing brace, is not an embed to the tokenizer and still renders as text

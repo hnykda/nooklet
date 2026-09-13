@@ -124,6 +124,21 @@ test("a page that embeds itself shows a notice and stays editable", async ({ pag
   expect(await editorText(page)).toBe("intro still here");
 });
 
+test("on the shelf, a self-embedding block shows the notice rather than a copy of its page", async ({
+  page,
+}) => {
+  const outliner = await openPage(
+    page,
+    "Embed Loop Shelf",
+    "- intro\n- {{embed [[Embed Loop Shelf]]}}",
+  );
+  // Shift+click the notice's text (not its link) shelves the host block.
+  await outliner.locator(".vr-embed-cycle .vr-embed-note").click({ modifiers: ["Shift"] });
+  const card = page.locator(".app-shelf .shelf-card").first();
+  await expect(card.locator(".vr-embed-cycle")).toBeVisible();
+  await expect(card.locator(".vr-embed-item")).toHaveCount(0);
+});
+
 test("two pages embedding each other stop one level down", async ({ page }) => {
   await seedPage(page, "Embed Pong", "- pong\n- {{embed [[Embed Ping]]}}");
   const outliner = await openPage(page, "Embed Ping", "- ping {{embed [[Embed Pong]]}}");

@@ -44,7 +44,7 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
   `Embed` + `RenderCtx.embedPath`, exported `MAX_REF_DEPTH`) and one line in `BlockRowView.tsx`.
   Mutation check: with the cycle guard disabled the three cycle tests fail and the depth limit still
   terminates.
-- Step 2 (next commit): `e2e/tests/embeds.spec.ts` (9 tests, green on 6407); B-212 fix in
+- `7e79721` test(e2e) + fix(web) B-212: `e2e/tests/embeds.spec.ts` (9 tests, green on 6407); B-212 fix in
   `editor/editor.css` + `shell/shelf.css` (done-strike selectors scoped to the block's own marker),
   each of its three halves seen failing first; `tools/probes/embeds-real-graph.mjs` run on a copy of
   the owner's graph: 5 well-formed embeds render (31/6/12/27/27 rows), the malformed one tokenizes as
@@ -55,9 +55,13 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
 - Lint note: `biome check apps/web/src/editor/BlockRowView.tsx` reports
   `noStaticElementInteractions` on `.vr-row` — present at `da85cfb` too, not from this branch.
 
+- Step 3 (next commit): `shell/Shelf.tsx` passes `embedPath: [node.id]` too; e2e "on the shelf, a
+  self-embedding block shows the notice rather than a copy of its page" failed first (2 rows), then
+  embeds + shelf + shelf-outline 16/16.
+
 ## In flight
 
-- nothing; final checks (web unit suite, typecheck) before the step-2 commit.
+- nothing.
 
 ## Not done (and why)
 
