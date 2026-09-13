@@ -5,9 +5,9 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { bundleClientEntry } from "./bundler.js";
-import { tmpDir, writePluginFixture } from "./plugin-test-helpers.js";
+import { makePluginTestSetup, tmpDir, writePluginFixture } from "./plugin-test-helpers.js";
 
 const CLIENT = `export default { activate(ctx) { ctx.log.info("hello from the client half"); } };\n`;
 
@@ -33,5 +33,40 @@ describe("bundleClientEntry (B-181)", () => {
     );
     expect(existsSync(first.file)).toBe(true);
     expect(readFileSync(first.file, "utf8")).toContain("hello from the client half");
+  });
+});
+
+describe("a client half that fails to bundle (B-186)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("is bundled once per activation, however often its unauthenticated URL is requested", async () => {
+    const root = tmpDir("nooklet-bundler-broken-");
+    writePluginFixture(
+      root,
+      "broken-client",
+      { id: "broken-client", api: "1", client: "./src/client.ts" },
+      { "src/client.ts": `import "./does-not-exist.js";\nexport default { activate() {} };\n` },
+    );
+    const setup = await makePluginTestSetup([root]);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const statuses: number[] = [];
+    const bodies: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      // No token: this route sits before the auth gate (a <script src> cannot carry one).
+      const res = await setup.app.request("/plugins/broken-client/client.000000000000.js");
+      statuses.push(res.status);
+      bodies.push(await res.text());
+    }
+
+    expect(statuses).toEqual([500, 500, 500]);
+    // esbuild ran once: every attempt logs exactly one "failed to bundle".
+    const bundleFailures = errors.mock.calls.filter((args) =>
+      args.some((a) => typeof a === "string" && a.includes("client half failed to bundle")),
+    );
+    expect(bundleFailures).toHaveLength(1);
+    // The details are in the server log, not handed to whoever asked: esbuild's message names
+    // absolute paths on the server's disk.
+    for (const body of bodies) expect(body).not.toContain(root);
   });
 });

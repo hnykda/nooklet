@@ -132,3 +132,20 @@ inside its fence.
 **Fixed 2026-09-13.** The slash command passes `insertText(STARTER, { cursor })` to land at the end
 of "  A --> B". `EditorApi.insertText`'s `cursor` is now documented as an offset into the inserted
 text, which is what the host already implemented.
+
+---
+
+### B-186 · A client half that fails to bundle is re-bundled on every unauthenticated request
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verification of impl-plugins ·
+**Test:** `packages/server/src/plugins/bundler.test.ts` "is bundled once per activation, however
+often its unauthenticated URL is requested"
+
+Since client halves are bundled on first request (`PluginHost.clientBundle`, B-103 work), a failed
+bundle reset the cached promise so "a later request retries". The route that asks,
+`GET /plugins/:id/:file`, is mounted before the auth gate, so anyone who could reach the server
+could make it run esbuild once per request for any plugin whose client half does not build (3
+requests → 3 esbuild runs and 3 error logs in the test before the fix), and the 500 body echoed
+esbuild's message, absolute paths included.
+
+**Fixed 2026-09-13.** The rejection stays cached until the plugin is reloaded (a reload activates a
+fresh entry, which bundles again); the 500 body says to see the server log.

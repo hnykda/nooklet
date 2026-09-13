@@ -19,9 +19,10 @@ export function mountPluginClientRoute(app: Hono, host: PluginHost): void {
     let bundle: { file: string; hash: string } | undefined;
     try {
       bundle = await host.clientBundle(id);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      return c.text(`plugin "${id}" client half failed to bundle: ${message}`, 500);
+    } catch {
+      // Unauthenticated route: esbuild's message (absolute paths on this disk) goes to the server
+      // log, where `clientBundle` already wrote it, not to whoever asked (B-186).
+      return c.text(`plugin "${id}" client half failed to bundle; see the server log`, 500);
     }
     if (!bundle || file !== `client.${bundle.hash}.js`) return c.notFound();
     let bytes: Buffer;

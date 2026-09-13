@@ -179,7 +179,9 @@ export class PluginHost {
   /**
    * An active plugin's client half bundled for the browser — built on first request, then cached
    * until the plugin deactivates or reloads. `undefined` when the plugin is not active or has no
-   * client half; rejects when esbuild does.
+   * client half; rejects when esbuild does, and keeps rejecting until a reload: the URL that asks
+   * for it is unauthenticated, and forgetting a failure let every request run esbuild again
+   * (B-186). `nooklet plugin reload` activates a fresh entry, which bundles afresh.
    *
    * Not built at activation any more. The web app compiles the built-in client halves into its own
    * build (ADR 023) and requests none of these, while a client half may bundle a real library:
@@ -196,7 +198,6 @@ export class PluginHost {
         return entry.clientBundleReady;
       },
       (e: unknown) => {
-        entry.clientBundle = undefined; // a later request retries, e.g. after the source is fixed
         this.log.error(`plugin "${id}" client half failed to bundle:`, e);
         throw e;
       },

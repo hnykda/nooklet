@@ -7,8 +7,8 @@ Branch head at start: `b6c199d`.
 
 ## State
 
-Fixes for B-183/B-184/B-185 written, unit + plugins e2e green (7/7; the three new assertions fail on
-the unfixed code). Committing next; then wider e2e (popups, render, editing, views) and a real-graph recheck.
+Done: B-183/B-184/B-185 fixed in `f62e74e`; B-186 fixed in the next commit. Remaining: final
+report only.
 
 Reruns on the branch head as received: typecheck clean; web unit 703/703 (first run 702/703 — a
 displayPageName import timeout under load, green on rerun); server 523/523; plugin-api 17/17;
@@ -29,9 +29,31 @@ e2e plugins.spec 6/6.
 4. Real graph, word count while typing on OmnivoreSync (961 blocks): 2 `rpc/count` per coalesced
    edit (local write, then push drain), 25-80 ms each; final count correct (232731 after 5 words).
    One earlier run right after first load looked stale for 3 s; not reproduced with tracing.
-5. Not a defect of this branch: redo (Mod+Shift+Z) after undoing a slash insert restored nothing
+5. **B-186** unauthenticated `GET /plugins/:id/:file` re-ran esbuild per request for a client half
+   that fails to bundle (reset-on-failure cache) and echoed esbuild's paths. Fixed.
+6. B-182 (palette Escape focus) is not the plugin host: the views test still fails with
+   `<ClientPlugins>` unmounted from `CommandLayer` (probe edit, reverted). Running a text command
+   from the palette while editing inserts nothing for both "Mermaid diagram" and core "Code block"
+   — same family, parity.
+7. Real graph after the fix: 2022-12-15 diagram 0 frames without the drawing while typing in
+   another row (was 9), height steady 452 px; no console warnings. Word count on OmnivoreSync lags
+   several seconds when editing its top heading (parent of 55 blocks): the server serialises the
+   pushes and page mirror writes, count RPCs queue behind them (2.7-7 s), and it converges to the
+   server's number. Server write path, not the host.
+8. Block refs to a fence block render empty and embeds are placeholders (pre-existing), so a
+   renderer never receives the referencing row's block by mistake today.
+9. Not a defect of this branch: redo (Mod+Shift+Z) after undoing a slash insert restored nothing
    in a probe; not investigated (pre-existing path, not plugin code).
 
 ## Commits added
 
-(none yet)
+- `f62e74e` fix(web,mermaid): B-183, B-184, B-185 (+ e2e/unit tests)
+- next: fix(server): B-186
+
+## Test counts (final code)
+
+- web unit 704/704, plugin-api 17/17, server 524/524, `pnpm -r typecheck` clean, biome clean on
+  changed files (5 pre-existing warnings in plugin-api client-context.ts).
+- e2e plugins.spec 7/7 after the fixes (3 new assertions fail on the unfixed code: 3 failed).
+- e2e popups, render, rendering, editing, focus, views, phone, shelf, remote-device, appearance,
+  a-fresh-journal, query, templates: 145 passed, 1 failed = views B-182 (pre-existing).
