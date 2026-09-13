@@ -8,7 +8,7 @@ import { newId, type Op } from "@nooklet/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "./apply-ops.js";
 import { openDb } from "./db.js";
-import { REFERENCE_DEVICE_ID } from "./ref-pages.js";
+import { HIDDEN_FROM_TRASH_SQL, REFERENCE_DEVICE_ID } from "./ref-pages.js";
 import { verifyRebuildParity } from "./verify.js";
 
 let ctx: ServerContext;
@@ -340,5 +340,124 @@ describe("junk from editing a link, and a page whose last reference goes", () =>
     apply([op(id, { kind: "page.rename", name: "Kept Name" })]);
     text(b, "unlinked");
     expect(livePages()).toEqual(["Home", "Kept Name"]);
+  });
+});
+
+/**
+ * B-445: the junk rule deletes a page nobody has written in — as far as the server knows. A device
+ * that was offline can have typed into it; its ops arrive after the deletion, and core accepts a
+ * block on a tombstoned page. The page must come back with that writing, not vanish (and not hide
+ * from the trash either).
+ */
+describe("writing that reaches a page after the junk rule deleted it (B-445)", () => {
+  /** An op clocked now and applied later — a device that was offline. */
+  function offline(entity: string, payload: Op["payload"]): () => void {
+    const hlc = ctx.hlc.next();
+    return () => {
+      apply([{ id: hlc, hlc, device: "bbbbbbbb", entity, payload }]);
+    };
+  }
+
+  function inTrash(pageId: string): boolean {
+    return !ctx.driver.get(
+      `SELECT 1 FROM page WHERE id = ? AND deleted_at IS NOT NULL AND ${HIDDEN_FROM_TRASH_SQL}`,
+      [pageId, REFERENCE_DEVICE_ID, REFERENCE_DEVICE_ID, REFERENCE_DEVICE_ID],
+    );
+  }
+
+  function createOn(pageId: string, content: string): { id: string; send: () => void } {
+    const id = newId();
+    const send = offline(id, {
+      kind: "block.create",
+      place: { pageId, parentId: null, order: "a0" },
+      content,
+      createdAt: Date.now(),
+    });
+    return { id, send };
+  }
+
+  it("brings the page back with the block, and the link resolves to it again", () => {
+    const home = page("Home");
+    const link = block(home, "see [[Offline Notes]]");
+    const notes = pageRow("Offline Notes")?.id as string;
+    const typed = createOn(notes, "hours of offline notes");
+
+    text(link, "see nothing"); // another device edits the link away: the empty page goes
+    expect(pageRow("Offline Notes")?.deleted_at).not.toBeNull();
+    typed.send();
+
+    expect(pageRow("Offline Notes")).toMatchObject({ id: notes, deleted_at: null });
+    expect(livePages()).toEqual(["Home", "Offline Notes"]);
+    // Claimed now: removing links no longer removes it.
+    text(link, "[[Offline Notes]]");
+    text(link, "gone again");
+    expect(pageRow("Offline Notes")).toMatchObject({ id: notes, deleted_at: null });
+    expectParity();
+  });
+
+  it("takes the name back from the empty page a returning link made meanwhile", () => {
+    const home = page("Home");
+    const link = block(home, "[[Offline Notes]]");
+    const notes = pageRow("Offline Notes")?.id as string;
+    const typed = createOn(notes, "written offline");
+    text(link, "unlinked");
+    text(link, "[[Offline Notes]] again"); // a new, empty page under the name
+    const standIn = pageRow("Offline Notes")?.id as string;
+    expect(standIn).not.toBe(notes);
+
+    typed.send();
+
+    expect(pageRow("Offline Notes")).toMatchObject({ id: notes, deleted_at: null });
+    expect(ctx.driver.get("SELECT deleted_at FROM page WHERE id = ?", [standIn])).not.toEqual({
+      deleted_at: null,
+    });
+    const ref = ctx.driver.get<{ dst_page_id: string }>(
+      "SELECT dst_page_id FROM ref WHERE src_block_id = ?",
+      [link],
+    );
+    expect(ref?.dst_page_id).toBe(notes);
+    expect(inTrash(standIn)).toBe(false);
+    expectParity();
+  });
+
+  it("leaves it in the trash, listed, when a page someone wrote in holds the name by now", () => {
+    const home = page("Home");
+    const link = block(home, "[[Offline Notes]]");
+    const notes = pageRow("Offline Notes")?.id as string;
+    const typed = createOn(notes, "written offline");
+    text(link, "unlinked");
+    const other = page("Offline Notes");
+    block(other, "someone else's page");
+
+    typed.send();
+
+    expect(pageRow("Offline Notes")?.id).toBe(other);
+    expect(
+      ctx.driver.get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM page WHERE key = 'offline notes' AND deleted_at IS NULL",
+      )?.n,
+    ).toBe(1);
+    expect(inTrash(notes)).toBe(true);
+    expectParity();
+  });
+
+  it("brings back a namespaced page's ancestors with it, and a property claims it too", () => {
+    const home = page("Home");
+    const link = block(home, "[[Sprouts/Growing/Seventh Try]]");
+    const seventh = pageRow("Sprouts/Growing/Seventh Try")?.id as string;
+    const icon = offline(seventh, { kind: "page.prop", key: "icon", value: "🍄" });
+    text(link, "plain");
+    expect(livePages()).toEqual(["Home"]);
+
+    icon();
+
+    expect(livePages()).toEqual([
+      "Home",
+      "Sprouts",
+      "Sprouts/Growing",
+      "Sprouts/Growing/Seventh Try",
+    ]);
+    expect(pageRow("Sprouts/Growing/Seventh Try")?.id).toBe(seventh);
+    expectParity();
   });
 });

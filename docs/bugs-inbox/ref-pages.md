@@ -129,3 +129,35 @@ and page create on a real graph paid it — and ADR 024 adds page writes to link
 `page_tag_page`. The migration of B-441 went from 13,946 ms to 464 ms on the same copy. No test
 asserts the plan; the `EXPLAIN QUERY PLAN` after the change reads `SEARCH … USING [COVERING] INDEX`
 for all three.
+
+---
+
+### B-445 · A block written offline onto a linked page disappears when another device removes the link meanwhile — not even in the trash
+**Status:** fixed · **Severity:** high (content invisible) · **Found:** 2026-09-13, ref-pages
+adversarial verification · **Tests:** `packages/server/src/ref-pages.test.ts` "writing that reaches a
+page after the junk rule deleted it (B-445)" (4), `apps/web/src/sync/e2e.test.ts` "writing that
+reaches a linked page after its link was removed keeps the page, on every replica" — all five fail
+against `3fbd9de`'s `ref-pages.ts` (checked by swapping the file back)
+
+Device B has the empty page `[[Offline Notes]]` made (ADR 024) and, offline, types into it. Device
+A edits the only link away; the server deletes the page as unclaimed junk. B comes back online: its
+`block.create` is accepted onto the tombstoned page (core accepts a block on a deleted page), B
+pulls the delete, and the page with B's text vanishes. `trash.list` hides it too —
+`HIDDEN_FROM_TRASH_SQL`'s first branch hides every page `refpages` deleted, whatever it holds now.
+Reproduced in `serverApplyOps` with B's op clocked before A's edit and applied after: page
+`deleted_at` set, hidden from trash, live pages `["Home"]`. The brief's rule was "a page someone
+typed into survives"; with sync the typing can arrive after the deletion.
+
+**Fixed 2026-09-13:** `ref-pages.ts#pagesToRevive`. After a batch, a page the junk rule deleted
+(its `deleted_hlc` is a `refpages` delete) that the batch wrote into — a live block on it, a
+property, a rename — and that is therefore no longer unclaimed is brought back in the same call
+(`page.delete` with `deletedAt: null`, device `refpages`, after the batch's other page ops). If a
+newer unclaimed page took the name meanwhile (the link came back), that one is deleted first; if a
+page someone claimed holds the name, the written page stays deleted but `HIDDEN_FROM_TRASH_SQL` now
+only hides a page that holds nothing *now* (no block rows, no properties), so the trash lists it
+and `trash.restore` with `new_name` can bring it back. Its namespace ancestors and its blocks'
+links count again, like a page restored from the trash.
+
+Exposure this adds to B-443: the un-delete is a revival of a tombstone, which a replica lacking that
+row would miss. That replica needs its own page of the name created, accepted and deleted again
+between the junk deletion and the late write — and it would miss the late write itself anyway.

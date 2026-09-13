@@ -27,6 +27,10 @@
  * the trash is not junk) and no properties. Real device ids are hex (`newDeviceId`), so no device
  * can ever produce this one.
  *
+ * A page the rule deleted can still be written into by a device that had not heard yet (its ops
+ * arrive after the deletion, and core accepts a block on a tombstoned page). The next write that
+ * lands there brings the page back (`pagesToRevive`, B-445) — it is no longer unclaimed.
+ *
  * Journal days are deliberately NOT created from date references: the journal stream lists every
  * journal page, so each `[[2026-12-24]]` would put an empty day in it (probe case 5). A date link
  * already opens the day as a virtual page.
@@ -170,21 +174,27 @@ export function isUnclaimedReferencePage(driver: SqlDriver, pageId: string): boo
 
 /**
  * SQL condition, over a `page` row named `page`, true for a deleted page the trash must not list:
- * one this module deleted (it only ever deletes unclaimed pages), or one it created that nobody
- * claimed and someone else deleted (`batch.undo` of the write that referenced it). Such a page never
- * held anything to restore. The op lookups are indexed by entity; the block scan is reached only
- * for the second, rare kind. Bind `REFERENCE_DEVICE_ID` for each of the three `?`.
+ * one that holds nothing (no block rows, no properties) and that this module deleted (it only ever
+ * deletes unclaimed pages), or that it created and nobody claimed before someone else deleted it
+ * (`batch.undo` of the write that referenced it). Such a page never held anything to restore.
+ *
+ * "Holds nothing" is checked now, not at deletion: a device that was offline can write into the
+ * page after the server deleted it (B-445). `planReferencedPages` brings such a page back when its
+ * name is free; when it is not, the trash is where the writing can be found. The op lookups are
+ * indexed by entity. Bind `REFERENCE_DEVICE_ID` for each of the three `?`.
  */
 export const HIDDEN_FROM_TRASH_SQL = `(
-  EXISTS (SELECT 1 FROM op o WHERE o.entity = page.id AND o.kind = 'page.delete'
-            AND o.status = 'applied' AND o.hlc = page.deleted_hlc AND o.device_id = ?)
-  OR (
-    EXISTS (SELECT 1 FROM op o WHERE o.entity = page.id AND o.kind = 'page.create'
-              AND o.status = 'applied' AND o.device_id = ?)
-    AND NOT EXISTS (SELECT 1 FROM op o WHERE o.entity = page.id AND o.status = 'applied'
-              AND o.device_id != ? AND o.kind != 'page.delete')
-    AND NOT EXISTS (SELECT 1 FROM block b WHERE b.page_id = page.id)
-    AND NOT EXISTS (SELECT 1 FROM page_prop pp WHERE pp.page_id = page.id AND pp.value IS NOT NULL)
+  NOT EXISTS (SELECT 1 FROM block b WHERE b.page_id = page.id)
+  AND NOT EXISTS (SELECT 1 FROM page_prop pp WHERE pp.page_id = page.id AND pp.value IS NOT NULL)
+  AND (
+    EXISTS (SELECT 1 FROM op o WHERE o.entity = page.id AND o.kind = 'page.delete'
+              AND o.status = 'applied' AND o.hlc = page.deleted_hlc AND o.device_id = ?)
+    OR (
+      EXISTS (SELECT 1 FROM op o WHERE o.entity = page.id AND o.kind = 'page.create'
+                AND o.status = 'applied' AND o.device_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM op o WHERE o.entity = page.id AND o.status = 'applied'
+                AND o.device_id != ? AND o.kind != 'page.delete')
+    )
   )
 )`;
 
@@ -196,6 +206,65 @@ export function unclaimedReferencePageForKey(driver: SqlDriver, key: string): st
     [key],
   );
   return row && isUnclaimedReferencePage(driver, row.id) ? row.id : null;
+}
+
+/** A deleted page whose deletion was this module's (the junk rule) — as opposed to a person's. */
+function deletedByReferenceRule(driver: SqlDriver, pageId: string): boolean {
+  return !!driver.get(
+    `SELECT 1 FROM page p JOIN op o ON o.entity = p.id AND o.kind = 'page.delete'
+       AND o.status = 'applied' AND o.hlc = p.deleted_hlc AND o.device_id = ?
+     WHERE p.id = ? AND p.deleted_at IS NOT NULL`,
+    [REFERENCE_DEVICE_ID, pageId],
+  );
+}
+
+/**
+ * Pages the junk rule deleted that this batch wrote into — a block created or moved onto one, a
+ * property or a rename — each with the unclaimed page (if any) that has taken its name since and
+ * must give way (B-445).
+ *
+ * The rule deletes a page nobody has written in, but "nobody" is only what the server has heard: a
+ * device that was offline can have typed into the page, and its ops arrive after the deletion. Core
+ * accepts a block on a tombstoned page, so without this the text sat on a deleted page, gone from
+ * that device's view on its next pull. Brought back, the page is claimed (it holds something) and
+ * stays. When a page someone did claim holds the name by now, the deleted page is left where it
+ * is — `HIDDEN_FROM_TRASH_SQL` then lists it in the trash, which can restore it under a new name.
+ */
+function pagesToRevive(
+  driver: SqlDriver,
+  touchedBlocks: ReadonlySet<string>,
+  touchedPages: ReadonlySet<string>,
+): Array<{ pageId: string; key: string; name: string; evict: string | null }> {
+  const candidates = new Set<string>();
+  for (const blockId of touchedBlocks) {
+    const row = driver.get<{ page_id: string }>(
+      `SELECT b.page_id FROM block b JOIN page p ON p.id = b.page_id AND p.deleted_at IS NOT NULL
+       WHERE b.id = ? AND b.deleted_at IS NULL`,
+      [blockId],
+    );
+    if (row) candidates.add(row.page_id);
+  }
+  for (const pageId of touchedPages) candidates.add(pageId);
+
+  const out: Array<{ pageId: string; key: string; name: string; evict: string | null }> = [];
+  const keys = new Set<string>();
+  for (const pageId of candidates) {
+    if (!deletedByReferenceRule(driver, pageId)) continue;
+    if (isUnclaimedReferencePage(driver, pageId)) continue;
+    const page = driver.get<{ key: string; name: string }>(
+      "SELECT key, name FROM page WHERE id = ?",
+      [pageId],
+    );
+    if (!page || keys.has(page.key)) continue;
+    const holder = driver.get<{ id: string }>(
+      "SELECT id FROM page WHERE key = ? AND deleted_at IS NULL AND id != ?",
+      [page.key, pageId],
+    );
+    if (holder && !isUnclaimedReferencePage(driver, holder.id)) continue;
+    keys.add(page.key);
+    out.push({ pageId, key: page.key, name: page.name, evict: holder?.id ?? null });
+  }
+  return out;
 }
 
 type Snapshot = PageChangeSnapshot | BlockChangeSnapshot | null;
@@ -265,6 +334,9 @@ export function referenceKeysBefore(
 export class WantedPages {
   /** key -> name */
   readonly byKey = new Map<string, string>();
+  /** Keys a page this plan brings back will hold (B-445): not wanted again, and they keep their
+   * ancestors as a wanted page would. */
+  readonly reserved = new Set<string>();
 
   constructor(private readonly driver: SqlDriver) {}
 
@@ -277,7 +349,8 @@ export class WantedPages {
     for (const n of [trimmed, ...namespaceAncestors(trimmed)].reverse()) {
       if (!isMintableName(n)) continue;
       const key = referenceKey(n);
-      if (this.byKey.has(key) || resolvePageIdForKey(this.driver, key) !== null) continue;
+      if (this.byKey.has(key) || this.reserved.has(key)) continue;
+      if (resolvePageIdForKey(this.driver, key) !== null) continue;
       this.byKey.set(key, n);
     }
   }
@@ -302,6 +375,7 @@ export class WantedPages {
   /** True when a wanted page would sit under `key` — which keeps an unclaimed `key` alive. */
   hasDescendantOf(key: string): boolean {
     for (const k of this.byKey.keys()) if (k.startsWith(`${key}/`)) return true;
+    for (const k of this.reserved) if (k.startsWith(`${key}/`)) return true;
     return false;
   }
 }
@@ -328,6 +402,14 @@ export function planReferencedPages(
   for (const op of ops) {
     if (op.payload.kind.startsWith("block.")) touchedBlocks.add(op.entity);
     else touchedPages.add(op.entity);
+  }
+
+  // Written into after the junk rule deleted it: back, before anything below wants its name.
+  const reviving = pagesToRevive(driver, touchedBlocks, touchedPages);
+  const deleting = new Set<string>();
+  for (const r of reviving) {
+    wanted.reserved.add(r.key);
+    if (r.evict) deleting.add(r.evict);
   }
 
   for (const blockId of touchedBlocks) {
@@ -383,9 +465,20 @@ export function planReferencedPages(
     }
   }
 
+  // A page brought back counts as live again: its namespace ancestors, its tags, its blocks' links.
+  for (const r of reviving) {
+    wanted.wantFromPage(r.pageId, r.name);
+    for (const b of driver.all<{ id: string }>(
+      "SELECT id FROM block WHERE page_id = ? AND deleted_at IS NULL",
+      [r.pageId],
+    )) {
+      wanted.wantFromBlock(b.id);
+    }
+  }
+
   // Deletions: every key the batch's entities used to reference, and — as pages are deleted —
   // their ancestors, which may have been kept only by them.
-  const deleting = new Set<string>(yielding);
+  for (const y of yielding) deleting.add(y);
   const queue = [...keysBefore];
   const visited = new Set<string>();
   while (queue.length > 0) {
@@ -400,22 +493,29 @@ export function planReferencedPages(
     for (const a of namespaceAncestors(name ?? "")) queue.push(referenceKey(a));
   }
 
-  return referencePageOps(wanted, deleting, mint);
+  return referencePageOps(wanted, deleting, mint, new Set(reviving.map((r) => r.pageId)));
 }
 
 /**
- * `page.create` for each wanted page, then `page.delete` for each page in `deleting`.
+ * `page.create` for each wanted page, then `page.delete` for each page in `deleting`, then the
+ * un-delete of each page in `reviving` (after the deletes: one may free its name, B-445).
  *
  * Always a new page, never an unclaimed tombstone of the same name brought back. Reuse would save
  * a row per toggled link, but a replica can lack that tombstone: a device that created a page of
  * the name offline meets the old `page.create` while its own page holds the name, and its replica
  * refuses it (B-443). Reviving the tombstone later — a rename and an un-delete — would then land
  * on the server and on every device except that one.
+ *
+ * `reviving` is the one exception, and not a saving: a page someone wrote into after the junk rule
+ * deleted it (B-445). Leaving their text on a tombstone is certain loss; the B-443 replica that
+ * could miss the un-delete needs its own page of the name created, accepted and deleted again in
+ * between, and would then miss the writing the un-delete protects either way.
  */
 export function referencePageOps(
   wanted: WantedPages,
   deleting: ReadonlySet<string>,
   mint: Mint,
+  reviving: ReadonlySet<string> = new Set(),
 ): Op[] {
   const out: Op[] = [];
   const now = Date.now();
@@ -424,6 +524,9 @@ export function referencePageOps(
   }
   for (const pageId of deleting) {
     out.push(mint(pageId, { kind: "page.delete", deletedAt: now }));
+  }
+  for (const pageId of reviving) {
+    out.push(mint(pageId, { kind: "page.delete", deletedAt: null }));
   }
   return out;
 }

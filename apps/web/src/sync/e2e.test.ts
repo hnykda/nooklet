@@ -480,6 +480,81 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
     });
   }
 
+  /**
+   * B-445: device A, offline, types into a page a link made (ADR 024) while device B edits that
+   * link away, so the server deletes the page as unclaimed junk. When A comes back, what it typed
+   * must still be on a live page — on every replica — not on a tombstone the trash hides.
+   */
+  it("writing that reaches a linked page after its link was removed keeps the page, on every replica", async () => {
+    const { driver: driverB, client: clientB } = makeReplicaClient(server.app, server.token);
+    const home = newId();
+    const link = newId();
+    clientB.applyLocal([
+      makeOp(clientB.nextHlc(), clientB.getDeviceId(), home, {
+        kind: "page.create",
+        name: "Home",
+        journalDay: null,
+        createdAt: Date.now(),
+      }),
+      makeOp(clientB.nextHlc(), clientB.getDeviceId(), link, {
+        kind: "block.create",
+        place: { pageId: home, parentId: null, order: "a0" },
+        content: "see [[Offline Notes]]",
+        createdAt: Date.now(),
+      }),
+    ]);
+    await clientB.flush();
+
+    const { driver: driverA, client: clientA } = makeReplicaClient(server.app, server.token);
+    await clientA.pull();
+    const notes = driverA.get<{ id: string }>(
+      "SELECT id FROM page WHERE key = 'offline notes' AND deleted_at IS NULL",
+    )?.id as string;
+    expect(notes).toBeDefined();
+
+    // A goes offline and types into the empty page.
+    const typed = newId();
+    clientA.applyLocal([
+      makeOp(clientA.nextHlc(), clientA.getDeviceId(), typed, {
+        kind: "block.create",
+        place: { pageId: notes, parentId: null, order: "a0" },
+        content: "written while offline",
+        createdAt: Date.now(),
+      }),
+    ]);
+    // Meanwhile B edits the link away: the server removes the page it made.
+    clientB.applyLocal([
+      makeOp(clientB.nextHlc(), clientB.getDeviceId(), link, {
+        kind: "block.text",
+        content: "see nothing",
+      }),
+    ]);
+    await clientB.flush();
+    const s = server.serverCtx.driver;
+    expect(s.get("SELECT deleted_at FROM page WHERE id = ?", [notes])).not.toEqual({
+      deleted_at: null,
+    });
+
+    await clientA.flush();
+    await clientA.pull();
+    await clientB.pull();
+
+    expect(
+      s.get("SELECT id, deleted_at FROM page WHERE key = 'offline notes' AND deleted_at IS NULL"),
+    ).toEqual({
+      id: notes,
+      deleted_at: null,
+    });
+    expect(s.get("SELECT page_id, content FROM block WHERE id = ?", [typed])).toEqual({
+      page_id: notes,
+      content: "written while offline",
+    });
+    expect(driverA.all("SELECT * FROM pending_op")).toHaveLength(0);
+    expect(dumpState(driverA)).toEqual(dumpState(s));
+    expect(dumpState(driverB)).toEqual(dumpState(s));
+    expect(verifyRebuildParity(s).divergences).toEqual([]);
+  });
+
   it("a rejected cycle-creating block.place corrects locally: the client applies the server's corrective op and converges", async () => {
     const { driver: driverA, client: clientA } = makeReplicaClient(server.app, server.token);
 

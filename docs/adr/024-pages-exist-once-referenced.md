@@ -90,6 +90,12 @@ the same call, cascading to ancestors kept only by it. Unclaimed pages never sho
 (`HIDDEN_FROM_TRASH_SQL`: deleted by `refpages`, or created by it and never claimed — the second
 covers `batch.undo` of the write that linked a page).
 
+Writing that arrives after the deletion claims it too (B-445): a device offline when the link
+went can have typed into the page, and core accepts a block on a tombstone. The next batch that
+lands a block, a property or a rename on a page the rule deleted brings it back (evicting a newer
+unclaimed page of the name first); if a claimed page holds the name by then it stays deleted and
+is listed in the trash, which hides a page only while it holds nothing.
+
 Deleting does not claim: deleting a still-referenced page cannot make it go away (the name keeps a
 page, and this mechanism brings it straight back), and counting `batch.undo`'s server-device delete
 as a claim put empty pages in the trash.
@@ -193,9 +199,10 @@ synced; the graph, search and `page_list` read the server.
 
 ## Tests
 
-- `packages/server/src/ref-pages.test.ts` (17): every reference kind, ancestors, casing, no journal
+- `packages/server/src/ref-pages.test.ts` (21): every reference kind, ancestors, casing, no journal
   days, alias rules, junk from a character-by-character edit and a slow `#tag`, removal cascades,
-  no tombstone revival, deleted-page names, claims; `verifyRebuildParity` in each.
+  no tombstone revival, deleted-page names, claims, writing that arrives after the junk deletion
+  (B-445, 4); `verifyRebuildParity` in each.
 - `packages/server/src/ops/ref-pages.http.test.ts` (10): `block.update` adding `[[Agent Made Page]]`
   shows in `page.list`/`page.read`/`search`; `page.create` claims; trash stays empty; `batch.undo`;
   `trash.restore`, `page.update` rename and `batch.undo` of a delete push an unclaimed page aside.
@@ -204,8 +211,10 @@ synced; the graph, search and `page_list` read the server.
 - `packages/server/src/ref-pages-migration.test.ts` (3): migration, import order, import into a graph
   that already references the file's page.
 - `packages/server/src/mirror/live.test.ts`: no file for an empty page; removed with its last block.
-- `apps/web/src/sync/e2e.test.ts` (4): the race, push-first and pull-first; and its false positive —
-  a device's accepted page of a name whose older page the server deleted stays put, both orders.
+- `apps/web/src/sync/e2e.test.ts` (5): the race, push-first and pull-first; and its false positive —
+  a device's accepted page of a name whose older page the server deleted stays put, both orders;
+  and B-445 — an offline device's writing on a page whose link another device removed keeps the
+  page on every replica.
 - `e2e/tests/ref-pages.spec.ts` (5): the owner's scenario in a journal block; All pages, graph,
   search, `[[` popup; no junk from a slow link edit; removal vs a page typed into; the two-device
   race in two browser contexts.
