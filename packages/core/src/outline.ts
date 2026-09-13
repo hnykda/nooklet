@@ -396,33 +396,58 @@ export function serializeOutline(page: ParsedPage, opts: SerializeOptions = {}):
       .join(" ");
     const contentLines = node.content === "" ? [] : node.content.split("\n");
     const first = contentLines[0] ?? "";
-    let restContentLines: string[];
+    const contLine = (line: string): string => (line === "" ? "" : `${cont}${line}`);
+
+    const props: string[] = [];
+    if (legacyId !== undefined) props.push(`id:: ${legacyId}`);
+    if (node.collapsed) props.push("collapsed:: true");
+    for (const [k, v] of Object.entries(node.properties)) props.push(`${k}:: ${v}`);
 
     if (suffixId !== undefined && openingFence(first) !== null) {
       // OUT-14: line 1 would open a fence, so the id sits alone and the fence starts on line 2.
-      out.push(`${indent}- ^${suffixId}`);
-      restContentLines = contentLines;
+      out.push(`${indent}- ^${suffixId}`, ...props.map(contLine), ...contentLines.map(contLine));
+    } else if (head === "" && props.length > 0 && openingFence(first) !== null) {
+      // B-151: with no id to stand alone on line 1, property lines after line 1 sit inside the
+      // fence it opens and re-parse as code — `ids: "none"` text (copy, `block.update`'s
+      // before-text) silently lost the block's properties. `block-text.ts#joinBlockText`'s
+      // placements instead: after the content once every fence in it has closed (the parser takes
+      // a property line wherever it sits outside a fence), otherwise on the bullet line itself,
+      // before the fence opens. (A marker or priority on line 1 keeps the fence from opening
+      // there, so those blocks never reach this branch — B-310.)
+      if (fencesClosed(contentLines)) {
+        out.push(`${indent}- ${first}`, ...contentLines.slice(1).map(contLine));
+        out.push(...props.map(contLine));
+      } else {
+        out.push(`${indent}- ${props[0]}`, ...props.slice(1).map(contLine));
+        out.push(...contentLines.map(contLine));
+      }
     } else {
       let firstLine = [head, first].filter((s) => s !== "").join(" ");
       if (suffixId !== undefined) {
         firstLine = firstLine === "" ? `^${suffixId}` : `${firstLine} ^${suffixId}`;
       }
       out.push(firstLine === "" ? `${indent}-` : `${indent}- ${firstLine}`);
-      restContentLines = contentLines.slice(1);
+      out.push(...props.map(contLine), ...contentLines.slice(1).map(contLine));
     }
-
-    const props: Array<[string, string]> = [];
-    if (legacyId !== undefined) props.push(["id", legacyId]);
-    if (node.collapsed) props.push(["collapsed", "true"]);
-    for (const [k, v] of Object.entries(node.properties)) props.push([k, v]);
-    for (const [k, v] of props) out.push(`${cont}${k}:: ${v}`);
-
-    for (const rest of restContentLines) out.push(rest === "" ? "" : `${cont}${rest}`);
     for (const child of node.children) walk(child, level + 1);
   };
 
   for (const node of page.blocks) walk(node, 0);
   return `${out.join("\n")}\n`;
+}
+
+/** Whether a block's content lines leave no fence open at the end — the parser's own fence
+ * tracking, so a property line written after them is read as a property rather than as code. */
+function fencesClosed(lines: readonly string[]): boolean {
+  let fence: string | null = null;
+  for (const line of lines) {
+    if (fence !== null) {
+      if (closesFence(line, fence)) fence = null;
+    } else {
+      fence = openingFence(line);
+    }
+  }
+  return fence === null;
 }
 
 /** The parser's own line rules, for `block-text.ts` — which splits one block's raw editing text

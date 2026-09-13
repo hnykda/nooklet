@@ -109,7 +109,7 @@ export const blockUpdate = defineOp({
       };
 
       if (input.content !== undefined) {
-        applyTextReplace(parseSingleBlockGrammar(input.content));
+        applyTextReplace(parseSingleBlockGrammar(input.content, "auto"));
       } else if (input.old_str !== undefined || input.new_str !== undefined) {
         if (input.old_str === undefined || input.new_str === undefined) {
           throw new OpError("invalid", "give both old_str and new_str");
@@ -125,7 +125,21 @@ export const blockUpdate = defineOp({
         const idx = beforeRaw.indexOf(input.old_str);
         const newRaw =
           beforeRaw.slice(0, idx) + input.new_str + beforeRaw.slice(idx + input.old_str.length);
-        applyTextReplace(parseSingleBlockGrammar(newRaw));
+        const node = parseSingleBlockGrammar(newRaw, "flush");
+        applyTextReplace(node);
+        // `before` renders a folded block's `collapsed:: true` line, so an edit of that line is how
+        // an agent folds or unfolds by text; it answered 200 and changed nothing (B-314). Only here:
+        // `content` is an agent's full text, which rarely repeats the line, and reading its absence
+        // as "unfold" would expand blocks nobody asked to.
+        if (node.collapsed !== before.collapsed) {
+          ops.push(
+            ctx.mintOp(input.id, {
+              kind: "block.prop",
+              key: "collapsed",
+              value: node.collapsed ? "true" : "false",
+            }),
+          );
+        }
       }
 
       if (input.properties) {

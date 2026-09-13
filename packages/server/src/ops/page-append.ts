@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { boundsForPageEnd, boundsForParent } from "../data-api.js";
 import { runWithDryRun } from "./dry-run.js";
-import { prepareMarkdownInsert } from "./outline-bridge.js";
+import { checkWriteMarkdown, prepareMarkdownInsert } from "./outline-bridge.js";
 import { defineOp, OpError } from "./registry.js";
 import { currentHeadSeq, resolvePageRef, wirePageName } from "./resolve.js";
 import { BlockId, IdempotencyKey, MarkdownInput, PageRef, WriteResult } from "./schemas.js";
@@ -45,7 +45,16 @@ export const pageAppend = defineOp({
   render: (out) => out.outline || `(no blocks created on ${out.page})`,
   handler: async (input, ctx) => {
     return runWithDryRun(ctx, input.dry_run, async (ctx) => {
-      const page = await resolvePageRef(ctx, input.page, { create: input.create_page });
+      // Checked before the page is resolved: resolving may CREATE the page (or journal day) with
+      // its own write, and a refusal after that left the new page behind, empty (B-312). For the
+      // same reason `parent` never creates one — a page that does not exist yet holds no parent.
+      const checked = checkWriteMarkdown(ctx.db, input.markdown, "refuse");
+      const page = await resolvePageRef(ctx, input.page, {
+        create: input.create_page && input.parent === undefined,
+      });
+      if (!page && input.parent !== undefined) {
+        throw new OpError("not_found", `block ${input.parent} is not on page "${input.page}"`);
+      }
       if (!page) {
         throw new OpError(
           "invalid",
@@ -66,7 +75,7 @@ export const pageAppend = defineOp({
       } else {
         bounds = boundsForPageEnd(ctx.db, page.id, input.position);
       }
-      const { ops, created, outline } = prepareMarkdownInsert(ctx, input.markdown, bounds);
+      const { ops, created, outline } = prepareMarkdownInsert(ctx, checked, bounds);
       const applyResult = ops.length > 0 ? await ctx.applyOps(ops) : undefined;
       return {
         page: wirePageName(page),

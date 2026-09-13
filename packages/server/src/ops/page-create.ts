@@ -92,6 +92,7 @@ export const pageCreate = defineOp({
       // batch_undo removes all of it. As two writes (page via DataApi, then blocks) the response
       // could only name the second batch, and undoing it left an empty page behind.
       const pageId = newId();
+      // Minted first: ops apply in HLC order, and the blocks need their page to exist.
       const ops: Op[] = [
         ctx.mintOp(pageId, {
           kind: "page.create",
@@ -105,12 +106,19 @@ export const pageCreate = defineOp({
       let outline = "";
       if (input.markdown) {
         // No siblings exist yet, so the bounds are the open interval — no query needed.
-        const res = prepareMarkdownInsert(ctx, input.markdown, {
-          pageId,
-          parentId: null,
-          lower: null,
-          upper: null,
-        });
+        const res = prepareMarkdownInsert(
+          ctx,
+          input.markdown,
+          { pageId, parentId: null, lower: null, upper: null },
+          "accept",
+        );
+        // The markdown's pre-block (`read-only:: true` before the first bullet) is this page's
+        // properties; it used to be dropped without a word (B-235). `properties` wins for any key
+        // both give: it is the field an agent sets on purpose.
+        for (const [key, value] of Object.entries(res.pageProperties)) {
+          if (input.properties && Object.hasOwn(input.properties, key)) continue;
+          ops.push(ctx.mintOp(pageId, { kind: "page.prop", key, value }));
+        }
         created = res.created;
         outline = res.outline;
         ops.push(...res.ops);

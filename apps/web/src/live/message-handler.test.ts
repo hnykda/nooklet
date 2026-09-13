@@ -60,6 +60,49 @@ describe("handleIncomingFrame", () => {
     });
   });
 
+  // B-148: a command that rejected its args threw out of `runCommand`, no reply was sent, and the
+  // agent got "window did not respond in time" — and was told to retry the same bad input.
+  it("answers command.run with command.result carrying the error when the command throws", async () => {
+    const reply = await handleIncomingFrame(
+      JSON.stringify({
+        type: "command.run",
+        request_id: "r5",
+        command_id: "task.setScheduled",
+        args: "banana",
+      }),
+      deps({
+        runCommand: async () => {
+          throw new Error('"banana" is not a date (try "tomorrow" or "2026-09-14")');
+        },
+      }),
+    );
+    expect(JSON.parse(reply as string)).toEqual({
+      type: "command.result",
+      request_id: "r5",
+      error: '"banana" is not a date (try "tomorrow" or "2026-09-14")',
+    });
+  });
+
+  it("reports a non-Error throw, and cuts a huge message to a bounded length", async () => {
+    const thrownString = await handleIncomingFrame(
+      JSON.stringify({ type: "command.run", request_id: "r6", command_id: "x.y" }),
+      deps({
+        runCommand: () => Promise.reject("plain string"),
+      }),
+    );
+    expect(JSON.parse(thrownString as string).error).toBe("plain string");
+
+    const huge = await handleIncomingFrame(
+      JSON.stringify({ type: "command.run", request_id: "r7", command_id: "x.y" }),
+      deps({
+        runCommand: async () => {
+          throw new Error("x".repeat(10_000));
+        },
+      }),
+    );
+    expect(JSON.parse(huge as string).error.length).toBeLessThanOrEqual(1000);
+  });
+
   it("returns null for an unrecognized type", async () => {
     const reply = await handleIncomingFrame(
       JSON.stringify({ type: "something.else", request_id: "r3" }),

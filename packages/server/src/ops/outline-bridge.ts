@@ -19,7 +19,7 @@
  * `truncated`/`continue_hint`/the JSON-mode `child_count` field still carry the same information.
  */
 
-import type { Op, OpPayload, OutlineNode, ParsedPage, SqlDriver } from "@nooklet/core";
+import type { Op, OpPayload, OutlineNode, ParsedPage, Properties, SqlDriver } from "@nooklet/core";
 import { isId, newId, parseOutline, serializeOutline } from "@nooklet/core";
 import { newOrderKeys, type OrderBounds, type ServerBlockNode } from "../data-api.js";
 import { getBlockRowAny } from "../rows.js";
@@ -61,22 +61,76 @@ export function applyCheckboxSugar(markdown: string): string {
   return out.join("\n");
 }
 
-/** Parse wire Markdown (checkbox sugar applied) into the block tree to insert/upsert. */
-export function parseMarkdownBlocks(markdown: string): OutlineNode[] {
-  const parsed: ParsedPage = parseOutline(applyCheckboxSugar(markdown));
-  return parsed.blocks;
+/** Parse wire Markdown (checkbox sugar applied) into the block tree to insert/upsert, plus the
+ * page properties of a leading pre-block (OUT-2) — which the caller must either apply or refuse,
+ * never drop (B-235). */
+export function parseMarkdownPage(markdown: string): ParsedPage {
+  return parseOutline(applyCheckboxSugar(markdown));
+}
+
+/**
+ * How the lines after line 1 of a single-block text are indented:
+ *  - `"flush"`: at column 0, exactly as `renderSingleBlockText` (the `before` text) writes them —
+ *    what `old_str`/`new_str` edits, so any indent a line has is the content's own.
+ *  - `"auto"`: for `content` an agent wrote. Flush as above, unless every later non-blank line is
+ *    indented by two spaces or a tab — `page_read`'s shape, which an agent copies, and the only
+ *    multi-line shape `content` accepted before B-172. Then the whitespace those lines have in
+ *    common is removed first: page_read indents a block at depth d by 2·(d+1) columns, and taking
+ *    off only one 2-column unit left a nested block's `scheduled::` line indented — literal text —
+ *    so `block.update` unset the property (B-313). A content whose every later line really starts
+ *    with the same indent is read as that shape and loses it; that is the price of not turning an
+ *    agent's indented `scheduled::` line into literal text.
+ */
+export type SingleBlockIndent = "flush" | "auto";
+
+/** Single-block text -> one outline bullet the real parser reads: `- ` before line 1, the
+ * continuation indent before every later non-empty line. */
+function singleBlockBullet(text: string, indent: SingleBlockIndent): string {
+  const [first = "", ...rest] = text.split(/\r\n?|\n/);
+  const nonBlank = rest.filter((line) => line.trim() !== "");
+  const alreadyIndented =
+    indent === "auto" &&
+    nonBlank.length > 0 &&
+    nonBlank.every((line) => line.startsWith("  ") || line.startsWith("\t"));
+  // The leading whitespace every non-blank later line shares (B-313). Empty only for a mix like
+  // "  a" / "\tb", which keeps the parser's own one-unit strip below, as before.
+  const common = alreadyIndented ? commonLeadingWhitespace(nonBlank) : "";
+  const body = rest.map((line) => {
+    if (common !== "") return line.trim() === "" ? line : `  ${line.slice(common.length)}`;
+    return alreadyIndented || line === "" ? line : `  ${line}`;
+  });
+  return [`- ${first}`, ...body].join("\n");
+}
+
+function commonLeadingWhitespace(lines: readonly string[]): string {
+  let prefix = /^[ \t]*/.exec(lines[0] ?? "")?.[0] ?? "";
+  for (const line of lines) {
+    let i = 0;
+    while (i < prefix.length && line[i] === prefix[i]) i++;
+    prefix = prefix.slice(0, i);
+  }
+  return prefix;
 }
 
 /** `block.update`'s "single-block grammar" (mcp-tools.md §3.2 rule 10): the same grammar as one
- * block, minus the leading bullet, with no nested `child` productions. Implemented by wrapping the
- * text in a synthetic `"- "` bullet and reusing the real parser, then rejecting any child bullet. */
-export function parseSingleBlockGrammar(text: string): OutlineNode {
-  const parsed = parseOutline(`- ${applyCheckboxSugar(text)}`);
-  if (parsed.blocks.length !== 1) {
+ * block, minus the leading bullet, with no nested `child` productions. Implemented by turning the
+ * text into one real bullet (`singleBlockBullet`) and reusing the real parser, then rejecting any
+ * child bullet.
+ *
+ * B-172: this used to prefix `- ` to line 1 only. Line 2 onwards then sat at column 0 — top-level
+ * blocks of their own — so every block with a property line or a second line (each DONE task has
+ * `done::`) failed "content must describe exactly one block", including an `old_str` edit of the
+ * block's own `before` text. */
+export function parseSingleBlockGrammar(text: string, indent: SingleBlockIndent): OutlineNode {
+  // Parsed behind a throwaway first bullet: as the first bullet of a text, a block with no content
+  // and only property lines IS a page-properties pre-block to the parser (OUT-2), and came back as
+  // no block at all — its `collapsed` gone with it. Only the first node is ever read that way.
+  const parsed = parseOutline(`- -\n${singleBlockBullet(applyCheckboxSugar(text), indent)}`);
+  if (parsed.blocks.length !== 2) {
     throw new OpError("invalid", "content must describe exactly one block");
   }
-  // biome-ignore lint/style/noNonNullAssertion: length check above guarantees index 0 exists
-  const node = parsed.blocks[0]!;
+  // biome-ignore lint/style/noNonNullAssertion: length check above guarantees index 1 exists
+  const node = parsed.blocks[1]!;
   if (node.children.length > 0) {
     throw new OpError(
       "invalid",
@@ -206,28 +260,73 @@ export function buildInsertOps(
 
 export interface MarkdownInsertResult extends InsertOpsResult {
   outline: string;
+  /** The markdown's page-properties pre-block, `{}` without one. Non-empty only under `"accept"`,
+   * and then the caller applies it. */
+  pageProperties: Properties;
 }
 
-/** The full write path shared by `page.append`/`block.insert`/`page.create`'s `markdown` field:
- * parse, validate `^id`s, mint ops, and render the (now ^id-annotated) inserted tree as text. Does
- * NOT call `ctx.applyOps` itself — the caller applies (batches often combine several of these). */
-export function prepareMarkdownInsert(
-  ctx: OpContext,
+/** Write markdown, parsed and checked, before any op is minted — see `checkWriteMarkdown`. */
+export interface CheckedMarkdown {
+  blocks: OutlineNode[];
+  /** The page-properties pre-block, `{}` without one; non-empty only under `"accept"`. */
+  pageProperties: Properties;
+}
+
+/**
+ * Parse write markdown and refuse what cannot be written, touching nothing — no target page is
+ * needed yet. `page.append` calls this BEFORE resolving (and possibly creating) its page, so a
+ * refusal no longer leaves a fresh, empty page or journal day behind (B-312); the other callers
+ * get it through `prepareMarkdownInsert`.
+ *
+ * A pre-block of page properties (`read-only:: true` before the first bullet, or a first bullet
+ * holding nothing but property lines — OUT-2) used to vanish: only the blocks were kept, and the
+ * write reported success (B-235). Only a page being created takes one (`"accept"`, the caller
+ * applies it); every write into an existing page refuses it (`"refuse"`), since an append silently
+ * changing the page's own properties is as surprising as dropping them, and an agent that meant a
+ * first block with only properties needs to hear that the parser read it otherwise.
+ */
+export function checkWriteMarkdown(
+  driver: SqlDriver,
   markdown: string,
-  bounds: OrderBounds,
-): MarkdownInsertResult {
-  const nodes = parseMarkdownBlocks(markdown);
-  if (nodes.length === 0) {
+  pageProperties: "accept" | "refuse",
+): CheckedMarkdown {
+  const parsed = parseMarkdownPage(markdown);
+  const keys = Object.keys(parsed.properties);
+  if (keys.length > 0 && pageProperties === "refuse") {
+    throw new OpError(
+      "invalid",
+      `markdown starts with page properties (${keys.join(", ")}), which only page_create applies`,
+      "set a page's properties with page_update; to give a block properties, put the key:: value " +
+        "lines under that block's bullet, after its first line",
+    );
+  }
+  if (parsed.blocks.length === 0 && keys.length === 0) {
     throw new OpError(
       "invalid",
       "markdown did not parse to any blocks",
       "check for a dangling fence or empty input",
     );
   }
-  validateOutlineIds(ctx.db, nodes);
+  validateOutlineIds(driver, parsed.blocks);
+  return { blocks: parsed.blocks, pageProperties: parsed.properties };
+}
+
+/** The full write path shared by `page.append`/`block.insert`/`page.create`'s `markdown` field:
+ * check (`checkWriteMarkdown`, unless the caller already did), mint ops, and render the (now
+ * ^id-annotated) inserted tree as text. Does NOT call `ctx.applyOps` itself — the caller applies
+ * (batches often combine several of these). */
+export function prepareMarkdownInsert(
+  ctx: OpContext,
+  markdown: string | CheckedMarkdown,
+  bounds: OrderBounds,
+  pageProperties: "accept" | "refuse" = "refuse",
+): MarkdownInsertResult {
+  const checked =
+    typeof markdown === "string" ? checkWriteMarkdown(ctx.db, markdown, pageProperties) : markdown;
+  const nodes = checked.blocks;
   const { ops, created, updated } = buildInsertOps(ctx.mintOp, nodes, bounds);
-  const outline = renderOutlineNodes(nodes);
-  return { ops, created, updated, outline };
+  const outline = nodes.length > 0 ? renderOutlineNodes(nodes) : "";
+  return { ops, created, updated, outline, pageProperties: checked.pageProperties };
 }
 
 // ---------------------------------------------------------------------------------------------

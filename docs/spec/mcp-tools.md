@@ -155,7 +155,16 @@ Rules:
     one `block(level)` production above, minus the leading `IND* "- "` — i.e. `marker? priority?
     text` on the first line, then property-lines/continuation-lines, with **no** `child`
     productions (a nested bullet inside is rejected: `invalid`, hint `"block_update edits one
-    block; use block_insert to add children"`).
+    block; use block_insert to add children"`). Lines after the first are written **flush-left**
+    — the shape `block_update`'s `before` output has, and the text `old_str`/`new_str` edit, where
+    any indent a line has is the content's own. `content` additionally accepts `page_read`'s
+    indented shape, at any depth: when every non-blank line after the first starts with two spaces
+    or a tab, the leading whitespace those lines have in common is removed from each (so a content
+    whose every later line genuinely starts with the same indent loses it — the price of not
+    reading an agent's indented `scheduled::` line as literal text and unsetting the property;
+    B-313: removing only one 2-column unit did exactly that for any block below the top level). Before 2026-09-13 only the indented shape parsed, and any `old_str` edit of
+    a block with a second line or a property line failed "content must describe exactly one
+    block" (B-172).
 
 ### 3.3 Pagination
 
@@ -414,7 +423,8 @@ export const MarkdownInput = z.string().min(1).max(200_000).describe(
   'Markdown. Each "- " bullet (or loose paragraph) becomes a block; 2 spaces (or a tab) of extra '
   + 'indent per level nests children; "key:: value" lines under a bullet become properties; a '
   + 'fenced code block stays one block; "- [ ]"/"- [x]" become TODO/DONE; a trailing ^id on a '
-  + 'bullet updates that existing block in place instead of creating a new one');
+  + 'bullet updates that existing block in place instead of creating a new one; "key:: value" '
+  + 'lines before the first bullet are page properties, which only page_create accepts');  // B-235
 
 export class OpError extends Error {
   constructor(
@@ -987,7 +997,10 @@ export const pageCreate = defineOp({
 
 **Errors**: `conflict` — page exists and `if_exists: 'error'` (`details.page_id` gives the
 existing page); `invalid` — `name` resolves to a journal date (create journals via `page_append`,
-hint given).
+hint given). A page-properties pre-block in `markdown` (`key:: value` lines before the first
+bullet, markdown-grammar.md OUT-2) becomes the new page's properties, `properties` winning for any key
+both give; appending to a page that exists (`if_exists: 'append'`) refuses one like `page_append` does
+(B-235).
 
 ---
 
@@ -1039,7 +1052,8 @@ export const pageAppend = defineOp({
 
 **Errors**: `not_found` — `parent` given but not a block on `page`; `invalid` — `markdown` fails to
 parse (dangling fence, a bullet with an unknown `^id`), or `create_page: false` and the page does
-not exist; `too_large` — `markdown` over 200 KB.
+not exist, or `markdown` starts with a page-properties pre-block (only `page_create` applies one;
+hint points at `page_update` — B-235); `too_large` — `markdown` over 200 KB.
 
 ---
 
@@ -1085,7 +1099,8 @@ export const blockInsert = defineOp({
 ```
 
 **Errors**: `not_found` — `ref` does not exist; `conflict` — `if_version` given and stale
-(`details.current_version`); `invalid` — malformed `markdown`.
+(`details.current_version`); `invalid` — malformed `markdown`, or `markdown` starting with a
+page-properties pre-block (B-235, as `page_append`).
 
 ---
 
@@ -1243,7 +1258,8 @@ export const blockDelete = defineOp({
 
 **Description**: "Renames a page (every `[[link]]`/`#tag` to it is rewritten; the old name
 becomes an alias unless `keep_alias` is false) and/or sets page-level properties (null unsets a
-property). Cannot rename journal days. To edit a page's content use the block tools, not this."
+property). Cannot rename journal days (their properties can be set — B-236). To edit a page's
+content use the block tools, not this."
 
 ```ts
 export const pageUpdate = defineOp({
@@ -1732,8 +1748,13 @@ also `not_found` with `details.reason: "no_live_window"` when `window_id` is omi
 windows are live (`hint`: "use page_append/block_update instead"); `conflict` with
 `details.reason: "ambiguous_window"` and `details.windows` listing candidates when `window_id` is
 omitted and more than one window is live; `forbidden` — the target window has `control_enabled:
-false` (`hint` names the "let agents control this window" toggle); `internal` — the window did not
-respond within ~2s (rare: a busy or navigating tab; retry). Note: `docs/spec/mcp-tools.md` §3.8's
+false` (`hint` names the "let agents control this window" toggle); `invalid` with
+`details.reason: "command_failed"` (and `details.window_id`) — the command ran in the window and
+threw, typically refusing its `args`; `message` carries the window's own reason, and retrying
+unchanged cannot help (B-148: the window answers such a run with `command.result` `{ request_id,
+error }` in place of `when_result`, capped at 1,000 chars; it used to send nothing, which surfaced
+as the timeout below); `internal` — the window did not respond within ~2s (rare: a busy or
+navigating tab; retry). Note: `docs/spec/mcp-tools.md` §3.8's
 fixed `OpErrorCode` enum has no `ambiguous`/`no_live_window` members (research/09's own sketch used
 those as illustrative names); this implementation carries the same information in `details.reason`
 instead of inventing new top-level codes, consistent with §3.8's closed list.

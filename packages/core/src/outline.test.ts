@@ -168,6 +168,52 @@ describe("serializeOutline", () => {
     expect(roundTrip(text)).toBe(text);
   });
 
+  // B-151: without an id to stand alone on line 1, property lines written straight after a
+  // fence-opening line 1 landed inside the fence and came back as code.
+  describe("a block that opens with a fence, without ids (B-151)", () => {
+    const fenceBlock = (
+      content: string,
+      properties: Record<string, string>,
+      collapsed = false,
+    ) => ({
+      properties: {},
+      blocks: [
+        { content, marker: null, priority: null, properties, collapsed, children: [] },
+        {
+          content: "next",
+          marker: null,
+          priority: null,
+          properties: {},
+          collapsed: false,
+          children: [],
+        },
+      ],
+    });
+
+    it("keeps its properties, written after the closed fence", () => {
+      const page = fenceBlock("```js\nfoo:: not a property\n```\nafter", { foo: "bar" }, true);
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe(
+        "- ```js\n  foo:: not a property\n  ```\n  after\n  collapsed:: true\n  foo:: bar\n- next\n",
+      );
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("keeps its properties when the fence never closes, on the bullet line before it", () => {
+      // Alone on its page: an unclosed fence swallows every later bullet, whatever this fix does.
+      const page = fenceBlock("```js\ncode\n- not a bullet", { foo: "bar", baz: "qux" });
+      page.blocks.pop();
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe("- foo:: bar\n  baz:: qux\n  ```js\n  code\n  - not a bullet\n");
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("still writes a fence-first block without properties unchanged", () => {
+      const page = fenceBlock("```js\ncode\n```", {});
+      expect(serializeOutline(page, { ids: "none" })).toBe("- ```js\n  code\n  ```\n- next\n");
+    });
+  });
+
   it("writes page properties", () => {
     const text = "title:: X\nalias:: y\n- a\n";
     expect(roundTrip(text)).toBe(text);

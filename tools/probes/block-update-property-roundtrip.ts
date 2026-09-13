@@ -7,7 +7,8 @@
  *   pnpm exec tsx ../../tools/probes/block-update-property-roundtrip.ts
  *
  * Output on da85cfb: "ok" for a plain task; "FAIL ... content must describe exactly one block" for
- * a task with `scheduled::` and for two-line content.
+ * a task with `scheduled::` and for two-line content. After the B-172 fix (2026-09-13, server-ops):
+ * "ok" for all three.
  *
  * Found 2026-09-13 (impl-journal) when an e2e spec flipped `TODO` to `DONE` on a task with
  * `scheduled::` through the API and got 400 "content must describe exactly one block".
@@ -34,7 +35,7 @@ for (const c of cases) {
   });
   const edited = raw.replace("TODO", "DONE");
   try {
-    const node = parseSingleBlockGrammar(edited);
+    const node = parseSingleBlockGrammar(edited, "flush");
     console.log(`ok    ${c.name}: ${JSON.stringify(raw)} -> marker ${node.marker}`);
   } catch (e) {
     console.log(`FAIL  ${c.name}: ${JSON.stringify(raw)} -> ${(e as Error).message}`);
