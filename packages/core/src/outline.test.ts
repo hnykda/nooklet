@@ -389,6 +389,11 @@ describe("serialize -> parse is lossless across heads, ids, properties and conte
     "```js\n- in a fence\nk:: in a fence\n```",
     "~~~\ncode\n~~~\nafter the fence",
     "```\nnever closes",
+    // B-342: lines the parser reads by shape, on line 1 and after it, escaped or not.
+    "k:: v",
+    "text\nscheduled:: 2026-09-20\nSCHEDULED: <2026-09-20 Sun>\nk\\:: escaped already",
+    ":LOGBOOK:\nCLOCK: x\n:END:",
+    "```js\nk:: in a fence\n```\nk:: after the fence",
   ];
   const cases: Array<{ name: string; node: OutlineNode }> = [];
   for (const content of contents)
@@ -436,4 +441,121 @@ describe("serialize -> parse is lossless across heads, ids, properties and conte
       expect(failures).toEqual([]);
     });
   }
+});
+
+// B-342: a content line the parser reads by its shape — a property line, an org timestamp line, a
+// `:LOGBOOK:` drawer opener — used to be written verbatim and came back as a property, a date or
+// nothing at all. OUT-23a escapes it with a backslash before the colon that makes the shape.
+describe("content lines shaped like a property, a timestamp or a drawer (B-342, OUT-23a)", () => {
+  const node = (over: Partial<OutlineNode>): OutlineNode => ({
+    content: "",
+    marker: null,
+    priority: null,
+    properties: {},
+    collapsed: false,
+    children: [],
+    ...over,
+  });
+
+  it("writes each shape with a backslash before its colon, and reads it back as text", () => {
+    const content = [
+      "call mom",
+      "scheduled:: 2026-09-20",
+      "foo::bar",
+      "marker:: DONE",
+      "SCHEDULED: <2026-09-20 Sun>",
+      "  DEADLINE: <2026-10-01>",
+      ":LOGBOOK:",
+      "CLOCK: [2026-09-10 Thu 09:00:00]",
+      ":END:",
+      "after",
+    ].join("\n");
+    const page: ParsedPage = {
+      properties: {},
+      blocks: [node({ marker: "TODO", content, properties: { deadline: "2026-09-30" } })],
+    };
+    const text = serializeOutline(page, { ids: "none" });
+    expect(text).toBe(
+      [
+        "- TODO call mom",
+        "  deadline:: 2026-09-30",
+        "  scheduled\\:: 2026-09-20",
+        "  foo\\::bar",
+        "  marker\\:: DONE",
+        "  SCHEDULED\\: <2026-09-20 Sun>",
+        "    DEADLINE\\: <2026-10-01>",
+        "  \\:LOGBOOK:",
+        "  CLOCK: [2026-09-10 Thu 09:00:00]",
+        "  :END:",
+        "  after",
+        "",
+      ].join("\n"),
+    );
+    expect(parseOutline(text)).toEqual(page);
+  });
+
+  it("escapes line 1 too, with or without a head or an id, so every rendering shows one text", () => {
+    const blocks = [
+      node({ content: "foo:: bar" }),
+      node({ content: "foo:: bar", id: "1k7f3q9xz2hav4" }),
+      node({ content: "scheduled:: 2026-09-20", marker: "TODO", priority: "A" }),
+      node({ content: "SCHEDULED: <2026-09-20>", id: "1k7f3q9xz2hav5" }),
+      node({ content: ":LOGBOOK:\ntext", id: "1k7f3q9xz2hav6" }),
+    ];
+    const page: ParsedPage = { properties: {}, blocks };
+    const text = serializeOutline(page);
+    expect(text).toBe(
+      [
+        "- foo\\:: bar",
+        "- foo\\:: bar ^1k7f3q9xz2hav4",
+        "- TODO [#A] scheduled\\:: 2026-09-20",
+        "- SCHEDULED\\: <2026-09-20> ^1k7f3q9xz2hav5",
+        "- \\:LOGBOOK: ^1k7f3q9xz2hav6",
+        "  text",
+        "",
+      ].join("\n"),
+    );
+    expect(parseOutline(text)).toEqual(page);
+    const bare: ParsedPage = { properties: {}, blocks: blocks.map(({ id: _, ...b }) => b) };
+    expect(parseOutline(serializeOutline(bare, { ids: "none" }))).toEqual(bare);
+  });
+
+  it("escapes an escape: a line already carrying backslashes there gets one more", () => {
+    const content = "a\nfoo\\:: one\nfoo\\\\:: two\nSCHEDULED\\: <2026-09-20>\n\\:LOGBOOK:";
+    const page: ParsedPage = { properties: {}, blocks: [node({ content })] };
+    const text = serializeOutline(page, { ids: "none" });
+    expect(text).toBe(
+      "- a\n  foo\\\\:: one\n  foo\\\\\\:: two\n  SCHEDULED\\\\: <2026-09-20>\n  \\\\:LOGBOOK:\n",
+    );
+    expect(parseOutline(text)).toEqual(page);
+  });
+
+  it("leaves lines inside a fence, and lines of no such shape, exactly as they are", () => {
+    const content =
+      "```js\nk:: v\nSCHEDULED: <2026-09-20>\n```\nk:: after\nkey: value\nfoo \\:: bar";
+    const page: ParsedPage = { properties: {}, blocks: [node({ content })] };
+    const text = serializeOutline(page, { ids: "none" });
+    expect(text).toBe(
+      "- ```js\n  k:: v\n  SCHEDULED: <2026-09-20>\n  ```\n  k\\:: after\n  key: value\n  foo \\:: bar\n",
+    );
+    expect(parseOutline(text)).toEqual(page);
+  });
+
+  it("still reads an unescaped line as a property, a date or a drawer (Logseq files)", () => {
+    const p = parseOutline(
+      "- TODO a\n  foo:: bar\n  SCHEDULED: <2026-09-20 Sun .+1w>\n  :LOGBOOK:\n  CLOCK: x\n  :END:\n  text\n",
+    );
+    expect(p.blocks).toEqual([
+      node({
+        marker: "TODO",
+        content: "a\ntext",
+        properties: { foo: "bar", scheduled: "2026-09-20", repeat: "1w" },
+      }),
+    ]);
+  });
+
+  it("reads a backslash-escaped line in a hand-written file as text, one backslash fewer", () => {
+    const p = parseOutline("- foo\\:: bar\n  scheduled\\:: 2026-09-20\n  x\\\\:: y\n");
+    expect(p.blocks).toEqual([node({ content: "foo:: bar\nscheduled:: 2026-09-20\nx\\:: y" })]);
+  });
 });

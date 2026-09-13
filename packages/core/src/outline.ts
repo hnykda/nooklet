@@ -78,6 +78,44 @@ function orgTimestamp(inner: string): { date: string; repeat: string | undefined
 }
 const HEADING_PREFIX_RE = /^#{1,6} /;
 
+/**
+ * OUT-23a (B-342): the lines `finalizeNode` takes out of a block's text by their shape — a property
+ * line (`PROPERTY_RE`), an org timestamp line (`SCHEDULED_DEADLINE_RE`), a `:LOGBOOK:` opener —
+ * each with room for a run of backslashes right before the colon that makes the shape. Group 1 is
+ * everything before that run, group 2 the run. With an empty run each is exactly its parser regex,
+ * so a content line is escaped whenever the parser would consume it and never otherwise.
+ *
+ * Why this exists: content lines used to be written verbatim, so a typed `scheduled:: 2026-09-20`
+ * (kept as text, OUT-22a) came back from the mirror as a real date, a `foo:: bar` line as a
+ * property, and a `:LOGBOOK:` line took every line after it to `:END:` with it.
+ */
+const SHAPED_LINE_RES = [
+  /^([A-Za-z0-9_][A-Za-z0-9_.-]*)(\\*):: ?.*$/,
+  /^(\s*(?:SCHEDULED|DEADLINE))(\\*):\s*<[^>]+>\s*$/,
+  /^(\s*)(\\*):LOGBOOK:\s*$/,
+];
+
+/** Where a shaped line's backslash run starts, and how long it is; `null` for any other line. */
+function shapeEscape(line: string): { at: number; run: number } | null {
+  for (const re of SHAPED_LINE_RES) {
+    const m = re.exec(line);
+    if (m) return { at: (m[1] as string).length, run: (m[2] as string).length };
+  }
+  return null;
+}
+
+/** Write side: one more backslash — so a line that already had some reads back with them all. */
+function escapeShapedLine(line: string): string {
+  const e = shapeEscape(line);
+  return e === null ? line : `${line.slice(0, e.at)}\\${line.slice(e.at)}`;
+}
+
+/** Read side: one backslash fewer, only on a line that has at least one where the shape puts it. */
+function unescapeShapedLine(line: string): string {
+  const e = shapeEscape(line);
+  return e === null || e.run === 0 ? line : line.slice(0, e.at) + line.slice(e.at + 1);
+}
+
 const MARKER_ALIASES: Record<string, TaskMarker> = {
   WAIT: "WAITING",
   CANCELLED: "CANCELED",
@@ -343,7 +381,9 @@ function finalizeNode(raw: RawNode, caretIds: WeakSet<OutlineNode>): OutlineNode
       // malformed timestamp: fall through and keep the line as ordinary content (no data loss).
     }
     if (kept.length === 0 && idx === 0) firstKeptWasFirstLine = true;
-    kept.push(line);
+    // OUT-23a: line 1 is un-escaped below, once its head and id are off (the serializer escapes
+    // the content's line 1, not the bullet line).
+    kept.push(idx === 0 ? line : unescapeShapedLine(line));
     fence = idx === 0 ? firstLineOpensFence(line) : openingFence(line);
   });
 
@@ -365,7 +405,7 @@ function finalizeNode(raw: RawNode, caretIds: WeakSet<OutlineNode>): OutlineNode
       idFromSuffix = idMatch[1];
       first = first.slice(0, idMatch.index);
     }
-    kept[0] = first;
+    kept[0] = unescapeShapedLine(first);
     // OUT-14: a line 1 left empty by its head and/or id, followed by a line that opens a fence, is
     // not a content line — the serializer wrote the head there because the content opens with that
     // fence. Only then: before any other line, an empty line 1 is the content's own.
@@ -430,7 +470,7 @@ export function serializeOutline(page: ParsedPage, opts: SerializeOptions = {}):
     const head = [node.marker, node.priority ? `[#${node.priority}]` : null]
       .filter((s): s is string => s !== null)
       .join(" ");
-    const contentLines = node.content === "" ? [] : node.content.split("\n");
+    const contentLines = node.content === "" ? [] : escapeContentLines(node.content.split("\n"));
     const first = contentLines[0] ?? "";
     const contLine = (line: string): string => (line === "" ? "" : `${cont}${line}`);
 
@@ -477,6 +517,22 @@ export function serializeOutline(page: ParsedPage, opts: SerializeOptions = {}):
 
   for (const node of page.blocks) walk(node, 0);
   return `${out.join("\n")}\n`;
+}
+
+/** OUT-23a: a block's content lines with each one outside a fence escaped (`escapeShapedLine`) —
+ * line 1 included whatever head or id is written before or after it, so `page.read` and
+ * `block.update`'s `before` show the same text for it. Fence tracking is the parser's own: an
+ * escaped line never opens a fence, so escaping cannot move where one opens or closes. */
+function escapeContentLines(lines: readonly string[]): string[] {
+  let fence: string | null = null;
+  return lines.map((line) => {
+    if (fence !== null) {
+      if (closesFence(line, fence)) fence = null;
+      return line;
+    }
+    fence = openingFence(line);
+    return escapeShapedLine(line);
+  });
 }
 
 /** Whether a block's content lines leave no fence open at the end — the parser's own fence

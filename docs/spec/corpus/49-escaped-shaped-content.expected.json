@@ -1,0 +1,26 @@
+{
+  "description": "Content lines shaped like a property, an org timestamp or a :LOGBOOK: opener are written with a backslash before their colon and read back as text with one backslash fewer, on line 1 too; a real property line next to them is still a property, and lines inside a fence are verbatim (OUT-23a).",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "call mom\nscheduled:: 2026-09-20\nSCHEDULED: <2026-09-20 Sun>\n:LOGBOOK:\n:END:\nfoo\\:: an escaped escape",
+      "marker": "TODO",
+      "priority": null,
+      "properties": {
+        "deadline": "2026-09-30"
+      },
+      "collapsed": false,
+      "children": [],
+      "id": "1k7f3q9xz2hav4"
+    },
+    {
+      "content": "foo:: bar\n```\nk:: v\n```\nk:: after the fence",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": [],
+      "id": "1k7f3q9xz2hav5"
+    }
+  ]
+}

@@ -256,10 +256,36 @@ conventions glossary — not added there because this task may only touch this f
      present, `repeat:: <n><unit>` (the `+`/`++`/`.+` dialect marker is discarded — ADR 011 keeps
      one repeat shape, not three). If a `repeat::` property is set by more than one of these
      lines on the same block, the later line wins (last write in file order).
-  6. Otherwise: a normal content line — append to `content`; if it opens a fence, mark the fence
-     open (existing behavior).
-  The serializer never emits `SCHEDULED:`/`DEADLINE:`/`:LOGBOOK:`/`:END:` lines (ADR 011,
-  consequences section — normative here).
+  6. Otherwise: a normal content line — un-escape it (OUT-23a) and append it to `content`; if it
+     opens a fence, mark the fence open (existing behavior).
+  The serializer never emits `SCHEDULED:`/`DEADLINE:`/`:LOGBOOK:` lines — content lines of those
+  shapes go out escaped (OUT-23a) — nor `:END:` as a drawer close (ADR 011, consequences section
+  — normative here).
+- **OUT-23a. Escaping content lines the parser would consume** (added 2026-09-13, B-342). A
+  `content` line outside a fence that rule 3, 4 or 5 would take out of the text — it matches the
+  property regex (OUT-18), the `SCHEDULED:`/`DEADLINE:` regex (whether or not its date is valid),
+  or is `:LOGBOOK:` once trimmed — is written with a backslash right before the colon that makes
+  the shape: `scheduled\:: 2026-09-20`, `foo\::bar`, `SCHEDULED\: <2026-09-20 Sun>`,
+  `  DEADLINE\: <2026-10-01>`, `\:LOGBOOK:`. So a typed `scheduled:: …` line, kept as text by
+  OUT-22a, or a `foo:: bar` line written with `block.text`, reads back as that text, not as a date
+  or a property; a `:LOGBOOK:` line no longer takes every line after it to `:END:` with it.
+  - The escape escapes itself: the shapes are matched with any run of backslashes (`\\*`) at that
+    point, the serializer adds one, and on read a line with a run of one or more loses one. Content
+    `foo\:: x` is written `foo\\:: x`. Every string round-trips; a line with no backslash there is
+    never changed on read, so Logseq files keep their meaning (a real `foo:: bar` line is still a
+    property, a real `SCHEDULED: <…>` line still a date). The owner's Logseq file graph and DB
+    mirror had 0 lines with a backslash at such a point when this was added (grep, 2026-09-13).
+  - It applies to every content line outside a fence, line 1 included, whatever the block's head
+    or id: `- TODO scheduled\:: 2026-09-20`, `- foo\:: bar ^1k7f3q9xz2hav4`. The parser un-escapes
+    line 1 after its marker, priority and `^id` are taken off, every later line as it is kept.
+    Unnecessary on a task's line 1 (a line starting `TODO ` matches no shape), but it keeps one
+    spelling of a line in every rendering — `page.read` with ids, `block.update`'s id-less `before`
+    — so an agent's `old_str` copied from one matches the other.
+  - Lines inside a fence are verbatim both ways, as always. Property lines the block really has
+    are never escaped. The editing text (OUT-22a) is not affected: it holds `content` unescaped.
+  - `\:` renders as `:` in CommonMark, so a mirror file opened in another markdown viewer still
+    reads `scheduled:: 2026-09-20`. Whether Logseq itself reads `key\:: value` as text is
+    unverified (no Logseq here).
 - **OUT-24.** `#+BEGIN_QUOTE` / `#+END_QUOTE` (org blockquote) is **not** specially parsed in v1
   (open issue below): such lines fall through OUT-23 rule 6 as ordinary content text, which is
   lossless (round-trips as plain text) but renders as literal `#+BEGIN_QUOTE` rather than a
@@ -881,7 +907,7 @@ Pandoc dollar-math heuristic matters; `query`/`sql` fences and `#+BEGIN_QUOTE` o
 (justifying OUT-27's "reserve the name, don't build the feature" and OUT-24's "cheap fallback,
 open issue" choices).
 
-### Corpus index (48 cases)
+### Corpus index (49 cases)
 
 | # | File | Tests | `tokens`? |
 |---|---|---|:-:|
@@ -933,8 +959,9 @@ open issue" choices).
 | 46 | `46-hard-breaks-multiline.md` | Multi-line paragraph → `br` tokens (INL-1) | ✓ |
 | 47 | `47-emoji-diacritics-rtl.md` | Emoji tag offsets, Czech diacritics, RTL line | ✓ |
 | 48 | `48-heading-fence-quote-table-hr.md` | Content classification (§2.7), all five non-paragraph kinds | |
+| 49 | `49-escaped-shaped-content.md` | Property-, timestamp- and drawer-shaped content lines, escaped; an escaped escape (OUT-23a) | |
 
-(48 cases — comfortably over the "at least 40" floor; the table above is the index, files are in
+(49 cases — comfortably over the "at least 40" floor; the table above is the index, files are in
 `docs/spec/corpus/`.)
 
 ## 10. Worked example
