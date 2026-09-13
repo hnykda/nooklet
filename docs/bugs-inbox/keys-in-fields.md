@@ -35,7 +35,7 @@ lists and runs "Delete selected blocks", "Duplicate block" etc. Spec: new R12b i
 `docs/spec/commands-and-keymap.md` (R12a unchanged, now points to it).
 
 Tests:
-- `e2e/tests/keys-in-fields.spec.ts` (7). Five fail with the one dispatch line disabled (checked
+- `e2e/tests/keys-in-fields.spec.ts` (7, plus B-452's 8th). Five fail with the one dispatch line disabled (checked
   by editing it to `false &&`, rebuilding, running, restoring): "Backspace and Cmd/Ctrl+X in the
   page title edit the title, and Enter renames the page, with a block selected" (the editor opens),
   "Cmd/Ctrl+Shift+D and Cmd/Ctrl+. in the page title leave the selected block alone" (block
@@ -88,11 +88,10 @@ Behaviour changes to know about:
   from the title; the palette, find bar and pickers already took Escape themselves).
 - Cmd+Shift+. (`block.zoomOut`, `when: zoomed`) no longer fires from a field: `zoomed` is part of
   the outliner's snapshot, hidden with the rest.
-- A `<select>` and non-text inputs (date, checkbox) count as fields for R12b but not for R12a, so
-  arrows on a focused `<select>` no longer extend a block selection. Mod+Z on a focused `<select>`
-  still runs `edit.undo` (`when: true`, not an editing key there), and `historyEditorHost` only
-  declines for an input or textarea — so it may still undo the outliner's last step, as before this
-  change. Not checked in a browser.
+- A `<select>` and non-text inputs (date, checkbox) outside the outliner count as fields for R12b,
+  so arrows on a focused `<select>` no longer extend a block selection. (As first written they did
+  not count for R12a, and Mod+Z on a focused `<select>` did undo the outliner's last step — checked
+  in a browser by the verifier, B-452, and fixed by counting them for R12a too.)
 
 Still unverified: Windows/Linux bindings (all runs were on macOS with Meta); WebKit (the Mac app) —
 the rule is DOM-only (`closest`, `instanceof`, `isContentEditable`) with nothing engine-specific, but
