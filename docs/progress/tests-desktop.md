@@ -64,18 +64,34 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
 
 ## 2. In flight
 
-- Final verification (session 2, after a cut-off). Typecheck green; biome clean on all changed
-  files; `pnpm -r test` core 399, plugin-api 17, server 670, web 1126 — all passed.
-- The first session's full e2e run was cut off at 246/527 with one failure, `page-title-fit.spec.ts`
-  "Enter in the title renames…" on "Loading…" with the indicator "synced". Its trace is a
-  whole-machine stall, not the app: the 10 s `toBeVisible` ran 23.9 s of the runner's own monotonic
-  clock and the screencast has no frame between 211.6 s and 235.3 s. Passed in session 2's run.
-- Session 2's full e2e, four alphabetical chunks on port 6402 (the tool's 10 min limit): chunk 1
-  (a-fresh-journal…focus) 136 passed 1 skipped; chunk 2 (follow-link…pages) 117 passed; chunk 3
-  (palette-text-keys…replace-unicode) 138 passed; chunk 4 (replace…views) 135 passed, 1 skipped,
-  1 failed = B-403, fixed above.
+- Nothing. Final verification done (session 2, after a cut-off, all on this branch's HEAD except
+  where a commit is named):
+  - `pnpm -r typecheck` green; biome clean on every changed file.
+  - `pnpm -r test`: core 399, plugin-api 17, server 670, web 1126 — all passed.
+  - Full e2e in four alphabetical chunks on port 6402 (the tool's 10 min limit): chunk 1
+    (a-fresh-journal…focus) 136 passed, 1 skipped; chunk 2 (follow-link…pages) 117 passed; chunk 3
+    (palette-text-keys…replace-unicode) 138 passed; chunk 4 (replace…views) at `81f3ff4` 135 passed,
+    1 skipped, 1 failed (B-403), and with the B-403 commit 136 passed, 1 skipped. Every one of the 93
+    spec files ran; with the fix, 527 passed, 2 skipped, 0 failed.
+  - The first session's full run had been cut off at 246/527 with one failure,
+    `page-title-fit.spec.ts` "Enter in the title renames…" on "Loading…" with the indicator
+    "synced". Its trace is a whole-machine stall, not the app: the 10 s `toBeVisible` ran 23.9 s of
+    the runner's own monotonic clock and the screencast has no frame between 211.6 s and 235.3 s. It
+    passed in chunk 2.
+  - Under 56 busy loops (load average up to 72): editing, page-icons, references, opfs-pool specs
+    `--repeat-each=4`: 48 passed. B-131 History test `--repeat-each=16` (load average 60-87): 16
+    passed; review-reactivity.spec whole: 7 passed.
+  - Sidecar rebuilt with `tools/probes/sidecar-web-freshness.mjs` ("fresh", exit 0);
+    `sidecar-user-plugin.mjs`: `hello.say -> 200`, exit 0; `sidecar-plugins.mjs`: all checks ok; and
+    a copy started by hand from scratch on a scratch `NOOKLET_DATA` (a user plugin with server and
+    client halves importing `@nooklet/plugin-api`/`zod`, plus B-402's incomplete plugin): healthy,
+    logged `plugin "incomplete" failed to activate: op "incomplete.say" is missing summary,
+    annotations, scopes`, `greeter.greet` 200 `{"greeting":"Ahoj, Dan!"}`, its OpError 404, its client
+    bundle 200 without `node_modules`, the served client the sidecar's own build (only the injected
+    `window.__NOOKLET__` differs).
+  - `pnpm nooklet verify` on a backup of the owner's graph: 20,446 ops replayed, OK.
 
 ## 3. Next steps
 
-1. Rerun chunk 4 with the B-403 change (and the full list of touched specs once more).
-2. Return summary.
+1. None on this brief. Open, logged, not done: B-400, B-401, B-404; the product question in B-403
+   (keep older History pages when a refetched first page is identical) is the owner's.
