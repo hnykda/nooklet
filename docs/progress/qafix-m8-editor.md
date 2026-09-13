@@ -11,12 +11,12 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
 |---|---|---|---|
 | Q1 merge drops marker/dates/properties | B-340 | high | fixed `94776a3` |
 | Q2 date chip writes on a read-only page | B-341 | medium | fixed `7bec2d2` |
-| Q3 typed `scheduled::` line: DB text, mirror property | B-342 | medium | queued (may be owner decision) |
+| Q3 typed `scheduled::` line: DB text, mirror property | B-342 | medium | logged, owner decision `ab146ed` |
 | Q4 caret before inserted image | B-343 | low | fixed `e7aa7fb` |
-| Q5 `/mermaid` after text inline, never renders | B-344 | low | to log as feature gap (see Notes) |
-| Q6 Set scheduled date on multi-selection dates one block | B-345 | low | fixed (commit after e7aa7fb) |
+| Q5 `/mermaid` after text inline, never renders | B-344 | low | logged, feature gap `ab146ed` |
+| Q6 Set scheduled date on multi-selection dates one block | B-345 | low | fixed `ea06b2d` |
 | (found) marker commands act on one block of a selection | B-346 | low | logged, owner decision |
-| (found) Backspace/Delete in the palette deletes selected blocks | B-347 | high | logged + probe; fix under consideration |
+| (found) Backspace/Delete in the palette deletes selected blocks | B-347 | high | fixed (commit after ab146ed) |
 
 ## 1. Done (committed)
 
@@ -31,25 +31,31 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
 - `e7aa7fb` Q4/B-343: `BlockTree.tsx#insertUploadedImage` dispatch sets `selection`. E2E
   `image-insert.spec.ts` both tests now type after the insert (2/2 red before, green after; + assets:
   3 passed).
-- Q6/B-345: `commands/registrations/task.ts` date commands gated on
+- `ea06b2d` Q6/B-345: `commands/registrations/task.ts` date commands gated on
   `editorFocused || (blockSelected && selectionCount == 1)`; spec table + R38. Unit
   `registrations/index.test.ts` (2/2 red before), e2e `dates.spec.ts` B-345 test (red on base
   `task.ts`, green after). Also B-346/B-347 entries and probe
   `tools/probes/palette-keys-delete-selection.spec.ts`.
+- `ab146ed` B-342 (Q3, owner decision: two options with costs in the entry; probe
+  `tools/probes/serialize-property-shaped-content.ts` shows every property/timestamp-shaped content
+  line re-reads as a property) and B-344 (Q5, feature gap: `classifyFence` reads line 1 only, and the
+  plugin host lacks `insertBlockAfter`/`focusBlock`/`currentBlock`). Logged, not fixed.
+- B-347 (found, high, fixed): new `apps/web/src/app/text-field-keys.ts` + 3-line hookup in
+  `CommandLayer.tsx`; spec R12a. Unit `text-field-keys.test.ts` (3), e2e
+  `palette-text-keys.spec.ts` (red before hookup, green after). Sweep of 20 specs (palette-text-keys,
+  undo-redo, redo, focus, template-undo, views, commands, popups, page-title-draft, page-find,
+  search-filters, settings, dates, selection, context-menu, help, read-only, page-rename,
+  autocomplete, templates): 204 passed, 1 skipped, 1 failed = `views.spec.ts` "opening the palette
+  while editing … hands focus back" — fails the same with every web file restored to `cf08d19`
+  (2/2), i.e. the known B-246/B-193 entry, not this branch.
 
 ## 2. In flight
 
-- Nothing uncommitted beyond the Q6 commit.
+- Nothing.
 
 ## 3. Next steps, in order
 
-1. Log B-344 (Q5) as a feature gap: a fence renders only when it is line 1 of a block's content
-   (`core/tokens.ts#classifyFence`), so `/mermaid` after text can only work by creating a new block,
-   and the client plugin host does not implement `insertBlockAfter`/`focusBlock`/`currentBlock`.
-2. Assess Q3 (B-342): likely owner decision (grammar of reserved keys typed in the buffer).
-3. B-347 (high): look at a fix in `commands/keymap/dispatch.ts` or the palette; separate commit,
-   flagged to the coordinator.
-4. Final regression run of touched specs; report.
+1. Final regression run of touched specs; report.
 
 ## Notes
 

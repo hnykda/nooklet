@@ -173,9 +173,9 @@ blocks has no single date to start from. Owner decision: gate on `selectionCount
 ---
 
 ### B-347 · With blocks selected, Backspace or Delete typed in the command palette deletes the selected blocks
-**Status:** open · **Severity:** high · **Found:** 2026-09-13, writing the B-345 e2e test (its
-`fill("")` on the palette input deleted two selected blocks) · **Test:** none yet; probe
-`tools/probes/palette-keys-delete-selection.spec.ts`
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, writing the B-345 e2e test (its
+`fill("")` on the palette input deleted two selected blocks) · **Test:**
+`e2e/tests/palette-text-keys.spec.ts`; probe `tools/probes/palette-keys-delete-selection.spec.ts`
 
 Select two blocks (Escape, Shift+ArrowDown), Cmd/Ctrl+K, type `abc`, press Backspace to fix a typo:
 the two selected blocks are deleted — on the server too — and the palette input still reads `abc`.
@@ -189,3 +189,22 @@ Likely cause (read, not traced): `app/CommandLayer.tsx#KeyboardDispatch` runs ev
 secondary binding) matches and preventDefaults before the input sees the key. The date picker
 avoids this by claiming keys itself (B-145); the palette does not. Other text inputs over a standing
 selection (page title, search, page properties) probably behave the same — not probed.
+
+A second probe with eight keys in the palette over a two-block selection (2026-09-13, run once, not
+kept): Backspace and Delete deleted both blocks; Cmd+A selected all three blocks instead of the query
+text; Tab/Shift+Tab moved focus out of the input; Enter closed the palette and cleared the
+selection; Shift+ArrowUp and Cmd+Z changed nothing visible.
+
+**Fixed 2026-09-13** (outside the QA list: found while fixing B-345, fixed because it loses data).
+New `app/text-field-keys.ts#textFieldOwnsKey`: a text-editing key — Backspace, Delete, arrows,
+Home/End/PageUp/PageDown with any modifier (except Alt+Left/Right outside macOS, Back/Forward), and
+Mod+A/C/X/V/Z — whose target is a text field other than the block editor (`.cm-editor`) is left to
+the field; `CommandLayer`'s global keydown listener returns before dispatch. Escape, Enter, Tab and
+the global shortcuts still dispatch from text fields. Spec: R12a. The e2e test was red before the
+hookup (`Backspace` left the input at `abcd`) and green after; it also checks Cmd/Ctrl+A selects the
+query and that Backspace with the palette closed still deletes the selection. Unit:
+`app/text-field-keys.test.ts`. Behaviour change to know about: Cmd/Ctrl+Z inside a plain text field
+(palette, page title, search) is now the field's own undo instead of the outliner's (`edit.undo` is
+`when: true`); the undo/redo, template-undo, redo and focus specs still pass, and that a field's
+native undo now works was not checked. Tab and Enter in the palette over a selection behave as
+before (not data loss; not changed here).

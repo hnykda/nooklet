@@ -174,6 +174,16 @@ block"):
    no `when`) against the current `WhenContext` wins; run its command and `preventDefault()`.
 4. If no row matched, return false (native/CM6 default behavior applies).
 
+**R12a (text fields, B-347).** A keydown whose target is a text field other than the block
+editor's surface — an `<input>` of a text type, a `<textarea>`, a contenteditable outside
+`.cm-editor` (the palette's query, a page title, search) — is never dispatched when it is a
+text-editing key: Backspace, Delete, the arrows, Home, End, PageUp, PageDown (with any modifier,
+except Alt+Left/Right outside macOS, which are `nav.back`/`nav.forward`), and Mod+A/C/X/V/Z (Z with
+or without Shift). The field handles them natively. Every other key still dispatches from a text
+field (Escape, Enter, Tab, Mod+K and the other global shortcuts). Without this, Backspace typed
+into the palette with blocks selected ran `block.deleteSelected`. As built:
+`apps/web/src/app/text-field-keys.ts`, called by `CommandLayer`'s global keydown listener.
+
 **R13.** When no `Surface` is mounted (block-selection mode), the same table and the same
 resolution algorithm apply; the outliner container (`tabindex="-1"`) is the event target instead
 of a CM6 view, and `composing`/`popupOpen` are always `false`.
