@@ -131,11 +131,20 @@ would have caught it: `e2e/tests/journal-display-names.spec.ts` — the search t
 ---
 
 ### B-355 · The Search filters put Task / Show / Journals only between "Updated after" and "Updated before"
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, M8 views QA (finding Q6) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, M8 views QA (finding Q6) ·
+**Test:** `apps/web/src/views/SearchView.test.tsx` "keeps Updated after and Updated before next to
+each other, as the one range they are"
 
 Filter order is Tag, Namespace, Updated after, Task, Show, Journals only, Updated before, so the
 two halves of one date range are split (about 430px apart at 390px wide).
+
+**Fixed 2026-09-13.** "Updated before" moved to straight after "Updated after" in
+`views/SearchView.tsx` (the M8 selects had been inserted between them, `03cb6ef`). Order now Tag,
+Namespace, Updated after, Updated before, Task, Show, Journals only. Real graph copy: the two date
+labels 61px apart at 390px and at 1400px (the panel is one column at both). Test that would have
+caught it: the named component test (failed before: the label after "Updated after" was "Task").
+A DOM-order check, so a unit test is the honest level; the e2e search specs
+(`search-filters`, `search-cleared`, `journal-display-names`) still pass over the reordered panel.
 
 ---
 

@@ -128,6 +128,16 @@ export function SearchView(): JSX.Element {
             onInput={(e) => setUpdatedAfter(e.currentTarget.value)}
           />
         </label>
+        {/* Straight after "Updated after": the two are one range, and the task filters that were
+            added between them left the halves ~430px apart on a phone (B-355). */}
+        <label>
+          Updated before
+          <input
+            type="date"
+            value={updatedBefore()}
+            onInput={(e) => setUpdatedBefore(e.currentTarget.value)}
+          />
+        </label>
         <label>
           Task
           <select
@@ -167,14 +177,6 @@ export function SearchView(): JSX.Element {
             onChange={(e) => patchFilters({ journalsOnly: e.currentTarget.checked })}
           />
           Journals only
-        </label>
-        <label>
-          Updated before
-          <input
-            type="date"
-            value={updatedBefore()}
-            onInput={(e) => setUpdatedBefore(e.currentTarget.value)}
-          />
         </label>
       </details>
 

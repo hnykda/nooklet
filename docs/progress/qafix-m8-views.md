@@ -46,14 +46,16 @@ replace (low, B-354); Q6 search filter order splits the date range (low, B-355).
   search-cleared, search-filters, replace, replace-stale, replace-unicode, dates, journals — 23
   passed. Real graph probe `search.mjs phone`: "Sun, 22.09.2024 › todo…", "Fri, 16.12.2022".
 
+- Q6 (B-355) — "Updated before" moved next to "Updated after". Test: `SearchView.test.tsx` filter
+  order (failed before). e2e search specs 6/6. Real graph probe `filters.mjs`: 61px apart.
+
 ## In flight
 
-- Q6 next.
+- Final pass: all touched specs in one run, `pnpm -r test`, `pnpm -r typecheck`, biome.
 
 ## Next steps
 
-Q6, with its failing test first. Then a final pass over all touched specs, `pnpm -r test`,
-`pnpm -r typecheck`.
+Report back.
 
 ## Decisions
 
