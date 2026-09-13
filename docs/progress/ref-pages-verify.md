@@ -45,7 +45,27 @@ Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-1`, e2e port 6410. Scratch
   that continues while B-442's client repair moves a refused page (caret stays, nothing lost) —
   both added to `e2e/tests/ref-pages.spec.ts`, 7/7.
 
+- Unit, on e4dfb0b: server 714/714 (713 at 3914262 + B-446's test), web 1,143/1,143, core
+  408/408, plugin-api 17/17; `pnpm -r typecheck` clean; biome clean on every file the branch
+  changed (the repo-wide `biome check .` reports older issues in HelpMenu.tsx, DiagnosticsPanel.tsx,
+  plugin-api and the Tauri gen schemas, none touched here).
+- Full Chromium e2e on 6410 at 3496234: 541 passed, 2 skipped, 0 failed (8.5 min).
+- Real graph, fresh copy served with e4dfb0b: "created 259 pages … in 52 ms", dev verify OK;
+  All pages' "Recently edited" top rows now mix real and minted pages by date (`home`, minted from
+  a block written today, first); `graph.overview` recent_pages likewise; the `#` popup offers the
+  minted `AcmeCorp`, Enter inserts `#AcmeCorp` and the caret stays; verify after writes OK
+  over 20,743 ops. `mirror_file` on the served copy: 916 rows = 916 files, no row for an empty page,
+  no non-empty page without one.
+- Observation, not fixed: `SyncClient` removes a refused page in one transaction and re-sends its
+  content in the next (`reapplyCaptured` after the callbacks) — a crash between the two would lose
+  that content. No await between them, so the window is one synchronous task.
+
 ## Next
 
 1. (done) B-445.
-2. Rerun unit suites, typecheck, biome, e2e subset; real-graph verify after writes.
+2. (done) unit suites, typecheck, biome, real-graph verify.
+3. (done) Second full Chromium e2e on e4dfb0b (the last code change): 541 passed, 2 skipped,
+   0 failed (8.4 min). Server suite on it: 714/714.
+
+Verification complete. Open for the coordinator: B-443, B-444 (from the branch), B-447, B-448,
+B-449 (from this pass).
