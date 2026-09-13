@@ -91,6 +91,11 @@ closes the palette: `.cm-content` is still in the DOM but "inactive" for the ful
 afterwards would go nowhere — the B-72 symptom that test was written for. The other 118 tests in
 journals/selection/context-menu/navigation/focus/phone/tasks/views passed in the same run.
 
+*Addendum (verification pass, 2026-09-13):* order-dependent. After `b4ed719` the whole of
+`views.spec.ts` passed 29/29 on 6407 — this test included — while the same test run alone
+(`-g "opening the palette while editing"`) failed 3/3 with the same "inactive" `.cm-content`. Still
+not diagnosed; it does not touch embeds.
+
 ---
 
 ### B-214 · Typing anywhere on a page collapses its embeds to the placeholder and back, and resets their expand toggles

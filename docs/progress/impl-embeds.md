@@ -99,4 +99,11 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
   target page, undo/redo of the host block, Enter on a focused row, zoomed host, phone width in dark.
 - Not fixed, noted: right-click on an embedded row opens the HOST block's menu (same as query hits);
   `nooklet serve --help` ignores `--help` and serves the default graph (B-217).
-- In flight: broader e2e on 6407 over the `BlockRowView`/`BlockTree` changes.
+- Broader e2e on 6407 after `b4ed719`: render, rendering, editing, parity, references, tasks, query,
+  shelf, shelf-outline, selection, popups, focus — 147/147; context-menu, navigation, remote-device,
+  history, assets, autocomplete, replace, refactor, templates, journals, link-unlinked, phone, views,
+  references-filters, trash, pages — 110 passed, 1 skipped (a `test.fixme`), 0 failed. embeds.spec
+  13/13. Web unit 710/710 twice; `pnpm -r typecheck` 0; biome clean on branch files except the
+  pre-existing `.vr-row` a11y error. `nooklet verify` on the probed graph copy: OK (20,478 ops).
+- B-213 addendum: passes inside a full views.spec run, fails 3/3 alone — order-dependent.
+- In flight: nothing. Verification done.
