@@ -78,3 +78,51 @@ Measured with a throwaway Playwright spec on `m9/clipboard-sync` (Backspace: sto
 title unchanged; Meta+x: the same). Only a pointerdown while EDITING ends the session
 (`BlockTree.tsx`'s capture-phase listener); a standing selection has no equivalent.
 
+### B-247 (existing)
+
+**Measured 2026-09-13 (clipboard-sync)** with `tools/probes/replica-busy-window.mjs` against a copy
+of the real graph (952 pages, 18.6k blocks), Chromium, on a machine shared with a dozen agents (so
+two runs differ). The loss window is the DB worker's event-loop lag — a heartbeat inside the worker
+records every gap over 50 ms:
+
+| phase | longest gap | total blocked |
+|---|---|---|
+| cold first load (fresh OPFS, bootstrap) | 1,835 / 2,070 ms | 2,081 / 2,659 ms |
+| warm reload | 222 / 271 ms | 343 / 419 ms |
+| plain typing, 201-block page | 127 / 1,602 ms | 127 / 3,175 ms |
+| `[[proj` popup search | 388 / 763 ms | 637 / 1,460 ms |
+
+End to end, **with no artificial load**, typing ` kept` into a fresh small page and reloading N ms
+later (reloaded page's text = the replica; server read 3 s later): 0 ms → replica `x kept`, server
+`x`; **100 ms → `x`, 300 ms → `x`** (the edit is gone from the replica, not merely unpushed); 700 ms
+→ replica `x kept`, server `x`; 1,500 ms → both `x kept`. So the pagehide flush is not a reliable
+hand-off even to an idle worker: its message is posted while the document unloads, and whether the
+worker runs it before it is torn down is a race the page right after a load (the worker still
+answering that load's queries) loses. The second half of what the probe shows — an op durable in
+the replica that the server never gets — is B-301.
+
+Also seen in the existing suite: `editing.spec.ts` "typing immediately after Enter is not
+discarded" failed once (after its reload, 1 row instead of 2) — consistent with this mechanism, not
+proven to be it.
+
+Test before the fix: `e2e/tests/reload-durability.spec.ts` "an edit queued behind a busy replica
+survives a reload after the text debounce (B-247)" and "... inside the text debounce (B-247)" — both
+fail on `cf08d19` + B-233/B-245 (server keeps `x`).
+
+---
+
+### B-301 · An edit written just before a reload never reaches the server until something else is edited
+
+**Status:** open · **Severity:** high (a device can hold an edit the server never gets; closing the
+tab and continuing on another device loses it there) · **Found:** 2026-09-13, clipboard-sync,
+measuring B-247 · **Test:** `e2e/tests/reload-durability.spec.ts` "an edit written just before a
+reload is pushed after it, with no further edit (B-301)"
+
+Type into a block, reload between ~0.5 s and ~0.8 s later (after the 500 ms text debounce handed the
+op to the worker, before the 300 ms push debounce that follows): the reloaded page shows the text —
+it is in the replica's `pending_op` outbox — but the server does not get it, 3 s later or ever,
+until a later local write anywhere schedules a push (the probe's "one more edit elsewhere" pushed
+it). `WorkerDb.start()` bootstraps, connects the live socket and pulls, and nothing at startup
+pushes an outbox left by a previous session; `schedulePush` is only called by `applyLocal` and by
+the online/visible/resume lifecycle events.
+

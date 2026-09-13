@@ -28,15 +28,26 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
   registration removed. Logged B-300 (Backspace/Cmd+X in the page title act on a standing block
   selection) in passing. Commit "feat(web): Cmd/Ctrl+X cuts a block selection (B-245)".
 
+- B-247 measured (`tools/probes/replica-busy-window.mjs`, numbers in the inbox entry): even an
+  idle-ish worker loses an edit reloaded 100–300 ms after typing; logged B-301 (an op durable in
+  the replica is never pushed after a reload until the next local write). Commit "docs(bugs):
+  measure the B-247 window; log B-301".
+
 ## 2. In flight
 
-(nothing)
+- `e2e/tests/reload-durability.spec.ts` (uncommitted until green): 3 tests, all FAIL before the
+  fix (verified). Fix plan:
+  1. B-301: `WorkerDb.start()` schedules a push when `pending_op` is not empty (+ unit test in
+     `db/worker-core.test.ts`).
+  2. B-247: new `db/unapplied-ops.ts` — a synchronous `localStorage` write-ahead copy of each
+     `applyOps` batch, keyed by page-load owner (held Web Lock = alive), removed when the worker
+     answers; at `initDb`, batches of dead owners are replayed through a new worker method that
+     skips op ids already in the replica's `op` table. Hook: `db/client.ts#applyOps` + `initDb`.
+  3. Proposal `docs/proposals/002-pending-edits-durability.md` with the options.
 
 ## 3. Next steps
 
-1. B-247: measure the window (worker round-trip latency during cold load / `[[` search on the real
-   graph copy); write-ahead journal of in-flight `applyOps` batches in `localStorage`, replayed at
-   `initDb` (op ids are HLCs, `applyOps` is idempotent per id — verify); proposal doc with options.
+1. B-247 / B-301 fix per "In flight".
 2. B-300 if time allows: end a standing selection on a pointerdown outside the outliner (same
    exclusions as the editing listener); probe spec kept in scratch
    (`zz-probe-selection-input.spec.ts`) → turn into a regression test.
@@ -49,3 +60,9 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
 - B-245: the cut deletes only after the clipboard write resolved (no clipboard → no delete). Not
   wired through `resolveCommand`, same as copy (spec note 11). Wiki shortcut page not regenerated
   (generated file; regenerate after merge).
+
+## 5. Environment notes
+
+- Real-graph copy: `<scratch>/graph/graph.sqlite` (sqlite3 .backup of the owner's graph, 952 pages,
+  18,628 blocks, op max seq 20,411). Served by `<scratch>/bin/serve-real.sh` on port 16402 (log
+  `<scratch>/server.log`); kill with `lsof -ti :16402 | xargs kill` when done.
