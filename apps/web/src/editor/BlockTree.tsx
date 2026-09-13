@@ -537,6 +537,12 @@ export function BlockTree(props: {
     // written is the difference from `before` — a `block.text` if the text moved, one `block.prop`
     // per property line added, changed or removed (B-101). Writing the buffer verbatim is what made
     // `/property` (and any typed property line) land in the text, where nothing reads it as one.
+    // A buffer that is exactly the block's own editing text is no edit, even where splitting it
+    // would not give the block back — a TEXT line shaped like `foo:: bar` (OUT-23a) splits out as a
+    // property. The undo that restores such a block rewrites the buffer, that rewrite comes back
+    // here as a change, and diffing it wrote the line as a property again half a second after the
+    // undo, which also emptied the redo stack (B-474).
+    if (before && content === editTextOf(before)) return;
     const payloads = blockTextPayloads(before ?? { content: "", properties: {} }, content);
     if (before && payloads.length === 0) return;
     const clock = clockSig();

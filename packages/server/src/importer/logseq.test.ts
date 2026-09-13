@@ -327,6 +327,60 @@ describe("importLogseqGraph: task markers, scheduling, nesting", () => {
     );
     expect(cChildren.map((r) => r.content)).toEqual(["d"]);
   });
+
+  // B-342 / OUT-23a made the outline parser un-escape `key\:: value`-shaped lines. A Logseq file's
+  // own property and timestamp lines carry no backslash, so they must import exactly as before.
+  it("still imports Logseq's property, SCHEDULED and LOGBOOK lines as such (OUT-23a)", async () => {
+    writeGraphFile(
+      "pages/Escapes.md",
+      [
+        "- TODO call mom",
+        "  owner:: [[Alice]]",
+        "  collapsed:: true",
+        "  SCHEDULED: <2026-09-20 Sun>",
+        "  :LOGBOOK:",
+        "  CLOCK: [2026-09-10 Thu 09:00:00]--[2026-09-10 Thu 09:30:00] =>  00:30:00",
+        "  :END:",
+        "  notes",
+        "\t- child",
+        "- a line written escaped",
+        "  scheduled\\:: 2026-09-21",
+        "",
+      ].join("\n"),
+    );
+
+    const stats = await importLogseqGraph(ctx, graphDir);
+    expect(stats.errors).toEqual([]);
+
+    const task = ctx.driver.get<{
+      id: string;
+      content: string;
+      marker: string;
+      collapsed: number;
+      scheduled_day: number | null;
+    }>(
+      "SELECT id, content, marker, collapsed, scheduled_day FROM block WHERE content LIKE 'call mom%'",
+    );
+    expect(task).toMatchObject({
+      content: "call mom\nnotes",
+      marker: "TODO",
+      collapsed: 1,
+      scheduled_day: 20260920,
+    });
+    const props = ctx.driver.all<{ key: string; value: string }>(
+      "SELECT key, value FROM block_prop WHERE block_id = ? ORDER BY key",
+      [task?.id],
+    );
+    expect(props.map((p) => [p.key, p.value])).toContainEqual(["owner", "[[Alice]]"]);
+
+    const escaped = ctx.driver.get<{ content: string; scheduled_day: number | null }>(
+      "SELECT content, scheduled_day FROM block WHERE content LIKE 'a line written escaped%'",
+    );
+    expect(escaped).toEqual({
+      content: "a line written escaped\nscheduled:: 2026-09-21",
+      scheduled_day: null,
+    });
+  });
 });
 
 describe("importLogseqGraph: per-page failure isolation", () => {
