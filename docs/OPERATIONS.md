@@ -192,6 +192,9 @@ nooklet gc --no-backup        # skip the automatic pre-GC backup (not recommende
 nooklet gc --asset-grace 30   # only count an asset as orphaned after 30 unreferenced days (default 7)
 ```
 
+`gc` and `restore` refuse a flag they do not know (`nooklet: unknown flag --dryrun`) instead of
+ignoring it and running for real; `--flag=value` works too (`--dry-run=true`, `--asset-grace=30`).
+
 `nooklet gc` does two independent things: trim the op log (this section) and remove orphan
 assets (§6.1). The asset half runs even when the op-log half is refused.
 

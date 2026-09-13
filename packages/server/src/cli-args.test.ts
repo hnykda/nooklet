@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseArgs } from "./cli-args.js";
+import { CliArgError, checkFlags, parseArgs, parseGcFlags } from "./cli-args.js";
 
 describe("parseArgs", () => {
   it("separates positionals from flags and takes the next token as a flag's value", () => {
@@ -20,5 +20,46 @@ describe("parseArgs", () => {
     expect(a.flags.get("mirror")).toBe(false);
     expect(a.flags.has("no-mirror")).toBe(false);
     expect(a.flags.get("port")).toBe("1");
+  });
+
+  it("--flag=value is the flag with that value, split at the first =", () => {
+    const a = parseArgs(["serve", "--port=6100", "--host=http://x/?a=b"]);
+    expect(a.flags.get("port")).toBe("6100");
+    expect(a.flags.get("host")).toBe("http://x/?a=b");
+    expect(a.flags.has("port=6100")).toBe(false);
+  });
+});
+
+describe("parseGcFlags (B-109 follow-up: gc's flags went through a grammar that changed under them)", () => {
+  const gc = (...argv: string[]) => parseGcFlags(parseArgs(["gc", ...argv]));
+
+  it("--no-backup skips the backup (it used to read a 'no-backup' key that no longer existed)", () => {
+    expect(gc("--no-backup")).toEqual({ dryRun: false, noBackup: true, assetGraceDays: undefined });
+    expect(gc()).toEqual({ dryRun: false, noBackup: false, assetGraceDays: undefined });
+  });
+
+  it("--dry-run=true is a dry run, not a key called 'dry-run=true' that left gc destructive", () => {
+    expect(gc("--dry-run=true").dryRun).toBe(true);
+    expect(gc("--dry-run").dryRun).toBe(true);
+    expect(gc("--dry-run=false").dryRun).toBe(false);
+  });
+
+  it("refuses what it does not understand rather than running gc for real", () => {
+    expect(() => gc("--dryrun")).toThrow(CliArgError);
+    expect(() => gc("--dry-run=maybe")).toThrow(/--dry-run/);
+    expect(() => gc("--asset-grace")).toThrow(/--asset-grace/);
+    expect(() => gc("--asset-grace", "-1")).toThrow(/--asset-grace/);
+    expect(gc("--asset-grace=0", "--data", "/tmp/g").assetGraceDays).toBe(0);
+  });
+});
+
+describe("checkFlags", () => {
+  it("names every flag outside the known set", () => {
+    expect(() => checkFlags(parseArgs(["restore", "x", "--forse"]), ["data", "force"])).toThrow(
+      "unknown flag --forse",
+    );
+    expect(() =>
+      checkFlags(parseArgs(["restore", "x", "--force"]), ["data", "force"]),
+    ).not.toThrow();
   });
 });

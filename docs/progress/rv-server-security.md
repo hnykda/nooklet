@@ -52,9 +52,15 @@ start, you were restarted: read it, then continue from "Next steps".
   worktree: `e`→2,000 chars peak rss 1,091 MB → 209 MB; with `max_blocks: 20000` it used to
   succeed at 2,001 MB writing 250,949-char blocks, now 413 `block_too_long`.
 
+- F5 hash `8ddae71`.
+- F6 (B-109 existing) — commit "fix(cli): gc --no-backup and --flag=value work; gc and restore
+  refuse unknown flags". Red: on a graph copy the old CLI took a backup under `--no-backup` and
+  `--dry-run=true` dropped 20,404 ops; 5 cli-args tests. Green: 58 files / 542; CLI rerun on a
+  fresh copy behaves. `graph-gc/` in scratch is disposable (gc ran on it).
+
 ## 2. In flight
 
-- F6.
+- F7.
 
 ## 3. Next steps, in order
 

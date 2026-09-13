@@ -142,11 +142,25 @@ large (maximum depth 1000)"). Query fences are block content, sync to every devi
 ---
 
 ### B-109 (existing)
-**Status:** open (regression of the B-109 fix) · **Severity:** low · **Found:** 2026-09-13, server security review (F6) ·
-**Test:** —
+**Status:** fixed (a regression of the B-109 fix, fixed again) · **Severity:** low · **Found:**
+2026-09-13, server security review (F6) · **Test:** `packages/server/src/cli-args.test.ts`
+"parseGcFlags (B-109 follow-up …)", "--flag=value is the flag with that value, split at the first
+=", "checkFlags"
 
 Follow-up: B-109's fix (`--no-x` becomes `flags.x = false`) left `nooklet gc` reading
 `flags.get("no-backup")`, a key that no longer exists, so the documented `--no-backup` silently did
 nothing (fails safe: a backup was always taken). The grammar also never split `--flag=value`, so
 `nooklet gc --dry-run=true` became a flag named `dry-run=true`, `dryRun` was false, and gc dropped
 ops and unlinked orphan assets — the flag meant to make gc safe ran the destructive action.
+
+**Fixed 2026-09-13.** `cli-args.ts`: `parseArgs` splits `--flag=value` at the first `=`;
+`parseGcFlags` maps gc's flags (`noBackup` is `backup === false`) and lives beside the grammar so
+the wiring is tested, not buried in `cli.ts`'s module body; `checkFlags` makes `gc` and `restore`
+refuse any flag they do not know; `booleanFlag` accepts bare, `--no-x` and `=true|false|yes|no|1|0`
+and rejects anything else. Reproduced first on a copy of the owner's graph with the old code:
+`nooklet gc --no-backup` wrote `backups/nooklet-backup-….tar.gz`, and `nooklet gc --dry-run=true`
+dropped 20,404 of 20,411 ops. With the fix, on a fresh copy: `--dry-run=true` says "would drop" and
+the op table keeps 20,411 rows, `--dryrun` stops with `nooklet: unknown flag --dryrun`, and
+`--no-backup` takes no backup. `docs/OPERATIONS.md` §5 says so. Tests: `cli-args.test.ts`
+"parseGcFlags (B-109 follow-up: gc's flags went through a grammar that changed under them)" (3),
+"--flag=value is the flag with that value, split at the first =", "checkFlags".
