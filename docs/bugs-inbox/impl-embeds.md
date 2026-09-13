@@ -124,7 +124,7 @@ y, the unfolded row stays open, and the query block's 78 → 45 px flicker is go
 ---
 
 ### B-215 · Shift+click on an embedded row shelves a card that says "This block is gone."
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
 `m8/impl-embeds` (reading `BlockTree.tsx#onShelfOpen`, then reproduced in Chromium) · **Test:**
 `e2e/tests/embeds.spec.ts` "Shift+click on an embedded row shelves that block, from its own page
 (B-215)"
@@ -136,4 +136,9 @@ HOST page, not the page the block lives on. `Shelf.tsx#BlockCard` then reads the
 does not find the block, and the card is titled with the host page and reads "This block is gone."
 (seen in the e2e test: `" Embed Host Shelf RowThis block is gone."`). The component test only
 checked the call's `{ kind, id }` against a mock, so it passed.
+
+**Fixed 2026-09-13.** `render/tokens.tsx#NavigateTarget`'s block kind takes an optional `pageId`;
+`EmbedRow` passes the embedded page's id (`EmbedData.page.id`) and `BlockTree#onShelfOpen` uses it
+before falling back to its own `props.pageId`. The e2e test failed before (card text above) and
+passes after; `embed.test.tsx`'s Shift+click case now asserts the page id too.
 

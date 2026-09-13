@@ -170,7 +170,8 @@ describe("a block embed", () => {
     const { container } = renderContent("{{embed ((list))}}", { onNavigate, onShelfOpen });
     const items = await rows(container, 3);
     fireEvent.click(items[1]?.querySelector(".vr-embed-row") as HTMLElement, { shiftKey: true });
-    expect(onShelfOpen).toHaveBeenCalledWith({ kind: "block", id: "milk" });
+    // With the block's own page: the shelf is opened from the HOST page's tree (B-215).
+    expect(onShelfOpen).toHaveBeenCalledWith({ kind: "block", id: "milk", pageId: "P" });
     expect(onNavigate).not.toHaveBeenCalled();
   });
 

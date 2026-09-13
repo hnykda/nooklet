@@ -54,7 +54,16 @@ import { assetUrl } from "./asset-url.js";
 import { canHighlight, highlightCode, highlightSync } from "./highlight.js";
 import { loadMath, renderTexSync } from "./math.js";
 
-export type NavigateTarget = { kind: "page"; name: string } | { kind: "block"; id: string };
+export type NavigateTarget =
+  | { kind: "page"; name: string }
+  | {
+      kind: "block";
+      id: string;
+      /** The block's own page, when the renderer knows it. An embedded row does (`./EmbedView.tsx`),
+       * and must say so: the tree it is drawn inside belongs to the HOST page, and a shelf card
+       * given that page's id cannot find the block (B-215). */
+      pageId?: string;
+    };
 export type Navigate = (t: NavigateTarget) => void;
 
 export interface RenderCtx {

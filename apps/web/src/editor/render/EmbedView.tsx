@@ -215,6 +215,7 @@ function EmbedOutline(props: Props & { data: Extract<EmbedData, { page: unknown 
             {(id) => (
               <EmbedRow
                 id={id}
+                pageId={props.data.page.id}
                 node={() => byId().get(id)}
                 depth={rows().depth.get(id) ?? 0}
                 open={(() => {
@@ -252,6 +253,8 @@ function EmbedRow(props: {
   /** The `<For>` key itself — a plain string, so nothing derived from it is re-evaluated when a
    * re-read replaces the node objects. */
   id: string;
+  /** The page the embedded block lives on — not the host's (B-215). */
+  pageId: string;
   node: () => BlockTreeNode | undefined;
   depth: number;
   open: boolean;
@@ -272,7 +275,7 @@ function EmbedRow(props: {
     // row is a way to the embedded block, not into the block that embeds it.
     halt(e);
     if (e.shiftKey && props.ctx.onShelfOpen) {
-      props.ctx.onShelfOpen({ kind: "block", id: props.id });
+      props.ctx.onShelfOpen({ kind: "block", id: props.id, pageId: props.pageId });
       return;
     }
     props.ctx.onNavigate?.({ kind: "block", id: props.id });

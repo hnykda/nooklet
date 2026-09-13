@@ -94,6 +94,24 @@ test("clicking an embedded row opens that block; clicking the frame edits the ho
   await expect(page.locator(".vr-embed-item").first()).toBeVisible();
 });
 
+test("Shift+click on an embedded row shelves that block, from its own page (B-215)", async ({
+  page,
+}) => {
+  const { embed } = await openBlockEmbed(page, "Embed Host Shelf Row");
+  await embed
+    .locator(".vr-embed-item", { hasText: "call bob" })
+    .locator(".vr-embed-row")
+    .click({ modifiers: ["Shift"] });
+  const card = page.locator(".app-shelf .shelf-card").first();
+  await expect(card).toBeVisible();
+  // The card reads the block from the page it lives on, not the page the embed is written on.
+  await expect(card).not.toContainText("This block is gone.");
+  await expect(card.locator(".shelf-block-text").first()).toHaveText("call bob");
+  await expect(card).toContainText(SOURCE);
+  // Shelving is not navigating.
+  await expect(page).toHaveURL(/\/page\/Embed%20Host%20Shelf%20Row$/);
+});
+
 test("typing elsewhere on the page leaves an embed in place, unfolded rows included (B-214)", async ({
   page,
 }) => {
