@@ -102,6 +102,34 @@ the scratch dir. Checked by eye: nesting, breadcrumbs, DONE strike, stored folds
 - Docs: `docs/bugs-inbox/references-render.md` (B-550 fixed paragraph, B-551 logged); probes
   `tools/probes/references-render-real-graph.mjs`, `tools/probes/references-shape-real-graph.sql`.
 
+## Adversarial verification (2026-09-13, separate agent)
+
+On a fresh `.backup` copy of the graph (`scratchpad/m11e/verify-data`), server on 6424, real Chromium:
+
+- Checked and holding: nested rendering and stored folds (`@Alex` ref `1m287mdbejacty` folded, toggle
+  opens 19 rows, `collapsed` still 1, op count unchanged); a child row, a breadcrumb step and Enter
+  on a row open the right block; sort, include/exclude filter (756/91 → 23/23 → 733/151 → back),
+  "Show more" on `task` (one 52 ms stall for 200 more), unlinked mentions (`@Alex`: 465, first row
+  106 ms after opening); no block rendered twice as a top-level row on any of 11 busy pages; no
+  fallback rows; phone width (390 px) has no horizontal scroll; typing in bursts on `@Alex` and
+  `weekly review` with the panel open: no stall over 50 ms, no input event over 16 ms; live
+  API writes: a new child folds under its reference in ~90 ms, a new reference appears as a row,
+  a deleted child disappears (one fallback-row flash of the new/deleted child was seen once and
+  not reproduced in 25 further insert/delete cycles).
+- Probe `tools/probes/references-render-real-graph.mjs` back to back: baseline (`967d563` build)
+  first row 71–99 ms; branch with the fix below 90–152 ms; no stalls either way; rows kept on refetch.
+- **Defect found and fixed: B-552** — a breadcrumb step whose parent is a heading (`## 🔖 Articles`),
+  a fence or empty rendered as an empty span (94 steps on 62 pages). `73c9061`.
+- Not changed, worth the owner's eye: the filter matches a block's own first-line refs (pre-existing),
+  so excluding a page leaves the children of its blocks as rows whose breadcrumb names the excluded
+  page; a breadcrumb step that is entirely a `[[page]]` link opens the page, and the parent block is
+  then reachable only by keyboard (Enter on the step).
+- Tests after the fix: `pnpm --filter @nooklet/web test` 141 files / 1160 tests; web typecheck clean;
+  biome clean on changed files; e2e (port 6423, chromium) references-render, references,
+  link-unlinked, embeds, references-filters, references-cap, views, render-views, tagged-pages 66/66;
+  pages, render-views(-phone), navigation, journals, follow-link(-popup), popups, shelf(-outline),
+  tasks, parity 116/116.
+
 ## In flight
 
 - nothing.
