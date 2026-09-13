@@ -63,6 +63,15 @@ never `docs/BUGS.md`.
   (m11/remote-rewrite changes the effect). Web unit 1151/1151; e2e 156/156 across 16 editing-heavy
   specs. Measured (rows "after + row equality" below).
 
+- `935d1fb` row-memo equality committed.
+- Journals view checked on the real-graph copy (`tools/probes/refresh-journals-flash.mjs`, HEAD
+  `935d1fb`): 256 rows on screen, 5 pulls writing a block in the first day (the owner's real
+  `((ref))` block, shown as "travel/trip-planning"): no region or row but the written one ever showed a
+  second text, the written row went straight between its two texts (never `((id))`), 0 rows / date
+  chips / property rows / agenda items / sidebar entries created; 5 `.vr-block-ref` created = the
+  written block's own label re-rendering with its text. Chromium and WebKit identical. Page probe
+  in WebKit on HEAD: `Ref Heavy` and `2022-12-16` 0 flashed snapshots, 4 records per refresh.
+
 ## Measurements (per refresh, averages of 5)
 
 Real-graph copy (`<scratch>/graph`, backup of the owner's graph 2026-09-13 17:42), `nooklet serve`
@@ -102,8 +111,8 @@ After the row-memo equality (same probe, `<scratch>/after-rows.json`): `rowBlock
 
 ## In flight
 
-- Final checks: broader e2e, webkit spec, `nooklet verify` not needed (no sync/ops/schema touched),
-  inbox B-500 test list.
+- Final checks: full e2e in batches (chromium), webkit spec, inbox B-500 test list.
+  `nooklet verify` not run: nothing in sync, ops or schema changed.
 
 ## How to resume
 
