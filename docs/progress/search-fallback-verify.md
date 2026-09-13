@@ -4,7 +4,7 @@ Verifier's resilience log. Branch `m11/search-fallback` from `be81345`, worktree
 `.claude/worktrees/wf_b8e786c1-020-3`. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11b/search-fallback-verify/`
 (`data/` = NOOKLET_DATA, `graph/` = `.backup` of the owner's graph taken 18:23, `sidecar-graph/` =
-`.backup` of `graph/` after indexing). E2E/serve port 6418 only. Bug numbers used: B-525..B-528.
+`.backup` of `graph/` after indexing). E2E/serve port 6418 only. Bug numbers used: B-525..B-529 (range exhausted).
 
 ## Done (committed)
 
@@ -12,6 +12,7 @@ Verifier's resilience log. Branch `m11/search-fallback` from `be81345`, worktree
 - `c129d3a` B-525 logged; `6de438e` fixed (note's Try again / Check again keep keyboard focus).
 - `4afa983` B-526 fixed (e2e "not set up" test collided with search-cleared.spec's "Quokka" page).
 - `17f36dc` B-527, B-528 logged open (Settings panel, pre-existing).
+- B-529 logged open (plugin data API `semantic()` unbounded query embed; code reading only).
 
 ## Author's claims, re-checked independently
 
@@ -51,11 +52,33 @@ Verifier's resilience log. Branch `m11/search-fallback` from `be81345`, worktree
   objects, and a `{" "}` string in each item's fragment that Solid re-creates, moving the button.
 - B-526 (fixed): e2e test isolation, see inbox.
 - B-527 / B-528 (open): Settings panel wording in the failed-backfill state; no auto-refresh.
-- Not logged, noted: `data-api.ts#semantic` (plugin API) still embeds with the unbounded
-  `embedQueryVector` — B-522's hang in a sibling path, by code reading only (not reproduced). The
-  Settings panel does not move focus into itself or restore it on close (pre-existing, all openers).
+- B-529 (open): `data-api.ts#semantic` (plugin API) still embeds with the unbounded
+  `embedQueryVector` — B-522's hang in a sibling path, by code reading only (not reproduced).
+- Not logged, noted: the Settings panel does not move focus into itself or restore it on close
+  (pre-existing, same for every opener, not something this branch changed).
 
-## Next
+## Suites (after the verifier's commits)
 
-1. Full server + web unit suites, `pnpm -r typecheck`, biome.
-2. Full Chromium e2e in chunks (≤ 10 min each) on 6418.
+- server 688/688 (84 files); web 1154/1154 (139 files, +1 B-525); `pnpm -r typecheck` exit 0; biome
+  clean on the 14 code files the branch changed (DiagnosticsPanel.tsx has pre-existing biome errors,
+  untouched here).
+- e2e `search-fallback.spec.ts` (4): Chromium 4/4; WebKit 4/4 through a throwaway config (not
+  committed — the WebKit project only matches `storage.spec.ts`).
+- Full Chromium e2e, run in four chunks of spec files on 6418 (a single run exceeds the 10-minute
+  foreground limit): 148 passed + 1 skipped; 110 passed + 1 failed; 139 passed; 139 passed + 1
+  failed + 1 skipped. The two failures — `journals.spec.ts` "clicking a search result opens the page
+  it came from" (target page stuck on "Loading…") and `review-reactivity.spec.ts` "a failed Older
+  changes…" (25 history batches, expected 26) — both passed when re-run (journals: chunk re-run and
+  alone; review-reactivity: alone, 7/7). The chunk-2 re-run failed a different test instead,
+  `pages.spec.ts` "a page created through the API appears in the open sidebar without a reload",
+  which passed alone (14/14). None touches code this branch changed; recorded as flaky under load
+  (load average 15–130 during the runs), not proven pre-existing on main.
+- `pnpm nooklet verify` not run: no op, sync or schema code changed.
+
+## Still unverified
+
+- The installed desktop app itself was not launched; the sidecar was run by hand the way `main.rs`
+  spawns it (`env -i`, cwd `/`).
+- Nothing exercised `model_missing` / `query_embedding_failed` against a real Ollama (the author's
+  stub-server http tests cover them).
+- The three flaky e2e tests above were not run on 52e5d20 to show they are flaky there too.

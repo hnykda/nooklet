@@ -191,3 +191,16 @@ branch author during the real-graph backfill, not logged then) · **Test:** none
 no timer, `apps/web/src/views/SettingsPanel.tsx`); it refetches only on Refresh, after a save, and
 after Re-index. During a 7–8 minute backfill of the owner's graph "0 embedded · 19586 still queued"
 stays on screen until Refresh is pressed, which reads as stuck. Not changed here.
+
+---
+
+### B-529 · The plugin data API's `semantic()` still embeds its query with no time bound (B-522's hang, sibling path)
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, search-fallback verify (code reading
+only — not reproduced) · **Test:** none
+
+B-522 bounded the `search` op's query embed (`embedQueryForSearch`, 15 s). `data-api.ts#semantic`
+— what a plugin's `ctx.data.semantic(text)` reaches — still calls `embedQueryVector(driver, model,
+text)` with no signal at all, so against a host that accepts the connection and never answers it
+waits for undici's 300 s header timeout, exactly as `search` did before. No plugin shipped in this
+repo calls it (`grep '\.semantic('` outside tests finds nothing), which is why this is low and
+unreproduced. Not changed here.
