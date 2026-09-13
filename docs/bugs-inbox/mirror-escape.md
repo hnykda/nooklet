@@ -177,3 +177,17 @@ strings) is written `- a<U+2028>b`, and read back as a plain paragraph block who
 A task loses its marker and id the same way. Lines after line 1 are fine (they are continuation
 lines by indent). Same on the base code (`52e5d20`), so not B-342's change. Owner's graph copy: 0
 blocks contain either character.
+
+---
+
+### B-476 · A block whose text ends in ` ^` plus 14 id-like characters comes back from the mirror with that text turned into its id
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, mirror-escape-verify (property test
+of OUT-23a) · **Test:** none yet (kept out of `packages/core/src/outline-escape.property.test.ts`)
+
+A block with no id whose text is `see ^1k7f3q9xz2hav4` is written `- see ^1k7f3q9xz2hav4` (always
+with `ids: "none"` — copy, `block.update`'s `before`) and read back as the text `see` with the id
+`1k7f3q9xz2hav4`; a text line 1 of ` ^1k7f3q9xz2hav4 ` (trailing space) is text on the first read
+and an id on the next. `docs/spec/mcp-tools.md` §3.2 rule 5 says such text "is escaped as ` \^…` on
+output and unescaped on input"; `outline.ts` implements no such escape. Same class as B-342 (OUT-23a
+would be the natural shape for it). Same on the base code (`52e5d20`). Owner's graph copy: 0 blocks
+whose text ends like that.

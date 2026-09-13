@@ -55,11 +55,17 @@ branch code, `reimport/` = that mirror re-imported, `outline-base.ts` = `52e5d20
   the undo one red with only the first half), web `editText.test.ts` +1 (red before). Web unit
   1139/1139, typecheck clean, biome clean.
 
-## In flight
-
-- Whole Chromium e2e suite in chunks on port 6413 (flushPendingEdit is on every typing path).
+- Property test `packages/core/src/outline-escape.property.test.ts` (2, fast-check, fixed seeds,
+  3000 runs each): random shaped content round-trips under every head/id/property; any outline text
+  is a fixed point of serialize -> parse. First red on base `outline.ts` (counterexample `foo::`),
+  second holds on both. Found B-476 (text ending ` ^id`, pre-existing; spec rule 5 promises an
+  escape that is not implemented), logged.
+- E2E, whole Chromium suite in 4 chunks on port 6413 with the B-474 fix (each chunk its own server,
+  `a-fresh-journal.spec.ts` prepended to chunks 2-4 because of B-473): 541 distinct tests — 536
+  passed, 3 failed, 2 skipped. The 3: `focus.spec.ts` R22 Alt+Up/Down (no typing, not on the
+  changed path; focus.spec 30/30 alone), `page-icons.spec.ts` "only the first grapheme",
+  `pages.spec.ts` "Recent list" (17/17 alone). Load.
 
 ## Next steps
 
-1. Finish e2e chunks; rerun any failure once alone before debugging.
-2. Report: verdict fixed-up.
+None — verification done; report verdict fixed-up.
