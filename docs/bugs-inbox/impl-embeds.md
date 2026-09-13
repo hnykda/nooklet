@@ -145,9 +145,9 @@ passes after; `embed.test.tsx`'s Shift+click case now asserts the page id too.
 ---
 
 ### B-216 · A web link inside an embedded row does not open; the click goes to the block instead
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
 `m8/impl-embeds` on a copy of the owner's graph · **Test:** `e2e/tests/embeds.spec.ts` "a web link
-inside an embedded row opens the link, not the block (B-216)"
+inside an embedded row opens the link, not the block (B-216)" and `apps/web/src/editor/render/embed.test.tsx` "a web link in a row keeps its own default…"
 
 The owner's 2024-09-29 embed carries a row that is just a Mattermost URL. Clicking that link on its
 own page (2024-09-26, zoomed to the block) opens it in a new tab; clicking the same link inside the
@@ -158,4 +158,9 @@ href target=_blank>`'s own navigation; only `[[page]]` links survived, because `
 click first. Enter on a focused link inside a row had the same fate through the row's `keydown`.
 The query fence's result rows (`QueryFenceView.tsx#HitView`) have the identical handler, so their
 links are presumably dead too — not reproduced, not fixed here.
+
+**Fixed 2026-09-13.** `EmbedRow#go` returns early for a click or Enter whose target is inside an
+`a[href]`, stopping propagation (so the host does not enter edit mode) without `preventDefault`. Both
+tests failed before the change (the e2e test timed out waiting for the tab; the component test's
+`fireEvent.click` returned `false`) and pass after.
 

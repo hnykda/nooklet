@@ -112,6 +112,26 @@ test("Shift+click on an embedded row shelves that block, from its own page (B-21
   await expect(page).toHaveURL(/\/page\/Embed%20Host%20Shelf%20Row$/);
 });
 
+test("a web link inside an embedded row opens the link, not the block (B-216)", async ({
+  page,
+  context,
+}) => {
+  // Never leave the machine: the "site" is answered locally.
+  await context.route("https://example.com/**", (r) => r.fulfill({ status: 200, body: "b216" }));
+  await seedPage(page, "Embed Link Source", "- links\n  - read https://example.com/b216 later");
+  const id = await blockId(page, "Embed Link Source", "links");
+  const outliner = await openPage(page, "Embed Link Host", `- {{embed ((${id}))}}`);
+  const link = outliner.locator(".vr-embed-item a.vr-link");
+  await expect(link).toBeVisible();
+
+  const popup = context.waitForEvent("page");
+  await link.click();
+  expect((await popup).url()).toBe("https://example.com/b216");
+  // The app stayed where it was, and did not drop the host into edit mode either.
+  await expect(page).toHaveURL(/\/page\/Embed%20Link%20Host$/);
+  await expect(page.locator(".cm-content")).toHaveCount(0);
+});
+
 test("typing elsewhere on the page leaves an embed in place, unfolded rows included (B-214)", async ({
   page,
 }) => {

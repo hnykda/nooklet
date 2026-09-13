@@ -164,6 +164,35 @@ describe("a block embed", () => {
     expect(onHostClick).toHaveBeenCalledTimes(1);
   });
 
+  it("a web link in a row keeps its own default: no navigation to the block, no host edit (B-216)", async () => {
+    fake.set("block:links", {
+      status: "block",
+      page: PAGE,
+      node: node("links", "see https://example.com/b216"),
+    });
+    const onNavigate = vi.fn();
+    const onHostClick = vi.fn();
+    const content = "{{embed ((links))}}";
+    const { container } = render(() => (
+      // biome-ignore lint/a11y/noStaticElementInteractions: stands in for the host `.vr-block-view`, whose click enters edit mode.
+      // biome-ignore lint/a11y/useKeyWithClickEvents: test double.
+      <div onClick={onHostClick}>
+        <BlockContentView
+          content={classifyBlockContent(content)}
+          ctx={{ source: content, onNavigate }}
+        />
+      </div>
+    ));
+    await rows(container, 1);
+    const link = container.querySelector(".vr-embed-item a.vr-link") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("https://example.com/b216");
+    // `fireEvent` returns false when a handler called preventDefault — i.e. the tab would not open.
+    expect(fireEvent.click(link)).toBe(true);
+    expect(fireEvent.keyDown(link, { key: "Enter" })).toBe(true);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(onHostClick).not.toHaveBeenCalled();
+  });
+
   it("Shift+click on a row shelves the block instead of navigating", async () => {
     const onNavigate = vi.fn();
     const onShelfOpen = vi.fn();

@@ -271,6 +271,14 @@ function EmbedRow(props: {
   const hasChildren = (): boolean => (props.node()?.children.length ?? 0) > 0;
 
   const go = (e: MouseEvent | KeyboardEvent): void => {
+    // A real link inside the row (`https://…`, an asset) keeps its own default — the tab it opens.
+    // `halt` below would cancel it and send the click to the block instead (B-216). Stopped all the
+    // same, or the host would take the click as "edit me". `[[page]]` links never get here:
+    // `NavLink` stops its click first.
+    if (e.target instanceof Element && e.target.closest("a[href]")) {
+      e.stopPropagation();
+      return;
+    }
     // Before anything else: the host `.vr-block-view` treats a click as "edit me", and an embedded
     // row is a way to the embedded block, not into the block that embeds it.
     halt(e);
