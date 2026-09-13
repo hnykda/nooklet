@@ -43,9 +43,17 @@ Nothing uncommitted.
 
 ## 3. Next steps, in order
 
-1. Final: `pnpm -r test`; e2e dates + neighbours on 6400 (popups, tasks, selection, templates,
-   query, shelf, context-menu, phone, focus, editing, views, journals).
-2. Report.
+Task complete on this branch. Final numbers (2026-09-13 ~08:50):
+- e2e on 6400, 14 specs (dates, popups, tasks, selection, templates, query, shelf, context-menu,
+  phone, focus, editing, views, journals, rendering): 189 passed, 1 skipped (pre-existing skip in
+  context-menu.spec.ts:200), 0 failed.
+- Unit: core 336/336, plugin-api 17/17, server 522/522; apps/web 720/720 on the last 3
+  consecutive runs (earlier runs hit the B-144 load flakes — also present without this branch).
+- `pnpm -r typecheck` clean. `pnpm nooklet verify` on a fresh import of the real Logseq graph: OK.
+
+Left for later / other owners: B-142 (undo of store-routed task commands, needs a seam in
+`BlockTree.tsx`), the journal-day "Scheduled and deadline" section (audit §2 #1), repairing the
+20 already-imported blocks in the owner's live graph (B-143; re-import or a one-off fix).
 
 ## 4. Decisions (and why)
 
@@ -72,9 +80,11 @@ Nothing uncommitted.
 
 ## 5. Known limits (not done)
 
-- A date set through the picker is not on the editor's undo stack (Cmd+Z does not revert it) —
-  same as every `ctx.store` task command (priority, markers from the palette). Not verified by a
-  test; not logged as a bug (behaviour shared with existing commands, unchanged here).
+- A date set through the picker is not on the editor's undo stack — verified by probe, logged as
+  B-142 (open). The same gap in the other `ctx.store` task commands is by code reading only.
+- `biome check apps/web/src/editor/BlockRowView.tsx` reports one `noStaticElementInteractions`
+  error on the row `<div onContextMenu>` — pre-existing at `da85cfb` (checked in the main
+  checkout), not touched here.
 - Mobile/IME: a virtual keyboard that sends `beforeinput` without real `keydown`s would type into
   the block rather than the picker. The grid and buttons work by touch. Not tested on a device.
 - The journal day "Scheduled and deadline" section (audit §2 #1) is a different item — not
