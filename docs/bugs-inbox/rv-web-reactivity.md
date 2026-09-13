@@ -77,8 +77,10 @@ component test ran the real `useQueryResults` over a rejecting `queryAs` and fai
 ---
 
 ### B-132 · A page's History skips changes when the graph changes during "Older changes", and Restore skips them too
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, web reactivity review (F4) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, web reactivity review (F4) ·
+**Tests:** `e2e/tests/review-reactivity.spec.ts` "History lists every batch when the graph changes
+while Older changes is loading (B-132)"; `apps/web/src/data/history.test.ts` "a refresh that lands
+while an older page is in flight leaves no hole in the timeline"
 
 Click "Older changes" while an agent or another device writes anything: the timeline can come back
 with a hole (reviewer's model: `32,31,30,29,28` then `25,24,…` — 27 and 26 never shown, and later
@@ -89,6 +91,14 @@ the batches it lists, so it skips the hidden ones and still reports "Restored".
 resolves; an in-flight `loadMore` then appends its page (fetched from the old cursor) on top of the
 new first page. The server cursor is "older than seq X", so the k batches between the new first
 page's end and the old cursor are lost.
+
+**Fixed 2026-09-13.** `usePageHistory` keeps a generation counter, bumped when a first page lands
+(the moment the appended pages are dropped); `loadMore` captures it before its request and drops
+its answer if it changed, so the next click pages on from the new first page. Reproduced first in a
+real browser: the e2e case holds the cursor request with `page.route`, appends two batches through
+the API, lets the refresh land, then releases — against the unfixed client the listed batch ids
+were missing exactly the two between the new first page and the old cursor; with the fix all 33
+are listed in order. The unit case failed with `gaps = [27, 26]`.
 
 ---
 

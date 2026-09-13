@@ -28,17 +28,23 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   `editor/render/QueryFenceView.test.tsx` (real resource, rejecting queryAs) failed first. e2e
   query + render — 14/14 (no e2e for the failure itself: nothing found that makes the worker
   query reject in a browser). Web unit 695/695.
+- F4 / B-132 — generation counter in `usePageHistory` (`data/history.ts`); unit case in
+  `data/history.test.ts` failed first (gaps 27, 26); e2e case in `review-reactivity.spec.ts`
+  failed against the unfixed history.ts (2 batch ids missing) and passes with it. e2e
+  review-reactivity (4) + history (6) — 10/10. Web unit: 693 + 3 load-flaky failures
+  (`page-title.test.ts` 5 s timeout, `render-seams.test.tsx` query-fence `waitFor` 1 s on the
+  first lazy import; load average 44) — render-seams rerun 3× alone: pass, fail, pass.
 
 ## In flight
 
-- F4: generation counter in `usePageHistory.loadMore`.
+- F5: `queries.ts` nested hits only when actually emitted.
 
 ## Next steps, in order
 
 1. (done) F1.
 2. (done) F2.
 3. (done) F3.
-4. F4 — generation counter in `usePageHistory.loadMore`; `data/history.test.ts`.
+4. (done) F4.
 5. F5 — `queries.ts` nested hits only when actually emitted; `queries.test.ts`.
 6. F6 — catch in Older changes; `HistoryView` test.
 7. F7 — `FindReplaceView` live input + disable while stale/loading; component test.

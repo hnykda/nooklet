@@ -305,6 +305,10 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
   const [tailCursor, setTailCursor] = createSignal<string | undefined>(undefined);
   const [tailHasMore, setTailHasMore] = createSignal<boolean | undefined>(undefined);
   const [loadingMore, setLoadingMore] = createSignal(false);
+  // Which first page the appended older pages belong to. Bumped whenever a first page lands and
+  // the appended ones are dropped, so a `loadMore` that was already in flight can tell that its
+  // page no longer lines up (B-132, below).
+  let generation = 0;
 
   const [first, { refetch }] = createResource(
     () => {
@@ -315,6 +319,7 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
     async ({ value: n }) => {
       const page = await fetchPageHistory(n);
       // A fresh first page invalidates whatever older pages were appended under the previous one.
+      generation++;
       setExtra([]);
       setTailCursor(undefined);
       setTailHasMore(undefined);
@@ -334,8 +339,15 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
     const cursor = tailCursor() ?? firstPage()?.cursor;
     if (n === undefined || cursor === undefined || loadingMore()) return;
     setLoadingMore(true);
+    const requestedFor = generation;
     try {
       const page = await fetchPageHistory(n, cursor);
+      // The first page reloaded while this was in flight. Its cursor ("older than seq X") was taken
+      // from the previous first page; appending under the new one — which ends higher, because it
+      // refetched precisely because batches were added — leaves the batches in between listed
+      // nowhere, and Restore this version would silently skip undoing them (B-132). Drop it; the
+      // next click pages on from the new first page.
+      if (requestedFor !== generation) return;
       setExtra((prev) => [...prev, ...page.batches]);
       setTailCursor(page.cursor);
       setTailHasMore(page.hasMore);

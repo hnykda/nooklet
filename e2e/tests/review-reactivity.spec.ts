@@ -74,3 +74,67 @@ test("a failed history load says so and Retry recovers, instead of Loading… fo
   await expect(error).toHaveCount(0);
   await expect(page.locator(".history-batch")).toHaveCount(1);
 });
+
+test("History lists every batch when the graph changes while Older changes is loading (B-132)", async ({
+  page,
+}) => {
+  const name = "History Paging Race";
+  // 31 batches: the view asks for 25 at a time, so there is exactly one older page.
+  await seedPage(page, name, "- zero");
+  for (let i = 1; i <= 30; i++) await api(page, "page.append", { page: name, markdown: `- ${i}` });
+
+  // Hold the "older than" request (the one with a cursor) until the test lets it go.
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => {
+    release = r;
+  });
+  let olderRequested = false;
+  await page.route("**/api/v1/page.history", async (route) => {
+    const body = route.request().postDataJSON() as { cursor?: string };
+    if (body.cursor !== undefined) {
+      olderRequested = true;
+      await held;
+    }
+    await route.continue();
+  });
+
+  await page.goto(`/history/${encodeURIComponent(name)}`);
+  const batches = page.locator(".history-batch");
+  await expect(batches).toHaveCount(25);
+  await page.locator(".history-more").click();
+  await expect.poll(() => olderRequested).toBe(true);
+
+  // Two writes land while it is held; the first page refetches and shows the newest on top.
+  await api(page, "page.append", { page: name, markdown: "- late 1" });
+  const late = await api<{ batch_id: string }>(page, "page.append", {
+    page: name,
+    markdown: "- late 2",
+  });
+  await expect(batches.first()).toHaveAttribute("data-batch-id", late.batch_id, {
+    timeout: 15_000,
+  });
+
+  release();
+  // Page on until there is nothing older. (Whether the held answer is used or dropped is the
+  // implementation's business; what is listed at the end is what this test is about.)
+  const more = page.locator(".history-more");
+  await expect(async () => {
+    // Non-waiting reads: the button may vanish between two calls, and an auto-waiting
+    // `textContent()` on a vanished element would block this retry loop until the test times out.
+    if ((await more.allTextContents()).includes("Older changes")) {
+      await more.click({ timeout: 1_000 }).catch(() => {});
+    }
+    await expect(more).toHaveCount(0, { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
+  // Every batch the server has for the page, in order, none missing.
+  const all = await api<{ batches: Array<{ batch_id: string }> }>(page, "page.history", {
+    page: name,
+    limit: 100,
+  });
+  const listed = await batches.evaluateAll((els) =>
+    els.map((e) => e.getAttribute("data-batch-id")),
+  );
+  expect(listed).toEqual(all.batches.map((b) => b.batch_id));
+  expect(listed).toHaveLength(33);
+});
