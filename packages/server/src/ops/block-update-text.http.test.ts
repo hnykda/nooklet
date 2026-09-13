@@ -195,6 +195,32 @@ describe("block.update on multi-line raw text (B-172)", () => {
     expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
   });
 
+  it("folds and unfolds a block by editing its collapsed:: line with old_str (B-314)", async () => {
+    const created = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "B314 Fold",
+      markdown: "- parent\n  collapsed:: true\n  - child",
+    });
+    const [id, child] = created.json.created as string[];
+    const unfold = await update({ id, old_str: "\ncollapsed:: true", new_str: "" });
+    expect(unfold.status, JSON.stringify(unfold.json)).toBe(200);
+    expect(unfold.json.before).toBe("parent\ncollapsed:: true");
+    expect((await readBlock(id as string)).collapsed).toBe(false);
+
+    const fold = await update({ id: child, old_str: "child", new_str: "child\ncollapsed:: true" });
+    expect(fold.status, JSON.stringify(fold.json)).toBe(200);
+    expect((await readBlock(child as string)).collapsed).toBe(true);
+
+    // An edit elsewhere in a collapsed block's text leaves it folded, and `content` (an agent's
+    // full text, which rarely repeats the line) never unfolds one.
+    expect((await update({ id: child, old_str: "child", new_str: "kid" })).status).toBe(200);
+    expect((await update({ id: child, content: "kid again" })).status).toBe(200);
+    expect(await readBlock(child as string)).toMatchObject({
+      content: "kid again",
+      collapsed: true,
+    });
+    expect(verifyRebuildParity(s.serverCtx.driver).divergences).toEqual([]);
+  });
+
   it("leaves state a replay of the op log reproduces", async () => {
     const id = await seed("B172 Parity", "- TODO a\n  scheduled:: 2026-09-13\n  more");
     expect((await update({ id, old_str: "TODO", new_str: "DONE" })).status).toBe(200);

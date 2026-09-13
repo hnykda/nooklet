@@ -234,3 +234,26 @@ changes none at any depth. Its cost: 14 blocks whose every later line carries it
 (e.g. a packing list indented three spaces) lose that indent when copied — whitespace, where the
 one-unit reading lost the same whitespace at depth ≥ 1 plus properties. mcp-tools.md §3.2 rule 10
 updated.
+
+---
+
+### B-314 · `block.update` `old_str` on a block's `collapsed:: true` line answers 200 and changes nothing
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verifying m9/server-ops · **Test:**
+`block-update-text.http.test.ts` › "folds and unfolds a block by editing its collapsed:: line with
+old_str (B-314)"
+
+`before` (and so the text `old_str` matches) renders a collapsed block as `parent\ncollapsed:: true`.
+`block.update {old_str: "\ncollapsed:: true", new_str: ""}` → 200, and `block.read` still says
+`collapsed: true`; adding the line to an expanded block → 200, still expanded (checked with a
+throwaway vitest file against `makeTestServer`). `applyTextReplace` writes content, marker, priority
+and properties from the parsed text and never looks at `node.collapsed`. Newly reachable: before
+B-172 every collapsed block (its before-text has a second line) was refused outright. Fix
+direction: in the `old_str` path only — where the before-text carries the line, so a change in the
+parsed `collapsed` can only be the agent's edit — write `block.prop collapsed`; `content` stays as
+it is (an agent's full text rarely repeats the line, and reading its absence as "expand" would
+unfold blocks nobody asked to).
+
+**Fixed 2026-09-13.** `block-update.ts`: the `old_str` path writes `block.prop collapsed` when the
+edited text's `collapsed` differs from the block's; `content` is unchanged (the test also pins that
+a `content` without the line leaves a folded block folded). The test failed before the change
+("expected true to be false").
