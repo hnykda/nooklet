@@ -100,3 +100,19 @@ before any work, as the brief says everyone starts there.
 - e2e: `cd e2e && NOOKLET_E2E_PORT=6408 pnpm exec playwright test page-export.spec.ts --project=chromium`
 - Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-export/`
   (real graph copy in `graph/`, screenshots/PDFs from the visual check).
+
+## Adversarial verification (2026-09-13, second agent)
+
+Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-export-verify/`
+(real-graph copy in `graph/`, PDFs/screenshots). Probe specs `e2e/tests/zz-*.spec.ts` are local
+only, never committed.
+
+- Reran: unit core 338 / server 17+521 / web 697 green; `page-export.spec.ts` 7/7.
+- Found and fixed B-227 (`3bbeff0`): long page titles clipped on paper (the title is an input).
+- Checked OK in Chromium: print while editing (focus + typing survive, nothing written); keyboard
+  path through the "…" menu; journal page export name; namespaced Czech name with quotes via the
+  palette; rename-then-star race; `favorite:: false` page; empty page copy; phone layout.
+- WebKit (Playwright build, in-memory replica): menu and palette Copy both write the clipboard and
+  the text pastes back exactly; Export downloads under the mirror's name. That WebKit build does
+  NOT enforce the gesture rule (a write after a timer was allowed), so the gesture claim is still
+  unverified.
