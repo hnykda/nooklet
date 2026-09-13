@@ -108,3 +108,21 @@ hybrid on the owner's graph returned five hits all scored 0.016. Blocks and page
 separate lists and then sorted together, so the best page and the best block tie at the same value
 and interleave regardless of how good either is. In range, but not comparable with keyword or
 semantic scores, and no agent can threshold on it. Not changed here.
+
+---
+
+### B-525 · "Try again" / "Check again" on the search fallback note drops keyboard focus to `<body>`
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, search-fallback verify (real-graph
+copy on :6418, Chromium and WebKit) · **Test:** none yet
+
+Tab to "Try again" (embedding server unreachable) or "Check again" (index still building) and press
+Enter: the search re-runs, the note comes back with the same reason, and `document.activeElement`
+is `<body>`. Measured with Playwright against this branch's production build: after Enter on "Check
+again" during a real backfill and on "Try again" with `embedding.host` pointed at a closed port,
+activeElement was `<body>` in both Chromium and WebKit; the note's button before and after the
+refetch were different DOM nodes (`isConnected` false for the old one).
+
+Cause: `SearchFallbackNote` renders its actions with `<For each={explained().actions}>`, and
+`explainFallback` builds fresh `{kind, label}` objects on every call. `<For>` is keyed by
+reference, so every new result — even one with the identical reason — disposes the focused button
+and mounts a new one.
