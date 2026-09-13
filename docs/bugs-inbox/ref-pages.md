@@ -17,6 +17,10 @@ the owner's graph (taken 2026-09-13 17:34) had 265 such keys and 1,355 such rows
 derived Task tag, 686), `quick capture` 89, `@eva svobodová` 17, `home automation`, `idea`… Of the
 265, 17 are journal days.
 
+Also tested: `e2e/tests/ref-pages.spec.ts` (5, Chromium), `packages/server/src/mcp/server.test.ts`
+"a page an agent's block_update links is in page_list and readable with page_read",
+`packages/server/src/mirror/live.test.ts` "writes no file for a page only a reference made…".
+
 **Fixed 2026-09-13** by ADR 024 (`docs/adr/024-pages-exist-once-referenced.md`): the server mints
 `page.create` for every newly dangling reference key and its namespace ancestors inside
 `serverApplyOps` (`packages/server/src/ref-pages.ts`), removes the ones it made when their last
@@ -25,6 +29,14 @@ reference goes and nobody claimed them, and a gated startup migration
 graph copy (`tools/probes/ref-pages-migration-real-graph.ts`): 259 pages created (248 keys + 11
 ancestors) in 464 ms, 17 keys left dangling — all journal days, by design — second run a no-op,
 `pnpm nooklet verify` OK over 20,705 ops.
+
+`nooklet serve` on a fresh copy (port 6410): startup logged "created 259 pages the graph references
+(ADR 024) in 312 ms", dev verify OK; `page.read Sprouts/Growing/Sixth Try` → 0 blocks, 1 linked
+backlink; five `block.update`s walking a link through `[[ZZ probe A]]`→`Ab`→`Abc`→`#zzprobetag`→
+plain took 8–12 ms each and left no page and no trash entry; `verify` after stopping: OK, 20,730 ops.
+The first mirror sweep also dropped 37 `mirror_file` rows: pages that already existed with no blocks
+and no properties (`Alex`, `Someday`, `2022-12-28`, … — imported empty) lose their mirror files under
+the new mirror rule. Their pages stay.
 
 ---
 

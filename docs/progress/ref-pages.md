@@ -82,8 +82,17 @@ port 6410. Bugs go to `docs/bugs-inbox/ref-pages.md` (new numbers B-440..B-449).
 Web: no PageView change was needed — an existing empty page already renders title + "Start typing…"
 row (B-410) + references; verified in the e2e spec.
 
+- `9815e56` ADR 024 (`docs/adr/024-pages-exist-once-referenced.md`; 023 was taken).
+- `9127317` MCP test (block_update link → page_list/page_read).
+- `a2121f4` three older e2e tests assumed a linked page does not exist (pages.spec #tag ×2,
+  render-views B-200, B-326 → journal day). First full e2e run (before this): 536 passed, 3 failed
+  (exactly these), 2 skipped, 15.9 min.
+- `116bdb9` sql-schema.md (v7 indexes), mcp-tools.md (page_create fills in), PLAN.md.
+- Real graph served (copy, port 6410): migration 312 ms at startup, writes 8–12 ms, no junk, verify
+  OK 20,730 ops; mirror dropped 37 rows of pre-existing empty pages (see inbox B-441).
+- Unit after all: core 408, plugin-api 17, server 704, web 1,140; `pnpm -r typecheck` clean.
+
 ## Next steps
 
-1. Full e2e suite on 6410 (regressions from pages appearing for links in other specs).
-2. ADR 024 (023 is taken by client-plugin-host — tell the coordinator), inbox final, progress.
-3. MCP page_list check (optional), final unit/typecheck/biome/verify.
+1. Second full e2e run on 6410 (in flight, log `<scratch>/e2e-full-2.log`) — expect 0 failed.
+2. Final progress/inbox commit, return summary to the coordinator.
