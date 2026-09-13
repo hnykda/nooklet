@@ -281,8 +281,10 @@ export async function undoBatch(batchId: string): Promise<{ batchId?: string }> 
 
 export interface PageHistoryStore {
   /** The first page of batches, refetched whenever the graph changes; `undefined` while loading
-   * for the first time. */
+   * for the first time. Calling it while `first.error` is set THROWS — read `firstPage` instead. */
   first: Resource<HistoryPage | undefined>;
+  /** `first()`, or `undefined` while loading or errored; safe to read anywhere. */
+  firstPage: Accessor<HistoryPage | undefined>;
   /** Every batch loaded so far, newest first (the first page plus any "older" pages). */
   batches: Accessor<HistoryBatch[]>;
   hasMore: Accessor<boolean>;
@@ -320,12 +322,16 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
     },
   );
 
-  const batches = (): HistoryBatch[] => [...(first()?.batches ?? []), ...extra()];
-  const hasMore = (): boolean => tailHasMore() ?? first()?.hasMore ?? false;
+  // Reading an errored resource re-throws, so an unguarded `first()` here threw inside the view's
+  // render and a failed load stayed on "Loading…" (B-131). Every read of `first` goes through this.
+  const firstPage = (): HistoryPage | undefined =>
+    first.error !== undefined ? undefined : first();
+  const batches = (): HistoryBatch[] => [...(firstPage()?.batches ?? []), ...extra()];
+  const hasMore = (): boolean => tailHasMore() ?? firstPage()?.hasMore ?? false;
 
   async function loadMore(): Promise<void> {
     const n = name();
-    const cursor = tailCursor() ?? first()?.cursor;
+    const cursor = tailCursor() ?? firstPage()?.cursor;
     if (n === undefined || cursor === undefined || loadingMore()) return;
     setLoadingMore(true);
     try {
@@ -338,5 +344,13 @@ export function usePageHistory(name: Accessor<string | undefined>): PageHistoryS
     }
   }
 
-  return { first, batches, hasMore, loadingMore, loadMore, refetch: () => void refetch() };
+  return {
+    first,
+    firstPage,
+    batches,
+    hasMore,
+    loadingMore,
+    loadMore,
+    refetch: () => void refetch(),
+  };
 }

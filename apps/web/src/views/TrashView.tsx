@@ -11,6 +11,7 @@
 
 import { A } from "@solidjs/router";
 import { createSignal, For, type JSX, Show } from "solid-js";
+import { describeError } from "../data/api-client.js";
 import { restoreFromTrash, type TrashItem, useTrash } from "../data/history.js";
 import { displayRefName } from "../data/page-title.js";
 import { formatWhen } from "./historyText.js";
@@ -45,7 +46,11 @@ export function TrashView(): JSX.Element {
     }
   }
 
-  const count = () => items()?.length ?? 0;
+  // Reading an errored resource re-throws (B-10/B-80's lesson): an unguarded `items()` in the count
+  // or a `when` threw inside render, so a failed load stayed on "Loading…" and the error line below
+  // never showed (B-131). Every read goes through this.
+  const list = (): TrashItem[] | undefined => (items.error !== undefined ? undefined : items());
+  const count = () => list()?.length ?? 0;
 
   return (
     <div class="trash-view">
@@ -79,23 +84,23 @@ export function TrashView(): JSX.Element {
 
       <Show when={items.error}>
         <p class="trash-error" role="alert">
-          Could not load the trash: {String((items.error as Error).message ?? items.error)}{" "}
+          Could not load the trash: {describeError(items.error)}{" "}
           <button type="button" class="trash-retry" onClick={() => refetch()}>
             Retry
           </button>
         </p>
       </Show>
 
-      <Show when={items.loading && items() === undefined}>
+      <Show when={items.loading && list() === undefined}>
         <p class="trash-empty">Loading…</p>
       </Show>
 
-      <Show when={items() && count() === 0}>
+      <Show when={list() && count() === 0}>
         <p class="trash-empty">The trash is empty.</p>
       </Show>
 
       <ul class="trash-list">
-        <For each={items()}>
+        <For each={list()}>
           {(item) => (
             <li class={`trash-row trash-row-${item.kind}`} data-id={item.id}>
               <span class="trash-kind">{item.kind}</span>

@@ -43,3 +43,34 @@ test("after visiting Trash, an open page still picks up a write made elsewhere (
     timeout: 15_000,
   });
 });
+
+test("a failed trash load says so and Retry recovers, instead of Loading… forever (B-131)", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/trash.list", (route) => route.abort("failed"));
+  await page.goto("/trash");
+  const error = page.locator(".trash-error[role='alert']");
+  await expect(error).toContainText("Could not load the trash", { timeout: 15_000 });
+  await expect(page.locator(".trash-empty", { hasText: "Loading…" })).toHaveCount(0);
+
+  await page.unroute("**/api/v1/trash.list");
+  await error.locator(".trash-retry").click();
+  await expect(error).toHaveCount(0);
+  await expect(page.locator(".trash-count")).toBeVisible();
+});
+
+test("a failed history load says so and Retry recovers, instead of Loading… forever (B-131)", async ({
+  page,
+}) => {
+  await seedPage(page, "History Load Fails", "- one");
+  await page.route("**/api/v1/page.history", (route) => route.abort("failed"));
+  await page.goto("/history/History%20Load%20Fails");
+  const error = page.locator(".history-error[role='alert']");
+  await expect(error).toContainText("Could not load the history", { timeout: 15_000 });
+  await expect(page.locator(".history-empty", { hasText: "Loading…" })).toHaveCount(0);
+
+  await page.unroute("**/api/v1/page.history");
+  await error.locator(".history-retry").click();
+  await expect(error).toHaveCount(0);
+  await expect(page.locator(".history-batch")).toHaveCount(1);
+});

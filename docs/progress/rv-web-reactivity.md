@@ -19,16 +19,20 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   failed (0 refetches after Trash) before the fix; e2e `review-reactivity.spec.ts` failed against
   the unfixed client (client.ts temporarily reverted; global-setup rebuilds) and passes with it.
   Related e2e after the fix: trash, history, diagnostics, references, query, remote-device,
-  connectivity — 33/33. Web unit 692/692 before adding F1's tests.
+  connectivity — 33/33. Web unit 692/692 with F1's tests.
+- F2 / B-131 (part) — guarded reads in `TrashView.tsx` (`list()`), `history.ts` (`firstPage()`),
+  `HistoryView.tsx`; `views/TrashView.test.tsx`, `views/HistoryView.test.tsx` failed first (stuck
+  on Loading…, unhandled rejection). e2e: review-reactivity (3) + trash + history — 13/13.
+  Web unit 694/694.
 
 ## In flight
 
-- F2: errored-resource guards in Trash/History.
+- F3: `QueryFenceView.tsx` guarded `latest`.
 
 ## Next steps, in order
 
 1. (done) F1.
-2. F2 — guard errored reads in `TrashView.tsx`, `history.ts`, `HistoryView.tsx`; component tests.
+2. (done) F2.
 3. F3 — `QueryFenceView.tsx` guarded `latest`, `describeError`; render-seams test.
 4. F4 — generation counter in `usePageHistory.loadMore`; `data/history.test.ts`.
 5. F5 — `queries.ts` nested hits only when actually emitted; `queries.test.ts`.

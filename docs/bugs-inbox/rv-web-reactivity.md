@@ -37,8 +37,11 @@ the fix; the `history.test.ts` case failed at the refetch-after-Trash assertion 
 ---
 
 ### B-131 · A failed load shows nothing: Trash and History stay on "Loading…", a query fence on "Running query…"
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, web reactivity review (F2, F3,
-F6, F8) · **Test:** none yet
+**Status:** open (F2 fixed; F3, F6, F8 open) · **Severity:** medium · **Found:** 2026-09-13, web
+reactivity review (F2, F3, F6, F8) · **Tests:** F2 — `e2e/tests/review-reactivity.spec.ts` "a
+failed trash load says so and Retry recovers, instead of Loading… forever (B-131)" and "a failed
+history load says so…"; `apps/web/src/views/TrashView.test.tsx`, `HistoryView.test.tsx` "shows the
+error with Retry instead of Loading…, and Retry recovers"
 
 Four paths where a failure never reaches the screen:
 
@@ -55,6 +58,12 @@ Four paths where a failure never reaches the screen:
   textarea for the real tree before awaiting the template, the clock and `applyOps`; if any of
   those rejects, the day shows an empty outline for a page that was never written, the typed text
   is gone, and nothing says why.
+
+**Fixed 2026-09-13 — F2 (Trash / History).** Every read of the two resources goes through a guard
+that returns `undefined` while the resource is errored: `TrashView`'s `list()`, and
+`usePageHistory`'s new `firstPage()` (which `batches`, `hasMore`, `loadMore` and HistoryView's
+`when`s read). The error lines render with `describeError`, so a server hint is not lost. The
+component tests failed first (stuck on "Loading…", unhandled "could not reach server").
 
 ---
 

@@ -17,6 +17,7 @@
 
 import { A, useParams } from "@solidjs/router";
 import { type Accessor, createSignal, For, type JSX, Show } from "solid-js";
+import { describeError } from "../data/api-client.js";
 import {
   type HistoryBatch,
   type HistoryEntry,
@@ -224,18 +225,17 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
       </Show>
       <Show when={history.first.error}>
         <p class="history-error" role="alert">
-          Could not load the history:{" "}
-          {String((history.first.error as Error).message ?? history.first.error)}{" "}
+          Could not load the history: {describeError(history.first.error)}{" "}
           <button type="button" class="history-retry" onClick={() => history.refetch()}>
             Retry
           </button>
         </p>
       </Show>
 
-      <Show when={history.first.loading && history.first() === undefined}>
+      <Show when={history.first.loading && history.firstPage() === undefined}>
         <p class="history-empty">Loading…</p>
       </Show>
-      <Show when={history.first() && history.batches().length === 0}>
+      <Show when={history.firstPage() && history.batches().length === 0}>
         <p class="history-empty">No recorded changes.</p>
       </Show>
 
