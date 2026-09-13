@@ -11,6 +11,10 @@
  *   pnpm --filter @nooklet/server exec tsx ../../tools/probes/search-embed-silent-host.ts [capSeconds]
  *
  * Prints how long `search` took, or that it was still pending at the cap.
+ *
+ * Result 2026-09-13: before B-522's fix, "search still pending after 30 s". After it: "search
+ * answered after 17506 ms", mode_used keyword, fallback provider_unreachable "(no answer within
+ * 15 s)" — the 15 s query-embed bound plus the host probe's own 2.5 s.
  */
 import { createServer } from "node:net";
 import {
