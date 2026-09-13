@@ -112,6 +112,16 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
   B-406 plugins isolated, server healthy.
 - Done: B-323 — `opfs-pool.spec` pass at HEAD, fail with fix commented out; probes for a real
   interrupted start and an already-broken profile (commit `7558ace`).
-- Next, in order: e2e specs (editing, page-icons, references, opfs-pool, review-reactivity) under
-  56 busy loops with `--repeat-each`; page-icons single-read variant still fails with the route;
-  `pnpm -r typecheck`, `pnpm -r test`, biome on HEAD.
+- Done: under 56 busy loops — editing, page-icons, references, opfs-pool `--repeat-each=4`: 44 of
+  44 (the filter also caught `journal-stream-editing.spec.ts`, which failed repeats 1-3 on a fixed
+  day: B-408, open). Page-icons with one read instead of the poll fails 2 of 2 (the push route
+  works). `-g B-131 --repeat-each=12` found the trash/history "failed … load" tests failing (trash
+  0 of 11) — B-407, fixed in `4c37543` (16 of 16 under load; control: old 2 of 8 failed, new 8 of
+  8). The five touched specs, two fresh runs under load: 19 of 19 each. opfs-pool's indicator regex
+  anchored (`22383f7`).
+- Done: `pnpm -r typecheck` green; biome clean on every branch-changed file (repo-wide errors are
+  in untouched files); `pnpm -r test` core 399, plugin-api 17, server 671, web 1126; related e2e
+  (plugins, storage incl. WebKit, review-reactivity, editing, page-icons, references, opfs-pool,
+  a-fresh-journal, journal-draft-sync) 41 passed, 1 skipped; `nooklet verify` on a backup of the
+  owner's graph: 20,477 ops OK.
+- Next: full e2e in chunks on 6402 as a last regression pass; then report.
