@@ -152,10 +152,10 @@ Re-run and extended by a second agent; nothing above needed a code change. Evide
   without the blank line when the block has a head or an id (a random round-trip fuzz finds nothing
   else). Real data: 1 of 18,628 blocks has a blank line 1, and it is followed by a quote, not a
   fence; 0 blocks have content that is literally `^<id>`.
-- Real graph copy (13:44), served: 9 real pages holding 77 `- ^id` lines and 9 fence-first blocks
-  were written back through `page.create` with their own `page.read` text (max_chars 200,000) —
-  every block moved with identical id, parent, content, marker, priority, properties and collapsed,
-  none created. `nooklet verify` OK before (20,411 ops) and after (22,900 ops). (A first attempt at
+- Real graph copy (13:44), served: 8 real pages — 404 blocks, 9 of them empty (`- ^id`) and 11
+  opening with a fence (OUT-14's `- ^id` + fence form) — were written into new pages through
+  `page.create` with their own `page.read` text (max_chars 200,000): every block moved with
+  identical id, parent, content, marker, priority, properties and collapsed, none created. `nooklet verify` OK before (20,411 ops) and after (22,900 ops). (A first attempt at
   the default `max_chars` left one 15 KB block behind: `page.read` truncates at 20,000 characters
   and says `truncated: true` — by design, not a bug.)
 - Full Chromium e2e in three chunks on port 6401: 527 passed, 1 failed, 2 skipped. The failure is
