@@ -23,7 +23,10 @@ entry's own two blocks through `page.create` markdown, checks `page.read` stores
 asserts one `<br>` per row and that the second line's first glyph sits below the first line's; it
 failed on `cf08d19`'s `tokens.tsx` (`br` count 0) and passes with the fix. The unit tests failed
 before (no `<br>`) and pin the offsets `27`/`39`/`40` for `Poznámka: **žluťoučký kůň**\nsecond
-line\n\nfourth`.
+line\n\nfourth`. Real graph (backup copy, production build, `tools/probes/render-views-real-graph.mjs`):
+on `2023-02-17` (26 rows, 19 multi-line) and `TTRPG/VTM-alpha` (88 rows, 10 multi-line) every
+paragraph row's `<br>` count equals its stored text's newline count; no console errors beyond one
+image asset the sqlite copy does not carry.
 
 ---
 
@@ -131,7 +134,10 @@ server's missing-page branch matches the raw title (B-322 — with the raw name 
 "Link all" runs `mentions.link`, whose `requirePage` would only answer 404 for a page that does not
 exist. Once Create is pressed the ordinary view's panel, unlinked half included, takes over (checked
 in the same e2e). The first test cannot pass on `cf08d19` — nothing under the missing view rendered
-a panel. Real-graph check not done: see the progress file.
+a panel. Real graph (backup copy, `tools/probes/render-views-real-graph.mjs`): `/page/book`, which
+the owner never created, now shows "Pages tagged book" 1 and "Linked references" 9 with 9 rows —
+exactly `page.backlinks {target: "book"}`'s `tagged_total` 1 and `linked_total` 9 — and no unlinked
+section.
 
 ---
 

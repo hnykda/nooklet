@@ -55,14 +55,19 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   `views.spec.ts` "opening the palette while editing…", the known B-161, failed again alone (28/29);
   nothing on this branch touches the palette or editor focus (not revert-checked by this branch).
 
+- Real-graph checks — commit "test(probes): render-views on a copy of the real graph". New
+  `tools/probes/render-views-real-graph.mjs`. Graph copy (952 pages, 508 multi-line blocks) served
+  on 6414 with the branch's build: `/page/book` shows tagged 1 / linked 9, equal to
+  `page.backlinks`; `2023-02-17` 19 and `TTRPG/VTM-alpha` 10 multi-line rows all with the right
+  `<br>` count. Not checkable there: B-211 (graph has 0 query fences), B-171 (0 open tasks with both
+  a scheduled date and a deadline). Only console error: a 404 image asset absent from the copy.
+
 ## 2. In flight
 
-- Real-graph checks next.
+- Final pass.
 
 ## 3. Next steps, in order
 
-6. Real-graph check (backup copy, own server on a spare port, production build): `/page/book`
-   (B-200: owner has `tags:: book`, no `book` page), a multi-line block (B-224).
 7. Final: full web unit suite, typecheck, the touched e2e specs together; fill in the return.
 
 ## 4. Decisions
