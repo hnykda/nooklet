@@ -111,6 +111,18 @@ a.page-actions-item {
   outline: none;
 }
 
+/* Delete page: last in the menu, set apart, in the colour of what it does. */
+.page-actions-item-danger {
+  margin-top: var(--space-xs);
+  border-top: 1px solid var(--hairline);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  color: var(--danger);
+}
+
+.page-actions-item-danger svg {
+  color: var(--danger);
+}
+
 /* Out of flow, under the buttons: in flow it took its width from the title, and on a phone a
    "Copied page as markdown" squeezed the page's own name down to a few letters. */
 .page-actions-notice {
@@ -125,4 +137,10 @@ a.page-actions-item {
 
 .page-actions-notice-error {
   color: var(--danger);
+  /* An error names what failed and why ("Couldn't delete …: <server message>"): wrap it rather
+     than run it off the left edge of a phone. */
+  white-space: normal;
+  width: max-content;
+  max-width: min(24rem, 80vw);
+  text-align: right;
 }

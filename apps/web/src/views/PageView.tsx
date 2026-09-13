@@ -246,6 +246,7 @@ export function PageView(props: PageViewProps): JSX.Element {
                 pageName={p().name}
                 favorite={isFavoriteValue(properties().favorite)}
                 icon={properties().icon}
+                journal={isJournal()}
               />
             </div>
             <PageProperties pageId={p().id} properties={properties()} />

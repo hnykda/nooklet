@@ -48,6 +48,7 @@ describe("page action commands", () => {
         .sort(),
     ).toEqual([
       "app.copyPageMarkdown",
+      "app.deletePage",
       "app.exportPageMarkdown",
       "app.printPage",
       "app.toggleFavorite",
@@ -59,10 +60,12 @@ describe("page action commands", () => {
     await command("app.copyPageMarkdown", host).run(ctx());
     await command("app.exportPageMarkdown", host).run(ctx());
     await command("app.toggleFavorite", host).run(ctx());
+    await command("app.deletePage", host).run(ctx());
     expect(calls).toEqual([
       { method: "copyPageMarkdown", args: ["Projects/Aurora"] },
       { method: "exportPageMarkdown", args: ["Projects/Aurora"] },
       { method: "toggleFavorite", args: ["Projects/Aurora"] },
+      { method: "deletePage", args: ["Projects/Aurora"] },
     ]);
   });
 
@@ -76,7 +79,12 @@ describe("page action commands", () => {
 
   it("off a page the page commands do nothing, but Print still prints the view", async () => {
     const { host, calls } = createFakePageActionsHost({ page: null });
-    for (const id of ["app.copyPageMarkdown", "app.exportPageMarkdown", "app.toggleFavorite"]) {
+    for (const id of [
+      "app.copyPageMarkdown",
+      "app.exportPageMarkdown",
+      "app.toggleFavorite",
+      "app.deletePage",
+    ]) {
       await command(id, host).run(ctx());
     }
     await command("app.printPage", host).run(ctx());
@@ -87,7 +95,7 @@ describe("page action commands", () => {
   // clipboard, drop files into their Downloads, or put a modal print dialog over their window —
   // none of that is the document, and `page.read` already gives an agent the text. Favouriting is a
   // synced page property like any other, so it stays remote-invocable.
-  it("copy, export and print refuse ui_run; toggling a favourite does not", async () => {
+  it("copy, export, print and delete refuse ui_run; toggling a favourite does not", async () => {
     const registry = createCommandRegistry();
     const { host, calls } = createFakePageActionsHost({ page: "P" });
     for (const c of createPageActionCommands({ pageActions: host })) registry.register(c);
@@ -97,7 +105,13 @@ describe("page action commands", () => {
       buildContext: (base) => createCommandContext(base, registry, createMruStore()),
       isControlEnabled: () => true,
     };
-    for (const id of ["app.copyPageMarkdown", "app.exportPageMarkdown", "app.printPage"]) {
+    // Deleting asks in a dialog on the person's screen; an agent has `page_delete` (B-228's rule).
+    for (const id of [
+      "app.copyPageMarkdown",
+      "app.exportPageMarkdown",
+      "app.printPage",
+      "app.deletePage",
+    ]) {
       expect(await runRemoteCommand(deps, id, { page: "P" }), id).toEqual({
         when_result: "not_permitted",
       });

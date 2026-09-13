@@ -742,6 +742,7 @@ behavior exactly rather than special-casing mobile.
 | `app.exportPageMarkdown` | Export page as markdown | — | — | `true` |
 | `app.printPage` | Print page | — | — | `true` |
 | `app.toggleFavorite` | Toggle favourite | — | — | `true` |
+| `app.deletePage` | Delete page… | — | — | `true` |
 
 **R51.** `edit.undo` / `edit.redo` operate the document-level history manager of ADR 006 / research
 04 §7 (a document-level history of inverse ops with 500 ms text coalescing — CM6's own
@@ -785,6 +786,23 @@ writing anything. `app.copyPageMarkdown`, `app.exportPageMarkdown` and `app.prin
 `remoteInvocable: false` — they act on the device (clipboard, downloads, print dialog), not the
 graph — so `ui_run` refuses them; `app.toggleFavorite` stays remote-invocable. The ids use the `app`
 area because R2's areas are closed.
+
+**R52b.** `app.deletePage` resolves its page as R52a does and, off a page route, does nothing. On a
+journal day it refuses with the title-row notice "Journal days can't be deleted. Delete the blocks
+you don't want instead." and asks nothing: the day is the page's identity (PLAN §8, ADR 018), and
+the server's `page.delete` answers `invalid` for one; the title row's "…" menu does not offer the
+item on a journal. Otherwise it closes the palette, pushes pending writes, and runs `page.delete`
+with `dry_run: true` for the numbers the confirmation quotes: an in-page dialog (never
+`window.confirm`, which the desktop app's webview answers with Cancel unseen — B-491) titled
+`Delete "<name>"?`, saying `"<name>" and its N blocks will be moved to the Trash. You can restore
+them from there.`, plus — when blocks on other pages link to it — `Links to it from other pages will
+point at a page that doesn't exist until it is restored.` (no number: the dry run's
+`backlinks_affected` also counts blocks beneath a linking block, B-492). Its buttons are Cancel and a destructive
+"Delete page", which has focus; Escape or a click on the backdrop cancels. Confirmed, it runs
+`page.delete` for real (one server batch, so `trash.restore` brings the blocks back with the page),
+pulls, and navigates to `/journals`. A refused dry run or delete is shown on the title row and
+nothing navigates. `remoteInvocable: false`: it opens a dialog on the person's screen, and an agent
+has `page_delete`, which its own host confirms.
 
 ### F. Slash menu
 

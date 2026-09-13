@@ -341,7 +341,10 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       },
       open: (pageId) => navigation.openPage(pageId),
     },
-    pageActions: createPageActionsHost({ closePalette: () => palette.close() }),
+    pageActions: createPageActionsHost({
+      closePalette: () => palette.close(),
+      navigate: (path) => navigate(path),
+    }),
   });
 
   const anyAutocomplete = createMemo(() => {

@@ -1,0 +1,38 @@
+{
+  "_comment": "What `server_status` (src-tauri/src/main.rs) returns, one example per state. Both sides pin this file: the Rust tests serialize a ServerStatus and compare it to these, the launcher tests (launcher-status.test.mjs) render each one. Change the shape in one place and a test on the other side fails.",
+  "external": { "state": "external" },
+  "starting": { "state": "starting" },
+  "ready": { "state": "ready" },
+  "spawn_failed": {
+    "state": "spawn_failed",
+    "error": "No such file or directory (os error 2)"
+  },
+  "schema_too_new": {
+    "state": "exited",
+    "code": 1,
+    "reason": "schema_too_new",
+    "stderr": "nooklet: database schema version 6 is newer than this build supports (4); upgrade nooklet"
+  },
+  "port_in_use": {
+    "state": "exited",
+    "code": 1,
+    "reason": "port_in_use",
+    "stderr": "nooklet: listen EADDRINUSE: address already in use 127.0.0.1:6100"
+  },
+  "exited_other": {
+    "state": "exited",
+    "code": 1,
+    "reason": "other",
+    "stderr": "nooklet: SQLITE_CANTOPEN: unable to open database file"
+  },
+  "killed": {
+    "state": "exited",
+    "code": null,
+    "reason": "other",
+    "stderr": ""
+  },
+  "timed_out": {
+    "state": "timed_out",
+    "stderr": "nooklet: importing plugins…"
+  }
+}

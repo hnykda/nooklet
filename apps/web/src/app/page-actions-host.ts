@@ -4,16 +4,23 @@
  */
 
 import type { PageActionsHost } from "../commands/registrations/page-actions.js";
+import { deletePage, findPageToDelete, previewPageDelete } from "../data/page-delete.js";
 import { findPageIdByName } from "../data/page-export.js";
+import { confirmDialog } from "./confirm-dialog.js";
 import {
+  announce,
   copyPageMarkdown,
   exportPageMarkdown,
   printPage,
   togglePageFavorite,
 } from "./page-actions.js";
+import { deletePageWithConfirm } from "./page-delete.js";
 import { currentPageNameFromPath } from "./refactor-host.js";
 
-export function createPageActionsHost(deps: { closePalette: () => void }): PageActionsHost {
+export function createPageActionsHost(deps: {
+  closePalette: () => void;
+  navigate: (path: string) => void;
+}): PageActionsHost {
   return {
     currentPageName: () => currentPageNameFromPath(window.location.pathname),
     async copyPageMarkdown(page) {
@@ -33,6 +40,18 @@ export function createPageActionsHost(deps: { closePalette: () => void }): PageA
       // the title row, where the palette is not open.
       deps.closePalette();
       printPage();
+    },
+    async deletePage(page) {
+      // The palette waits for a command before closing; the dialog must not open under it.
+      deps.closePalette();
+      await deletePageWithConfirm(page, {
+        findPage: findPageToDelete,
+        preview: previewPageDelete,
+        confirm: confirmDialog,
+        remove: deletePage,
+        navigate: deps.navigate,
+        notify: announce,
+      });
     },
   };
 }

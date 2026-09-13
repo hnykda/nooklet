@@ -1,0 +1,75 @@
+/* `confirm-dialog.tsx`: the palette's scrim (`.cmd-overlay`) with a small card on it. */
+
+.confirm-dialog {
+  width: min(420px, calc(100vw - 32px));
+  background: var(--cmd-bg, var(--bg, #fff));
+  color: var(--cmd-fg, var(--fg, #111));
+  border: 1px solid var(--cmd-border, var(--border, #e2e2e2));
+  border-radius: var(--radius-xl, 14px);
+  box-shadow: var(--shadow-lg, 0 8px 30px rgba(0, 0, 0, 0.2));
+  padding: var(--space-xl, 16px);
+}
+
+.confirm-dialog-title {
+  margin: 0 0 var(--space-sm, 8px);
+  font-size: var(--text-lg, 17px);
+  line-height: var(--leading-tight, 1.25);
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-message p {
+  margin: 0 0 var(--space-sm, 8px);
+  font-size: var(--text-base, 14px);
+  line-height: var(--leading-snug, 1.4);
+  color: var(--fg-soft, inherit);
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm, 8px);
+  margin-top: var(--space-lg, 12px);
+}
+
+.confirm-dialog-button {
+  font: inherit;
+  font-size: var(--text-sm, 13px);
+  min-height: 32px;
+  padding: 0 var(--space-lg, 12px);
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, #d4d4dd);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.confirm-dialog-button:hover {
+  background: var(--surface-2, rgba(0, 0, 0, 0.05));
+}
+
+.confirm-dialog-confirm {
+  background: var(--accent, #2f55d4);
+  border-color: var(--accent, #2f55d4);
+  color: var(--accent-contrast, #fff);
+}
+
+.confirm-dialog-confirm.confirm-dialog-destructive {
+  background: var(--danger, #bf2f2f);
+  border-color: var(--danger, #bf2f2f);
+}
+
+.confirm-dialog-confirm:hover {
+  filter: brightness(0.95);
+  background: var(--accent, #2f55d4);
+}
+
+.confirm-dialog-confirm.confirm-dialog-destructive:hover {
+  background: var(--danger, #bf2f2f);
+}
+
+@media (pointer: coarse) {
+  .confirm-dialog-button {
+    min-height: var(--touch, 44px);
+  }
+}
