@@ -247,7 +247,7 @@ navigates, and creating a page is a write first. In that gap the editor on the p
 focused again, so what is typed goes into its block — and is saved there, on a page that is no
 longer on screen.
 
-Probe (`e2e/tests/zz-verify-focus.spec.ts` in the verifier's run, port 6401): edit `- origin`,
+Probe (`tools/probes/focus-return-verify.spec.ts` "B-293", port 6401): edit `- origin`,
 Cmd+K, type another page's name, Enter, type `qq` at once. On `2924c05`: `activeElement` right after
 Enter is `.cm-content`, and the stored block on the page left is `originqq` (1 of 1); same with the
 Create page row (1 of 1). With `apps/web/src` checked out at `cf08d19`: focus on `<body>` and the
@@ -279,8 +279,8 @@ covered.
 `- alpha [[Target]] omega`, Home, ArrowRight ×9 (caret after `[[T`): the `[[` autocomplete opens
 over a link that is already complete (B-203's precondition). Enter picks the active row and replaces
 only the text between the trigger and the caret, so the rest of the old link stays behind it:
-`alpha [[Target]]arget]] omega` (probe `zz-verify-focus.spec.ts` "P2b", seen on `cf08d19` and on the
-branch; on the branch the active row was the query itself once, giving `alpha [[T]]arget]] omega`).
+`alpha [[Target]]arget]] omega` (probe `tools/probes/focus-return-verify.spec.ts` "B-294", seen on `cf08d19` and
+on the branch; once the active row was the query itself, giving `alpha [[T]]arget]] omega`).
 Either the autocomplete should not open inside a complete link (noted, not asked, in
 `docs/progress/focus.md` §3) or picking a row should replace up to the link's `]]`.
 
@@ -292,7 +292,9 @@ Either the autocomplete should not open inside a complete link (noted, not asked
 
 Editing `- go [[Target]]`, End, Alt+Enter, type `qq` at once: the stored block on the page left is
 `go [[Target]]qq`. `nav.followLink` → `hosts.ts#openPageByRef` resolves the ref with a replica read
-before it navigates, and the editor keeps focus through that gap. The palette form of the same thing
+before it navigates, and the editor keeps focus through that gap (probe
+`tools/probes/focus-return-verify.spec.ts` "B-295"; still `…]]qq` with the branch's fixes in). The
+palette form of the same thing
 was B-293's; this one is older and not the branch's. A general fix would end editing when a
 navigation is requested rather than when the page unmounts — broader than a focus bug, so left for a
 decision.
@@ -319,7 +321,7 @@ was") was an unverified assumption.
 
 Evidence (`apps/web/src/commands/focus-return.ts` at `2924c05`). Real graph copy, a plain Czech block
 on a 201-block page: Home, ArrowRight ×4, Cmd+K, Escape, `type("Ž")` → stored at offset 0; without
-the palette → offset 4. e2e data (`zz-verify-focus.spec.ts` "P14", 4 rounds per run, 2 runs): caret at
+the palette → offset 4. e2e data (`tools/probes/focus-return-verify.spec.ts` "B-296", 4 rounds per run, 2 runs): caret at
 offset 2, Cmd+K, Escape, then — digit key: 8/8 at 2; `insertText` at once: 8/8 at 0; `type("Ž")` at
 once: 8/8 at 0; `insertText` 50 ms later: 8/8 at 2. The `caret()` read straight after Escape is 0
 every time, even when the text then lands right. Not visible in `cf08d19`, where nothing gave focus

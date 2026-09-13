@@ -10,7 +10,8 @@ Bug numbers used: B-293, B-294 (inbox `docs/bugs-inbox/focus.md`).
   changed files clean.
 - e2e focus-return, date-picker-type-ahead, follow-link-popup, follow-link, views, dates,
   context-menu: 64 passed, 1 skipped.
-- Probes (temporary `e2e/tests/zz-verify-focus.spec.ts`, not committed):
+- Probes (first as a temporary `e2e/tests/zz-verify-focus.spec.ts`; what settled a bug is kept as
+  `tools/probes/focus-return-verify.spec.ts`):
   - caret/range kept through palette open + Escape: OK (`abcdef`, select `cd`, Escape, `X` → `abXef`).
   - palette "Set scheduled date" + type-ahead: OK.
   - autocomplete/slash open + Cmd+Enter / Alt+Down: commands run, popup stays; no corruption from
@@ -38,13 +39,24 @@ Bug numbers used: B-293, B-294 (inbox `docs/bugs-inbox/focus.md`).
   the element). e2e caret test failed 2/2 before, focus-return --repeat-each=2 20/20 after; web
   unit 1024/1024; `pnpm -r typecheck` exit 0.
 
+- Real graph re-run on the fixed build: palette Escape caret on Megapage kept (Ž at 4), page pick
+  leaks nothing, /scheduled type-ahead and ctx-menu separator OK (6/6).
+- Load: 12 busy node loops (load 4 → 14): views palette tests + focus-return, `--repeat-each=5`:
+  70/70.
+- Final e2e on the fixed tree: palette group (commands dates focus-return editing-row-leaves
+  page-export parity read-only refactor views pages random-page date-picker-type-ahead follow-link*)
+  122 passed; editor group (autocomplete* popups context-menu selection focus editing templates
+  template-* shelf phone block-properties block-timestamps undo-redo journal-stream-editing tasks)
+  166 passed, 1 skipped, 1 failed — focus.spec "Alt+Up/Down moves the block…" line 296 (editing
+  row index read once after a poll, 0 vs 1; snapshot shows the editor in row 1). Rerun: that test
+  `--repeat-each=10` 10/10, whole focus.spec 30/30. Not in the diff's path (no popup open;
+  `refocusAfterReorder` does not go through `surface.attach`).
+- Probe `tools/probes/focus-return-verify.spec.ts` committed (B-293/294/295/296 evidence).
+
 ## In flight
 
 - (none)
 
 ## Next
 
-1. Re-run real-graph probe on the fixed build (server on 6401 with the graph copy, `e2e/zz-real.config.ts`
-   — temporary, uncommitted).
-2. Load loop (busy node processes) on views palette test + focus-return.
-3. Final covering e2e set; remove temporary probe files; report.
+- Report. Open for others: B-291 (owner), B-292, B-294, B-295.
