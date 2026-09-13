@@ -58,7 +58,9 @@ export const blockUpdate = defineOp({
     "(an exact, unique substring replacement within that same raw text - use this for a small " +
     "edit like flipping a marker or fixing a word without retyping the whole block). properties, " +
     "if given, is applied after either of those and always wins for the keys it lists (null " +
-    "unsets a property). Pass if_version from a recent read to avoid clobbering a concurrent " +
+    "unsets a property). A text line that looks like a property or timestamp is written with a " +
+    "backslash before its colon (scheduled\\:: 2026-09-20), as page_read shows it; without the " +
+    "backslash it is a real property. Pass if_version from a recent read to avoid clobbering a concurrent " +
     "edit. To add blocks use block_insert; to reparent or reorder use block_move.",
   input: blockUpdateInputShape.refine(
     (v) =>

@@ -130,6 +130,11 @@ Rules:
 5. **Output**: every bullet line ends with ` ^<id>` (a literal space, caret, 14-char id) unless
    the caller passed `ids: 'none'`. Content whose first line legitimately ends in something
    matching ` \^[0-9a-hjkmnp-tv-z]{14}$` is escaped as ` \^…` on output and unescaped on input.
+   Likewise a content line (outside a fence) that would read back as a property line, an org
+   `SCHEDULED:`/`DEADLINE: <…>` line or a `:LOGBOOK:` opener gets a backslash before the colon
+   that makes that shape — `scheduled\:: 2026-09-20` is text, `scheduled:: 2026-09-20` a property
+   — and loses one on input; a line already carrying backslashes there gets one more
+   (`markdown-grammar.md` OUT-23a, B-342).
    Non-reserved properties are emitted sorted by key, one per line, at the content column.
 6. **Input, id handling (upsert)**: a bullet with a trailing ` ^id` where `id` already exists is
    an update-in-place of that block (content/marker/priority/properties replaced, and the block
@@ -1114,8 +1119,10 @@ priority, first line, continuation lines, property lines, but no nested bullets)
 `old_str`/`new_str` (an exact, unique substring replacement within that same raw text — use this
 for a small edit like flipping a marker or fixing a word without retyping the whole block).
 `properties`, if given, is applied after either of those and always wins for the keys it lists
-(null unsets a property). Pass `if_version` from a recent read to avoid clobbering a concurrent
-edit. To add blocks use `block_insert`; to reparent or reorder use `block_move`."
+(null unsets a property). A text line that looks like a property or timestamp is written with a
+backslash before its colon (`scheduled\:: 2026-09-20`), as `page_read` shows it; without the
+backslash it is a real property. Pass `if_version` from a recent read to avoid clobbering a
+concurrent edit. To add blocks use `block_insert`; to reparent or reorder use `block_move`."
 
 ```ts
 export const blockUpdate = defineOp({

@@ -49,7 +49,7 @@ Bugs go to `docs/bugs-inbox/mirror-escape.md` (new numbers B-470..B-479), never 
 
 ## Done (committed)
 
-- Step 1 (commit "fix(outline): escape content lines…", hash in the next commit's progress):
+- `49431ac` step 1:
   `core/outline.ts` (`SHAPED_LINE_RES`, `escapeShapedLine`/`unescapeShapedLine`,
   `escapeContentLines` in `serializeOutline`, un-escape in `finalizeNode`); spec OUT-23a (+ OUT-23
   rule 6 and its serializer sentence), corpus case 49; tests `core/src/outline.test.ts` › "content
@@ -61,15 +61,25 @@ Bugs go to `docs/bugs-inbox/mirror-escape.md` (new numbers B-470..B-479), never 
   `sync.property.test.ts` "converges regardless of interleaving" time out at 5.4 s under load;
   12/12 on rerun alone (does not touch outline).
 
+- Step 2 (this commit): `server/src/ops/shaped-content-lines.http.test.ts` (4: page_read escaped +
+  an unrelated old_str edit keeps the line text — on base it silently gave the task a scheduled
+  date; old_str copied from page_read edits it and dropping the backslash makes it real; escaped
+  markdown writes text next to a real property; content copied from page_read round-trips), and
+  `server/src/importer/logseq.test.ts` › "still imports Logseq's property, SCHEDULED and LOGBOOK
+  lines as such (OUT-23a)". All 5 red with base `outline.ts` swapped in (the importer one only on
+  its escaped-line half; its Logseq half is a guard), green after. `block.update` description +
+  mcp-tools.md (§3.2 rule 5, block_update description) name the escape. Server 681/681.
+- Real graph copy (`graph/`): `pnpm nooklet verify` OK, 20,446 ops replayed. `nooklet export` with
+  the fix vs `graph-before/` (base code): **2 of 953 files change** (`journals/2022_12_16.md`,
+  `journals/2023_02_17.md`), 20 lines, every one `SCHEDULED: <…>` → `SCHEDULED\: <…>` — exactly
+  the 20 blocks the round-trip probe flagged.
+
 ## Next steps
 
-1. Log the other lossy shapes found by `scratchpad/.../other-shapes.ts` (bullet-shaped
+1. e2e: copy/paste of a block whose text has a typed `scheduled::` line (selection-clipboard
+   `ids: "none"` → paste `parseOutline`), like `e2e/tests/fence-task-clipboard.spec.ts` for B-310.
+   Check red on base (swap base outline.ts, rebuild), green after. Port 6413.
+2. Log the other lossy shapes found by `scratchpad/.../other-shapes.ts` (bullet-shaped
    continuation lines `- `/`* `/`+ `/`1. ` become child blocks; a text starting with a task-marker
    word or `[#A]` becomes a task/priority) as B-470/B-471, with a probe in `tools/probes/`.
-2. mcp-tools.md §3.2 rule 5 sentence; `block.update` description sentence (check snapshot tests).
-3. `block.update` old_str/new_str http test on an escaped line; importer test (real Logseq
-   property line still a property, escaped one text).
-4. `pnpm nooklet verify` on `graph/`; `nooklet export` with the fix into `graph/`, diff vs
-   `graph-before/`, count files.
-5. e2e: not a UI change; decide whether a mirror/page-read e2e is warranted (probably an http test
-   is the right level).
+3. Inbox B-342 "Fixed" paragraph; final suites; StructuredOutput.
