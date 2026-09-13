@@ -422,6 +422,13 @@ Each entry: trigger, exact rule, produced token kind (types in §3).
   digit. `$5 and $10` therefore never matches (the candidate closer before "10" is followed by a
   digit); `$E=mc^2$ today` does. `tex` is the raw text between the delimiters, unparsed (a future
   KaTeX/MathJax render step interprets it; this grammar only delimits it).
+- **Display math** `$$...$$` (Logseq's display form; added 2026-09-13, B-264 — the owner's graph
+  has `$$CO_2$$`, which §9's single-`$` counts did not look for). Tried before inline math at a
+  `$$`: the scan looks for the next `$$` on the same line; the text between must not be blank and
+  the character after the closer (if any) must not be a digit (the inline rule's price guard, so
+  `$$5 and $$10` stays text). Produces a `math` token with `display: true`; `tex` excludes both
+  delimiters. An unclosed or blank `$$` is not display math and falls through to the inline rule
+  above. A `$$` block spanning several lines is not recognized (the tokenizer is per line).
 - **Checkbox** `[ ]`, `[x]`, `[X]` (optional per the task brief; included because Obsidian/GitHub
   paste is common). Recognized anywhere on a line as exactly those three characters, **except**
   when immediately followed by `(` — in that case the markdown-link rule (which is tried first at
@@ -505,7 +512,7 @@ export type InlineToken =
   | (TokBase & { kind: "strike"; children: InlineToken[] })
   | (TokBase & { kind: "highlight"; children: InlineToken[] })
   | (TokBase & { kind: "code"; code: string })
-  | (TokBase & { kind: "math"; tex: string })
+  | (TokBase & { kind: "math"; tex: string; display?: true })
   | (TokBase & { kind: "checkbox"; checked: boolean });
 
 export type Align = "left" | "center" | "right" | null;
@@ -594,7 +601,7 @@ export function extractRefs(content: string, properties?: Properties): Extracted
 | `strike` | `<s>` | — |
 | `highlight` | `<mark>` | `.vr-highlight` |
 | `code` | `<code>` | `.vr-inline-code` |
-| `math` | KaTeX/MathJax render of `tex` (plugin-provided; plain `$tex$` text if no renderer is loaded) | `.vr-math` |
+| `math` | KaTeX/MathJax render of `tex`, in display mode when `display` (plain `$tex$` / `$$tex$$` text if no renderer is loaded) | `.vr-math` |
 | `checkbox` | `<input type="checkbox" disabled checked?>` | `.vr-checkbox` |
 | content `heading` | `<h1>`…`<h6>` per `level` | `.vr-heading` |
 | content `fence` | `<pre><code class="language-<lang>">`, syntax-highlighted (shiki or highlight.js, editor spec's call) | `.vr-fence`, `data-lang="<lang>"` |

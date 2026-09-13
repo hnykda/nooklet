@@ -115,13 +115,23 @@ build): `tag:task` → 686 blocks (the `ref` table says 686), `#task and (NOW or
 ---
 
 ### B-264 · Display math `$$…$$` renders as inline math wrapped in literal dollar signs
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q5) · **Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q5) · **Test:**
+`e2e/tests/math-display.spec.ts` (2 tests), `packages/core/src/tokens.test.ts` "tokenizeLine:
+display math $$…$$" (4 tests)
 
 `Display math $$\int_0^1 x^2\,dx = \frac{1}{3}$$ end` shows `$`, an inline KaTeX span, and `$`;
 no `.katex-display` element exists. `$$…$$` is Logseq's display-math syntax and the owner's graph
 uses it (`$$CO_2$$` on "Projects/Science presentation for kids with dry ice"). The grammar spec
 ("Inline math": a `$` opens math only if the next character is not another `$`) never mentions the
 display form, so the second `$` opens inline math and the fourth is left over.
+
+**Fixed 2026-09-13.** The tokenizer had no `$$` form, as the spec said. `core/tokens.ts` now tries
+display math at a `$$` before the inline rule — closer on the same line, non-blank tex, the inline
+rule's no-digit-after-closer guard — and emits `math` with `display: true`; the rendered view
+(`render/tokens.tsx#MathView`) and the editor widget (`livePreview.ts#MathWidget`) pass it to
+KaTeX's `displayMode`. Spec updated (`markdown-grammar.md`, "Display math"). Real graph: the
+`$$CO_2$$` block renders one `.katex-display`, centred on its own line, with no dollar signs
+(screenshot checked). Not done: a `$$` block spanning several lines — the tokenizer works per line.
 
 ---
 

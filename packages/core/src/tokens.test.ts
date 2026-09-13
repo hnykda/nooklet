@@ -380,6 +380,39 @@ describe("tokenizeLine: math heuristic corners", () => {
   });
 });
 
+// B-264: Logseq's display form. Before, the second `$` opened inline math and the fourth was left
+// over as text, so `$$x$$` read as "$", a formula, "$".
+describe("tokenizeLine: display math $$…$$", () => {
+  it("is one math token with display set and the delimiters outside tex", () => {
+    const line = "Display math $$\\int_0^1 x^2\\,dx = \\frac{1}{3}$$ end";
+    const toks = tokenizeLine(line);
+    expect(toks.map((t) => t.kind)).toEqual(["text", "math", "text"]);
+    const math = toks[1] as Extract<InlineToken, { kind: "math" }>;
+    expect(math.display).toBe(true);
+    expect(math.tex).toBe("\\int_0^1 x^2\\,dx = \\frac{1}{3}");
+    expect(line.slice(math.start, math.end)).toBe("$$\\int_0^1 x^2\\,dx = \\frac{1}{3}$$");
+  });
+
+  it("works inside emphasis, as on the owner's graph", () => {
+    const toks = tokenizeLine("*je to $$CO_2$$*");
+    const em = toks[0] as Extract<InlineToken, { kind: "em" }>;
+    expect(em.children.map((t) => t.kind)).toEqual(["text", "math"]);
+    expect(em.children[1]).toMatchObject({ kind: "math", tex: "CO_2", display: true });
+  });
+
+  it("inline $…$ is not display math", () => {
+    const math = tokenizeLine("$e^{i\\pi}+1=0$").find((t) => t.kind === "math");
+    expect(math).toMatchObject({ tex: "e^{i\\pi}+1=0" });
+    expect((math as Extract<InlineToken, { kind: "math" }>).display).toBeUndefined();
+  });
+
+  it("needs content and a closer, and keeps the price rule for the closer", () => {
+    expect(tokenizeLine("$$ $$").some((t) => t.kind === "math")).toBe(false);
+    expect(tokenizeLine("$$x").some((t) => t.kind === "math")).toBe(false);
+    expect(tokenizeLine("$$5 and $$10").some((t) => t.kind === "math")).toBe(false);
+  });
+});
+
 describe("tokenizeContent: empty and edge content", () => {
   it("returns [] for empty content", () => {
     expect(tokenizeContent("")).toEqual([]);

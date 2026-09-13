@@ -132,13 +132,15 @@ function CodeFence(props: { code: string; lang: string; ctx: RenderCtx }) {
   );
 }
 
-/** Inline `$tex$`: KaTeX HTML once loaded, the literal source until then (the contract's own
- * fallback). Same signal-not-resource reasoning as `CodeFence`. */
-function MathView(props: { tex: string; from: number; to: number }) {
+/** Inline `$tex$` or display `$$tex$$`: KaTeX HTML once loaded, the literal source until then (the
+ * contract's own fallback). Same signal-not-resource reasoning as `CodeFence`. */
+function MathView(props: { tex: string; display: boolean; from: number; to: number }) {
   const [html, setHtml] = createSignal<string | null>(null);
+  const delim = () => (props.display ? "$$" : "$");
   createEffect(() => {
     const tex = props.tex;
-    const now = renderTexSync(tex);
+    const display = props.display;
+    const now = renderTexSync(tex, display);
     setHtml(now);
     if (now !== null) return;
     let stale = false;
@@ -147,7 +149,7 @@ function MathView(props: { tex: string; from: number; to: number }) {
     });
     void loadMath().then(
       () => {
-        if (!stale) setHtml(renderTexSync(tex));
+        if (!stale) setHtml(renderTexSync(tex, display));
       },
       () => {
         // Chunk failed to load (offline, first visit): stay on the source text.
@@ -159,7 +161,7 @@ function MathView(props: { tex: string; from: number; to: number }) {
       when={html()}
       fallback={
         <span class="vr-math" data-from={props.from} data-to={props.to}>
-          {`$${props.tex}$`}
+          {`${delim()}${props.tex}${delim()}`}
         </span>
       }
     >
@@ -445,7 +447,14 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               </code>
             );
           case "math":
-            return <MathView tex={tok.tex} from={tok.start} to={tok.end} />;
+            return (
+              <MathView
+                tex={tok.tex}
+                display={tok.display === true}
+                from={tok.start}
+                to={tok.end}
+              />
+            );
           case "checkbox":
             return (
               <input

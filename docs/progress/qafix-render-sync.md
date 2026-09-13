@@ -16,8 +16,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 | Q2 UI title rename skips link rewrite + alias | B-261 | high | fixed |
 | Q3 export trusts mirror_file over disk | B-262 | medium | fixed |
 | Q4 `tag:task` query finds nothing | B-263 | medium | fixed |
-| Q5 `$$…$$` display math | B-264 | low | next |
-| Q6 collapsed template copy | B-265 | low | queued |
+| Q5 `$$…$$` display math | B-264 | low | fixed |
+| Q6 collapsed template copy | B-265 | low | next |
 | Q7 unpadded SCHEDULED dates | B-266 | low | queued |
 | Q8 page_merge dry-run text | B-267 | low | queued |
 | Q9 `javascript:` hrefs | B-268 | low | queued |
@@ -28,11 +28,12 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `2577a3e` B-260 live mirror follows `changes` (unit + `e2e/tests/mirror-live.spec.ts` 3/3)
 - `2416e9e` B-261 title rename through `page.update` (`e2e/tests/page-rename.spec.ts` 2/2, `pages.spec.ts` 14/14)
 - `bd6ef6f` B-262 export rewrites files missing on disk (unit; real graph copy 952/952)
-- B-263 derived Task tag in queries (`core/refs.ts#TASK_TAG`; unit + `e2e/tests/query-task-tag.spec.ts` 2/2; real graph 686)
+- `a287309` B-263 derived Task tag in queries (`core/refs.ts#TASK_TAG`; unit + `e2e/tests/query-task-tag.spec.ts` 2/2; real graph 686)
+- B-264 `$$…$$` display math (core tokenizer + MathView + MathWidget + spec; unit + `e2e/tests/math-display.spec.ts` 2/2)
 
 ## In flight
 
-- Q5/B-264.
+- Q6/B-265.
 
 ## Decisions
 

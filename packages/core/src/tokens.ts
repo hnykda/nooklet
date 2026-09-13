@@ -56,7 +56,8 @@ export type InlineToken =
   | (TokBase & { kind: "strike"; children: InlineToken[] })
   | (TokBase & { kind: "highlight"; children: InlineToken[] })
   | (TokBase & { kind: "code"; code: string })
-  | (TokBase & { kind: "math"; tex: string })
+  /** `display` is present (and true) only for `$$…$$`, Logseq's display form (B-264). */
+  | (TokBase & { kind: "math"; tex: string; display?: true })
   | (TokBase & { kind: "checkbox"; checked: boolean });
 
 export type Align = "left" | "center" | "right" | null;
@@ -629,6 +630,23 @@ export function tokenizeLine(line: string, base: Offset = 0): InlineToken[] {
       }
       i++;
       continue;
+    }
+
+    if (ch === "$" && line[i + 1] === "$") {
+      // Display math `$$tex$$` — Logseq's syntax, and on the owner's graph (`$$CO_2$$`). Without
+      // this the second `$` opened inline math and the fourth was left as a stray dollar (B-264).
+      // The closer keeps the inline rule's price guard (not followed by a digit), so
+      // `$$5 and $$10` stays text; an unclosed or empty `$$` falls through to the inline rules.
+      const closeIdx = line.indexOf("$$", i + 2);
+      const tex = closeIdx === -1 ? "" : line.slice(i + 2, closeIdx);
+      const after = closeIdx === -1 ? undefined : line[closeIdx + 2];
+      if (tex.trim() !== "" && (after === undefined || !/[0-9]/.test(after))) {
+        flushText(i);
+        out.push({ kind: "math", start: base + i, end: base + closeIdx + 2, tex, display: true });
+        i = closeIdx + 2;
+        textStart = i;
+        continue;
+      }
     }
 
     if (ch === "$") {
