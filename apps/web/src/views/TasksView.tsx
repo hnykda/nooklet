@@ -45,7 +45,7 @@ function toEditableBlock(t: TaskRow): EditableBlock {
     deadline: reconstructDate(t.deadlineDay, t.deadlineTime),
     repeat: t.repeat,
     doneAt: t.doneAt,
-    listNumber: false,
+    properties: {},
   };
 }
 

@@ -28,9 +28,8 @@
  * change" later. See the package summary for the actual 1.7 MB-page measurement.
  *
  * Known data-seam gaps (not bugs in this file): no page-existence index (`.vr-ref-new` never
- * renders), no cross-page block lookup (`blockRef`/embed render placeholders), and `list::
- * number` is not yet projected by `BlockRow` (numbering is wired end-to-end but always empty) —
- * all three are called out where they bite in `render/tokens.tsx`/`numbering.ts`.
+ * renders) and no cross-page block lookup (`blockRef`/embed render placeholders) — both called out
+ * where they bite in `render/tokens.tsx`.
  */
 import type { EditorView } from "@codemirror/view";
 import { formatDayTime, makeOp, type Op, type OutlineNode, serializeOutline } from "@nooklet/core";
@@ -76,7 +75,7 @@ import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
-import { deriveNumbering } from "./numbering.js";
+import { deriveNumbering, isNumbered } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
 import type { NavigateTarget } from "./render/tokens.js";
@@ -108,8 +107,8 @@ function toEditableBlock(row: BlockTreeNode): EditableBlock {
     deadline,
     repeat: row.repeat,
     doneAt: row.doneAt,
-    // Not yet exposed by the data seam (`numbering.ts`'s doc comment) — always false for now.
-    listNumber: false,
+    // Generic properties, projected by the worker (B-100): `list:: number`, property chips.
+    properties: row.properties,
   };
 }
 
@@ -250,7 +249,7 @@ export function BlockTree(props: {
     const t = editorTree();
     const out = new Map<BlockId, number>();
     for (const ids of t.childrenOf.values()) {
-      const derived = deriveNumbering(ids, (id) => t.byId.get(id)?.listNumber ?? false);
+      const derived = deriveNumbering(ids, (id) => isNumbered(t.byId.get(id)));
       for (const [id, n] of derived) out.set(id, n);
     }
     return out;
@@ -841,7 +840,8 @@ export function BlockTree(props: {
             content: b.content,
             marker: b.marker,
             priority: b.priority,
-            properties: {},
+            // Copied blocks keep their properties — a numbered list pasted elsewhere stays one.
+            properties: { ...b.properties },
             collapsed: b.collapsed,
             children: childrenIds(tree, id).map(toNode),
           };

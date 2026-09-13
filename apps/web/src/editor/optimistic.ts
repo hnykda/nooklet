@@ -74,7 +74,7 @@ export function applyOptimistic(
           deadline: null,
           repeat: null,
           doneAt: null,
-          listNumber: false,
+          properties: {},
         });
         break;
       case "block.place": {

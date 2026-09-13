@@ -89,6 +89,28 @@ describe("WorkerDb.getPageTree", () => {
     expect(result?.blocks[0]?.content).toBe("Root block");
     expect(result?.blocks[0]?.children[0]?.content).toBe("Child block");
   });
+
+  // B-100/B-101: without this projection `list:: number` could never render and property chips
+  // had nothing to show — every block reached the editor with no properties at all.
+  it("carries each block's generic properties, not tombstones or reserved keys (B-100)", () => {
+    const pageOp = pageCreate(db, "Numbered");
+    db.applyLocalOps([pageOp]);
+    const one = blockCreate(db, pageOp.entity, null, "a", "one");
+    const two = blockCreate(db, pageOp.entity, null, "b", "two");
+    db.applyLocalOps([one, two]);
+    const prop = (entity: string, key: string, value: string | null): Op =>
+      makeOp(db.sync.nextHlc(), db.getDeviceId(), entity, { kind: "block.prop", key, value });
+    db.applyLocalOps([
+      prop(one.entity, "list", "number"),
+      prop(one.entity, "author", "Dan"),
+      prop(one.entity, "scheduled", "2026-09-20"),
+      prop(two.entity, "gone", "soon"),
+    ]);
+    db.applyLocalOps([prop(two.entity, "gone", null)]);
+
+    const blocks = db.getPageTree(pageOp.entity)?.blocks ?? [];
+    expect(blocks.map((b) => b.properties)).toEqual([{ author: "Dan", list: "number" }, {}]);
+  });
 });
 
 describe("WorkerDb.getJournalStream", () => {

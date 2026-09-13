@@ -6,7 +6,18 @@ B-150..B-159 only.
 ---
 
 ### B-100 (existing)
-Numbered lists never render.
+Numbered lists never render. **Test:** `e2e/tests/block-properties.spec.ts` "list:: number
+siblings render 1, 2 and restart after a plain bullet"; `apps/web/src/db/worker-core.test.ts`
+"carries each block's generic properties, not tombstones or reserved keys (B-100)"
+
+**Fixed 2026-09-13.** The worker's page tree (`db/worker-core.ts#pageBlockTree`) now reads every
+live block's non-null `block_prop` rows for the page in one query and hangs them on
+`BlockTreeNode.properties`; `EditableBlock.listNumber` (always `false`) became
+`EditableBlock.properties`, and `numbering.ts#isNumbered` reads `properties.list === "number"`.
+Core's `BlockRow` is unchanged — the server shares it and reads properties its own way. The e2e
+test would have caught it: before the fix a page seeded with `list:: number` blocks rendered zero
+`.vr-list-number` (the audit's runtime check, D6). Side effect: Cmd+C on selected blocks now copies
+their properties too (it wrote `properties: {}`).
 
 ---
 

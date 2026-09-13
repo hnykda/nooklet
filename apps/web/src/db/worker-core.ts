@@ -26,7 +26,12 @@ import {
   type SqlDriver,
 } from "@nooklet/core";
 import { buildBlockTree } from "../data/tree.js";
-import type { JournalDayEntry, JournalStreamOptions, PageTreeResult } from "../data/types.js";
+import type {
+  BlockTreeNode,
+  JournalDayEntry,
+  JournalStreamOptions,
+  PageTreeResult,
+} from "../data/types.js";
 import { SyncClient } from "../sync/sync-client.js";
 import type { SyncStatus, SyncTransport } from "../sync/types.js";
 import { initClientSchema } from "./schema-client.js";
@@ -59,6 +64,40 @@ function collectPageBlocks(
     all.push(...collectPageBlocks(driver, pageId, child.id));
   }
   return all;
+}
+
+/**
+ * Every live block's generic properties on one page, in one query rather than one per block (the
+ * journal stream builds a dozen page trees per render). `value IS NOT NULL`: a removed property is
+ * a tombstone row with a null value, kept for last-writer-wins, not a property.
+ */
+function collectPageProperties(
+  driver: SqlDriver,
+  pageId: string,
+): Map<string, Record<string, string>> {
+  const rows = driver.all<{ block_id: string; key: string; value: string }>(
+    `SELECT bp.block_id, bp.key, bp.value FROM block_prop bp
+     JOIN block b ON b.id = bp.block_id
+     WHERE b.page_id = ? AND b.deleted_at IS NULL AND bp.value IS NOT NULL
+     ORDER BY bp.block_id, bp.key`,
+    [pageId],
+  );
+  const out = new Map<string, Record<string, string>>();
+  for (const r of rows) {
+    const bag = out.get(r.block_id);
+    if (bag) bag[r.key] = r.value;
+    else out.set(r.block_id, { [r.key]: r.value });
+  }
+  return out;
+}
+
+/** A page's whole block tree, generic properties included. */
+function pageBlockTree(driver: SqlDriver, pageId: string): BlockTreeNode[] {
+  return buildBlockTree(
+    collectPageBlocks(driver, pageId),
+    null,
+    collectPageProperties(driver, pageId),
+  );
 }
 
 function findPageByJournalDay(driver: SqlDriver, day: number): PageRow | null {
@@ -165,7 +204,7 @@ export class WorkerDb {
   getPageTree(pageId: string): PageTreeResult | undefined {
     const page = getPage(this.driver, pageId);
     if (!page) return undefined;
-    return { page, blocks: buildBlockTree(collectPageBlocks(this.driver, pageId)) };
+    return { page, blocks: pageBlockTree(this.driver, pageId) };
   }
 
   getJournalStream(opts: JournalStreamOptions): JournalDayEntry[] {
@@ -175,7 +214,7 @@ export class WorkerDb {
     entries.push({
       day: opts.today,
       page: todayPage,
-      blocks: todayPage ? buildBlockTree(collectPageBlocks(this.driver, todayPage.id)) : [],
+      blocks: todayPage ? pageBlockTree(this.driver, todayPage.id) : [],
     });
 
     // Future days first, and ALL of them: a journal day ahead of today exists because something
@@ -202,7 +241,7 @@ export class WorkerDb {
       entries.push({
         day: row.journal_day,
         page,
-        blocks: buildBlockTree(collectPageBlocks(this.driver, page.id)),
+        blocks: pageBlockTree(this.driver, page.id),
       });
     }
     return entries;
