@@ -28,6 +28,11 @@
  * It now holds them all (up to `MAX_LINKED_REFERENCES`, the heading saying so beyond that) and
  * RENDERS a window of `REFERENCE_ROWS_STEP` rows with a "Show more" button
  * (`./referenceWindow.ts` says why rendering is windowed but counting is not).
+ *
+ * Each row is the block as its page shows it, children nested, with a breadcrumb (B-550,
+ * `./ReferenceItem.tsx`), read from the replica (`../data/reference-trees.ts`). A reference inside
+ * another listed reference is not a row of its own (`./referenceNesting.ts`); the heading still
+ * counts blocks, the number `page.backlinks` reports.
  */
 import { normalizePageName } from "@nooklet/core";
 import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
@@ -35,9 +40,10 @@ import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show 
 import { callOp, describeError } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { undoBatch } from "../data/refactor-api.js";
+import { useReferenceListTrees } from "../data/reference-trees.js";
 import { useLinkedReferences } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
-import { InlineContent } from "../editor/InlineContent.js";
+import { ReferenceGroups } from "./ReferenceItem.js";
 import {
   loadReferenceFilter,
   loadReferenceSort,
@@ -55,6 +61,7 @@ import {
   type ReferenceFilter,
   type ReferenceSort,
 } from "./referenceGrouping.js";
+import { foldNestedReferences, loadedTrees } from "./referenceNesting.js";
 import { countLabel, firstRows, REFERENCE_ROWS_STEP } from "./referenceWindow.js";
 import "./references.css";
 import { TaggedPages } from "./TaggedPages.js";
@@ -67,47 +74,6 @@ export interface ReferencesPanelProps {
    * its linked references and tagged pages are why you opened it, but "Link all" runs
    * `mentions.link`, which needs the page to exist and would only answer with an error. */
   unlinked?: boolean;
-}
-
-interface Group {
-  page: string;
-  refs: ReadonlyArray<{ id: string; text: string }>;
-}
-
-function ReferenceGroups(props: {
-  groups: Group[];
-  onNavigate: (t: NavigateTarget) => void;
-}): JSX.Element {
-  return (
-    <For each={props.groups}>
-      {(group) => (
-        <div class="reference-group">
-          <button
-            type="button"
-            class="reference-group-page"
-            onClick={() => props.onNavigate({ kind: "page", name: group.page })}
-          >
-            {displayRefName(group.page)}
-          </button>
-          <ul>
-            <For each={group.refs}>
-              {(ref) => (
-                <li class="reference-item">
-                  <button
-                    type="button"
-                    class="reference-item-jump"
-                    onClick={() => props.onNavigate({ kind: "block", id: ref.id })}
-                  >
-                    <InlineContent content={ref.text} onNavigate={props.onNavigate} />
-                  </button>
-                </li>
-              )}
-            </For>
-          </ul>
-        </div>
-      )}
-    </For>
-  );
 }
 
 /** "Show N more" under a windowed list; nothing when every row is already shown. */
@@ -241,8 +207,29 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   const allLinked = createMemo(() => data()?.linked ?? []);
   const candidates = createMemo(() => filterCandidates(allLinked(), pageKey()));
   const filteredLinked = createMemo(() => applyReferenceFilter(allLinked(), filter()));
-  const linkedGroups = createMemo(() => groupLinkedReferences(filteredLinked(), sort()));
-  const unlinkedGroups = createMemo(() => groupUnlinkedReferences(data()?.unlinked ?? []));
+  // B-550: the blocks as the replica has them. The unlinked half reads only once it is opened.
+  const linkedTrees = useReferenceListTrees(
+    () => props.target,
+    allLinked,
+    () => true,
+  );
+  const unlinkedTrees = useReferenceListTrees(
+    () => props.target,
+    () => data()?.unlinked ?? [],
+    unlinkedOpen,
+  );
+  const linkedGroups = createMemo(() =>
+    foldNestedReferences(
+      groupLinkedReferences(filteredLinked(), sort()),
+      loadedTrees(linkedTrees()),
+    ),
+  );
+  const unlinkedGroups = createMemo(() =>
+    foldNestedReferences(
+      groupUnlinkedReferences(data()?.unlinked ?? []),
+      loadedTrees(unlinkedTrees()),
+    ),
+  );
   const linkedCount = createMemo(() => filteredLinked().length);
   const unlinkedCount = createMemo(() =>
     props.unlinked === false ? 0 : (data()?.unlinked.length ?? 0),
@@ -467,12 +454,20 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
                 when={linkedCount() > 0}
                 fallback={<p class="references-empty">No references match this filter.</p>}
               >
-                <ReferenceGroups groups={linkedWindow().groups} onNavigate={props.onNavigate} />
-                <ShowMore
-                  shown={linkedWindow().shown}
-                  total={linkedWindow().total}
-                  onMore={() => setLinkedRows((n) => n + REFERENCE_ROWS_STEP)}
-                />
+                {/* Not before the replica's read: until then every nested reference would show as
+                    a row of its own, and the list would shrink under the reader a moment later. */}
+                <Show when={linkedTrees()} fallback={<p class="references-loading">Loading…</p>}>
+                  <ReferenceGroups
+                    groups={linkedWindow().groups}
+                    trees={() => loadedTrees(linkedTrees())}
+                    onNavigate={props.onNavigate}
+                  />
+                  <ShowMore
+                    shown={linkedWindow().shown}
+                    total={linkedWindow().total}
+                    onMore={() => setLinkedRows((n) => n + REFERENCE_ROWS_STEP)}
+                  />
+                </Show>
                 <Show when={linkedPartial()}>
                   <p class="references-empty">
                     Only the {allLinked().length} most recent of {data()?.linkedTotal} references
@@ -513,12 +508,18 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
               </div>
             </div>
             <Show when={unlinkedOpen()}>
-              <ReferenceGroups groups={unlinkedWindow().groups} onNavigate={props.onNavigate} />
-              <ShowMore
-                shown={unlinkedWindow().shown}
-                total={unlinkedWindow().total}
-                onMore={() => setUnlinkedRows((n) => n + REFERENCE_ROWS_STEP)}
-              />
+              <Show when={unlinkedTrees()} fallback={<p class="references-loading">Loading…</p>}>
+                <ReferenceGroups
+                  groups={unlinkedWindow().groups}
+                  trees={() => loadedTrees(unlinkedTrees())}
+                  onNavigate={props.onNavigate}
+                />
+                <ShowMore
+                  shown={unlinkedWindow().shown}
+                  total={unlinkedWindow().total}
+                  onMore={() => setUnlinkedRows((n) => n + REFERENCE_ROWS_STEP)}
+                />
+              </Show>
             </Show>
           </section>
         </Show>

@@ -144,7 +144,9 @@ test("a reference's page name opens that page, and the item opens the block zoom
 
   await page.goto(pagePath("Views Ref Target"));
   await expect(linked).toBeVisible({ timeout: 15_000 });
-  await linked.locator(".reference-item-jump").click();
+  // The reference is the block rendered as a row (B-550); its bullet is a spot on the row that is
+  // not the `[[link]]` inside it.
+  await linked.locator(".reference-item .vr-embed-row .vr-embed-bullet").click();
   await expect(page).toHaveURL(new RegExp(`/page/Views%20Ref%20Source\\?block=${src?.id}$`));
   await expect(page.locator(".vr-zoom-trail, .page-view-back").first()).toBeVisible();
 });

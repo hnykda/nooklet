@@ -44,7 +44,10 @@ export function listPages(driver: SqlDriver): PageRow[] {
   return driver.all<PageSqlRow>("SELECT * FROM page ORDER BY id").map(toPageRow);
 }
 
-interface BlockSqlRow {
+/** A `block` row as SQLite returns it (`SELECT *`). Exported with `toBlockRow` for readers that run
+ * their own SQL over the same table — the web client's replica queries (`apps/web/src/data/`) —
+ * so the column-to-field mapping exists once. */
+export interface BlockSqlRow {
   id: string;
   graph_id: string;
   page_id: string;
@@ -76,7 +79,7 @@ interface BlockSqlRow {
   deleted_hlc: string | null;
 }
 
-function toBlockRow(r: BlockSqlRow): BlockRow {
+export function toBlockRow(r: BlockSqlRow): BlockRow {
   return {
     id: r.id,
     graphId: r.graph_id,

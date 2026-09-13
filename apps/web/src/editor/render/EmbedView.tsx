@@ -19,25 +19,22 @@
  * Clicks that are not on a row, a link or a toggle — the frame, the gap beside the source line —
  * fall through to the host block and put it in edit mode, which is the only way to reach the
  * `{{embed …}}` text of a block that is nothing but an embed.
+ *
+ * The outline itself — rows, folding, the row cap — is `./ReadOnlyOutline.tsx`, shared with the
+ * references panel (B-550).
  */
 
-import { classifyBlockContent } from "@nooklet/core";
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { createMemo, type JSX, Show } from "solid-js";
 import { type EmbedData, type EmbedTarget, useEmbed } from "../../data/embeds.js";
 import { displayPageName, displayRefName } from "../../data/page-title.js";
 import type { BlockTreeNode } from "../../data/types.js";
 import { pageRoutePath } from "../../routes/page-path.js";
-import { MARKER_GLYPH } from "../BlockRowView.js";
-import { EMBED_ROW_CAP, embedReachesPath, visibleEmbedRows } from "./embedRows.js";
-import { BlockContentView, MAX_REF_DEPTH, type RenderCtx } from "./tokens.js";
+import { EMBED_ROW_CAP, embedReachesPath } from "./embedRows.js";
+import { halt, ReadOnlyOutline } from "./ReadOnlyOutline.js";
+import { MAX_REF_DEPTH, type RenderCtx } from "./tokens.js";
 import "./embed.css";
 
 type Props = { target: EmbedTarget; from: number; to: number; ctx: RenderCtx };
-
-function halt(e: Event): void {
-  e.preventDefault();
-  e.stopPropagation();
-}
 
 function targetText(t: EmbedTarget): string {
   return t.kind === "page" ? `[[${displayRefName(t.name)}]]` : `((${t.id}))`;
@@ -152,48 +149,10 @@ function LiveEmbed(props: Props): JSX.Element {
 }
 
 function EmbedOutline(props: Props & { data: Extract<EmbedData, { page: unknown }> }): JSX.Element {
-  // View-local expand/collapse: flipping a toggle here never writes `collapsed` — the embed is a
-  // read-only window, and the block's own page keeps the state its owner left it in.
-  const [flipped, setFlipped] = createSignal<ReadonlySet<string>>(new Set());
-  const byId = createMemo(() => {
-    const map = new Map<string, BlockTreeNode>();
-    const walk = (nodes: readonly BlockTreeNode[]): void => {
-      for (const node of nodes) {
-        map.set(node.id, node);
-        walk(node.children);
-      }
-    };
-    walk(props.data.status === "page" ? props.data.blocks : [props.data.node]);
-    return map;
-  });
-  // A block embed's root is open whatever it says: embedding a block is asking to see what hangs
-  // off it, and the owner's own embeds point at blocks folded away on their original day. A page
-  // embed's top-level blocks keep their stored state, like the page does.
-  const rootOpen = (): boolean => props.data.status === "block";
-  const isOpen = (node: { id: string; collapsed: boolean }, isRoot: boolean): boolean =>
-    (isRoot && rootOpen() ? true : !node.collapsed) !== flipped().has(node.id);
-  const rows = createMemo(() =>
-    visibleEmbedRows(
-      props.data.status === "page" ? props.data.blocks : [props.data.node],
-      isOpen,
-      EMBED_ROW_CAP,
-    ),
+  const roots = createMemo((): readonly BlockTreeNode[] =>
+    props.data.status === "page" ? props.data.blocks : [props.data.node],
   );
-  const toggle = (id: string): void => {
-    setFlipped((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
   const pageName = (): string => props.data.page.name;
-  const rootIds = createMemo(
-    () =>
-      new Set(
-        props.data.status === "page" ? props.data.blocks.map((b) => b.id) : [props.data.node.id],
-      ),
-  );
 
   return (
     <>
@@ -210,143 +169,24 @@ function EmbedOutline(props: Props & { data: Extract<EmbedData, { page: unknown 
           {displayPageName(props.data.page)}
         </a>
       </div>
-      <Show when={rows().ids.length > 0} fallback={<div class="vr-embed-note">Empty page.</div>}>
-        <ul class="vr-embed-outline">
-          <For each={rows().ids}>
-            {(id) => (
-              <EmbedRow
-                id={id}
-                pageId={props.data.page.id}
-                node={() => byId().get(id)}
-                depth={rows().depth.get(id) ?? 0}
-                open={(() => {
-                  const node = byId().get(id);
-                  return node ? isOpen(node, rootIds().has(id)) : false;
-                })()}
-                onToggle={() => toggle(id)}
-                ctx={props.ctx}
-              />
-            )}
-          </For>
-        </ul>
-        <Show when={rows().hidden > 0}>
-          <button
-            type="button"
-            class="vr-embed-more"
-            onClick={(e) => {
-              halt(e);
-              props.ctx.onNavigate?.(
-                props.data.status === "page"
-                  ? { kind: "page", name: pageName() }
-                  : { kind: "block", id: props.data.node.id },
-              );
-            }}
-          >
-            {rows().hidden === 1 ? "1 more block" : `${rows().hidden} more blocks`}
-          </button>
-        </Show>
+      <Show when={roots().length > 0} fallback={<div class="vr-embed-note">Empty page.</div>}>
+        {/* A block embed's root is open whatever it says: embedding a block is asking to see what
+            hangs off it, and the owner's own embeds point at blocks folded away on their original
+            day. A page embed's top-level blocks keep their stored state, like the page does. */}
+        <ReadOnlyOutline
+          roots={roots()}
+          rootsOpen={props.data.status === "block"}
+          cap={EMBED_ROW_CAP}
+          ctx={props.ctx}
+          onMore={() =>
+            props.ctx.onNavigate?.(
+              props.data.status === "page"
+                ? { kind: "page", name: pageName() }
+                : { kind: "block", id: props.data.node.id },
+            )
+          }
+        />
       </Show>
     </>
-  );
-}
-
-function EmbedRow(props: {
-  /** The `<For>` key itself — a plain string, so nothing derived from it is re-evaluated when a
-   * re-read replaces the node objects. */
-  id: string;
-  /** The page the embedded block lives on — not the host's (B-215). */
-  pageId: string;
-  node: () => BlockTreeNode | undefined;
-  depth: number;
-  open: boolean;
-  onToggle: () => void;
-  ctx: RenderCtx;
-}): JSX.Element {
-  // Memo on the string first: a re-read of the graph hands over new node objects with the same
-  // text, and re-classifying (and re-rendering) every embedded row on every keystroke elsewhere is
-  // the cost this avoids.
-  const text = createMemo(() => props.node()?.content ?? "");
-  const content = createMemo(() => classifyBlockContent(text()));
-  const marker = () => props.node()?.marker ?? null;
-  const priority = () => props.node()?.priority ?? null;
-  const hasChildren = (): boolean => (props.node()?.children.length ?? 0) > 0;
-
-  const go = (e: MouseEvent | KeyboardEvent): void => {
-    // A real link inside the row (`https://…`, an asset) keeps its own default — the tab it opens.
-    // `halt` below would cancel it and send the click to the block instead (B-216). Stopped all the
-    // same, or the host would take the click as "edit me". `[[page]]` links never get here:
-    // `NavLink` stops its click first.
-    if (e.target instanceof Element && e.target.closest("a[href]")) {
-      e.stopPropagation();
-      return;
-    }
-    // Before anything else: the host `.vr-block-view` treats a click as "edit me", and an embedded
-    // row is a way to the embedded block, not into the block that embeds it.
-    halt(e);
-    if (e.shiftKey && props.ctx.onShelfOpen) {
-      props.ctx.onShelfOpen({ kind: "block", id: props.id, pageId: props.pageId });
-      return;
-    }
-    props.ctx.onNavigate?.({ kind: "block", id: props.id });
-  };
-
-  return (
-    <li class="vr-embed-item" data-embed-block-id={props.id} style={{ "--depth": props.depth }}>
-      {/* biome-ignore lint/a11y/useSemanticElements: a row navigates to its block but hosts rendered rich content (links, checkboxes, tables) that cannot live inside an <a> — same reasoning as the query fence's result rows. */}
-      <div
-        class="vr-embed-row"
-        role="link"
-        tabIndex={props.ctx.onNavigate ? 0 : undefined}
-        onClick={go}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") go(e);
-        }}
-      >
-        <Show when={hasChildren()} fallback={<span class="vr-embed-bullet" aria-hidden="true" />}>
-          <button
-            type="button"
-            class="vr-embed-toggle"
-            aria-expanded={props.open}
-            aria-label={props.open ? "Collapse in this embed" : "Expand in this embed"}
-            onClick={(e) => {
-              halt(e);
-              props.onToggle();
-            }}
-            onKeyDown={(e) => {
-              // Enter on the toggle is the toggle's own click, not the row's navigation.
-              if (e.key === "Enter") e.stopPropagation();
-            }}
-          >
-            <span
-              class="vr-embed-bullet"
-              classList={{ "vr-embed-bullet-collapsed": !props.open }}
-            />
-          </button>
-        </Show>
-        <Show when={marker()}>
-          {(m) => (
-            <span class={`vr-marker vr-marker-${m()}`} role="img" aria-label={`Task: ${m()}`}>
-              {MARKER_GLYPH[m()] ?? "☐"}
-            </span>
-          )}
-        </Show>
-        <Show when={priority()}>
-          {(p) => <span class={`vr-priority vr-priority-${p()}`}>{p()}</span>}
-        </Show>
-        <div class="vr-embed-content" dir="auto">
-          <BlockContentView
-            content={content()}
-            ctx={{
-              ...props.ctx,
-              source: text(),
-              refDepth: (props.ctx.refDepth ?? 0) + 1,
-              // This row's own block joins the path, so an embed written inside it that would
-              // render this row again is caught (`embedRows.ts#embedReachesPath`).
-              embedPath: [...(props.ctx.embedPath ?? []), props.id],
-            }}
-          />
-        </div>
-      </div>
-    </li>
   );
 }
