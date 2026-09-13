@@ -120,3 +120,30 @@ it changes the missing-page view another branch (`m8/qafix-render-sync`) is edit
 uncreated page should show references is a product call.
 
 ---
+
+### B-201 · A half-typed page title reverts when any other page changes
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, reviewing B-104's change to what
+`usePageByName` listens to · **Test:** `e2e/tests/page-title-draft.spec.ts` "a half-typed page
+title survives other pages being created and edited (B-201)"
+
+Click a page's title, type " renamed" without leaving the field, and let anything create or rename
+a page anywhere (sync, an agent, another tab): the input snaps back to the stored name and the
+typing is gone. Measured with the e2e test before any fix: with the lookup listening to `page` only
+(as on `da85cfb`), a `page.create` of an unrelated page reverted it; with B-104's lookup — which
+also listens to `page_prop`, so an alias added elsewhere resolves — setting an icon on an unrelated
+page reverted it too. So the bug predates this branch, and B-104 widened it. Cause: `PageView`'s
+`createEffect(() => setTitleDraft(page()?.name …))` re-runs whenever the resource value changes, and
+`usePageByName` returned a freshly built row object on every refetch, so every refetch looked like a
+change.
+
+**Fixed 2026-09-13.** `data/store.ts#usePageByName` hands back the previous row object when every
+field of the refetched row is equal (`samePageRow`), so Solid's value signal does not notify and
+nothing downstream re-runs; the lookup itself moved into `findPageRowByName`, unchanged. Fixed in the
+store rather than in `PageView`'s effect so every reader (the shelf too) stops re-rendering on
+unrelated writes, and so the fix does not touch the lines `m8/qafix-render-sync` edits. The e2e test
+fails with the reuse disabled (checked) and passes with it. Believed still open, narrower (from
+reading the code, not tested): a remote change to THIS page's row (e.g. its `updated_at`) while its
+title is being typed would still reset the draft — guarding the effect on `page()?.name` in
+`PageView` would close that.
+
+---

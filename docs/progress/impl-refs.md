@@ -49,9 +49,16 @@ and immediately `git reset --hard da85cfb` before any work (no commits lost; not
   shows "Pages tagged journal" 825 (200 shown, note present) above linked refs; API journal 825 in
   8–14 ms; `book` tagged page listed. Verify on the copy afterwards: OK, 20,411 ops.
 
+- B-201 (found reviewing B-104: a half-typed page title reverted whenever any other page changed;
+  predates the branch, B-104's `page_prop` stamp widened it) fixed in `store.ts#usePageByName` by
+  reusing the previous row object when unchanged; e2e `page-title-draft.spec.ts` (fails with the
+  reuse disabled). Broad e2e set (13 specs) 90 passed / 1 failed (`references.spec.ts` "no
+  references means no panel at all", 12 s timeout) — passed alone and in the same file order (83
+  passed): load.
+
 ## In flight
 
-Nothing. All three bugs fixed and committed.
+Nothing. B-89, B-104, B-111, B-201 fixed and committed; B-200 logged open.
 
 ## Next steps, in order
 
