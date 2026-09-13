@@ -67,4 +67,13 @@ describe("search: properties on reserved task keys (B-238)", () => {
     const hits = await search({ query: "buy", scope: "blocks", properties: { author: "Čapek" } });
     expect(hits.map((h) => h.page)).toEqual(["Reading"]);
   });
+
+  it("a key that names an Object.prototype member is a property filter, not a column", async () => {
+    // `constructor` passes the key schema; looked up with a plain index it resolved to `Object`
+    // and the SQL became `b.function Object() { [native code] } = ?`, a 500 (verification probe,
+    // 2026-09-13). No block can carry the property today — the markdown parser mangles that key
+    // the same way (logged under B-238) — so the filter matching nothing is the right answer.
+    const hits = await search({ query: "buy", scope: "blocks", properties: { constructor: "x" } });
+    expect(hits).toEqual([]);
+  });
 });

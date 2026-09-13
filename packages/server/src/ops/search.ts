@@ -214,7 +214,9 @@ export const search = defineOp({
       for (const [k, v] of Object.entries(input.properties ?? {})) {
         // Reserved task keys live in `block` columns (ADR 011), never in `block_prop` — looking
         // there made the description's own example, {"marker":"TODO"}, match nothing (B-238).
-        const column = TEXT_COLUMN_PROPS[k];
+        // `hasOwn`, not a plain index: `constructor` is a valid property key, and indexing the
+        // object literal with it returned `Object` itself, spliced into the SQL as a 500.
+        const column = Object.hasOwn(TEXT_COLUMN_PROPS, k) ? TEXT_COLUMN_PROPS[k] : undefined;
         if (column) {
           conditions.push(`b.${column} = ?`);
           params.push(v);
