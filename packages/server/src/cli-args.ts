@@ -105,6 +105,36 @@ export function parseGcFlags(args: Args): GcFlags {
   };
 }
 
+export const REPAIR_FLAGS = ["data", "apply", "dry-run"] as const;
+
+export interface RepairFlags {
+  what: "org-dates";
+  apply: boolean;
+}
+
+/** `nooklet repair org-dates [--apply] [--data <dir>]`. A dry run unless `--apply` says otherwise.
+ * A typo'd flag, an unknown repair, or `--apply` together with `--dry-run` stops the run before
+ * the database is opened: a command that rewrites blocks must do exactly what was asked. */
+export function parseRepairFlags(args: Args): RepairFlags {
+  checkFlags(args, REPAIR_FLAGS);
+  const [, what, ...extra] = args._;
+  if (what !== "org-dates" || extra.length > 0) {
+    throw new CliArgError(
+      `unknown repair "${args._.slice(1).join(" ")}" (expected: nooklet repair org-dates [--apply])`,
+    );
+  }
+  const apply = booleanFlag(args, "apply", false);
+  const dryRun = booleanFlag(args, "dry-run", !apply);
+  if (apply === dryRun) {
+    throw new CliArgError(
+      apply
+        ? "--apply and --dry-run contradict each other; pass one"
+        : "--no-dry-run does not write; pass --apply to write",
+    );
+  }
+  return { what, apply };
+}
+
 /** True for `--help`, `-h` or `help` in any position — checked before any command opens a graph
  * (B-146). `-h` is not a `--` flag, so `parseArgs` would file it as a positional; look at argv. */
 export function wantsHelp(args: Args, argv: readonly string[]): boolean {

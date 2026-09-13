@@ -76,6 +76,61 @@ function orgTimestamp(inner: string): { date: string; repeat: string | undefined
   }
   return { date, repeat: m[6] && m[7] ? `${m[6]}${m[7]}` : undefined };
 }
+
+/** One org timestamp line, as the importer reads it (OUT-23). */
+export interface OrgDateLine {
+  key: "scheduled" | "deadline";
+  /** ADR 011's padded `YYYY-MM-DD[ HH:MM]`. */
+  value: string;
+  /** `<n><unit>` from an org repeater (`.+1w` -> `1w`), when the timestamp has one. */
+  repeat: string | undefined;
+}
+
+/** `SCHEDULED: <2023-2-17 Fri>` / `DEADLINE: <...>` as ADR 011 values, or `undefined` for any line
+ * the importer keeps as text — an impossible date included. The one definition of "a line that is
+ * really a date", shared by the parser and `nooklet repair org-dates`, so the repair can never
+ * take a line the importer would not. */
+export function orgDateLine(line: string): OrgDateLine | undefined {
+  const m = SCHEDULED_DEADLINE_RE.exec(line);
+  if (!m) return undefined;
+  const ts = orgTimestamp((m[2] as string).trim());
+  if (!ts) return undefined;
+  return {
+    key: m[1] === "SCHEDULED" ? "scheduled" : "deadline",
+    value: ts.date,
+    repeat: ts.repeat,
+  };
+}
+
+/**
+ * The lines of a STORED block's text (`block.content`, marker already split off) that the importer
+ * reads as dates today — what a graph imported before B-143 still holds as text. A line inside a
+ * code fence or a `:LOGBOOK:` drawer is not a date, here or to the parser.
+ */
+export function findOrgDateLines(content: string): Array<OrgDateLine & { index: number }> {
+  const out: Array<OrgDateLine & { index: number }> = [];
+  let fence: string | null = null;
+  let inLogbook = false;
+  content.split("\n").forEach((line, index) => {
+    if (fence !== null) {
+      if (closesFence(line, fence)) fence = null;
+      return;
+    }
+    if (inLogbook) {
+      if (line.trim() === ":END:") inLogbook = false;
+      return;
+    }
+    if (line.trim() === ":LOGBOOK:") {
+      inLogbook = true;
+      return;
+    }
+    const date = orgDateLine(line);
+    if (date) out.push({ ...date, index });
+    else fence = openingFence(line);
+  });
+  return out;
+}
+
 const HEADING_PREFIX_RE = /^#{1,6} /;
 
 const MARKER_ALIASES: Record<string, TaskMarker> = {
@@ -330,17 +385,13 @@ function finalizeNode(raw: RawNode, caretIds: WeakSet<OutlineNode>): OutlineNode
       } else properties[key] = value;
       return;
     }
-    // OUT-23: org SCHEDULED:/DEADLINE: timestamp lines -> scheduled::/deadline::/repeat::.
-    const sdm = SCHEDULED_DEADLINE_RE.exec(line);
-    if (sdm) {
-      const ts = orgTimestamp((sdm[2] as string).trim());
-      if (ts) {
-        const kind = (sdm[1] as string).toLowerCase();
-        properties[kind] = ts.date;
-        if (ts.repeat) properties.repeat = ts.repeat;
-        return;
-      }
-      // malformed timestamp: fall through and keep the line as ordinary content (no data loss).
+    // OUT-23: org SCHEDULED:/DEADLINE: timestamp lines -> scheduled::/deadline::/repeat::. A
+    // malformed timestamp is not one: it falls through and stays ordinary content (no data loss).
+    const orgDate = orgDateLine(line);
+    if (orgDate) {
+      properties[orgDate.key] = orgDate.value;
+      if (orgDate.repeat) properties.repeat = orgDate.repeat;
+      return;
     }
     if (kept.length === 0 && idx === 0) firstKeptWasFirstLine = true;
     kept.push(line);

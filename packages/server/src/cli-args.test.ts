@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { CliArgError, checkFlags, parseArgs, parseGcFlags, wantsHelp } from "./cli-args.js";
+import {
+  CliArgError,
+  checkFlags,
+  parseArgs,
+  parseGcFlags,
+  parseRepairFlags,
+  wantsHelp,
+} from "./cli-args.js";
+
+describe("parseRepairFlags (nooklet repair org-dates)", () => {
+  const repair = (...argv: string[]) => parseRepairFlags(parseArgs(["repair", ...argv]));
+
+  it("is a dry run unless --apply is given", () => {
+    expect(repair("org-dates")).toEqual({ what: "org-dates", apply: false });
+    expect(repair("org-dates", "--dry-run")).toEqual({ what: "org-dates", apply: false });
+    expect(repair("org-dates", "--data", "/tmp/g")).toEqual({ what: "org-dates", apply: false });
+    expect(repair("org-dates", "--apply")).toEqual({ what: "org-dates", apply: true });
+    expect(repair("org-dates", "--apply=true", "--no-dry-run").apply).toBe(true);
+  });
+
+  it("refuses a typo, an unknown repair, or contradictory flags instead of guessing", () => {
+    expect(() => repair("org-dates", "--aply")).toThrow("unknown flag --aply");
+    expect(() => repair("org-date")).toThrow(/unknown repair "org-date"/);
+    expect(() => repair()).toThrow(CliArgError);
+    expect(() => repair("org-dates", "extra")).toThrow(/unknown repair/);
+    expect(() => repair("org-dates", "--apply", "--dry-run")).toThrow(/contradict/);
+    expect(() => repair("org-dates", "--no-dry-run")).toThrow(/pass --apply/);
+    expect(() => repair("org-dates", "--apply=maybe")).toThrow(/--apply/);
+  });
+});
 
 describe("parseArgs", () => {
   it("separates positionals from flags and takes the next token as a flag's value", () => {
