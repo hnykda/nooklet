@@ -29,7 +29,9 @@ B-390..B-399), never `docs/BUGS.md`.
 - B-370 — `server/ops/batch-undo.ts` orders page restores so a key is freed before claimed
   (DFS over "claims key K" → "batch page holding K that gives it up"). Test
   `server/src/ops/batch-undo-name-order.http.test.ts` (3, incl. the swap cycle still refused).
-  Server 673 green. Still to run: e2e undo/history/trash specs (batched with B-324's e2e run).
+  Server 673 green. `5f0e4ac`. Still to run: e2e undo/history/trash specs.
+- B-324 — `web/views/taskFilters.ts#taskDateLabels` + `TasksView.tsx` + `styles/views.css`. Tests
+  `taskFilters.test.ts` (+2), `e2e/tests/tasks-view-dates.spec.ts` (1 passed, port 6401).
 
 ## Real-graph checks (copy taken 13:08)
 

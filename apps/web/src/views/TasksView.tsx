@@ -22,6 +22,7 @@ import {
   OPEN_TASK_STATES,
   sortTasksByDue,
   type TaskFilters,
+  taskDateLabels,
 } from "./taskFilters.js";
 
 function reconstructDate(day: number | null, time: string | null): string | null {
@@ -48,11 +49,6 @@ function toEditableBlock(t: TaskRow): EditableBlock {
     doneAt: t.doneAt,
     properties: {},
   };
-}
-
-function formatDueDay(day: number): string {
-  const s = String(day).padStart(8, "0");
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 }
 
 export function TasksView(): JSX.Element {
@@ -175,8 +171,12 @@ export function TasksView(): JSX.Element {
                         onNavigate={(target) => void goToTarget(navigate, target)}
                       />
                     </button>
-                    <Show when={t.dueDay !== null}>
-                      <span class="task-due">{formatDueDay(t.dueDay as number)}</span>
+                    <Show when={taskDateLabels(t).length > 0}>
+                      <span class="task-due">
+                        <For each={taskDateLabels(t)}>
+                          {(d) => <span class={`task-date task-date-${d.kind}`}>{d.label}</span>}
+                        </For>
+                      </span>
                     </Show>
                   </li>
                 )}

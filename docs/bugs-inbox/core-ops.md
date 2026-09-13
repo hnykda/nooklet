@@ -84,3 +84,16 @@ Two pages swapping names form a cycle no order solves: still 400 `page-key-colli
 written — pinned by a test so a later change sees it. Test:
 `packages/server/src/ops/batch-undo-name-order.http.test.ts` (3; the first two fail on the old
 code with 400).
+
+---
+
+### B-324 (existing)
+
+**Fixed 2026-09-13.** A Tasks view row now shows the scheduled date and the deadline, each
+labelled ("Scheduled 2032-04-01", "Deadline 2032-04-20 14:30", with the time when there is one),
+both when both are set, stacked in the row's date column — `views/taskFilters.ts#taskDateLabels`,
+rendered by `views/TasksView.tsx` (`.task-due .task-date`), styled in `styles/views.css`. Tests:
+`apps/web/src/views/taskFilters.test.ts` › "taskDateLabels" (2) and
+`e2e/tests/tasks-view-dates.spec.ts` (1, Chromium, port 6401: both labels on a scheduled task with
+a deadline, a lone deadline with its time, a lone scheduled date, none for an undated task, and the
+row found by its deadline in a Due window still labelled). Not checked at phone width by a test.
