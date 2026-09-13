@@ -279,3 +279,26 @@ test("/code, /query and /h1 change the text and leave the properties alone (B-15
     .toEqual([{ content: "# Title more", properties: { list: "number" } }]);
   await expect(outliner.locator(".vr-list-number")).toHaveText(["1."]);
 });
+
+test("a property an agent sets while the block is being typed into is kept", async ({ page }) => {
+  // The flush diffs the buffer against the block as the edit began, never against live properties:
+  // the buffer never showed `agent`, so its absence from the buffer must not delete it.
+  const name = "Props Concurrent Agent";
+  const outliner = await openEditing(page, name, "- typing here");
+  const [block] = await readBlocks(page, name);
+  await page.keyboard.type("abc");
+  await api(page, "block.update", { id: block?.id, properties: { agent: "yes" } });
+  await page.keyboard.type("def");
+  // Past the flush debounce, so a second flush runs against a tree that has seen the agent's write.
+  await expect
+    .poll(async () => (await readWithProps(page, name))[0]?.content)
+    .toBe("typing hereabcdef");
+  await page.keyboard.type("g");
+  await clickAway(page);
+  await expect
+    .poll(() => readWithProps(page, name))
+    .toEqual([{ content: "typing hereabcdefg", properties: { agent: "yes" } }]);
+  await clickRow(page, outliner, 0);
+  await clickAway(page);
+  await expect(outliner.locator(".vr-prop-value")).toHaveText("yes");
+});
