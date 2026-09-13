@@ -55,17 +55,27 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
   plugin's error, not a crash at startup (B-402)". `plugins/ops-bridge.ts#assertCompleteOpDef`;
   test in `host.test.ts`; server unit 670/670; checked in dev and in a rebuilt sidecar.
 
+- **B-403** (new, fixed; found in the final full run) — commit "test(e2e): History's older-page
+  test waits for the replica's first sync (B-403)". `review-reactivity.spec.ts` B-131 "a failed
+  Older changes…" opens the page (replica rows) before History, and uses `runName`. Probe
+  `tools/probes/history-older-vs-first-sync.spec.ts` (A forced 25; B warm 26; C unforced, cold 1/10
+  under load and 3/10 without). New open bug B-404 (four refetches per four-table ChangeEvent,
+  unbatched signal sets in `data/history.ts` and `data/store.ts`).
+
 ## 2. In flight
 
-- Final verification (session 2, after a cut-off). Done so far: typecheck green; biome clean on all
-  21 changed source files; `pnpm -r test` core 399, plugin-api 17, server 670, web 1126 — all passed.
-- The first session's full e2e run (`e2e-full.txt` in scratch) was cut off at 246/527 with one
-  failure, `page-title-fit.spec.ts` "Enter in the title renames…" on "Loading…" with the indicator
-  "synced". Its trace is a whole-machine stall, not the app: the 10 s `toBeVisible` ran 23.9 s of
-  the runner's own monotonic clock and the screencast has no frame between 211.6 s and 235.3 s.
-- Now: the full e2e suite in four alphabetical chunks (the tool's 10 min limit), port 6402.
+- Final verification (session 2, after a cut-off). Typecheck green; biome clean on all changed
+  files; `pnpm -r test` core 399, plugin-api 17, server 670, web 1126 — all passed.
+- The first session's full e2e run was cut off at 246/527 with one failure, `page-title-fit.spec.ts`
+  "Enter in the title renames…" on "Loading…" with the indicator "synced". Its trace is a
+  whole-machine stall, not the app: the 10 s `toBeVisible` ran 23.9 s of the runner's own monotonic
+  clock and the screencast has no frame between 211.6 s and 235.3 s. Passed in session 2's run.
+- Session 2's full e2e, four alphabetical chunks on port 6402 (the tool's 10 min limit): chunk 1
+  (a-fresh-journal…focus) 136 passed 1 skipped; chunk 2 (follow-link…pages) 117 passed; chunk 3
+  (palette-text-keys…replace-unicode) 138 passed; chunk 4 (replace…views) 135 passed, 1 skipped,
+  1 failed = B-403, fixed above.
 
 ## 3. Next steps
 
-1. Full e2e in chunks; rerun any failure once (load first), investigate only a repeat.
+1. Rerun chunk 4 with the B-403 change (and the full list of touched specs once more).
 2. Return summary.

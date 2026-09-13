@@ -287,3 +287,72 @@ now comes up healthy and logs `plugin "hello" failed to activate: op "hello.say"
 annotations, scopes …`; and a rebuilt sidecar, started on a scratch `NOOKLET_DATA` holding that
 plugin beside a working one, came up healthy, logged the same error, and served the working plugin's
 op and client half.
+
+---
+
+### B-403 · `review-reactivity.spec.ts` "a failed Older changes says so…" loses its older page to the replica's first sync
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m10/tests-desktop (final full e2e
+run, chunk `replace.spec.ts`…`views.spec.ts`, load average ≈ 4-6) · **Test:**
+`e2e/tests/review-reactivity.spec.ts` "a failed Older changes says so instead of silently
+re-enabling the button (B-131)"
+
+After unrouting and clicking "Older changes" a second time, `.history-batch` stayed at 25 for the
+whole 10 s (`Expected: 26, Received: 25`, 24 polls). The spec alone passed straight after; that
+rerun overwrote the failed run's trace, so the cause was then pinned with a probe instead.
+
+Cause: a race between the test and the DB worker's start, in the test. The History view's first page
+comes over HTTP (`data/history.ts#fetchPageHistory`) and is on screen before a fresh context's
+replica has bootstrapped. When the first `/sync/snapshot` lands, `SyncClient`'s `onBootstrap` fires a
+ChangeEvent naming every table, `usePageHistory`'s first page refetches, and a refetch drops the
+appended older pages and discards one still in flight — deliberately (B-132: their cursor belonged
+to the previous first page). If that lands just after the retry click, nothing clicks again and the
+view stays at 25. Probe `tools/probes/history-older-vs-first-sync.spec.ts`:
+- A (forced: snapshot held until the retried older page is in flight, released before its answer):
+  25, 7 of 7 over three runs.
+- C (unforced: ten runs of the 70c9bb9 flow, logging each `page.history` fetch and click in the
+  page): under 56 busy loops (load average ≈ 70), 1 of 10 at 25 — `click@475 older>475 first>490
+  (x4) older<491 first<493…496`, the refetches clearing the older page just appended — and in the
+  other nine the refetches had been answered 3-195 ms before the retry click (two more unlogged
+  batches of ten with the same busy loops: 20 of 20 at 26). With no busy loops (load average 30-50 from
+  other agents), 3 of 10 at 25, the refetches starting 0-21 ms after the older answer, and five of
+  the seven passes had simply finished before the first sync landed at all. Not a load flake, then:
+  it hits when the test outruns the worker.
+
+Not a product bug as the view is designed, and not changed: a person who pages back within the
+first half second of a browser's first ever start sees the older batches vanish and "Older changes"
+come back, and one more click brings them. (Keeping older pages when the refetched first page is
+identical would avoid that, but — by `ops/page-history.ts`'s header — a block moved to another
+page takes its history with it, which can empty part of the tail without changing the first page, so
+a kept tail could list batches the server no longer does, and Restore walks that list. Left for the
+owner.)
+
+**Fixed 2026-09-13.** The test opens the page itself first and waits for its 26 rows — which come
+from the replica, so it has bootstrapped — and only then loads History; a warm start fires no
+bootstrap and an empty pull names no tables, so nothing refetches. It also names its page with
+`runName` so it can be repeated. Test that would have caught it: the spec itself (the forced and
+unforced probes show the old flow failing). Proof: the new flow in probe B and the "warm" half of
+C (plus a batch of ten logged from the test process) — 37 of 37 at 26, each with exactly one first-page fetch (and, in
+B, no second snapshot); the test alone,
+`--repeat-each=16` under 56 busy loops (load average 60-87): 16 passed; the whole spec under the same
+load: 7 passed.
+
+---
+
+### B-404 · One ChangeEvent naming four tables refetches a History page four times
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, m10/tests-desktop (probing B-403) ·
+**Test:** none
+
+When a fresh browser's first snapshot lands, the History view fetches its first page four times,
+within 1-2 ms of each other (probe `tools/probes/history-older-vs-first-sync.spec.ts` A: five
+first-page fetches, once on mount then four at 20-50 ms after the snapshot's release; C logs the same
+`first>` quadruple in every cold run that saw the refetch). `data/history.ts#ensureWired`'s
+`onChange` sets one version signal per table in `e.tables`, outside Solid's `batch()`, and the
+bootstrap names all four (`page`, `block`, `block_prop`, `page_prop`); `usePageHistory`'s resource
+source reads all four, so each set reruns the source and calls the fetcher — four `page.history`
+requests where one would do. The same unbatched loop is in `data/store.ts`'s `onChange` (`bumpTable`
+per table, then `bumpPage` per page id), so by reading every resource there stamped on several
+tables refetches once per named table on every pulled or local write too (a `block.prop` op names
+two) — not measured. Harmless to correctness (the last answer wins, and each fetcher's side effects
+are idempotent), but it multiplies server-backed reads (History, and whatever `store.ts` fetches
+over HTTP) on exactly the busy moments. Likely fix: wrap both loops in `batch(() => …)`. Not changed
+here: a second bug found while fixing B-403, and `store.ts` feeds every view.

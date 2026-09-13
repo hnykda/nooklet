@@ -6,7 +6,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { api, openPage, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import { api, openPage, pagePath, readBlocks, runName, seedPage } from "../helpers/index.js";
 
 async function openSidebar(page: Page): Promise<void> {
   const sidebar = page.locator(".app-sidebar");
@@ -158,11 +158,18 @@ test("a query hit nested past the 60 rendered descendants of another hit is stil
 
 test("a failed Older changes says so instead of silently re-enabling the button (B-131)", async ({
   page,
-}) => {
-  const name = "History Older Fails";
+}, info) => {
+  const name = runName("History Older Fails", info);
   // 26 batches: one more than the first page holds.
   await seedPage(page, name, "- zero");
   for (let i = 1; i <= 25; i++) await api(page, "page.append", { page: name, markdown: `- ${i}` });
+
+  // Let the replica bootstrap BEFORE History mounts (the page's rows come from it). A fresh
+  // context's first snapshot refetches History's first page when it lands, and a refetch drops
+  // older pages, including one still in flight (B-132's design) — so landing after the retry
+  // click left 25 for good (B-403, `tools/probes/history-older-vs-first-sync.spec.ts`).
+  await page.goto(pagePath(name));
+  await expect(page.locator(".vr-outliner").first().locator(".vr-row")).toHaveCount(26);
 
   await page.route("**/api/v1/page.history", async (route) => {
     const body = route.request().postDataJSON() as { cursor?: string };
