@@ -26,6 +26,13 @@ import {
 
 const notice = (page: Page) => page.locator(".vr-remote-notice");
 
+/** Page names seed once per server (`seedPage` is `if_exists: "return"`), so a `--repeat-each` run
+ * needs its own for every repeat. */
+function unique(name: string): string {
+  const repeat = test.info().repeatEachIndex;
+  return repeat === 0 ? name : `${name} ${repeat}`;
+}
+
 async function idOf(page: Page, pageName: string, content: string): Promise<string> {
   const block = (await readBlocks(page, pageName)).find((b) => b.content === content);
   if (!block) throw new Error(`no block "${content}" on ${pageName}`);
@@ -63,7 +70,7 @@ test.describe("an agent's block.update on the block being edited", () => {
   test("with nothing typed, the editor takes the new text and the next keystroke builds on it", async ({
     page,
   }) => {
-    const name = "Remote Rewrite Agent Clean";
+    const name = unique("Remote Rewrite Agent Clean");
     await openEditing(page, name, "- original text\n- other");
     const id = await idOf(page, name, "original text");
 
@@ -82,7 +89,7 @@ test.describe("an agent's block.update on the block being edited", () => {
   });
 
   test("an edit before the caret moves the caret with the text after it", async ({ page }) => {
-    const name = "Remote Rewrite Agent Caret";
+    const name = unique("Remote Rewrite Agent Caret");
     await openEditing(page, name, "- alpha beta gamma");
     const id = await idOf(page, name, "alpha beta gamma");
     await page.keyboard.press("Home");
@@ -101,7 +108,7 @@ test.describe("an agent's block.update on the block being edited", () => {
   test("with unsaved typing, the typing stays, the row says so, and the other version can be taken", async ({
     page,
   }) => {
-    const name = "Remote Rewrite Agent Dirty";
+    const name = unique("Remote Rewrite Agent Dirty");
     await openEditing(page, name, "- mine\n- other");
     const id = await idOf(page, name, "mine");
 
@@ -127,7 +134,7 @@ test.describe("an agent's block.update on the block being edited", () => {
   test("with unsaved typing, Keep mine writes the typing and the notice stays gone", async ({
     page,
   }) => {
-    const name = "Remote Rewrite Agent Keep";
+    const name = unique("Remote Rewrite Agent Keep");
     await openEditing(page, name, "- mine\n- other");
     const id = await idOf(page, name, "mine");
 
@@ -158,7 +165,7 @@ test.describe("another device rewrites the block being edited", () => {
     page,
     browser,
   }) => {
-    const name = "Remote Rewrite Device Clean";
+    const name = unique("Remote Rewrite Device Clean");
     await openEditing(page, name, "- shared start\n- other");
 
     const b = await secondDevice(browser);
@@ -188,7 +195,7 @@ test.describe("another device rewrites the block being edited", () => {
     page,
     browser,
   }) => {
-    const name = "Remote Rewrite Device Dirty";
+    const name = unique("Remote Rewrite Device Dirty");
     await openEditing(page, name, "- shared start\n- other");
 
     const b = await secondDevice(browser);
@@ -228,8 +235,9 @@ test.describe("another device rewrites the block being edited", () => {
 test("Turn into page on the row being edited: the editor shows the link, typing continues after it", async ({
   page,
 }) => {
-  const name = "Remote Rewrite Turn";
-  const outliner = await openEditing(page, name, "- Probe start\n  - child\n- other");
+  const name = unique("Remote Rewrite Turn");
+  const title = unique("Probe start");
+  const outliner = await openEditing(page, name, `- ${title}\n  - child\n- other`);
   // Inside the write debounce: the op must still see this text.
   await page.keyboard.type(" kickoff");
 
@@ -239,7 +247,7 @@ test("Turn into page on the row being edited: the editor shows the link, typing 
   await menu.locator(".ctx-item", { hasText: "Turn into page" }).first().click();
   await expect(menu).toHaveCount(0);
 
-  await expect.poll(() => editorText(page), { timeout: 15_000 }).toBe("[[Probe start kickoff]]");
+  await expect.poll(() => editorText(page), { timeout: 15_000 }).toBe(`[[${title} kickoff]]`);
   await expect(editor(page)).toBeFocused();
   await expect(notice(page)).toHaveCount(0);
   await expect(outliner.locator(".vr-row")).toHaveCount(2);
@@ -247,6 +255,6 @@ test("Turn into page on the row being edited: the editor shows the link, typing 
   await page.keyboard.type(" typed");
   await expect
     .poll(() => storedText(page, name), { timeout: 15_000 })
-    .toBe("[[Probe start kickoff]] typed");
-  expect((await readBlocks(page, "Probe start kickoff")).map((b) => b.content)).toEqual(["child"]);
+    .toBe(`[[${title} kickoff]] typed`);
+  expect((await readBlocks(page, `${title} kickoff`)).map((b) => b.content)).toEqual(["child"]);
 });

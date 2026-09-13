@@ -12,28 +12,28 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
 
 ## 1. Done (committed)
 
-- commit "fix(editor): take a rewrite from elsewhere into the editor…" (B-192): `editor/remote-text.ts`
+- `0badd3a` (B-192): `editor/remote-text.ts`
   (+17 unit tests), `BlockTree.tsx` (verdict in the tree effect, writes recorded, offer signal,
   `takeRemoteText`/`takeRemoteOffer`, typing-flush registration), `RemoteChangeNotice.tsx` + css,
   `BlockRowView.tsx` (`remoteChange` prop), `surface.ts` (`replaceContent` selection arg),
   `outline-registry.ts#flushTyping` (+1 test), `refactor-host.tsx` (flush before push),
   `refactor.ts` (`leaveEditing` removed; test rewritten), `e2e/tests/remote-rewrite.spec.ts` (7, all
   red on base, all green after), inbox entry. Web unit 1156/1156, typecheck clean.
+- Whole e2e suite on 6412 in five chunks + storage: 543 tests, 541 passed, 2 skipped, 1 failure
+  (`views.spec.ts` "the sidebar toggles with Cmd/Ctrl+\…") that passed on rerun (29/29) — load.
+- commit "test(e2e): remote-rewrite page names per repeat": `--repeat-each=3` 21/21.
 
 ## 2. In flight
 
-- Regression sweep of editing-related e2e specs on 6412.
+- Property-only probe (next step 1).
 
 ## 3. Next steps, in order
 
-1. E2E sweep: editing, focus, undo-redo, redo, undo-gaps, template-undo, merge-keeps-fields,
-   editing-row-leaves, refactor, journal-*, block-properties, selection, reload-durability,
-   autocomplete, date-picker-type-ahead, context-menu. Then the whole suite in chunks.
-2. Probe: an agent's `block.update` of only a PROPERTY of the edited block (content_hlc unchanged) —
+1. Probe: an agent's `block.update` of only a PROPERTY of the edited block (content_hlc unchanged) —
    expected stale in the buffer until editing ends; log as B-460 if so.
-3. Spec: `docs/spec/commands-and-keymap.md` R32b ("Both leave editing first" is wrong now) + a rule
+2. Spec: `docs/spec/commands-and-keymap.md` R32b ("Both leave editing first" is wrong now) + a rule
    for rewrites from elsewhere.
-4. Real graph: copy `~/.nooklet/default/graph.sqlite`, serve, edit a journal block while an API
+3. Real graph: copy `~/.nooklet/default/graph.sqlite`, serve, edit a journal block while an API
    `block.update` rewrites it (clean and typing); `pnpm nooklet verify` (no ops/schema touched).
 
 ## Design notes
