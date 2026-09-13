@@ -155,7 +155,15 @@ Rules:
     one `block(level)` production above, minus the leading `IND* "- "` — i.e. `marker? priority?
     text` on the first line, then property-lines/continuation-lines, with **no** `child`
     productions (a nested bullet inside is rejected: `invalid`, hint `"block_update edits one
-    block; use block_insert to add children"`).
+    block; use block_insert to add children"`). Lines after the first are written **flush-left**
+    — the shape `block_update`'s `before` output has, and the text `old_str`/`new_str` edit, where
+    any indent a line has is the content's own. `content` additionally accepts `page_read`'s
+    indented shape: when every non-blank line after the first starts with two spaces or a tab,
+    one indent unit is removed from each (so a content whose every later line genuinely starts
+    with two spaces loses them — the price of not reading an agent's indented `scheduled::` line
+    as literal text). Before 2026-09-13 only the indented shape parsed, and any `old_str` edit of
+    a block with a second line or a property line failed "content must describe exactly one
+    block" (B-172).
 
 ### 3.3 Pagination
 

@@ -41,3 +41,28 @@ unchanged). `tools/probes/serialize-fence-props.ts` now prints the properties ba
 Found in passing: B-310 (the same block with a marker).
 
 ---
+
+### B-172 (existing)
+
+**Fixed 2026-09-13.** Cause confirmed as logged: `parseSingleBlockGrammar`
+(`packages/server/src/ops/outline-bridge.ts`) put `- ` before line 1 only, so the flush-left lines
+`renderSingleBlockText` writes (the `before` text) parsed as top-level blocks of their own. It now
+builds one real bullet (`singleBlockBullet`): the continuation indent goes before every later
+non-empty line. Two readings, chosen by the caller (`block-update.ts`): `old_str`/`new_str` edit
+the `before` text, which is always flush (`"flush"` — any indent is the content's own);
+`content` is `"auto"` — flush, unless every later non-blank line starts with two spaces or a tab,
+which is `page_read`'s shape and the only multi-line shape `content` parsed before (kept working
+so an agent's indented `scheduled::` line does not silently become text; the cost, recorded in
+mcp-tools.md §3.2 rule 10: a content whose every later line really starts with two spaces loses
+them). Tests that would have caught it: `packages/server/src/ops/outline-bridge.test.ts` ›
+"single-block text round trip (B-172)" (render → parse for property lines, `done::` + priority,
+multi-line, an indented line, a fence holding `- x` and `key:: v`, a fence-first block with a
+property, `collapsed`; marker flip; both readings; nested bullets still refused — 11 of its 13 fail
+on the old code), and `packages/server/src/ops/block-update-text.http.test.ts` (the real route:
+TODO→DONE by `old_str` with `scheduled::`, DONE→TODO clearing `done::`, second-line edit, edit
+inside a fence, fence-first block with a property, flush and indented `content`, nested bullet
+hint, rebuild parity). `tools/probes/block-update-property-roundtrip.ts` now prints "ok" for all
+three cases. `e2e/tests/journal-agenda.spec.ts`'s `properties: { marker: "DONE" }` workaround is
+left as it is (it works either way).
+
+---

@@ -109,7 +109,7 @@ export const blockUpdate = defineOp({
       };
 
       if (input.content !== undefined) {
-        applyTextReplace(parseSingleBlockGrammar(input.content));
+        applyTextReplace(parseSingleBlockGrammar(input.content, "auto"));
       } else if (input.old_str !== undefined || input.new_str !== undefined) {
         if (input.old_str === undefined || input.new_str === undefined) {
           throw new OpError("invalid", "give both old_str and new_str");
@@ -125,7 +125,7 @@ export const blockUpdate = defineOp({
         const idx = beforeRaw.indexOf(input.old_str);
         const newRaw =
           beforeRaw.slice(0, idx) + input.new_str + beforeRaw.slice(idx + input.old_str.length);
-        applyTextReplace(parseSingleBlockGrammar(newRaw));
+        applyTextReplace(parseSingleBlockGrammar(newRaw, "flush"));
       }
 
       if (input.properties) {

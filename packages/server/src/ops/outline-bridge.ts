@@ -67,11 +67,41 @@ export function parseMarkdownBlocks(markdown: string): OutlineNode[] {
   return parsed.blocks;
 }
 
+/**
+ * How the lines after line 1 of a single-block text are indented:
+ *  - `"flush"`: at column 0, exactly as `renderSingleBlockText` (the `before` text) writes them —
+ *    what `old_str`/`new_str` edits, so any indent a line has is the content's own.
+ *  - `"auto"`: for `content` an agent wrote. Flush as above, unless every later non-blank line is
+ *    indented by two spaces or a tab — `page_read`'s shape, which an agent copies, and the only
+ *    multi-line shape `content` accepted before B-172. A content whose every later line really
+ *    starts with two spaces is read as that shape and loses those two; that is the price of not
+ *    turning an agent's indented `scheduled::` line into literal text.
+ */
+export type SingleBlockIndent = "flush" | "auto";
+
+/** Single-block text -> one outline bullet the real parser reads: `- ` before line 1, the
+ * continuation indent before every later non-empty line. */
+function singleBlockBullet(text: string, indent: SingleBlockIndent): string {
+  const [first = "", ...rest] = text.split(/\r\n?|\n/);
+  const alreadyIndented =
+    indent === "auto" &&
+    rest.some((line) => line.trim() !== "") &&
+    rest.every((line) => line.trim() === "" || line.startsWith("  ") || line.startsWith("\t"));
+  const body = rest.map((line) => (alreadyIndented || line === "" ? line : `  ${line}`));
+  return [`- ${first}`, ...body].join("\n");
+}
+
 /** `block.update`'s "single-block grammar" (mcp-tools.md §3.2 rule 10): the same grammar as one
- * block, minus the leading bullet, with no nested `child` productions. Implemented by wrapping the
- * text in a synthetic `"- "` bullet and reusing the real parser, then rejecting any child bullet. */
-export function parseSingleBlockGrammar(text: string): OutlineNode {
-  const parsed = parseOutline(`- ${applyCheckboxSugar(text)}`);
+ * block, minus the leading bullet, with no nested `child` productions. Implemented by turning the
+ * text into one real bullet (`singleBlockBullet`) and reusing the real parser, then rejecting any
+ * child bullet.
+ *
+ * B-172: this used to prefix `- ` to line 1 only. Line 2 onwards then sat at column 0 — top-level
+ * blocks of their own — so every block with a property line or a second line (each DONE task has
+ * `done::`) failed "content must describe exactly one block", including an `old_str` edit of the
+ * block's own `before` text. */
+export function parseSingleBlockGrammar(text: string, indent: SingleBlockIndent): OutlineNode {
+  const parsed = parseOutline(singleBlockBullet(applyCheckboxSugar(text), indent));
   if (parsed.blocks.length !== 1) {
     throw new OpError("invalid", "content must describe exactly one block");
   }
