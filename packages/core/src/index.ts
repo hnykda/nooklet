@@ -16,6 +16,7 @@ export * from "./refs.js";
 export * from "./sync/apply-ops.js";
 export * from "./sync/driver.js";
 export * from "./sync/gc.js";
+export * from "./sync/page-outline.js";
 export * from "./sync/queries.js";
 export * from "./sync/schema.js";
 export * from "./sync/text-merge.js";

@@ -9,15 +9,10 @@
  * writes apart from a real external edit (`isOwnWrite`, below).
  *
  * Queries `SqlDriver` directly rather than going through `data-api.ts`: it needs a whole page's
- * blocks and properties in three queries, not one round trip per block.
+ * blocks and properties in four queries, not one round trip per block.
  *
- * Reserved block columns (`scheduled_day`/`scheduled_time`, `deadline_day`/`deadline_time`,
- * `repeat`, `done_at` — sql-schema.md rule 10, ADR 011) were pulled OUT of ordinary `key:: value`
- * property lines and into dedicated columns by `applyOps`/`serverApplyOps` on write. The mirror
- * must reconstitute them as ordinary property lines to match the canonical grammar and
- * `outline.ts`'s importer (`parseOutline` has no notion of these columns — it only ever produces
- * a plain `properties` bag). `@nooklet/core`'s `formatDayTime`/`formatDoneIso` produce exactly the
- * strings the reducer's `SCHEDULED_RE`/`DONE_RE` accept on the way back in.
+ * The render itself (the four queries, reserved columns reconstituted as property lines) is
+ * `@nooklet/core`'s `sync/page-outline.ts`, shared with the web client's page export (B-220).
  *
  * Not here: a live `chokidar` watcher that turns external file edits back into ops, using
  * `isOwnWrite` below to skip echoes of our own writes, plus whatever debounce (ADR 002: ~500ms
@@ -29,25 +24,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  formatDayTime,
-  formatDoneIso,
-  journalDayToFileName,
-  type OutlineNode,
-  type ParsedPage,
-  type Priority,
-  type Properties,
-  pageNameToFileName,
+  pageMirrorPath,
+  type RenderedPage,
+  readPageOutline,
   type SqlDriver,
   serializeOutline,
-  type TaskMarker,
 } from "@nooklet/core";
 
-export interface RenderedPage {
-  pageId: string;
-  name: string;
-  journalDay: number | null;
-  parsed: ParsedPage;
-}
+export type { RenderedPage } from "@nooklet/core";
 
 export interface ExportResult {
   /** Path relative to the mirror root, forward-slash separated (matches `mirror_file.path`). */
@@ -73,118 +57,26 @@ export interface ExportAllOptions {
   onlyChanged?: boolean;
 }
 
-interface BlockRow {
-  id: string;
-  parent_id: string | null;
-  content: string;
-  marker: TaskMarker | null;
-  priority: Priority | null;
-  collapsed: number;
-  scheduled_day: number | null;
-  scheduled_time: string | null;
-  deadline_day: number | null;
-  deadline_time: string | null;
-  repeat: string | null;
-  done_at: number | null;
-}
-
 function sha256Hex(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
 /**
- * Read a page's row plus its full live block tree (excluding soft-deleted blocks and, per
- * "hiding a block hides its descendants for free", their entire subtree) directly via `driver`,
- * and build the `ParsedPage` tree `serializeOutline` expects. Throws if `pageId` does not name a
- * live (non-deleted) page — callers (`exportPage`/`exportAll`) only ever call this for pages
- * they've already confirmed are live.
+ * Read a page's row plus its full live block tree and build the `ParsedPage` tree
+ * `serializeOutline` expects. The queries and the build live in `@nooklet/core`
+ * (`sync/page-outline.ts`) because the web client renders the same text from its replica for
+ * "Export page as markdown" (B-220). Throws if `pageId` does not name a live (non-deleted) page —
+ * callers (`exportPage`/`exportAll`) only ever call this for pages they've already confirmed are
+ * live.
  */
 export function renderPageToOutline(driver: SqlDriver, pageId: string): RenderedPage {
-  const page = driver.get<{ name: string; journal_day: number | null; deleted_at: number | null }>(
-    "SELECT name, journal_day, deleted_at FROM page WHERE id = ?",
-    [pageId],
-  );
-  if (!page || page.deleted_at !== null) {
-    throw new Error(`renderPageToOutline: no live page with id ${pageId}`);
-  }
-
-  const pageProps = driver.all<{ key: string; value: string | null }>(
-    "SELECT key, value FROM page_prop WHERE page_id = ? AND value IS NOT NULL ORDER BY key",
-    [pageId],
-  );
-  const properties: Properties = {};
-  for (const p of pageProps) if (p.value !== null) properties[p.key] = p.value;
-
-  const blockRows = driver.all<BlockRow>(
-    `SELECT id, parent_id, content, marker, priority, collapsed,
-            scheduled_day, scheduled_time, deadline_day, deadline_time, repeat, done_at
-     FROM block WHERE page_id = ? AND deleted_at IS NULL ORDER BY order_key`,
-    [pageId],
-  );
-
-  const propRows = driver.all<{ block_id: string; key: string; value: string | null }>(
-    `SELECT bp.block_id AS block_id, bp.key AS key, bp.value AS value
-     FROM block_prop bp
-     JOIN block b ON b.id = bp.block_id
-     WHERE b.page_id = ? AND b.deleted_at IS NULL AND bp.value IS NOT NULL
-     ORDER BY bp.key`,
-    [pageId],
-  );
-  const propsByBlock = new Map<string, Array<[string, string]>>();
-  for (const row of propRows) {
-    if (row.value === null) continue;
-    const list = propsByBlock.get(row.block_id) ?? [];
-    list.push([row.key, row.value]);
-    propsByBlock.set(row.block_id, list);
-  }
-
-  // Group by parent while preserving each group's relative order_key order: filtering a
-  // globally order_key-sorted array preserves the relative order within any subset.
-  const childrenByParent = new Map<string | null, BlockRow[]>();
-  for (const row of blockRows) {
-    const list = childrenByParent.get(row.parent_id) ?? [];
-    list.push(row);
-    childrenByParent.set(row.parent_id, list);
-  }
-
-  const buildNode = (row: BlockRow): OutlineNode => {
-    const nodeProps: Properties = {};
-    for (const [k, v] of propsByBlock.get(row.id) ?? []) nodeProps[k] = v;
-    if (row.scheduled_day !== null) {
-      nodeProps.scheduled = formatDayTime(row.scheduled_day, row.scheduled_time);
-    }
-    if (row.deadline_day !== null) {
-      nodeProps.deadline = formatDayTime(row.deadline_day, row.deadline_time);
-    }
-    if (row.repeat !== null) nodeProps.repeat = row.repeat;
-    if (row.done_at !== null) nodeProps.done = formatDoneIso(row.done_at);
-
-    return {
-      id: row.id,
-      content: row.content,
-      marker: row.marker,
-      priority: row.priority,
-      collapsed: row.collapsed !== 0,
-      properties: nodeProps,
-      children: (childrenByParent.get(row.id) ?? []).map(buildNode),
-    };
-  };
-
-  const roots = (childrenByParent.get(null) ?? []).map(buildNode);
-
-  return {
-    pageId,
-    name: page.name,
-    journalDay: page.journal_day,
-    parsed: { properties, blocks: roots },
-  };
+  const rendered = readPageOutline(driver, pageId);
+  if (!rendered) throw new Error(`renderPageToOutline: no live page with id ${pageId}`);
+  return rendered;
 }
 
 /** Mirror-relative file path for a page (PLAN.md sec. 5). Forward-slash, relative to the data dir. */
-export function pageFilePath(page: { name: string; journalDay: number | null }): string {
-  if (page.journalDay !== null) return `journals/${journalDayToFileName(page.journalDay)}.md`;
-  return `pages/${pageNameToFileName(page.name)}.md`;
-}
+export const pageFilePath = pageMirrorPath;
 
 /**
  * Render + write one page's mirror file, skipping the write entirely when the rendered content

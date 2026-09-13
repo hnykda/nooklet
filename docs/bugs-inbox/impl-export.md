@@ -35,3 +35,24 @@ the palette have none, so on a fresh graph the sidebar's Favourites section neve
 nothing hints that it could. The sidebar section under it is titled "Pages" but lists the twelve
 most recently edited pages — a second "Pages" right under the nav link of the same name that
 opens the full list.
+
+---
+
+### B-223 · The mirror orders siblings with the same order key by insertion order, not by id
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, reading `mirror/export.ts` while
+sharing its renderer with the client (B-220) · **Test:** `packages/core/src/sync/page-outline.test.ts`
+"orders siblings with the same order key by id, whatever order they were inserted in"
+
+`renderPageToOutline` sorted blocks `ORDER BY order_key` alone. Two devices inserting at the same
+spot mint the same fractional key and nothing on the server rewrites a collision, so a tie is
+reachable; SQLite then returns the tied rows in rowid (insertion) order. That order is different
+on the server and on every replica, and different from what the editor shows, which breaks ties
+by id (`apps/web/src/editor/tree.ts#sortSiblings`; core's `listChildren` does `ORDER BY order_key,
+id` too). Consequence: the mirror file can list two siblings in the opposite order from the page
+on screen, and a page exported from the browser would not match its mirror file.
+
+**Fixed 2026-09-13.** The renderer moved to `packages/core/src/sync/page-outline.ts` (shared with
+the web export, B-220) and sorts `ORDER BY order_key, id`. The named test fails with the old
+`ORDER BY order_key` (checked by reverting the clause: 1 failed / 5 passed) and passes with the
+fix. The owner's graph (copy of 2026-09-13: 952 pages, 18,628 live blocks) has zero tied
+`(page_id, parent_id, order_key)` groups, so no mirror file there changes.
