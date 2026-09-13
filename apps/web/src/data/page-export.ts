@@ -22,6 +22,7 @@ import {
   type PageOutlineBlockRow,
   type PageOutlinePageRow,
   type PageOutlinePropRow,
+  pageMirrorOutline,
   pageMirrorPath,
   parseJournalTitle,
   serializeOutline,
@@ -29,7 +30,8 @@ import {
 import { queryAs } from "../db/client.js";
 
 export interface PageMarkdown {
-  /** The mirror file's own name (`Projects___Aurora.md`, `2026_09_13.md`). */
+  /** The mirror file's own name (`Projects___Aurora.md`, `2026_09_13.md`), shortened with a hash
+   * suffix past 200 bytes like the mirror's (`pageMirrorPath`). */
   fileName: string;
   text: string;
 }
@@ -54,9 +56,12 @@ export async function renderPageMarkdown(
   const rendered = buildPageOutline(pageId, { page: page[0], pageProps, blocks, blockProps });
   if (!rendered) return undefined;
   const path = pageMirrorPath(rendered);
+  // The download is the mirror file, so it carries the mirror's `title::` for a name too long to
+  // be its file name (B-368). A copy has no file name to have lost the page's name from.
+  const parsed = opts.ids === "present" ? pageMirrorOutline(rendered) : rendered.parsed;
   return {
     fileName: path.slice(path.lastIndexOf("/") + 1),
-    text: serializeOutline(rendered.parsed, { ids: opts.ids }),
+    text: serializeOutline(parsed, { ids: opts.ids }),
   };
 }
 

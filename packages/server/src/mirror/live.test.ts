@@ -3,7 +3,15 @@
  * `nooklet export`.
  */
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { newId, type Op } from "@nooklet/core";
@@ -277,6 +285,55 @@ describe("startLiveMirror", () => {
       expect(files).not.toContain("Alpha.md");
       expect(files.some((f) => f.startsWith("Pozn"))).toBe(true);
       expect(logs.filter((l) => l.includes("could not") || l.includes("failed"))).toEqual([]);
+    } finally {
+      mirror.stop();
+    }
+  });
+
+  it("retries a page it could not write on the next sweep, without that page changing again (B-365)", () => {
+    const logs: string[] = [];
+    const mirror = startLiveMirror(ctx, dataDir, { debounceMs: 10_000, log: (m) => logs.push(m) });
+    const failures = () => logs.filter((l) => l.includes("could not write"));
+    try {
+      mirror.flush(); // the full first sweep, of an empty graph
+      // A non-empty directory where the page's file goes makes the rename fail: a stand-in for a
+      // full disk, a permission error, or a sync client holding the file.
+      const target = join(dataDir, "pages", "Stuck.md");
+      mkdirSync(target, { recursive: true });
+      writeFileSync(join(target, "x"), "x");
+      const stuck = newId();
+      write([
+        op(stuck, { kind: "page.create", name: "Stuck", journalDay: null, createdAt: 1 }),
+        op(newId(), {
+          kind: "block.create",
+          place: { pageId: stuck, parentId: null, order: "a0" },
+          content: "stuck text",
+          createdAt: 1,
+        }),
+      ]);
+      mirror.flush();
+      expect(failures()).toHaveLength(1);
+
+      // Still blocked: a commit to another page retries it, and says so again.
+      write([op(newId(), { kind: "page.create", name: "Other", journalDay: null, createdAt: 2 })]);
+      mirror.flush();
+      expect(existsSync(join(dataDir, "pages", "Other.md"))).toBe(true);
+      expect(failures()).toHaveLength(2);
+      expect(failures()[1]).toContain(stuck);
+
+      // The obstacle goes; the next commit, to a different page, brings the file back.
+      rmSync(target, { recursive: true, force: true });
+      write([op(newId(), { kind: "page.create", name: "Third", journalDay: null, createdAt: 3 })]);
+      mirror.flush();
+      expect(existsSync(join(dataDir, "pages", "Third.md"))).toBe(true);
+      expect(readFileSync(target, "utf8")).toContain("stuck text");
+      expect(failures()).toHaveLength(2);
+
+      // Once written it is not retried again: the next sweep writes only the page it touched.
+      write([op(newId(), { kind: "page.create", name: "Fourth", journalDay: null, createdAt: 4 })]);
+      logs.length = 0;
+      mirror.flush();
+      expect(logs).toEqual(["mirror: wrote 1 page file(s), removed 0"]);
     } finally {
       mirror.stop();
     }

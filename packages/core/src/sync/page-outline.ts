@@ -170,10 +170,79 @@ export function readPageOutline(driver: SqlDriver, pageId: string): RenderedPage
   });
 }
 
-/** Mirror-relative file path for a page (PLAN.md §5): forward-slash, relative to the data dir.
- * The client names an exported download after its last segment, so a downloaded file and the
- * mirror's copy of the same page carry the same name. */
+/**
+ * Longest file-name base, in UTF-8 bytes, that `pageMirrorPath` leaves alone. APFS and ext4 cap a
+ * name at 255 bytes (NAME_MAX), NTFS at 255 UTF-16 units; a page name may be 512 characters, a
+ * Czech letter is 2 bytes and an escaped character 3 (`%23`). Past the limit the mirror's rename
+ * failed with ENAMETOOLONG on every sweep (B-126). 200 leaves room for `.md` and the suffix.
+ */
+const MAX_FILE_BASE_BYTES = 200;
+
+function utf8Length(codePoint: number): number {
+  return codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : codePoint < 0x10000 ? 3 : 4;
+}
+
+/** 32-bit FNV-1a of the name's UTF-8 bytes, as 8 hex digits. Not `sha256`: this runs in the web
+ * client too, where the only SHA is `crypto.subtle`'s, which is async. The suffix only has to
+ * tell apart long names that share their first ~190 bytes, not resist anyone. */
+function nameHash(name: string): string {
+  let h = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(name)) {
+    h ^= byte;
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/** A page's file-name base, shortened past `MAX_FILE_BASE_BYTES` to a prefix plus `~<hash>`, so
+ * two long names sharing a prefix still get different files. The mirror is one-way and
+ * `mirror_file` maps path to page, so nothing needs to decode it; the full name travels inside the
+ * file as `title::` (`pageMirrorOutline`). */
+function pageFileBase(name: string): { base: string; shortened: boolean } {
+  const base = pageNameToFileName(name);
+  let bytes = 0;
+  for (const ch of base) bytes += utf8Length(ch.codePointAt(0) as number);
+  if (bytes <= MAX_FILE_BASE_BYTES) return { base, shortened: false };
+  const suffix = `~${nameHash(name)}`;
+  let kept = "";
+  bytes = 0;
+  // `for…of` walks code points, so a surrogate pair or a 2-byte letter is never split.
+  for (const ch of base) {
+    const n = utf8Length(ch.codePointAt(0) as number);
+    if (bytes + n > MAX_FILE_BASE_BYTES - suffix.length) break;
+    kept += ch;
+    bytes += n;
+  }
+  // Nor is a `%XX` escape: a dangling `%` or `%2` would not decode back.
+  kept = kept.replace(/%[0-9A-F]?$/, "");
+  return { base: `${kept}${suffix}`, shortened: true };
+}
+
+/**
+ * Mirror-relative file path for a page (PLAN.md §5): forward-slash, relative to the data dir. The
+ * server's mirror writes the page there, and the client names an exported download after its last
+ * segment, so both carry the same name — shortened past NAME_MAX for both (B-126, B-368: the
+ * shortening once lived only in the server's copy of this, and the download kept the full name).
+ */
 export function pageMirrorPath(page: { name: string; journalDay: number | null }): string {
   if (page.journalDay !== null) return `journals/${journalDayToFileName(page.journalDay)}.md`;
-  return `pages/${pageNameToFileName(page.name)}.md`;
+  return `pages/${pageFileBase(page.name).base}.md`;
+}
+
+/**
+ * The tree as the mirror file holds it: with the page's full name as a leading `title::` when its
+ * file name was shortened, since the file name no longer says what the page is called and
+ * `title::` is what the Logseq importer reads a page's name from. A page that already has a
+ * `title::` keeps its own; a journal is named by its date. Otherwise `rendered.parsed` itself.
+ */
+export function pageMirrorOutline(rendered: RenderedPage): ParsedPage {
+  const { parsed } = rendered;
+  if (
+    rendered.journalDay !== null ||
+    parsed.properties.title !== undefined ||
+    !pageFileBase(rendered.name).shortened
+  ) {
+    return parsed;
+  }
+  return { ...parsed, properties: { title: rendered.name, ...parsed.properties } };
 }
