@@ -155,6 +155,49 @@ describe("graph.replace", () => {
     expect(allContents()).toContain(`${"a".repeat(n)}!`);
   }, 20_000);
 
+  it("refuses a replacement that would grow a block past the content cap, even in a dry run (B-125)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Grow",
+      markdown: `- ${"a".repeat(60)}`,
+    });
+    // 60 × 2000 = 120,000 characters: more than block.update would ever accept.
+    const body = { query: "a", replacement: "x".repeat(2000) };
+    const preview = await replace({ ...body, dry_run: true });
+    expect(preview.status).toBe(413);
+    expect(preview.json.error.code).toBe("too_large");
+    expect(preview.json.error.details.length).toBe(120_000);
+    const real = await replace(body);
+    expect(real.status).toBe(413);
+    expect(allContents()).toEqual(["a".repeat(60)]);
+  });
+
+  it("still edits a block that is already past the cap, as long as the edit does not grow it", async () => {
+    // The owner's graph has a 120,016-character block; a cap on the result alone would lock it.
+    const big = `${"b".repeat(100_050)} tail`;
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Big", markdown: `- ${big}` });
+    const { status, json } = await replace({ query: "tail", replacement: "TAIL" });
+    expect(status).toBe(200);
+    expect(json.blocks_matched).toBe(1);
+    expect(allContents()).toEqual([`${"b".repeat(100_050)} TAIL`]);
+  });
+
+  it("a replacement too large to even build is too_large, and the server carries on (B-125)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Explode",
+      markdown: `- ${"a".repeat(100_000)}`,
+    });
+    // 200 million characters for one block: past the scan worker's heap, if not V8's string limit.
+    const { status, json } = await replace({
+      query: "a",
+      replacement: "x".repeat(2000),
+      dry_run: true,
+    });
+    expect(status).toBe(413);
+    expect(json.error.code).toBe("too_large");
+    const health = await s.app.request("/healthz");
+    expect(health.status).toBe(200);
+  }, 20_000);
+
   it("limit caps the preview list, not the counts", async () => {
     await seed();
     const { json } = await replace({ query: "colour", limit: 1, dry_run: true });

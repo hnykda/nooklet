@@ -2036,7 +2036,11 @@ export const graphReplace = defineOp({
 A literal `replacement` is inserted verbatim (`$1` stays `$1`); only `regex: true` interprets
 it. A pattern that is invalid, or that matches the empty string, is `invalid`. The scan runs in a
 worker thread with a 2 s budget (B-125): a pattern still running then is `invalid` ("took too long
-to run"), so a backtracking regex cannot stall the server. The real run re-reads the matched
+to run"), so a backtracking regex cannot stall the server. `too_large` covers more than
+`max_blocks`: a replacement that grows any block past 100,000 characters (`block.update`'s cap; an
+already longer block may still be edited if the edit does not grow it), more than 20 M characters
+of replaced text in one call, or a single block too big to build. All are decided in the dry run
+too. The real run re-reads the matched
 blocks before writing and is `conflict`, writing nothing, if any changed during the scan (a device
 sync can land meanwhile). `batch_id` is absent on `dry_run` and when nothing matched. `matches`
 is ordered by page name.

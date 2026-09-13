@@ -8,10 +8,9 @@ Findings, evidence and verifier notes: `docs/review/2026-09-13-m7-rv-server-secu
 ---
 
 ### B-125 · `graph.replace` does unbounded work on the server's only thread: a backtracking regex freezes it, a long replacement balloons memory
-**Status:** time half fixed, memory half open · **Severity:** high · **Found:** 2026-09-13, server
-security review (F1, F5) · **Test:** `packages/server/src/ops/graph-replace.test.ts` "a backtracking
-pattern is refused within the time budget, and the server answers meanwhile (B-125)";
-`graph-replace.race.test.ts`
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-13, server security review (F1, F5) ·
+**Test:** `packages/server/src/ops/graph-replace.test.ts` (the four B-125 cases),
+`graph-replace.race.test.ts`, `replace-scan.test.ts`
 
 **Time (F1).** `compileQuery` rejects only invalid patterns and patterns that match the empty
 string. The handler then runs `matchAll`/`replace` synchronously over every live block (18.6k on
@@ -42,6 +41,21 @@ the 40-`a` case is refused in ~2 s with `/healthz` answered at once. On a copy o
 (~20 ms of worker overhead idle). Tests: `graph-replace.test.ts` "a backtracking pattern is refused
 within the time budget, and the server answers meanwhile (B-125)"; `graph-replace.race.test.ts`
 (fails with 200 instead of 409 when the re-check is disabled).
+
+**Fixed 2026-09-13 (memory).** The worker (`ops/replace-scan.ts`) now takes limits: past
+`max_blocks` it stops holding replaced text but keeps counting (the error's `blocks_matched` stays
+exact); it stops outright past 20 M characters of held text; it refuses a block the replacement
+grows past 100,000 characters — `block.update`'s cap — while still allowing an edit that does not
+grow an already longer block (the owner's graph has a 120,016-character block); and its heap is
+capped at 256 MB, so one block multiplied past that ends the worker (`ERR_WORKER_OUT_OF_MEMORY` or
+V8's "Invalid string length", both mapped to 413) instead of the server. All of it applies to
+`dry_run` as well. On a copy of the owner's graph (`scratchpad/.../p10-replace-memory.mts`), a
+query `e` with a 2,000-character replacement peaked at 1,091 MB rss before and 209 MB after; with
+`max_blocks: 20000` it used to succeed at 2,001 MB and would have written blocks of up to 250,949
+characters, and is now 413. Tests: `graph-replace.test.ts` "refuses a replacement that would grow
+a block past the content cap, even in a dry run (B-125)" (200 before), "still edits a block that is
+already past the cap, as long as the edit does not grow it", "a replacement too large to even
+build is too_large, and the server carries on (B-125)" (200 before); `replace-scan.test.ts` (4).
 
 ---
 

@@ -16,7 +16,15 @@
 import { z } from "zod";
 import { pageWireNameById } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
-import { runScan, SCAN_BUDGET_MS, type ScanResult, ScanTimeoutError } from "./replace-scan.js";
+import {
+  MAX_BLOCK_CHARS,
+  MAX_OUTPUT_CHARS,
+  runScan,
+  SCAN_BUDGET_MS,
+  ScanMemoryError,
+  type ScanResult,
+  ScanTimeoutError,
+} from "./replace-scan.js";
 import { currentHeadSeq, resolvePageIds } from "./resolve.js";
 import { BatchIdOut, BlockId, IdempotencyKey, PageRef } from "./schemas.js";
 
@@ -160,8 +168,20 @@ export const graphReplace = defineOp({
         // A literal replacement must stay literal: `String.replace` reads `$&`/`$1` in the
         // replacement string, which a person typing "$5" as the new text does not mean.
         literalReplacement: !input.regex,
+        limits: {
+          maxBlocks: input.max_blocks,
+          maxBlockChars: MAX_BLOCK_CHARS,
+          maxOutputChars: MAX_OUTPUT_CHARS,
+        },
       });
     } catch (err) {
+      if (err instanceof ScanMemoryError) {
+        throw new OpError(
+          "too_large",
+          "the replacement produces more text than the server will build",
+          "use a shorter replacement, or a query that matches less",
+        );
+      }
       if (!(err instanceof ScanTimeoutError)) throw err;
       throw input.regex
         ? new OpError(
@@ -176,21 +196,37 @@ export const graphReplace = defineOp({
             "narrow it with pages",
           );
     }
+    switch (scan.kind) {
+      case "too_many_blocks":
+        throw new OpError(
+          "too_large",
+          `${scan.blocksMatched} blocks match, more than max_blocks (${input.max_blocks})`,
+          "narrow the query (pages, case_sensitive, a longer literal) or raise max_blocks deliberately",
+          { blocks_matched: scan.blocksMatched, occurrences: scan.occurrences },
+        );
+      case "block_too_long": {
+        const row = rows[scan.index] as Candidate;
+        throw new OpError(
+          "too_large",
+          `the replacement would make block ${row.id} ${scan.length} characters long, more than ` +
+            `a block may hold (${scan.maxBlockChars})`,
+          "use a shorter replacement, or leave that block out with pages",
+          { block_id: row.id, length: scan.length, max: scan.maxBlockChars },
+        );
+      }
+      case "output_too_large":
+        throw new OpError(
+          "too_large",
+          `the replaced text would be more than ${scan.maxOutputChars} characters in total`,
+          "narrow the query (pages, a longer literal) or use a shorter replacement",
+        );
+    }
     const { occurrences } = scan;
     const changed = scan.hits.map((h) => ({
       ...(rows[h.index] as Candidate),
       after: h.after,
       count: h.count,
     }));
-
-    if (changed.length > input.max_blocks) {
-      throw new OpError(
-        "too_large",
-        `${changed.length} blocks match, more than max_blocks (${input.max_blocks})`,
-        "narrow the query (pages, case_sensitive, a longer literal) or raise max_blocks deliberately",
-        { blocks_matched: changed.length, occurrences },
-      );
-    }
 
     let seq = currentHeadSeq(ctx.db);
     let batchId: string | undefined;

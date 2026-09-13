@@ -45,9 +45,16 @@ start, you were restarted: read it, then continue from "Next steps".
   Logseq graph (`~/notes-graph`, read only) imported into
   `scratchpad/.../import-f3`: 127 pages, 825 journals, 18,628 blocks, 171 assets, no warnings.
 
+- F3 hash `3389bd1`.
+- F5 (B-125 memory half) — commit "fix(server): graph.replace stops building text it will
+  refuse". Red: 2 op tests returned 200, 4 `runScan` tests (new result shape). Green: server
+  suite 58 files / 537. Probe `p10-replace-memory.mts` on the real-graph copy, main checkout vs
+  worktree: `e`→2,000 chars peak rss 1,091 MB → 209 MB; with `max_blocks: 20000` it used to
+  succeed at 2,001 MB writing 250,949-char blocks, now 413 `block_too_long`.
+
 ## 2. In flight
 
-- F5.
+- F6.
 
 ## 3. Next steps, in order
 
