@@ -175,6 +175,7 @@ function EmbedOutline(props: Props & { data: Extract<EmbedData, { page: unknown 
             day. A page embed's top-level blocks keep their stored state, like the page does. */}
         <ReadOnlyOutline
           roots={roots()}
+          rootOrdinals={props.data.rootOrdinals}
           rootsOpen={props.data.status === "block"}
           cap={EMBED_ROW_CAP}
           ctx={props.ctx}

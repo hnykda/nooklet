@@ -21,6 +21,7 @@
 import { normalizePageName, type PageRow, parseJournalTitle } from "@nooklet/core";
 import { type Accessor, createResource, type Resource } from "solid-js";
 import { getPageTree, queryAs } from "../db/client.js";
+import { deriveNumbering, isNumbered } from "../editor/numbering.js";
 import { stampedFor } from "./store.js";
 import type { BlockTreeNode, PageTreeResult } from "./types.js";
 
@@ -28,9 +29,19 @@ export type EmbedTarget = { kind: "page"; name: string } | { kind: "block"; id: 
 
 export type EmbedData =
   /** A page embed: the page's top-level blocks (possibly none). */
-  | { status: "page"; page: PageRow; blocks: BlockTreeNode[] }
+  | {
+      status: "page";
+      page: PageRow;
+      blocks: BlockTreeNode[];
+      rootOrdinals?: ReadonlyMap<string, number>;
+    }
   /** A block embed: the block itself, children nested as on its page. */
-  | { status: "block"; page: PageRow; node: BlockTreeNode }
+  | {
+      status: "block";
+      page: PageRow;
+      node: BlockTreeNode;
+      rootOrdinals?: ReadonlyMap<string, number>;
+    }
   /** No live page by that name, or no live block with that id. */
   | { status: "missing" }
   | { status: "failed"; message: string };
@@ -75,6 +86,15 @@ async function findPageId(sql: SqlRunner, name: string): Promise<string | undefi
 }
 
 /** One read of an embed's target. Exported for `embeds.test.ts`; views use `useEmbed`. */
+/** `list:: number` ordinals for one sibling group (`../editor/numbering.ts`). */
+function siblingOrdinals(siblings: readonly BlockTreeNode[]): ReadonlyMap<string, number> {
+  const byId = new Map(siblings.map((b) => [b.id, b]));
+  return deriveNumbering(
+    siblings.map((b) => b.id),
+    (id) => isNumbered(byId.get(id)),
+  );
+}
+
 export async function loadEmbed(
   target: EmbedTarget,
   deps: EmbedDeps = defaultDeps,
@@ -85,7 +105,12 @@ export async function loadEmbed(
       if (pageId === undefined) return { status: "missing" };
       const tree = await deps.pageTree(pageId);
       if (!tree) return { status: "missing" };
-      return { status: "page", page: tree.page, blocks: tree.blocks };
+      return {
+        status: "page",
+        page: tree.page,
+        blocks: tree.blocks,
+        rootOrdinals: siblingOrdinals(tree.blocks),
+      };
     }
     // The block's page must be live too: a block on a trashed page is not reachable anywhere
     // else in the app, and an embed must not be the one place it still shows.
@@ -101,7 +126,15 @@ export async function loadEmbed(
     // `undefined` although the row is live: an ancestor was deleted and the page tree (rightly)
     // no longer reaches it.
     if (!tree || !node) return { status: "missing" };
-    return { status: "block", page: tree.page, node };
+    // The block's number counts its siblings on the page (B-551), which the page tree has.
+    const siblings =
+      node.parentId === null ? tree.blocks : findTreeNode(tree.blocks, node.parentId)?.children;
+    return {
+      status: "block",
+      page: tree.page,
+      node,
+      rootOrdinals: siblings ? siblingOrdinals(siblings) : new Map(),
+    };
   } catch (e) {
     return { status: "failed", message: e instanceof Error ? e.message : String(e) };
   }

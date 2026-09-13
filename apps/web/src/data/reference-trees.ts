@@ -25,6 +25,7 @@
 import { type BlockSqlRow, toBlockRow } from "@nooklet/core";
 import { type Accessor, createMemo, createResource, type Resource } from "solid-js";
 import { queryAs } from "../db/client.js";
+import { deriveNumbering, isNumbered } from "../editor/numbering.js";
 import { stampedFor } from "./store.js";
 import type { BlockTreeNode } from "./types.js";
 
@@ -49,6 +50,9 @@ export type ReferenceTrees =
       nodes: ReadonlyMap<string, BlockTreeNode>;
       /** The text of every ancestor that is not itself in `nodes`, for breadcrumbs. */
       ancestorText: ReadonlyMap<string, string>;
+      /** `list:: number` ordinals of the numbered outermost references, counted among their
+       * siblings on their own page (B-551). */
+      rootOrdinals?: ReadonlyMap<string, number>;
     }
   | { status: "failed"; message: string };
 
@@ -149,7 +153,38 @@ export async function loadReferenceTrees(
       for (const r of textRows) ancestorText.set(r.id, r.content);
     }
 
-    return { status: "ok", requested, ancestors, nodes, ancestorText };
+    // 5. Numbered outermost references: their ordinal depends on the siblings on their page, which
+    //    nothing above read (B-551). One read for all of them; `IS` so top-level blocks (NULL
+    //    parent) match each other.
+    const rootOrdinals = new Map<string, number>();
+    const numberedRoots = outermost.filter((id) => isNumbered(nodes.get(id)));
+    if (numberedRoots.length > 0) {
+      const sibRows = await sql<{ root: string; id: string; list: string | null }>(
+        `SELECT r.value AS root, s.id AS id,
+                (SELECT bp.value FROM block_prop bp WHERE bp.block_id = s.id AND bp.key = 'list') AS list
+         FROM json_each(?) r
+         JOIN block b ON b.id = r.value
+         JOIN block s ON s.page_id = b.page_id AND s.parent_id IS b.parent_id AND s.deleted_at IS NULL
+         ORDER BY r.value, s.order_key, s.id`,
+        [JSON.stringify(numberedRoots)],
+      );
+      const groups = new Map<string, { id: string; list: string | null }[]>();
+      for (const r of sibRows) {
+        const g = groups.get(r.root);
+        if (g) g.push(r);
+        else groups.set(r.root, [r]);
+      }
+      for (const [root, sibs] of groups) {
+        const numbered = new Set(sibs.filter((x) => x.list === "number").map((x) => x.id));
+        const n = deriveNumbering(
+          sibs.map((x) => x.id),
+          (id) => numbered.has(id),
+        ).get(root);
+        if (n !== undefined) rootOrdinals.set(root, n);
+      }
+    }
+
+    return { status: "ok", requested, ancestors, nodes, ancestorText, rootOrdinals };
   } catch (e) {
     return { status: "failed", message: e instanceof Error ? e.message : String(e) };
   }

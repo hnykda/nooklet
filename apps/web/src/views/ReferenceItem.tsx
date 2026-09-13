@@ -174,6 +174,7 @@ export function ReferenceItem(props: {
         <ReadOnlyOutline
           // biome-ignore lint/style/noNonNullAssertion: inside `when={node() !== undefined}`.
           roots={[node()!]}
+          rootOrdinals={props.trees()?.rootOrdinals}
           cap={REFERENCE_ROW_CAP}
           ctx={ctx}
           onMore={() => props.onNavigate({ kind: "block", id: props.id })}

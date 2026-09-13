@@ -251,6 +251,32 @@ describe("a page embed", () => {
     );
   });
 
+  it("numbers list:: number blocks as the page does, each group of children on its own (B-551)", async () => {
+    const num: Partial<BlockTreeNode> = { properties: { list: "number" } };
+    fake.set("page:Steps", {
+      status: "page",
+      page: { ...PAGE, name: "Steps" },
+      blocks: [
+        node("s1", "one", [], num),
+        node("s2", "two", [node("c1", "a", [], num), node("c2", "b", [], num)], num),
+        node("s3", "plain"),
+      ],
+      rootOrdinals: new Map([
+        ["s1", 1],
+        ["s2", 2],
+      ]),
+    });
+    const { container } = renderContent("{{embed [[Steps]]}}");
+    const items = await rows(container, 5);
+    expect(items.map((li) => li.querySelector(".vr-list-number")?.textContent ?? "")).toEqual([
+      "1.",
+      "2.",
+      "1.",
+      "2.",
+      "",
+    ]);
+  });
+
   it("an empty page says so", async () => {
     fake.set("page:Empty", { status: "page", page: { ...PAGE, name: "Empty" }, blocks: [] });
     const { container } = renderContent("{{embed [[Empty]]}}");

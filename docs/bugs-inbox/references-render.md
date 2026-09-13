@@ -50,7 +50,7 @@ renderer's depth rule, as in embeds); references are not editable (by request).
 ---
 
 ### B-551 · Numbered blocks (`list:: number`) show plain bullets, no ordinals, in embeds and the references panel
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, references-render (B-550) · **Test:** none
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, references-render (B-550) · **Test:** `e2e/tests/references-render.spec.ts` \"a numbered list item keeps its number in the references panel, and so do its children (B-551)\"
 
 `editor/render/ReadOnlyOutline.tsx` (the read-only outline `{{embed}}` and the references panel
 share) renders a bullet for every row; `BlockRowView` numbers `list:: number` siblings through
@@ -61,6 +61,16 @@ is also a hidden property key, so nothing else says it is numbered).
 Children are easy — their siblings are all in the tree. The root is not: its ordinal depends on
 siblings on its page that the view does not have (a reference to item 3 of a list would read "1."),
 which is why this was logged rather than folded into B-550.
+
+**Fixed 2026-09-13 (coordinator, at the owner's request).** `ReadOnlyOutline` numbers every group of
+children with `editor/numbering.ts#deriveNumbering`, and takes the roots' ordinals from its caller:
+`data/reference-trees.ts` reads the numbered outermost references' siblings on their page in one
+query (`rootOrdinals`), and `data/embeds.ts` counts them from the page tree it already has. Rows use
+the outline's own `.vr-list-number` markup. `isNumbered` now tolerates a node with no `properties`.
+Tests: the e2e test above (a reference to item three reads "3.", its children "1." "2."),
+`data/reference-trees.test.ts` "gives a numbered reference its ordinal among its siblings on the page
+(B-551)", `editor/render/embed.test.tsx` "numbers list:: number blocks as the page does, each group of
+children on its own (B-551)".
 
 ---
 

@@ -20,6 +20,7 @@ import type { BlockTreeNode } from "../../data/types.js";
 import { BlockProperties } from "../BlockProperties.js";
 import { MARKER_GLYPH } from "../BlockRowView.js";
 import { DateChips } from "../DateChips.js";
+import { deriveNumbering, isNumbered } from "../numbering.js";
 import { EMBED_ROW_CAP, visibleEmbedRows } from "./embedRows.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
 import "./embed.css";
@@ -37,6 +38,10 @@ export function ReadOnlyOutline(props: {
   rootsOpen?: boolean;
   /** Rows rendered at most; past it a "N more blocks" button calls `onMore`. */
   cap?: number;
+  /** Ordinals of numbered roots (`list:: number`, OUT-17). A root's number depends on its siblings
+   * on its page, which this view does not hold, so the caller that read the page supplies it
+   * (B-551); children are numbered here from the tree itself. */
+  rootOrdinals?: ReadonlyMap<string, number>;
   ctx: RenderCtx;
   onMore: () => void;
 }): JSX.Element {
@@ -53,6 +58,24 @@ export function ReadOnlyOutline(props: {
     return map;
   });
   const rootIds = createMemo(() => new Set(props.roots.map((b) => b.id)));
+  // Numbered-list ordinals, the outline's own rule (`../numbering.ts`): per sibling group, so every
+  // group of children is complete here; roots come from the caller (B-551).
+  const ordinals = createMemo(() => {
+    const out = new Map<string, number>(props.rootOrdinals ?? []);
+    const walk = (nodes: readonly BlockTreeNode[]): void => {
+      for (const node of nodes) {
+        if (node.children.length === 0) continue;
+        const numbered = deriveNumbering(
+          node.children.map((c) => c.id),
+          (id) => isNumbered(byId().get(id)),
+        );
+        for (const [id, n] of numbered) out.set(id, n);
+        walk(node.children);
+      }
+    };
+    walk(props.roots);
+    return out;
+  });
   const isOpen = (node: { id: string; collapsed: boolean }, isRoot: boolean): boolean =>
     (isRoot && props.rootsOpen ? true : !node.collapsed) !== flipped().has(node.id);
   const rows = createMemo(() => visibleEmbedRows(props.roots, isOpen, props.cap ?? EMBED_ROW_CAP));
@@ -74,6 +97,7 @@ export function ReadOnlyOutline(props: {
               id={id}
               node={() => byId().get(id)}
               depth={rows().depth.get(id) ?? 0}
+              ordinal={ordinals().get(id)}
               open={(() => {
                 const node = byId().get(id);
                 return node ? isOpen(node, rootIds().has(id)) : false;
@@ -108,6 +132,8 @@ function OutlineRow(props: {
   id: string;
   node: () => BlockTreeNode | undefined;
   depth: number;
+  /** `list:: number` ordinal, when the block is numbered. */
+  ordinal: number | undefined;
   open: boolean;
   onToggle: () => void;
   ctx: RenderCtx;
@@ -194,6 +220,9 @@ function OutlineRow(props: {
         </Show>
         <Show when={priority()}>
           {(p) => <span class={`vr-priority vr-priority-${p()}`}>{p()}</span>}
+        </Show>
+        <Show when={props.ordinal !== undefined}>
+          <span class="vr-list-number">{props.ordinal}.</span>
         </Show>
         <div class="vr-embed-content" dir="auto">
           <BlockContentView

@@ -15,7 +15,8 @@ import type { EditableBlock } from "./types.js";
 /** OUT-17: only the value `number` means anything in v1; other `list` values are kept verbatim
  * for future list styles but render as ordinary bullets. */
 export function isNumbered(block: Pick<EditableBlock, "properties"> | undefined): boolean {
-  return block?.properties.list === "number";
+  // `?.` on properties too: a tree node built by a test or an older read may carry none.
+  return block?.properties?.list === "number";
 }
 
 /** Ordinals for one sibling group, in order. `siblingIds[i]` is numbered iff `numbered(id)`. */

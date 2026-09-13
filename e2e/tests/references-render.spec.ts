@@ -176,3 +176,31 @@ test("with nested references, the filter, the sort and Link all still work", asy
   await expect(count).toHaveText("4");
   await expect(linked.locator(".reference-item")).toHaveCount(3);
 });
+
+test("a numbered list item keeps its number in the references panel, and so do its children (B-551)", async ({
+  page,
+}) => {
+  const target = "RRN Target";
+  await seedPage(page, target, "- the target");
+  await seedPage(
+    page,
+    "RRN Steps",
+    [
+      "- step one",
+      "  list:: number",
+      "- step two",
+      "  list:: number",
+      "- step three about [[RRN Target]]",
+      "  list:: number",
+      "  - sub a",
+      "    list:: number",
+      "  - sub b",
+      "    list:: number",
+    ].join("\n"),
+  );
+  await page.goto(pagePath(target));
+  const item = page.locator(".reference-item");
+  await expect(item).toHaveCount(1);
+  // Item three reads "3.", not "1.": its number counts its siblings on its own page.
+  await expect(item.locator(".vr-list-number")).toHaveText(["3.", "1.", "2."]);
+});

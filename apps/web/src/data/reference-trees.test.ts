@@ -85,6 +85,17 @@ describe("loadReferenceTrees", () => {
     expect(t.nodes.has(context)).toBe(false);
   });
 
+  it("gives a numbered reference its ordinal among its siblings on the page (B-551)", async () => {
+    block(null, "a", "an ordinary bullet"); // not numbered: the count starts after it
+    const one = block(null, "b", "step one");
+    const two = block(null, "c", "step two");
+    const three = block(null, "d", "step three [[Target]]");
+    for (const id of [one, two, three]) prop(id, "list", "number");
+
+    const t = ok(await loadReferenceTrees([three], sql));
+    expect(t.rootOrdinals?.get(three)).toBe(3);
+  });
+
   it("carries properties, marker, dates and collapsed; leaves deleted children out", async () => {
     const ref = block(null, "a", "TODO task for [[Target]]");
     const kept = block(ref, "a", "kept");
