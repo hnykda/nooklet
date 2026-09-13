@@ -139,6 +139,11 @@ The first measurement was 13,946 ms: every page write ran `reindexPageIdentity`,
 rename or property toggle too. Schema v7 adds three partial indexes (B-440); 0.2–1.7 ms per
 `page.create` after.
 
+Each page the sweep creates is dated by its earliest reference (the referencing block's
+`created_at`), not by the sweep: `page.updated_at` never changes after a create, and All pages'
+default "Recently edited", `graph_overview`'s recent pages and the plugin page source sort by it —
+stamped "now", all 259 sat above every page the owner wrote (B-446).
+
 The importer writes with minting off (`referencedPages: "skip"`) — otherwise page A's `[[B]]` would
 mint B before B's own file arrives and B's `page.create` would collide — and runs
 `mintDanglingReferencedPages` (the ungated migration) once all files are in. `ImportStats` reports
@@ -208,8 +213,8 @@ synced; the graph, search and `page_list` read the server.
   `trash.restore`, `page.update` rename and `batch.undo` of a delete push an unclaimed page aside.
 - `packages/server/src/mcp/server.test.ts`: `block_update` link → `page_list`/`page_read`;
   `packages/server/src/data-api.test.ts`: `ctx.data.pages.create` claims.
-- `packages/server/src/ref-pages-migration.test.ts` (3): migration, import order, import into a graph
-  that already references the file's page.
+- `packages/server/src/ref-pages-migration.test.ts` (4): migration, dating by earliest reference
+  (B-446), import order, import into a graph that already references the file's page.
 - `packages/server/src/mirror/live.test.ts`: no file for an empty page; removed with its last block.
 - `apps/web/src/sync/e2e.test.ts` (5): the race, push-first and pull-first; and its false positive —
   a device's accepted page of a name whose older page the server deleted stays put, both orders;

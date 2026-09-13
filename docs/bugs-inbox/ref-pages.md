@@ -163,3 +163,29 @@ links count again, like a page restored from the trash.
 Exposure this adds to B-443: the un-delete is a revival of a tombstone, which a replica lacking that
 row would miss. That replica needs its own page of the name created, accepted and deleted again
 between the junk deletion and the late write — and it would miss the late write itself anyway.
+
+---
+
+### B-446 · The ADR 024 migration puts 259 empty pages at the top of "Recently edited" and of `graph_overview`'s recent pages
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, ref-pages adversarial verification
+· **Test:** `packages/server/src/ref-pages-migration.test.ts` "dates each page by its earliest
+reference, so they do not top 'Recently edited' (B-446)" (fails against `3496234`'s sweep)
+
+`page.updated_at` is only ever the `createdAt` of the page's `page.create` (core never bumps it), and
+All pages sorts by it by default ("Recently edited"), as do `graph_overview`'s `recent_pages` (the
+tool an agent orients itself with) and the plugin page source. `mintDanglingReferencedPages` stamps
+every page it creates with `Date.now()`, so on the owner's graph copy the first 259 non-journal rows
+of All pages after the upgrade — before any of the 127 pages the owner wrote — are `Task`,
+`quick capture`, `AcmeCorp`, `call`, … all empty, and `recent_pages` lists 20 of them. The same
+applies to `nooklet import`, which runs the same sweep after the files. Measured with SQL on the
+migrated copy (`ORDER BY updated_at DESC` over live non-journal pages): the first page not made by
+the sweep was row 260.
+
+**Fixed 2026-09-13:** the sweep dates each page it creates by its earliest reference —
+`WantedPages.want(name, at)`, the referencing block's `created_at` (a page's `created_at` for
+`tags::` and namespace ancestors), the minimum when several reference it. The per-write planner
+still uses "now": a link typed today does make a page today. Fresh copy of the owner's graph
+(`tools/probes/ref-pages-migration-real-graph.ts`): 259 created in 74 ms, 17 journal keys left,
+verify OK over 20,736 ops; `Task`, `quick capture` and `@Eva Svobodová` dated 2023-02-27,
+`Sprouts` 2024-10-20, `Sprouts/Growing/Sixth Try` 2026-09-06; 14 of the top 20 "Recently edited"
+are pages the sweep made, each because a block written recently links it.

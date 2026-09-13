@@ -117,6 +117,50 @@ describe("migrateReferencedPages", () => {
     const again = migrateReferencedPages(ctx);
     expect(again).toMatchObject({ alreadyDone: true, created: 0 });
   });
+
+  it("dates each page by its earliest reference, so they do not top 'Recently edited' (B-446)", () => {
+    const home = newId();
+    const coaching = newId();
+    legacy([
+      op(home, { kind: "page.create", name: "Home", journalDay: null, createdAt: 10_000 }),
+      op(coaching, {
+        kind: "page.create",
+        name: "coaching/sessions",
+        journalDay: null,
+        createdAt: 9_000,
+      }),
+    ]);
+    legacyBlock(home, "later [[quick capture]]", 2_000);
+    legacyBlock(home, "earlier [[Quick Capture]] #idea", 1_000);
+    legacyBlock(home, "[[Sprouts/Growing/Sixth Try]]", 3_000);
+    legacyBlock(home, "a task", 5_000, "TODO");
+    migrateReferencedPages(ctx);
+
+    const dated = Object.fromEntries(
+      ctx.driver
+        .all<{ name: string; created_at: number; updated_at: number }>(
+          "SELECT name, created_at, updated_at FROM page p WHERE EXISTS (SELECT 1 FROM op o WHERE o.entity = p.id AND o.device_id = ? AND o.kind = 'page.create')",
+          [REFERENCE_DEVICE_ID],
+        )
+        .map((r) => [r.name, [r.created_at, r.updated_at]]),
+    );
+    expect(dated).toEqual({
+      "Quick Capture": [1_000, 1_000],
+      idea: [1_000, 1_000],
+      Sprouts: [3_000, 3_000],
+      "Sprouts/Growing": [3_000, 3_000],
+      "Sprouts/Growing/Sixth Try": [3_000, 3_000],
+      Task: [5_000, 5_000],
+      "coaching": [9_000, 9_000],
+    });
+    // All pages' default sort ("Recently edited", `updated_at` descending): Home, written last,
+    // comes first — not the pages the sweep made.
+    const recent = ctx.driver.get<{ name: string }>(
+      "SELECT name FROM page WHERE deleted_at IS NULL AND journal_day IS NULL ORDER BY updated_at DESC LIMIT 1",
+    );
+    expect(recent?.name).toBe("Home");
+    expect(verifyRebuildParity(ctx.driver).divergences).toEqual([]);
+  });
 });
 
 describe("importLogseqGraph and referenced pages", () => {

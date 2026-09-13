@@ -334,14 +334,21 @@ export function referenceKeysBefore(
 export class WantedPages {
   /** key -> name */
   readonly byKey = new Map<string, string>();
+  /** key -> the earliest `at` a reference to it was wanted with; absent keys are created "now".
+   * Only the one-time sweep passes one (B-446): `page.updated_at` is a page's creation time for
+   * good (core never bumps it), and All pages' "Recently edited", `graph_overview`'s recent pages
+   * and the plugin page source all sort by it — stamped with the sweep's own clock, every page it
+   * made sat above everything the owner ever wrote. */
+  readonly createdAt = new Map<string, number>();
   /** Keys a page this plan brings back will hold (B-445): not wanted again, and they keep their
    * ancestors as a wanted page would. */
   readonly reserved = new Set<string>();
 
   constructor(private readonly driver: SqlDriver) {}
 
-  /** `name` and each namespace ancestor, when it is mintable and resolves to nothing. */
-  want(name: string): void {
+  /** `name` and each namespace ancestor, when it is mintable and resolves to nothing. `at`: when
+   * the referencing text was written, for the sweep (see `createdAt`). */
+  want(name: string, at?: number): void {
     const trimmed = name.trim();
     // A date written with slashes (`2026/09/10`) is a journal day, not a namespace: no `2026`.
     if (!isMintableName(trimmed)) return;
@@ -349,27 +356,33 @@ export class WantedPages {
     for (const n of [trimmed, ...namespaceAncestors(trimmed)].reverse()) {
       if (!isMintableName(n)) continue;
       const key = referenceKey(n);
-      if (this.byKey.has(key) || this.reserved.has(key)) continue;
+      if (this.byKey.has(key)) {
+        const had = this.createdAt.get(key);
+        if (at !== undefined && had !== undefined && at < had) this.createdAt.set(key, at);
+        continue;
+      }
+      if (this.reserved.has(key)) continue;
       if (resolvePageIdForKey(this.driver, key) !== null) continue;
       this.byKey.set(key, n);
+      if (at !== undefined) this.createdAt.set(key, at);
     }
   }
 
   /** Everything a live block references, if any of it dangles. */
-  wantFromBlock(blockId: string): void {
+  wantFromBlock(blockId: string, at?: number): void {
     // Fast path: an edit whose references all resolve (nearly every edit) parses nothing.
     const dangling = this.driver.get(
       "SELECT 1 FROM ref WHERE src_block_id = ? AND dst_page_id IS NULL AND kind IN ('page', 'tag') LIMIT 1",
       [blockId],
     );
     if (!dangling) return;
-    for (const name of pageNamesReferencedByBlock(this.driver, blockId)) this.want(name);
+    for (const name of pageNamesReferencedByBlock(this.driver, blockId)) this.want(name, at);
   }
 
   /** A live page's `tags::` items and its namespace ancestors. */
-  wantFromPage(pageId: string, name: string): void {
-    for (const tag of pageTagNames(this.driver, pageId)) this.want(tag);
-    for (const a of namespaceAncestors(name)) this.want(a);
+  wantFromPage(pageId: string, name: string, at?: number): void {
+    for (const tag of pageTagNames(this.driver, pageId)) this.want(tag, at);
+    for (const a of namespaceAncestors(name)) this.want(a, at);
   }
 
   /** True when a wanted page would sit under `key` — which keeps an unclaimed `key` alive. */
@@ -519,8 +532,9 @@ export function referencePageOps(
 ): Op[] {
   const out: Op[] = [];
   const now = Date.now();
-  for (const name of wanted.byKey.values()) {
-    out.push(mint(newId(), { kind: "page.create", name, journalDay: null, createdAt: now }));
+  for (const [key, name] of wanted.byKey) {
+    const createdAt = wanted.createdAt.get(key) ?? now;
+    out.push(mint(newId(), { kind: "page.create", name, journalDay: null, createdAt }));
   }
   for (const pageId of deleting) {
     out.push(mint(pageId, { kind: "page.delete", deletedAt: now }));
