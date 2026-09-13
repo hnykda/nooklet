@@ -148,6 +148,30 @@ further on this branch.
 
 ---
 
+### B-247 · An edit queued behind a busy replica worker is lost if the page reloads first
+**Status:** open · **Severity:** high (silent data loss; needs a busy worker and a reload within
+seconds) · **Found:** 2026-09-13, rerunning QA's `t2.mjs` for B-244 on a copy of the real graph ·
+**Test:** — (probe: `tools/probes/busy-replica-reload.mjs`)
+
+On the real graph, `t2.mjs` accepts a `[[` row and reloads the page ~1.9 s later for the next
+variant. Twice (ClickNew, EnterExisting) the editor showed `x [[…]]` and the server never got it,
+not even after later loads; with 5 s more before each reload, all six variants were stored. The
+probe makes it deterministic: keep the replica worker busy for 4 s (a synchronous loop evaluated
+in it), type ` queued`, wait 1.2 s (past the 500 ms text debounce), reload. Stored: `x`. The same
+with the reload after the busy period: `x queued`. Plain typing with an idle worker and a reload
+1.9 s later loses nothing (5/5).
+
+Reading, not verified: `BlockTree.flushPendingEdit` hands the op to `applyOps`, a Comlink message
+to the worker; the op only becomes durable (state + `pending_op`, one transaction) when the worker
+runs it. A message still queued when the document unloads dies with the worker, and the
+`pagehide` flush has the same problem. What keeps the worker busy on a big graph: the cold
+bootstrap (measured ~2.2 s blocked on first load) and, plausibly, the `[[` popup's block search
+(`LIKE %q%` over every block, re-run on every keystroke). A fix needs a durable hand-off that does
+not wait for the worker (e.g. the unflushed edit written synchronously on the main thread and
+replayed at start), which is a design decision, not a one-liner.
+
+---
+
 ### B-245 · Cmd+X on a block selection does nothing
 **Status:** open (feature gap, skipped on this branch) · **Severity:** low · **Found:**
 2026-09-13, exploratory QA (Q6) · **Test:** —
