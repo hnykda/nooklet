@@ -25,7 +25,7 @@ const DONE_KEY = "refs.pages_exist";
 const CHUNK = 500;
 
 export interface ReferencedPagesMigration {
-  /** Pages created (a re-used unclaimed tombstone counts as one). */
+  /** Pages created. */
   created: number;
   /** The first few names, for the startup log. */
   sample: string[];
@@ -62,7 +62,7 @@ export function mintDanglingReferencedPages(ctx: ServerContext): ReferencedPages
     wanted.wantFromPage(p.id, p.name);
   }
 
-  const ops = referencePageOps(driver, wanted, new Set(), (entity, payload) =>
+  const ops = referencePageOps(wanted, new Set(), (entity, payload) =>
     makeOp(ctx.hlc.next(), REFERENCE_DEVICE_ID, entity, payload),
   );
   for (let i = 0; i < ops.length; i += CHUNK) {

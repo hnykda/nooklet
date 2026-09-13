@@ -11,8 +11,7 @@
  * what the batch touched and mints, in the same transaction:
  *
  *  - `page.create` for every reference key that now resolves to nothing (plus ancestors), named
- *    with the casing of the text that referenced it — or `page.delete {deletedAt: null}` bringing
- *    back an unclaimed tombstone under that key, so toggling a link does not pile up page rows;
+ *    with the casing of the text that referenced it (always a new page: see `referencePageOps`);
  *  - `page.delete` for every page this mechanism created that the batch left unreferenced and that
  *    nobody has claimed (no blocks ever, no properties, no op from anyone else) — the junk a link
  *    edited one character at a time leaves behind (`tools/probes/ref-link-typing.spec.ts`: seven
@@ -401,47 +400,30 @@ export function planReferencedPages(
     for (const a of namespaceAncestors(name ?? "")) queue.push(referenceKey(a));
   }
 
-  return referencePageOps(driver, wanted, deleting, mint);
+  return referencePageOps(wanted, deleting, mint);
 }
 
 /**
- * `page.create` for each wanted page — or, when an unclaimed tombstone already carries the key,
- * that page brought back (renamed first if the new reference spells it differently) — then
- * `page.delete` for each page in `deleting`.
+ * `page.create` for each wanted page, then `page.delete` for each page in `deleting`.
+ *
+ * Always a new page, never an unclaimed tombstone of the same name brought back. Reuse would save
+ * a row per toggled link, but a replica can lack that tombstone: a device that created a page of
+ * the name offline meets the old `page.create` while its own page holds the name, and its replica
+ * refuses it (B-443). Reviving the tombstone later — a rename and an un-delete — would then land
+ * on the server and on every device except that one.
  */
 export function referencePageOps(
-  driver: SqlDriver,
   wanted: WantedPages,
   deleting: ReadonlySet<string>,
   mint: Mint,
 ): Op[] {
   const out: Op[] = [];
   const now = Date.now();
-  for (const [key, name] of wanted.byKey) {
-    const tombstone = unclaimedTombstoneForKey(driver, key);
-    if (tombstone) {
-      if (tombstone.name !== name) out.push(mint(tombstone.id, { kind: "page.rename", name }));
-      out.push(mint(tombstone.id, { kind: "page.delete", deletedAt: null }));
-      continue;
-    }
+  for (const name of wanted.byKey.values()) {
     out.push(mint(newId(), { kind: "page.create", name, journalDay: null, createdAt: now }));
   }
   for (const pageId of deleting) {
     out.push(mint(pageId, { kind: "page.delete", deletedAt: now }));
   }
   return out;
-}
-
-/** The most recently deleted unclaimed reference page under `key`, to bring back instead of
- * minting another row for the same name. */
-function unclaimedTombstoneForKey(
-  driver: SqlDriver,
-  key: string,
-): { id: string; name: string } | undefined {
-  const rows = driver.all<{ id: string; name: string }>(
-    `SELECT id, name FROM page WHERE key = ? AND deleted_at IS NOT NULL AND journal_day IS NULL
-     ORDER BY deleted_at DESC LIMIT 5`,
-    [key],
-  );
-  return rows.find((r) => isUnclaimedReferencePage(driver, r.id));
 }

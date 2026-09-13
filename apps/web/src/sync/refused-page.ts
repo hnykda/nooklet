@@ -93,9 +93,15 @@ export function payloadPageKey(payload: OpPayload): string | undefined {
 }
 
 /**
- * Local pages a pulled batch cannot land beside: for each `page.create`/`page.rename` in `ops`, a
- * different live local page already holding its name — unless the batch itself renames or deletes
- * that local page (then the server had it and moved it out of the way, and plain replay is right).
+ * Local pages a pulled batch cannot land beside: for each `page.create`/`page.rename` in `ops` whose
+ * page still holds that name at the end of the batch, a different live local page holding it whose
+ * own `page.create` the server has not taken yet (it is still in `pending_op`).
+ *
+ * Both conditions matter. A page the server already accepted is the server's, and plain replay is
+ * right — this device may well be pulling an older page of that name followed by its deletion (a
+ * link's short-lived page, ADR 024, is exactly that), and moving its content onto that tombstone
+ * would be the bug, not the fix. And a name the batch itself gives up again frees the key for the
+ * local page. (A page the server refused is handled from the push response, `refused_pages`.)
  */
 export function pagesDisplacedByPull(
   driver: SqlDriver,
@@ -108,17 +114,32 @@ export function pagesDisplacedByPull(
   );
   const out: Array<{ refusedId: string; winnerId: string }> = [];
   const seen = new Set<string>();
-  for (const op of ops) {
+  ops.forEach((op, index) => {
     const key = payloadPageKey(op.payload);
-    if (key === undefined) continue;
+    if (key === undefined) return;
+    // Pulled ops are in server order: a later delete or rename of the same page gives the name up.
+    const givenUp = ops
+      .slice(index + 1)
+      .some(
+        (later) =>
+          later.entity === op.entity &&
+          ((later.payload.kind === "page.delete" && later.payload.deletedAt !== null) ||
+            (later.payload.kind === "page.rename" && payloadPageKey(later.payload) !== key)),
+      );
+    if (givenUp) return;
     const local = driver.get<{ id: string }>(
       "SELECT id FROM page WHERE key = ? AND deleted_at IS NULL AND id != ?",
       [key, op.entity],
     );
-    if (!local || touchedAway.has(local.id) || seen.has(local.id)) continue;
+    if (!local || touchedAway.has(local.id) || seen.has(local.id)) return;
+    const unconfirmed = driver.get(
+      "SELECT 1 AS x FROM pending_op WHERE entity = ? AND kind = 'page.create'",
+      [local.id],
+    );
+    if (!unconfirmed) return;
     seen.add(local.id);
     out.push({ refusedId: local.id, winnerId: op.entity });
-  }
+  });
   return out;
 }
 

@@ -397,6 +397,89 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
     });
   }
 
+  /**
+   * The other side of the race above: the name's earlier page was created AND deleted on the server
+   * (a link typed and removed on another device — ADR 024's short-lived pages), so this device's
+   * own page of that name is the real one. Pulling the old page's create must not move this
+   * device's content onto the tombstone, whichever of push and pull comes first.
+   */
+  for (const order of ["push first", "pull first"] as const) {
+    it(`a page of a name whose earlier page the server deleted stays this device's page, ${order}`, async () => {
+      const { client: clientB } = makeReplicaClient(server.app, server.token);
+      const home = newId();
+      const line = newId();
+      clientB.applyLocal([
+        makeOp(clientB.nextHlc(), clientB.getDeviceId(), home, {
+          kind: "page.create",
+          name: "Home B",
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+        makeOp(clientB.nextHlc(), clientB.getDeviceId(), line, {
+          kind: "block.create",
+          place: { pageId: home, parentId: null, order: "a0" },
+          content: "[[Ghost Name]]",
+          createdAt: Date.now(),
+        }),
+      ]);
+      await clientB.flush();
+      clientB.applyLocal([
+        makeOp(clientB.nextHlc(), clientB.getDeviceId(), line, {
+          kind: "block.text",
+          content: "no link any more",
+        }),
+      ]);
+      await clientB.flush();
+      const s = server.serverCtx.driver;
+      expect(s.all("SELECT id FROM page WHERE key = 'ghost name' AND deleted_at IS NULL")).toEqual(
+        [],
+      );
+      expect(s.all("SELECT id FROM page WHERE key = 'ghost name'")).toHaveLength(1);
+
+      const { driver: driverA, client: clientA } = makeReplicaClient(server.app, server.token);
+      const mine = newId();
+      const block = newId();
+      clientA.applyLocal([
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), mine, {
+          kind: "page.create",
+          name: "Ghost Name",
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), block, {
+          kind: "block.create",
+          place: { pageId: mine, parentId: null, order: "a0" },
+          content: "mine",
+          createdAt: Date.now(),
+        }),
+      ]);
+      if (order === "push first") {
+        await clientA.flush();
+        await clientA.pull();
+      } else {
+        await clientA.pull();
+        await clientA.flush();
+        await clientA.pull();
+      }
+
+      expect(s.all("SELECT id FROM page WHERE key = 'ghost name' AND deleted_at IS NULL")).toEqual([
+        { id: mine },
+      ]);
+      expect(s.get<{ page_id: string }>("SELECT page_id FROM block WHERE id = ?", [block])).toEqual(
+        { page_id: mine },
+      );
+      // Everything live is identical. The old page's TOMBSTONE is not in A's replica: its create
+      // met A's page holding the name and A refused it (B-443, open — why the server never revives
+      // an unclaimed tombstone). Compared without tombstoned pages for that reason only.
+      const live = (d: SqlDriver) => ({
+        ...dumpState(d),
+        pages: d.all("SELECT * FROM page WHERE deleted_at IS NULL ORDER BY id"),
+      });
+      expect(live(driverA)).toEqual(live(s));
+      expect(verifyRebuildParity(s).divergences).toEqual([]);
+    });
+  }
+
   it("a rejected cycle-creating block.place corrects locally: the client applies the server's corrective op and converges", async () => {
     const { driver: driverA, client: clientA } = makeReplicaClient(server.app, server.token);
 

@@ -57,9 +57,9 @@ function refusedPageCreates(
   ops: readonly Op[],
   rejected: ReadonlyArray<{ id: string; reason: string }>,
 ): Array<{ refused_id: string; page: Record<string, unknown>; page_props: unknown[] }> {
-  const collided = new Set(
-    rejected.filter((r) => r.reason === "page-key-collision").map((r) => r.id),
-  );
+  // Any rejected `page.create`, not only `page-key-collision`: a push retried after its response
+  // was lost reports the same op as `already-recorded`, and the device needs the same answer.
+  const collided = new Set(rejected.map((r) => r.id));
   const out: Array<{ refused_id: string; page: Record<string, unknown>; page_props: unknown[] }> =
     [];
   for (const op of ops) {

@@ -174,13 +174,14 @@ describe("serverApplyOps: refs and path_ref indexing", () => {
     // The empty pages give the names up to the alias (an own key would otherwise outrank it).
     expect(dstOf().map((r) => r.dst_page_id)).toEqual([real, real]);
 
-    // Removing an alias un-resolves the references that reached the page through it — back to the
-    // empty page the reference keeps (the same row, not another).
+    // Removing an alias un-resolves the references that reached the page through it — to a new
+    // empty page the reference keeps (ADR 024), not the real page and not the old tombstone.
     setAlias("Nickname");
-    expect(dstOf()).toEqual([
-      { dst_page_key: "nick", dst_page_id: nickPage },
-      { dst_page_key: "nickname", dst_page_id: real },
-    ]);
+    const afterRemoval = dstOf();
+    expect(afterRemoval.map((r) => r.dst_page_key)).toEqual(["nick", "nickname"]);
+    expect(afterRemoval[0]?.dst_page_id).not.toBeNull();
+    expect([real, nickPage]).not.toContain(afterRemoval[0]?.dst_page_id);
+    expect(afterRemoval[1]?.dst_page_id).toBe(real);
 
     // A real page with that name outranks the alias.
     const nick = createPage("Nickname");
@@ -212,7 +213,9 @@ describe("serverApplyOps: refs and path_ref indexing", () => {
     apply({ kind: "page.prop", key: "alias", value: "Before" });
     expect(target()).toBe(p); // ...until the old name is kept as an alias
     apply({ kind: "page.delete", deletedAt: Date.now() });
-    expect(target()).toBe(kept);
+    // Deleted with the alias: the still-referenced name gets an empty page once more — a new one.
+    expect(target()).not.toBeNull();
+    expect([p, kept]).not.toContain(target());
     expect(
       ctx.driver.get<{ n: number }>("SELECT count(*) AS n FROM page_alias WHERE page_id = ?", [p])
         ?.n,

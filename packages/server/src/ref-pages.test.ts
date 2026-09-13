@@ -290,7 +290,7 @@ describe("junk from editing a link, and a page whose last reference goes", () =>
     expect(livePages()).toEqual(["Home"]);
   });
 
-  it("brings the same page back when the reference returns, instead of another row", () => {
+  it("makes a new page when the reference returns — never revives the tombstone (B-443)", () => {
     const home = page("Home");
     const b = block(home, "[[Toggle]]");
     const id = pageRow("Toggle")?.id;
@@ -298,13 +298,18 @@ describe("junk from editing a link, and a page whose last reference goes", () =>
     expect(pageRow("Toggle")?.deleted_at).not.toBeNull();
     text(b, "[[toggle]]");
     const back = pageRow("Toggle");
-    expect(back?.id).toBe(id);
+    expect(back?.id).not.toBe(id);
     expect(back?.deleted_at).toBeNull();
     // Named by the reference that brought it back.
     expect(back?.name).toBe("toggle");
+    // The old one stays a tombstone nothing revives: a replica that refused its create cannot
+    // miss a later un-delete, because there is none.
     expect(
-      ctx.driver.get<{ n: number }>("SELECT COUNT(*) AS n FROM page WHERE key = 'toggle'")?.n,
-    ).toBe(1);
+      ctx.driver.get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM op WHERE entity = ? AND kind = 'page.delete' AND payload_json LIKE '%\"deletedAt\":null%'",
+        [id],
+      )?.n,
+    ).toBe(0);
     expectParity();
   });
 

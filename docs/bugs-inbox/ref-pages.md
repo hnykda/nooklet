@@ -63,6 +63,37 @@ their HLCs are older than the page's `page.create`, and `verify`'s HLC-ordered r
 them (the test asserts `verifyRebuildParity` stays empty). Not covered: a block the server already
 had, moved onto the refused page and deleted there, keeps its old place.
 
+The pull-time detection first fired too eagerly: a device whose page the server had ACCEPTED, pulling
+an older page of the same name that the server created and deleted meanwhile (a link's short-lived
+page), moved its own content onto that tombstone. It now fires only for a local page whose
+`page.create` is still in `pending_op`, and only when the pulled page still holds the name at the end
+of the batch. Tests: `apps/web/src/sync/e2e.test.ts` "a page of a name whose earlier page the server
+deleted stays this device's page, push first" and "…, pull first" (both fail without that
+condition). The push response now names the live page for any rejected `page.create`, so a retried
+push (`already-recorded`) gets the same answer.
+
+---
+
+### B-443 · A replica that holds a page of a name refuses the server's older, already-deleted page of that name, and lacks its tombstone row
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, ref-pages (the tests above) · **Test:**
+none asserts the gap; `apps/web/src/sync/e2e.test.ts` "a page of a name whose earlier page the server
+deleted stays this device's page" compares live rows only, with a comment naming this entry
+
+Device A creates page "X" (accepted or still pending). The server meanwhile has a page "X" that was
+created and deleted (with ADR 024, any short-lived page a link made). When A pulls that page's
+`page.create`, A's own live "X" holds the key, so A's replica rejects the create; the following
+`page.delete` is a noop on a row that does not exist. A ends without the tombstone row every other
+replica has. Nothing live differs, and nothing reads that tombstone on the client — provided nothing
+revives it: an un-delete of it would land everywhere but on A. That is why the server never brings an
+unclaimed tombstone back (`ref-pages.ts#referencePageOps` always mints a new page; it did reuse them
+before this entry). `trash.restore`/`batch.undo` of such a page are server-side and refuse or evict
+before anything reaches A, so no known path revives one today.
+
+Root cause is older than ADR 024: a pulled `page.create` meeting a live local page of the same key is
+rejected locally with no reconciliation unless the local page is still unconfirmed (B-442). A fix
+would apply a pulled create+delete pair as a tombstone insert, or apply pulled ops in server order
+with collisions resolved in the server's favour.
+
 ---
 
 ### B-440 · Every page write scanned `path_ref`: ~50 ms per page op on the owner's graph
