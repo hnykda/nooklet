@@ -200,3 +200,75 @@
   align-items: center;
   gap: var(--space-2xs);
 }
+
+/* A reference as its page shows it (B-550, `ReferenceItem.tsx`) --------------------------------- */
+
+/* The outliner's geometry at the panel's reading size: the rows are `ReadOnlyOutline`'s, sized by
+   the same two variables an outline row is. A step smaller than the page's own outline, so the
+   page stays the thing being read and the references read as context under it. */
+.reference-item {
+  --vr-indent: 20px;
+  --vr-row-lead: calc(1em * var(--leading-normal));
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--fg-soft);
+  padding: var(--space-2xs) 0;
+}
+
+.reference-item + .reference-item {
+  margin-top: var(--space-xs);
+}
+
+/* `.reference-group ul` (views.css) draws the group's rule; the outline inside a reference is a
+   `ul` too, and must not repeat it at every reference. */
+.reference-item .vr-embed-outline {
+  padding-left: 0;
+  border-left: none;
+}
+
+/* Rows off screen skip layout and paint until scrolled to — a 200-reference window is mostly off
+   screen. The intrinsic size is one line, so the scrollbar is roughly right before they lay out. */
+.reference-item .vr-embed-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto calc(1em * var(--leading-normal));
+}
+
+.reference-item .vr-embed-row:hover {
+  background: var(--surface-2);
+}
+
+/* Parents above a nested reference: one quiet line, each step cut short rather than wrapping.
+   Indented to where the block's text starts (row padding + bullet lane + gap). */
+.reference-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2xs);
+  margin: 0 0 1px;
+  padding-inline: calc(var(--space-xs) + 14px + var(--space-xs));
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.reference-breadcrumb-item {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.reference-breadcrumb-item:hover,
+.reference-breadcrumb-item:focus-visible {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+  outline: none;
+}
+
+.reference-breadcrumb-sep {
+  flex: none;
+  opacity: 0.7;
+}
