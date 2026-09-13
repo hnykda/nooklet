@@ -232,3 +232,25 @@ DOM focus and the picker takes keys from a window `keydown` listener:
 
 Fix direction: hold keys from the moment `open()` is called (a capture listener handed to the
 picker, replayed on mount), and take `beforeinput` `insertText` while open. Not done here.
+
+---
+
+### B-148 · An agent's bad date through `ui_run` comes back as "window did not respond in time", not the reason
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verify-impl-dates · **Test:** none;
+throwaway e2e probe (a `write --ui-control` token minted with `nooklet token create` against the
+e2e server's temp data dir, `nooklet.live.controlEnabled` set in localStorage)
+
+`ui.run {command_id: "task.setScheduled", args: "tomorrow"}` → 200 `ran`, stored `2026-09-14`;
+`{date: "2026-12-24 09:00"}` and `{date: null}` work too. But `args: "banana"`, `"+10000y"` or `42`
+→ **500 `internal`, `window "…" did not respond in time`, hint "the window may be busy … try
+again"** after the RPC timeout, nothing stored. The command rejects as designed
+(`task.ts#runDateCommand` / `host.ts#set` throw `"banana" is not a date …`), but
+`live/message-handler.ts#handleIncomingFrame` just awaits `runCommand`, `live/socket.ts` only
+sends a reply in `.then`, so a rejection sends nothing (and is an unhandled rejection in the
+window), and `CommandRunResult` has no field for an error anyway. So the agent is told to retry
+the very input that will fail again. Not specific to dates — any command that throws over
+`ui_run` does this — but these are the first commands that reject an argument on purpose.
+
+Fix direction (not done — the `/ui/live` protocol, client and server, ADR 015): reply
+`command.result` with an `error` message when the run throws, and surface it from `ui.run` as an
+`invalid` error rather than a timeout.
