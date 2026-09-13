@@ -114,7 +114,8 @@ priority:A due:today..+7d               journal:>=-30d text:"standup"
   types. Not done in M7 so as not to touch two other agents' files in the same milestone.
 - **Property-typed comparisons** (`prop:pages>100`), **`$$…$$` display math** (grammar-level,
   §2.9 only knows inline), **midnight** (a page open across midnight keeps yesterday's `today`
-  until something else re-runs the query).
+  until something else re-runs the query — since fixed, 2026-09-13, B-94: the local day is a
+  signal, `apps/web/src/data/day-clock.ts`, in the query resource's source).
 
 ### Consequences
 

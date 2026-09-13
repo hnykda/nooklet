@@ -81,6 +81,9 @@ Updated after every meaningful step. If you are reading this after a restart, co
   Now a three-column grid (glyphs, text, dates) that becomes two columns under 480 px.
   `tools/probes/journal-agenda-perf.mjs` finished; numbers below.
 
+- `docs: PLAN §8, wiki Journals/Tasks, ADR 011 deferred list — the Scheduled and deadline
+  section exists; midnight staleness fixed`.
+
 ## Performance (2026-09-13, machine load average 17-45, 5 warm runs each, medians)
 
 Probe: `tools/probes/journal-agenda-perf.mjs`, port 6403, headless Chromium, persistent profile
