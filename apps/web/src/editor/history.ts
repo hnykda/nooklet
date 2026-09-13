@@ -48,6 +48,22 @@ function mint(recipes: OpRecipe[], clock: Clock): Op[] {
   return recipes.map((r) => makeOp(clock.next(), clock.device, r.entity, r.payload));
 }
 
+/**
+ * The forward recipes as a REDO must write them. A redo only ever follows an undo, and the undo of
+ * a `block.create` tombstoned that row rather than removing it — so re-minting the create alone
+ * does nothing: the reducer's `applyBlockCreate` is `INSERT OR IGNORE`, the row is still there, and
+ * the redone block was on screen (the optimistic tree) but not in the database, gone on reload
+ * (B-190). Each create is therefore followed by a revive (`block.delete` with `deletedAt: null`,
+ * the same op an undone delete uses), stamped after the undo's tombstone so it wins.
+ */
+function redoRecipes(forward: OpRecipe[]): OpRecipe[] {
+  return forward.flatMap((r) =>
+    r.payload.kind === "block.create"
+      ? [r, { entity: r.entity, payload: { kind: "block.delete", deletedAt: null } }]
+      : [r],
+  );
+}
+
 export class EditHistory {
   private undoStack: Tx[] = [];
   private redoStack: Tx[] = [];
@@ -116,7 +132,7 @@ export class EditHistory {
     if (!tx) return null;
     this.undoStack.push(tx);
     this.captureUntil = 0;
-    return { ops: mint(tx.forward, clock), focus: tx.after };
+    return { ops: mint(redoRecipes(tx.forward), clock), focus: tx.after };
   }
 
   /** Test/debug helper: current stack depths. */

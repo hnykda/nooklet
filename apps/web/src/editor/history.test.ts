@@ -292,5 +292,15 @@ describe("EditHistory — block.create / block.delete invert to each other", () 
 
     const redo = h.redo(c);
     expect(redo?.ops[1]).toMatchObject({ entity: "NEW", payload: { kind: "block.create" } });
+    // The create alone is a no-op on the row the undo tombstoned (`INSERT OR IGNORE`), so the redo
+    // revives it straight after — without this the block was on screen and not in the database
+    // (B-190).
+    expect(redo?.ops[2]).toMatchObject({
+      entity: "NEW",
+      payload: { kind: "block.delete", deletedAt: null },
+    });
+    expect(redo?.ops).toHaveLength(3);
+    // Stamped after the undo's tombstone, or the reducer would call the revive stale.
+    expect((redo?.ops[2]?.hlc ?? "") > (undo?.ops[0]?.hlc ?? "")).toBe(true);
   });
 });
