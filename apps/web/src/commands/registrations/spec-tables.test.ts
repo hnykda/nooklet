@@ -18,6 +18,9 @@ import { createPaletteController } from "../palette/palette-controller.js";
 import { SLASH_ITEMS } from "../slash/items.js";
 import { createFakeDatePickerHost } from "./date-picker-host.js";
 import { createCoreCommands } from "./index.js";
+import { createFakePageActionsHost } from "./page-actions.js";
+import { createFakePageFindHost } from "./page-find.js";
+import { createFakeRandomPageHost } from "./random-page.js";
 import { createFakeRefactorHost } from "./refactor.js";
 import { createFakeShelfHost } from "./shelf.js";
 
@@ -73,6 +76,10 @@ function registered() {
     datePicker: createFakeDatePickerHost(),
     refactor: createFakeRefactorHost().host,
     shelf: createFakeShelfHost(),
+    // Every optional host, so every command the app can register is checked against the spec.
+    pageFind: createFakePageFindHost(),
+    randomPage: createFakeRandomPageHost(),
+    pageActions: createFakePageActionsHost().host,
   });
 }
 
