@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OutlineNode, ParsedPage } from "./model.js";
+import type { OutlineNode, ParsedPage, Properties } from "./model.js";
 import { parseOutline, serializeOutline } from "./outline.js";
 
 const roundTrip = (text: string) => serializeOutline(parseOutline(text));
@@ -394,7 +394,7 @@ describe("serialize -> parse is lossless across heads, ids, properties and conte
   for (const content of contents)
     for (const marker of [null, "TODO", "DONE"] as const)
       for (const priority of [null, "B"] as const)
-        for (const properties of [{}, { k: "v", other: "w" }])
+        for (const properties of [{}, { k: "v", other: "w" }] as Properties[])
           for (const collapsed of [false, true])
             cases.push({
               name: JSON.stringify({ content, marker, priority, properties, collapsed }),
@@ -422,7 +422,7 @@ describe("serialize -> parse is lossless across heads, ids, properties and conte
         const blocks = unclosed
           ? [{ ...child, content: "before" }, block]
           : [{ ...child, content: "", properties: {} }, block, { ...child, content: "next" }];
-        for (const properties of [{}, { title: "Page" }]) {
+        for (const properties of [{}, { title: "Page" }] as Properties[]) {
           const page: ParsedPage = {
             properties,
             blocks: blocks.map((b, i) => withIds(b, ids, k * 10 + i)),
