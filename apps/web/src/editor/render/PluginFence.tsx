@@ -16,6 +16,7 @@
 import type { Block, Page } from "@nooklet/core";
 import type { CodeBlockRenderer, Disposable, RenderInfo } from "@nooklet/plugin-api";
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { describeError } from "../../data/api-client.js";
 import { loadBlock, loadPage } from "../../data/plugin-lookups.js";
 import "./plugin-fence.css";
 
@@ -135,7 +136,7 @@ export function PluginFence(props: { code: string; lang: string; renderer: CodeB
       } catch (e) {
         if (abort.signal.aborted) return;
         console.warn(`[plugins] the \`${lang}\` renderer threw:`, e);
-        setFailed(e instanceof Error ? e.message : String(e));
+        setFailed(describeError(e));
       }
     })();
   });

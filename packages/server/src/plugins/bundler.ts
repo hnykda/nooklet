@@ -129,6 +129,15 @@ async function hashFile(path: string): Promise<string> {
   return createHash("sha256").update(bytes).digest("hex").slice(0, 12);
 }
 
+/**
+ * An entry that is ALREADY a bundle (`./bundled.ts`, B-180), taken as it is: no esbuild, and
+ * nothing written anywhere. The same `{file, hash}` the two functions above return, so the host
+ * imports and serves it the same way.
+ */
+export async function alreadyBundled(file: string): Promise<BundleResult> {
+  return { file, hash: await hashFile(file), warnings: [] };
+}
+
 /** `import()`s an already-bundled server entry, returning its default export. A fresh
  * `?v=<hash>` query string per bundle defeats Node's ES module cache, so a `reload` after editing
  * a plugin's source actually re-runs `activate()` against the new code (ADR 007's "Consequences":

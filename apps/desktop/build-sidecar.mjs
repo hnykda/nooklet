@@ -16,6 +16,15 @@
  * - **`esbuild`** — the per-platform binary esbuild's JS API shells out to, used at runtime to
  *   bundle user plugins. Pointed at with `ESBUILD_BINARY_PATH`, the documented escape hatch.
  * - **`web/`** — the built client, which the server serves from its own origin.
+ * - **`plugins/`** — the built-in plugins (word-count, mermaid, daily-summary), ALREADY bundled
+ *   (B-180). `nooklet serve` bundles the repo's plugin sources at startup, resolving their
+ *   `@nooklet/plugin-api`/`zod` imports through `node_modules` and writing into their directories;
+ *   the sidecar has no `node_modules`, and its directory is inside the signed app, read-only when
+ *   run from the disk image. So they are bundled here, by the loader's own bundler
+ *   (`packages/server/src/plugins/bundled.ts`), and `server.mjs` is told where they are through
+ *   `NOOKLET_BUNDLED_PLUGINS_DIR` — set by its own first line, so the sidecar needs nothing from
+ *   `main.rs` to find them. Before this the app had no `page.wordcount` op or MCP tool, and
+ *   Settings → Plugins was empty.
  */
 
 import { spawnSync } from "node:child_process";
@@ -31,7 +40,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import esbuild from "esbuild";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -120,9 +129,15 @@ await esbuild.build({
   // nothing needs to resolve the package at runtime.
   external: ["sqlite-vec"],
   logLevel: "warning",
-  // The bundle is ESM but some dependencies still reach for `require`; give them a real one.
+  // The bundle is ESM but some dependencies still reach for `require`; give them a real one. And
+  // the built-in plugins are in `plugins/` beside this file (step 6) — unless someone set the
+  // variable already.
   banner: {
-    js: "import{createRequire as __nooklet_cr}from'node:module';const require=__nooklet_cr(import.meta.url);",
+    js: [
+      "import{createRequire as __nooklet_cr}from'node:module';const require=__nooklet_cr(import.meta.url);",
+      "import{fileURLToPath as __nooklet_fp}from'node:url';",
+      "process.env.NOOKLET_BUNDLED_PLUGINS_DIR??=__nooklet_fp(new URL('./plugins',import.meta.url));",
+    ].join(""),
   },
 });
 console.log(`server.mjs        ${mib(join(outDir, "server.mjs"))}`);
@@ -164,5 +179,22 @@ if (!existsSync(join(webDist, "index.html"))) {
 }
 cpSync(webDist, join(outDir, "web"), { recursive: true });
 console.log("web/              (client build)");
+
+// 6. The built-in plugins, bundled now because the sidecar cannot bundle them (see the header).
+// Through `tsx`, because the packaging module is the server's own TypeScript and imports its
+// siblings as `.js`, which Node's built-in type stripping does not map to `.ts`.
+const { tsImport } = await import(pathToFileURL(require.resolve("tsx/esm/api")).href);
+const { packageBundledPlugins } = await tsImport(
+  pathToFileURL(join(repoRoot, "packages", "server", "src", "plugins", "bundled.ts")).href,
+  import.meta.url,
+);
+const packaged = await packageBundledPlugins(join(repoRoot, "plugins"), join(outDir, "plugins"));
+for (const p of packaged) {
+  const halves = [p.server && "server", p.client && "client"].filter(Boolean).join(" + ");
+  console.log(`${`plugins/${p.id}`.padEnd(22)}(${halves})`);
+}
+if (!packaged.some((p) => p.id === "word-count")) {
+  throw new Error("no word-count plugin was packaged — the built-in plugins are missing");
+}
 
 console.log(`\nsidecar ready at ${outDir}`);

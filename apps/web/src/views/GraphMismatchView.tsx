@@ -12,6 +12,7 @@
  */
 
 import { createSignal, type JSX } from "solid-js";
+import { describeError } from "../data/api-client.js";
 import { rememberGraphId } from "../data/bootstrap.js";
 import "./connect.css";
 
@@ -32,7 +33,7 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
     } catch (err) {
       setBusy(false);
       // eslint-disable-next-line no-alert
-      alert(`Could not clear the local copy: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Could not clear the local copy: ${describeError(err)}`);
     }
   }
 

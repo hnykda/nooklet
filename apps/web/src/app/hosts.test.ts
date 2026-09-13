@@ -68,3 +68,16 @@ describe("nav.followLink for block refs", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 });
+
+describe("nav.followLink for page links", () => {
+  beforeEach(() => navigate.mockReset());
+
+  it.each(["page", "tag"] as const)(
+    "a %s link opens the page under its name as written, namespace kept (B-331, B-332)",
+    (type) => {
+      host().followLink({ type, name: "Projects/Aurora Launch" });
+      // Not `/page/projects/aurora%20launch` (the lookup key), nor `Projects%2FAurora%20Launch`.
+      expect(navigate).toHaveBeenCalledWith("/page/Projects/Aurora%20Launch");
+    },
+  );
+});

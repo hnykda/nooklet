@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { canonicalPageRedirect } from "./canonicalPageRoute.js";
 
-// `navigateTarget.ts` imports the store for block lookups; none of that is exercised here.
-vi.mock("../data/store.js", () => ({ resolveBlockPageName: vi.fn() }));
 // The router touches `window` at import; the hook half is covered by the e2e spec.
 vi.mock("@solidjs/router", () => ({ useNavigate: vi.fn() }));
 

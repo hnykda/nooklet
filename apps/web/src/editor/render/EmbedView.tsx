@@ -26,6 +26,7 @@ import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { type EmbedData, type EmbedTarget, useEmbed } from "../../data/embeds.js";
 import { displayPageName, displayRefName } from "../../data/page-title.js";
 import type { BlockTreeNode } from "../../data/types.js";
+import { pageRoutePath } from "../../routes/page-path.js";
 import { MARKER_GLYPH } from "../BlockRowView.js";
 import { EMBED_ROW_CAP, embedReachesPath, visibleEmbedRows } from "./embedRows.js";
 import { BlockContentView, MAX_REF_DEPTH, type RenderCtx } from "./tokens.js";
@@ -60,7 +61,7 @@ function TargetLink(props: { target: EmbedTarget; ctx: RenderCtx }): JSX.Element
       {(page) => (
         <a
           class="vr-embed-target vr-page-ref"
-          href={`/page/${encodeURIComponent(page().name)}`}
+          href={pageRoutePath(page().name)}
           onClick={(e) => {
             if (props.ctx.onNavigate) go(e);
           }}
@@ -199,7 +200,7 @@ function EmbedOutline(props: Props & { data: Extract<EmbedData, { page: unknown 
       <div class="vr-embed-head">
         <a
           class="vr-embed-source"
-          href={`/page/${encodeURIComponent(pageName())}`}
+          href={pageRoutePath(pageName())}
           onClick={(e) => {
             if (!props.ctx.onNavigate) return;
             halt(e);

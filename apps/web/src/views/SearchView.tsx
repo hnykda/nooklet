@@ -8,9 +8,9 @@
  */
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
-import type { SearchHit, SearchInput } from "../data/api-client.js";
+import { describeError, type SearchHit, type SearchInput } from "../data/api-client.js";
 import { useSearchResults } from "../data/store.js";
-import { pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
+import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 import "./search-filters.css";
 import { SearchSnippet } from "./SearchSnippet.js";
 import {
@@ -22,15 +22,6 @@ import {
 } from "./searchFilters.js";
 
 const MODES = ["hybrid", "keyword", "semantic"] as const;
-
-/** A short, human-readable reason. Network failures surface as a bare TypeError, which on its own
- * tells the reader nothing. */
-function errorText(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err ?? "");
-  if (/failed to fetch|networkerror|load failed/i.test(message))
-    return "Could not reach the server.";
-  return message;
-}
 
 export function SearchView(): JSX.Element {
   const navigate = useNavigate();
@@ -183,7 +174,7 @@ export function SearchView(): JSX.Element {
           how a missing API token presented, and is indistinguishable from a slow server. */}
       <Show when={!results.loading && results.error !== undefined}>
         <p class="search-error" role="alert">
-          Search failed. {errorText(results.error)}{" "}
+          Search failed. {describeError(results.error)}{" "}
           <button type="button" class="search-retry" onClick={() => refetch()}>
             Retry
           </button>

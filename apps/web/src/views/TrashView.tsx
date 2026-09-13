@@ -17,8 +17,8 @@ import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { ApiError, describeError } from "../data/api-client.js";
 import { restoreFromTrash, type TrashItem, useTrash } from "../data/history.js";
 import { displayRefName } from "../data/page-title.js";
+import { pageRoutePath } from "../routes/page-path.js";
 import { formatWhen } from "./historyText.js";
-import { pageRoutePath } from "./navigateTarget.js";
 import { suggestedRestoreName, TrashRenameForm } from "./TrashRenameForm.js";
 import "./trash.css";
 
@@ -57,7 +57,7 @@ export function TrashView(): JSX.Element {
           setSelectName(true);
         }
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(describeError(err));
       }
     } finally {
       setBusy(null);

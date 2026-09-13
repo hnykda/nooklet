@@ -27,10 +27,10 @@
 
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
-import type { GraphEdge, GraphNode } from "../data/api-client.js";
+import { describeError, type GraphEdge, type GraphNode } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { useGraphLinks } from "../data/store.js";
-import { pageRoutePath } from "./navigateTarget.js";
+import { pageRoutePath } from "../routes/page-path.js";
 import "./graph.css";
 
 // ---------------------------------------------------------------------------------------------
@@ -623,7 +623,7 @@ export function GraphView(): JSX.Element {
       </Show>
       <Show when={graph.error !== undefined}>
         <p class="graph-status graph-error" role="alert">
-          Couldn't load the graph: {String(graph.error)}
+          Couldn't load the graph: {describeError(graph.error)}
         </p>
       </Show>
       <Show when={data()?.note}>{(note) => <p class="graph-status graph-note">{note()}</p>}</Show>

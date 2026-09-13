@@ -14,7 +14,8 @@ import type { TaskRow } from "../data/types.js";
 import { InlineContent } from "../editor/InlineContent.js";
 import { toggleDone } from "../editor/task.js";
 import type { EditableBlock } from "../editor/types.js";
-import { goToTarget, pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
+import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
+import { goToTarget } from "./navigateTarget.js";
 import {
   filterTasks,
   groupTasksByPage,

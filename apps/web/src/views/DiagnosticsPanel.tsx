@@ -13,7 +13,7 @@
  */
 
 import { createResource, createSignal, type JSX, Show } from "solid-js";
-import { callOp } from "../data/api-client.js";
+import { callOp, describeError } from "../data/api-client.js";
 import { apiBaseUrl, bootstrapConfig } from "../data/bootstrap.js";
 import { useSyncStatus } from "../data/store.js";
 import "./diagnostics.css";
@@ -107,7 +107,7 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
           </Show>
           <Show when={backend.error !== undefined}>
             <p class="diag-bad" role="alert">
-              Could not reach the API: {String(backend.error)}
+              Could not reach the API: {describeError(backend.error)}
             </p>
           </Show>
           <Show when={data()}>

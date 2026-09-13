@@ -5,6 +5,11 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Loaded once while the file is collected, where no timeout runs (B-144). `load()` below still
+// hands each test a fresh instance, but after this `vi.resetModules()` + `import()` re-runs an
+// already-transformed module (3 ms) instead of loading it and its imports cold inside the first
+// test's 5 s timeout: 600–700 ms on a quiet machine, over 5 s under a dozen agents' load.
+import "./page-title.js";
 
 const STORAGE_KEY = "nooklet.journalTitleFormat";
 

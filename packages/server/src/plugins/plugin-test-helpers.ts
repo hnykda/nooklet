@@ -59,7 +59,10 @@ export interface PluginTestSetup {
 /** Builds a full app + plugin host (via `./bootstrap.ts`'s `createAppWithPlugins`, the same path
  * `nooklet serve` uses) against an in-memory DB, discovering plugins from `pluginDirs` and
  * activating the enabled ones. */
-export async function makePluginTestSetup(pluginDirs: string[]): Promise<PluginTestSetup> {
+export async function makePluginTestSetup(
+  pluginDirs: string[],
+  bundledPluginDirs?: string[],
+): Promise<PluginTestSetup> {
   const serverCtx = createServerContext(openDb({ path: ":memory:" }));
   const registry = buildRegistry();
   const config: ServerConfig = {
@@ -75,6 +78,7 @@ export async function makePluginTestSetup(pluginDirs: string[]): Promise<PluginT
     config,
     version: "0.0.1-test",
     pluginDirs,
+    bundledPluginDirs,
   });
   const writeToken = createToken(serverCtx.driver, { label: "test-write", scope: "write" }).token;
   const readToken = createToken(serverCtx.driver, { label: "test-read", scope: "read" }).token;

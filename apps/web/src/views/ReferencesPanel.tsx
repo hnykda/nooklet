@@ -34,6 +34,7 @@ import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
 import { callOp, describeError } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
+import { undoBatch } from "../data/refactor-api.js";
 import { useLinkedReferences } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { InlineContent } from "../editor/InlineContent.js";
@@ -312,7 +313,7 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
     setLinkBusy(true);
     setLinkError(null);
     try {
-      await callOp("batch.undo", { batch_id: result.batchId });
+      await undoBatch(result.batchId);
       setLinkResult({ ...result, undone: true });
       refetch();
     } catch (err) {

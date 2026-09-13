@@ -1,38 +1,13 @@
 /**
  * Turning a `NavigateTarget` (the shape `InlineContent`/`BlockTree`/search results/`PageFinder`
  * all call `onNavigate` with) into an actual route change. Split out from the views that use it so
- * the path-encoding half is unit-testable (`navigateTarget.test.ts`) without a router.
- *
- * Route shape: `/page/*name` (a splat param, so a namespace name's internal "/" survives as real
- * path segments — `/page/Projects/Aurora` — rather than needing `%2F`), with an optional
- * `?block=<id>` query param for the zoom view (BUILD item 3).
+ * it is unit-testable (`navigateTarget.test.ts`) without a router. The paths themselves come from
+ * `../routes/page-path.ts`.
  */
 
 import { resolveBlockPageName } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
-
-/** Page name -> URL path segments, one `encodeURIComponent` per segment so spaces/unicode survive
- * but the "/" that separates namespace levels stays a real path separator. */
-export function pageNameToPath(name: string): string {
-  return name
-    .split("/")
-    .map((seg) => encodeURIComponent(seg))
-    .join("/");
-}
-
-/** Inverse of `pageNameToPath` — safe to call on the whole joined splat param at once, since none
- * of its own encoding ever produces a literal "%2F" (each "/" was added back unencoded). */
-export function pathToPageName(path: string): string {
-  return decodeURIComponent(path);
-}
-
-export function pageRoutePath(name: string): string {
-  return `/page/${pageNameToPath(name)}`;
-}
-
-export function pageZoomRoutePath(name: string, blockId: string): string {
-  return `${pageRoutePath(name)}?block=${encodeURIComponent(blockId)}`;
-}
+import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 
 export type NavigateFn = (path: string) => void;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { KeptEdit } from "../data/history.js";
+import type { KeptEdit } from "../data/refactor-api.js";
 import { keptEditsSentence } from "./keptEdits.js";
 
 const block = (id: string, page: string): KeptEdit => ({
