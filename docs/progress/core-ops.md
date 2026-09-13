@@ -23,7 +23,9 @@ B-390..B-399), never `docs/BUGS.md`.
 - B-310 + B-390 (new, found fixing B-310) — `core/outline.ts` parser/serializer; spec OUT-14 and
   OUT-18; tests `core/src/outline.test.ts` (8 new) and `server/src/mirror/export.test.ts` (+1);
   probe `tools/probes/mirror-roundtrip-graph.ts`. Core 406, server 668, web 1126 green; typecheck
-  clean; `nooklet verify` on the copy OK (20,411 ops). Commit: see git log ("fix(core): B-310").
+  clean; `nooklet verify` on the copy OK (20,411 ops). Commit `421a829`.
+- B-322 — `server/ops/page-backlinks.ts` keys the missing-page branch by `refKeyOf`. Test
+  `server/src/ops/page-backlinks-missing-journal.http.test.ts` (2). Server 670 green.
 
 ## Real-graph checks (copy taken 13:08)
 

@@ -58,3 +58,15 @@ block with a `^id` is no longer taken for a page-properties pre-block (`parseOut
 ids came from `^` syntax) — otherwise a page whose first block is empty would lose that block into
 `page.properties.id`. Spec: OUT-14. Known remaining ambiguity: a block whose whole content is the
 text `^<valid id>`, written without ids (`ids: "none"`), reads back as an empty block with that id.
+
+---
+
+### B-322 (existing)
+
+**Fixed 2026-09-13.** `ops/page-backlinks.ts`, not-yet-created-page branch: the linked-reference
+query and the unlinked-mention exclusion now key by `refKeyOf(input.target)` — the key refs are
+indexed under — instead of `normalizePageName(input.target)`; the tagged-pages lookup shares the
+same key. `target: "Sep 20th, 2026"` and `"20.09.2026"` now return the same linked references as
+`"2026-09-20"`, and a block linking the day is no longer also listed as an unlinked mention of it.
+Test: `packages/server/src/ops/page-backlinks-missing-journal.http.test.ts` (2; both fail on the
+old code — "expected +0 to be 2", and the linking block in `unlinked`).
