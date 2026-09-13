@@ -41,9 +41,13 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   (`<scratch>/rv/f5-real-graph.probe.ts`, run with `--config <scratch>/rv/vitest.rv.config.ts`
   from `apps/web`): identical before/after, the shape does not occur in the owner's graph.
 
+- F6 / B-131 (part) — `HistoryView#loadOlder` catches and shows the error; unit case in
+  `views/HistoryView.test.tsx` failed first; e2e case added. e2e review-reactivity (6) + history
+  (6) — 12/12. Web unit 699/699.
+
 ## In flight
 
-- F6: catch in History "Older changes".
+- F7: Find & Replace writes the live fields.
 
 ## Next steps, in order
 
@@ -52,7 +56,7 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
 3. (done) F3.
 4. (done) F4.
 5. (done) F5.
-6. F6 — catch in Older changes; `HistoryView` test.
+6. (done) F6.
 7. F7 — `FindReplaceView` live input + disable while stale/loading; component test.
 8. F8 — `VirtualJournalDay` catch + restore draft; its test.
 9. e2e: trash, history, query, find-replace (if a spec exists), journal specs on port 6472.

@@ -196,6 +196,17 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
     }
   }
 
+  /** A failed older page used to re-enable the button with no word and an unhandled rejection, so
+   * a failure looked like "nothing older" (B-131). */
+  async function loadOlder(): Promise<void> {
+    setError(null);
+    try {
+      await history.loadMore();
+    } catch (err) {
+      setError(`Could not load older changes: ${describeError(err)}`);
+    }
+  }
+
   return (
     <div class="history-view">
       <header class="history-header">
@@ -284,7 +295,7 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
           type="button"
           class="history-more"
           disabled={history.loadingMore()}
-          onClick={() => void history.loadMore()}
+          onClick={() => void loadOlder()}
         >
           {history.loadingMore() ? "Loading…" : "Older changes"}
         </button>

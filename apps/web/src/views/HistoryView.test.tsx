@@ -70,4 +70,25 @@ describe("HistoryView when page.history fails (B-131)", () => {
     expect(await screen.findByText("change 3")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("a failed Older changes says so, and the button still works afterwards", async () => {
+    fake.callOp = async () => historyPage([6, 5, 4], true);
+    renderHistory();
+    expect(await screen.findByText("change 6")).toBeTruthy();
+
+    fake.callOp = async () => {
+      throw new Error("could not reach server");
+    };
+    fireEvent.click(screen.getByRole("button", { name: "Older changes" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Could not load older changes: could not reach server");
+    expect(
+      (screen.getByRole("button", { name: "Older changes" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+
+    fake.callOp = async () => historyPage([3, 2, 1], false);
+    fireEvent.click(screen.getByRole("button", { name: "Older changes" }));
+    expect(await screen.findByText("change 1")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

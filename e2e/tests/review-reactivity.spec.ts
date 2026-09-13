@@ -155,3 +155,30 @@ test("a query hit nested past the 60 rendered descendants of another hit is stil
   await expect(view.locator(".vr-query-count")).toHaveText("2 blocks on 1 page");
   await expect(view.locator(".vr-query-hit", { hasText: "the late subtask" })).toHaveCount(1);
 });
+
+test("a failed Older changes says so instead of silently re-enabling the button (B-131)", async ({
+  page,
+}) => {
+  const name = "History Older Fails";
+  // 26 batches: one more than the first page holds.
+  await seedPage(page, name, "- zero");
+  for (let i = 1; i <= 25; i++) await api(page, "page.append", { page: name, markdown: `- ${i}` });
+
+  await page.route("**/api/v1/page.history", async (route) => {
+    const body = route.request().postDataJSON() as { cursor?: string };
+    if (body.cursor !== undefined) await route.abort("failed");
+    else await route.continue();
+  });
+  await page.goto(`/history/${encodeURIComponent(name)}`);
+  await expect(page.locator(".history-batch")).toHaveCount(25);
+  await page.locator(".history-more").click();
+  await expect(page.locator(".history-error[role='alert']")).toContainText(
+    "Could not load older changes",
+  );
+  await expect(page.locator(".history-more")).toBeEnabled();
+
+  await page.unroute("**/api/v1/page.history");
+  await page.locator(".history-more").click();
+  await expect(page.locator(".history-batch")).toHaveCount(26);
+  await expect(page.locator(".history-error")).toHaveCount(0);
+});
