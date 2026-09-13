@@ -136,7 +136,7 @@ export class PluginHost {
       }
 
       if (descriptor.clientEntry) {
-        const bundle = await bundleClientEntry(descriptor.clientEntry);
+        const bundle = await bundleClientEntry(descriptor.clientEntry, descriptor.dir);
         entry.clientBundle = { file: bundle.file, hash: bundle.hash };
       }
 
