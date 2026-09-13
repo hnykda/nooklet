@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { type CommandRunDeps, runRemoteCommand } from "../../live/command-runner.js";
 import { createFakeStore } from "../hosts/store.js";
+import { createCommandContext } from "../provider/executor.js";
+import { createMruStore } from "../ranking/mru.js";
 import { createCommandRegistry } from "../registry.js";
 import { type CommandContext, DEFAULT_WHEN_CONTEXT } from "../types.js";
 import { matchesWhen } from "../when/index.js";
@@ -78,6 +81,32 @@ describe("page action commands", () => {
     }
     await command("app.printPage", host).run(ctx());
     expect(calls).toEqual([{ method: "printPage", args: [] }]);
+  });
+
+  // B-228: an agent with live control (`ui_run`) must not be able to overwrite the person's
+  // clipboard, drop files into their Downloads, or put a modal print dialog over their window —
+  // none of that is the document, and `page.read` already gives an agent the text. Favouriting is a
+  // synced page property like any other, so it stays remote-invocable.
+  it("copy, export and print refuse ui_run; toggling a favourite does not", async () => {
+    const registry = createCommandRegistry();
+    const { host, calls } = createFakePageActionsHost({ page: "P" });
+    for (const c of createPageActionCommands({ pageActions: host })) registry.register(c);
+    const deps: CommandRunDeps = {
+      registry,
+      contextBase: () => ctx(),
+      buildContext: (base) => createCommandContext(base, registry, createMruStore()),
+      isControlEnabled: () => true,
+    };
+    for (const id of ["app.copyPageMarkdown", "app.exportPageMarkdown", "app.printPage"]) {
+      expect(await runRemoteCommand(deps, id, { page: "P" }), id).toEqual({
+        when_result: "not_permitted",
+      });
+    }
+    expect(calls).toEqual([]);
+    expect(await runRemoteCommand(deps, "app.toggleFavorite", { page: "P" })).toEqual({
+      when_result: "ran",
+    });
+    expect(calls).toEqual([{ method: "toggleFavorite", args: ["P"] }]);
   });
 
   it("copy reaches the host in the same tick as run() — WebKit's clipboard gesture rule", () => {

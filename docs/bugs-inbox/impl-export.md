@@ -167,3 +167,26 @@ and, in print, hides `input.page-title-input` and shows the heading with the inp
 before the change (the input was still visible in print media) and passes after; a PDF of the
 owner's longest name, `hls__The_Logic_of_Experimental_Tests,_…_1670184390828_0`, now prints on two
 lines.
+
+---
+
+### B-228 · An agent with live UI control can overwrite the person's clipboard, start downloads and open the print dialog
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-export` · **Test:** `apps/web/src/commands/registrations/page-actions.test.ts` "copy, export
+and print refuse ui_run; toggling a favourite does not"
+
+`app.copyPageMarkdown`, `app.exportPageMarkdown` and `app.printPage` are ordinary registered
+commands with no `remoteInvocable` flag, so `ui_run` (ADR 015 §2.4, `live/command-runner.ts`) runs
+them in the person's window: `runRemoteCommand(deps, "app.copyPageMarkdown", { page })` returns
+`ran` and calls the host. Chromium lets a focused document write the clipboard without a gesture,
+so an agent silently replaces whatever the person had copied; `window.print()` puts a modal dialog
+over their window (and in Chromium blocks the page's script until it is dismissed, so the remote
+call hangs with it); Export drops a file into their Downloads. `Command.remoteInvocable`'s own doc
+(`commands/types.ts`) reserves `false` for exactly this — commands "that act outside the document
+model entirely" — and an agent that wants a page's text already has `page.read`.
+
+**Fixed 2026-09-13.** The three commands carry `remoteInvocable: false`, so `runRemoteCommand`
+answers `not_permitted` without calling the host. `app.toggleFavorite` is unchanged — a synced page
+property, which an agent may set like any other. The named test runs the real registrations through
+the real `runRemoteCommand` and failed before the flags (`app.copyPageMarkdown: expected
+{ when_result: 'ran' }`). R52a in `docs/spec/commands-and-keymap.md` says so.

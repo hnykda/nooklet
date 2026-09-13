@@ -11,8 +11,8 @@
  * Ids use the `app.` area, not `page.`: R2's core areas are a closed set and an unknown area throws
  * at registration, before the first render (B-87 — the same reason `edit.mergePage` is `edit.`).
  *
- * Which page: `args.page` (a page name) when given — the title row, or an agent through `ui_run` —
- * else the page the route shows. `WhenContext` cannot see the route, so off a page (the journal
+ * Which page: `args.page` (a page name) when given — the title row, or an agent through `ui_run`
+ * (favourite only, below) — else the page the route shows. `WhenContext` cannot see the route, so off a page (the journal
  * stream, search) the three page commands quietly do nothing, as `edit.mergePage` does. Printing
  * needs no page: it prints whatever view is open.
  */
@@ -41,6 +41,11 @@ export function targetPageName(ctx: Pick<CommandContext, "args">, host: PageActi
 
 export function createPageActionCommands(deps: { pageActions: PageActionsHost }): Command[] {
   const host = deps.pageActions;
+  // Copy, Export and Print act on the person's device, not the graph: the system clipboard, their
+  // Downloads, a modal print dialog. `ui_run` must not reach them (`remoteInvocable`'s own rule,
+  // `../types.ts`) — an agent would silently replace what the person had copied, or hang behind a
+  // dialog they never asked for (B-228). It has `page.read` for the text. Favouriting is a synced
+  // property like any other, so it stays remote-invocable.
   // Not `async`: `run` must reach the host in the same tick the key or click arrived in, or WebKit
   // refuses the clipboard write (`copyPageMarkdown` above).
   const onPage =
@@ -52,6 +57,7 @@ export function createPageActionCommands(deps: { pageActions: PageActionsHost })
   return [
     {
       id: "app.copyPageMarkdown",
+      remoteInvocable: false,
       title: "Copy page as markdown",
       description: "The whole page as outline markdown, without block ids",
       category: "App",
@@ -61,6 +67,7 @@ export function createPageActionCommands(deps: { pageActions: PageActionsHost })
     },
     {
       id: "app.exportPageMarkdown",
+      remoteInvocable: false,
       title: "Export page as markdown",
       description: "Download the page as a .md file — the same text the markdown mirror writes",
       category: "App",
@@ -70,6 +77,7 @@ export function createPageActionCommands(deps: { pageActions: PageActionsHost })
     },
     {
       id: "app.printPage",
+      remoteInvocable: false,
       title: "Print page",
       description: "Print or save as PDF: just the page, with collapsed blocks expanded",
       category: "App",

@@ -623,7 +623,10 @@ synchronously inside `run()` (WebKit rejects a clipboard write outside the user 
 `app.toggleFavorite` flips the synced `favorite` page property. `app.printPage` opens the print
 dialog for whatever view is showing, after closing the palette; the print stylesheet prints only
 the content, and collapsed blocks render expanded between `beforeprint` and `afterprint` without
-writing anything. The ids use the `app` area because R2's areas are closed.
+writing anything. `app.copyPageMarkdown`, `app.exportPageMarkdown` and `app.printPage` are
+`remoteInvocable: false` — they act on the device (clipboard, downloads, print dialog), not the
+graph — so `ui_run` refuses them; `app.toggleFavorite` stays remote-invocable. The ids use the `app`
+area because R2's areas are closed.
 
 ### F. Slash menu
 
