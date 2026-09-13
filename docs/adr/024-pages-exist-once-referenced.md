@@ -104,7 +104,10 @@ What claims a page: typing into it (a block row), a property, a rename by anyone
   `existed: false`. An agent that links a page and then creates it gets the page it asked for, not
   "already existed" with its properties dropped.
 - **`trash.restore`** of a page whose name an unclaimed page now holds deletes the unclaimed page
-  first, in the same batch, instead of refusing.
+  first, in the same batch, instead of refusing. So do **`batch.undo`** of a page delete or rename,
+  and **`page.update`** renaming a page to that name (the links then resolve to the renamed page).
+  A page someone wrote in still refuses all three.
+- **`ctx.data.pages.create`** (plugins) claims it like the op does.
 - **An imported file** of that name: the importer deletes the unclaimed page before minting the
   file's `page.create` (both with server-clock HLCs, so the log's order holds on replay).
 - **An `alias::`** that names it: the unclaimed page is deleted, because own key outranks alias in
