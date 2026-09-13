@@ -76,7 +76,17 @@ start, you were restarted: read it, then continue from "Next steps".
   `views.spec.ts:461` (palette Escape hands focus back to the editor), which ALSO fails with every
   source file of this branch checked out at `da85cfb`, so it predates this branch.
 
+- Heap-cap abort (below) fixed — commit "fix(server): graph.replace refuses an oversized block
+  before building it; no worker heap cap". Red: the 199,990-char explode test SIGABRTed the vitest
+  worker. Green: server 58 / 544; `p12` 199k/280k blocks → `block_too_long` in ~25 ms; `p10`
+  unchanged (225–271 MB); `p11` real replace + undo + `verify` OK (22,765 ops). Mutation check:
+  removing the `$nn` rule fails the exactness test.
+
 ## 2. In flight
+
+- Review doc, then final e2e rerun of replace specs.
+
+## 2a. History of the heap-cap finding
 
 - **Found in my own F5 commit (`8ddae71`)**: `resourceLimits.maxOldGenerationSizeMb: 256` on the
   scan worker turns ONE large allocation into a whole-process abort. Probe `p12-explode-path.mts`:

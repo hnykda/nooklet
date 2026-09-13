@@ -2041,8 +2041,9 @@ worker thread with a 2 s budget (B-125): a pattern still running then is `invali
 to run"), so a backtracking regex cannot stall the server. `too_large` covers more than
 `max_blocks`: a replacement that grows any block past 100,000 characters (`block.update`'s cap; an
 already longer block may still be edited if the edit does not grow it), more than 20 M characters
-of replaced text in one call, or a single block too big to build. All are decided in the dry run
-too. The real run re-reads the matched
+of replaced text in one call. Each block's replaced length is computed from its matches before
+the text is built, so an oversized block is refused without building it. All are decided in the
+dry run too. The real run re-reads the matched
 blocks before writing and is `conflict`, writing nothing, if any changed during the scan (a device
 sync can land meanwhile). `batch_id` is absent on `dry_run` and when nothing matched. `matches`
 is ordered by page name.

@@ -45,6 +45,38 @@ describe("runScan (B-125)", () => {
     expect(result).toEqual({ kind: "output_too_large", maxOutputChars: 120 });
   });
 
+  it("computes every block's replaced length before building it, exactly, for every $-template form", async () => {
+    // The worker refuses an oversized block from this computation alone, and throws if a built
+    // string disagrees with it — so each case below would reject if the arithmetic were wrong.
+    const text = "Schůzka s Alešem: Černá kniha, 2026-09-13 a $5";
+    const cases: Array<[source: string, flags: string, template: string]> = [
+      ["\\p{Lu}(\\p{Ll}+)", "gu", "[$&|$1|$$|$`|$']"],
+      ["(\\d{4})-(\\d{2})-(\\d{2})", "gu", "$3.$2.$1 ($0 $00 $4 $10 $01 $9)"],
+      ["(?<year>\\d{4})-(?<month>\\d{2})", "gu", "$<month>/$<year> $<missing> $<unclosed"],
+      ["(\\d{4})", "gu", "$<year> stays literal without named groups; trailing $"],
+      ["(a)|(b)", "giu", "<$1$2>"],
+      ["(?=k)", "gu", "^"],
+      ["\\$5", "gu", "$$$$ $x $"],
+      ["č", "giu", "$'$'$`"],
+    ];
+    for (const [source, flags, template] of cases) {
+      const result = await runScan({
+        contents: [text],
+        source,
+        flags,
+        replacement: template,
+        literalReplacement: false,
+        limits: roomy,
+      });
+      const expected = text.replace(new RegExp(source, flags), template);
+      expect(result, `${source} → ${template}`).toEqual({
+        kind: "ok",
+        occurrences: expect.any(Number),
+        hits: expected === text ? [] : [{ index: 0, after: expected, count: expect.any(Number) }],
+      });
+    }
+  });
+
   it("refuses a block the replacement grows past maxBlockChars, not one it leaves as long", async () => {
     const grown = await runScan({
       ...base,

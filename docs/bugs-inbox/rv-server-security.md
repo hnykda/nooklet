@@ -46,9 +46,8 @@ within the time budget, and the server answers meanwhile (B-125)"; `graph-replac
 `max_blocks` it stops holding replaced text but keeps counting (the error's `blocks_matched` stays
 exact); it stops outright past 20 M characters of held text; it refuses a block the replacement
 grows past 100,000 characters — `block.update`'s cap — while still allowing an edit that does not
-grow an already longer block (the owner's graph has a 120,016-character block); and its heap is
-capped at 256 MB, so one block multiplied past that ends the worker (`ERR_WORKER_OUT_OF_MEMORY` or
-V8's "Invalid string length", both mapped to 413) instead of the server. All of it applies to
+grow an already longer block (the owner's graph has a 120,016-character block); and its heap was
+capped at 256 MB (wrongly — see the correction below). All of it applies to
 `dry_run` as well. On a copy of the owner's graph (`scratchpad/.../p10-replace-memory.mts`), a
 query `e` with a 2,000-character replacement peaked at 1,091 MB rss before and 209 MB after; with
 `max_blocks: 20000` it used to succeed at 2,001 MB and would have written blocks of up to 250,949
@@ -56,6 +55,24 @@ characters, and is now 413. Tests: `graph-replace.test.ts` "refuses a replacemen
 a block past the content cap, even in a dry run (B-125)" (200 before), "still edits a block that is
 already past the cap, as long as the edit does not grow it", "a replacement too large to even
 build is too_large, and the server carries on (B-125)" (200 before); `replace-scan.test.ts` (4).
+
+**Corrected 2026-09-13 — the heap cap in that fix aborted the process.** Found while checking which
+limit the last test above actually hit (`scratchpad/.../p12-explode-path.mts`): it was the
+per-block cap, after a 200 M-character string had been built in 39 ms. One block of 199,000
+characters (page.create allows 200,000) times a 2,000-character replacement is a single 398 M
+allocation, and past `resourceLimits.maxOldGenerationSizeMb` V8 did not end the worker with
+`ERR_WORKER_OUT_OF_MEMORY` — it aborted the whole process ("FATAL ERROR: Reached heap limit",
+SIGABRT, exit 134), over plain HTTP. The heap cap is gone (it would also have aborted the server
+on a graph whose text alone outgrew 256 MB). Instead the worker computes each block's replaced
+length from its matches before building it — `replacement.length − match` for literal text, and
+ECMA-262 GetSubstitution lengths (`` $$ $& $` $' $n $nn $<name> ``) for templates — refuses an
+oversized block unbuilt, and throws if a built string ever disagrees with the computed length.
+With it, 199,000 and 280,000-character blocks (398 M and 560 M characters) are `block_too_long` in
+~25 ms, and the owner's-graph probes are unchanged (peak rss 225–271 MB). Tests: `graph-replace.test.ts`
+"a block the replacement would blow up to hundreds of megabytes is refused unbuilt, and the process
+lives (B-125)" (aborted the vitest worker with SIGABRT before), `replace-scan.test.ts` "computes
+every block's replaced length before building it, exactly, for every $-template form" (fails with
+"computed 70 characters but built 72" when the two-digit `$nn` rule is removed).
 
 ---
 

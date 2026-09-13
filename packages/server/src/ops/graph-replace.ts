@@ -21,7 +21,6 @@ import {
   MAX_OUTPUT_CHARS,
   runScan,
   SCAN_BUDGET_MS,
-  ScanMemoryError,
   type ScanResult,
   ScanTimeoutError,
 } from "./replace-scan.js";
@@ -180,13 +179,6 @@ export const graphReplace = defineOp({
         },
       });
     } catch (err) {
-      if (err instanceof ScanMemoryError) {
-        throw new OpError(
-          "too_large",
-          "the replacement produces more text than the server will build",
-          "use a shorter replacement, or a query that matches less",
-        );
-      }
       if (!(err instanceof ScanTimeoutError)) throw err;
       throw input.regex
         ? new OpError(

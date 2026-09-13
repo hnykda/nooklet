@@ -209,12 +209,15 @@ describe("graph.replace", () => {
     expect(allContents()).toEqual([`${"b".repeat(100_050)} TAIL`]);
   });
 
-  it("a replacement too large to even build is too_large, and the server carries on (B-125)", async () => {
+  it("a block the replacement would blow up to hundreds of megabytes is refused unbuilt, and the process lives (B-125)", async () => {
+    // The largest block page.create accepts, every character a match, the longest replacement:
+    // ~400 million characters. Built inside a worker with a 256 MB heap cap this did not end the
+    // worker — V8 aborted the whole process ("Reached heap limit", exit 134).
+    const n = 199_990;
     await post(s.app, "/api/v1/page.create", s.writeToken, {
       name: "Explode",
-      markdown: `- ${"a".repeat(100_000)}`,
+      markdown: `- ${"a".repeat(n)}`,
     });
-    // 200 million characters for one block: past the scan worker's heap, if not V8's string limit.
     const { status, json } = await replace({
       query: "a",
       replacement: "x".repeat(2000),
@@ -222,6 +225,7 @@ describe("graph.replace", () => {
     });
     expect(status).toBe(413);
     expect(json.error.code).toBe("too_large");
+    expect(json.error.details.length).toBe(n * 2000);
     const health = await s.app.request("/healthz");
     expect(health.status).toBe(200);
   }, 20_000);
