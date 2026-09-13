@@ -193,3 +193,37 @@ test("locking a journal day from its properties panel locks it in the journal st
   await expect(notice(page)).toBeVisible();
   await expect(section.locator(".cm-content")).toHaveCount(0);
 });
+
+test("right-clicking a locked block offers no command aimed at a selection in another day", async ({
+  page,
+}) => {
+  // The journal stream shows many trees. A right-click on an editable block moves the command
+  // context to that block; on a locked one it did not, so a block selection standing in another
+  // day kept it — and the menu over the locked block offered Delete, Move and Cycle for that
+  // other, unseen block (probe, 2026-09-13).
+  const lockedDay = isoOffset(-26);
+  const openDay = isoOffset(-27);
+  await api(page, "page.append", { page: lockedDay, markdown: "- locked stream line" });
+  await api(page, "page.append", { page: openDay, markdown: "- editable stream line" });
+  await page.goto(pagePath(lockedDay));
+  await page.locator(".page-properties-toggle").click();
+  await page.locator(".page-property-add-key").fill("read-only");
+  await page.locator(".page-property-add-value").fill("true");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".page-readonly-badge")).toBeVisible();
+
+  await page.goto("/journals");
+  const editable = page.locator(".journal-day", { hasText: "editable stream line" });
+  const locked = page.locator(".journal-day", { hasText: "locked stream line" });
+  await editable.locator(".vr-block-view").first().click();
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(editable.locator(".vr-row-selected")).toHaveCount(1);
+
+  await locked.locator(".vr-block-view").first().click({ button: "right" });
+  await expect(page.locator(".ctx-menu")).toBeVisible();
+  await expect(page.locator(".ctx-menu .ctx-meta")).toHaveText(/^Created /);
+  await expect(page.locator(".ctx-menu .ctx-item")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".ctx-menu")).toHaveCount(0);
+});

@@ -78,6 +78,30 @@ the same graph copy (production build): typing "r", "e", "k", "a" into the bar o
 249/67/132/33 ms per keystroke to count and paint (917 rows rendered for "r"), Escape restored the
 57 rows the page shows collapsed.
 
+**Verification follow-up, 2026-09-13 (second agent, adversarial pass).** Numbers B-230..B-239 are
+all taken, so what the pass found in this feature is recorded here rather than under new numbers.
+- *Fixed:* with the filter on, Backspace at the start of a match merged it into the previous row ON
+  SCREEN, which can be many hidden blocks away — "keep me" / "hidden one" / "hidden two" / "keep
+  too" became "keep mekeep too" / "hidden one" / "hidden two" (text moved above blocks it never
+  touched); Delete at the end did the same forwards. Merges now use the unfiltered reading order
+  (`BlockTree.tsx#outlineOrder`). Test: `page-find.spec.ts` "under a filter, Backspace and Delete
+  join a block with its neighbour on the page, not the next match" (failed before the fix with the
+  merged text above the hidden blocks).
+- *Fixed:* clicking the bar's close button while typing in a match (not the block the bar was
+  opened from) sent the caret back to the opening block. Two causes: the click-away handler (B-74)
+  ended the edit on a press on the bar's buttons, and close always restored the opening caret. The
+  buttons are now exempt from click-away (they already keep focus with a mousedown guard) and close
+  restores only when the keyboard is in the bar. Test: `page-find.spec.ts` "closing the bar with
+  its button leaves the caret in the block being edited" (failed before: caret in row 0, not 2).
+- *Open:* Cmd/Ctrl+F while the palette is open over a page opens the bar behind the palette and
+  moves focus into the bar's input; the palette stays on screen. `when: pageView` has no way to say
+  "no modal open" (there is no palette when-key). Probe only, no test.
+- *Open:* select-all (Cmd/Ctrl+A in selection mode) under a filter selects the context ancestors
+  too; deleting the selection then deletes those ancestors' hidden, non-matching children — the
+  same subtree semantics as deleting a collapsed parent, but nothing on screen shows them. Undo
+  restores. Probe only: page "parent ctx / match kid / hidden kid / other hidden / match two",
+  filter "match", select all, Backspace → only "other hidden" left.
+
 ---
 
 ### B-233 · `editing.spec.ts` "Enter creates a second bullet" fails when run right after `a-fresh-journal.spec.ts`
@@ -121,6 +145,15 @@ property), `BlockRowView.tsx`, `PageView.tsx`. Tests that would have caught it:
 `e2e/tests/read-only.spec.ts` (6 tests), `apps/web/src/editor/readOnly.test.ts`. Not covered by a
 test: the drag (long-press) and swipe refusals — touch gestures, guarded in the same functions as
 the keyboard moves but not driven in a browser.
+
+**Verification follow-up, 2026-09-13 (second agent).** *Fixed:* in the journal stream, a block
+selection standing in an unlocked day survived a right-click on a locked day's block (a locked
+block takes no caret, so the command context stayed with the other tree), and the menu over the
+locked block listed Zoom in, Cycle task state, Move, Duplicate, Delete, Turn into page and Move to
+page — all aimed at the other day's selected block. A right-click on a locked block now releases
+every tree's editing/selection (`requestEditingEnd`) before the menu opens, so it shows only the
+timestamps. Test: `read-only.spec.ts` "right-clicking a locked block offers no command aimed at a
+selection in another day" (failed before: 9 items).
 
 ---
 
@@ -189,6 +222,19 @@ would have caught it: `packages/server/src/ops/search-filters.test.ts` (failed 2
 `e2e/tests/search-filters.spec.ts` (its marker test fails with "0 results" when the mapping is
 removed — checked). On a fresh copy of the owner's graph served by `nooklet serve`: keyword "a",
 blocks, `properties: {marker: "LATER"}` → 8 hits; with `journals_only` → 5.
+
+**Verification follow-up, 2026-09-13 (second agent).**
+- *Fixed:* `properties: {"constructor": "x"}` → 500 `near "Object": syntax error`. `constructor`
+  passes the key schema (`^[a-z][a-z0-9-]*$`) and `TEXT_COLUMN_PROPS[k]` returned
+  `Object.prototype.constructor`, which was spliced into the SQL as a column name. Now
+  `Object.hasOwn`. Test: `packages/server/src/ops/search-filters.test.ts` "a key that names an
+  Object.prototype member is a property filter, not a column" (failed before with the 500).
+- *Open, pre-existing (not this branch):* the same mistake in `packages/core/src/outline.ts`
+  `normalizePropertyKey` (`PROPERTY_KEY_REMAP[lower] ?? …`): a block property `constructor:: Stavby`
+  is stored and mirrored as `function Object() { [native code] }:: Stavby` (seen through
+  `page.create` + `page.read` in a server-test probe); `__proto__::` presumably becomes
+  `[object Object]::`, not checked. An imported Logseq graph with such a key would be rewritten.
+  Likely fix: `Object.hasOwn(PROPERTY_KEY_REMAP, lower)`, plus a core parser test.
 
 ---
 

@@ -211,3 +211,60 @@ test("Cmd/Ctrl+F is left to the browser where there is no page to search", async
   await expect(input(page)).toBeFocused();
   expect(await seen()).toEqual([]);
 });
+
+test("under a filter, Backspace and Delete join a block with its neighbour on the page, not the next match", async ({
+  page,
+}) => {
+  // Merging uses reading order. With the filter's rows as that order, the "previous row" of a
+  // match can be many hidden blocks away, and Backspace moved its text above blocks it never
+  // touched: this page became "keep mekeep too" / "hidden one" / "hidden two" (probe, 2026-09-13).
+  const name = "Find Merge Neighbours";
+  const outliner = await openPage(page, name, "- keep me\n- hidden one\n- hidden two\n- keep too");
+  await openFind(page);
+  await page.keyboard.type("keep");
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+
+  await outliner.locator(".vr-row").nth(1).locator(".vr-block-view").click();
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Backspace");
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["keep me", "hidden one", "hidden twokeep too"]);
+
+  await outliner.locator(".vr-row").nth(0).locator(".vr-block-view").click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Delete");
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["keep mehidden one", "hidden twokeep too"]);
+});
+
+test("closing the bar with its button leaves the caret in the block being edited", async ({
+  page,
+}) => {
+  // The bar remembers where the caret was when it opened, for Escape to put back. A click on the
+  // close button while editing ANOTHER block used that too, and the caret jumped away from where
+  // the person was typing (probe, 2026-09-13).
+  const outliner = await openPage(
+    page,
+    "Find Close Keeps Caret",
+    "- alpha one\n- beta\n- alpha two",
+  );
+  await outliner.locator(".vr-row").nth(0).locator(".vr-block-view").click();
+  await expect(editor(page)).toBeFocused();
+  await openFind(page);
+  await page.keyboard.type("alpha");
+  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await outliner.locator(".vr-row").nth(1).locator(".vr-block-view").click();
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.press("End");
+
+  await bar(page).locator('[aria-label="Close find"]').click();
+  await expect(bar(page)).toHaveCount(0);
+  await expect(outliner.locator(".vr-row")).toHaveCount(3);
+  await expectEditorFocusedNow(page, "after the close button");
+  expect(await editingRowIndex(page, outliner)).toBe(2);
+  await page.keyboard.type("!");
+  await expect(editor(page)).toHaveText("alpha two!");
+});

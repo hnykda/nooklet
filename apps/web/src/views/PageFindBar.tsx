@@ -252,7 +252,11 @@ export function PageFindBar(props: {
         aria-label="Close find"
         title="Close (Escape)"
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => closePageFind({ restoreFocus: true })}
+        // Put the caret back only when the keyboard is still in the bar. The mousedown guard
+        // above leaves focus wherever it was, and if that is a block being edited now, sending
+        // the caret to the block the bar was opened from yanked it away from where the person was
+        // typing.
+        onClick={() => closePageFind({ restoreFocus: document.activeElement === input })}
       >
         ×
       </button>

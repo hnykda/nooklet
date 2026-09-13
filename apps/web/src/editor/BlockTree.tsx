@@ -78,6 +78,7 @@ import {
   blockFocusRequest,
   clearBlockFocusRequest,
   editingEndRequest,
+  requestEditingEnd,
 } from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
@@ -286,6 +287,17 @@ export function BlockTree(props: {
     () => filtered()?.rows ?? flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }),
   );
   const visibleIds = createMemo(() => rows().map((r) => r.id));
+  /**
+   * The page's reading order as if no find filter were on. A merge (Backspace at the start, Delete
+   * at the end) joins a block with its neighbour ON THE PAGE; under a filter the neighbouring row
+   * on screen can be many hidden blocks away, and joining with it moved the text above blocks it
+   * never touched ("keep me" / hidden / "keep too" became "keep mekeep too" / hidden). A match with
+   * no row here (under a collapsed parent) makes the merge a no-op, as it would be unfiltered.
+   */
+  const outlineOrder = (): BlockId[] =>
+    filtered()
+      ? flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }).map((r) => r.id)
+      : visibleIds();
   // Rendering iterates `visibleIds()` (strings, compared by value) rather than `rows()` (fresh
   // objects on every rebuild), so `<For>` reuses each row's DOM instead of recreating it. This is
   // load-bearing, not a micro-optimisation: every keystroke refetches the page resource, which
@@ -336,10 +348,12 @@ export function BlockTree(props: {
       // here, at capture time.)
       if (blockMenuRequest()) return;
       // The zoom breadcrumb is this tree's own chrome, rendered beside the outliner rather than
-      // inside it; a click there navigates within the same editing session.
+      // inside it; a click there navigates within the same editing session. So are the find bar's
+      // buttons (not its input, which takes the keyboard): they keep focus where it is, and a
+      // click on "close" while typing in a match ended the edit it meant to leave alone.
       if (
         target.closest(
-          ".cmd-popup, .ctx-menu, .cmd-palette, .cmd-toolbar, .help-menu, .help-keys, .shelf, .vr-zoom-trail",
+          ".cmd-popup, .ctx-menu, .cmd-palette, .cmd-toolbar, .help-menu, .help-keys, .shelf, .vr-zoom-trail, .page-find-button",
         )
       )
         return;
@@ -622,12 +636,12 @@ export function BlockTree(props: {
         doOutdent(id);
         return true;
       case "block.mergeWithPrevious": {
-        const r = mergeWithPrevious(tree, visibleIds(), id, clock);
+        const r = mergeWithPrevious(tree, outlineOrder(), id, clock);
         if (r) runStructural(r);
         return true;
       }
       case "block.deleteForwardMerge": {
-        const r = deleteForwardMerge(tree, visibleIds(), id, clock);
+        const r = deleteForwardMerge(tree, outlineOrder(), id, clock);
         if (r) runStructural({ ops: r.ops });
         return true;
       }
@@ -1188,6 +1202,11 @@ export function BlockTree(props: {
                           const inSelection = selection()?.ids.includes(id) ?? false;
                           if (!readOnly() && editingId() !== id && !inSelection)
                             attachEditing(id, { at: "end" });
+                          // A locked block takes no caret, so the context would stay with whatever
+                          // another tree holds — a selection in another journal day — and the menu
+                          // over this block offered Delete/Move for that unseen one. Release it:
+                          // the menu here is the timestamps and nothing else.
+                          else if (readOnly()) requestEditingEnd();
                           // A microtask, so the menu is built AFTER Solid's effects have run and
                           // registered this tree as the active editor host. Opening it in the same
                           // tick asked every `when` clause about a context that did not exist yet,

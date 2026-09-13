@@ -107,3 +107,26 @@ based on `da85cfb` (the worktree was created at an older commit, `41666ee`; the 
 - `git log --oneline da85cfb..m8/impl-small` for what landed; this file for what is in flight.
 - Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-small/`.
 - E2E: `cd e2e && NOOKLET_E2E_PORT=6409 pnpm exec playwright test <specs> --project=chromium`.
+
+## 6. Adversarial verification (2026-09-13, second agent)
+
+Verifier working in the same worktree/branch, port 6409. Scratch:
+`/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-small-verify/`.
+Baseline: the five new specs 18/18 green at `2d94789`.
+
+Confirmed by browser probes (throwaway spec, not committed):
+1. Find filter on: Backspace at the start of a match merged it into the previous VISIBLE row across
+   hidden blocks ("keep me" / hidden / hidden / "keep too" -> "keep mekeep too", hidden, hidden);
+   Delete at the end did the same forwards. Undo restores. -> fixing (merge uses unfiltered order).
+2. Find bar's close button while editing a different block than the one the bar was opened from:
+   the caret jumped back to the opening block. -> fixing.
+3. Journal stream: a block selection standing in an unlocked day + right-click on a locked day's
+   block -> the menu offered Delete/Move/Cycle... for the OTHER day's selected block. -> fixing.
+4. `search` with `properties: {"constructor": "x"}` -> 500 `near "Object": syntax error`
+   (`TEXT_COLUMN_PROPS[k]` hits Object.prototype). -> fixing.
+5. Cmd/Ctrl+F while the palette is open on a page opens the find bar behind the palette and moves
+   focus into it; the palette stays on screen. -> log only.
+6. Select-all while filtered selects context ancestors too; deleting them deletes their hidden
+   children (same semantics as a collapsed parent). -> log only.
+Not bugs (checked): Czech/Turkish/emoji highlight ranges are right (an early reading was taken
+before the rAF paint); a 20k-char query is fine; timestamps show on a locked page.
