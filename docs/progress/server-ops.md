@@ -110,3 +110,22 @@ OUT-14 shape), B-311 (web paste drops a pre-block). If picking this up again: th
 ## How to resume
 
 `git log --oneline cf08d19..m9/server-ops`, then the first unticked step above.
+
+## Adversarial verification (2026-09-13, second agent; scratch `…/scratchpad/m9/server-ops-verify/`)
+
+Done (committed on this branch):
+- `2fc05fb` B-313 (found + fixed): `content` copied from `page_read` for a nested block lost its
+  properties (the `"auto"` reading stripped one 2-column unit; page_read indents depth d by
+  2·(d+1)). Now strips the common leading whitespace. Probe
+  `tools/probes/block-update-content-indent-graph.mts` on the graph copy: 866 → 0 property diffs.
+  Also kept as tests: property-line edit/removal by old_str (Czech), collapsed + children +
+  batch.undo, pre-block `alias::` resolving.
+- `959633e` e2e: Cmd/Ctrl+C → paste of a fence-first block with a property keeps it (B-151 in the
+  browser; fails with cf08d19's core built in).
+- `930a7a0` B-314 (found + fixed): old_str edit of a `collapsed:: true` line was a silent no-op.
+
+Checked and fine: typecheck; branch's own tests; real-graph round-trip probe (0 refused, the 20
+literal SCHEDULED blocks as documented); flush-as-content and page_read@0 old-vs-new parse identical
+(tsx probes, not kept); real ops through `nooklet serve` on a fresh copy (nested Czech DONE task via
+page_read-shaped content, marker flips, batch.undo, journal props, pre-blocks, refusals) then
+`nooklet verify` OK at 20,444 ops.
