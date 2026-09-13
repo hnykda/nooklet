@@ -19,6 +19,9 @@
  *                   removal of assets nothing references any more (M7, ./gc.ts)
  *   nooklet verify  [--data <dir>]  rebuild()-vs-live-state parity check (ADR 003, ./verify.ts);
  *                   also runs automatically at "nooklet serve" startup when NODE_ENV != production
+ *   nooklet repair  org-dates [--apply] [--data <dir>]  turn org `SCHEDULED:`/`DEADLINE:` lines an
+ *                   old import left in block text into real dates, one undoable batch
+ *                   (./repair-org-dates.ts); a dry run that writes nothing unless --apply
  *
  * `--data` defaults to $NOOKLET_DATA, then ~/.nooklet/default. The database lives at
  * <data>/graph.sqlite and the mirror at <data>/{pages,journals}/ (00-conventions.md, Storage).
@@ -40,6 +43,7 @@ import {
   checkFlags,
   parseArgs,
   parseGcFlags,
+  parseRepairFlags,
   RESTORE_FLAGS,
   wantsHelp,
 } from "./cli-args.js";
@@ -70,6 +74,7 @@ import { createAppWithPlugins } from "./plugins/bootstrap.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
 import { reindexPipeAliasRefs } from "./ref-reindex.js";
+import { applyOrgDateRepair, formatOrgDateReport, planOrgDateRepair } from "./repair-org-dates.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
 
 function dataDir(args: Args): string {
@@ -216,6 +221,7 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet restore <archive> [--data <dir>] [--force]
   nooklet gc [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
   nooklet verify [--data <dir>]
+  nooklet repair org-dates [--apply] [--data <dir>]   dry run unless --apply
 `;
 
 async function main(): Promise<void> {
@@ -664,6 +670,19 @@ async function main(): Promise<void> {
       const report = verifyRebuildParity(ctx.driver);
       process.stdout.write(`${formatVerifyReport(report)}\n`);
       if (!report.ok) process.exit(1);
+      return;
+    }
+
+    case "repair": {
+      // Parsed before the database is opened, like gc: a typo must not become a run.
+      const flags = cliArg(() => parseRepairFlags(args));
+      const { ctx } = open(args);
+      if (flags.apply) {
+        const result = applyOrgDateRepair(ctx);
+        process.stdout.write(`${formatOrgDateReport(result, result)}\n`);
+      } else {
+        process.stdout.write(`${formatOrgDateReport(planOrgDateRepair(ctx))}\n`);
+      }
       return;
     }
 

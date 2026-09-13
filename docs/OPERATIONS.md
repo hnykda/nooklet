@@ -331,3 +331,28 @@ See the README's "Connecting an agent" section for the exact config JSON. Summar
 Give an agent a `write`-scope token unless it only ever needs to read; `admin` is for token
 management itself, not day-to-day graph edits. `/openapi.json` (printed at `serve` startup) is
 the full HTTP surface if you're wiring up something that doesn't speak MCP at all.
+
+## 10. One-off repairs
+
+### `nooklet repair org-dates`
+
+A graph imported before B-143 (2026-09-13) can still hold Logseq's `SCHEDULED: <2023-2-17 Fri>` /
+`DEADLINE: <…>` lines as block text: the old importer only understood two-digit months and days,
+so those dates were never stored — no chip, nothing in the Tasks view or a journal's Scheduled and
+deadline section.
+
+```
+nooklet repair org-dates [--data <dir>]           # dry run: every block, text before and after
+nooklet repair org-dates --apply [--data <dir>]   # write it
+```
+
+It takes exactly the lines today's importer reads as dates (outside code fences), sets the block's
+real `scheduled`/`deadline`/`repeat`, and removes the line. All blocks go in **one batch**, through
+the normal write path, so every device syncs it and `nooklet verify` stays exact; the output ends
+with the `batch_id`, and `batch_undo` with it (MCP, or `POST /api/v1/batch.undo`) restores every
+block. It writes all of it or nothing. A block whose text disagrees with a date it already has, or
+names two different dates of one kind, is listed as left alone and not touched. Running it again
+finds nothing. Quit the app (or stop `serve`) first: the repair runs in its own process, so a running
+server never hears of it — an open window keeps showing the old text (checked for 15 s) until it
+reloads, the live mirror stays stale until `serve` restarts, and an edit made in that stale window
+can put the line back (`tools/probes/repair-org-dates-open-window.mjs`).

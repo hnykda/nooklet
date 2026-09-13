@@ -1,7 +1,8 @@
 /**
  * A journal day's "Scheduled and deadline" section (PLAN.md §8): under the day's own blocks, the
- * open tasks from elsewhere in the graph that are scheduled for or due on that day — and, on
- * today, everything overdue. Read-only: a glance at what is due, not a second place to edit it;
+ * open tasks and dated non-task blocks from elsewhere in the graph that are scheduled for or due on
+ * that day — and, on today, every overdue task, the first ten shown and the rest behind "Show all
+ * N overdue". Read-only: a glance at what is due, not a second place to edit it;
  * a click goes to the task (zoomed in on its page) and the group heading goes to the page.
  * Renders nothing at all when there is nothing to list.
  *
@@ -11,14 +12,21 @@
  */
 
 import { formatJournalTitle } from "@nooklet/core";
-import { createMemo, For, type JSX, Show } from "solid-js";
+import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { AgendaTask } from "../data/agenda.js";
 import { displayPageName, journalTitleFormat } from "../data/page-title.js";
 import type { NavigateTarget } from "../data/types.js";
 import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { InlineContent } from "../editor/InlineContent.js";
 import { pageRoutePath } from "../routes/page-path.js";
-import { type AgendaDate, type AgendaEntry, type AgendaGroup, agendaForDay } from "./agendaDay.js";
+import {
+  type AgendaDate,
+  type AgendaEntry,
+  type AgendaGroup,
+  type AgendaSection,
+  agendaSection,
+  OVERDUE_SHOWN,
+} from "./agendaDay.js";
 import "./journal-agenda.css";
 
 export interface JournalAgendaProps {
@@ -68,13 +76,23 @@ function EntryRow(props: { entry: AgendaEntry; onNavigate: (t: NavigateTarget) =
         {/* Marker and priority share one grid cell, so the content column starts in the same place
             whether or not a task has a priority — and the dates can drop under it on a phone. */}
         <span class="journal-agenda-lead">
-          <span
-            class={`vr-marker vr-marker-${props.entry.task.marker}`}
-            role="img"
-            aria-label={`Task: ${props.entry.task.marker}`}
+          <Show
+            when={props.entry.task.marker}
+            fallback={
+              // A dated block that is not a task: the outliner's bullet, not an empty checkbox.
+              <span class="journal-agenda-bullet" aria-hidden="true" />
+            }
           >
-            {MARKER_GLYPH[props.entry.task.marker] ?? "☐"}
-          </span>
+            {(marker) => (
+              <span
+                class={`vr-marker vr-marker-${marker()}`}
+                role="img"
+                aria-label={`Task: ${marker()}`}
+              >
+                {MARKER_GLYPH[marker()] ?? "☐"}
+              </span>
+            )}
+          </Show>
           <Show when={props.entry.task.priority}>
             {(p) => <span class={`vr-priority vr-priority-${p()}`}>{p()}</span>}
           </Show>
@@ -114,10 +132,19 @@ const sameEntry = (a: AgendaEntry, b: AgendaEntry): boolean =>
   a.dates.length === b.dates.length &&
   a.dates.every((d, i) => shallowEqual(d, b.dates[i] as AgendaDate));
 
+const NOTHING: AgendaSection = { groups: [], overdue: 0, hidden: 0 };
+
 export function JournalAgenda(props: JournalAgendaProps): JSX.Element {
-  const groups = createMemo(() =>
-    props.tasks.error ? [] : agendaForDay(props.tasks(), props.day, props.today),
+  // Per section, not remembered: a day opened later starts collapsed again.
+  const [showAllOverdue, setShowAllOverdue] = createSignal(false);
+  const section = createMemo(() =>
+    props.tasks.error
+      ? NOTHING
+      : agendaSection(props.tasks(), props.day, props.today, {
+          overdueLimit: showAllOverdue() ? undefined : OVERDUE_SHOWN,
+        }),
   );
+  const groups = (): AgendaGroup[] => section().groups;
   // The lists below iterate KEYS — page ids, then task ids — never the group and entry objects.
   // Every write refetches the tasks and `agendaForDay` builds brand-new objects, and `<For>` is
   // keyed by reference: iterating objects tore down and rebuilt every row on every keystroke's
@@ -182,6 +209,16 @@ export function JournalAgenda(props: JournalAgendaProps): JSX.Element {
             );
           }}
         </For>
+        <Show when={section().overdue > OVERDUE_SHOWN}>
+          <button
+            type="button"
+            class="journal-agenda-more"
+            aria-expanded={showAllOverdue()}
+            onClick={() => setShowAllOverdue((v) => !v)}
+          >
+            {showAllOverdue() ? "Show fewer overdue" : `Show all ${section().overdue} overdue`}
+          </button>
+        </Show>
       </div>
     </Show>
   );

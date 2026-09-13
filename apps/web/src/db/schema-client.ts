@@ -33,7 +33,30 @@ export const CLIENT_SCHEMA_STATEMENTS: readonly string[] = [
   )`,
 ];
 
+/**
+ * Indexes only this replica's own reads need, run on EVERY open (not just a fresh database's),
+ * each `IF NOT EXISTS`: a replica has no migration table, so this is how one created before an
+ * index existed gets it.
+ *
+ *  - `block_dated`: every live block with a scheduled or deadline date (`due_day` is `coalesce` of
+ *    the two), task or not — what the journal's "Scheduled and deadline" section reads
+ *    (`../data/agenda.ts`) after every write to `block`. Without it that read scans the whole
+ *    block table (`tools/probes/agenda-sql-cost.mjs`: 2.3 ms vs 0.006 ms per read, native, on the
+ *    owner's 18.6k blocks). Client-only on purpose: the server never runs that read, and a server
+ *    index would mean a schema version bump, which an installed app on the previous version then
+ *    refuses to open.
+ */
+export const CLIENT_INDEX_STATEMENTS: readonly string[] = [
+  `CREATE INDEX IF NOT EXISTS block_dated ON block(due_day)
+    WHERE deleted_at IS NULL AND due_day IS NOT NULL`,
+];
+
 /** Create `pending_op`/`sync_state` on an already-core-schema'd database. Safe to call twice. */
 export function initClientSchema(driver: { exec(sql: string): void }): void {
   for (const stmt of CLIENT_SCHEMA_STATEMENTS) driver.exec(stmt);
+}
+
+/** `CLIENT_INDEX_STATEMENTS`, on a database that has the core tables. Safe on every open. */
+export function ensureClientIndexes(driver: { exec(sql: string): void }): void {
+  for (const stmt of CLIENT_INDEX_STATEMENTS) driver.exec(stmt);
 }

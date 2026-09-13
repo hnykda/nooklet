@@ -1,20 +1,22 @@
 /**
  * The rows behind a journal day's "Scheduled and deadline" section (PLAN.md §8): every open task
- * that carries a scheduled or deadline date, read from the LOCAL replica — `scheduled_day`,
- * `deadline_day` and `marker` are shared-schema block columns, so this works offline and needs
- * no server round trip.
+ * that carries a scheduled or deadline date, and every dated block that is not a task at all, read
+ * from the LOCAL replica — `scheduled_day`, `deadline_day` and `marker` are shared-schema block
+ * columns, so this works offline and needs no server round trip.
  *
  * ONE query serves every day on screen. The journal stream renders fourteen days and grows as it
  * scrolls; a query per day would multiply every refetch (and every edit refetches — the resource
- * is stamped on `block`) by the number of days loaded. Deciding which task belongs to which day
- * is plain array work in `../views/agendaDay.ts`, over a set that is small by nature: open
- * tasks with a date.
+ * is stamped on `block`) by the number of days loaded. Deciding which row belongs to which day
+ * is plain array work in `../views/agendaDay.ts`, over a set that is small by nature: blocks with
+ * a date.
  *
- * Open markers only, not "anything but DONE/CANCELED": a block with a date and no marker can
- * never be completed, so as an "overdue" item it would stay on today's journal forever. The
- * marker list is spelled out as literals rather than bound parameters to match the partial
- * index `block_open_tasks`'s own predicate; SQLite picks `block_marker` either way (checked with
- * `EXPLAIN QUERY PLAN` on the owner's graph, 2026-09-13), which reads only the open tasks.
+ * Open markers or no marker, never DONE/CANCELED: a finished task is off the agenda. A block with
+ * no marker is listed only on its own day, never as overdue (`agendaDay.ts`) — it can never be
+ * completed, so as an overdue item it would stay under today forever. The read goes through the
+ * replica's `block_dated` index (`../db/schema-client.ts`), which holds only dated blocks.
+ * `block_marker`, which served the tasks-only read, leaves out `marker IS NULL` rows, so without
+ * `block_dated` this read scans every block — 18.6k on the owner's graph, on every write
+ * (`tools/probes/agenda-sql-cost.mjs`). The unit test pins the plan.
  */
 
 import type { Priority, TaskMarker } from "@nooklet/core";
@@ -30,7 +32,8 @@ export interface AgendaTask {
   /** Sibling order within its parent — only a tiebreak between tasks on the same page. */
   order: string;
   content: string;
-  marker: TaskMarker;
+  /** `null` for a dated block that is not a task: listed on its own day only, never overdue. */
+  marker: TaskMarker | null;
   priority: Priority | null;
   scheduledDay: number | null;
   scheduledTime: string | null;
@@ -43,7 +46,7 @@ interface AgendaSqlRow {
   page_id: string;
   order_key: string;
   content: string;
-  marker: TaskMarker;
+  marker: TaskMarker | null;
   priority: Priority | null;
   scheduled_day: number | null;
   scheduled_time: string | null;
@@ -57,9 +60,8 @@ export const AGENDA_SQL = `SELECT b.id, b.page_id, b.order_key, b.content, b.mar
     b.scheduled_day, b.scheduled_time, b.deadline_day, b.deadline_time,
     p.name AS page_name, p.journal_day AS page_journal_day
   FROM block b JOIN page p ON p.id = b.page_id AND p.deleted_at IS NULL
-  WHERE b.deleted_at IS NULL
-    AND b.marker IN ('TODO','DOING','LATER','NOW','WAITING')
-    AND (b.scheduled_day IS NOT NULL OR b.deadline_day IS NOT NULL)`;
+  WHERE b.deleted_at IS NULL AND b.due_day IS NOT NULL
+    AND (b.marker IS NULL OR b.marker IN ('TODO','DOING','LATER','NOW','WAITING'))`;
 
 export type AgendaSqlRunner = <T>(sql: string, params?: unknown[]) => Promise<T[]>;
 
@@ -83,8 +85,8 @@ export async function loadAgendaTasks(sql: AgendaSqlRunner = queryAs): Promise<A
 }
 
 /**
- * Live open tasks with a date. Refetches after any write to `block` (a marker, a date, the text)
- * or `page` (a rename, a deletion). `enabled` lets a view that only sometimes shows the section —
+ * Live open tasks and non-task blocks with a date. Refetches after any write to `block` (a marker,
+ * a date, the text) or `page` (a rename, a deletion). `enabled` lets a view that only sometimes shows the section —
  * `PageView`, for journal pages — skip the read entirely otherwise.
  */
 export function useAgendaTasks(

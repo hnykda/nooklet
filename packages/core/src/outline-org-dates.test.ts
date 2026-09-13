@@ -5,7 +5,7 @@
  * accepts — or the date is lost.
  */
 import { describe, expect, it } from "vitest";
-import { parseOutline, serializeOutline } from "./outline.js";
+import { findOrgDateLines, orgDateLine, parseOutline, serializeOutline } from "./outline.js";
 
 describe("parseOutline — org timestamps as Logseq wrote them (B-143)", () => {
   it("pads a one-digit month or day", () => {
@@ -36,5 +36,56 @@ describe("parseOutline — org timestamps as Logseq wrote them (B-143)", () => {
     const out = serializeOutline(parseOutline("- DONE x\n  SCHEDULED: <2023-2-17 Fri>\n"));
     expect(out).toContain("scheduled:: 2023-02-17");
     expect(out).not.toContain("SCHEDULED");
+  });
+});
+
+/**
+ * `nooklet repair org-dates` reads stored block text with these, so a graph imported before B-143
+ * gets exactly the dates a re-import would give it — and no line a re-import keeps as text.
+ */
+describe("findOrgDateLines — org dates still sitting in a stored block's text", () => {
+  it("finds the owner's shape, with its line index and padded value", () => {
+    expect(findOrgDateLines("Mirek\nSCHEDULED: <2023-2-17 Fri>")).toEqual([
+      { key: "scheduled", value: "2023-02-17", repeat: undefined, index: 1 },
+    ]);
+    expect(findOrgDateLines("x\nDEADLINE: <2026-9-14 Mon 9:30 .+1w>\nmore")).toEqual([
+      { key: "deadline", value: "2026-09-14 09:30", repeat: "1w", index: 1 },
+    ]);
+  });
+
+  it("takes no line the parser keeps as text", () => {
+    const kept = [
+      "SCHEDULED: <2023-2-30 Thu>",
+      "see SCHEDULED: <2023-02-17 Fri>",
+      "scheduled: <2023-02-17 Fri>",
+      "```\nSCHEDULED: <2023-02-17 Fri>\n```",
+    ];
+    for (const text of kept) {
+      expect(findOrgDateLines(text)).toEqual([]);
+      const indented = text.split("\n").join("\n  ");
+      expect(parseOutline(`- x\n  ${indented}\n`).blocks[0]?.properties).toEqual({});
+    }
+  });
+
+  it("skips lines inside a code fence or a LOGBOOK drawer, and finds the ones after", () => {
+    const text = [
+      "notes",
+      "```org",
+      "SCHEDULED: <2023-02-17 Fri>",
+      "```",
+      ":LOGBOOK:",
+      "DEADLINE: <2023-02-18 Sat>",
+      ":END:",
+      "DEADLINE: <2023-2-19 Sun>",
+    ].join("\n");
+    expect(findOrgDateLines(text).map((d) => [d.index, d.value])).toEqual([[7, "2023-02-19"]]);
+  });
+
+  it("agrees with the parser on the same line", () => {
+    const d = orgDateLine("  SCHEDULED: <2022-12-8 Thu>  ");
+    expect(d).toEqual({ key: "scheduled", value: "2022-12-08", repeat: undefined });
+    expect(parseOutline("- x\n  SCHEDULED: <2022-12-8 Thu>\n").blocks[0]?.properties).toEqual({
+      scheduled: d?.value,
+    });
   });
 });

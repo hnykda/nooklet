@@ -1,8 +1,9 @@
 /**
  * A journal day's "Scheduled and deadline" section (PLAN.md §8), against the real server and the
- * production build: today lists open tasks scheduled or due today plus overdue ones; any other
- * day lists what is scheduled or due that day; grouped by page; a click goes to the task or the
- * page; nothing at all when a day has nothing; follows the graph without a reload.
+ * production build: today lists open tasks scheduled or due today plus overdue ones, the overdue
+ * past ten behind "Show all N overdue"; any other day lists what is scheduled or due that day;
+ * dated blocks that are not tasks on their exact day only; grouped by page; a click goes to the task
+ * or the page; nothing at all when a day has nothing; follows the graph without a reload.
  *
  * Every task text carries a per-spec tag (`agx`) because the suite shares one server: other specs
  * create tasks of their own, and today's section may legitimately list some of them. Assertions
@@ -11,7 +12,7 @@
  */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { api, isoOffset, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import { api, isoOffset, MOD, pagePath, readBlocks, seedPage } from "../helpers/index.js";
 
 const PROJECT = "Agenda Project";
 const ERRANDS = "Agenda Errands";
@@ -43,6 +44,25 @@ function todayAgenda(page: Page): Locator {
   return page.locator(".journal-day-today .journal-agenda");
 }
 
+/** Other specs on this server may leave overdue tasks of their own; open the full list so an
+ * assertion about this spec's rows does not depend on how many there are. */
+async function showAllOverdue(agenda: Locator): Promise<void> {
+  const toggle = agenda.locator(".journal-agenda-more");
+  if ((await toggle.count()) > 0 && (await toggle.getAttribute("aria-expanded")) === "false") {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  }
+}
+
+/** Rows listed only for being overdue: every date on them is an overdue one. */
+function overdueOnlyRows(agenda: Locator): Locator {
+  const page = agenda.page();
+  return agenda.locator(".journal-agenda-item", {
+    has: page.locator(".journal-agenda-date-overdue"),
+    hasNot: page.locator(".journal-agenda-date:not(.journal-agenda-date-overdue)"),
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await seed(page);
 });
@@ -54,6 +74,7 @@ test("today lists what is scheduled or due today plus overdue, grouped by page",
   const agenda = todayAgenda(page);
   await expect(agenda).toBeVisible();
   await expect(agenda.locator(".journal-agenda-title")).toHaveText("Scheduled and deadline");
+  await showAllOverdue(agenda);
 
   const project = agenda.locator(".journal-agenda-group", {
     has: page.locator(".journal-agenda-page", { hasText: PROJECT }),
@@ -168,4 +189,230 @@ test("finishing a task elsewhere takes it off today's list without a reload", as
 
   await api(page, "block.update", { id: block?.id, properties: { marker: "DONE" } });
   await expect(row).toHaveCount(0);
+});
+
+test("a dated block that is not a task is listed on its own day, with a bullet, never as overdue", async ({
+  page,
+}) => {
+  const longAgo = isoOffset(-47);
+  await seedPage(
+    page,
+    "Agenda Notes",
+    [
+      `- agx note for today\n  scheduled:: ${isoOffset(0)}`,
+      `- agx note long ago\n  deadline:: ${longAgo}`,
+    ].join("\n"),
+  );
+
+  await page.goto("/journals");
+  const agenda = todayAgenda(page);
+  await showAllOverdue(agenda);
+  const note = agenda.locator(".journal-agenda-item", { hasText: "agx note for today" });
+  await expect(note).toHaveCount(1);
+  await expect(note.locator(".journal-agenda-bullet")).toBeVisible();
+  await expect(note.locator(".vr-marker")).toHaveCount(0);
+  await expect(note.locator(".journal-agenda-date")).toHaveText("Scheduled");
+  // Its deadline passed 47 days ago, but a note has nothing to finish: not overdue under today.
+  await expect(agenda).not.toContainText("agx note long ago");
+
+  // On its own day it is listed, and not called overdue there.
+  await page.goto(pagePath(longAgo));
+  const onItsDay = page.locator(".journal-agenda");
+  await expect(onItsDay.locator(".journal-agenda-item")).toHaveText([/agx note long ago/]);
+  await expect(onItsDay.locator(".journal-agenda-date-overdue")).toHaveCount(0);
+  await expect(onItsDay.locator(".journal-agenda-bullet")).toHaveCount(1);
+});
+
+test("today holds overdue tasks past ten behind 'Show all N overdue', and the count follows the graph", async ({
+  page,
+}) => {
+  // Twelve tasks overdue by eleven years: older than anything another spec leaves — including the
+  // literal dates some specs write, which turn overdue as the calendar moves — so they lead the
+  // list. Closed again at the end: later specs count open tasks.
+  const BACKLOG = "Agenda Backlog";
+  await seedPage(
+    page,
+    BACKLOG,
+    Array.from(
+      { length: 12 },
+      (_, i) =>
+        `- TODO agx backlog ${String(i + 1).padStart(2, "0")}\n  deadline:: ${isoOffset(-4011 + i)}`,
+    ).join("\n"),
+  );
+  const backlog = await readBlocks(page, BACKLOG);
+  try {
+    await page.goto("/journals");
+    const agenda = todayAgenda(page);
+    const toggle = agenda.locator(".journal-agenda-more");
+    await expect(toggle).toHaveText(/^Show all \d+ overdue$/);
+    const total = Number((await toggle.textContent())?.match(/\d+/)?.[0]);
+    expect(total).toBeGreaterThanOrEqual(12);
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    // Ten overdue rows, and they are the oldest: backlog 01..10, in order.
+    await expect(overdueOnlyRows(agenda)).toHaveCount(10);
+    const group = agenda.locator(".journal-agenda-group", {
+      has: page.locator(".journal-agenda-page", { hasText: BACKLOG }),
+    });
+    const tenFirst = Array.from(
+      { length: 10 },
+      (_, i) => new RegExp(`agx backlog ${String(i + 1).padStart(2, "0")}`),
+    );
+    await expect(group.locator(".journal-agenda-item")).toHaveText(tenFirst);
+    // Something due today is never held back (the seed in beforeEach).
+    await expect(agenda).toContainText("agx due today");
+
+    await toggle.click();
+    await expect(toggle).toHaveText("Show fewer overdue");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(overdueOnlyRows(agenda)).toHaveCount(total);
+    await expect(group.locator(".journal-agenda-item")).toHaveText([
+      ...tenFirst,
+      /agx backlog 11/,
+      /agx backlog 12/,
+    ]);
+
+    // Finishing one elsewhere: one fewer, without a reload, and the list stays open.
+    await api(page, "block.update", { id: backlog[0]?.id, properties: { marker: "DONE" } });
+    await expect(overdueOnlyRows(agenda)).toHaveCount(total - 1);
+    await expect(group.locator(".journal-agenda-item")).toHaveCount(11);
+
+    await toggle.click();
+    await expect(toggle).toHaveText(`Show all ${total - 1} overdue`);
+    await expect(overdueOnlyRows(agenda)).toHaveCount(10);
+  } finally {
+    for (const b of backlog) {
+      await api(page, "block.update", { id: b.id, properties: { marker: "DONE" } });
+    }
+  }
+});
+
+/** A stored block's marker, read from the server (`page.read`), never from the DOM. */
+async function storedMarker(page: Page, name: string, id: string): Promise<string | null> {
+  interface Node {
+    id: string;
+    marker?: string | null;
+    children?: Node[];
+  }
+  const out = await api<{ tree?: Node[] }>(page, "page.read", { page: name, format: "json" });
+  const find = (nodes: Node[] | undefined): Node | undefined => {
+    for (const n of nodes ?? []) {
+      const hit = n.id === id ? n : find(n.children);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  return find(out.tree)?.marker ?? null;
+}
+
+test("a note turned into a task on another device joins today's overdue list live, and undo takes it back off", async ({
+  page,
+  browser,
+}) => {
+  // A second browser context is a second device: its own OPFS replica, reaching this page's
+  // replica only through the server. A namespaced Czech page name, and a date ~24 years back —
+  // older than anything another spec leaves — so the row leads the overdue list and is never
+  // behind "Show all N overdue".
+  const NOTES = "Agenda/Poznámky čáp";
+  const longAgo = isoOffset(-9000);
+  await seedPage(page, NOTES, `- agx přečíst smlouvu\n  deadline:: ${longAgo}`);
+  const [note] = await readBlocks(page, NOTES);
+  expect(note).toBeDefined();
+
+  await page.goto("/journals");
+  const agenda = todayAgenda(page);
+  // Loaded (the beforeEach seed puts this spec's own task there), so the absence below is real.
+  await expect(agenda).toContainText("agx due today");
+  const row = agenda.locator(".journal-agenda-item", { hasText: "agx přečíst smlouvu" });
+  await expect(row).toHaveCount(0);
+
+  const other = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+  try {
+    const b = await other.newPage();
+    await b.goto(pagePath(NOTES));
+    const outliner = b.locator(".vr-outliner").first();
+    await expect(outliner.locator(".vr-row").first()).toContainText("agx přečíst smlouvu");
+    await outliner.locator(".vr-block-view").first().click();
+    await expect(b.locator(".cm-content")).toBeFocused();
+
+    await b.keyboard.press(`${MOD}+Enter`);
+    await expect.poll(() => storedMarker(page, NOTES, note?.id as string)).toBe("TODO");
+    // The first device, without a reload: now a task, so overdue under today.
+    await expect(row).toHaveCount(1);
+    await expect(row.locator(".vr-marker")).toHaveCount(1);
+    await expect(row.locator(".journal-agenda-bullet")).toHaveCount(0);
+    await expect(row.locator(".journal-agenda-date-overdue")).toHaveCount(1);
+    const group = agenda.locator(".journal-agenda-group", {
+      has: page.locator(".journal-agenda-item", { hasText: "agx přečíst smlouvu" }),
+    });
+    await expect(group.locator(".journal-agenda-page")).toHaveText(NOTES);
+
+    // Undo on the device that made it a task: a note again, off today's list everywhere.
+    await expect(b.locator(".cm-content")).toBeFocused();
+    await b.keyboard.press(`${MOD}+z`);
+    await expect.poll(() => storedMarker(page, NOTES, note?.id as string)).toBeNull();
+    await expect(row).toHaveCount(0);
+
+    // Still listed on its own day, as a note; its heading opens the namespaced Czech page.
+    await page.goto(pagePath(longAgo));
+    const onItsDay = page.locator(".journal-agenda .journal-agenda-item", {
+      hasText: "agx přečíst smlouvu",
+    });
+    await expect(onItsDay.locator(".journal-agenda-bullet")).toHaveCount(1);
+    await expect(onItsDay.locator(".journal-agenda-date-overdue")).toHaveCount(0);
+    await page.locator(".journal-agenda-page", { hasText: NOTES }).click();
+    await expect(page).toHaveURL(new RegExp(`${pagePath(NOTES)}$`));
+    await expect(page.locator(".page-title-input")).toHaveValue(NOTES);
+  } finally {
+    await other.close();
+    if ((await storedMarker(page, NOTES, note?.id as string)) !== null) {
+      await api(page, "block.update", { id: note?.id, properties: { marker: "DONE" } });
+    }
+  }
+});
+
+test("a date picked on a note on another device lists it under today with a bullet, live; undo removes it", async ({
+  page,
+  browser,
+}) => {
+  const NOTES = "Agenda Picker Notes";
+  await seedPage(page, NOTES, "- agx zavolat podlaháři");
+
+  await page.goto("/journals");
+  const agenda = todayAgenda(page);
+  await expect(agenda).toContainText("agx due today");
+  const row = agenda.locator(".journal-agenda-item", { hasText: "agx zavolat podlaháři" });
+  await expect(row).toHaveCount(0);
+
+  const other = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+  try {
+    const b = await other.newPage();
+    await b.goto(pagePath(NOTES));
+    const outliner = b.locator(".vr-outliner").first();
+    await expect(outliner.locator(".vr-row").first()).toContainText("agx zavolat podlaháři");
+    await outliner.locator(".vr-block-view").first().click();
+    await expect(b.locator(".cm-content")).toBeFocused();
+    await b.keyboard.press("End");
+
+    await b.keyboard.type(" /deadl");
+    const menu = b.locator(".cmd-popup").first();
+    await expect(menu.locator(".cmd-row--active")).toHaveText("Deadline");
+    await b.keyboard.press("Enter");
+    await expect(b.locator(".date-picker")).toBeVisible();
+    await b.keyboard.type("today");
+    await b.keyboard.press("Enter");
+    await expect(b.locator(".date-picker")).toHaveCount(0);
+    // The picker handed the caret back: typing goes on in the block.
+    await expect(b.locator(".cm-content")).toBeFocused();
+
+    await expect(row).toHaveCount(1);
+    await expect(row.locator(".journal-agenda-bullet")).toHaveCount(1);
+    await expect(row.locator(".vr-marker")).toHaveCount(0);
+    await expect(row.locator(".journal-agenda-date")).toHaveText("Deadline");
+
+    await b.keyboard.press(`${MOD}+z`);
+    await expect(row).toHaveCount(0);
+  } finally {
+    await other.close();
+  }
 });

@@ -12,6 +12,7 @@ vi.mock("./store.js", () => ({
   stampedFor: <T>(value: T) => ({ value, version: 0 }),
 }));
 
+import { CLIENT_INDEX_STATEMENTS } from "../db/schema-client.js";
 import { AGENDA_SQL, type AgendaSqlRunner, loadAgendaTasks } from "./agenda.js";
 
 describe("loadAgendaTasks", () => {
@@ -57,7 +58,8 @@ describe("loadAgendaTasks", () => {
   }
 
   beforeAll(() => {
-    for (const s of CORE_SCHEMA_STATEMENTS) db.exec(s);
+    // The replica's own DDL: core, then the indexes only the client adds (`block_dated`).
+    for (const s of [...CORE_SCHEMA_STATEMENTS, ...CLIENT_INDEX_STATEMENTS]) db.exec(s);
     page("p1", "Project");
     page("p2", "2026-09-10", { journalDay: 20260910 });
     page("gone", "Deleted page", { deleted: true });
@@ -68,6 +70,9 @@ describe("loadAgendaTasks", () => {
     block("done", "p1", { marker: "DONE", scheduled: 20260913 });
     block("canceled", "p1", { marker: "CANCELED", deadline: 20260913 });
     block("no marker, dated", "p1", { scheduled: 20260913 });
+    block("no marker, deadline", "p2", { deadline: 20260915 });
+    block("no marker, undated", "p1");
+    block("no marker, deleted", "p1", { scheduled: 20260913, deleted: true });
     block("open, undated", "p1", { marker: "TODO" });
     block("deleted task", "p1", { marker: "TODO", scheduled: 20260913, deleted: true });
     block("on a deleted page", "gone", { marker: "TODO", scheduled: 20260913 });
@@ -75,11 +80,13 @@ describe("loadAgendaTasks", () => {
     block("timed", "p2", { marker: "TODO", scheduled: 20260914, scheduledTime: "09:30" });
   });
 
-  it("returns open tasks with either date, and nothing finished, undated, marker-less or deleted", async () => {
+  it("returns open tasks and marker-less blocks with either date, and nothing finished, undated or deleted", async () => {
     const rows = await loadAgendaTasks(sql);
     expect(rows.map((r) => r.content).sort()).toEqual(
       [
         "deadline only",
+        "no marker, dated",
+        "no marker, deadline",
         "open DOING",
         "open LATER",
         "open NOW",
@@ -88,6 +95,10 @@ describe("loadAgendaTasks", () => {
         "timed",
       ].sort(),
     );
+    expect(rows.find((r) => r.content === "no marker, deadline")).toMatchObject({
+      marker: null,
+      deadlineDay: 20260915,
+    });
   });
 
   it("maps the columns the section needs", async () => {
@@ -107,9 +118,14 @@ describe("loadAgendaTasks", () => {
     });
   });
 
-  it("reads only open tasks through an index, never the whole block table", () => {
+  it("reads only dated blocks through block_dated, never the whole block table", () => {
     const plan = db.prepare(`EXPLAIN QUERY PLAN ${AGENDA_SQL}`).all() as Array<{ detail: string }>;
+    // `SCAN b USING INDEX block_page` is a full scan too, just in index order — it is what the
+    // planner picks for this query when `block_dated` is missing.
     const scanOfBlock = plan.find((p) => /^SCAN b\b/.test(p.detail));
     expect(scanOfBlock, JSON.stringify(plan)).toBeUndefined();
+    expect(plan.map((p) => p.detail)).toContainEqual(
+      expect.stringMatching(/^SEARCH b USING INDEX block_dated/),
+    );
   });
 });

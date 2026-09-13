@@ -49,7 +49,10 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
 1. The DDL in the Interfaces section MUST be identical on server (`node:sqlite`) and client
    (SQLite WASM) for every table not explicitly marked server-only or client-only below.
    Server-only: `device`, `token`, `changes`, `mirror_file`, `embed_dirty`, `embedding`,
-   `embedding_model`, `embedding_vec_<n>`, `asset`. Client-only: `pending_op`, `sync_state`.
+   `embedding_model`, `embedding_vec_<n>`, `asset`. Client-only: `pending_op`, `sync_state`,
+   and the index `block_dated ON block(due_day) WHERE deleted_at IS NULL AND due_day IS NOT NULL`
+   (the journal agenda's read; created `IF NOT EXISTS` on every replica open,
+   `apps/web/src/db/schema-client.ts`).
    Everything else — `page`, `block`, `block_prop`, `page_prop`, `op`, `setting`, `keybinding`,
    `plugin`, `ref`, `path_ref`, `page_alias`, `block_fts`/`block_tri`, `page_fts`/`page_tri`,
    `schema_migration` — exists on both, with identical schema. Embeddings never sync (ADR 010);

@@ -180,6 +180,19 @@ describe("WorkerDb schema idempotency", () => {
     new WorkerDb({ driver, transport: new NoopTransport() });
     expect(() => new WorkerDb({ driver, transport: new NoopTransport() })).not.toThrow();
   });
+
+  it("gives a replica created before block_dated existed that index on its next open", () => {
+    const hasIndex = (driver: SqlDriver): boolean =>
+      driver.get("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'block_dated'") !==
+      undefined;
+    const driver = memoryDriver();
+    new WorkerDb({ driver, transport: new NoopTransport() });
+    expect(hasIndex(driver)).toBe(true);
+    // An OPFS file from an older build: tables all there, the index not.
+    driver.exec("DROP INDEX block_dated");
+    new WorkerDb({ driver, transport: new NoopTransport() });
+    expect(hasIndex(driver)).toBe(true);
+  });
 });
 
 describe("WorkerDb.replayLocalOps (B-247)", () => {

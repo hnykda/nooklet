@@ -34,7 +34,7 @@ import type {
 } from "../data/types.js";
 import { SyncClient } from "../sync/sync-client.js";
 import type { SyncStatus, SyncTransport } from "../sync/types.js";
-import { initClientSchema } from "./schema-client.js";
+import { ensureClientIndexes, initClientSchema } from "./schema-client.js";
 import type { ChangedTable, ChangeEvent, LifecycleKind } from "./worker-api.js";
 
 /** Apply `@nooklet/core`'s schema plus this app's client-only tables, but only on a genuinely
@@ -44,9 +44,12 @@ function ensureSchema(driver: SqlDriver): void {
   const exists = driver.get<{ name: string }>(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'page'",
   );
-  if (exists) return;
-  initSchema(driver);
-  initClientSchema(driver);
+  if (!exists) {
+    initSchema(driver);
+    initClientSchema(driver);
+  }
+  // Every open, fresh or not: an existing replica gets indexes added since it was created.
+  ensureClientIndexes(driver);
 }
 
 /** Every block of a page, depth-first, reusing `@nooklet/core`'s exported `listChildren` so this
