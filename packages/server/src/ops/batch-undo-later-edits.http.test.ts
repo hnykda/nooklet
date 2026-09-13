@@ -203,4 +203,35 @@ describe("batch.undo keep_later_edits", () => {
     expect(pageRow(gamma)?.deleted_at).not.toBeNull();
     expect(propCount(gamma)).toBe(0);
   });
+
+  it("the outline names a page as the undo leaves it, not as it was before the batch (B-369)", async () => {
+    await op("page.create", { name: "Named Before", markdown: "- one" });
+    const setProp = await op<{ batch_id: string }>("page.update", {
+      page: "Named Before",
+      properties: { status: "draft" },
+    });
+    await op("page.update", { page: "Named Before", new_name: "Named After", keep_alias: false });
+    const kept = await op<{ outline: string }>("batch.undo", {
+      batch_id: setProp.batch_id,
+      keep_later_edits: true,
+    });
+    expect(kept.outline).toContain('restored page "Named After"');
+    expect(kept.outline).not.toContain("Named Before");
+
+    await op("page.create", { name: "Binned", markdown: "- one" });
+    const binProp = await op<{ batch_id: string }>("page.update", {
+      page: "Binned",
+      properties: { status: "draft" },
+    });
+    await op("page.delete", { page: "Binned" });
+    const inTrash = await op<{ outline: string }>("batch.undo", {
+      batch_id: binProp.batch_id,
+      keep_later_edits: true,
+    });
+    expect(inTrash.outline).toContain('restored page "Binned" (in the trash)');
+
+    // Without the flag the rename is undone too, and the outline says the old name.
+    const lww = await op<{ outline: string }>("batch.undo", { batch_id: setProp.batch_id });
+    expect(lww.outline).toContain('restored page "Named Before"');
+  });
 });

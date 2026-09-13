@@ -339,7 +339,9 @@ export const batchUndo = defineOp({
             summaryLines.push(`deleted page "${current.name}" (created by the undone batch)`);
             continue;
           }
-          const { before, rename } = pagePlan(row) as NonNullable<ReturnType<typeof pagePlan>>;
+          const { before, nameAfter, deletedAfter, rename } = pagePlan(row) as NonNullable<
+            ReturnType<typeof pagePlan>
+          >;
           const pageOps: Op[] = [];
           if (rename) {
             pageOps.push(ctx.mintOp(pageId, { kind: "page.rename", name: before.name }));
@@ -371,7 +373,11 @@ export const batchUndo = defineOp({
           if (pageOps.length > 0) {
             ops.push(...pageOps);
             restored.push(pageId);
-            summaryLines.push(`restored page "${before.name}"`);
+            // The name and place the page is left with, which keep_later_edits can make differ
+            // from the before-image's (B-369): the outline is what an agent reads.
+            summaryLines.push(
+              `restored page "${nameAfter}"${deletedAfter !== null ? " (in the trash)" : ""}`,
+            );
           }
         } else {
           const blockId = row.entity_id;

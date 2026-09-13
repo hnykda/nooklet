@@ -104,8 +104,10 @@ answered 200 before this fix, at `d4f1335`; the other two guard the exemptions).
 ---
 
 ### B-369 · A keep_later_edits undo says "restored page "Old name"" for a page it left renamed or in the trash
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, while checking B-366 on a copy of the
-real graph (`tools/probes/undo-names-real-graph.ts`) · **Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, while checking B-366 on a copy of the
+real graph (`tools/probes/undo-names-real-graph.ts`) · **Test:**
+`packages/server/src/ops/batch-undo-later-edits.http.test.ts` "the outline names a page as the undo
+leaves it, not as it was before the batch (B-369)"
 
 Set a property on "Plánování zahradních úprav", rename the page to "Plánování (přejmenováno)",
 then undo the property change with `keep_later_edits` (History's Undo): the call succeeds, the page
@@ -113,6 +115,12 @@ keeps its new name, and the outline — the text an agent reads, and the MCP too
 `restored page "Plánování zahradních úprav"`. Likewise for a page deleted since: `restored page
 "Garden"` while Garden stays in the trash. The summary line names the before-image's name whenever
 the undo wrote any op for the page, whatever it left the name and tombstone as.
+
+**Fixed 2026-09-13.** The line uses the name the undo leaves the page with (B-366's `pagePlan`),
+and says `(in the trash)` when the page stays there. Without `keep_later_edits` nothing changes for
+a live page: the rename is undone too and the old name is the right one. Test that would have
+caught it: `ops/batch-undo-later-edits.http.test.ts` "the outline names a page as the undo leaves
+it, not as it was before the batch (B-369)" (said `restored page "Named Before"` before).
 
 ---
 
