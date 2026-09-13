@@ -1,11 +1,12 @@
 /**
- * The "Scheduled and deadline" section's rules (PLAN.md §8), pure: which open dated tasks a day
- * lists, overdue only on today, both dates counted, the day's own page left out, grouped by page.
+ * The "Scheduled and deadline" section's rules (PLAN.md §8), pure: which open dated tasks and
+ * dated non-task blocks a day lists, overdue only on today and only for tasks, both dates counted,
+ * the day's own page left out, grouped by page, overdue entries past ten held back.
  */
 
 import { describe, expect, it } from "vitest";
 import type { AgendaTask } from "../data/agenda.js";
-import { agendaForDay } from "./agendaDay.js";
+import { agendaForDay, agendaSection, OVERDUE_SHOWN } from "./agendaDay.js";
 
 const TODAY = 20260913;
 
@@ -20,7 +21,8 @@ function task(over: Partial<AgendaTask> & { page?: string }): AgendaTask {
     pageJournalDay: over.pageJournalDay ?? null,
     order: over.order ?? `a${seq}`,
     content: over.content ?? `task ${seq}`,
-    marker: over.marker ?? "TODO",
+    // `in`, not `??`: an explicit `marker: null` is a block that is not a task.
+    marker: "marker" in over ? (over.marker ?? null) : "TODO",
     priority: over.priority ?? null,
     scheduledDay: over.scheduledDay ?? null,
     scheduledTime: over.scheduledTime ?? null,
@@ -142,5 +144,91 @@ describe("agendaForDay", () => {
   it("is empty when nothing qualifies, so the section can hide", () => {
     expect(agendaForDay([], TODAY, TODAY)).toEqual([]);
     expect(agendaForDay([task({ scheduledDay: 20261231 })], TODAY, TODAY)).toEqual([]);
+  });
+
+  it("lists a dated block that is not a task on its exact day, and never as overdue", () => {
+    const tasks = [
+      task({ content: "note today", marker: null, scheduledDay: TODAY, order: "b" }),
+      task({ content: "note due on the 10th", marker: null, deadlineDay: 20260910 }),
+      task({ content: "note scheduled last week", marker: null, scheduledDay: 20260906 }),
+      task({ content: "task last week", scheduledDay: 20260906 }),
+      task({
+        content: "note both",
+        marker: null,
+        order: "c",
+        scheduledDay: 20260901,
+        deadlineDay: TODAY,
+      }),
+    ];
+    expect(ids(agendaForDay(tasks, TODAY, TODAY))).toEqual([
+      "task last week",
+      "note today",
+      "note both",
+    ]);
+    // Only today's date put it here: the earlier one is not shown as overdue.
+    expect(
+      agendaForDay(tasks, TODAY, TODAY)
+        .flatMap((g) => g.entries)
+        .find((e) => e.task.content === "note both")?.dates,
+    ).toEqual([{ kind: "deadline", day: TODAY, time: null, overdue: false }]);
+    expect(ids(agendaForDay(tasks, 20260910, TODAY))).toEqual(["note due on the 10th"]);
+    expect(ids(agendaForDay(tasks, 20260906, TODAY))).toEqual([
+      "note scheduled last week",
+      "task last week",
+    ]);
+  });
+});
+
+describe("agendaSection — overdue entries past OVERDUE_SHOWN", () => {
+  const overdue = (n: number): AgendaTask[] =>
+    Array.from({ length: n }, (_, i) =>
+      task({
+        content: `late ${i + 1}`,
+        page: i % 2 === 0 ? "Even" : "Odd",
+        // Oldest first: late 1 is the most overdue.
+        scheduledDay: 20260801 + i,
+      }),
+    );
+
+  it("keeps the first ten overdue in list order and counts the rest", () => {
+    expect(OVERDUE_SHOWN).toBe(10);
+    const tasks = [...overdue(13), task({ content: "due today", page: "Odd", deadlineDay: TODAY })];
+    const all = agendaSection(tasks, TODAY, TODAY);
+    expect(all).toMatchObject({ overdue: 13, hidden: 0 });
+    expect(ids(all.groups)).toHaveLength(14);
+
+    const few = agendaSection(tasks, TODAY, TODAY, { overdueLimit: OVERDUE_SHOWN });
+    expect(few).toMatchObject({ overdue: 13, hidden: 3 });
+    const shown = few.groups.flatMap((g) => g.entries.map((e) => e.task.content));
+    expect(shown.sort()).toEqual(
+      [...Array.from({ length: 10 }, (_, i) => `late ${i + 1}`), "due today"].sort(),
+    );
+    // What is shown is what the full list shows, in the same order within each page.
+    for (const g of few.groups) {
+      const full = all.groups.find((a) => a.pageId === g.pageId);
+      const order = full?.entries.map((e) => e.task.content) ?? [];
+      const mine = g.entries.map((e) => e.task.content);
+      expect(mine).toEqual(order.filter((c) => mine.includes(c)));
+    }
+  });
+
+  it("never holds back a task also due today, or anything on another day", () => {
+    const tasks = [
+      ...overdue(12),
+      task({ content: "late but due today", scheduledDay: 20260701, deadlineDay: TODAY }),
+    ];
+    const few = agendaSection(tasks, TODAY, TODAY, { overdueLimit: OVERDUE_SHOWN });
+    expect(few).toMatchObject({ overdue: 12, hidden: 2 });
+    expect(ids(few.groups)).toContain("late but due today");
+    expect(agendaSection(tasks, 20260805, TODAY, { overdueLimit: 0 })).toMatchObject({
+      overdue: 0,
+      hidden: 0,
+    });
+  });
+
+  it("ten or fewer overdue: nothing held back", () => {
+    expect(agendaSection(overdue(10), TODAY, TODAY, { overdueLimit: OVERDUE_SHOWN })).toMatchObject(
+      { overdue: 10, hidden: 0 },
+    );
   });
 });

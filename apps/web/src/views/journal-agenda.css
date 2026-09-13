@@ -73,6 +73,43 @@
   cursor: inherit;
 }
 
+/* A dated block that is not a task: the outliner's dot (`.vr-bullet-dot`), in a box the size of a
+   marker glyph so its text starts where a task's does. */
+.journal-agenda-bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15em;
+  min-height: calc(1em * var(--leading-normal));
+  margin-right: var(--space-2xs);
+}
+
+.journal-agenda-bullet::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+/* "Show all N overdue": a quiet text button under the list, like the references' "Show more". */
+.journal-agenda-more {
+  margin-top: var(--space-xs);
+  padding: 2px var(--space-xs);
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.journal-agenda-more:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
 .journal-agenda-content {
   min-width: 0;
   overflow-wrap: anywhere;

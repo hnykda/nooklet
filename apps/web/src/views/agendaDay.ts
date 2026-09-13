@@ -1,11 +1,15 @@
 /**
- * Which open dated tasks a journal day's "Scheduled and deadline" section lists (PLAN.md §8), as
- * pure array code over `../data/agenda.ts`'s rows — no DOM, no SQL, so every rule below is a unit
- * test (`agendaDay.test.ts`).
+ * Which dated blocks a journal day's "Scheduled and deadline" section lists (PLAN.md §8), as pure
+ * array code over `../data/agenda.ts`'s rows — no DOM, no SQL, so every rule below is a unit test
+ * (`agendaDay.test.ts`).
  *
- * - On TODAY: tasks scheduled for or due today, plus overdue ones — any open task whose scheduled
- *   or deadline day has already passed.
- * - On any other day, past or future: tasks scheduled for or due on that day.
+ * - On TODAY: open tasks and non-task blocks scheduled for or due today, plus overdue TASKS — any
+ *   open task whose scheduled or deadline day has already passed. Past the first
+ *   `OVERDUE_SHOWN` of those, the rest wait behind "Show all N overdue" (`agendaSection`).
+ * - On any other day, past or future: open tasks and non-task blocks scheduled for or due on that
+ *   day.
+ * - A block that is not a task is listed on its exact day only, never as overdue: it has nothing
+ *   to complete, so it would stay under today forever.
  *
  * Both dates count on their own. A task scheduled for the 1st with a deadline on the 20th appears
  * on both days; comparing `due_day` (= `coalesce(scheduled, deadline)`) instead, the way the
@@ -46,7 +50,9 @@ function relevantDates(task: AgendaTask, day: number, today: number): AgendaDate
   const consider = (kind: AgendaDateKind, d: number | null, time: string | null): void => {
     if (d === null) return;
     if (d === day) out.push({ kind, day: d, time, overdue: false });
-    else if (day === today && d < today) out.push({ kind, day: d, time, overdue: true });
+    else if (task.marker !== null && day === today && d < today) {
+      out.push({ kind, day: d, time, overdue: true });
+    }
   };
   consider("scheduled", task.scheduledDay, task.scheduledTime);
   consider("deadline", task.deadlineDay, task.deadlineTime);
@@ -75,16 +81,33 @@ function compareEntries(a: AgendaEntry, b: AgendaEntry): number {
   return a.task.id < b.task.id ? -1 : a.task.id > b.task.id ? 1 : 0;
 }
 
+/** How many overdue entries today's section lists before the rest wait behind "Show all N
+ * overdue" (owner's call, 2026-09-13: a neglected graph put hundreds under Today). */
+export const OVERDUE_SHOWN = 10;
+
+export interface AgendaSection {
+  groups: AgendaGroup[];
+  /** Entries listed only for being overdue — every date that puts them here is before today. */
+  overdue: number;
+  /** How many of those `groups` leaves out: past `overdueLimit`, 0 without one. */
+  hidden: number;
+}
+
 /**
  * The section for `day`, grouped by page. Entries are ordered oldest date first (so the most
  * overdue task leads today's list), then by time; a page's group sits where its first entry
  * sorted. Empty when there is nothing to show — the section is hidden then.
+ *
+ * `overdueLimit` keeps only the first that many overdue-only entries in that order — the prefix
+ * of the full list, so showing all of them adds rows and never reorders the ones on screen. An
+ * entry also due today is not overdue-only and is always listed.
  */
-export function agendaForDay(
+export function agendaSection(
   tasks: readonly AgendaTask[],
   day: number,
   today: number,
-): AgendaGroup[] {
+  opts: { overdueLimit?: number } = {},
+): AgendaSection {
   const entries: AgendaEntry[] = [];
   for (const task of tasks) {
     if (task.pageJournalDay === day) continue;
@@ -93,9 +116,18 @@ export function agendaForDay(
   }
   entries.sort(compareEntries);
 
+  let overdue = 0;
+  let hidden = 0;
   const groups: AgendaGroup[] = [];
   const byPage = new Map<string, AgendaGroup>();
   for (const e of entries) {
+    if (e.dates.every((d) => d.overdue)) {
+      overdue++;
+      if (opts.overdueLimit !== undefined && overdue > opts.overdueLimit) {
+        hidden++;
+        continue;
+      }
+    }
     let g = byPage.get(e.task.pageId);
     if (!g) {
       g = {
@@ -109,5 +141,14 @@ export function agendaForDay(
     }
     g.entries.push(e);
   }
-  return groups;
+  return { groups, overdue, hidden };
+}
+
+/** `agendaSection`'s groups, every overdue entry included. */
+export function agendaForDay(
+  tasks: readonly AgendaTask[],
+  day: number,
+  today: number,
+): AgendaGroup[] {
+  return agendaSection(tasks, day, today).groups;
 }

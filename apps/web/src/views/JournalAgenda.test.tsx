@@ -228,4 +228,65 @@ describe("JournalAgenda", () => {
     setRows([]);
     expect(container.innerHTML).toBe("");
   });
+
+  it("a dated block that is not a task gets a bullet, not a checkbox, on its own day only", () => {
+    const note = task({ id: "n", marker: null, content: "dentist", scheduledDay: 20260910 });
+    const onItsDay = render(() => (
+      <JournalAgenda day={20260910} today={TODAY} tasks={resource([note])} onNavigate={() => {}} />
+    ));
+    const row = onItsDay.container.querySelector(".journal-agenda-row");
+    expect(row?.querySelector(".journal-agenda-bullet")).toBeTruthy();
+    expect(row?.querySelector(".vr-marker")).toBeNull();
+    expect(row?.querySelector("[aria-label^='Task']")).toBeNull();
+    expect(row?.querySelector(".journal-agenda-content")?.textContent).toBe("dentist");
+    onItsDay.unmount();
+
+    const onToday = render(() => (
+      <JournalAgenda day={TODAY} today={TODAY} tasks={resource([note])} onNavigate={() => {}} />
+    ));
+    expect(onToday.container.innerHTML).toBe("");
+  });
+
+  it("holds overdue rows past ten behind 'Show all N overdue', and folds them back", () => {
+    const tasks = [
+      ...Array.from({ length: 12 }, (_, i) =>
+        task({
+          id: `late${i}`,
+          order: `a${String(i).padStart(2, "0")}`,
+          content: `late ${i}`,
+          scheduledDay: 20260801 + i,
+        }),
+      ),
+      task({ id: "today", order: "b", content: "due today", deadlineDay: TODAY }),
+    ];
+    const { container } = render(() => (
+      <JournalAgenda day={TODAY} today={TODAY} tasks={resource(tasks)} onNavigate={() => {}} />
+    ));
+    const contents = () =>
+      [...container.querySelectorAll(".journal-agenda-content")].map((c) => c.textContent);
+    const toggle = () => container.querySelector<HTMLButtonElement>(".journal-agenda-more");
+
+    expect(contents()).toEqual([...Array.from({ length: 10 }, (_, i) => `late ${i}`), "due today"]);
+    expect(toggle()?.textContent).toBe("Show all 12 overdue");
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle() as HTMLButtonElement);
+    expect(contents()).toEqual([...Array.from({ length: 12 }, (_, i) => `late ${i}`), "due today"]);
+    expect(toggle()?.textContent).toBe("Show fewer overdue");
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(toggle() as HTMLButtonElement);
+    expect(contents()).toHaveLength(11);
+  });
+
+  it("shows no toggle with ten overdue or fewer", () => {
+    const tasks = Array.from({ length: 10 }, (_, i) =>
+      task({ id: `l${i}`, order: `a${i}`, content: `late ${i}`, deadlineDay: 20260901 }),
+    );
+    const { container } = render(() => (
+      <JournalAgenda day={TODAY} today={TODAY} tasks={resource(tasks)} onNavigate={() => {}} />
+    ));
+    expect(container.querySelectorAll(".journal-agenda-item")).toHaveLength(10);
+    expect(container.querySelector(".journal-agenda-more")).toBeNull();
+  });
 });
