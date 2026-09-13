@@ -296,3 +296,25 @@ before it navigates, and the editor keeps focus through that gap. The palette fo
 was B-293's; this one is older and not the branch's. A general fix would end editing when a
 navigation is requested rather than when the page unmounts — broader than a focus bug, so left for a
 decision.
+
+---
+
+### B-296 · Escape out of the palette gives the editor focus back, but the caret often jumps to the start of the block
+**Status:** open · **Severity:** medium (what is typed next lands in the wrong place) · **Found:**
+2026-09-13, adversarial verification of m9/focus (on the owner's graph copy first) · **Test:** to come
+
+B-161's focus return on this branch calls a plain `element.focus()` on CodeMirror's `.cm-content`.
+The palette's input took the document selection while it was open, so the browser puts the DOM
+caret at the start of the editable, and CodeMirror's DOM observer reads that `selectionchange` as
+the new selection before its own focus handling (a 10 ms timer, `updateForFocusChange`) would have
+written its state selection back. `EditorView.focus()` avoids exactly this (`observer.ignore` +
+`docView.updateSelection()`), but `commands/` cannot reach the view. `commands/focus-return.ts`'s
+comment ("its own focus handler keeps the caret where it was") was an assumption, and a racy one.
+
+Evidence. Real graph copy (Megapage, a plain Czech block): Home, ArrowRight ×4, Cmd+K, Escape,
+type `Ž` → stored at offset 0; the same without the palette → offset 4. On e2e data
+(`zz-verify-focus.spec.ts` "P12", `--repeat-each=3`, a 6-char and a 100-char Czech block): the
+caret read straight after Escape was 0 in 5 of 6 runs and `Ž` was stored at 0 in 3 of 6 (4
+expected). The `Move to page…` picker (`pickPage`) gives focus back the same way. The existing
+tests type at the end of the block after `End`, where "start" and "end" only differ if the caret
+moved — none of them checks a caret in the middle.
