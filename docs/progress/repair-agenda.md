@@ -20,7 +20,7 @@ Branch `m11/repair-agenda` from `52e5d20`, worktree
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11/repair-agenda/`
 (`graph/graph.sqlite` = `.backup` of the owner's graph taken 17:28, now repaired;
 `graph-pristine.sqlite` = untouched copy of that backup; `data/` = NOOKLET_DATA).
-E2E port 6414; manual serves on 6415. Bugs go to `docs/bugs-inbox/repair-agenda.md` (new numbers
+E2E port 6414; manual serves on 7414/7415 (6415 until 17:59 — see Incident). Bugs go to `docs/bugs-inbox/repair-agenda.md` (new numbers
 B-480..B-489).
 
 ## Done (committed)
@@ -30,7 +30,17 @@ B-480..B-489).
   `server/repair-org-dates.ts`, `server/cli-args.ts#parseRepairFlags`, `server/cli.ts` case
   `repair`. Tests: core `outline-org-dates.test.ts` (+4), server `repair-org-dates.test.ts` (6),
   `cli-args.test.ts` (+2). Unit: core 412/412, server 684/684; typecheck clean.
-- (next commit) docs: `OPERATIONS.md` §10, wiki `Command line`, inbox B-143 (existing), this file.
+- `7693124` docs: `OPERATIONS.md` §10, wiki `Command line`, inbox B-143 (existing), this file.
+  Part 2: `29e6bc3` code, `15e1224` e2e.
+- Part 2 code: `web/data/agenda.ts` (SQL takes `marker IS NULL` too, via `due_day IS NOT NULL`),
+  `web/views/agendaDay.ts` (`agendaSection`, `OVERDUE_SHOWN = 10`, notes never overdue),
+  `web/views/JournalAgenda.tsx` (bullet row, "Show all N overdue" / "Show fewer overdue" toggle,
+  `aria-expanded`), `journal-agenda.css`, `web/db/schema-client.ts` + `worker-core.ts` (client-only
+  `block_dated` index on every open), probe `tools/probes/agenda-sql-cost.mjs`. Unit: web
+  1,146/1,146 (+agenda.test 1 changed, agendaDay +4, JournalAgenda +3, worker-core +1).
+- e2e `journal-agenda.spec.ts` +2 (non-task row; overdue toggle incl. live count), first test made
+  robust (opens the full list first). 10/10 with `journal-midnight.spec.ts`; the 2 new ones fail
+  against the base UI code (checked by restoring it).
 
 ## Part 1 report — real-graph copy (for the coordinator)
 
@@ -97,13 +107,67 @@ Dry run found exactly 20 blocks, 0 left alone, and wrote nothing (op count 20,44
 - Seed the CLI's HLC from the target fields' HLCs before minting (a fresh process's clock could be
   behind a device that ran ahead, turning an op into a noop).
 - Trashed blocks are not repaired (restoring one brings back its old text — no worse than now).
+- Agenda: "not a task" = `marker IS NULL`. DONE/CANCELED stay off the agenda (they are tasks,
+  finished). A note is listed on its exact day (scheduled or deadline), never overdue.
+- Collapse keeps the PREFIX of the full list (oldest overdue first, the established order), so
+  expanding only adds rows. An entry also due today is never held back. N counts overdue-only
+  entries. Button text is "Show all N overdue" (the word "overdue" added so N is not read as the
+  section's total) / "Show fewer overdue". Expanded state is per section instance, not remembered.
+  Alternative not built: show the 10 most RECENT overdue (likelier still relevant) — would need the
+  list order flipped; owner's call if wanted.
+- `block_dated` is a CLIENT-only index, not in core DDL / server migrations: the server never runs
+  the agenda read, and a server index would bump `SCHEMA_VERSION` 6→7 — an installed app on 6
+  refuses a database a newer CLI has opened ("newer than this build supports"), which is exactly
+  what running `nooklet repair` from this branch on the live graph would do. Spec rule 1 amended.
+
+## Part 2 measurements (2026-09-13, load average 70-120 on this shared machine)
+
+`tools/probes/agenda-sql-cost.mjs` (native node:sqlite, median of 50, no ANALYZE — the app never
+runs it, and with it the planner picked different plans):
+
+| copy | tasks-only read (base) | new read, no index | new read, `block_dated` |
+|---|---|---|---|
+| real (18,631 blocks; 1 dated note, 0 dated open tasks) | 0.012 ms, 0 rows | 2.0-2.3 ms (`SCAN b USING INDEX block_page`), 1 row | 0.006 ms, 1 row |
+| stress (686 dated open tasks / 605 overdue + 401 dated notes, made by SQL) | 1.2 ms, 686 rows | 5.2 ms, 1,087 rows | 1.4 ms, 1,087 rows |
+
+`tools/probes/journal-agenda-perf.mjs`, 5 warm runs, medians, base (`52e5d20` build) and branch
+servers side by side on two copies of each graph (ports 7415/7414), runs interleaved:
+
+| graph | build | load /journals (ms) | load more (ms) | long tasks over 8 edits (ms) | agenda rows on screen |
+|---|---|---|---|---|---|
+| real | base | 125, 126 | 86, 88 | 0 | 0 |
+| real | branch | 127, 124 | 90, 90 | 0 | 0 |
+| stress | base | 167, 177 | 95, 100 | 0 | 669 |
+| stress | branch | 159, 135 | 98, 85 | 0 | 177 (today: 10 overdue + notes) |
+
+Reading: no measurable cost on the real graph; on the stress graph the branch is faster because
+Today renders 10 overdue rows instead of 605. One 2.1 s load outlier in one branch run (both builds
+had such outliers in impl-journal's runs too). The editing probe runs the queries in the worker,
+so it cannot see their cost — that is what the SQL probe is for.
+
+Real browser replica: `tools/probes/replica-index-opfs.mjs` copies the OPFS database out of a
+persistent Chromium profile and lists `block`'s indexes: a replica created by the base build and
+then opened once with the branch build has `block_dated` (upgrade path), as does a fresh one; plan
+on that copy: `SEARCH b USING INDEX block_dated (due_day>?)`. Screenshots on the stress copy
+(`…/stress-today.png`, `…/stress-toggle.png` in scratch): notes with a grey dot aligned with the
+checkbox glyphs, "Show all 605 overdue" under Today's list, 615 rows after clicking.
+
+Incident to report: at ~18:01 my perf server failed to bind 6415 (EADDRINUSE — another agent's
+server there by then; I had served my copies on 6415 from ~17:30 to ~17:59, which may have made
+that agent's e2e start refuse "already serving"). My probe then drove a browser against THAT server
+for up to two attempts; the second met "This device holds a different graph" and never typed. The
+first attempt's output was lost (it ended in an error), so it may have bootstrapped their graph and
+typed 8×"x" then 8×Backspace into a block on an earlier journal day. Moved to ports 7414/7415 and
+now wait for my own "nooklet serving <my dir>" log line before probing.
 
 ## Next steps
 
 1. (done) Part 1 code + unit tests.
 2. (done) Dry-run + apply on the graph copy; `verify`; chips; undo.
-3. Part 2 baseline perf with `tools/probes/journal-agenda-perf.mjs` on a copy (base build).
-4. Part 2 code + unit + e2e; perf after.
+3. (done) Part 2 perf before/after.
+4. (done) Part 2 code + unit + e2e.
+5. Full Chromium e2e suite on port 6414 (non-task dated blocks now appear in other days' agendas
+   — check no other spec trips on that), full unit suites, typecheck, then final report.
 
 ## How to resume
 
