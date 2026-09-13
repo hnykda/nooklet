@@ -57,8 +57,15 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
 
 ## 2. In flight
 
-- nothing (between steps).
+- Final verification (session 2, after a cut-off). Done so far: typecheck green; biome clean on all
+  21 changed source files; `pnpm -r test` core 399, plugin-api 17, server 670, web 1126 — all passed.
+- The first session's full e2e run (`e2e-full.txt` in scratch) was cut off at 246/527 with one
+  failure, `page-title-fit.spec.ts` "Enter in the title renames…" on "Loading…" with the indicator
+  "synced". Its trace is a whole-machine stall, not the app: the 10 s `toBeVisible` ran 23.9 s of
+  the runner's own monotonic clock and the screencast has no frame between 211.6 s and 235.3 s.
+- Now: the full e2e suite in four alphabetical chunks (the tool's 10 min limit), port 6402.
 
 ## 3. Next steps
 
-1. Final: e2e of touched specs + neighbours once more, `pnpm -r test` once, return summary.
+1. Full e2e in chunks; rerun any failure once (load first), investigate only a repeat.
+2. Return summary.
