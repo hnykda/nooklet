@@ -26,6 +26,11 @@ Updated after every meaningful step. If you are reading this after a restart, co
 - Overdue = an open task whose scheduled or deadline day is before today.
 - A task living on the day's own journal page is not repeated in that day's section — it is
   already on screen directly above.
+- The section also shows on a date route whose journal page does not exist yet
+  (`/page/2026-09-22` → "doesn't exist yet" + what is scheduled then): that is where a date link
+  to an upcoming day lands, and the stream never shows a future day without a page.
+- Read-only rows show the marker glyph, priority, rendered content and a date chip ("Scheduled",
+  "Deadline 17:00"; an overdue chip names its date in the reader's journal title format).
 - One query for the whole stream (not one per day): the stream renders 14+ days.
 
 ## Done (commit hashes)
@@ -51,6 +56,15 @@ Updated after every meaningful step. If you are reading this after a restart, co
   macOS's case-insensitive disk `./JournalAgenda.js` resolved to the `.ts` file and the component
   import came back `undefined`. Renamed to `agendaDay.ts` before committing.
 
+- `test(e2e): journal agenda spec; the section on a not-yet-written day; log B-172, B-173` —
+  `e2e/tests/journal-agenda.spec.ts` (6 tests: today + overdue grouped by page, row/heading
+  navigation, another day with no overdue — on its page and in the stream, a day without a page,
+  hidden once emptied, live removal after an API write), `PageView.tsx` shows the section on the
+  "doesn't exist yet" view of a date route too. `tools/probes/block-update-property-roundtrip.ts`
+  (B-172). e2e on port 6403: agenda spec 6/6 alone; with journals, views, tasks, query,
+  a-fresh-journal, templates: 68 passed, 1 failed — `views.spec.ts:461` palette focus, which also
+  fails on a clean `git archive da85cfb` checkout (B-173), so not this branch.
+
 ## In flight
 
 - Nothing mid-edit.
@@ -60,7 +74,7 @@ Updated after every meaningful step. If you are reading this after a restart, co
 1. (done) day clock + B-94.
 2. (done) agenda data + rules + component.
 3. (done) hookups + B-170.
-4. e2e `e2e/tests/journal-agenda.spec.ts`; run with journals/tasks/query specs.
+4. (done) e2e.
 5. Real-graph perf check; record numbers here.
 
 ## How to resume

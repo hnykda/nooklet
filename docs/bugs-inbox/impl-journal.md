@@ -62,3 +62,34 @@ deadline_day)`. A task scheduled 2026-09-01 with a deadline of 2026-09-20 is inv
 2026-09-15..2026-09-25 window even though its deadline falls inside it. Not fixed on this branch
 (the Tasks view is outside the task); the journal agenda does not reuse `filterTasks` for this
 reason and matches both columns.
+
+---
+
+### B-172 · `block.update` with old_str/new_str rejects any block that has a property line or a second line
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, impl-journal (an e2e spec flipping
+`TODO` to `DONE` on a task with `scheduled::` through the API) · **Test:** none yet; reproduced by
+`tools/probes/block-update-property-roundtrip.ts`
+
+`POST /api/v1/block.update {id, old_str: "TODO", new_str: "DONE"}` on the block
+`- TODO buy milk` / `  scheduled:: 2026-09-13` answers 400 "content must describe exactly one
+block". The same happens for a block whose content has two lines. The op's own description tells
+agents to use old_str/new_str "for a small edit like flipping a marker", so an agent cannot finish
+a dated task that way. Cause (read, and confirmed by the probe): `renderSingleBlockText`
+(`packages/server/src/ops/outline-bridge.ts`) strips the two-space indent from continuation and
+property lines, and `parseSingleBlockGrammar` prepends `- ` only to the first line, so the edited
+text parses as a block followed by stray top-level lines. Probably the same for `content` given
+with unindented property lines, which is how the spec describes the grammar. Workaround used in
+`e2e/tests/journal-agenda.spec.ts`: `properties: { marker: "DONE" }`. Not fixed here (server op,
+outside this branch's task).
+
+---
+
+### B-173 · B-72's "palette closes and hands focus back to the editor" e2e fails on da85cfb
+**Status:** needs-repro · **Severity:** low · **Found:** 2026-09-13, impl-journal (running
+`views.spec.ts` alongside the journal specs) · **Test:** `e2e/tests/views.spec.ts` "opening the
+palette while editing and closing it hands focus back to the editor"
+
+Fails 2 of 2 on this branch and 1 of 1 on a clean `git archive da85cfb` checkout (port 6403,
+load average ~17): after Escape closes the palette, `.cm-content` is "inactive" rather than
+focused for the whole 10 s. So it predates this branch. Not investigated: whether it is a
+regression of B-72 since 2026-09-12 or something about headless focus on a loaded machine.
