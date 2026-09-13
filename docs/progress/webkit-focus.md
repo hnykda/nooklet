@@ -48,4 +48,5 @@ so no merge surface with m11/remote-rewrite.
 ## 3. Next steps
 
 1. Owner: record a focus log in the desktop app (Diagnostics → Focus log) covering one loss.
-2. B-501: check Alt+Up/Down in the desktop app; diagnose if it reproduces there.
+2. B-501: diagnosed and fixed by the verification (with B-502, `3973aa1`; see
+   `docs/progress/webkit-focus-verify.md`) — still worth a look in the desktop app.

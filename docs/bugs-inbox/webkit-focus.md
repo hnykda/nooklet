@@ -79,8 +79,10 @@ the edited row right before `LOST` would point at this family rather than at the
 **Diagnosed and fixed 2026-09-13 (verification):** the same DOM-move mechanism as B-502 below,
 same fix. Test `e2e/tests/edited-row-move-caret.spec.ts` "Alt+Up moves the block being edited
 without moving the caret (B-501)" failed in WebKit (caret 0) before, passes after; Chromium both.
+`focus.spec.ts` "Alt+Up/Down moves the block and keeps the editor in it (R22)" also passes in WebKit
+now (it failed there before).
 
-**Status:** needs-repro (in the desktop app) · **Severity:** low · **Found:** 2026-09-13,
+**Status:** fixed (in Playwright's WebKit; not checked in the desktop app) · **Severity:** low · **Found:** 2026-09-13,
 m11/webkit-focus, running `focus.spec.ts` in Playwright's WebKit · **Test:** `e2e/tests/focus.spec.ts`
 "Alt+Up/Down moves the block and keeps the editor in it (R22)" fails in WebKit (it runs only in
 Chromium in the suite)
