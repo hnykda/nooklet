@@ -35,6 +35,7 @@ import {
   onCleanup,
   type Resource,
 } from "solid-js";
+import { noteFocus } from "../app/focus-log.js";
 import {
   getSyncStatus,
   onChange,
@@ -122,12 +123,20 @@ function ensureWired(): void {
   if (wired) return;
   wired = true;
   onChange((e) => {
+    // The "refresh" B-42 is reported around: every re-read of a page starts here.
+    noteFocus(
+      "replica change",
+      `tables=${e.tables.join(",")} pages(${e.pageIds.length})=${e.pageIds.slice(0, 5).join(",")}`,
+    );
     for (const table of e.tables) bumpTable(table);
     for (const pageId of e.pageIds) bumpPage(pageId);
     // A block's text is cached wherever it is referenced; drop it so `((id))` re-renders rather
     // than showing what the block used to say.
     if (e.tables.includes("block")) invalidateBlockRefs();
   });
+  onSyncStatus((st) =>
+    noteFocus("sync", `${st.state} pending=${st.pendingCount}${st.lastError ? " error" : ""}`),
+  );
 }
 
 // ---------------------------------------------------------------------------------------------

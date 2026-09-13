@@ -13,6 +13,13 @@
  */
 
 import { createResource, createSignal, type JSX, Show } from "solid-js";
+import {
+  clearFocusLog,
+  focusLogCount,
+  focusLogEnabled,
+  focusLogText,
+  setFocusLogEnabled,
+} from "../app/focus-log.js";
 import { callOp, describeError } from "../data/api-client.js";
 import { apiBaseUrl, bootstrapConfig } from "../data/bootstrap.js";
 import { useSyncStatus } from "../data/store.js";
@@ -150,8 +157,92 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
             Refresh
           </button>
         </section>
+
+        <FocusLogSection />
       </div>
     </div>
+  );
+}
+
+/**
+ * The focus log (`../app/focus-log.ts`): switch it on here, go and lose focus, come back and copy
+ * the log. Here and not behind a console command because the desktop app ships without a web
+ * inspector, and the desktop app is where the focus bug it exists for happens (B-42).
+ */
+function FocusLogSection(): JSX.Element {
+  // Read when asked for, not live: the log grows on every focus event, including the ones this
+  // panel causes, and re-rendering a few megabytes of text on each would be its own bug.
+  const [shown, setShown] = createSignal<string | null>(null);
+  const [copyState, setCopyState] = createSignal<string>("");
+  let textarea: HTMLTextAreaElement | undefined;
+
+  async function copy(): Promise<void> {
+    const text = focusLogText();
+    setShown(text);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyState("Copied");
+    } catch {
+      // No clipboard permission (or no API): the text is in the box below, selected, for Cmd+C.
+      textarea?.focus();
+      textarea?.select();
+      setCopyState("Select all in the box below and copy");
+    }
+  }
+
+  return (
+    <section class="diag-focus-log">
+      <h3>Focus log</h3>
+      <p class="diag-muted">
+        Records where keyboard focus goes — for editor focus that disappears while you type. No text
+        you type is recorded. It keeps recording across reloads until you switch it off.
+      </p>
+      <label class="diag-toggle">
+        <input
+          type="checkbox"
+          checked={focusLogEnabled()}
+          onChange={(e) => setFocusLogEnabled(e.currentTarget.checked)}
+        />
+        Record focus changes
+      </label>
+      <Row label="Entries">{focusLogCount()}</Row>
+      <div class="diag-actions">
+        <button type="button" class="diag-refresh" onClick={() => void copy()}>
+          Copy log
+        </button>
+        <button type="button" class="diag-refresh" onClick={() => setShown(focusLogText())}>
+          Show log
+        </button>
+        <button
+          type="button"
+          class="diag-refresh"
+          onClick={() => {
+            clearFocusLog();
+            setShown(null);
+            setCopyState("");
+          }}
+        >
+          Clear
+        </button>
+        <Show when={copyState()}>
+          <span class="diag-muted" role="status">
+            {copyState()}
+          </span>
+        </Show>
+      </div>
+      <Show when={shown()}>
+        {(text) => (
+          <textarea
+            ref={textarea}
+            class="diag-log"
+            readOnly
+            rows={12}
+            aria-label="Focus log"
+            value={text()}
+          />
+        )}
+      </Show>
+    </section>
   );
 }
 

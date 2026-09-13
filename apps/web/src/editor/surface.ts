@@ -20,6 +20,7 @@
 import { defaultKeymap } from "@codemirror/commands";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { noteFocus } from "../app/focus-log.js";
 import type { KeyDescriptor } from "./keydown.js";
 import { livePreview } from "./livePreview.js";
 import type { CaretSpec } from "./types.js";
@@ -153,6 +154,7 @@ export function createSurface(deps: SurfaceDeps): Surface {
 
   return {
     attach(host, id, content, caret = { at: "end" }) {
+      noteFocus("editor attach", `block ${id}; host connected=${host.isConnected}`);
       current = id;
       const focusedBefore = typeof document === "undefined" ? null : document.activeElement;
       view.setState(EditorState.create({ doc: content, extensions }));
@@ -196,6 +198,9 @@ export function createSurface(deps: SurfaceDeps): Surface {
     },
     detach() {
       if (!current) return null;
+      // With the stack: several paths end editing (a click away, a block gone from the page, a
+      // selection, a lock), and the log has to say which one did (B-42).
+      noteFocus("editor detach", `block ${current}`, { stack: true });
       const out = {
         id: current,
         content: view.state.doc.toString(),
