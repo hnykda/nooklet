@@ -45,9 +45,14 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   `views/HistoryView.test.tsx` failed first; e2e case added. e2e review-reactivity (6) + history
   (6) — 12/12. Web unit 699/699.
 
+- F7 / B-134 — `FindReplaceView` writes `live()`, `canReplace` requires input == live fields and
+  no preview loading; new `views/FindReplaceView.test.tsx` (3 cases) failed first; e2e case failed
+  against the unfixed view ("wombat" written) and passes. e2e review-reactivity (7) + replace (3)
+  — 10/10. Web unit 702/702.
+
 ## In flight
 
-- F7: Find & Replace writes the live fields.
+- F8: VirtualJournalDay restores the draft when materializing fails.
 
 ## Next steps, in order
 
@@ -57,7 +62,7 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
 4. (done) F4.
 5. (done) F5.
 6. (done) F6.
-7. F7 — `FindReplaceView` live input + disable while stale/loading; component test.
+7. (done) F7.
 8. F8 — `VirtualJournalDay` catch + restore draft; its test.
 9. e2e: trash, history, query, find-replace (if a spec exists), journal specs on port 6472.
 10. Review doc, commit last.

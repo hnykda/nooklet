@@ -78,21 +78,25 @@ export function FindReplaceView(): JSX.Element {
   const [outcome, setOutcome] = createSignal<Outcome | undefined>();
   const [writeError, setWriteError] = createSignal<string | undefined>();
 
+  /** The preview request the fields describe right now. */
+  const live = (): ReplaceInput | undefined => {
+    const q = query();
+    return q.trim() === ""
+      ? undefined
+      : {
+          query: q,
+          replacement: replacement(),
+          regex: regex(),
+          caseSensitive: caseSensitive(),
+          dryRun: true,
+          limit: PREVIEW_LIMIT,
+        };
+  };
+
   // The preview request, debounced: one call per pause in typing, not one per keystroke.
   const [input, setInput] = createSignal<ReplaceInput | undefined>();
   createEffect(() => {
-    const q = query();
-    const next: ReplaceInput | undefined =
-      q.trim() === ""
-        ? undefined
-        : {
-            query: q,
-            replacement: replacement(),
-            regex: regex(),
-            caseSensitive: caseSensitive(),
-            dryRun: true,
-            limit: PREVIEW_LIMIT,
-          };
+    const next = live();
     const t = setTimeout(() => setInput(next), 250);
     onCleanup(() => clearTimeout(t));
   });
@@ -103,8 +107,11 @@ export function FindReplaceView(): JSX.Element {
   const matcher = createMemo(() => previewMatcher(query(), regex(), caseSensitive()));
 
   async function replaceAll(): Promise<void> {
-    const i = input();
-    if (!i || busy()) return;
+    // The live fields, never the debounced `input()`: that lags the fields by 250 ms, and a
+    // replacement edited just before the click used to be written as it was before the edit
+    // (B-134). `canReplace` guarantees the preview on screen was computed from these same fields.
+    const i = live();
+    if (!i || !canReplace()) return;
     setBusy(true);
     setWriteError(undefined);
     try {
@@ -142,9 +149,25 @@ export function FindReplaceView(): JSX.Element {
     }
   }
 
+  /** Replace all acts only on a preview that is for exactly what the fields say: not while the
+   * debounce has yet to catch up with an edit, and not while the new preview is loading (the old
+   * one is still on screen then) — B-134. */
   const canReplace = (): boolean => {
     const p = safePreview();
-    return !busy() && input() !== undefined && p !== undefined && p.blocksMatched > 0;
+    const i = input();
+    const l = live();
+    return (
+      !busy() &&
+      !preview.loading &&
+      i !== undefined &&
+      l !== undefined &&
+      i.query === l.query &&
+      i.replacement === l.replacement &&
+      i.regex === l.regex &&
+      i.caseSensitive === l.caseSensitive &&
+      p !== undefined &&
+      p.blocksMatched > 0
+    );
   };
 
   return (

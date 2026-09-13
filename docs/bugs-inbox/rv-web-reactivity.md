@@ -134,11 +134,22 @@ no id rendered twice.
 ---
 
 ### B-134 · Replace all can write a replacement or flags other than what the fields show
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, web reactivity review (F7) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, web reactivity review (F7) ·
+**Tests:** `e2e/tests/review-reactivity.spec.ts` "Replace all pressed right after editing the
+replacement writes the edited text (B-134)"; `apps/web/src/views/FindReplaceView.test.tsx` "does
+not write the debounced replacement when the field changed a moment ago", "does not write a flag
+the preview on screen was not computed with", "is disabled while the preview for the current
+fields is still loading"
 
 Change the replacement text (or flip Regex / Match case) and press Replace all within 250 ms: the
 old replacement or flags are written. Likewise while the new preview is still loading, the button
 stays enabled on the old preview's matches. `replaceAll()` sends the debounced `input()` and
 `canReplace` ignores `preview.loading` — against the page's promise that the preview is exactly
 what the real run writes.
+
+**Fixed 2026-09-13.** `replaceAll` builds its request from the live fields, and `canReplace` —
+which `replaceAll` also checks — requires the debounced input to equal the live fields and the
+preview not to be loading, so the button is disabled from the edit until the matching preview is on
+screen. Reproduced first in a real browser: fill "wombat", wait for its preview, fill "numbat" and
+click at once — the unfixed page wrote "the wombat smiles"; with the fix Playwright's click waits
+for the button to re-enable and "the numbat smiles" is written.

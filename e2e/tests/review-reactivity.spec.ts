@@ -182,3 +182,23 @@ test("a failed Older changes says so instead of silently re-enabling the button 
   await expect(page.locator(".history-batch")).toHaveCount(26);
   await expect(page.locator(".history-error")).toHaveCount(0);
 });
+
+test("Replace all pressed right after editing the replacement writes the edited text (B-134)", async ({
+  page,
+}) => {
+  // A word of its own: other specs on the shared server leave their own words behind.
+  await seedPage(page, "Replace Race", "- the quokka smiles");
+  await page.goto("/replace");
+  await page.locator(".replace-query").fill("quokka");
+  await page.locator(".replace-replacement").fill("wombat");
+  await expect(page.locator(".replace-after").first()).toContainText("wombat");
+  await expect(page.locator(".replace-all")).toBeEnabled();
+
+  // Edit and press at once — well inside the preview's 250 ms debounce.
+  await page.locator(".replace-replacement").fill("numbat");
+  await page.locator(".replace-all").click();
+
+  await expect(page.locator(".replace-outcome")).toHaveText("Replaced 1 occurrence in 1 block.");
+  const blocks = await readBlocks(page, "Replace Race");
+  expect(blocks.map((b) => b.content)).toEqual(["the numbat smiles"]);
+});
