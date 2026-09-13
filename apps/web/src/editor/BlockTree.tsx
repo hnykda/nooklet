@@ -22,10 +22,11 @@
  * component already computes is exactly what research 04 §5 says "makes tier 2 a contained
  * change" later. See the package summary for the actual 1.7 MB-page measurement.
  *
- * Known data-seam gaps (not bugs in this file): no page-existence index (`.vr-ref-new` never
- * renders), and `{{embed}}` renders a placeholder rather than a live tree — called out where it
- * bites in `render/tokens.tsx`. `((block refs))` do render their target's text: `BlockRowView`
- * passes `resolveBlockRef` from `data/block-ref-cache.ts`.
+ * Known data-seam gap (not a bug in this file): no page-existence index, so `.vr-ref-new` never
+ * renders — called out where it bites in `render/tokens.tsx`. `((block refs))` do render their
+ * target's text: `BlockRowView` passes `resolveBlockRef` from `data/block-ref-cache.ts`. And
+ * `{{embed}}` renders its target read-only through `render/EmbedView.tsx` (B-210); editing
+ * happens where the block lives.
  */
 import type { EditorView } from "@codemirror/view";
 import {

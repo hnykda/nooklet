@@ -34,18 +34,18 @@ Review record: `docs/review/2026-09-13-rv-merge-web.md` (the last commit).
 - Decision (F4): printing wins over the find — rather than closing the bar on `beforeprint` —
   because the find comes back exactly as it was after the print dialog closes.
 
+  Commit `5e16080`.
+- F5 / B-364 — `BlockTree.tsx` header comment matches `render/tokens.tsx`. No test (comment).
+
 ## In flight
 
-- F5 / B-364.
+- Review doc `docs/review/2026-09-13-rv-merge-web.md`, then a broader e2e sweep.
 
 ## Next steps, in order
 
-1. (done) F1.
-2. (done) F2.
-3. (done) F3.
-4. (done) F4.
-5. F5: header comment.
-6. Review doc, last commit.
+1. (done) F1–F5.
+2. Broader e2e over specs the BlockTree changes could touch (editing, paste, embeds, journals…).
+3. Review doc, last commit.
 
 ## How to resume
 

@@ -106,9 +106,13 @@ the highlight backgrounds under print media were the find colours
 ---
 
 ### B-364 · `BlockTree.tsx`'s header says `{{embed}}` renders a placeholder
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F5) ·
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F5) ·
 **Test:** none (comment only)
 
 The header's "Known data-seam gaps" says `{{embed}}` renders a placeholder rather than a live tree,
 pointing to `render/tokens.tsx`. Embeds render their target read-only through `EmbedView` since
 B-210; the impl-render merge rewrote the sentence before impl-embeds landed.
+
+**Fixed 2026-09-13.** The header now names one gap, `.vr-ref-new` (still true: nothing in
+`apps/web/src` emits the class, only `editor.css` styles it), and says embeds render read-only
+through `render/EmbedView.tsx`, as `render/tokens.tsx` does. No test: a comment.
