@@ -102,25 +102,31 @@ for (const [move, moved] of [
     await clickRow(page, outliner, 1);
     await page.keyboard.press("End");
 
-    // The keyed <For> moves the edited row's DOM node back, which blurs it. B-68 refocused after
-    // the move itself, not after its undo: focus stayed on <body> and the X went nowhere. No wait
-    // between the undo and the typing, as a person would not wait either.
+    // The undo blurred the editor twice over. At once: the keyed <For> moves the edited row's DOM
+    // node back (B-68 refocused after the move, not after its undo). Then, 10-50 ms later: a
+    // refetch that read before the undo puts the old order back for a frame and the next one
+    // restores it, two more moves. So type straight after the undo, as a person would, and again
+    // once the refetches have landed.
     await page.keyboard.press(move);
     await expect.poll(() => rowTexts(page, outliner)).toEqual([...moved]);
     await page.keyboard.press(`${MOD}+z`);
     await page.keyboard.type("X");
-    await expect.poll(() => stored(page, name)).toEqual(["one", "twoX", "three"]);
-
-    // Redo moves the row again: the same blur, the same need to refocus.
-    await page.keyboard.press(move);
-    await expect.poll(() => stored(page, name)).toEqual(moved.map((t) => t.replace("two", "twoX")));
-    await page.keyboard.press(`${MOD}+z`);
-    await expect.poll(() => stored(page, name)).toEqual(["one", "twoX", "three"]);
-    await page.keyboard.press(`${MOD}+Shift+z`);
+    await page.waitForTimeout(400);
+    await expectEditorFocusedNow(page, `400 ms after undoing ${move}`);
     await page.keyboard.type("Y");
-    await expect
-      .poll(() => stored(page, name))
-      .toEqual(moved.map((t) => t.replace("two", "twoXY")));
-    await expectEditorFocusedNow(page, `after redoing ${move} and typing`);
+    await expect.poll(() => stored(page, name)).toEqual(["one", "twoXY", "three"]);
+
+    // Redo moves the row again: the same blurs, the same need to refocus.
+    await page.keyboard.press(move);
+    const movedWith = (text: string) => moved.map((t) => t.replace("two", text));
+    await expect.poll(() => stored(page, name)).toEqual(movedWith("twoXY"));
+    await page.keyboard.press(`${MOD}+z`);
+    await expect.poll(() => stored(page, name)).toEqual(["one", "twoXY", "three"]);
+    await page.keyboard.press(`${MOD}+Shift+z`);
+    await page.keyboard.type("Z");
+    await page.waitForTimeout(400);
+    await expectEditorFocusedNow(page, `400 ms after redoing ${move}`);
+    await page.keyboard.type("W");
+    await expect.poll(() => stored(page, name)).toEqual(movedWith("twoXYZW"));
   });
 }

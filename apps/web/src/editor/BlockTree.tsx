@@ -189,7 +189,13 @@ export function BlockTree(props: {
         if (local) flat.push({ ...local, content: live });
       }
     }
+    // A refetch reorders the edited row too. One that READ before an Alt+Up/Down (or its undo)
+    // and RESOLVED after it puts the old order back for a frame, and the next one restores the
+    // new order: two DOM moves, each blurring the editor, with nothing to refocus it. Traced
+    // 10-40 ms after an undo, where a keystroke typed in that window was lost (B-242).
+    const hadFocus = editingBlockId !== null && surface.view()?.hasFocus === true;
     setLocalBlocks(flat);
+    if (hadFocus && editingBlockId !== null) refocusAfterReorder(editingBlockId);
   });
 
   const editorTree = createMemo<EditorTree>(() => buildEditorTree(props.pageId, localBlocks()));

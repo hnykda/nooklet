@@ -70,6 +70,18 @@ the caret. The refocus is now `BlockTree.tsx#refocusAfterReorder`, called from a
 an indent kept focus because a depth change updates the row in place. Both e2e variants fail
 without the change (the X is never stored) and pass with it.
 
+**Second cause, fixed the same day.** The Alt+ArrowUp variant then failed 2 of 2 inside a loaded
+15-spec run. A focus/MutationObserver trace around the undo showed the rest of it: 10-50 ms after
+the undo, a page-tree refetch that had read before the undo resolved and put the old order back,
+and the next refetch restored the new one. Two more DOM moves, a `focusout` each, no `focusin`
+(5 of 6 traced runs). A keystroke in that window was lost; under load the window is where the
+next keystroke lands. The refetch effect now refocuses the edited block after it replaces the
+rows, when the editor had focus going in (`refocusAfterReorder` again, so a real click-away is
+never fought). The test now also waits 400 ms after the undo and after the redo, checks focus
+synchronously, and types again: without this change Alt+ArrowUp fails there ("activeElement is
+body"), with it the spec passed 6/6 in three separate runs. The flicker itself (rows jumping for
+a frame) is still there; only its focus loss is fixed.
+
 ---
 
 ### B-243 · On a fresh client, text typed into today's journal draft vanishes when sync says today exists
