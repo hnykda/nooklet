@@ -310,7 +310,10 @@ export function BlockTree(props: {
   const [editingId, setEditingId] = createSignal<BlockId | null>(null);
   const filtered = createMemo(() => {
     const q = props.filter;
-    if (!q) return null;
+    // Paper gets the page, not the find: the whole outline with collapsed children expanded
+    // (`rows` below), no faded ancestors. An active filter used to win over printing, and the
+    // print was just the matches (B-363). `afterprint` brings the filter back as it was.
+    if (!q || isPrinting()) return null;
     return filterVisible(editorTree(), q, { rootBlockId: effectiveRoot(), keep: editingId() });
   });
   const findMatches = createMemo(() => {

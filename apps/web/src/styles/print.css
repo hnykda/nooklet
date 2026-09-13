@@ -107,6 +107,7 @@
       .vr-live-badge-wrap,
       .page-view-breadcrumb,
       .vr-zoom-trail,
+      .page-find,
       .page-actions,
       .page-history-link,
       .page-icon-button-empty,
@@ -143,6 +144,14 @@
   }
 
   html:root .vr-row-selected {
+    background-color: transparent;
+  }
+
+  /* Find in page is a way of looking at the page, not the page (B-363): its bar is hidden above,
+     `BlockTree` drops the filter while printing, and its in-text marks — ranges, which survive the
+     print's re-render — must not tint the paper either. */
+  html:root ::highlight(nooklet-find),
+  html:root ::highlight(nooklet-find-current) {
     background-color: transparent;
   }
 

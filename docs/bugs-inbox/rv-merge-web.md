@@ -81,8 +81,9 @@ with both guards.
 ---
 
 ### B-363 · Printing with the find bar open prints the bar and only the matching blocks
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F4) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F4) ·
+**Test:** `e2e/tests/page-export.spec.ts` "printing with find in page open prints the whole page and
+no find bar"
 
 With find in page open and a query typed, Print page (menu, palette, or Cmd/Ctrl+P) puts the find
 bar on paper above an outline cut down to the matches and their (faded) ancestors; collapsed
@@ -90,7 +91,17 @@ children are not expanded either.
 
 `BlockTree`'s rows are `filtered()?.rows ?? flattenVisible(…, {expandAll: isPrinting()})`, so an
 active filter wins over printing (B-221 and find in page met in a merge), and `print.css` hides the
-page's other controls but not `.page-find`.
+page's other controls but not `.page-find`. The in-text find marks (CSS highlights) kept their
+tint under the print palette too.
+
+**Fixed 2026-09-13.** Printing wins: `BlockTree`'s `filtered` memo is off while `isPrinting()`, so
+the rows are the whole page with collapsed children expanded and no match/context classes;
+`afterprint` brings the filter back unchanged. `print.css` hides `.page-find` and makes both find
+highlights transparent. The e2e test reads the DOM from a `beforeprint` listener around a real
+`page.pdf()`. It failed first at each part: the bar visible under print media; with only the CSS
+fixed, the printed rows were `parent of apple`, `hidden child` with one context and one match row;
+the highlight backgrounds under print media were the find colours
+(`color(srgb 0.54 0.36 0 / 0.28)`).
 
 ---
 

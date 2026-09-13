@@ -18,7 +18,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
-import { api, pagePath, seedPage } from "../helpers/index.js";
+import { api, MOD, pagePath, seedPage } from "../helpers/index.js";
 
 const PORT = Number(process.env.NOOKLET_E2E_PORT ?? 6188);
 
@@ -256,6 +256,71 @@ test("a page title too long for one printed line prints whole", async ({ page })
   await page.emulateMedia({ media: "screen" });
   await expect(page.locator("input.page-title-input")).toBeVisible();
   await expect(page.getByRole("heading", { name, exact: true })).toBeHidden();
+});
+
+// B-363: find in page and printing were built on different branches and met in a merge. With the bar
+// open, the paper got the bar itself above an outline cut down to the matches, their ancestors
+// faded, collapsed children left folded. Find is a way of looking at the page, not the page.
+test("printing with find in page open prints the whole page and no find bar", async ({ page }) => {
+  const name = "Print With Find Open";
+  await seedPage(
+    page,
+    name,
+    "- apple one\n- banana\n- parent of apple\n  collapsed:: true\n  - hidden child\n- cherry",
+  );
+  await openPageView(page, name);
+  const outliner = page.locator(".vr-outliner").first();
+  await expect(outliner.locator(".vr-row")).toHaveCount(4);
+  await page.keyboard.press(`${MOD}+f`);
+  await expect(page.locator(".page-find-input")).toBeFocused();
+  // A match under a collapsed block: the filter shows it with its (faded) parent.
+  await page.keyboard.type("hidden");
+  await expect(outliner.locator(".vr-block-view")).toHaveText(["parent of apple", "hidden child"]);
+  await expect(outliner.locator(".vr-row-find-context")).toHaveCount(1);
+
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __printed?: { rows: string[]; context: number; matches: number };
+    };
+    window.addEventListener("beforeprint", () => {
+      const outline = document.querySelector(".vr-outliner");
+      w.__printed = {
+        rows: [...(outline?.querySelectorAll(".vr-block-view") ?? [])].map(
+          (r) => r.textContent ?? "",
+        ),
+        context: outline?.querySelectorAll(".vr-row-find-context").length ?? -1,
+        matches: outline?.querySelectorAll(".vr-row-find-match").length ?? -1,
+      };
+    });
+  });
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator(".page-find")).toBeHidden();
+  // The in-text marks are part of the find too. They are ranges, not elements, and stay valid
+  // through the print's re-render, so they are made invisible rather than removed.
+  const markInk = await outliner
+    .locator(".vr-block-view", { hasText: "hidden child" })
+    .evaluate((el) => [
+      getComputedStyle(el, "::highlight(nooklet-find)").backgroundColor,
+      getComputedStyle(el, "::highlight(nooklet-find-current)").backgroundColor,
+    ]);
+  expect(markInk).toEqual(["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)"]);
+  await page.pdf();
+  const printed = await page.evaluate(
+    () =>
+      (window as unknown as { __printed?: { rows: string[]; context: number; matches: number } })
+        .__printed,
+  );
+  expect(printed).toEqual({
+    rows: ["apple one", "banana", "parent of apple", "hidden child", "cherry"],
+    context: 0,
+    matches: 0,
+  });
+
+  // After printing, the find is still there as it was.
+  await page.emulateMedia({ media: "screen" });
+  await expect(page.locator(".page-find")).toBeVisible();
+  await expect(page.locator(".page-find-input")).toHaveValue("hidden");
+  await expect(outliner.locator(".vr-block-view")).toHaveText(["parent of apple", "hidden child"]);
 });
 
 test("Print page from the palette closes the palette and opens the print dialog", async ({
