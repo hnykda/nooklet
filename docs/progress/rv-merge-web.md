@@ -37,15 +37,22 @@ Review record: `docs/review/2026-09-13-rv-merge-web.md` (the last commit).
   Commit `5e16080`.
 - F5 / B-364 — `BlockTree.tsx` header comment matches `render/tokens.tsx`. No test (comment).
 
+  Commit `7634832`.
+- Broader e2e at `7634832`: templates, template-undo, template-collapsed, block-properties,
+  page-find, read-only, undo-redo, redo, focus, editing, page-export, journal-stream-editing,
+  embeds, selection, parity, editing-row-leaves, context-menu — 156/156. Web unit 1001/1001.
+- Found in passing: `EditorSelection`'s doc comment is stale since B-101 — logged unnumbered in the
+  inbox, not changed.
+- Review doc `docs/review/2026-09-13-rv-merge-web.md` (last commit).
+
 ## In flight
 
-- Review doc `docs/review/2026-09-13-rv-merge-web.md`, then a broader e2e sweep.
+Nothing.
 
 ## Next steps, in order
 
-1. (done) F1–F5.
-2. Broader e2e over specs the BlockTree changes could touch (editing, paste, embeds, journals…).
-3. Review doc, last commit.
+1. (coordinator) fold the inbox into `docs/BUGS.md`; correct B-154's Fixed paragraph (see B-360);
+   number the `EditorSelection` doc entry.
 
 ## How to resume
 

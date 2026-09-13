@@ -116,3 +116,18 @@ B-210; the impl-render merge rewrote the sentence before impl-embeds landed.
 **Fixed 2026-09-13.** The header now names one gap, `.vr-ref-new` (still true: nothing in
 `apps/web/src` emits the class, only `editor.css` styles it), and says embeds render read-only
 through `render/EmbedView.tsx`, as `render/tokens.tsx` does. No test: a comment.
+
+---
+
+### (needs a number) · `EditorSelection`'s documentation still says its text is the block's content
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, fixing B-361 · **Test:** none (comment
+only)
+
+`apps/web/src/commands/hosts/editor-host.ts` documents `EditorSelection.content` as "the focused
+block's whole logical content" with `start`/`end` "offsets into `content`", and `replaceRange` as
+writing into "the same logical content string". Since B-101 the real host
+(`app/editor-host.ts#createEditorHost`) returns the CM6 editing buffer — content plus property
+lines — and its offsets are buffer offsets; `insert-logic.ts` (B-153) and `templates.ts` (B-154)
+already split it with `splitBlockText`. A caller that believes the comment gets B-361. Not changed
+on this branch (a second bug found while fixing the first is logged, not fixed): the fix is to say
+"editing text" in those three places and point to `editor/editText.ts`.
