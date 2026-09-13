@@ -16,9 +16,14 @@ test("the shell says where the replica lives", async ({ page, browserName }) => 
   const indicator = page.locator(".app-sync-indicator");
   if (browserName === "webkit") {
     // No OPFS-in-workers here, so the honest label — not "synced", which would also be true.
-    await expect(indicator).toHaveText("not saved locally");
+    await expect(indicator).toHaveAttribute("aria-label", /^Not saved locally/);
+    await expect(indicator).toHaveAttribute("data-state", "memory");
   } else {
-    await expect(indicator).toHaveText(/synced|syncing/);
+    await expect(indicator).toHaveAttribute(
+      "aria-label",
+      /^(Synced|\d+ changes? waiting to sync)$/,
+    );
+    await expect(indicator).toHaveAttribute("data-state", "synced");
   }
 });
 

@@ -43,7 +43,7 @@ test("Backspace, Delete and Select All in the palette edit the query, not the se
   await expect(selected).toHaveCount(2);
   await page.keyboard.press("Escape");
   await expect(palette).toHaveCount(0);
-  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("aria-label", "Synced");
   expect((await readBlocks(page, name)).map((b) => b.content)).toEqual([
     "keys one",
     "keys two",

@@ -1,0 +1,70 @@
+/* The sync cloud (`./SyncIndicator.tsx`). Sized and coloured as an ordinary `.app-icon-button`;
+   everything here is the status dot tucked into the cloud's bottom-right corner.
+
+   Muted on purpose (B-540): every colour is a status token mixed toward the top bar's own ground,
+   so the dot reads as a glance-able hint rather than a signal light. The dot is always rendered and
+   only its colour changes — no state moves the layout. */
+
+.app-sync-indicator {
+  position: relative;
+  /* Pushes the indicator, plugin status and consent badge to the right end of the bar. */
+  margin-left: auto;
+  --sync-dot: transparent;
+  --sync-ring: transparent;
+  /* The gap cut around the dot so it separates from the cloud's outline; tracks the button's
+     own background so the cut stays invisible on hover. */
+  --sync-cutout: var(--surface-sunken);
+}
+
+.app-sync-indicator:hover {
+  --sync-cutout: var(--surface-2);
+}
+
+.app-sync-dot {
+  position: absolute;
+  right: 3px;
+  bottom: 5px;
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sync-dot);
+  border: 1.5px solid var(--sync-ring);
+  pointer-events: none;
+}
+
+.app-sync-indicator:not([data-state="starting"]) .app-sync-dot {
+  box-shadow: 0 0 0 1.5px var(--sync-cutout);
+}
+
+.app-sync-indicator[data-state="synced"] {
+  --sync-dot: color-mix(in srgb, var(--ok) 70%, var(--surface-sunken));
+  --sync-ring: var(--sync-dot);
+}
+
+.app-sync-indicator[data-state="pending"] {
+  --sync-dot: color-mix(in srgb, var(--dot-pending) 80%, var(--surface-sunken));
+  --sync-ring: var(--sync-dot);
+}
+
+.app-sync-indicator[data-state="offline"] {
+  --sync-dot: color-mix(in srgb, var(--danger) 45%, var(--muted));
+  --sync-ring: var(--sync-dot);
+}
+
+.app-sync-indicator[data-state="error"] {
+  --sync-dot: color-mix(in srgb, var(--danger) 85%, var(--surface-sunken));
+  --sync-ring: var(--sync-dot);
+}
+
+/* Storage facts rather than sync progress: a hollow ring, so they never read as "synced" or
+   "pending" at a glance. */
+.app-sync-indicator[data-state="memory"] {
+  --sync-dot: var(--sync-cutout);
+  --sync-ring: color-mix(in srgb, var(--dot-pending) 80%, var(--surface-sunken));
+}
+
+.app-sync-indicator[data-state="follower"] {
+  --sync-dot: var(--sync-cutout);
+  --sync-ring: color-mix(in srgb, var(--ok) 70%, var(--surface-sunken));
+}

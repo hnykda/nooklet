@@ -42,6 +42,10 @@ of) the headless 18-tool data API, which keeps working with no client open at al
    defaults **off**, one deliberate opt-in per window. A persistent status-bar badge shows
    off/observed/controlled and opens a recent-activity log. Anything a remote command touches gets
    a distinct flash attributed to the agent, in a different colour from the human's own accent.
+   Since 2026-09-13 (B-540) the badge is a muted icon button rather than a text pill, its sentence
+   moved to the tooltip and accessible name — except that *controlled* stays drawn in the agent
+   accent on a tinted ground, because a consent signal for "an agent can act here" must not blend
+   into the chrome.
 7. **A new `ui:control` capability flag**, orthogonal to `read`/`write`/`admin`. A broad `write`
    token for headless data cleanup should not thereby be able to drive someone's screen, and a
    `read` + `ui:control` token is a coherent "can watch and point at things, cannot edit" grant.

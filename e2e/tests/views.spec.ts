@@ -158,7 +158,9 @@ test("a second tab of the same graph renders the page", async ({ page }) => {
   await expect(other.locator(".vr-outliner .vr-row")).toHaveCount(1, { timeout: 20_000 });
   await expect(other.locator(".vr-outliner").first()).toContainText("hello from tab one");
   // It is a follower: the first tab keeps the local copy, this one works through the server.
-  await expect(other.locator(".app-sync-indicator")).toHaveText("synced via another tab");
+  const indicator = other.locator(".app-sync-indicator");
+  await expect(indicator).toHaveAttribute("aria-label", /^Synced via another tab/);
+  await expect(indicator).toHaveAttribute("data-state", "follower");
   await other.close();
 });
 

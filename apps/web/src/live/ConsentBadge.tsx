@@ -5,11 +5,20 @@
  * (`../shell/AppShell.tsx`), never tucked in a settings page. Click opens the two toggles and a
  * short recent-activity log.
  *
+ * An icon rather than a sentence since B-540 (the owner: agent access "could be probably hidden
+ * under some icon", in the same muted register as the sync cloud): the sentence is the tooltip and
+ * accessible name. *Observed* is a muted robot with a small dot; *controlled* is drawn in the
+ * agent accent on a tinted ground, because that is the state in which something other than the
+ * human can act on this window, and a consent signal that blends into the chrome is no signal
+ * (ADR 015 §6).
+ *
  * Reads `./consent.ts#liveConsent` and `./connection-state.ts#liveConnected` directly (module
  * singletons) rather than via props, so mounting this in `AppShell` needs no wiring beyond the
  * import — `../app/CommandLayer.tsx` is the only place that WRITES to either.
  */
 
+// One file per icon, not the `lucide-solid` barrel (B-140).
+import Bot from "lucide-solid/icons/bot";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { type ActivityEntry, activityLog } from "./activity-log.js";
 import { BADGE_LABEL, deriveBadgeState } from "./badge-state.js";
@@ -27,7 +36,10 @@ function relativeTime(at: number, now: number): string {
   return `${hours}h ago`;
 }
 
-function Switch(props: {
+/** Not named `Switch` (B-542): under vite-plugin-solid's dev transform the HMR wrapper hides this
+ * binding from babel-preset-solid's built-ins check, so `<Switch>` compiled to solid-js's own
+ * `<Switch>` and opening the popover threw under `vite dev` and vitest. Production was fine. */
+function ToggleSwitch(props: {
   checked: boolean;
   onChange: (v: boolean) => void;
   variant?: "view" | "control";
@@ -71,14 +83,16 @@ export function ConsentBadge() {
     <div class="vr-live-badge-wrap">
       <button
         type="button"
-        class="vr-live-badge"
+        class="app-icon-button vr-live-badge"
         data-state={state()}
         aria-expanded={open()}
+        aria-haspopup="dialog"
+        aria-label={BADGE_LABEL[state()]}
         title={BADGE_LABEL[state()]}
         onClick={() => setOpen((v) => !v)}
       >
+        <Bot size={17} />
         <span class="vr-live-dot" aria-hidden="true" />
-        {BADGE_LABEL[state()]}
       </button>
       <Show when={open()}>
         <div class="vr-live-popover" role="dialog" aria-label="Agent access to this window">
@@ -91,7 +105,7 @@ export function ConsentBadge() {
                 Read-only: what page, what's focused. No edits.
               </span>
             </div>
-            <Switch
+            <ToggleSwitch
               checked={consent().viewEnabled}
               variant="view"
               label="Let agents view this window"
@@ -104,7 +118,7 @@ export function ConsentBadge() {
               <span class="vr-live-toggle-title">Let agents control this window</span>
               <span class="vr-live-toggle-sub">Run commands here, exactly as you would.</span>
             </div>
-            <Switch
+            <ToggleSwitch
               checked={consent().controlEnabled}
               variant="control"
               label="Let agents control this window"

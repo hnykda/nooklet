@@ -10,7 +10,6 @@
    * as "my own UI flickering." */
   --agent-accent: #a855f7;
   --agent-accent-soft: color-mix(in srgb, var(--agent-accent) 22%, transparent);
-  --live-off: var(--muted);
   --live-observed: #2ea043;
   --live-controlled: var(--agent-accent);
 }
@@ -64,49 +63,58 @@
 
 /* ── Consent badge ──────────────────────────────────────────────────────────────────────────── */
 
+/* The button is an ordinary `.app-icon-button` (`../styles/shell.css`) so it matches the sync cloud
+   beside it in size, colour and hover; this only adds the state. B-540 turned it from a pill with a
+   sentence into an icon — the sentence is its tooltip and accessible name. */
+
 .vr-live-badge-wrap {
   position: relative;
-  margin-left: 8px;
+  display: flex;
 }
 
 .vr-live-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--hairline);
-  background: transparent;
-  color: var(--fg);
-  border-radius: var(--radius-pill);
-  padding: var(--space-xs) var(--space-lg) var(--space-xs) var(--space-md);
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease);
+  position: relative;
+}
+
+/* The same corner dot as the sync cloud, cut out of the icon by a ring of the bar's own ground. */
+.vr-live-dot {
+  position: absolute;
+  right: 3px;
+  bottom: 4px;
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live-dot-color, transparent);
+  box-shadow: 0 0 0 1.5px var(--live-dot-cutout, var(--surface-sunken));
+  pointer-events: none;
 }
 
 .vr-live-badge:hover {
-  background: var(--surface-2);
+  --live-dot-cutout: var(--surface-2);
 }
 
-.vr-live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--live-dot-color, var(--live-off));
-  flex: 0 0 auto;
+/* Off: no dot, and no cut-out ring either. */
+.vr-live-badge[data-state="off"] .vr-live-dot {
+  box-shadow: none;
 }
 
-.vr-live-badge[data-state="off"] {
-  --live-dot-color: var(--live-off);
-}
+/* Observed (the default once connected): muted, like everything else in the bar. */
 .vr-live-badge[data-state="observed"] {
-  --live-dot-color: var(--live-observed);
+  --live-dot-color: color-mix(in srgb, var(--live-observed) 70%, var(--surface-sunken));
 }
-.vr-live-badge[data-state="controlled"] {
+
+/* Controlled stays unmistakable on purpose (ADR 015 §6): an agent can act on this window, which is
+   the one thing in the bar that must not blend in. Selectors carry `:hover` too so the generic
+   `.app-icon-button:hover` colour never wins. */
+.vr-live-badge[data-state="controlled"],
+.vr-live-badge[data-state="controlled"]:hover {
+  /* Opaque, not `--agent-accent-soft`: the dot's cut-out ring has to hide the icon stroke under it. */
+  --live-controlled-ground: color-mix(in srgb, var(--agent-accent) 18%, var(--surface-sunken));
   --live-dot-color: var(--live-controlled);
-}
-.vr-live-badge[data-state="controlled"] {
-  border-color: color-mix(in srgb, var(--agent-accent) 45%, var(--hairline));
+  --live-dot-cutout: var(--live-controlled-ground);
+  color: var(--live-controlled);
+  background: var(--live-controlled-ground);
 }
 
 .vr-live-popover {

@@ -56,14 +56,13 @@ test("search returns rather than spinning forever", async ({ page }) => {
 
 test("sync reaches a connected state instead of flapping offline", async ({ page }) => {
   await page.goto("/journals");
-  // Whatever the indicator renders, "offline" must not be the terminal state.
-  await expect
-    .poll(
-      async () =>
-        (await page.locator("body").innerText()).toLowerCase().includes("offline")
-          ? "offline"
-          : "ok",
-      { timeout: 20_000, message: "sync status should settle out of 'offline'" },
-    )
-    .toBe("ok");
+  // "offline" must not be the terminal state. Read from the indicator's accessible name and dot:
+  // since B-540 it is an icon, so the page's text would not say "offline" either way.
+  const indicator = page.locator(".app-sync-indicator");
+  await expect(indicator, "sync status should settle out of 'offline'").toHaveAttribute(
+    "aria-label",
+    "Synced",
+    { timeout: 20_000 },
+  );
+  await expect(indicator).toHaveAttribute("data-state", "synced");
 });
