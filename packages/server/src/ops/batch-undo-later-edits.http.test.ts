@@ -149,4 +149,58 @@ describe("batch.undo keep_later_edits", () => {
     expect(step.kept).toHaveLength(1);
     expect((await blocks("NoIgnore")).map((b) => b.content)).toEqual(["v2"]);
   });
+
+  it("a later rename or delete it keeps does not make the undo fight over the page's old name (B-366)", async () => {
+    const pageRow = (id: string) =>
+      s.serverCtx.driver.get<{ name: string; deleted_at: number | null }>(
+        "SELECT name, deleted_at FROM page WHERE id = ?",
+        [id],
+      );
+    const propCount = (id: string) =>
+      s.serverCtx.driver.get<{ n: number }>(
+        // A removed property keeps its row with a NULL value (the LWW register's clock).
+        "SELECT count(*) AS n FROM page_prop WHERE page_id = ? AND key = 'status' AND value IS NOT NULL",
+        [id],
+      )?.n;
+
+    // Renamed since, and a new page took the old name.
+    await op("page.create", { name: "Alpha", markdown: "- one" });
+    const alpha = s.serverCtx.driver.get<{ id: string }>("SELECT id FROM page WHERE key = 'alpha'")
+      ?.id as string;
+    const setProp = await op<{ batch_id: string }>("page.update", {
+      page: "Alpha",
+      properties: { status: "draft" },
+    });
+    await op("page.update", { page: "Alpha", new_name: "Beta", keep_alias: false });
+    await op("page.create", { name: "Alpha", markdown: "- new alpha" });
+
+    const dry = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: setProp.batch_id,
+      keep_later_edits: true,
+      dry_run: true,
+    });
+    expect(dry.status).toBe(200);
+    await op("batch.undo", { batch_id: setProp.batch_id, keep_later_edits: true });
+    expect(pageRow(alpha)).toEqual({ name: "Beta", deleted_at: null });
+    expect(propCount(alpha)).toBe(0);
+    // Without the flag the undo does rename it back, so the clash is real and still refused.
+    const lww = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: setProp.batch_id,
+    });
+    expect(lww.status).toBe(409);
+
+    // Deleted since, and the name reused: the page stays in the trash, so nothing collides.
+    await op("page.create", { name: "Gamma", markdown: "- one" });
+    const gamma = s.serverCtx.driver.get<{ id: string }>("SELECT id FROM page WHERE key = 'gamma'")
+      ?.id as string;
+    const gammaProp = await op<{ batch_id: string }>("page.update", {
+      page: "Gamma",
+      properties: { status: "draft" },
+    });
+    await op("page.delete", { page: "Gamma" });
+    await op("page.create", { name: "Gamma", markdown: "- new gamma" });
+    await op("batch.undo", { batch_id: gammaProp.batch_id, keep_later_edits: true });
+    expect(pageRow(gamma)?.deleted_at).not.toBeNull();
+    expect(propCount(gamma)).toBe(0);
+  });
 });

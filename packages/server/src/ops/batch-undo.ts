@@ -172,18 +172,26 @@ export const batchUndo = defineOp({
       }
 
       const ignored = new Set([input.batch_id, ...input.ignore_batches]);
+      const laterEditsCache = new Map<string, Set<UndoField>>();
       /** Fields of this entity another batch changed since, which a keep_later_edits undo must not
-       * write back. Empty (write everything, LWW) without the flag. */
-      const laterEdits = (row: ChangeRow): Set<UndoField> =>
-        input.keep_later_edits
-          ? fieldsChangedLater(
-              ctx.db,
-              row.entity_type as "page" | "block",
-              row.entity_id,
-              row.seq,
-              ignored,
-            )
-          : new Set();
+       * write back. Empty (write everything, LWW) without the flag. Asked by the name pre-check
+       * and by the op builder, so remembered per entity. */
+      const laterEdits = (row: ChangeRow): Set<UndoField> => {
+        let skip = laterEditsCache.get(row.entity_id);
+        if (skip === undefined) {
+          skip = input.keep_later_edits
+            ? fieldsChangedLater(
+                ctx.db,
+                row.entity_type as "page" | "block",
+                row.entity_id,
+                row.seq,
+                ignored,
+              )
+            : new Set();
+          laterEditsCache.set(row.entity_id, skip);
+        }
+        return skip;
+      };
       /** Of the fields left alone, the ones this batch itself changed: those are the undo the
        * caller asked for and did not get. A field the batch never touched but someone changed
        * later is skipped silently — writing it back was never part of reversing this batch. */
@@ -196,23 +204,46 @@ export const batchUndo = defineOp({
         );
         return [...skipped].filter((f) => own.has(f)).sort();
       };
-      // A page this undo brings back to life (or renames back) needs its old name free. Core
-      // rejects the page's op if a live page has taken it (B-90) but applies the rest of the
-      // batch, so undoing a page delete would un-delete the blocks onto a page that stays in the
-      // trash and still report "restored". Ask first, so the caller hears why; the savepoint in
+      /**
+       * What this undo does to a page that existed before the batch: the name and tombstone the
+       * page has AFTER the undo, and whether a `page.rename` is written at all. The name pre-check
+       * and the op builder below both read it, so they cannot disagree about which name the undo
+       * claims (B-366: the check used the before-image while keep_later_edits left a later rename
+       * or delete as it was, and refused undos that would not touch the name).
+       */
+      const pagePlan = (row: ChangeRow) => {
+        const current = snapshotPage(ctx.db, row.entity_id);
+        if (!current || row.before_json === null) return undefined;
+        const before = JSON.parse(row.before_json) as PageChangeSnapshot;
+        const skip = laterEdits(row);
+        const nameAfter = skip.has("name") ? current.name : before.name;
+        const deletedAfter = skip.has("deleted") ? current.deleted_at : before.deleted_at;
+        // A page that stays in the trash under the name it already has gains nothing from a
+        // rename, and core refuses one even to its own name once a live page holds the key
+        // (`pageKeyCollision` does not ask whether the renamed page is live): writing it made the
+        // whole undo fail after the page was deleted and its name reused.
+        const rename =
+          !skip.has("name") && !(deletedAfter !== null && current.name === before.name);
+        return { before, nameAfter, deletedAfter, rename };
+      };
+
+      // A page this undo brings back to life (or renames) needs that name free. Core rejects the
+      // page's op if a live page has taken it (B-90) but applies the rest of the batch, so undoing
+      // a page delete would un-delete the blocks onto a page that stays in the trash and still
+      // report "restored". Ask first, so the caller hears why; the savepoint in
       // `applyAllOrNothing` below catches any rejection this check does not foresee.
       for (const row of firstByEntity.values()) {
-        if (row.entity_type !== "page" || row.before_json === null) continue;
-        const before = JSON.parse(row.before_json) as PageChangeSnapshot;
-        if (before.deleted_at !== null) continue;
+        if (row.entity_type !== "page") continue;
+        const plan = pagePlan(row);
+        if (!plan || (plan.deletedAfter !== null && !plan.rename)) continue;
         const clash = ctx.db.get<{ id: string; name: string }>(
           "SELECT id, name FROM page WHERE key = ? AND deleted_at IS NULL AND id != ?",
-          [normalizePageName(before.name), row.entity_id],
+          [normalizePageName(plan.nameAfter), row.entity_id],
         );
         if (clash && !firstByEntity.has(clash.id)) {
           throw new OpError(
             "conflict",
-            `cannot restore page "${before.name}": a live page is already named "${clash.name}"`,
+            `cannot restore page "${plan.nameAfter}": a live page is already named "${clash.name}"`,
             "rename or delete the live page first, or restore the deleted page from the trash with trash_restore and new_name",
             { live_page_id: clash.id, page_id: row.entity_id },
           );
@@ -246,9 +277,9 @@ export const batchUndo = defineOp({
             summaryLines.push(`deleted page "${current.name}" (created by the undone batch)`);
             continue;
           }
-          const before = JSON.parse(row.before_json) as PageChangeSnapshot;
+          const { before, rename } = pagePlan(row) as NonNullable<ReturnType<typeof pagePlan>>;
           const pageOps: Op[] = [];
-          if (!skip.has("name")) {
+          if (rename) {
             pageOps.push(ctx.mintOp(pageId, { kind: "page.rename", name: before.name }));
           }
           const keys = new Set([

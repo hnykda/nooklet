@@ -34,3 +34,39 @@ page that keeps failing costs one render per sweep and is logged every time, and
 `mirror/live.test.ts` "retries a page it could not write on the next sweep, without that page
 changing again (B-365)" — it failed at `cf08d19` on the second sweep, which logged nothing about
 the page.
+
+---
+
+### B-366 · History's Undo is refused over a page name the undo would not touch
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, merge review of server/core (F2) ·
+**Test:** `packages/server/src/ops/batch-undo-later-edits.http.test.ts` "a later rename or delete
+it keeps does not make the undo fight over the page's old name (B-366)";
+`ops/undelete-collision.http.test.ts` "batch.undo of a restore under new_name, after the old name
+was taken, is conflict (B-366)"
+
+Set a property on page "Alpha", rename the page to "Beta", create a new "Alpha", then Undo the
+property change from History: "cannot restore page "Alpha": a live page is already named "Alpha"",
+and nothing is undone. The undo would only have removed the property — History sends
+`keep_later_edits`, which leaves the later rename alone — so there was nothing to collide with.
+The same happens when the page was deleted after the change and its name reused: the page would
+stay in the trash, yet the undo is refused.
+
+Cause: `batch.undo`'s "is the restored name free" pre-check (added for B-90) compares the page's
+name and tombstone from *before* the undone batch with live pages, and runs without asking which
+fields `keep_later_edits` (B-251) will leave as they are. The two landed on parallel branches and
+neither tested both.
+
+**Fixed 2026-09-13.** `batch.undo` works out, once per page, what the undo will leave: the name
+(the before-image's, or the current one when a later rename is kept), the tombstone (likewise),
+and whether it writes a `page.rename` at all. The pre-check and the op builder both read that, so
+the check asks about the name the undo actually claims. Doing only that (the reviewer's suggested
+fix) was not enough for the delete case: the undo still wrote `page.rename` to the page's own name
+on a page that stays in the trash, and core rejects any rename onto a key a live page holds, trashed
+page or not — the call went from 409 to 400 with nothing undone. Such a rename is now not written;
+it would have restored nothing. Side effect, tested: undoing a `trash.restore … new_name` after the
+old name was taken again answered 400 `page-key-collision` from core, and now answers the
+pre-check's 409 conflict. Tests that would have caught it:
+`ops/batch-undo-later-edits.http.test.ts` "a later rename or delete it keeps does not make the undo
+fight over the page's old name (B-366)" (409 at `cf08d19`) and `ops/undelete-collision.http.test.ts`
+"batch.undo of a restore under new_name, after the old name was taken, is conflict (B-366)" (400 at
+`cf08d19`).

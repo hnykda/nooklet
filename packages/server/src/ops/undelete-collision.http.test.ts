@@ -63,6 +63,33 @@ describe("an un-delete whose page name is taken writes nothing and says so (B-90
     expect(trash.json.items.map((i: JsonAny) => [i.kind, i.title])).toEqual([["page", "Dup"]]);
   });
 
+  it("batch.undo of a restore under new_name, after the old name was taken, is conflict (B-366)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Twice", markdown: "- old" });
+    await post(s.app, "/api/v1/page.delete", s.writeToken, { page: "Twice" });
+    await tick();
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Twice", markdown: "- new" });
+    const oldId = s.serverCtx.driver.get<{ id: string }>(
+      "SELECT id FROM page WHERE key = 'twice' AND deleted_at IS NOT NULL",
+    )?.id as string;
+    const restore = await post(s.app, "/api/v1/trash.restore", s.writeToken, {
+      id: oldId,
+      new_name: "Twice (old)",
+    });
+    expect(restore.status).toBe(200);
+    const before = { counts: counts(), rows: rowsOf(oldId) };
+
+    // The undo renames the page back to "Twice" before trashing it again, and a live page holds
+    // that name: the rename cannot land, so the undo is refused up front rather than by core.
+    const u = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: restore.json.batch_id,
+    });
+    expect(u.status).toBe(409);
+    expect(u.json.error.message).toBe(
+      'cannot restore page "Twice": a live page is already named "Twice"',
+    );
+    expect({ counts: counts(), rows: rowsOf(oldId) }).toEqual(before);
+  });
+
   it("trash.restore refuses new_name for a journal day, whose name is its date", async () => {
     await post(s.app, "/api/v1/page.append", s.writeToken, {
       page: "2026-09-07",
