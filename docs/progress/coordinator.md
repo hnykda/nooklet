@@ -95,7 +95,8 @@ All 17 branches `m8/*` merged into main (merge commits `…` through `db4f1eb`),
 Unit: core 393, plugin-api 17, server 608, web 1,000 — all green after `9f410e3`. `verify` on a
 fresh copy of the live graph: OK, 20,411 ops. Fresh import of the Logseq graph: 127 pages + journals,
 18,628 blocks, 171 assets, 0 dangling; verify OK; 24 scheduled dates (was 4), 0 leftover `SCHEDULED:`.
-Full e2e: see below once it finishes.
+Full Chromium e2e on `4709bd8`'s tree: **439 passed, 0 failed, 2 skipped** (7.0 min). Worktrees
+removed; the 17 `m8/*` branches are kept until the owner has looked.
 
 ### Owner decisions waiting
 - Plugin host precache: +5 MB (mermaid's ELK layout, cytoscape) — keep, lazy-exclude, or drop mermaid.
