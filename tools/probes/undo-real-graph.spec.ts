@@ -11,16 +11,23 @@
  * Needs a server on a COPY of the graph, never the live one:
  *   mkdir -p <scratch>/graph && sqlite3 ~/.nooklet/default/graph.sqlite ".backup '<scratch>/graph/graph.sqlite'"
  *   export NOOKLET_DATA=<scratch>/data   # in the same shell, before any nooklet command
- *   nohup pnpm nooklet serve --data <scratch>/graph --port 6401 > <scratch>/server.log 2>&1 &
+ *   nohup pnpm nooklet serve --data <scratch>/graph --port <port> > <scratch>/server.log 2>&1 &
  * Then copy this file into `e2e/tests/` and run it against that server (global setup still starts
  * its own on the port, which this probe does not use):
- *   cd e2e && NOOKLET_E2E_PORT=6400 NOOKLET_E2E_URL=http://127.0.0.1:6401 \
+ *   cd e2e && NOOKLET_E2E_PORT=6400 NOOKLET_E2E_URL=http://127.0.0.1:<port> \
  *     pnpm exec playwright test tests/undo-real-graph.spec.ts --project=chromium
- * Delete the copy afterwards, and `lsof -ti :6401 | xargs kill`. The ids below are the owner's
+ * Delete the copy afterwards, and `lsof -ti :<port> | xargs kill`. The ids below are the owner's
  * graph as of 2026-09-13.
  */
 import { expect, type Page, test } from "@playwright/test";
-import { api, clickRow, editingRowIndex, expectEditorFocusedNow, MOD } from "../helpers/index.js";
+import {
+  api,
+  clickRow,
+  editingRowIndex,
+  expectEditorFocusedNow,
+  MOD,
+  rowTexts,
+} from "../helpers/index.js";
 
 interface Wire {
   id: string;
@@ -66,15 +73,19 @@ test("real graph: priority, Cmd+Enter and collapse undo on a task-heavy page", a
   const rows = await outliner.locator(".vr-row").count();
   console.log("rows on page:", rows);
 
-  // Row 2 is the EA org task (row 0 Options, row 1 its first child).
-  await clickRow(page, outliner, 2);
+  // Found by text: "1. Ought" has children of its own, so the index is not fixed.
+  const ea = (await rowTexts(page, outliner)).findIndex((t) =>
+    t.includes("Figure out something broken"),
+  );
+  expect(ea).toBeGreaterThan(0);
+  await clickRow(page, outliner, ea);
   await palette(page, "Set priority A");
   await expect.poll(async () => (await block(page, JOB, EA_ORG))?.priority).toBe("A");
   await page.keyboard.press(`${MOD}+z`);
   await expect.poll(async () => (await block(page, JOB, EA_ORG))?.priority ?? null).toBeNull();
   console.log("priority A undone");
 
-  await clickRow(page, outliner, 2);
+  await clickRow(page, outliner, ea);
   await page.keyboard.press(`${MOD}+Enter`); // DONE -> no marker
   await expect.poll(async () => (await block(page, JOB, EA_ORG))?.marker ?? null).toBeNull();
   await page.keyboard.press(`${MOD}+z`);

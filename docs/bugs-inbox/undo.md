@@ -34,7 +34,9 @@ for a block it shows (`external-batch.ts`), so a write never lands in the wrong 
 Cost: the store's write now resolves when the tree has the change, not when the replica does
 (the tree does not await `applyOps`, same as every edit). The three e2e tests fail on `cf08d19`
 and pass with the change; `dates`, `tasks`, `templates`, `template-undo`, `undo-redo`, `redo` and
-`selection` specs stay green (55/55).
+`selection` specs stay green (55/55). On a copy of the owner's graph
+(`tools/probes/undo-real-graph.spec.ts`): palette priority and Cmd/Ctrl+Enter undone on a
+task-heavy page, a chip date undone on journal 2022-12-16; `nooklet verify` OK afterwards.
 
 ---
 

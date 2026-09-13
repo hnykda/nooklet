@@ -31,24 +31,29 @@ Bugs go to `docs/bugs-inbox/undo.md` (never `docs/BUGS.md`).
   redo, focus, editing, editing-row-leaves, commands, template-undo, selection, tasks, dates,
   block-properties, journal-stream-editing, page-find, read-only): 131/131. Web unit 1015/1015.
 
+- `e0da57d` R51 as built (`docs/spec/commands-and-keymap.md`, four lines), real-graph probe
+  `tools/probes/undo-real-graph.spec.ts`.
+- (this commit) Verification, all on the branch head:
+  - Full e2e in two runs on port 6400 (the machine was loaded: the second took 16.7 min).
+    `tests/[a-o]`: 157 passed, 1 skipped (pre-existing skip). `tests/[p-z]`: 289 passed, 1 skipped,
+    2 failed — `popups.spec.ts` "Code block wraps the content in a fence" (passed on rerun: 71/72
+    for popups + views) and `views.spec.ts` "opening the palette while editing and closing it hands
+    focus back to the editor", which fails again alone AND with `apps/web/src` checked out at
+    `cf08d19` — the pre-existing B-161 family (B-173/B-193/B-213/B-226/B-246/B-270), not this
+    branch. Total 446 passed of 450 in the full pass, 448 counting the rerun.
+  - Real graph (backup of `~/.nooklet/default`, served on port 6419 with `NOOKLET_DATA` in
+    scratch): the probe passes 2/2 — palette priority, Cmd/Ctrl+Enter and a collapse of a 35-child
+    block undone on "Deciding on a Bike" (55 rows), editor kept; a chip date on journal 2022-12-16
+    undone. `pnpm nooklet verify` on that copy afterwards: OK (20423 ops replayed).
+
 ## 2. In flight
 
-- Full e2e in two runs on port 6400: `tests/[a-o]` done — 157 passed, 1 skipped (the pre-existing
-  skip). `tests/[p-z]` running; one failure so far, `popups.spec.ts` "Code block wraps the content
-  in a fence" (fence missing after an immediate reload) — rerun that spec alone before judging.
-- Uncommitted: `docs/spec/commands-and-keymap.md` R51 gains four lines (store commands are undo
-  steps; steps on blocks that left are dropped; null caret keeps the editor);
-  `tools/probes/undo-real-graph.spec.ts` (real-graph probe, not run yet).
+Nothing. Task complete on this branch.
 
 ## 3. Next steps, in order
 
-1. Finish the `[p-z]` run; rerun any failing spec once (load until proven otherwise).
-2. Real-graph probe: backup at `<scratch>/graph/graph.sqlite`; serve it on 6401 with
-   `NOOKLET_DATA=<scratch>/data`; copy the probe into `e2e/tests/`, run with
-   `NOOKLET_E2E_URL=http://127.0.0.1:6401`, delete the copy, kill 6401.
-3. Commit spec note + probe + progress.
-4. `pnpm nooklet verify` is not needed: no ops/sync/schema change (the ops written are the same
-   kinds, only routed through the tree).
+None for this brief. For the coordinator: B-194's "should an undo reach a block that left?" was
+answered "no" here and needs the owner's confirmation (see the inbox entry for how to flip it).
 
 ## 4. Decisions (and why)
 
