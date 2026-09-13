@@ -73,7 +73,10 @@ and took 21-51 ms per `filterVisible` call and 670-890 ms for the highlight pass
 per keystroke. After caching folded text per block object and folding only non-ASCII runs per
 character: 0.2-1.5 ms and 12-17 ms. Highlights are capped at 2,000 occurrences ("r" matches 78,604
 times there; spreading that many ranges into `new Highlight(...)` would overflow the argument
-limit); every matching block is still shown and counted.
+limit); every matching block is still shown and counted. In Chromium against `nooklet serve` on
+the same graph copy (production build): typing "r", "e", "k", "a" into the bar on OmnivoreSync took
+249/67/132/33 ms per keystroke to count and paint (917 rows rendered for "r"), Escape restored the
+57 rows the page shows collapsed.
 
 ---
 

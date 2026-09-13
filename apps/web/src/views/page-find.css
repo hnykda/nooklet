@@ -28,9 +28,15 @@
   border: 0;
   background: transparent;
   color: var(--fg);
-  font: inherit;
-  font-size: var(--text-base);
+  font-family: inherit;
+  /* No font-size: the global 16px on inputs is what stops iOS zooming in on focus. */
   outline: none;
+}
+
+/* The bar draws the focus boundary (`:focus-within` above); the global input halo inside it read
+   as a second border. Doubled class to outrank `input:not(...):not(...):focus-visible`. */
+.page-find input.page-find-input.page-find-input:focus-visible {
+  box-shadow: none;
 }
 
 .page-find-count {
