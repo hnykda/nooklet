@@ -52,6 +52,22 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
 4. Publish-a-graph (2–3 days per the audit) — the wiki is the first candidate. Owner's call.
 5. `changes-since.ts`: classify asset rows beyond "uploaded" (GC deletions, dedupe touches).
 
+## M9 run — 2026-09-13 10:45 (in flight)
+
+Workflow `wf_e473942f-106` (script under
+`~/.claude/projects/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/workflows/scripts/m9-open-bugs-merge-review-qa-*.js`;
+resume with `resumeFromRunId`). Base `cf08d19`. Branches `m9/<slug>`; bug inboxes as in M8; every
+agent told to `export NOOKLET_DATA=<scratch>` before any nooklet command.
+
+| Track | Slugs | Ports | Bug numbers |
+|---|---|---|---|
+| Open bugs → verify | undo (B-142/162/191/194), focus (B-161/195/231/147/203), server-ops (B-172/151/235/236/148), render-views (B-224/211/225/200/171), clipboard-sync (B-245/233/247), cleanup (redo 3d73b13 + 373c654, B-144, B-180) | 6400–6405 | B-280–339 |
+| QA of M8 features on the real graph → fix | qa-m8-editor, qa-m8-views (incl. 390px) | serve 6450–6451, fix 6460–6461 | B-340–359 |
+| Review of the M8 merge resolutions → refute → fix | rv-merge-web, rv-merge-server | 6470–6471 | B-360–369 |
+
+Not in scope (owner decisions): B-42 repro, B-192, plugin precache, SCHEDULED repair, agenda scope,
+date-picker toggles. Integration afterwards: same procedure as M8.
+
 ## M8 run — 2026-09-13, done and integrated
 
 One workflow (`wf_69b4f9a8-ee2`, 38 agents, 0 errors): 3 QA explorers on copies of the real graph →
