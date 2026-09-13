@@ -304,7 +304,7 @@ describe("parseQuery — boolean structure", () => {
       "[[]]",
       "not not",
       "sort:",
-      " ",
+      "\u0000",
     ];
     for (const j of junk) expect(() => parseQuery(j)).not.toThrow();
   });
