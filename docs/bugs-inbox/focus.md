@@ -199,3 +199,34 @@ same holds for anything else bound to a modified Enter/Tab/arrow while the autoc
 menu is open (Cmd/Ctrl+Enter `task.cycle`, Alt+Up/Down `block.moveUp/Down`). A real keyboard
 takes the same path; only "put the caret in a link without opening the popup" (End after a
 trailing link, as in `follow-link.spec.ts`) avoided it.
+
+**Fixed 2026-09-13.** The yield now asks whether the popup would actually receive the key:
+`commands/popup-keys.ts` — a claim can say it is `editorFed` (AutocompletePopup, SlashMenu), and
+`popupTakesKey(event)` is "a popup key, and either the popup has its own input or the key has no
+Cmd/Ctrl/Alt". `keymap/dispatch.ts` step 2 consults it (injectable `popupTakesKey`, default the old
+rule), `provider/CommandProvider.tsx` passes the real one, and spec R12 step 2 says so. Every other
+claimant (palette, page picker, page actions, help menu, template picker, context menu, date picker)
+keeps the old rule, so a modified key typed into the palette's input still never runs against the
+block behind it.
+Consequence worth knowing: with the autocomplete or slash menu open, Cmd/Ctrl+Enter (`task.cycle`)
+and Alt+Up/Down (`block.moveUp/Down`) now run their commands instead of doing nothing, the same as
+with no popup. Tests that would have caught it: `e2e/tests/follow-link-popup.spec.ts` "Alt+Enter
+follows a [[link]] the caret was walked into, though that opened the autocomplete" (failed on
+`cf08d19`: the URL stayed on the page) and, for the boundary, "with the autocomplete open, plain
+Enter is still the popup's: it picks a row, it does not split the block"; unit
+`commands/popup-keys.test.ts` (4) and `keymap/dispatch.test.ts` "step 2 asks popupTakesKey: a key
+the popup never receives is dispatched (B-203)". Not fixed, and not asked: whether walking the caret
+into an existing link should open the autocomplete at all.
+
+---
+
+### B-292 · `editing.spec.ts` "typing immediately after Enter is not discarded" cannot run with `--repeat-each`
+**Status:** open · **Severity:** low (test harness) · **Found:** 2026-09-13, m9/focus (re-running
+it to rule out load) · **Test:** the spec itself
+
+It appends `- alpha` to a fixed page "Enter Probe" and then expects exactly one row, so on one server
+the second run sees 2 rows, the third 3 (`Expected: 1, Received: 2…5`, `--repeat-each=5`). Passes
+once per server, which is all a normal run does; it just cannot be looped to separate load from a
+regression, which is the first thing a flaky-looking failure calls for. Fix: a page name per
+`repeatEachIndex`/`retry`, as `views.spec.ts`'s palette test now has. Not changed here (not this
+branch's spec).

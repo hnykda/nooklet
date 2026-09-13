@@ -166,7 +166,10 @@ block"):
 1. If `composing` is true, return false unconditionally (never touch the document mid-IME).
 2. If `popupOpen` is true and the key is one of `Escape, Enter, ArrowUp, ArrowDown, Tab`, let the
    autocomplete extension's own keymap (`@codemirror/autocomplete`) handle it (accept/close/move);
-   this is not a `Command` and has no `id`.
+   this is not a `Command` and has no `id`. A popup the editor feeds (autocomplete, slash menu) is
+   only ever offered these keys without Cmd/Ctrl/Alt, so a modified one (Alt+Enter, Cmd/Ctrl+Enter,
+   Alt+Up) does not stop here; an overlay with its own focused input (palette, page picker) takes
+   them with any modifier (B-203, `popup-keys.ts#popupTakesKey`).
 3. Resolve the physical key token for the event (§ R32) against the compiled keymap (base
    defaults + secondary defaults + user `keybindings.json`, merged per § R28–R31). Walk candidate
    rows for that token from most-recently-loaded to least (user rows, reverse array order, then

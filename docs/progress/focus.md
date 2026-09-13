@@ -48,20 +48,23 @@ separator/padding ends editing); B-147 (date picker type-ahead and keydown-less 
   entry in the inbox). Arrowing into a link opens the `[[` autocomplete; the global keymap yields
   every Enter to it, Alt+Enter included, and the editor never offers the popup modified keys.
 
+  Diagnosis commit `6d5fff7`.
+- **B-203 fix** — commit "fix(web): Alt+Enter follows a link while the autocomplete is open
+  (B-203)" (hash in the next update). `commands/popup-keys.ts` (`editorFed` claims,
+  `popupTakesKey`), `keymap/dispatch.ts` step 2, `provider/CommandProvider.tsx`,
+  `AutocompletePopup.tsx`/`SlashMenu.tsx` claim `editorFed`, spec R12 step 2 note. e2e
+  `follow-link-popup.spec.ts` (2), unit `popup-keys.test.ts` (4) + a dispatch test. Commands unit
+  409/409. Broad e2e (16 specs): 176 passed, 1 skipped, 1 failed — editing.spec "typing immediately
+  after Enter" at load ≈16-30; passed on rerun of the same spec sequence (112/112), and a late-frames
+  copy of it under 16 busy loops passed 5/5. Logged B-292 (that spec cannot `--repeat-each`).
+
 ## 2. In flight
 
-- B-203 fix. Plan: `commands/popup-keys.ts` — `claimPopupKeys(fn, { editorFed: true })` for the
-  popups the editor feeds (AutocompletePopup, SlashMenu); `popupTakesKey(event)` = popup key AND
-  (not editor-fed OR no Cmd/Ctrl/Alt). `keymap/dispatch.ts` step 2 uses an injectable
-  `popupTakesKey` (default: today's rule); `provider/CommandProvider.tsx` passes the real one.
-  Focus-owning overlays (palette, page picker) keep taking modified keys — their input gets
-  every key. e2e `e2e/tests/follow-link-popup.spec.ts` written (uncommitted), fails on base as
-  expected (URL stays on the page).
+(nothing)
 
 ## 3. Next steps
 
-1. Finish B-203 (above), unit tests in `popup-keys`/`dispatch.test.ts`, spec R12 one-line note.
-2. Final: full web unit suite, typecheck, a last broad e2e run, return summary.
+1. Final: full web unit suite, typecheck, a last broad e2e run, return summary.
 
 ## 4. Decisions
 

@@ -27,6 +27,11 @@ export interface DispatcherDeps {
   getBindings: () => readonly ResolvedBinding[];
   /** Injectable clock for chord-window tests. */
   now?: () => number;
+  /** R12 step 2, precisely: is this key the open popup's? Consulted only while `popupOpen`.
+   * Defaults to "any of the popup keys, whatever the modifiers"; the provider passes
+   * `popup-keys.ts#popupTakesKey`, which knows that a popup the editor feeds never receives a
+   * Cmd/Ctrl/Alt key, so yielding one to it drops the key on the floor (B-203). */
+  popupTakesKey?: (event: KeyboardEventLike) => boolean;
 }
 
 interface PendingChord {
@@ -76,6 +81,8 @@ function chordsStartingWith(
 
 export function createDispatcher(deps: DispatcherDeps): Dispatcher {
   const now = deps.now ?? (() => Date.now());
+  const popupTakesKey =
+    deps.popupTakesKey ?? ((event: KeyboardEventLike) => POPUP_PASSTHROUGH_KEYS.has(event.key));
   let pending: PendingChord | null = null;
 
   // Every trigger — keybinding, palette, slash menu, toolbar (R71) — runs a command through
@@ -90,7 +97,7 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     if (ctx.composing) return false;
 
     // R12 step 2: autocomplete's own keymap owns these keys while a popup is open.
-    if (ctx.popupOpen && POPUP_PASSTHROUGH_KEYS.has(event.key)) return false;
+    if (ctx.popupOpen && popupTakesKey(event)) return false;
 
     const token = keyTokenFromEvent(event);
     if (token === null) {

@@ -64,6 +64,26 @@ describe("createDispatcher — R12 dispatch order", () => {
     }
   });
 
+  it("step 2 asks popupTakesKey: a key the popup never receives is dispatched (B-203)", () => {
+    const dispatcher = createDispatcher({
+      getBindings: () => [
+        { key: "Alt+Enter", command: "nav.followLink", source: "base", order: 0 },
+        { key: "Enter", command: "block.split", source: "base", order: 1 },
+      ],
+      // The editor-fed rule: popup keys, but only without Cmd/Ctrl/Alt.
+      popupTakesKey: (e) => ["Enter"].includes(e.key) && !e.altKey && !e.metaKey && !e.ctrlKey,
+    });
+    const altEnter = event("Enter", { altKey: true });
+    const c = ctx({ popupOpen: true, editorFocused: true });
+    expect(dispatcher.handleKeyDown(altEnter, c)).toBe(true);
+    expect(c.exec).toHaveBeenCalledWith("nav.followLink", undefined);
+
+    const enter = event("Enter");
+    const c2 = ctx({ popupOpen: true, editorFocused: true });
+    expect(dispatcher.handleKeyDown(enter, c2)).toBe(false);
+    expect(c2.exec).not.toHaveBeenCalled();
+  });
+
   it("a popup-open passthrough key that ISN'T in the special set still dispatches normally", () => {
     const dispatcher = createDispatcher({
       getBindings: () => [{ key: "Cmd+B", command: "format.bold", source: "base", order: 0 }],
