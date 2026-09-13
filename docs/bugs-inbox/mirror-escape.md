@@ -119,3 +119,41 @@ virtual (`.vr-draft-input` shown) AND today's "Scheduled and deadline" section, 
 `dates.spec.ts`'s tasks, renders a `.vr-outliner vr-outliner-readonly`. The whole suite in file
 order passes because `a-fresh-journal.spec.ts` runs first and makes today real. `editing.spec.ts`
 alone: 4/4. `e2e/helpers/editor.ts#openJournal` has the same locator.
+
+---
+
+### B-474 · One keystroke in a block whose text has a `foo:: bar` line deletes that line (or duplicates it as a property)
+**Status:** open · **Severity:** high (silent data loss) · **Found:** 2026-09-13,
+mirror-escape-verify (adversarial check of B-342's fix, in Chromium) · **Test:** pending
+
+Seed `- notes` / `  foo\:: bar` / `  more` through `page.create` (OUT-23a: the text `foo:: bar`),
+open the page, click into the block and type one character:
+- at the end of `notes` or of `more`: the block is saved as `notes!` / `more` — the `foo:: bar` line
+  is gone, and no `foo` property was written either;
+- at the end of the `foo:: bar` line: a property `foo = bar!` is written and the text line
+  `foo:: bar` stays, so page_read shows both.
+
+6 of 6 runs, with and without another write refetching the page first. B-472 predicted a clean
+promotion to a property; in the app it is not even that. Reachable because of B-342's fix: an agent
+is now told to write such text as `foo\:: bar`, and copy then paste keeps it text. The owner's graph
+has 0 blocks with such a line today (`splitBlockText` over all 18,633 blocks of the copy).
+
+What happens: attaching the editor re-runs the page-tree effect in `BlockTree.tsx`, which lays the
+live buffer over the block with `withEditText(block, buffer)` so a refetch cannot clobber typing.
+The buffer is still exactly the block's editing text, but `withEditText` splits it anyway, so the
+editor's tree holds content `notes\nmore` and a property `foo = bar` the database does not have.
+The first keystroke snapshots that tree as `before`, and the diff at flush then sees the line as an
+unchanged property: it writes only the content without it (or only the property).
+
+---
+
+### B-475 · A block whose first line holds a Unicode line separator comes back from the mirror with `- ` in its text
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, mirror-escape-verify (fuzzing
+`serializeOutline` → `parseOutline`) · **Test:** none yet
+
+A block whose content line 1 contains U+2028 or U+2029 (pasted from some web pages or JSON
+strings) is written `- a<U+2028>b`, and read back as a plain paragraph block whose text is
+`- a<U+2028>b`: the bullet regex's `.` does not match a line separator, so the line is not a bullet.
+A task loses its marker and id the same way. Lines after line 1 are fine (they are continuation
+lines by indent). Same on the base code (`52e5d20`), so not B-342's change. Owner's graph copy: 0
+blocks contain either character.
