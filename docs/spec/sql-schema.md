@@ -469,7 +469,10 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
 26. `rebuild()` MUST reproduce the state tables from the `op` log alone, replaying in `seq`
     order into empty state tables (`page`, `block`, `block_prop`, `page_prop`, `setting`,
     `keybinding`, `plugin`) via the same `applyOps` function used for live writes. It runs in
-    two phases: **(1) replay** — apply every op in `seq` order (MAY skip the synchronous
+    two phases: **(1) replay** — apply every op in `seq` order except those logged
+    `status = 'rejected'` (B-123: a rejection such as `page-key-collision` depends on the state
+    the op met, so replaying it in HLC order can reverse the server's decision; its effect, if
+    any, is already in a logged corrective op) (MAY skip the synchronous
     ref/`path_ref`/FTS maintenance during replay for speed, since phase 2 recomputes them
     wholesale anyway); **(2) reindex** — recompute `ref` and `path_ref` for every non-deleted
     block from scratch, recompute `page_alias` from `page_prop`, rebuild `block_fts`/`block_tri`/

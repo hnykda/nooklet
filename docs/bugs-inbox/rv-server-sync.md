@@ -121,8 +121,10 @@ any op of it" and "trash.restore writes nothing when core rejects any op of it" 
 ---
 
 ### B-123 · `nooklet verify` reports divergence after a late push loses a page-name collision
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, M7 server/sync review (F5) ·
-**Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, M7 server/sync review (F5) ·
+**Test:** `packages/server/src/verify-rejected.test.ts` "a late un-delete that lost its page name to
+a newer page is not a divergence" and "an offline laptop's journal day that lost to an agent's
+page_append is not a divergence"
 
 `verifyRebuildParity` replays every logged op, rejected ones included, and core re-sorts by HLC.
 Whether a `page.create`, `page.rename` or un-delete is rejected depends on state, so a late push
@@ -132,6 +134,14 @@ existed creates the day and types into it; an agent `page_append`s to today; the
 its `page.create` and `block.create` are rejected → `verify` reports 4 divergences. (That the
 laptop's typed text is rejected at all is a separate sync-protocol question — see sql-schema.md
 open issue 2.)
+
+**Fixed 2026-09-13.** `verify.ts#loadOps` replays only ops not logged `rejected`, in `seq` order;
+the report counts what it left out (`rejectedSkipped`, "N rejected, not replayed" in the CLI
+line). The server has already decided those ops, pull never ships them, and a cycle rejection's
+effect is its own logged corrective op, so replaying them can only disagree with the server.
+sql-schema.md rule 26 says so. Both tests fail before (3 and 4 divergences); they pin the HLC
+order with `hlc.receive` rather than a sleep. Still open, and not this fix: the laptop's typed
+block is rejected (`no-such-page`) rather than re-homed onto the surviving day.
 
 ---
 
