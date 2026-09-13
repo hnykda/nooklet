@@ -57,8 +57,9 @@ the unit case got `{offset: 31}` for 17; in the browser the caret came back at 4
 ---
 
 ### B-362 · Cmd/Ctrl+Z on a page that was just locked still undoes into it
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F3) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, merge-resolution review (F3) ·
+**Test:** `e2e/tests/read-only.spec.ts` "after a page is locked, Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z no
+longer write to it (B-362)"
 
 Edit a block, then have the page locked (`read-only:: true` from the properties panel, another
 device, or an agent). Editing ends, as B-234 intends. Now press Cmd/Ctrl+Z with focus on the page:
@@ -67,6 +68,15 @@ the last edit is reverted and written to the locked page.
 Undo after a session ends goes to the most recent tree (B-241, `historyEditorHost`), and with no
 editor and no selection `BlockTree`'s host calls `doUndo()`/`doRedo()`, which never check the lock.
 The lock's own guard is in `onContainerKeyDown`, which this path does not pass through.
+
+Seen in the browser before the fix: the undo reverted `editable text` to `editable` on screen and
+on the server (`page.read`), and put an editor back into the locked block; a redo did the same with
+`editable text more`.
+
+**Fixed 2026-09-13.** `doUndo` and `doRedo` refuse on a locked page and show the read-only notice,
+as the tree's other writers do. The e2e test failed first — against the unfixed build at the undo
+(`editable`), and with only the redo guard removed at the redo (`editable text more`) — and passes
+with both guards.
 
 ---
 

@@ -664,7 +664,20 @@ export function BlockTree(props: {
     );
   }
 
+  /**
+   * Undo and redo write, so a locked page refuses them like every other writer here. They need
+   * their own check: after a session ends Cmd/Ctrl+Z still reaches this tree through
+   * `historyEditorHost` (B-241) — and locking is one of the things that ends a session, so the
+   * edit the lock had just stopped was reverted on the locked page, editor and all (B-362).
+   */
+  function refuseHistoryWhenLocked(): boolean {
+    if (!readOnly()) return false;
+    readOnlyNotice.show();
+    return true;
+  }
+
   function doUndo(): void {
+    if (refuseHistoryWhenLocked()) return;
     const clock = clockSig();
     if (!clock) return;
     flushPendingEdit();
@@ -690,6 +703,7 @@ export function BlockTree(props: {
   }
 
   function doRedo(): void {
+    if (refuseHistoryWhenLocked()) return;
     const clock = clockSig();
     if (!clock) return;
     flushPendingEdit();

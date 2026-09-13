@@ -20,17 +20,21 @@ Review record: `docs/review/2026-09-13-rv-merge-web.md` (the last commit).
   those three files rerun alone: 23/23. Commit `c3bb9f7`.
 - F2 / B-361 — `openPageFind` saves `contentOffsetOf(content, end)`. Unit case in
   `app/page-find.test.ts` failed first (31 for 17); e2e case in `page-find.spec.ts` failed first
-  (caret 41 for 31) and passes; page-find.spec 9/9. Web unit 1001/1001.
+  (caret 41 for 31) and passes; page-find.spec 9/9. Web unit 1001/1001. Commit `bed80fc`.
+- F3 / B-362 — `refuseHistoryWhenLocked()` at the top of `doUndo`/`doRedo` in `BlockTree.tsx`.
+  e2e case in `read-only.spec.ts` failed first (undo wrote `editable` to the server — checked with a
+  temporary `readBlocks` poll, removed; redo with its guard alone disabled wrote `editable text
+  more`) and passes. e2e read-only + undo-redo + focus 44/44. Web unit 1001/1001.
 
 ## In flight
 
-- F3 / B-362.
+- F4 / B-363.
 
 ## Next steps, in order
 
 1. (done) F1.
 2. (done) F2.
-3. F3: readOnly guard in `doUndo`/`doRedo` + e2e in `read-only.spec.ts`.
+3. (done) F3.
 4. F4: `filtered` off while printing + `.page-find` hidden in print.css + e2e in
    `page-export.spec.ts`.
 5. F5: header comment.

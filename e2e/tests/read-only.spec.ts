@@ -18,6 +18,7 @@ import {
   pagePath,
   readBlocks,
   rowDepths,
+  rowTexts,
 } from "../helpers/index.js";
 
 function notice(page: Page): Locator {
@@ -168,6 +169,42 @@ test("unlocking takes effect on the open page, and locking ends an edit in progr
   await expect(page.locator(".page-readonly-badge")).toHaveCount(0);
   await outliner.locator(".vr-row").first().locator(".vr-block-view").click();
   await expect(editor(page)).toBeFocused();
+});
+
+test("after a page is locked, Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z no longer write to it (B-362)", async ({
+  page,
+}) => {
+  // Undo reaches the most recent tree after its editing session ends (B-241), and that path never
+  // asked about the lock: locking ended the edit, and Cmd+Z then reverted it on the locked page.
+  const name = "Lock Then Undo";
+  const outliner = await openEditing(page, name, "- editable");
+  await page.keyboard.type(" text");
+  await expect.poll(async () => (await readBlocks(page, name))[0]?.content).toBe("editable text");
+  await page.keyboard.type(" more");
+  await expect
+    .poll(async () => (await readBlocks(page, name))[0]?.content)
+    .toBe("editable text more");
+  // One step taken back before the lock, so there is a redo to refuse as well.
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(async () => (await readBlocks(page, name))[0]?.content).toBe("editable text");
+
+  await api(page, "page.update", { page: name, properties: { "read-only": "true" } });
+  await expect(editor(page)).toHaveCount(0);
+  await expect(page.locator(".page-readonly-badge")).toBeVisible();
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+
+  // Each used to write (redo: "editable text more", undo: "editable") and put an editor back into
+  // the locked block.
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["editable text"]);
+  await expect(editor(page)).toHaveCount(0);
+  await expect(notice(page)).toBeVisible();
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["editable text"]);
+  await expect(editor(page)).toHaveCount(0);
+  // What the server holds, after the push a write would have made has had time to land.
+  await page.waitForTimeout(1500);
+  expect((await readBlocks(page, name)).map((b) => b.content)).toEqual(["editable text"]);
 });
 
 test("locking a journal day from its properties panel locks it in the journal stream too", async ({
