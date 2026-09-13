@@ -172,3 +172,19 @@ edit, which had the same gap unnoticed.
 on the real graph for `journal`) per page-property write while a page is open. The e2e test failed
 before the change (the untagged page stayed listed) and passes after; the references, link-unlinked,
 page-icons, pages, tagged-pages, page-identity and page-title-draft specs pass with it (38).
+
+---
+
+### B-203 · Alt+Enter ("Follow link under cursor") did nothing in a Playwright-driven Chromium on macOS
+**Status:** open, unconfirmed · **Severity:** unknown · **Found:** 2026-09-13, verifying B-104 ·
+**Test:** none
+
+Noticed in passing, not investigated, and not caused by this branch (a plain `[[Taxes]]` behaves
+the same as an alias link). Repro on a served graph: a page with one block `alpha [[Taxes]] omega`,
+click the end of the block (`.cm-content` focused), `Home`, `ArrowRight` ×9 (the DOM selection then
+sits inside `Taxes`), `page.keyboard.press("Alt+Enter")`: the URL stays on the page, and no
+navigation follows within 1.5 s. `nav.followLink` (`commands/registrations/nav.ts`, `when:
+"editorFocused && caretInLink"`) has no e2e test. Unconfirmed whether the key never matches, the
+context's `caretInLink` is false, or Playwright's macOS Alt handling differs from a real keyboard —
+try it by hand before spending time on it.
+

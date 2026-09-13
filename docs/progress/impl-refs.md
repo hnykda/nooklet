@@ -123,3 +123,8 @@ change (a pulled `page.prop` bumps only `page_prop`; the backlinks resource was 
 One-line stamp in `data/store.ts#useLinkedReferences`; e2e `tagged-pages.spec.ts` "an open tag page
 follows another device untagging and re-tagging a page (B-202)" fails without it.
 
+Logged, not investigated: **B-203** (Alt+Enter follow-link did nothing under Playwright on macOS;
+pre-existing, unrelated to aliases, unconfirmed). Final numbers after the pass: core 338/338,
+server 529/529, web 695/695, typecheck clean; e2e page-identity 7/7, tagged-pages 4/4,
+page-title-draft 1/1.
+
