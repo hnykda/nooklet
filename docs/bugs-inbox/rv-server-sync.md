@@ -238,3 +238,27 @@ to what the old walk had built. Measured (load average ~20, i.e. against the mac
 16,000 `block.text` ops in one batch 7.7 s → 1.8 s (8,000: 1.0 s, now linear); the owner's
 961-block subtree moved by the server-planned path 23 s → 0.46 s, and by a device op (with the
 B-120 repair) 18.8 s → 1.0 s.
+
+---
+
+### B-91 (existing)
+
+A second way asset GC collects an asset something still needs (F10): `referencedAssetIds` scans
+current block content and property values only. `batch.undo` — the mechanism `page.history`
+tells clients to restore a version with (ADR 022 §3) — rewrites block text from
+`changes.before_json`. Remove an image link by editing the block (nothing goes to the trash), run
+`nooklet gc` more than 7 days later: the asset row is tombstoned and the file unlinked; undoing
+the edit then brings back a link to nothing, recoverable only from the pre-GC backup archive.
+Found by reading the code, not probed.
+
+**Fixed 2026-09-13.** `gc.ts#referencedAssetIds` also reads page/block pre- and post-images in
+`changes`; an asset mentioned only there is kept and counted as `keptByHistoryOnly` (the CLI line
+reports it). Asset rows' own audit entries are excluded. ADR 022 §5 amended with the cost: since
+`changes` is never trimmed, an asset any recorded write ever embedded is never collected — the
+GC now collects only uploads no write pointed at. That trade (restore fidelity over disk) is the
+reviewer's primary suggestion and matches ADR 022's own reasoning, but it narrows what GC does;
+the rejected alternatives are recorded there in case the owner prefers the other side. Tests:
+`packages/server/src/gc.test.ts` "keeps an asset that only page history still references, so
+restoring that version keeps its image" (fails before: the asset was an orphan) and "does not
+count an asset's own upload audit row as a reference". The owner's graph copy has no `asset` rows,
+so there was nothing real to measure.

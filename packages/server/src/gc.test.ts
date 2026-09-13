@@ -366,6 +366,46 @@ describe("planAssetGc", () => {
   });
 });
 
+describe("planAssetGc — page history (B-91 follow-up)", () => {
+  it("keeps an asset that only page history still references, so restoring that version keeps its image", () => {
+    const page = createPage("Edited");
+    const pic = storeAsset("history.png", 400);
+    const block = createBlock(page, `before ![](${pic.path}) after`);
+    // The link goes away by an EDIT — nothing lands in the trash. `batch.undo` of this write (the
+    // History view's "restore this version") would bring the link back from `changes.before_json`.
+    const hlc = ctx.hlc.next();
+    serverApplyOps(
+      ctx,
+      [
+        {
+          id: hlc,
+          hlc,
+          device: "aaaaaaaa",
+          entity: block,
+          payload: { kind: "block.text", content: "before after" },
+        },
+      ],
+      { origin: "user", actor: "test" },
+    );
+    // Everything, including the edit, is well past the grace period.
+    ctx.driver.run("UPDATE changes SET created_at = ?", [Date.now() - 400 * DAY]);
+
+    const plan = planAssetGc(ctx.driver);
+    expect(plan.orphans).toEqual([]);
+    expect(plan.keptByHistoryOnly).toBe(1);
+    const report = runGc(ctx, { dataDir, noBackup: true });
+    expect(report.assets.removed).toBe(0);
+    expect(assetFiles()).toEqual([`${pic.id}.${pic.ext}`]);
+  });
+
+  it("does not count an asset's own upload audit row as a reference", () => {
+    const orphan = storeAsset("never-embedded.png", 400);
+    const plan = planAssetGc(ctx.driver);
+    expect(plan.orphans.map((o) => o.id)).toEqual([orphan.id]);
+    expect(plan.keptByHistoryOnly).toBe(0);
+  });
+});
+
 describe("runGc — assets", () => {
   it("dry-run lists the orphans and removes nothing", () => {
     const page = createPage("Dry");

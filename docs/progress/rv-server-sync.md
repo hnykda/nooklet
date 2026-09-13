@@ -27,8 +27,8 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 | F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | fixed 668c0d3 |
 | F7 query `ref` prefilter drops property-only refs | low | B-124 | fixed b035d86 |
 | F8 recordChanges O(n²) | low | note under B-85 (existing) | fixed 33b4797; no unit test, probe |
-| F9 DataApi deletes: one timestamp per op | low | B-121 | fixed (see Done) |
-| F10 asset GC ignores history snapshots | low | B-91 (existing) | logged |
+| F9 DataApi deletes: one timestamp per op | low | B-121 | fixed 0f404cc |
+| F10 asset GC ignores history snapshots | low | B-91 (existing) | fixed (see Done); policy flagged |
 | (found) cross-page move of a big subtree takes ~23 s: reindex walks unindexed | — | note under B-85 (existing) | fixed df6b6fc |
 
 ## Done
@@ -70,12 +70,20 @@ re-pointed at `da85cfb` before any work, as the brief requires.
   `block-children.test.ts` (EXPLAIN QUERY PLAN). Probe `tools/probes/reindex-parity-real-graph.ts`:
   identical ref (2,185) and path_ref (32,671) rows on the real graph. 16k batch 7.7 s → 1.8 s; 961
   subtree move 23 s → 0.46 s. Server 540/540; verify OK.
-- F9 / B-121 — (this commit): one `now` per `DataApi.pages.delete` / `blocks.delete`. Tests
+- F9 / B-121 — `0f404cc`: one `now` per `DataApi.pages.delete` / `blocks.delete`. Tests
   `data-api-delete-instant.test.ts` (2, fail before).
+- F10 / B-91 follow-up — (this commit): asset GC keeps assets referenced by page/block images in
+  `changes` (`keptByHistoryOnly`); ADR 022 §5 amended with the cost (GC now collects only uploads
+  no write referenced) and the rejected alternatives. Policy decision flagged for the owner.
+  (The B-91 inbox entry had been dropped by the renumbering rewrite in 6e1281f; restored here.)
+
+## In flight
+
+Nothing uncommitted beyond F10 (this commit). e2e and the review doc are next.
 
 ## Next steps, in order
 
-F10, then e2e (trash, refactor, history, remote-device), then the review doc.
+e2e (trash, refactor, history, remote-device), then the review doc.
 
 ## How to resume
 
