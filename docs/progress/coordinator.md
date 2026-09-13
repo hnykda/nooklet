@@ -52,6 +52,13 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
 4. Publish-a-graph (2–3 days per the audit) — the wiki is the first candidate. Owner's call.
 5. `changes-since.ts`: classify asset rows beyond "uploaded" (GC deletions, dedupe touches).
 
+## M10 run — 2026-09-13 (in flight)
+
+Workflow `wf_ced35de1-fb8`, base `70c9bb9`, branches `m10/<slug>`. editor-keys (B-282/294/295/344/346,
+port 6400, B-380–389), core-ops (B-310/311/322/324/370, 6401, B-390–399), tests-desktop
+(B-292/323/333/335/356/371/336/337, 6402, B-400–409), each verified adversarially; plus a final
+regression QA pass on the real graph (serve 6450) → fixer (6460, B-410–419). Integration: as M8/M9.
+
 ## M9 run — 2026-09-13, done and integrated
 
 Workflow `wf_e473942f-106`: 22 agents, 0 errors. Six bug-area branches each verified adversarially
