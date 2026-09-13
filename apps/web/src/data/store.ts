@@ -134,9 +134,14 @@ function ensureWired(): void {
     // than showing what the block used to say.
     if (e.tables.includes("block")) invalidateBlockRefs();
   });
-  onSyncStatus((st) =>
-    noteFocus("sync", `${st.state} pending=${st.pendingCount}${st.lastError ? " error" : ""}`),
-  );
+  // Only changes: a status is re-sent for every cursor step of a pull, which says nothing here.
+  let lastSyncNote = "";
+  onSyncStatus((st) => {
+    const note = `${st.state} pending=${st.pendingCount}${st.lastError ? " error" : ""}`;
+    if (note === lastSyncNote) return;
+    lastSyncNote = note;
+    noteFocus("sync", note);
+  });
 }
 
 // ---------------------------------------------------------------------------------------------

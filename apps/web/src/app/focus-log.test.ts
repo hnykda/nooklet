@@ -110,7 +110,7 @@ describe("the focus log (B-42)", () => {
     row.remove();
     await sleep(80);
     const text = recorded();
-    expect(text).toContain("dom remove div.vr-row.vr-row-editing @blk1");
+    expect(text).toContain("dom remove div.vr-row.vr-row-editing @blk1 (parent body)");
     expect(text).toMatch(/LOST editor focus → body; no editor; popup closed/);
   });
 

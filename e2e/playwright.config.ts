@@ -50,10 +50,17 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    // WebKit runs ONE spec: the storage fallback (B-43). Its build has no OPFS inside workers, so
-    // the whole suite would run against an in-memory replica — a different app from the one
-    // shipped — and the Mac app's WKWebView, which does have OPFS, is what WebKit coverage would
-    // be for anyway. This keeps the engine exercised without pretending it is a faithful stand-in.
-    { name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /storage\.spec\.ts/ },
+    // WebKit runs a few specs, not the suite: the storage fallback (B-43). Its build has no OPFS
+    // inside workers, so the whole suite would run against an in-memory replica — a different app
+    // from the one shipped — and the Mac app's WKWebView, which does have OPFS, is what WebKit
+    // coverage would be for anyway. This keeps the engine exercised without pretending it is a
+    // faithful stand-in. Also the specs for a bug reported from the Mac app only (B-42): focus
+    // across a sync refresh with the `[[` popup open, and the focus log that records it there —
+    // an in-memory replica changes nothing about focus.
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testMatch: /(storage|webkit-refresh-focus|focus-log)\.spec\.ts/,
+    },
   ],
 });

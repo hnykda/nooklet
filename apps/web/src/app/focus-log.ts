@@ -193,8 +193,10 @@ function install(): () => void {
     undo.push(() => target.removeEventListener(type, fn, capture));
   };
 
+  // On `window`, capture phase: that runs before the app's own capture listeners on `document`
+  // (the global keymap is one), so a key is logged before whatever it made happen, not after.
   for (const type of ["focusin", "focusout"]) {
-    listen(document, type, (e) => {
+    listen(window, type, (e) => {
       const fe = e as FocusEvent;
       push(
         type,
@@ -206,19 +208,19 @@ function install(): () => void {
   listen(window, "blur", (e) => e.target === window && push("window.blur", "", false), false);
   listen(window, "focus", (e) => e.target === window && push("window.focus", "", false), false);
   listen(document, "visibilitychange", () => push("visibility", document.visibilityState, false));
-  listen(document, "pointerdown", (e) => push("pointerdown", describeElement(e.target), false));
-  listen(document, "keydown", (e) => {
+  listen(window, "pointerdown", (e) => push("pointerdown", describeElement(e.target), false));
+  listen(window, "keydown", (e) => {
     const ke = e as KeyboardEvent;
     push("keydown", `${keyCategory(ke)} on ${describeElement(ke.target)}`, false);
   });
-  listen(document, "beforeinput", (e) => {
+  listen(window, "beforeinput", (e) => {
     const ie = e as InputEvent;
     push("beforeinput", `${ie.inputType}${ie.isComposing ? " (composing)" : ""}`, false);
   });
-  listen(document, "compositionstart", (e) =>
+  listen(window, "compositionstart", (e) =>
     push("composition", `start on ${describeElement(e.target)}`, false),
   );
-  listen(document, "compositionend", () => push("composition", "end", false));
+  listen(window, "compositionend", () => push("composition", "end", false));
   listen(
     window,
     "pagehide",
@@ -261,6 +263,8 @@ function install(): () => void {
     );
   };
   type Method = (...args: unknown[]) => unknown;
+  // `this` is the parent for Node's methods (`parent.insertBefore(node)`) and the node itself for
+  // Element's (`node.remove()`, `node.before(other)`).
   const wrap = (
     owner: object,
     name: string,
@@ -269,10 +273,12 @@ function install(): () => void {
     const table = owner as Record<string, Method>;
     const orig = table[name];
     if (typeof orig !== "function") return;
+    const selfIsParent = owner === Node.prototype || name === "append" || name === "prepend";
     table[name] = function (this: unknown, ...args: unknown[]) {
       const hit = focusedArgs(this, args).find(holdsFocus);
       if (hit !== undefined) {
-        push(`dom ${name}`, `${describeElement(hit)} (parent ${describeElement(this)})`, true);
+        const parent = selfIsParent ? this : (this as Node).parentNode;
+        push(`dom ${name}`, `${describeElement(hit)} (parent ${describeElement(parent)})`, true);
       }
       return orig.apply(this, args);
     };
