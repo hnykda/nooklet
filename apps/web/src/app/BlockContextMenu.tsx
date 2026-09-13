@@ -16,6 +16,7 @@ import { claimPopupKeys } from "../commands/popup-keys.js";
 import type { CommandContext } from "../commands/types.js";
 import { matchesWhen } from "../commands/when/index.js";
 import "./context-menu.css";
+import { BlockTimestamps } from "./BlockTimestamps.js";
 import { blockMenuRequest, closeBlockMenu } from "./context-menu.js";
 
 type ContextBase = Omit<CommandContext, "exec" | "args">;
@@ -150,6 +151,7 @@ export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.
           <Show when={visible().length === 0}>
             <div class="ctx-empty">Nothing available here</div>
           </Show>
+          <BlockTimestamps blockId={req().blockId} />
         </div>
       )}
     </Show>

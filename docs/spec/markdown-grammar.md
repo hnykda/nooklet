@@ -187,6 +187,14 @@ conventions glossary — not added there because this task may only touch this f
   true/false/int parsing — deviates from Logseq OG on purpose; see §2.11 and Open issues). The
   one structural exception is list-splitting for `tags::` and `alias::`, unchanged from
   `refs.ts`: comma-separated, honoring nested `[[...]]` (commas inside brackets do not split).
+- **OUT-21a.** (Added 2026-09-13, audit §2 #17.) `read-only:: true` as a PAGE property is an
+  ordinary property to this grammar, the server and the mirror. The web client reads it as a lock:
+  the page's blocks render but never enter edit mode, cannot be block-selected, and refuse the
+  task-marker click, drag and swipe with a short notice; collapsing, selecting text to copy, and
+  the page's properties (where the lock is lifted) stay available. Only the value `true`
+  (case-insensitive, trimmed) locks. The lock is presentation, not permission: the HTTP API, MCP
+  tools, sync from other devices and imports are NOT bound by it. Implementation:
+  `apps/web/src/editor/readOnly.ts`.
 - **OUT-22.** `scheduled:: <date>` and `deadline:: <date>` values are `YYYY-MM-DD` or
   `YYYY-MM-DD HH:MM` (ADR 011: "ISO date, optional time, no weekday, no angle brackets"). `done::
   <timestamp>` is an ISO 8601 UTC timestamp (`00-conventions.md`: ISO 8601 in

@@ -1,0 +1,9 @@
+/* The block context menu's timestamp footer (`BlockTimestamps.tsx`): metadata, not an action, so
+   it is muted, smaller, and has no hover state. */
+
+.ctx-meta {
+  padding: var(--space-xs) var(--space-lg);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: default;
+}

@@ -11,7 +11,15 @@ import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { SearchHit, SearchInput } from "../data/api-client.js";
 import { useSearchResults } from "../data/store.js";
 import { pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
+import "./search-filters.css";
 import { SearchSnippet } from "./SearchSnippet.js";
+import {
+  NO_SEARCH_FILTERS,
+  SEARCH_MARKERS,
+  type SearchFilterChoice,
+  searchFilterInput,
+  withMarker,
+} from "./searchFilters.js";
 
 const MODES = ["hybrid", "keyword", "semantic"] as const;
 
@@ -33,6 +41,11 @@ export function SearchView(): JSX.Element {
   const [namespace, setNamespace] = createSignal("");
   const [updatedAfter, setUpdatedAfter] = createSignal("");
   const [updatedBefore, setUpdatedBefore] = createSignal("");
+  // Audit §2 #11: task marker, blocks/pages, journals only (`./searchFilters.ts`).
+  const [filters, setFilters] = createSignal<SearchFilterChoice>(NO_SEARCH_FILTERS);
+  const patchFilters = (patch: Partial<SearchFilterChoice>): void => {
+    setFilters((f) => ({ ...f, ...patch }));
+  };
 
   const input = createMemo<SearchInput | undefined>(() => {
     const q = query().trim();
@@ -44,6 +57,7 @@ export function SearchView(): JSX.Element {
       namespace: namespace().trim() || undefined,
       updatedAfter: updatedAfter() ? new Date(updatedAfter()).toISOString() : undefined,
       updatedBefore: updatedBefore() ? new Date(updatedBefore()).toISOString() : undefined,
+      ...searchFilterInput(filters()),
     };
   });
 
@@ -108,6 +122,46 @@ export function SearchView(): JSX.Element {
             value={updatedAfter()}
             onInput={(e) => setUpdatedAfter(e.currentTarget.value)}
           />
+        </label>
+        <label>
+          Task
+          <select
+            class="search-filter-marker"
+            value={filters().marker}
+            onChange={(e) => {
+              const marker = e.currentTarget.value as SearchFilterChoice["marker"];
+              setFilters((f) => withMarker(f, marker));
+            }}
+          >
+            <option value="">Any block</option>
+            <For each={SEARCH_MARKERS}>{(m) => <option value={m}>{m}</option>}</For>
+          </select>
+        </label>
+        <label>
+          Show
+          <select
+            class="search-filter-kind"
+            value={filters().kind}
+            onChange={(e) =>
+              patchFilters({ kind: e.currentTarget.value as SearchFilterChoice["kind"] })
+            }
+          >
+            <option value="all">Blocks and pages</option>
+            <option value="blocks">Blocks only</option>
+            {/* A task is a block: "pages only" and a marker cannot both hold. */}
+            <option value="pages" disabled={filters().marker !== ""}>
+              Pages only
+            </option>
+          </select>
+        </label>
+        <label class="search-filter-check">
+          <input
+            type="checkbox"
+            class="search-filter-journals"
+            checked={filters().journalsOnly}
+            onChange={(e) => patchFilters({ journalsOnly: e.currentTarget.checked })}
+          />
+          Journals only
         </label>
         <label>
           Updated before

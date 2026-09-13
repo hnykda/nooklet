@@ -1,0 +1,38 @@
+/* The read-only page lock (`readOnly.ts`): the refusal notice and the title-row badge. */
+
+.vr-readonly-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--space-3xl) + var(--sab));
+  z-index: 70;
+  max-width: min(32rem, calc(100vw - 2 * var(--space-xl)));
+  margin: 0;
+  padding: var(--space-md) var(--space-lg);
+  transform: translateX(-50%);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--fg-soft);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  text-align: center;
+  pointer-events: none;
+}
+
+.page-readonly-badge {
+  align-self: center;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* On a locked page the rendered text is for reading and copying, not a doorway into the editor. */
+.vr-outliner-readonly .vr-block-view {
+  cursor: text;
+  user-select: text;
+}

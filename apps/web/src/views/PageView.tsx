@@ -17,10 +17,12 @@ import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
+import { isReadOnlyValue, READ_ONLY_NOTICE, READ_ONLY_PROPERTY } from "../editor/readOnly.js";
 import { useCanonicalPageRoute } from "./canonicalPageRoute.js";
 import { JournalAgenda } from "./JournalAgenda.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
+import { usePageFind } from "./PageFindBar.js";
 import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
@@ -40,6 +42,11 @@ export function PageView(props: PageViewProps): JSX.Element {
   const properties = usePageProperties(pageId);
   const blockId = () => props.blockId?.();
   useCanonicalPageRoute(props.name, page, blockId);
+  // Find in page (audit §2 #16): Cmd/Ctrl+F narrows the outline below.
+  const find = usePageFind(props.name, () => Boolean(page()));
+  let viewEl: HTMLDivElement | undefined;
+  // `read-only:: true` (audit §2 #17): the outline enforces it itself; the title follows suit.
+  const locked = () => isReadOnlyValue(properties()[READ_ONLY_PROPERTY]);
 
   /** A journal's title is its date, rendered in the reader's chosen format (ADR 018) — there is no
    *  name to edit, so the input becomes a heading. */
@@ -130,7 +137,7 @@ export function PageView(props: PageViewProps): JSX.Element {
   }
 
   return (
-    <div class="page-view">
+    <div class="page-view" ref={viewEl}>
       <Show when={blockId()}>
         <div class="page-view-breadcrumb">
           <button
@@ -179,8 +186,14 @@ export function PageView(props: PageViewProps): JSX.Element {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") e.currentTarget.blur();
                   }}
+                  readOnly={locked()}
                   aria-label="Page title"
                 />
+              </Show>
+              <Show when={locked()}>
+                <span class="page-readonly-badge" title={READ_ONLY_NOTICE}>
+                  Read-only
+                </span>
               </Show>
               {/* ADR 022: the page's timeline lives at `/history/<name>` (a splat under `/page/`
                   would read "/history" as part of the name). Muted until the row is hovered, like
@@ -194,7 +207,14 @@ export function PageView(props: PageViewProps): JSX.Element {
               </A>
             </div>
             <PageProperties pageId={p().id} properties={properties()} />
-            <BlockTree pageId={p().id} rootBlockId={blockId()} onNavigate={onNavigate} />
+            <find.Bar scope={() => viewEl} />
+            <BlockTree
+              pageId={p().id}
+              rootBlockId={blockId()}
+              onNavigate={onNavigate}
+              filter={find.filter()}
+              onFilterMatches={find.onMatches}
+            />
 
             {agendaSection()}
             <Show when={!blockId()}>

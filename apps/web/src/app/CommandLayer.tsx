@@ -50,6 +50,7 @@ import {
   useCommands,
 } from "../commands/index.js";
 import { apiBaseUrl, authToken } from "../data/bootstrap.js";
+import { listRandomPageCandidates } from "../data/random-page.js";
 import { applyOp, resolvePageName } from "../data/store.js";
 import { forceSync, initDb } from "../db/client.js";
 import {
@@ -62,6 +63,7 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
+import { pathToPageName } from "../views/navigateTarget.js";
 import { requestPluginsSection } from "../views/PluginsSection.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
@@ -75,6 +77,7 @@ import {
   createStore,
   pagePath,
 } from "./hosts.js";
+import { openPageFind, pageFindAvailable } from "./page-find.js";
 import { createRefactorHost } from "./refactor-host.js";
 import { openOnShelf } from "./shelf.js";
 import { createShelfHost } from "./shelf-host.js";
@@ -230,7 +233,8 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     },
   });
 
-  const getContext = (): ContextBase => buildContextBase(store, platform, mobile);
+  const getContext = (): ContextBase =>
+    buildContextBase(store, platform, mobile, pageFindAvailable());
 
   const [triggers, setTriggers] = createSignal<Triggers>(NO_TRIGGERS);
   const [caretPos, setCaretPos] = createSignal({ top: 0, left: 0 });
@@ -316,6 +320,15 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       closePalette: () => palette.close(),
     }),
     shelf: createShelfHost(),
+    pageFind: { open: () => openPageFind(editor.getSelection()) },
+    randomPage: {
+      candidates: listRandomPageCandidates,
+      currentPageName: () => {
+        const path = window.location.pathname;
+        return path.startsWith("/page/") ? pathToPageName(path.slice("/page/".length)) : null;
+      },
+      open: (pageId) => navigation.openPage(pageId),
+    },
   });
 
   const anyAutocomplete = createMemo(() => {

@@ -180,7 +180,7 @@ export function createEditorHost(backing: EditorHostBacking): EditorHost {
 export type ContextBase = Omit<CommandContext, "exec" | "args">;
 
 /** The parts only the focused editor can know. The app layer supplies `store` and `platform`. */
-export type EditorContextSnapshot = Omit<ContextBase, "store" | "platform" | "mobile">;
+export type EditorContextSnapshot = Omit<ContextBase, "store" | "platform" | "mobile" | "pageView">;
 
 // A signal, not a plain variable: `activeContextSnapshot()` is read inside memos (the mobile
 // keyboard toolbar's `visible`, for one), and a plain `let` gave them nothing to track — the memo
@@ -226,6 +226,7 @@ export function buildContextBase(
   store: ContextBase["store"],
   platform: WhenContext["platform"],
   mobile: boolean,
+  pageView = false,
 ): ContextBase {
-  return { ...activeContextSnapshot(), store, platform, mobile };
+  return { ...activeContextSnapshot(), store, platform, mobile, pageView };
 }

@@ -42,6 +42,7 @@ import {
   createMemo,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -57,7 +58,7 @@ import {
 import { openOnShelf } from "../app/shelf.js";
 import { dispatchPopupKey, isPopupOpen } from "../commands/popup-keys.js";
 import { displayPageName } from "../data/page-title.js";
-import { applyOps, usePageTree } from "../data/store.js";
+import { applyOps, usePageProperties, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
 import { BlockRowView } from "./BlockRowView.js";
 import { getClock } from "./clock.js";
@@ -84,7 +85,13 @@ import {
   withEditText,
 } from "./editText.js";
 import { prepareExternalBatch } from "./external-batch.js";
-import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
+import {
+  blockFocusCaret,
+  blockFocusRequest,
+  clearBlockFocusRequest,
+  editingEndRequest,
+  requestEditingEnd,
+} from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { insertAt, pickImageFile } from "./imagePicker.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
@@ -92,7 +99,10 @@ import { linkAtCaret } from "./linkAtCaret.js";
 import { deriveNumbering, isNumbered } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
 import { registerOutline } from "./outline-registry.js";
+import { filterVisible } from "./pageFilter.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
+import { createReadOnlyNotice } from "./ReadOnlyNotice.js";
+import { isReadOnlyValue, READ_ONLY_PROPERTY } from "./readOnly.js";
 import type { NavigateTarget } from "./render/tokens.js";
 import { createSurface, type Surface } from "./surface.js";
 import { cycleMarker, toggleDone } from "./task.js";
@@ -171,8 +181,21 @@ export function BlockTree(props: {
   rootBlockId?: string;
   onNavigate?: (t: NavigateTarget) => void;
   readOnly?: boolean;
+  /** Find in page (`./pageFilter.ts`): while non-blank, only matching blocks and their ancestors
+   * are shown. Purely visual — no op is written. */
+  filter?: string;
+  /** The matching block ids in reading order, on every change while `filter` is set. */
+  onFilterMatches?: (ids: readonly string[]) => void;
 }) {
   const treeResource = usePageTree(() => props.pageId);
+  // The read-only page lock (`./readOnly.ts`): the prop, or the page's own `read-only:: true`.
+  // Read here rather than passed in, so every tree showing the page — the page view, a day in the
+  // journal stream — honours it without each host remembering to.
+  const pageProperties = usePageProperties(() => props.pageId);
+  const readOnly = createMemo(
+    () => props.readOnly === true || isReadOnlyValue(pageProperties()[READ_ONLY_PROPERTY]),
+  );
+  const readOnlyNotice = createReadOnlyNotice();
   const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
   const deletedCache = new Map<string, EditableBlock>();
   const unseenCreations = new UnseenCreations();
@@ -235,10 +258,18 @@ export function BlockTree(props: {
   // request lives outside any component.
   createEffect(() => {
     const want = blockFocusRequest();
-    if (!want || props.readOnly) return;
+    if (!want || readOnly()) return;
     if (!editorTree().byId.has(want)) return;
+    // In the tree but not on screen — under a collapsed parent, or outside the zoom root. Find in
+    // page can hand back such a block (it was showing while the filter was on); attaching to it
+    // would put the editor in a row that is not rendered, with the keyboard going nowhere.
+    if (!rowById().has(want)) {
+      clearBlockFocusRequest();
+      return;
+    }
+    const caret = blockFocusCaret() ?? { at: "end" };
     clearBlockFocusRequest();
-    attachEditing(want, { at: "end" });
+    attachEditing(want, caret);
   });
   const [localZoomRoot, setLocalZoomRoot] = createSignal<BlockId | undefined>(undefined);
   const effectiveRoot = createMemo(() => localZoomRoot() ?? props.rootBlockId);
@@ -273,8 +304,37 @@ export function BlockTree(props: {
     return trail;
   });
 
-  const rows = createMemo(() => flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }));
+  // Declared here rather than with the rest of the editing state below: `filtered` reads it, and
+  // a memo runs as soon as it is created.
+  const [editingId, setEditingId] = createSignal<BlockId | null>(null);
+  const filtered = createMemo(() => {
+    const q = props.filter;
+    if (!q) return null;
+    return filterVisible(editorTree(), q, { rootBlockId: effectiveRoot(), keep: editingId() });
+  });
+  const findMatches = createMemo(() => {
+    const f = filtered();
+    return f ? new Set(f.matches) : null;
+  });
+  createEffect(() => {
+    const f = filtered();
+    if (f) props.onFilterMatches?.(f.matches);
+  });
+  const rows = createMemo(
+    () => filtered()?.rows ?? flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }),
+  );
   const visibleIds = createMemo(() => rows().map((r) => r.id));
+  /**
+   * The page's reading order as if no find filter were on. A merge (Backspace at the start, Delete
+   * at the end) joins a block with its neighbour ON THE PAGE; under a filter the neighbouring row
+   * on screen can be many hidden blocks away, and joining with it moved the text above blocks it
+   * never touched ("keep me" / hidden / "keep too" became "keep mekeep too" / hidden). A match with
+   * no row here (under a collapsed parent) makes the merge a no-op, as it would be unfiltered.
+   */
+  const outlineOrder = (): BlockId[] =>
+    filtered()
+      ? flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }).map((r) => r.id)
+      : visibleIds();
   // Rendering iterates `visibleIds()` (strings, compared by value) rather than `rows()` (fresh
   // objects on every rebuild), so `<For>` reuses each row's DOM instead of recreating it. This is
   // load-bearing, not a micro-optimisation: every keystroke refetches the page resource, which
@@ -293,7 +353,6 @@ export function BlockTree(props: {
     return out;
   });
 
-  const [editingId, setEditingId] = createSignal<BlockId | null>(null);
   const [selection, setSelection] = createSignal<SelectionState | null>(null);
   let outlinerEl: HTMLDivElement | undefined;
 
@@ -315,7 +374,7 @@ export function BlockTree(props: {
    * click into a popup, menu or the palette must NOT end editing — those belong to the session.
    */
   createEffect(() => {
-    if (editingId() === null || props.readOnly) return;
+    if (editingId() === null || readOnly()) return;
     const onPointerDown = (e: PointerEvent): void => {
       const target = e.target as Element | null;
       if (!target) return;
@@ -326,10 +385,12 @@ export function BlockTree(props: {
       // here, at capture time.)
       if (blockMenuRequest()) return;
       // The zoom breadcrumb is this tree's own chrome, rendered beside the outliner rather than
-      // inside it; a click there navigates within the same editing session.
+      // inside it; a click there navigates within the same editing session. So are the find bar's
+      // buttons (not its input, which takes the keyboard): they keep focus where it is, and a
+      // click on "close" while typing in a match ended the edit it meant to leave alone.
       if (
         target.closest(
-          ".cmd-popup, .ctx-menu, .cmd-palette, .cmd-toolbar, .help-menu, .help-keys, .shelf, .vr-zoom-trail",
+          ".cmd-popup, .ctx-menu, .cmd-palette, .cmd-toolbar, .help-menu, .help-keys, .shelf, .vr-zoom-trail, .page-find-button",
         )
       )
         return;
@@ -339,6 +400,32 @@ export function BlockTree(props: {
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     onCleanup(() => document.removeEventListener("pointerdown", onPointerDown, true));
+  });
+  // `requestEditingEnd()` (`./focus-request.ts`): something outside the outline took the keyboard.
+  createEffect(
+    on(
+      editingEndRequest,
+      () => {
+        if (editingId() !== null) {
+          flushPendingEdit();
+          surface.detach();
+          setEditingId(null);
+        }
+        setSelection(null);
+      },
+      { defer: true },
+    ),
+  );
+  createEffect(() => {
+    if (!readOnly()) return;
+    untrack(() => {
+      if (editingId() !== null) {
+        flushPendingEdit();
+        surface.detach();
+        setEditingId(null);
+      }
+      setSelection(null);
+    });
   });
   const [clockSig, setClockSig] = createSignal<Clock | undefined>(undefined);
   onMount(() => void getClock().then(setClockSig));
@@ -459,7 +546,10 @@ export function BlockTree(props: {
   // Alt+Up/Alt+Down keys, run through the same `runStructural` commit path. A gesture must never
   // be a parallel implementation of these ops.
   function doIndent(id: BlockId): void {
-    if (props.readOnly) return;
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     if (!clock) return;
     const r = indentBlock(editorTree(), id, clock);
@@ -467,7 +557,10 @@ export function BlockTree(props: {
   }
 
   function doOutdent(id: BlockId): void {
-    if (props.readOnly) return;
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     if (!clock) return;
     const r = outdentBlock(editorTree(), id, clock, { zoomRootId: effectiveRoot() ?? null });
@@ -475,7 +568,10 @@ export function BlockTree(props: {
   }
 
   function doMoveStep(id: BlockId, direction: "up" | "down"): void {
-    if (props.readOnly) return;
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     if (!clock) return;
     const r = moveBlock(editorTree(), id, direction, clock);
@@ -666,12 +762,12 @@ export function BlockTree(props: {
         doOutdent(id);
         return true;
       case "block.mergeWithPrevious": {
-        const r = mergeWithPrevious(tree, visibleIds(), id, clock);
+        const r = mergeWithPrevious(tree, outlineOrder(), id, clock);
         if (r) runStructural(r);
         return true;
       }
       case "block.deleteForwardMerge": {
-        const r = deleteForwardMerge(tree, visibleIds(), id, clock);
+        const r = deleteForwardMerge(tree, outlineOrder(), id, clock);
         if (r) runStructural({ ops: r.ops });
         return true;
       }
@@ -1111,7 +1207,7 @@ export function BlockTree(props: {
   }
 
   function onContainerKeyDown(e: KeyboardEvent): void {
-    if (props.readOnly) return;
+    if (readOnly()) return;
     if (editingId()) return; // the CM6 surface's own keymap already handles this
     // A key the editor already consumed must not be run again here. The Escape that ENTERS
     // selection mode detaches the surface and focuses this container mid-dispatch, then bubbles
@@ -1151,6 +1247,10 @@ export function BlockTree(props: {
   }
 
   function onToggleMarker(id: BlockId): void {
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
     const clock = clockSig();
     const block = editorTree().byId.get(id);
     if (!clock || !block) return;
@@ -1167,6 +1267,10 @@ export function BlockTree(props: {
   }
 
   function onSelectClick(id: BlockId): void {
+    // No block selection on a locked page: every block command — including the task commands,
+    // which write through the store rather than this tree — targets the selection published in
+    // the command context, so a selection here would be a way around the lock.
+    if (readOnly()) return;
     const ids = visibleIds();
     const existing = selection();
     if (existing) {
@@ -1216,6 +1320,7 @@ export function BlockTree(props: {
       <div
         ref={outlinerEl}
         class="vr-outliner"
+        classList={{ "vr-outliner-readonly": readOnly() }}
         role="tree"
         tabindex={-1}
         onKeyDown={onContainerKeyDown}
@@ -1248,8 +1353,20 @@ export function BlockTree(props: {
                         numbering={numbering().get(id)}
                         editing={editingId() === id}
                         selected={selection()?.ids.includes(id) ?? false}
+                        findMatch={
+                          findMatches()
+                            ? (findMatches()?.has(id) ?? false) || editingId() === id
+                            : undefined
+                        }
                         surfaceHost={(el) => surfaceHostRef(el, id)}
-                        onEnterEdit={(offset) => !props.readOnly && attachEditing(id, { offset })}
+                        onEnterEdit={(offset) => {
+                          if (!readOnly()) attachEditing(id, { offset });
+                          // A click that ended a drag-select of text is copying, not editing.
+                          else if (window.getSelection()?.isCollapsed !== false) {
+                            readOnlyNotice.show();
+                          }
+                        }}
+                        readOnly={readOnly()}
                         onToggleCollapse={() => onToggleCollapse(id)}
                         onZoomIn={() => setLocalZoomRoot(id)}
                         onToggleMarker={() => onToggleMarker(id)}
@@ -1263,8 +1380,13 @@ export function BlockTree(props: {
                           // about the selection (Delete, indent, move), and entering edit mode
                           // would throw it away (B-73).
                           const inSelection = selection()?.ids.includes(id) ?? false;
-                          if (!props.readOnly && editingId() !== id && !inSelection)
+                          if (!readOnly() && editingId() !== id && !inSelection)
                             attachEditing(id, { at: "end" });
+                          // A locked block takes no caret, so the context would stay with whatever
+                          // another tree holds — a selection in another journal day — and the menu
+                          // over this block offered Delete/Move for that unseen one. Release it:
+                          // the menu here is the timestamps and nothing else.
+                          else if (readOnly()) requestEditingEnd();
                           // A microtask, so the menu is built AFTER Solid's effects have run and
                           // registered this tree as the active editor host. Opening it in the same
                           // tick asked every `when` clause about a context that did not exist yet,
@@ -1287,6 +1409,7 @@ export function BlockTree(props: {
           }}
         </For>
       </div>
+      <readOnlyNotice.View />
     </>
   );
 }

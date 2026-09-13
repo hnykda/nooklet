@@ -124,6 +124,7 @@ identifiers are valid in a `when` string):
 | `popupOpen` | `boolean` | An autocomplete/slash popup is open (`completionStatus(state) === 'active'`). |
 | `composing` | `boolean` | An IME composition is in progress (`Surface.isComposing()`). |
 | `zoomed` | `boolean` | The current view has a non-null zoom root. |
+| `pageView` | `boolean` | The main view is one page's outline (`/page/<name>`, zoomed or not, the page exists) — not the journal stream, search, or any other view. Added 2026-09-13 for `search.findInPage`, so Cmd/Ctrl+F stays the browser's everywhere else. |
 | `platform` | `'mac' \| 'windows' \| 'linux' \| 'ios' \| 'android'` | Resolved once per session/device. |
 | `mobile` | `boolean` | `platform` is `ios`/`android` **or** the device is touch-primary (no hardware keyboard detected), independent of screen size. |
 
@@ -512,6 +513,8 @@ the palette, the block's context menu, and (for Todo only) the slash menu's "TOD
 | `nav.openPage` | Open page | — | — | `true` |
 | `nav.revealBlock` | Reveal block | — | — | `true` |
 | `search.findReplace` | Find and replace… | — | — | `true` |
+| `search.findInPage` | Find in page | Cmd+F | Ctrl+F | `pageView` |
+| `nav.randomPage` | Open a random page | — | — | `true` |
 
 **R40.** `palette.open` opens one shared palette component (§ Interfaces, `PaletteState`) in
 **mixed mode**: as the user types, results interleave fuzzy-matched pages/journals and fuzzy-
@@ -560,6 +563,23 @@ every block with an undoable replace-all.
 tag/page/namespace/date/marker, with snippets. This is **not** the excluded graph-view feature
 (PLAN §2 non-goals list "graph view" as cut for v1); it is ordinary search with a persistent
 results panel, distinct from the ephemeral `palette.open`/`nav.switchPage` popovers.
+
+**R44a.** `search.findInPage` (added 2026-09-13, audit §2 #16) opens a find bar above the current
+page's outline, or refocuses it with its query selected. A non-blank query narrows the outline to
+the blocks whose stored text contains it — compared case- and diacritic-insensitively — plus their
+ancestors, including blocks under a collapsed parent; nothing is written (no `block.collapsed`).
+Enter / Shift+Enter step through the matching blocks; Escape closes the bar, restores the outline
+and, if a block was being edited when the bar opened, returns the caret to where it was. Opening
+the bar ends any editing session first (keys typed into the bar must not reach the block). Its
+`when` is `pageView`, so on every other view no binding matches and the browser's own find runs.
+The block being edited stays visible while it no longer matches. Implementation:
+`apps/web/src/app/page-find.ts`, `views/PageFindBar.tsx`, `editor/pageFilter.ts`.
+
+**R44b.** `nav.randomPage` (added 2026-09-13, audit §2 #18) opens a page chosen uniformly at
+random from the live pages that are not journal days and have at least one live block, excluding
+the page currently on screen (compared with `normalizePageName`). With no such page it does
+nothing. No default keybinding. Implementation: `commands/registrations/random-page.ts`,
+`data/random-page.ts`.
 
 #### E.4 Formatting (category `Formatting`)
 
@@ -961,6 +981,7 @@ interface WhenContext {
   popupOpen: boolean;
   composing: boolean;
   zoomed: boolean;
+  pageView: boolean;
   platform: 'mac' | 'windows' | 'linux' | 'ios' | 'android';
   mobile: boolean;
 }

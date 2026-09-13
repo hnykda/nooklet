@@ -1,0 +1,81 @@
+/* Find in page (`PageFindBar.tsx`). Sticky above the outline so it stays in reach on a long page,
+   raised like the other popovers because it floats over rows while scrolling. */
+
+.page-find {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  max-width: 100%;
+  margin: 0 0 var(--space-md);
+  padding: var(--space-2xs) var(--space-xs) var(--space-2xs) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+}
+
+.page-find:focus-within {
+  border-color: var(--focus);
+}
+
+.page-find-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-xs) 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  /* No font-size: the global 16px on inputs is what stops iOS zooming in on focus. */
+  outline: none;
+}
+
+/* The bar draws the focus boundary (`:focus-within` above); the global input halo inside it read
+   as a second border. Doubled class to outrank `input:not(...):not(...):focus-visible`. */
+.page-find input.page-find-input.page-find-input:focus-visible {
+  box-shadow: none;
+}
+
+.page-find-count {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.page-find-button {
+  min-width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.page-find-button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.page-find-button:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Ancestors shown only so a match has its context: present, but quieter than the matches. */
+.vr-row-find-context > .vr-row-main {
+  opacity: 0.55;
+}
+
+::highlight(nooklet-find) {
+  background-color: color-mix(in srgb, var(--warn) 28%, transparent);
+}
+
+::highlight(nooklet-find-current) {
+  background-color: color-mix(in srgb, var(--accent) 34%, transparent);
+}

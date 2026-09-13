@@ -770,6 +770,12 @@ export const search = defineOp({
 
 **HTTP**: `POST /api/v1/search`; generic `GET /api/v1/search?input=<urlencoded JSON>`.
 
+**`properties` on reserved keys** (2026-09-13, B-238): `marker`, `priority` and `repeat` compare
+against the block's own columns (ADR 011 stores them there, never in `block_prop`); every other key
+matches `block_prop`. `scheduled`, `deadline` and `done` are stored as day/time/epoch values, have
+no exact-string form, and match nothing through `properties`. The filter applies to block hits
+only; `scope: "all"` still returns page hits unfiltered.
+
 **Example**
 
 ```json

@@ -31,6 +31,8 @@ export interface SearchInput {
   mode?: "hybrid" | "keyword" | "semantic";
   scope?: "blocks" | "pages" | "all";
   tags?: string[];
+  /** Exact key=value filters; `marker`/`priority` match the block's task columns (B-238). */
+  properties?: Record<string, string>;
   namespace?: string;
   journalsOnly?: boolean;
   updatedAfter?: string;
@@ -254,6 +256,10 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
           mode: input.mode ?? "hybrid",
           scope: input.scope ?? "all",
           tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
+          properties:
+            input.properties && Object.keys(input.properties).length > 0
+              ? input.properties
+              : undefined,
           namespace: input.namespace || undefined,
           journals_only: input.journalsOnly ?? false,
           updated_after: input.updatedAfter,
