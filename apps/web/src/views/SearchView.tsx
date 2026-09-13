@@ -7,13 +7,15 @@
  * need that lookup, since a reference only carries an id; a search hit already carries `page`).
  */
 import { useNavigate } from "@solidjs/router";
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, on, Show } from "solid-js";
 import { describeError, type SearchHit, type SearchInput } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { useSearchResults } from "../data/store.js";
 import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 import "./search-filters.css";
+import { SearchFallbackNote } from "./SearchFallbackNote.js";
 import { SearchSnippet } from "./SearchSnippet.js";
+import { openEmbeddingsSettings, settingsOpen } from "./SettingsPanel.js";
 import {
   NO_SEARCH_FILTERS,
   SEARCH_MARKERS,
@@ -62,6 +64,20 @@ export function SearchView(): JSX.Element {
   // and under any filter chosen next, which they did not satisfy (B-353).
   const safeResults = () =>
     input() !== undefined && results.error === undefined ? results() : undefined;
+
+  // A fallback note describes the server as it was when the search ran. Its buttons lead to
+  // Settings, where that is what gets changed — so when Settings closes, ask again; otherwise
+  // "semantic search is not set up" stayed on screen right after it was set up (B-523). Only a
+  // result that fell back re-runs: a theme change has no bearing on any other result.
+  createEffect(
+    on(
+      settingsOpen,
+      (open, wasOpen) => {
+        if (wasOpen && !open && safeResults()?.fallback) refetch();
+      },
+      { defer: true },
+    ),
+  );
 
   function openHit(hit: SearchHit): void {
     navigate(hit.kind === "page" ? pageRoutePath(hit.page) : pageZoomRoutePath(hit.page, hit.id));
@@ -190,10 +206,18 @@ export function SearchView(): JSX.Element {
       <Show when={safeResults()}>
         {(r) => (
           <>
+            {/* Why it fell back, and the one next step that fits (B-520). "Try again" refetches:
+                an index still building or an Ollama just started is fixed by time, not a click
+                elsewhere. */}
+            <Show when={r().modeUsed !== mode()}>
+              <SearchFallbackNote
+                modeUsed={r().modeUsed}
+                fallback={r().fallback}
+                onOpenSettings={openEmbeddingsSettings}
+                onRetry={() => refetch()}
+              />
+            </Show>
             <p class="search-summary">
-              <Show when={r().modeUsed !== mode()}>
-                <span class="search-mode-fallback">Fell back to {r().modeUsed} search. </span>
-              </Show>
               {r().hits.length} result{r().hits.length === 1 ? "" : "s"}
             </p>
             <ul class="search-results">

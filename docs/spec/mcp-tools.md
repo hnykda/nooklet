@@ -742,8 +742,9 @@ and was deleted: deleted blocks are also `not_found`, with `hint`: "it may have 
 
 **Description**: "Finds blocks and pages. `mode: 'hybrid'` (default) combines full-text and
 semantic similarity; `'keyword'` for exact words or \"quoted phrases\" and `-exclusions`;
-`'semantic'` for meaning-based matches (falls back to keyword if no embedding model is
-configured — check `mode_used`). Filters: `tags` (all must match), `properties` (exact key=value,
+`'semantic'` for meaning-based matches (falls back to keyword if semantic search is unavailable —
+`mode_used` says which ran, and `fallback` says why: not set up, still indexing, embedding server
+unreachable, …). Filters: `tags` (all must match), `properties` (exact key=value,
 e.g. finding `scheduled` or `marker` values), `namespace`, `pages` (restrict to specific pages),
 `updated_after`/`updated_before`, `journals_only`. Each hit has the block or page id, its page,
 a snippet with the match highlighted, a breadcrumb, and a 0–1 score. Paginated. Read around a hit
@@ -771,6 +772,13 @@ export const search = defineOp({
     })),
     cursor: z.string().optional(),
     mode_used: z.enum(['hybrid', 'keyword', 'semantic']).describe('"keyword" if hybrid/semantic was requested but embeddings are unavailable'),
+    fallback: z.object({
+      reason: z.enum(['sqlite_vec_unavailable', 'not_configured', 'indexing', 'index_incomplete',
+        'provider_unreachable', 'model_missing', 'query_embedding_failed']),
+      message: z.string(), provider: z.string().optional(), model: z.string().optional(),
+      host: z.string().optional(), indexed: z.number().int().optional(), total: z.number().int().optional(),
+      errors: z.number().int().optional(), error: z.string().optional(),
+    }).optional().describe('Present exactly when mode_used is not the mode requested: why semantic search did not run'),
   }),
   annotations: { readOnlyHint: true, idempotentHint: true }, scopes: ['read'],
   mcp: { alwaysLoad: true },
@@ -779,6 +787,26 @@ export const search = defineOp({
 ```
 
 **HTTP**: `POST /api/v1/search`; generic `GET /api/v1/search?input=<urlencoded JSON>`.
+
+**`fallback`** (2026-09-13, B-520): present exactly when `mode_used` differs from the requested
+`mode`, absent otherwise (a `keyword` request never has one). `reason` is decided in this order —
+the first that holds wins:
+
+| `reason` | When | Extra fields |
+|---|---|---|
+| `sqlite_vec_unavailable` | the vec0 extension did not load on this server | `error` |
+| `not_configured` | no active model, and the configured provider+model has no `embedding_model` row | — |
+| `index_incomplete` | no active model; the configured model's row exists, the queue is empty, nothing is pending, some units failed | `provider`, `model`, `host`, `indexed`, `total`, `errors`, `error` (newest stored) |
+| `indexing` | no active model; the configured model's row exists and the backfill has not finished | `provider`, `model`, `host`, `indexed`, `total`, `errors` |
+| `provider_unreachable` | a model is active, embedding the query failed, and the host does not answer its model list | `provider`, `model`, `host`, `error` |
+| `model_missing` | …the host answers but does not list the model | `provider`, `model`, `host`, `error` |
+| `query_embedding_failed` | …anything else (the host has the model; a plugin provider is not loaded; the request was cancelled) | `provider`, `model`, `host`, `error` |
+
+`total` is `indexed + pending + errors + queued` and shrinks slightly while the queue drains
+(empty blocks are dropped, not embedded). The failure classification probes the host only after an
+embed failed, so a working search makes no extra request. `message` is one sentence fit to show
+as-is. A `pages` filter that resolves to no page returns the requested mode with no hits and no
+`fallback` — nothing was searched (B-521).
 
 **`properties` on reserved keys** (2026-09-13, B-238): `marker`, `priority` and `repeat` compare
 against the block's own columns (ADR 011 stores them there, never in `block_prop`); every other key
@@ -809,8 +837,8 @@ only; `scope: "all"` still returns page hits unfiltered.
 
 **Errors**: `invalid` — more than 20 `pages`, or `properties` key fails `PropertyKey`;
 `internal` with `hint: "semantic search is temporarily unavailable; results used keyword matching"`
-is never returned as an error — that case degrades silently to `mode_used: 'keyword'` instead
-(§9.14 notes why this is a soft-fail, not an error).
+is never returned as an error — that case degrades to `mode_used: 'keyword'` with a `fallback`
+saying why (§9.14 notes why this is a soft-fail, not an error).
 
 ---
 

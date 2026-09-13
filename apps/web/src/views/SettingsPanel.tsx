@@ -21,6 +21,7 @@
  */
 
 import {
+  createEffect,
   createResource,
   createSignal,
   For,
@@ -340,10 +341,21 @@ function Progress(props: { state: ModelState }): JSX.Element {
   );
 }
 
+// A signal, not a flag — the same reason as `PluginsSection.tsx`'s: Settings may already be open
+// when the request arrives, and only a tracked read lets the section's effect see it.
+const [embeddingsScrollRequested, setEmbeddingsScrollRequested] = createSignal(false);
+
 function EmbeddingsSection(): JSX.Element {
   const [status, { refetch }] = createResource(() =>
     callOp<EmbeddingsStatus>("embeddings.status", {}),
   );
+  let sectionEl: HTMLElement | undefined;
+  createEffect(() => {
+    if (!embeddingsScrollRequested() || !sectionEl) return;
+    setEmbeddingsScrollRequested(false);
+    // `scrollIntoView` is absent under jsdom; a missing scroll must not take the panel down.
+    sectionEl.scrollIntoView?.({ block: "start" });
+  });
   // Reading an errored resource re-throws, so every read goes through this.
   const data = (): EmbeddingsStatus | undefined =>
     status.error !== undefined ? undefined : status();
@@ -365,7 +377,7 @@ function EmbeddingsSection(): JSX.Element {
   };
 
   return (
-    <section>
+    <section ref={sectionEl} id="set-embeddings">
       <h3>Search &amp; embeddings</h3>
 
       <Show when={status.loading && data() === undefined}>
@@ -642,6 +654,12 @@ export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
 const [open, setOpen] = createSignal(false);
 export const settingsOpen = open;
 export function openSettings(): void {
+  setOpen(true);
+}
+/** Open Settings scrolled to "Search & embeddings" — where the Search view sends someone whose
+ * search fell back to keyword because semantic search is not set up, or is failing (B-520). */
+export function openEmbeddingsSettings(): void {
+  setEmbeddingsScrollRequested(true);
   setOpen(true);
 }
 export function closeSettings(): void {

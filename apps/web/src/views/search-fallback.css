@@ -1,0 +1,30 @@
+/* `SearchFallbackNote.tsx`: why a search fell back to keyword (B-520). Its own file so the note
+   does not add to `styles/views.css`, which several branches edit at once. */
+
+.search-fallback {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  margin: var(--space-md) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.search-fallback-detail {
+  color: var(--muted);
+}
+
+.search-fallback-action {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+  cursor: pointer;
+  padding: 0;
+  margin-left: var(--space-xs);
+}
+
+/* The summary under it keeps its own spacing; pulled up so the two read as one block. */
+.search-fallback + .search-summary {
+  margin-top: var(--space-xs);
+}

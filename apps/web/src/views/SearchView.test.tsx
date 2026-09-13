@@ -3,25 +3,41 @@ import { Route, Router } from "@solidjs/router";
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { createResource } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SearchInput, SearchResult } from "../data/api-client.js";
+import type { SearchFallback, SearchInput, SearchResult } from "../data/api-client.js";
 
 let lastInput: SearchInput | undefined;
+/** When set, the fake server answers every non-keyword search with a keyword fallback and this. */
+let serverFallback: SearchFallback | undefined;
 const searchFn = vi.fn(
-  async (input: SearchInput): Promise<SearchResult> => ({
-    hits: [
-      {
-        kind: "block",
-        id: "b1",
-        page: "Projects/Aurora",
-        snippet: "Vendor **pricing** not confirmed",
-        breadcrumb: ["Launch checklist", "Open risks"],
-        score: 0.9,
-        updatedAt: "2026-09-09T00:00:00.000Z",
-      },
-    ],
-    modeUsed: input.mode ?? "hybrid",
-  }),
+  async (input: SearchInput): Promise<SearchResult> =>
+    serverFallback && input.mode !== "keyword"
+      ? { hits: [], modeUsed: "keyword", fallback: serverFallback }
+      : {
+          hits: [
+            {
+              kind: "block",
+              id: "b1",
+              page: "Projects/Aurora",
+              snippet: "Vendor **pricing** not confirmed",
+              breadcrumb: ["Launch checklist", "Open risks"],
+              score: 0.9,
+              updatedAt: "2026-09-09T00:00:00.000Z",
+            },
+          ],
+          modeUsed: input.mode ?? "hybrid",
+        },
 );
+
+const openEmbeddingsSettings = vi.fn();
+// The real panel module pulls in theme, appearance and template storage; the view only needs the
+// function that opens it and the signal that says whether it is open.
+const settingsState = vi.hoisted(() => ({ setOpen: (_open: boolean): void => {} }));
+vi.mock("./SettingsPanel.js", async () => {
+  const { createSignal } = await import("solid-js");
+  const [settingsOpen, setOpen] = createSignal(false);
+  settingsState.setOpen = setOpen;
+  return { openEmbeddingsSettings: () => openEmbeddingsSettings(), settingsOpen };
+});
 
 vi.mock("../data/store.js", () => ({
   useSearchResults: (inputAccessor: () => SearchInput | undefined) => {
@@ -39,7 +55,9 @@ vi.mock("../data/store.js", () => ({
 afterEach(() => {
   cleanup();
   searchFn.mockClear();
+  openEmbeddingsSettings.mockClear();
   lastInput = undefined;
+  serverFallback = undefined;
 });
 
 // Imported here, while the file is collected (no timeout runs), not inside the first test: that
@@ -151,5 +169,91 @@ describe("SearchView filter order (B-355)", () => {
     const after = names.indexOf("Updated after");
     expect(after).toBeGreaterThanOrEqual(0);
     expect(names[after + 1]).toBe("Updated before");
+  });
+});
+
+describe("SearchView fallback note (B-520)", () => {
+  it("says why a hybrid search fell back, and its Settings button opens the embeddings section", async () => {
+    serverFallback = {
+      reason: "not_configured",
+      message: "Semantic search is not set up: no embedding model is configured.",
+    };
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+
+    const note = await screen.findByRole("status");
+    expect(note.textContent).toContain(
+      "Fell back to keyword search: semantic search is not set up.",
+    );
+    expect(document.querySelector(".search-summary")?.textContent).toBe("0 results");
+    fireEvent.click(screen.getByRole("button", { name: "Set up semantic search…" }));
+    expect(openEmbeddingsSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("Check again re-runs the same search", async () => {
+    serverFallback = { reason: "indexing", message: "…", indexed: 3, total: 9, errors: 0 };
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+    await screen.findByText(/still being built \(3 of 9 embedded\)/);
+    const calls = searchFn.mock.calls.length;
+
+    serverFallback = { reason: "indexing", message: "…", indexed: 8, total: 9, errors: 0 };
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await screen.findByText(/still being built \(8 of 9 embedded\)/);
+    expect(searchFn.mock.calls.length).toBe(calls + 1);
+    expect(lastInput?.query).toBe("pricing");
+  });
+
+  it("Check again keeps keyboard focus on the button when the same reason comes back (B-525)", async () => {
+    // A keyboard user presses Enter on "Check again" while the index builds; the answer is the
+    // same reason with a new count. The button must be the same node, still focused — not a
+    // replacement mounted by a `<For>` keyed on freshly built action objects, which left focus on
+    // <body> in Chromium and WebKit. This covers that half only: jsdom does not blur an element
+    // Solid MOVES, the other half of B-525, which `e2e/tests/search-fallback.spec.ts` covers.
+    serverFallback = { reason: "indexing", message: "…", indexed: 3, total: 9, errors: 0 };
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+    await screen.findByText(/still being built \(3 of 9 embedded\)/);
+    const button = screen.getByRole("button", { name: "Check again" });
+    button.focus();
+    expect(document.activeElement).toBe(button);
+
+    serverFallback = { reason: "indexing", message: "…", indexed: 8, total: 9, errors: 0 };
+    fireEvent.click(button);
+    await screen.findByText(/still being built \(8 of 9 embedded\)/);
+    expect(screen.getByRole("button", { name: "Check again" })).toBe(button);
+    expect(button.isConnected).toBe(true);
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("closing Settings re-runs a search that fell back, and only one that did (B-523)", async () => {
+    serverFallback = { reason: "not_configured", message: "…" };
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+    await screen.findByText(/semantic search is not set up/);
+    const calls = searchFn.mock.calls.length;
+
+    settingsState.setOpen(true);
+    serverFallback = { reason: "indexing", message: "…", indexed: 0, total: 9, errors: 0 };
+    settingsState.setOpen(false);
+    await screen.findByText(/still being built \(0 of 9 embedded\)/);
+    expect(searchFn.mock.calls.length).toBe(calls + 1);
+
+    // A result that did not fall back is not re-run by opening and closing Settings.
+    serverFallback = undefined;
+    fireEvent.click(screen.getByRole("button", { name: "keyword" }));
+    await screen.findByText("Projects/Aurora");
+    const keywordCalls = searchFn.mock.calls.length;
+    settingsState.setOpen(true);
+    settingsState.setOpen(false);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(searchFn.mock.calls.length).toBe(keywordCalls);
+  });
+
+  it("shows no note when the search ran in the mode asked for", async () => {
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+    await screen.findByText("Projects/Aurora");
+    expect(document.querySelector(".search-fallback")).toBeNull();
   });
 });
