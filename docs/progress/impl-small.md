@@ -142,5 +142,12 @@ Verification progress:
   non-journal pages with content; find on Megapage ("ž", "že", "ře", "the") counted and
   highlighted, Escape restored 201 rows, page version unchanged; context-menu timestamp on an
   imported block "Created 29 Apr 2026 08:30"; no page errors.
-- Next: full unit + typecheck, full e2e suite in two halves, final report.
+- Committed `9d619f9` (Search view Show/marker).
+- Final numbers at `9d619f9`: `pnpm -r test` core 332, plugin-api 17, server 526, web 719 (1,594
+  passed, 0 failed); `pnpm -r typecheck` exit 0; biome repo-wide 9 errors / 13 warnings, the same
+  as base, none on lines this branch added. Chromium e2e in two halves on 6409: 134 passed + 1
+  skipped, and 175 passed + 1 skipped — 0 failed, including `views.spec.ts` "opening the palette
+  while editing … hands focus back", which the implementer saw fail (it passed here, in the half).
+- Verification done. Open items for whoever merges: the "Open" bullets under B-232 and B-238 in
+  `docs/bugs-inbox/impl-small.md`.
 
