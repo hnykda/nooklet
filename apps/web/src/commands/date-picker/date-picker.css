@@ -1,0 +1,235 @@
+/* The date picker (`DatePicker.tsx`). Structure and paint come from `.cmd-popup` in
+   `../styles.css`; this lifts its list-sized limits (a calendar is neither 280px tall nor a
+   scrolling list) and lays out the query line, the month grid and the quick row. Colours read the
+   app's tokens with the same light-mode fallbacks the rest of `commands/` uses. */
+
+.cmd-popup.date-picker {
+  /* Wide enough for Today · Tomorrow · Next week · Remove on one line. */
+  width: 296px;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
+  max-height: none;
+  overflow: visible;
+  padding: var(--space-sm, 6px) var(--space-md, 8px) var(--space-md, 8px);
+  user-select: none;
+}
+
+.dp-query {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm, 6px);
+  min-height: 22px;
+  padding: 0 var(--space-xs, 4px);
+  font-size: var(--text-xs, 12px);
+}
+
+.dp-label {
+  flex: none;
+  color: var(--muted, #6a6a76);
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  font-weight: var(--weight-semibold, 600);
+}
+
+.date-picker[data-field="deadline"] .dp-label {
+  color: var(--danger, #bf2f2f);
+}
+
+.dp-hint {
+  color: var(--muted, #6a6a76);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dp-text {
+  /* `min-width: 0` so a long query ("fri 14:00 every 2 weeks from done") wraps inside the popup
+     instead of widening it past its border. */
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-sm, 13px);
+  color: var(--cmd-fg, #111);
+  overflow-wrap: anywhere;
+}
+
+/* A block caret after the typed text: the editor keeps DOM focus, so without this nothing shows
+   that the keystrokes are landing here. */
+.dp-text::after {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: dp-blink 1s steps(1) infinite;
+}
+
+@keyframes dp-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.dp-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-sm, 6px);
+  min-height: 20px;
+  padding: 2px var(--space-xs, 4px) var(--space-sm, 6px);
+  border-bottom: 1px solid var(--cmd-border, #e2e2e2);
+  font-size: var(--text-xs, 12px);
+  color: var(--muted, #6a6a76);
+}
+
+.dp-preview-date {
+  color: var(--cmd-fg, #111);
+  font-weight: var(--weight-medium, 500);
+  font-variant-numeric: tabular-nums;
+}
+
+.dp-preview-rel {
+  flex: none;
+}
+
+.dp-preview--error {
+  color: var(--danger, #bf2f2f);
+}
+
+.dp-month {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-xs, 4px);
+}
+
+.dp-month-label {
+  font-size: var(--text-sm, 13px);
+  font-weight: var(--weight-semibold, 600);
+}
+
+.dp-nav {
+  width: 32px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: var(--muted, #6a6a76);
+  font-size: var(--text-lg, 17px);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dp-nav:hover {
+  background: var(--cmd-active-bg, #e8effe);
+  color: var(--cmd-fg, #111);
+}
+
+.dp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.dp-weekday {
+  font-size: 11px;
+  color: var(--muted, #6a6a76);
+  padding: 2px 0;
+}
+
+.dp-day {
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm, 13px);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.dp-day:hover {
+  background: var(--cmd-active-bg, #e8effe);
+}
+
+.dp-day--other {
+  color: var(--muted, #6a6a76);
+  opacity: 0.7;
+}
+
+.dp-day--today {
+  font-weight: var(--weight-bold, 700);
+  color: var(--accent, #2f55d4);
+}
+
+/* The block's date as it stands, so moving away from it still shows where it was. */
+.dp-day--current {
+  border-color: var(--accent, #2f55d4);
+}
+
+.dp-day--active,
+.dp-day--active:hover {
+  background: var(--accent, #2f55d4);
+  border-color: var(--accent, #2f55d4);
+  color: var(--accent-contrast, #fff);
+  opacity: 1;
+}
+
+.dp-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs, 4px);
+  margin-top: var(--space-sm, 6px);
+  padding-top: var(--space-sm, 6px);
+  border-top: 1px solid var(--cmd-border, #e2e2e2);
+}
+
+.dp-quick-btn {
+  min-height: 26px;
+  padding: 0 var(--space-md, 8px);
+  border: 1px solid var(--cmd-border, #e2e2e2);
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-xs, 12px);
+  cursor: pointer;
+}
+
+.dp-quick-btn:hover {
+  background: var(--cmd-active-bg, #e8effe);
+}
+
+.dp-remove {
+  margin-left: auto;
+  color: var(--danger, #bf2f2f);
+}
+
+.dp-keys {
+  margin-top: var(--space-sm, 6px);
+  font-size: 11px;
+  color: var(--muted, #6a6a76);
+  line-height: 1.6;
+}
+
+.dp-keys kbd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  padding: 0 3px;
+  border: 1px solid var(--cmd-border, #e2e2e2);
+  border-radius: var(--radius-xs, 3px);
+}
+
+/* A phone has no arrow keys to explain, and the space is better spent on the grid. */
+@media (pointer: coarse) {
+  .dp-keys {
+    display: none;
+  }
+  .dp-day {
+    height: 38px;
+  }
+}

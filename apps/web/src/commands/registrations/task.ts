@@ -41,6 +41,31 @@ function setMarker(id: string, title: string, marker: TaskMarker): Command {
   };
 }
 
+/** R38. No argument (keyboard, palette, slash menu): open the picker. An argument (an agent via
+ * `ui_run`, ADR 015 — nobody is there to answer a picker): a date string the picker would accept,
+ * or `null` / `{ date: null }` to clear, written directly. */
+async function runDateCommand(
+  ctx: CommandContext,
+  picker: DatePickerHost,
+  field: "scheduled" | "deadline",
+): Promise<void> {
+  const blockId = targetBlockId(ctx);
+  if (!blockId) return;
+  const args = ctx.args;
+  if (args === undefined) {
+    picker.open({ blockId, field });
+    return;
+  }
+  const input =
+    args !== null && typeof args === "object" && "date" in args
+      ? (args as { date: unknown }).date
+      : args;
+  if (input !== null && typeof input !== "string") {
+    throw new Error(`${field}: expected a date string or null`);
+  }
+  await picker.set({ blockId, field, input });
+}
+
 export function createTaskCommands(deps: { datePicker: DatePickerHost }): Command[] {
   return [
     {
@@ -155,8 +180,7 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
       defaultKeys: {},
       when: "editorFocused || blockSelected",
       run(ctx) {
-        const blockId = targetBlockId(ctx);
-        if (blockId) deps.datePicker.open({ blockId, field: "scheduled" });
+        return runDateCommand(ctx, deps.datePicker, "scheduled");
       },
     },
     {
@@ -166,8 +190,7 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
       defaultKeys: {},
       when: "editorFocused || blockSelected",
       run(ctx) {
-        const blockId = targetBlockId(ctx);
-        if (blockId) deps.datePicker.open({ blockId, field: "deadline" });
+        return runDateCommand(ctx, deps.datePicker, "deadline");
       },
     },
   ];

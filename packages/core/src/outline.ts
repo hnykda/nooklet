@@ -30,6 +30,7 @@
  */
 
 import { isId } from "./ids.js";
+import { isValidJournalDay } from "./journal.js";
 import type { OutlineNode, ParsedPage, Priority, Properties, TaskMarker } from "./model.js";
 
 const TAB_WIDTH = 4;
@@ -48,12 +49,32 @@ const ID_SUFFIX_RE = / \^([0-9a-z]{14})$/;
 const ID_ALONE_RE = /^\^([0-9a-z]{14})$/;
 /** OUT-23: org timestamp lines. Group 1 = SCHEDULED|DEADLINE, group 2 = the `<...>` interior. */
 const SCHEDULED_DEADLINE_RE = /^\s*(SCHEDULED|DEADLINE):\s*<([^>]+)>\s*$/;
-/** Interior of an org timestamp: date, optional weekday, optional time, optional repeater. Month,
- * day and hour may lack zero padding (`<2023-2-17 Fri>` is on the owner's graph, and mldoc reads
- * it — `Scanf.sscanf s "%d-%d-%d"`); the OUT-23 branch below pads them, because the reducer only accepts
- * `YYYY-MM-DD[ HH:MM]` and silently drops anything else from a create's property bag (B-266). */
+/** Interior of an org timestamp: date, optional weekday, optional time, optional repeater.
+ * Groups: 1-3 = year, month, day; 4-5 = hour, minute; 6-7 = repeat count, unit.
+ *
+ * Month, day and hour take ONE digit too: Logseq wrote `<2023-2-17 Fri>` often enough that 20 of
+ * the 24 `SCHEDULED:` lines in the owner's graph look like that, and a strict `\d{2}` made every
+ * one of them fall through to content text — the date silently gone (B-143). `orgTimestamp`
+ * pads them to the only shape the reducer accepts. */
 const TIMESTAMP_INNER_RE =
   /^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+[A-Za-z]{2,3})?(?:\s+(\d{1,2}):(\d{2}))?(?:\s+[.+]{1,2}(\d+)([dwmy]))?$/;
+
+/** An org timestamp's interior as ADR 011 values (`YYYY-MM-DD[ HH:MM]`, `<n><unit>`), or
+ * `undefined` when it is not one — including an impossible date or time, which the caller keeps
+ * as text rather than storing wrong. */
+function orgTimestamp(inner: string): { date: string; repeat: string | undefined } | undefined {
+  const m = TIMESTAMP_INNER_RE.exec(inner);
+  if (!m) return undefined;
+  const pad = (s: string | undefined): string => (s ?? "").padStart(2, "0");
+  const day = Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);
+  if (!isValidJournalDay(day)) return undefined;
+  let date = `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  if (m[4] !== undefined) {
+    if (Number(m[4]) > 23 || Number(m[5]) > 59) return undefined;
+    date += ` ${pad(m[4])}:${m[5]}`;
+  }
+  return { date, repeat: m[6] && m[7] ? `${m[6]}${m[7]}` : undefined };
+}
 const HEADING_PREFIX_RE = /^#{1,6} /;
 
 const MARKER_ALIASES: Record<string, TaskMarker> = {
@@ -268,13 +289,11 @@ function finalizeNode(raw: RawNode): OutlineNode {
     // OUT-23: org SCHEDULED:/DEADLINE: timestamp lines -> scheduled::/deadline::/repeat::.
     const sdm = SCHEDULED_DEADLINE_RE.exec(line);
     if (sdm) {
-      const tm = TIMESTAMP_INNER_RE.exec((sdm[2] as string).trim());
-      if (tm) {
+      const ts = orgTimestamp((sdm[2] as string).trim());
+      if (ts) {
         const kind = (sdm[1] as string).toLowerCase();
-        const pad = (n: string | undefined) => (n as string).padStart(2, "0");
-        const day = `${tm[1]}-${pad(tm[2])}-${pad(tm[3])}`;
-        properties[kind] = tm[4] ? `${day} ${pad(tm[4])}:${tm[5]}` : day;
-        if (tm[6] && tm[7]) properties.repeat = `${tm[6]}${tm[7]}`;
+        properties[kind] = ts.date;
+        if (ts.repeat) properties.repeat = ts.repeat;
         return;
       }
       // malformed timestamp: fall through and keep the line as ordinary content (no data loss).

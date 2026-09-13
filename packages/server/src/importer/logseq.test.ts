@@ -265,6 +265,42 @@ describe("importLogseqGraph: task markers, scheduling, nesting", () => {
     ]);
   });
 
+  it("imports SCHEDULED/DEADLINE written with one-digit month, day and hour (B-143)", async () => {
+    writeGraphFile(
+      "journals/2023_02_17.md",
+      "- DONE Mirek\n  SCHEDULED: <2023-2-17 Fri>\n- TODO standup\n  DEADLINE: <2023-2-20 Mon 9:30 .+1d>\n",
+    );
+
+    const stats = await importLogseqGraph(ctx, graphDir);
+    expect(stats.errors).toEqual([]);
+
+    const rows = ctx.driver.all<{
+      content: string;
+      scheduled_day: number | null;
+      deadline_day: number | null;
+      deadline_time: string | null;
+      repeat: string | null;
+    }>(
+      "SELECT content, scheduled_day, deadline_day, deadline_time, repeat FROM block ORDER BY content",
+    );
+    expect(rows).toEqual([
+      {
+        content: "Mirek",
+        scheduled_day: 20230217,
+        deadline_day: null,
+        deadline_time: null,
+        repeat: null,
+      },
+      {
+        content: "standup",
+        scheduled_day: null,
+        deadline_day: 20230220,
+        deadline_time: "09:30",
+        repeat: "1d",
+      },
+    ]);
+  });
+
   it("preserves nested block parent/child structure and per-level order", async () => {
     writeGraphFile("pages/Nested.md", "- a\n\t- b\n\t- c\n\t\t- d\n- e\n");
 

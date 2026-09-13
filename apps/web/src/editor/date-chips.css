@@ -1,0 +1,77 @@
+/* Scheduled/deadline chips at the end of a block row (`DateChips.tsx`, B-102). Sized and set
+   like the priority badge (`editor.css` `.vr-priority`) so the two read as one family of row
+   metadata; a pill rather than a square chip because it is a control — it opens the picker. */
+
+.vr-dates {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  gap: var(--space-xs);
+  /* Optically centred on the first line of a 15px/1.55 row, as `.vr-priority` is. */
+  margin-top: 2px;
+}
+
+.vr-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 19px;
+  padding: 0 7px 0 6px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--muted) 11%, transparent);
+  color: var(--fg-soft);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.vr-date:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--fg);
+}
+
+.vr-date:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.vr-date-deadline svg {
+  color: var(--danger);
+}
+
+.vr-date-today {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+}
+
+.vr-date-overdue,
+.vr-date-overdue:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  font-weight: var(--weight-semibold);
+}
+
+.vr-date-closed {
+  opacity: 0.55;
+}
+
+.vr-date-repeat {
+  opacity: 0.75;
+}
+
+/* On a phone the content column is too narrow to share with two chips: put them on their own
+   line under the text instead of squeezing the text into a sliver. */
+@media (max-width: 520px) {
+  .vr-row-main:has(> .vr-dates) {
+    flex-wrap: wrap;
+  }
+  .vr-row-main > .vr-dates {
+    flex-basis: 100%;
+    margin-top: 0;
+  }
+}

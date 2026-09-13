@@ -11,6 +11,7 @@ import { createEffect, createMemo, onCleanup, Show } from "solid-js";
 import { lookupBlockText } from "../data/block-ref-cache.js";
 import { Bullet } from "./Bullet.js";
 import { resolveClickOffset } from "./caret.js";
+import { DateChips } from "./DateChips.js";
 import { attachSwipeRow } from "./gestures/swipeAttach.js";
 import { BlockContentView, type Navigate } from "./render/tokens.js";
 import type { EditableBlock } from "./types.js";
@@ -209,6 +210,13 @@ export function BlockRowView(props: {
             <div class="vr-surface-host" ref={props.surfaceHost} />
           </Show>
         </div>
+        <DateChips
+          blockId={props.id}
+          scheduled={props.block.scheduled}
+          deadline={props.block.deadline}
+          marker={props.block.marker}
+          repeat={props.block.repeat}
+        />
       </div>
     </div>
   );
