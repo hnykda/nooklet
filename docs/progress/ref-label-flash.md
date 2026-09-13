@@ -72,6 +72,12 @@ never `docs/BUGS.md`.
   written block's own label re-rendering with its text. Chromium and WebKit identical. Page probe
   in WebKit on HEAD: `Ref Heavy` and `2022-12-16` 0 flashed snapshots, 4 records per refresh.
 
+- `d762804` journals probe committed. Spec test 5 added ("a label changes when its target's text
+  does, and never passes through ((id))"); seeding made re-runnable on one server. Spec 5/5
+  chromium, 5/5 webkit (run as separate invocations — one invocation with both projects shares a
+  server). Against the old `block-ref-cache.ts` (with a `resolveBlockRef` shim): tests 1, 2, 4, 5
+  fail, 3 (B-510) passes — as expected.
+
 ## Measurements (per refresh, averages of 5)
 
 Real-graph copy (`<scratch>/graph`, backup of the owner's graph 2026-09-13 17:42), `nooklet serve`
@@ -111,7 +117,7 @@ After the row-memo equality (same probe, `<scratch>/after-rows.json`): `rowBlock
 
 ## In flight
 
-- Final checks: full e2e in batches (chromium), webkit spec, inbox B-500 test list.
+- Final checks: full e2e in batches (chromium).
   `nooklet verify` not run: nothing in sync, ops or schema changed.
 
 ## How to resume

@@ -17,9 +17,15 @@ lookup missed until its re-read answered.
 the ids some live label is showing, in one `IN (…)` query per tick, keeping the old text on screen
 until the answer lands; a text that did not change notifies nothing (one signal per id, compared
 with `===`), an older answer never overwrites a newer one, a failed re-read keeps the text, and an
-id nobody shows is re-read on its next lookup. Tests: `e2e/tests/ref-label-flash.spec.ts` (3,
-chromium + webkit; all 3 fail on the old cache), `apps/web/src/data/block-ref-cache.test.ts` (8,
-all fail on the old cache).
+id nobody shows is re-read on its next lookup. Tests, all failing on the old cache and passing in
+Chromium and WebKit: `e2e/tests/ref-label-flash.spec.ts` › "block reference labels stay resolved
+across refreshes from pulls (B-500)", "… while typing in another block (B-500)", "a refresh
+changes nothing on screen but the block that changed, and rebuilds nothing else (B-500, B-511)",
+"a label changes when its target's text does, and never passes through ((id)) (B-500)" — each
+records every DOM state with a MutationObserver and fails on any snapshot holding an unresolved
+`((id))`; `apps/web/src/data/block-ref-cache.test.ts` (8). The webkit project now runs this spec.
+Real-graph numbers (per refresh, 150-row page with 50 refs): 2,550 resolver calls → 0, 50 queries
+→ 1, 3,206 DOM mutation records → 4 — `docs/progress/ref-label-flash.md` › Measurements.
 
 ---
 

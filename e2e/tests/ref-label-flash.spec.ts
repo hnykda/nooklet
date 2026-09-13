@@ -68,7 +68,11 @@ async function recorded(page: Page): Promise<Recorded> {
   return page.evaluate(() => (window as unknown as { __flash: Recorded }).__flash);
 }
 
-async function seed(page: Page): Promise<{ other: string; plain: string; alpha: string }> {
+/** Both pages, once per server; the tests in this file (and a second project run against the same
+ * server) edit the plain block, so it is found by its prefix. */
+async function seed(
+  page: Page,
+): Promise<{ other: string; plain: string; plainText: string; alpha: string }> {
   await seedPage(page, TARGET, "- target alpha\n- target **beta**");
   const target = await readBlocks(page, TARGET);
   const alpha = target.find((b) => b.content === "target alpha")?.id as string;
@@ -76,7 +80,8 @@ async function seed(page: Page): Promise<{ other: string; plain: string; alpha: 
   await seedPage(page, HOST, "- same page target\n- plain block to edit");
   const host = await readBlocks(page, HOST);
   const same = host.find((b) => b.content === "same page target")?.id as string;
-  const plain = host.find((b) => b.content === "plain block to edit")?.id as string;
+  const plainBlock = host.find((b) => b.content.startsWith("plain block to edit"));
+  const plain = plainBlock?.id as string;
   if (host.length === 2) {
     await api(page, "page.append", {
       page: HOST,
@@ -87,7 +92,7 @@ async function seed(page: Page): Promise<{ other: string; plain: string; alpha: 
       ].join("\n"),
     });
   }
-  return { other: beta, plain, alpha };
+  return { other: beta, plain, plainText: plainBlock?.content ?? "", alpha };
 }
 
 const PLACEHOLDER = /\(\([0-9a-z]+\)\)/;
@@ -95,7 +100,7 @@ const PLACEHOLDER = /\(\([0-9a-z]+\)\)/;
 test("block reference labels stay resolved across refreshes from pulls (B-500)", async ({
   page,
 }) => {
-  const { plain } = await seed(page);
+  const { plain, plainText } = await seed(page);
   await page.goto(pagePath(HOST));
   const outliner = page.locator(".vr-outliner").first();
   const refs = outliner.locator(".vr-block-ref");
@@ -108,9 +113,9 @@ test("block reference labels stay resolved across refreshes from pulls (B-500)",
   ]);
 
   await record(page);
-  let text = "plain block to edit";
+  let text = plainText;
   for (let i = 0; i < 5; i++) {
-    const next = `plain block to edit ${i}`;
+    const next = `plain block to edit ${Date.now()}-${i}`;
     await api(page, "block.update", { id: plain, old_str: text, new_str: next });
     text = next;
     await expect(outliner.locator(".vr-row").nth(1)).toHaveText(next, { timeout: 15_000 });
@@ -326,4 +331,44 @@ test("a refresh changes nothing on screen but the block that changed, and rebuil
   // And nothing was thrown away and rebuilt with the same content (B-511): query results,
   // reference rows, date chips, property rows, sidebar entries, ref labels, rows.
   expect(r.mounts).toEqual({});
+});
+
+test("a label changes when its target's text does, and never passes through ((id)) (B-500)", async ({
+  page,
+}) => {
+  const { alpha } = await seed(page);
+  await page.goto(pagePath(HOST));
+  const refs = page.locator(".vr-outliner").first().locator(".vr-block-ref");
+  await expect(refs).toHaveText([
+    "target alpha",
+    "target beta",
+    "same page target",
+    "target alpha",
+  ]);
+  await record(page);
+  try {
+    await api(page, "block.update", {
+      id: alpha,
+      old_str: "target alpha",
+      new_str: "target alpha renamed",
+    });
+    await expect(refs.nth(0)).toHaveText("target alpha renamed", { timeout: 15_000 });
+    await expect(refs.nth(3)).toHaveText("target alpha renamed");
+    const r = await recorded(page);
+    expect(r.refs.filter((labels) => labels.some((l) => PLACEHOLDER.test(l)))).toEqual([]);
+    // Straight from the old text to the new one (the recorder only snapshots on a DOM change, so
+    // the old text shows up only if something else on the page changed first).
+    const firstLabel = r.refs.map((labels) => labels[0]);
+    expect(firstLabel.every((l) => l === "target alpha" || l === "target alpha renamed")).toBe(
+      true,
+    );
+    expect(firstLabel.at(-1)).toBe("target alpha renamed");
+  } finally {
+    // The other tests in this file read the old text.
+    await api(page, "block.update", {
+      id: alpha,
+      old_str: "target alpha renamed",
+      new_str: "target alpha",
+    }).catch(() => {});
+  }
 });
