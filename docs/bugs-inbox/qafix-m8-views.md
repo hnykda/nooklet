@@ -65,13 +65,33 @@ div (present at `cf08d19`).
 ---
 
 ### B-352 · A phone without a keyboard cannot open the command palette
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, M8 views QA (finding Q3) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, M8 views QA (finding Q3) ·
+**Test:** `e2e/tests/phone-palette.spec.ts`
 
 At 390px with touch, no control in the top bar, sidebar drawer, page "…" menu, editing toolbar or
 Help menu opens `.cmd-palette`; only Cmd/Ctrl+K does. So everything that exists only as a palette
 command is out of reach on a phone: Random page, Collapse all / Expand all, Open this page on the
 shelf, and every other command without a button.
+
+**Fixed 2026-09-13.** A "⌘ Command palette" row at the top of the sidebar — the drawer, on a
+phone — on every device (`shell/PaletteButton.tsx`, `palette-button.css`, two lines in
+`Sidebar.tsx`). It runs `palette.open` through `exec`, like the key; where there is a keyboard it
+shows the live binding. In drawer mode (`max-width: 44rem`) it closes the drawer first, so the
+drawer does not sit over what the command does next.
+
+Tried first and dropped: a ⌘ icon in the top bar. On the owner's graph at 390px the bar already
+holds the word count and the "Agents can see this window" badge; one more icon shrank every icon
+button from 26px to its 18px glyph and, once that was stopped, pushed the badge to a third line
+(53px in a 44px bar). Reclaiming gaps and padding kept the badge at two lines only by truncating the
+word count ("2527 …") or by pixel-tuning against badge text that changes with its state and the
+device's font. The sidebar has room and is where a phone user goes to get anywhere.
+
+Opening it while editing ends the edit (the drawer toggle is a press outside the outline,
+`BlockTree.tsx`), so block-level commands are not offered from it — the long-press menu has those;
+page-level ones are. Real graph copy at 390px (`/page/TODO`): the row first in the drawer, drawer
+closed after, Collapse all 111 → 41 rows, Expand all back to 111, Open a random page (TODO → "RPG on
+Harry Potter theme with Robin"), all by tap. Tests that would have caught it:
+`e2e/tests/phone-palette.spec.ts` (5; all five failed with the `Sidebar.tsx` hookup commented out).
 
 ---
 
@@ -113,6 +133,18 @@ the title row, and the page "…" menu (`views/PageActions.tsx`) carries "Add ic
 every device. Test that would have caught it: `e2e/tests/page-title-fit.spec.ts` "a 17-character
 name fits on one line: the hover-only controls take no room" and "the page's history and a new icon
 are in the … menu instead" (both failed before).
+
+---
+
+### B-161 (existing) — seen failing here, not caused by this branch
+
+`e2e/tests/views.spec.ts` "opening the palette while editing and closing it hands focus back to
+the editor" failed 8 times in a row on port 6461 around 12:00 (load average ≈15): in a 12-spec run,
+alone, `--repeat-each 4`, and `--repeat-each 2` twice — the last with every app file this branch
+changes (`PageView.tsx`, `PageActions.tsx`, `PageIcon.tsx`, `print.css`, `BlockContextMenu.tsx`,
+`context-menu.css`, `Sidebar.tsx`) restored to `cf08d19`. It had passed on this branch an hour
+earlier. Another m9 branch carries a fix (`d69414f`, "the palette gives focus back when it closes;
+a late frame no longer steals it (B-161, B-290)").
 
 ---
 

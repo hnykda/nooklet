@@ -16,6 +16,7 @@ import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
 import { displayPageName } from "../data/page-title.js";
 import { useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
 import { PageIconBadge } from "../views/PageIcon.js";
+import { PaletteButton } from "./PaletteButton.js";
 import "./sidebar.css";
 
 function useBodyClass(name: string): () => boolean {
@@ -54,6 +55,8 @@ export function Sidebar(): JSX.Element {
     <Show when={open()}>
       <aside class="app-sidebar" aria-label="Sidebar">
         <nav class="sidebar-nav">
+          {/* The palette by pointer — the only way to it on a phone (B-352). */}
+          <PaletteButton />
           <A href="/journals" end>
             <CalendarDays size={15} /> Journals
           </A>

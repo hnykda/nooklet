@@ -28,19 +28,32 @@ replace (low, B-354); Q6 search filter order splits the date range (low, B-355).
   (8). Nearby: context-menu, block-timestamps, phone, selection, placement — 46 passed, 1 skipped
   (pre-existing fixme). Web unit 1008/1008. Real graph `/page/TODO` probe `ctx.mjs`: all on screen.
 
+- Q3 (B-352) — "⌘ Command palette" row at the top of the sidebar/drawer (`shell/PaletteButton.tsx`,
+  `palette-button.css`, hookup in `Sidebar.tsx`); closes the drawer in drawer mode. Test
+  `e2e/tests/phone-palette.spec.ts` (5; all failed with the hookup commented out). Nearby: phone,
+  pages, navigation, views, page-export — 68 passed, 1 failed = views "palette … hands focus back"
+  (B-161, fails identically with all branch app files at cf08d19; logged). Real graph probe
+  `palette.mjs`: Collapse/Expand all and random page by tap from the drawer.
+
 ## In flight
 
-- Q3 next.
+- Q4 next.
 
 ## Next steps
 
-Q3 → Q4 → Q5 → Q6, one commit each, each with its failing test first.
+Q4 → Q5 → Q6, one commit each, each with its failing test first.
 
 ## Decisions
 
 - Q1: a textarea rather than hiding more controls — hiding alone leaves any name over ~21
   characters clipped on a phone and 36+ at desktop. Hover-only controls are removed only where
   hover does not exist, and get menu twins on every device (discoverability was B-225's complaint).
+- Q2: flip up / pin to bottom from the MEASURED size; the bottom edge is the keyboard toolbar's top
+  (the first version missed that; the real-graph screenshot showed it).
+- Q3: tried a top-bar ⌘ icon first; on the owner's graph the phone top bar (word count + agents
+  badge) had no room — icons shrank to 18px, then the badge went to 3 lines (53px in a 44px bar).
+  Moved to the sidebar/drawer: two taps instead of one, zero layout risk, and desktop gets the
+  usual "Command palette ⌘K" sidebar row.
 
 ## How to resume
 
