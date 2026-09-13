@@ -433,12 +433,18 @@ export function BlockTree(props: {
    * happens when Solid reconciles, after the caller returns, so the refocus has to be deferred
    * past it: a microtask for the common case and a frame later as the backstop, the same two-stage
    * dance `surface.attach` does, guarded so a genuine click-away is not fought. Undo and redo of a
-   * move reorder the edited row just the same (B-242).
+   * move reorder the edited row just the same, and so does a refetch (B-242).
+   *
+   * Only focus that fell to `<body>` is taken back, which is where a moved node leaves it. Since
+   * a refetch can land at any moment, focus that went somewhere real in the same frame (Cmd+K
+   * into the palette's input) must stay there.
    */
   function refocusAfterReorder(id: BlockId): void {
     if (editingId() !== id) return;
     const refocus = (): void => {
-      if (editingId() === id && !surface.view()?.hasFocus) surface.focus();
+      const active = document.activeElement;
+      const fellToBody = active === null || active === document.body;
+      if (editingId() === id && fellToBody && !surface.view()?.hasFocus) surface.focus();
     };
     queueMicrotask(refocus);
     requestAnimationFrame(refocus);

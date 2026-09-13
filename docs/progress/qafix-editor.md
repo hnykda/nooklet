@@ -45,10 +45,14 @@ B-240..B-247.
   (failed before, 3/3 after). Verified with QA's `t2.mjs` on a real-graph copy.
 - `6f827df` B-247 entry + `tools/probes/busy-replica-reload.mjs` (verified: reload while busy ->
   `x`, reload after busy -> `x queued`).
-- B-242 follow-up (commit after `6f827df`): the refetch effect in `BlockTree.tsx` refocuses the
-  edited block when a refetch reorders rows (stale-read flicker, traced). `undo-redo.spec.ts`
-  B-242 tests now also check focus 400 ms after undo/redo; without the change Alt+ArrowUp fails,
-  with it 6/6 in three runs.
+- `893da5d` B-242 follow-up: the refetch effect in `BlockTree.tsx` refocuses the edited block
+  when a refetch reorders rows (stale-read flicker, traced). `undo-redo.spec.ts` B-242 tests now
+  also check focus 400 ms after undo/redo; without the change Alt+ArrowUp fails, with it 6/6 in
+  three runs.
+- Next commit: `refocusAfterReorder` only takes back focus that fell to `<body>`, so a refetch
+  landing in the same frame as Cmd+K cannot pull focus out of the palette input. undo-redo +
+  focus + views + context-menu + help: 81 passed, 1 skipped (views palette-focus B-246 passed in
+  that order, fails alone: noted in B-246).
 
 Regression numbers (port 6460, Chromium): 15-spec run before the follow-up: 163 passed, 2 failed
 (the Alt+ArrowUp flake that led to the follow-up; parity "Cmd/Ctrl+A" once, passed on rerun),

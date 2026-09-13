@@ -155,8 +155,11 @@ with this branch's changes, and once alone and once in the full spec with `apps/
 out at `da85cfb`, so it is not caused by this branch. The coordinator's last full run on
 `a6c2859` did not list it among failures. Nothing in `apps/web/src` explicitly returns focus to
 the editor when the palette closes (no `focus()` call in `CommandPalette`/`palette-controller`),
-so whatever made it pass before is worth finding before "fixing" the test. Not investigated
-further on this branch.
+so whatever made it pass before is worth finding before "fixing" the test. Order matters: it
+PASSED once, in a run of context-menu + focus + help + undo-redo + views on one server (views
+last), and failed again right after, alone and as the whole views spec. So it depends on what
+the server or client went through first, not only on the code. Not investigated further on this
+branch.
 
 ---
 
