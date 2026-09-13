@@ -189,3 +189,48 @@ still uses "now": a link typed today does make a page today. Fresh copy of the o
 verify OK over 20,736 ops; `Task`, `quick capture` and `@Eva Svobodová` dated 2023-02-27,
 `Sprouts` 2024-10-20, `Sprouts/Growing/Sixth Try` 2026-09-06; 14 of the top 20 "Recently edited"
 are pages the sweep made, each because a block written recently links it.
+
+---
+
+### B-447 · After `nooklet gc` trims the op log, the trash lists every junk page links ever left, and unlinked empty pages stay
+**Status:** open · **Severity:** medium (noise, no loss) · **Found:** 2026-09-13, ref-pages
+adversarial verification · **Test:** none yet (probe below)
+
+"Created from a reference" and "deleted by the junk rule" are read from the `op` table
+(`device_id = 'refpages'`: `isUnclaimedReferencePage`, `HIDDEN_FROM_TRASH_SQL`). `nooklet gc` runs
+`DELETE FROM op WHERE seq < floor`, and ADR 022 keeps tombstones forever. Probe (scratch vitest,
+deleted after): `page.create Hub "- [[Draft One]]"`, three `block.update`s through `Draft Two`,
+`Draft Three`, `Final` — `trash.list` `[]`; then `DELETE FROM op WHERE seq < MAX(seq)` — `trash.list`
+`["Draft Two", "Draft One"]`; then unlinking `Final` leaves it a live empty page. On a graph used for
+months every slow link edit's intermediate names would surface in the trash at once, and pages
+minted before the floor are never cleaned up or taken over by `page_create` again. Nothing is lost.
+
+Possible fixes, not tried: keep `refpages` ops out of the GC (a few rows per minted page, and they
+replay consistently), or record the fact in a table GC does not trim.
+
+---
+
+### B-448 · A link in a page-level property other than `tags::` makes no page
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, ref-pages adversarial verification ·
+**Test:** none
+
+The brief listed "references inside property values (tags:: etc.)". Block properties are covered
+(every value except `alias::`) and a page's `tags::` is, but other page properties are not indexed
+as references at all (no `ref` row, no backlink — older than ADR 024), so they make no page either.
+On the owner's graph copy: `TTRPG/Alpha` `participants:: [[@Alex]], [[@Petr Novák]] [[@Jana Dvořáková]]` — `@Petr Novák` and `@Jana Dvořáková` have no page after the migration (Logseq would
+have them); `@Sam Example` `projects:: [[Projects/Workshop]]` and `Projects/@Robin`
+`people:: [[@Robin]]` happen to be referenced from blocks too. 4 such `page_prop` values in all.
+
+---
+
+### B-449 · Two namespace edges the junk rule reads differently from `namespaceAncestors`
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, ref-pages adversarial verification ·
+**Test:** none (reproduced in a scratch `serverApplyOps` test, deleted after)
+
+1. Spaces around `/`: `[[Garden / Beds]]` makes `Garden` (namespaceParts trims), but
+   `isKeyStillReferenced`'s child check is the key range `garden/…`, and `garden / beds` is not in
+   it. A second block's `[[Garden]]` added and removed deletes `Garden` while `Garden / Beds` lives.
+   No live page on the owner's graph has ` / ` in its name.
+2. A block `alias:: Nick` is indexed as a page reference (`extractRefs`), which the planner does not
+   count as one when minting but `isKeyStillReferenced` does when deleting: an unclaimed `Nick` a
+   link made survives that link's removal while any block carries `alias:: Nick`.

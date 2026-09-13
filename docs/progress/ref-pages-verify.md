@@ -24,11 +24,18 @@ Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-1`, e2e port 6410. Scratch
   a block written onto a linked page while offline, after another device removed the link, landed
   on the page the server deleted — hidden from the trash. 4 server tests + 1 two-replica sync test,
   all failing on `3fbd9de`. Server suite 713/713, typecheck clean.
-- Not fixed, noted: page-level property links other than `tags::` (`participants:: [[@Petr Novák]]`)
-  make no page (2 names on the owner's graph); `[[Garden / Beds]]` (spaces around `/`) — a later
-  removed `[[Garden]]` deletes the ancestor while the child lives; `batch.undo` of the write that
-  linked a page deletes that page even after someone typed into it (batch.undo's LWW contract; it
-  is in the trash with its block).
+- B-446 (fixed, e4dfb0b): the sweep stamped its 259 pages "now" — they topped All pages' default
+  "Recently edited" (row 260 was the first real page). Now dated by earliest reference.
+- B-447 (open): after `nooklet gc` trims the op log, junk tombstones show in the trash and unlinked
+  empty pages stay (probe in the entry).
+- B-448 (open): page-level property links other than `tags::` make no page (2 names on the owner's
+  graph).
+- B-449 (open, low): spaced namespace `[[Garden / Beds]]`; block `alias::` keeps a junk page alive.
+- Not a defect, noted: `batch.undo` of the write that linked a page deletes that page even after
+  someone typed into it (batch.undo's documented LWW contract; it is in the trash with its block).
+  `page.delete` of an empty page something still links answers "deleted" and a new empty page
+  takes the name at once. Journal days created on two devices offline now converge through
+  `refused_pages` too (scratch two-replica test, both orders, both blocks kept, verify OK).
 
 - `nooklet import ~/notes-graph` into a fresh scratch dir: 127 pages + 825
   journals + 259 referenced pages, 18,628 blocks, 0 errors, 4.6 s; 1,211 live pages, 17 dangling
