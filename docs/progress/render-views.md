@@ -90,3 +90,21 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
 ## 5. How to resume
 
 `git log --oneline cf08d19..m9/render-views` in the worktree; this file's "Next steps".
+
+## 6. Adversarial verification pass (2026-09-13, second agent)
+
+Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m9/render-views-verify/`, e2e port 6404.
+
+- Re-ran on the branch as handed over: web unit 1008/1008, `pnpm -r typecheck` clean, e2e
+  render-views(+phone), rendering, render, embeds, page-icons, phone, shelf-outline,
+  journal-agenda, tasks: 54 passed.
+- Browser probes (throwaway spec, deleted): click-to-caret on line 2 of a Czech/bold multi-line
+  block OK; property line in the editing buffer (B-101) OK; multi-line in a query hit and an embed
+  gets its `<br>`; missing page with a Czech name (NFC and NFD URL) and a namespaced name lists its
+  references; a missing page nothing points at shows no panel; "Add icon" request does not linger
+  after Escape + revisit; menu reachable by Tab, "Page history" by Enter.
+- Found and fixed B-325 — `cccd9c3`: a click on the empty line of a multi-line block went to the
+  block's end (`caret.ts` could not resolve a between-children hit). New e2e in
+  `render-views.spec.ts`, new `apps/web/src/editor/caret.test.tsx`. Web unit 1011/1011; e2e
+  render-views(+phone), focus, editing, block-properties, rendering, parity, context-menu,
+  math-display: 86 passed, 1 skipped.
