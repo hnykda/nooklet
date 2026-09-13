@@ -24,7 +24,7 @@
  * undo/redo round-trip through the op log like everything else (ADR 006).
  */
 import { makeOp, type Op } from "@nooklet/core";
-import { invertOps, type OpRecipe } from "./invert.js";
+import { invertOps, type OpRecipe, redoRecipe } from "./invert.js";
 import type { BlockId, Clock, EditorTree, FocusChange } from "./types.js";
 
 export interface Tx {
@@ -116,7 +116,8 @@ export class EditHistory {
     if (!tx) return null;
     this.undoStack.push(tx);
     this.captureUntil = 0;
-    return { ops: mint(tx.forward, clock), focus: tx.after };
+    // Not `tx.forward` verbatim: a create in it would be a no-op against its own tombstone.
+    return { ops: mint(tx.forward.map(redoRecipe), clock), focus: tx.after };
   }
 
   /** Test/debug helper: current stack depths. */

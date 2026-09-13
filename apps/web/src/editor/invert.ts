@@ -101,6 +101,25 @@ export function invertOp(
   }
 }
 
+/**
+ * The form a transaction's forward op takes when it is applied AGAIN, by redo.
+ *
+ * Redo only ever runs on a transaction whose inverse has just been applied, so a `block.create` in
+ * it names a block that already exists: the tombstone its undo left. Re-sending the create is
+ * wrong. `applyOps` inserts with `INSERT OR IGNORE`, so on the server (and in the local replica)
+ * it is a no-op and the block stays deleted, while `optimistic.ts` re-adds it on screen. The
+ * block reappeared, the server kept it deleted, and a reload lost it (B-240). Reviving the
+ * tombstone is the op that actually undoes the undo, the same undelete `invertOp` emits for a
+ * deleted block. Its fields need no rewriting: every later transaction that changed them has been
+ * undone first, so the tombstone already holds what the create wrote.
+ */
+export function redoRecipe(recipe: OpRecipe): OpRecipe {
+  if (recipe.payload.kind === "block.create") {
+    return { entity: recipe.entity, payload: { kind: "block.delete", deletedAt: null } };
+  }
+  return recipe;
+}
+
 /** Inverse of a whole transaction: each op inverted, in reverse order (so undoing a batch — e.g.
  * outdent's "move B, then reparent its younger siblings" — unwinds last-effect-first). */
 export function invertOps(
