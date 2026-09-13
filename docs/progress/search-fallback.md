@@ -76,19 +76,39 @@ from other agents' suites, so CPU figures are noisy.
 - Cold model (bge-m3 unloaded via `keep_alive: 0`): whole searches 5.9 s, 4.2 s, 1.4 s; warm 0.08 s.
   Sized B-522's 15 s bound.
 
-## In flight
+## Desktop sidecar check (bundle built 17:23 in the main checkout, not from this branch)
 
-- Desktop sidecar check.
+Ran `<repo>/apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app/Contents/Resources/sidecar/node`
+`server.mjs serve --data <scratch>/sidecar-graph --port 6439 --web <sidecar>/web` with
+`NOOKLET_SQLITE_VEC_PATH=<sidecar>/vec0.dylib`, `ESBUILD_BINARY_PATH=<sidecar>/esbuild`,
+`NODE_ENV=production` — `main.rs#spawn_server`'s arguments and env, but from this shell's
+environment and cwd rather than launchd's (a sandbox rule refused `env -i HOME=…`). Data: a
+`.backup` of the indexed `graph2/`.
+
+- Bundled node v26.8.1. `embeddings.status`: sqlite_vec loaded **v0.1.9**, active ollama:bge-m3
+  1024d, 14,468 indexed, provider reachable. `lsof` on the process shows the bundle's own
+  `sidecar/vec0.dylib` mapped.
+- Semantic "vacation plans" → mode_used semantic, top hit "udělat plán na prázdniny s Robinem", 247 ms;
+  hybrid "dovolená" → hybrid, 254 ms. So vec0 KNN over real vectors works in the packaged server.
+- Negative control, same command without `NOOKLET_SQLITE_VEC_PATH` on :6440 and an empty data dir:
+  `sqlite_vec.loaded: false`, error "Cannot find module 'sqlite-vec'" — the env var is what makes it
+  load.
+- No file in the bundle changed (mtime/size listing before and after identical). Both sidecars
+  stopped.
+- The bundle predates this branch, so its `search` has no `fallback` field.
+
+## Suites at the end
+
+- server 688/688 (84 files); web 1153/1153 (139 files); `pnpm -r typecheck` clean; biome clean on
+  every changed file.
+- e2e Chromium, port 6418: search-fallback (3) + settings + views — 40 passed, 0 failed. The WebKit
+  project only matches `storage.spec.ts`, so nothing here ran on WebKit. Full e2e suite not run.
+- `pnpm nooklet verify` not run: no op, sync or schema code changed (search is read-only).
 
 ## Next steps
 
-1. Desktop sidecar: run the bundled sidecar from
-   `<repo>/apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app/Contents/Resources/sidecar`
-   exactly as `apps/desktop/src-tauri/src/main.rs#spawn_server` does (node server.mjs serve --data
-   --port --web; env NOOKLET_SQLITE_VEC_PATH=vec0.dylib, ESBUILD_BINARY_PATH, NODE_ENV=production)
-   against a copy of `graph2/` (already indexed) on :6439; check `embeddings.status.sqlite_vec`, a
-   semantic search, and that no file in the bundle changed (`<scratch>/sidecar-before.txt`).
-2. Stop the :6438 server. Final suites; report.
+None left in the brief. For the coordinator: fold `docs/bugs-inbox/search-fallback.md` (B-520..B-524)
+into `docs/BUGS.md`.
 
 ## Decisions
 
@@ -101,3 +121,13 @@ from other agents' suites, so CPU figures are noisy.
   `promoteConfiguredModelIfReady` never leaves it on its own.
 
 ## Still unverified
+
+- The desktop sidecar was run with this shell's environment, not the app's launchd environment;
+  vec loading is a `loadExtension` of an absolute path, so PATH/cwd should not matter, but the app
+  itself was not launched.
+- CPU/GPU figures were taken under load average 9-73 from other agents; an idle machine would index
+  faster. GPU utilization is the IOAccelerator counter sampled every 10 s, not power metrics.
+- Cold-load timings are three samples on one machine. A slower machine could exceed the 15 s
+  query-embed bound on a first query; it would then fall back with "no answer within 15 s" once and
+  work on the next.
+- Browsers other than Chromium were not run.
