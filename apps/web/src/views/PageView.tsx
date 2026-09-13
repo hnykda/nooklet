@@ -142,6 +142,9 @@ export function PageView(props: PageViewProps): JSX.Element {
                   }}
                   aria-label="Page title"
                 />
+                {/* Paper only (`styles/print.css`): an input cannot wrap, so a long name printed
+                    as one line clipped at the sheet's edge (B-227). */}
+                <h1 class="page-title-print">{titleDraft()}</h1>
               </Show>
               {/* ADR 022: the page's timeline lives at `/history/<name>` (a splat under `/page/`
                   would read "/history" as part of the name). Muted until the row is hovered, like

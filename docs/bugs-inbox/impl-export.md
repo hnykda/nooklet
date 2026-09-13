@@ -143,3 +143,27 @@ checked out from `da85cfb` (production build, fresh server) — so it is not cau
 failures, so either `06fd859`/`da85cfb` or the machine's state since then changed something;
 neither was checked. B-72's fix names this test. Nothing in `CommandPalette.tsx` restores focus
 explicitly, so whatever used to return it to the editor is worth finding first.
+
+---
+
+### B-227 · A printed page's title is cut off after one line
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-export` (PDF of a long-titled page) · **Test:** `e2e/tests/page-export.spec.ts` "a page
+title too long for one printed line prints whole"
+
+An ordinary page's title is an `<input class="page-title-input">` (`views/PageView.tsx`), and an
+input cannot wrap. B-221's print stylesheet puts the page on paper but leaves the title in that
+input, so a name longer than one printed line is clipped at the sheet's edge with nothing to say
+so: `page.pdf({ format: "A4" })` of "Projekty/Velmi dlouhý název stránky, který se na papír nevejde
+celý do jednoho řádku" printed "…nevejde cel" and stopped (input 794px wide, `scrollWidth` 1030).
+Journals are unaffected — their title is already an `<h1>`. The owner's graph copy has 8 page names
+over 45 characters (the `hls__…` and `hypothesis__/…` pages), which is about where an A4 line of
+the title font runs out.
+
+**Fixed 2026-09-13.** `PageView.tsx` renders the title a second time as `<h1 class="page-title-print">`
+(from the same draft signal the input shows); `styles/print.css` keeps it `display: none` on screen
+and, in print, hides `input.page-title-input` and shows the heading with the input's type and
+`overflow-wrap: anywhere` (the `hls__…` names have no spaces to break at). The named test failed
+before the change (the input was still visible in print media) and passes after; a PDF of the
+owner's longest name, `hls__The_Logic_of_Experimental_Tests,_…_1670184390828_0`, now prints on two
+lines.

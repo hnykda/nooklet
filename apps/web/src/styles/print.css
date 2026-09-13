@@ -24,6 +24,12 @@
  * would be wrong on paper and are hidden.
  */
 
+/* The title as it prints for an ordinary page (`views/PageView.tsx`): off screen, where the
+   editable input is the title, and swapped in for it on paper below (B-227). */
+.page-title-print {
+  display: none;
+}
+
 @media print {
   /* `:is([data-theme], :not([data-theme]))` matches every root; it is there for its (0,1,0). */
   html:root:is([data-theme], :not([data-theme])) {
@@ -110,7 +116,8 @@
       .references-panel,
       .journal-stream-toolbar,
       .vr-collapse-arrow,
-      .vr-child-count
+      .vr-child-count,
+      input.page-title-input
     ) {
     /* biome-ignore lint/complexity/noImportantStyles: chrome must not print however a view styles its display — a `display: flex` on any of these, at any specificity, would put it on paper. */
     display: none !important;
@@ -139,7 +146,24 @@
     background-color: transparent;
   }
 
-  html:root :is(.page-title-input, .journal-day-title) {
+  /* An `<input>` cannot wrap: a name longer than the sheet is wide printed clipped mid-word
+     (B-227). The input is hidden above and this heading, with the input's type, prints instead;
+     `anywhere` because imported names like `hls__The_Logic_of_…` have no spaces to break at. */
+  html:root .page-title-print {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    margin: 0 0 var(--space-lg);
+    padding: var(--space-2xs) 0;
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-tight);
+    color: var(--fg);
+    overflow-wrap: anywhere;
+  }
+
+  html:root :is(.page-title-input, .page-title-print, .journal-day-title) {
     break-after: avoid;
   }
 }

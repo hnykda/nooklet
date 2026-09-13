@@ -229,6 +229,35 @@ test("printing a long page prints all of it — without the chrome, collapsed ch
   expect(read.tree?.[3]?.collapsed).toBe(true);
 });
 
+// B-227: an ordinary page's title is an <input>, which cannot wrap — on paper a long name was clipped
+// at the sheet's edge ("…nevejde cel"). What prints must be a heading that wraps, not the input.
+test("a page title too long for one printed line prints whole", async ({ page }) => {
+  const name =
+    "Projekty/Velmi dlouhý název stránky, který se na papír nevejde celý do jednoho řádku";
+  await seedPage(page, name, "- obsah");
+  await openPageView(page, name);
+  // Roughly an A4 sheet's printable width, so "one line" means what it means on paper.
+  await page.setViewportSize({ width: 720, height: 1000 });
+  await page.emulateMedia({ media: "print" });
+
+  await expect(page.locator("input.page-title-input")).toBeHidden();
+  const heading = page.getByRole("heading", { name, exact: true });
+  await expect(heading).toBeVisible();
+  const box = await heading.evaluate((el) => ({
+    lines: Math.round(
+      el.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(el).lineHeight),
+    ),
+    overflows: el.scrollWidth > el.clientWidth,
+  }));
+  expect(box.overflows).toBe(false);
+  expect(box.lines).toBeGreaterThanOrEqual(2);
+
+  // On screen the input is still the title, and the print-only heading is not there to read.
+  await page.emulateMedia({ media: "screen" });
+  await expect(page.locator("input.page-title-input")).toBeVisible();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeHidden();
+});
+
 test("Print page from the palette closes the palette and opens the print dialog", async ({
   page,
 }) => {
