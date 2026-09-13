@@ -15,7 +15,7 @@ writes a real property, B-99 `/image` opens a picker and uploads. e2e port 6401.
   generic props, Enter continues numbering, duplicate copies props, spec OUT-22a.
 - `d7137b1` B-99 `/image` (hidden file input → `uploadImageAsset` → caret) and B-150 (upload had
   no token; now `callOp`).
-- (this commit) "Numbered list" command + slash item (`commands/registrations/numbered-list.ts`),
+- `5aac228` "Numbered list" command + slash item (`commands/registrations/numbered-list.ts`),
   real-graph probe `tools/probes/real-graph-properties.mjs`, keymap spec rows, inbox write-ups.
 
 ## Verification (all on this branch)
@@ -23,6 +23,11 @@ writes a real property, B-99 `/image` opens a picker and uploads. e2e port 6401.
   fix), `popups.spec.ts` 43/43 (with the new slash item), `assets.spec.ts` 1/1; regression run of
   editing/popups/focus/selection/parity/tasks/templates/rendering/render/assets/shelf/context-menu
   156 passed, 1 skipped (before the numbered-list command and `/image`; popups rerun after).
+- Final broad e2e run after the last commit (19 specs: the above plus shelf-outline, journals,
+  a-fresh-journal, phone, history, block-properties, image-insert): 182 passed, 1 skipped,
+  1 failed — `editing.spec.ts` "Enter creates a second bullet and both keep their text" timed out
+  at 41 s with load average ~20–26; rerun of `editing.spec.ts` 4/4, and with
+  `a-fresh-journal.spec.ts` before it 5/5. Treated as load.
 - Unit: core 357/357; web 699 in total — two full runs each had ONE different failure
   (`render-seams.test.tsx`, then `page-title.test.ts`), both pass alone; unrelated to this work
   and consistent with machine load.
