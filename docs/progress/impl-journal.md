@@ -97,6 +97,8 @@ Updated after every meaningful step. If you are reading this after a restart, co
   fixed (high — editing any earlier stream day was broken), B-171 open (Tasks view due window),
   B-172 open (server `block.update` old_str/new_str on blocks with property lines — affects
   agents), B-173 needs-repro (palette focus e2e red on `da85cfb`).
+  From the verification pass: B-175 fixed in the agenda (open for query-fence hit rows), B-176
+  fixed, B-177 fixed, B-178 fixed (test only).
 - Owner decisions: (1) marker-less blocks with a date are not listed (tasks only); (2) no cap on
   the overdue list — a neglected graph lists every overdue task under Today.
 - Shared-file touch: `JournalStreamView.tsx` (day-keyed `<For>`, agenda hookups, reactive today)
