@@ -98,6 +98,37 @@ describe("pages exist once referenced, over HTTP", () => {
     expectParity();
   });
 
+  it("undoing a page delete takes the name back from an empty page a later link made", async () => {
+    await call("page.create", { name: "Topic", markdown: "- the content" });
+    const deleted = await call("page.delete", { page: "Topic" });
+    // Only after the delete does anything link it: a different batch holds the empty page.
+    await call("page.create", { name: "Hub", markdown: "- [[Topic]]" });
+    expect(await pageNames()).toEqual(["Hub", "Topic"]);
+
+    await call("batch.undo", { batch_id: deleted.batch_id });
+    const back = await call("page.read", { page: "Topic", format: "json" });
+    expect((back.tree as Array<{ content: string }>).map((b) => b.content)).toEqual([
+      "the content",
+    ]);
+    const backlinks = await call("page.backlinks", { target: "Topic" });
+    expect((backlinks.linked as unknown[]).length).toBe(1);
+    expect((await call("trash.list", {})).items).toEqual([]);
+    expectParity();
+  });
+
+  it("undoing the delete of a linked page, in the batch that made its empty stand-in, restores it", async () => {
+    await call("page.create", { name: "Hub", markdown: "- [[Topic]]" });
+    await call("page.append", { page: "Topic", markdown: "- the content" });
+    const deleted = await call("page.delete", { page: "Topic" });
+    await call("batch.undo", { batch_id: deleted.batch_id });
+    const back = await call("page.read", { page: "Topic", format: "json" });
+    expect((back.tree as Array<{ content: string }>).map((b) => b.content)).toEqual([
+      "the content",
+    ]);
+    expect(await pageNames()).toEqual(["Hub", "Topic"]);
+    expectParity();
+  });
+
   it("renaming onto a page someone wrote in is still refused", async () => {
     await call("page.create", { name: "Taken", markdown: "- mine" });
     await call("page.create", { name: "Other", markdown: "- other" });
