@@ -251,3 +251,41 @@ test("following a link from the palette while editing: what is typed before the 
   await page.waitForTimeout(700);
   expect((await readBlocks(page, from)).map((b) => b.content)).toEqual([`go [[${target}]]`]);
 });
+
+test("the caret comes back where it was, mid-block, through the palette and the Move to page picker", async ({
+  page,
+}, info) => {
+  // B-296: focus came back with the DOM caret at the start of the block. A key with a keydown made
+  // CodeMirror put its own caret back first, but text with no keydown (an IME commit, dictation,
+  // the emoji picker; `insertText` here) arriving straight after landed at the start: every round.
+  const name = runName("Caret Mid Block", info);
+  await openEditing(page, name, "- abcdefghij\n- other");
+  const toOffsetTwo = async (): Promise<void> => {
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+  };
+  let expected = "abcdefghij";
+  for (const mark of ["č", "ř"]) {
+    await toOffsetTwo();
+    await page.keyboard.press(`${MOD}+k`);
+    await expect(page.locator(".cmd-palette .cmd-input")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expectEditorFocusedNow(page, `after Escape (${mark})`);
+    await page.keyboard.insertText(mark);
+    expected = `ab${mark}${expected.slice(2)}`;
+  }
+  await toOffsetTwo();
+  await page.keyboard.press(`${MOD}+k`);
+  await page.keyboard.type(">Move to page");
+  await expect(page.locator(".cmd-palette .cmd-row--active")).toContainText("Move to page");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".page-picker .cmd-input")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expectEditorFocusedNow(page, "after Escape out of the picker");
+  await page.keyboard.insertText("ž");
+  expected = `abž${expected.slice(2)}`;
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual([expected, "other"]);
+});

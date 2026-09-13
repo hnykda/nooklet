@@ -19,7 +19,16 @@
  *
  * Host-agnostic like the rest of `commands/`: plain DOM, no editor import. The single CM6 surface's
  * `.cm-content` is one element re-parented between rows, so "still connected" is exactly "still
- * editing"; its own focus handler keeps the caret where it was.
+ * editing".
+ *
+ * And the caret comes back with it. A contenteditable does not keep a caret while focus is
+ * elsewhere — the overlay's input took the document selection — so a bare `.focus()` puts the DOM
+ * caret at the start of the editable, and CodeMirror read that as a selection change about half
+ * the time (its own "browser moved the caret to the start on focus" guard is timing-dependent):
+ * Escape out of Cmd+K, and the next key landed at the start of the block (B-296).
+ * `EditorView.focus()` would restore it, but this cannot reach the view, so it puts the document
+ * selection back where it was inside the element — which CodeMirror then reads as the caret it
+ * already had.
  */
 
 /** Record what has focus now; the returned function hands focus back to it (see above). `overlay`
@@ -27,6 +36,21 @@
 export function rememberFocus(overlay?: () => Element | null | undefined): () => void {
   if (typeof document === "undefined") return () => {};
   const previous = document.activeElement;
+  const selection = document.getSelection();
+  // Only a selection inside the focused element (an editable's caret); an <input> keeps its own.
+  const caret =
+    previous instanceof HTMLElement &&
+    selection?.anchorNode &&
+    selection.focusNode &&
+    previous.contains(selection.anchorNode) &&
+    previous.contains(selection.focusNode)
+      ? {
+          anchorNode: selection.anchorNode,
+          anchorOffset: selection.anchorOffset,
+          focusNode: selection.focusNode,
+          focusOffset: selection.focusOffset,
+        }
+      : null;
   return () => {
     if (!(previous instanceof HTMLElement) || previous === document.body) return;
     if (!previous.isConnected) return;
@@ -36,5 +60,21 @@ export function rememberFocus(overlay?: () => Element | null | undefined): () =>
       active === null || active === document.body || (root?.contains(active) ?? false);
     if (!lostToOverlay || active === previous) return;
     previous.focus({ preventScroll: true });
+    // In the same task as the focus, before any `selectionchange` is delivered. Only onto nodes
+    // still inside it: a re-rendered line leaves the caret to the editor rather than guessing.
+    if (caret && previous.contains(caret.anchorNode) && previous.contains(caret.focusNode)) {
+      try {
+        document
+          .getSelection()
+          ?.setBaseAndExtent(
+            caret.anchorNode,
+            caret.anchorOffset,
+            caret.focusNode,
+            caret.focusOffset,
+          );
+      } catch {
+        // An offset past the end of text that changed meanwhile: same as a re-rendered line.
+      }
+    }
   };
 }

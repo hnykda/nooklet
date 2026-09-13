@@ -299,22 +299,37 @@ decision.
 
 ---
 
-### B-296 · Escape out of the palette gives the editor focus back, but the caret often jumps to the start of the block
-**Status:** open · **Severity:** medium (what is typed next lands in the wrong place) · **Found:**
-2026-09-13, adversarial verification of m9/focus (on the owner's graph copy first) · **Test:** to come
+### B-296 · After the palette or the Move to page picker gives focus back, text with no keydown lands at the start of the block
+**Status:** fixed · **Severity:** medium (text goes in the wrong place, silently) · **Found:**
+2026-09-13, adversarial verification of m9/focus (on the owner's graph copy first) · **Test:**
+`e2e/tests/focus-return.spec.ts` "the caret comes back where it was, mid-block, through the palette
+and the Move to page picker"; unit `commands/focus-return.test.ts` "puts the caret back inside an
+editable, not at its start (B-296)"
 
 B-161's focus return on this branch calls a plain `element.focus()` on CodeMirror's `.cm-content`.
-The palette's input took the document selection while it was open, so the browser puts the DOM
-caret at the start of the editable, and CodeMirror's DOM observer reads that `selectionchange` as
-the new selection before its own focus handling (a 10 ms timer, `updateForFocusChange`) would have
-written its state selection back. `EditorView.focus()` avoids exactly this (`observer.ignore` +
-`docView.updateSelection()`), but `commands/` cannot reach the view. `commands/focus-return.ts`'s
-comment ("its own focus handler keeps the caret where it was") was an assumption, and a racy one.
+The overlay's input had taken the document selection, so the browser puts the DOM caret at the start
+of the editable. CodeMirror's state selection is still right, and it has a guard for exactly this
+("the browser moved the selection to the start on focus", `DOMObserver.readSelectionRange`), but the
+guard runs when the `selectionchange` is delivered. A key with a keydown is fine (CodeMirror settles
+the selection first); text that arrives with no keydown before that — an IME commit, dictation, the
+emoji picker, Playwright `insertText`/`type("Ž")` — is inserted where the DOM caret is: the start.
+`EditorView.focus()` would not have this (`observer.ignore` + `docView.updateSelection()`), but
+`commands/` cannot reach the view. The module comment ("its own focus handler keeps the caret where it
+was") was an unverified assumption.
 
-Evidence. Real graph copy (Megapage, a plain Czech block): Home, ArrowRight ×4, Cmd+K, Escape,
-type `Ž` → stored at offset 0; the same without the palette → offset 4. On e2e data
-(`zz-verify-focus.spec.ts` "P12", `--repeat-each=3`, a 6-char and a 100-char Czech block): the
-caret read straight after Escape was 0 in 5 of 6 runs and `Ž` was stored at 0 in 3 of 6 (4
-expected). The `Move to page…` picker (`pickPage`) gives focus back the same way. The existing
-tests type at the end of the block after `End`, where "start" and "end" only differ if the caret
-moved — none of them checks a caret in the middle.
+Evidence (`apps/web/src/commands/focus-return.ts` at `2924c05`). Real graph copy, a plain Czech block
+on a 201-block page: Home, ArrowRight ×4, Cmd+K, Escape, `type("Ž")` → stored at offset 0; without
+the palette → offset 4. e2e data (`zz-verify-focus.spec.ts` "P14", 4 rounds per run, 2 runs): caret at
+offset 2, Cmd+K, Escape, then — digit key: 8/8 at 2; `insertText` at once: 8/8 at 0; `type("Ž")` at
+once: 8/8 at 0; `insertText` 50 ms later: 8/8 at 2. The `caret()` read straight after Escape is 0
+every time, even when the text then lands right. Not visible in `cf08d19`, where nothing gave focus
+back (the text went nowhere). The branch's tests typed `!` (a keydown) at the end of the block.
+
+**Fixed 2026-09-13.** `rememberFocus` also records the document selection when it lies inside the
+element that had focus, and after `focus()` puts it back with `setBaseAndExtent` in the same task —
+only onto nodes still inside the element (a re-rendered line leaves the caret to the editor), and an
+offset that no longer fits is ignored. Inputs keep their own selection and are unaffected. The e2e
+test puts the caret at offset 2 and inserts `č`, `ř` (palette, Escape) and `ž` (palette → Move to
+page… → Escape) with `insertText` straight after each Escape: it failed 2 of 2 before
+(`řčžabcdefghij`, `žřabčcdefghij`), and `focus-return.spec.ts --repeat-each=2` passed 20 of 20 after.
+The unit test failed before the change and passes after.

@@ -68,4 +68,47 @@ describe("rememberFocus (B-161)", () => {
     giveBack();
     expect(document.activeElement).toBe(document.body);
   });
+
+  it("puts the caret back inside an editable, not at its start (B-296)", () => {
+    const { overlay, input } = setup();
+    const editable = document.createElement("div");
+    editable.contentEditable = "true";
+    editable.tabIndex = 0; // jsdom focuses only what it considers focusable
+    editable.textContent = "abcdef";
+    document.body.prepend(editable);
+    const text = editable.firstChild as Text;
+    editable.focus();
+    document.getSelection()?.setBaseAndExtent(text, 2, text, 4);
+    const giveBack = rememberFocus(() => overlay);
+    input.focus();
+    document.getSelection()?.setBaseAndExtent(overlay, 0, overlay, 0); // the input took it
+    overlay.remove();
+    giveBack();
+    const sel = document.getSelection();
+    expect(document.activeElement).toBe(editable);
+    expect([sel?.anchorNode, sel?.anchorOffset, sel?.focusNode, sel?.focusOffset]).toEqual([
+      text,
+      2,
+      text,
+      4,
+    ]);
+  });
+
+  it("leaves the caret to the editor when the remembered text node is gone", () => {
+    const { overlay, input } = setup();
+    const editable = document.createElement("div");
+    editable.tabIndex = 0;
+    editable.textContent = "abcdef";
+    document.body.prepend(editable);
+    const text = editable.firstChild as Text;
+    editable.focus();
+    document.getSelection()?.setBaseAndExtent(text, 3, text, 3);
+    const giveBack = rememberFocus(() => overlay);
+    input.focus();
+    editable.textContent = "re-rendered"; // replaces the text node
+    overlay.remove();
+    expect(() => giveBack()).not.toThrow();
+    expect(document.activeElement).toBe(editable);
+    expect(document.getSelection()?.anchorNode).not.toBe(text);
+  });
 });
