@@ -160,4 +160,4 @@ Re-run and extended by a second agent; nothing above needed a code change. Evide
   and says `truncated: true` — by design, not a bug.)
 - Full Chromium e2e in three chunks on port 6401: 527 passed, 1 failed, 2 skipped. The failure is
   `editing.spec.ts`'s `openJournal` draft race (B-335, open); a rerun of that file failed the same
-  way in a different test (load average ~110 at the time).
+  way in a different test (load average ~110 at the time); a second rerun at load ~11 passed 4/4.

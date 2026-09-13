@@ -35,10 +35,17 @@ B-391..B-399 in `docs/bugs-inbox/core-ops.md`.
   `editing.spec.ts` openJournal's draft race, B-335 (open, known); rerun of editing.spec failed
   the same way in a different test (load average 112).
 
-## In flight
+- e2e chunk 2 (36 files, math-display…rendering): 212 passed. Chunk 3 (24 files, replace-stale…
+  views): 139 passed, 1 skipped. Total 527 passed, 1 failed (B-335), 2 skipped; `editing.spec.ts`
+  rerun at load ~11: 4/4 passed.
+- Real graph served on port 6401 (copy): Tasks view has 80 open tasks, none dated (B-324 is not
+  exercised by real data; the e2e specs cover it). 8 real pages (404 blocks, 9 empty, 11
+  fence-first) written into new pages with their own `page.read` text: every block moved intact,
+  none created; `nooklet verify` OK at 22,900 ops. Server stopped.
+- `a06ce7a`, `91c72db` inbox: B-391 (open: write ops report `updated: []` for upserts) and a
+  verification section with the evidence above.
 
-- e2e chunks 2 (files 37-72) and 3 (73-96) via `<scratch>/run-chunk.sh`, logs `e2e-chunk*.log`.
+## Result
 
-## Next
-
-- Fix anything real found; commit each green step; final report.
+No defect found in the branch's fixes. Commits added by verification: 3759b12, 49fe124, d13ced4,
+c17cc71, cee0d0e, a06ce7a, 91c72db (+ this progress update).
