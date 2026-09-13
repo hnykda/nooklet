@@ -68,3 +68,34 @@ Each new test was run against the pre-fix code and failed (except guard tests no
 
 None left from the brief. For the coordinator: fold `docs/bugs-inbox/core-ops.md` (B-310, B-311,
 B-322, B-324, B-370 existing; B-390 new, fixed) into BUGS.md.
+
+## Verification of this branch (core-ops-verify, 2026-09-13)
+
+Re-run and extended by a second agent; nothing above needed a code change. Evidence, for folding:
+
+- Every new test above fails on 70c9bb9's code where the entry says it does (B-322 2/2, B-370 2 of
+  3 plus the two added below, B-311 3 of 4 re-run against the old `paste.ts`).
+- Added: `packages/core/src/outline.test.ts` › "serialize -> parse is lossless across heads, ids,
+  properties and content shapes" (192 blocks × both id modes × with/without page properties; fails
+  on the old parser); `batch-undo-name-order.http.test.ts` › three-step rename chain, and a page
+  the batch created renamed into the name another page gave up (both fail on the old
+  `batch-undo.ts`); `outline-empty-block-id.http.test.ts` (on the old parser `page.append` of
+  `page.read`'s `- ^id` / `- TODO ^id` lines created two blocks reading `^…`);
+  `e2e/tests/fence-task-clipboard.spec.ts` (Cmd+C / paste of a fence-first task with a property
+  and a child) and `e2e/tests/tasks-view-dates-phone.spec.ts` (iPhone 13: both labels stacked, no
+  horizontal overflow).
+- Logseq import is untouched by the B-310 parser change: old and new `parseOutline` give identical
+  trees for every `.md` under the owner's `notes-graph` (952), `roam` (759), `beta` and `test`.
+- Known cost, as OUT-14 now says: a content that is a blank line followed by a fence reads back
+  without the blank line when the block has a head or an id (a random round-trip fuzz finds nothing
+  else). Real data: 1 of 18,628 blocks has a blank line 1, and it is followed by a quote, not a
+  fence; 0 blocks have content that is literally `^<id>`.
+- Real graph copy (13:44), served: 8 real pages — 404 blocks, 9 of them empty (`- ^id`) and 11
+  opening with a fence (OUT-14's `- ^id` + fence form) — were written into new pages through
+  `page.create` with their own `page.read` text (max_chars 200,000): every block moved with
+  identical id, parent, content, marker, priority, properties and collapsed, none created. `nooklet verify` OK before (20,411 ops) and after (22,900 ops). (A first attempt at
+  the default `max_chars` left one 15 KB block behind: `page.read` truncates at 20,000 characters
+  and says `truncated: true` — by design, not a bug.)
+- Full Chromium e2e in three chunks on port 6401: 527 passed, 1 failed, 2 skipped. The failure is
+  `editing.spec.ts`'s `openJournal` draft race (B-335, open); a rerun of that file failed the same
+  way in a different test (load average ~110 at the time); a second rerun at load ~11 passed 4/4.
