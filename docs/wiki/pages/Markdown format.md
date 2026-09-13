@@ -28,6 +28,7 @@ tags:: reference
   - A fenced code block (three backticks or `~~~`) swallows everything up to its closing fence, bullets included, as one block.
   - A line without a bullet at a fresh indent is its own block (Logseq's loose paragraph). `*`, `+` and `1.` are read as bullets; `1.` also sets `list:: number`. On output everything is `- `.
   - Import-only spellings that never come back out: `SCHEDULED:` and `DEADLINE:` org lines, `:LOGBOOK:` drawers (dropped), `heading:: N` (folded into a `#` prefix), `custom_id`, `logseq.order-list-type`.
+  - A line of a block's *text* that would read as a property, a `SCHEDULED:`/`DEADLINE:` line or a `:LOGBOOK:` drawer gets a backslash before its colon — `scheduled\:: 2026-09-20`, `SCHEDULED\: <2026-09-20 Sun>`, `\:LOGBOOK:` — and reads back as that text with the backslash gone; without the backslash it is a real property. A line that already had a backslash there gets one more (grammar OUT-23a, B-342).
 - ## Inside a block
   - `[[Page]]`, `[[Page|shown text]]`, `#tag`, `#[[multi word tag]]`, `((id))`, `{{embed [[Page]]}}`, `{{embed ((id))}}`, other `{{macros}}` (kept as text unless a plugin renders them), `[label]([[Page]])`, `[text](url)`, bare `https://` links, `![alt](assets/<id>.png)`.
   - `**bold**`, `*em*` and `_em_` (not inside a word), `~~strike~~`, `==highlight==`, `` `code` ``, `$math$` (`$5 and $10` is not math), `[ ]` and `[x]` checkboxes (rendering only; they do not set a task marker).
