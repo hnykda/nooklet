@@ -34,7 +34,7 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `81bb2b2` B-266 unpadded org timestamps (`core/outline.ts`; unit + importer test; real data 20/20; existing DB rows not repaired — owner)
 - `8ae97c0` B-267 MCP text says "dry run, nothing written" for every dry-run op (`ops/dry-run.ts#renderToolText`; unit)
 - `dd2eb76` B-268 script-capable link schemes never become an href or a `window.open` (`editor/render/safe-href.ts`; unit + `e2e/tests/link-scheme.spec.ts` 1/1)
-- B-261 follow-up: the missing-view flash after a title rename (guard cleared on resolve)
+- `6e4099e` B-261 follow-up: the missing-view flash after a title rename (guard cleared on resolve)
 - Final pass on `dd2eb76`: `pnpm -r test` 343 + 17 + 529 + 688 passed; `pnpm -r typecheck` clean;
   16 e2e specs together (the 7 new + pages, query, tasks, templates, render, rendering, editing,
   refactor, references, parity) 88/88; `nooklet verify` on a real-graph copy OK (20,420 ops).
