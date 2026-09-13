@@ -5,7 +5,13 @@
  * it. Resolves the page by name, case-insensitively (`normalizePageName`, via
  * `../data/store.ts#usePageByName`), since that is what refs navigate to (PLAN.md §4).
  */
-import { isoJournalName, newId, orderBetween, parseJournalTitle } from "@nooklet/core";
+import {
+  canonicalRefName,
+  isoJournalName,
+  newId,
+  orderBetween,
+  parseJournalTitle,
+} from "@nooklet/core";
 import { A, useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
 import { useAgendaTasks } from "../data/agenda.js";
@@ -169,6 +175,18 @@ export function PageView(props: PageViewProps): JSX.Element {
           </button>
         </div>
         {agendaSection()}
+        {/* A page nobody has created yet is still a real thing in a wiki — `[[book]]` and `tags::
+            book` make it one — and what points at it is the reason to open it (B-200). Asked for
+            under the canonical name: references to a day are indexed under its ISO name, whatever
+            title format the link or the URL used (ADR 018). No unlinked half: "Link all" needs
+            the page to exist. */}
+        <Show when={!blockId()}>
+          <ReferencesPanel
+            target={canonicalRefName(props.name())}
+            onNavigate={onNavigate}
+            unlinked={false}
+          />
+        </Show>
       </Show>
 
       <Show when={page()}>

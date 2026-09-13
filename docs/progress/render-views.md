@@ -40,15 +40,24 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   1004/1004 (a first run under load timed out in page-title/SearchView/render-seams; all green on
   rerun, file-level and full).
 
+- B-200 — commit "feat(web): a page that does not exist yet shows its references". `PageView.tsx`
+  mounts `ReferencesPanel target={canonicalRefName(name)} unlinked={false}` in the missing-page
+  branch; `ReferencesPanel.tsx` gains the `unlinked` prop. Two e2e tests in `render-views.spec.ts`.
+  Logged B-322 (server `page.backlinks` missing-target branch uses the raw title — reproduced via
+  the date test with the raw name) and B-323 (one "Loading…" flake in references.spec, passed on
+  rerun). e2e render-views, pages, references, references-cap, references-filters, tagged-pages,
+  journal-agenda, journals, page-rename, navigation, link-unlinked: 51/52 then 52/52 on rerun.
+
 ## 2. In flight
 
-- B-200 next.
+- B-171 next.
 
 ## 3. Next steps, in order
 
-4. B-200 — `ReferencesPanel` under the missing-page view (linked + tagged; "Link all" cannot work
-   on a page that does not exist — `mentions.link` calls `requirePage`).
 5. B-171 — `filterTasks` due window matches scheduled OR deadline; unit test; e2e in tasks area.
+6. Real-graph check (backup copy, own server on a spare port, production build): `/page/book`
+   (B-200: owner has `tags:: book`, no `book` page), a multi-line block (B-224).
+7. Final: full web unit suite, typecheck, the touched e2e specs together; fill in the return.
 
 ## 4. Decisions
 

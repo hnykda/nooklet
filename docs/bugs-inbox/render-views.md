@@ -117,7 +117,55 @@ depends on WebKit's user-gesture rule.
 ---
 
 ### B-200 (existing)
-**Status:** in progress · **Test:** —
+**Status:** fixed · **Test:** `e2e/tests/render-views.spec.ts` ("a page that does not exist yet
+shows what links to it and what is tagged with it", "a journal day nobody has written shows the
+links to it, whatever date format the URL uses")
+
+**Fixed 2026-09-13.** `PageView.tsx`'s missing-page branch mounts `ReferencesPanel` under the
+"doesn't exist yet" message (and the agenda, for a date), so a referenced-but-uncreated page lists
+its tagged pages and linked references the way Logseq does — the product question the entry left
+open was settled by the brief ("that is how Logseq behaves"). Two details: the target is
+`canonicalRefName(name)`, because references to a day are indexed under its ISO name and the
+server's missing-page branch matches the raw title (B-322 — with the raw name the date test failed,
+"received []"); and the panel gets `unlinked={false}`, a new `ReferencesPanel` prop, because its
+"Link all" runs `mentions.link`, whose `requirePage` would only answer 404 for a page that does not
+exist. Once Create is pressed the ordinary view's panel, unlinked half included, takes over (checked
+in the same e2e). The first test cannot pass on `cf08d19` — nothing under the missing view rendered
+a panel. Real-graph check not done: see the progress file.
+
+---
+
+### B-322 · `page.backlinks` for a not-yet-created journal day named by a non-ISO title finds no linked references
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, reading `ops/page-backlinks.ts`
+while fixing B-200 · **Test:** none
+
+Found by reading, then reproduced through the web client: with the B-200 panel asking under the
+raw route name, `/page/<Mmm do, yyyy>` for an uncreated day linked as `[[<iso>]]` listed no linked
+references (the second B-200 e2e, run against that variant, "received []"). References are indexed under
+`normalizePageName(canonicalRefName(name))` (`apply-ops.ts#normalizeKey`, ADR 018), so
+`[[Sep 20th, 2026]]` is stored under `2026-09-20`. When the target has no page row,
+`page-backlinks.ts` matches linked references (and excludes linked blocks from unlinked mentions)
+with `normalizePageName(input.target)` — the raw title — while the tagged-pages lookup a few lines
+below already uses `refKeyOf`. An agent asking for `target: "Sep 20th, 2026"` before that day's page
+exists therefore gets `linked: []` even though blocks link to it; `target: "2026-09-20"` works. The
+web client's missing-page view (B-200) sidesteps it by asking with `canonicalRefName`. Likely fix:
+`const key = refKeyOf(input.target)` in that branch, with an http test. Not done here: a server op,
+outside this branch's rendering scope.
+
+---
+
+### B-323 · `references.spec.ts` "shows a count and collapses" once sat on the page view's "Loading…"
+**Status:** open (seen once) · **Severity:** low · **Found:** 2026-09-13, e2e run on
+`m9/render-views` · **Test:** —
+
+In one combined run (render-views, pages, references, references-cap, references-filters,
+tagged-pages, journal-agenda, journals, page-rename, navigation, link-unlinked — 51 of 52 passed) the
+test's `/page/Refs%20Target` showed only `p.page-view-loading` "Loading…" for the whole 10 s
+expectation: the ARIA snapshot had the top bar, "Loading…" and Help, no title and no outline. The
+spec alone passed straight after (4/4), and the same combined set passed 52/52 on the next run. The
+machine was shared by about a dozen agents, so load is the first suspect; recorded because
+`page.loading && page() === undefined` holding for 10 s is also what a page-by-name resource that
+never settles would look like. Not investigated; the failed run's trace was overwritten by the rerun.
 
 ---
 

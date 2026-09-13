@@ -62,6 +62,10 @@ export interface ReferencesPanelProps {
   /** The page name/date passed to `page.backlinks`'s `target`. */
   target: string;
   onNavigate: (t: NavigateTarget) => void;
+  /** Show the unlinked half. Default `true`. A page that does not exist yet passes `false` (B-200):
+   * its linked references and tagged pages are why you opened it, but "Link all" runs
+   * `mentions.link`, which needs the page to exist and would only answer with an error. */
+  unlinked?: boolean;
 }
 
 interface Group {
@@ -239,7 +243,9 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   const linkedGroups = createMemo(() => groupLinkedReferences(filteredLinked(), sort()));
   const unlinkedGroups = createMemo(() => groupUnlinkedReferences(data()?.unlinked ?? []));
   const linkedCount = createMemo(() => filteredLinked().length);
-  const unlinkedCount = createMemo(() => data()?.unlinked.length ?? 0);
+  const unlinkedCount = createMemo(() =>
+    props.unlinked === false ? 0 : (data()?.unlinked.length ?? 0),
+  );
   /** The client stopped short of every linked reference (`MAX_LINKED_REFERENCES`). */
   const linkedPartial = createMemo(() => allLinked().length < (data()?.linkedTotal ?? 0));
   // Unfiltered, the heading can give the server's true total even past the fetch cap; filtered,

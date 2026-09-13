@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { openPage, readBlocks } from "../helpers/index.js";
+import { api, isoOffset, openPage, pagePath, readBlocks, seedPage } from "../helpers/index.js";
 
 test("a multi-line block renders each line on its own line (B-224)", async ({ page }) => {
   const outliner = await openPage(
@@ -129,4 +129,79 @@ test("revealing a block lands on its row, not on a query result above it (B-211)
   await card.locator(".shelf-toc-link", { hasText: "rv reveal target" }).click();
   await expect(page.locator(`.vr-row[data-block-id="${id}"]`)).toHaveClass(/shelf-reveal-target/);
   await expect(outliner.locator(".vr-query-hit.shelf-reveal-target")).toHaveCount(0);
+});
+
+test("a page that does not exist yet shows what links to it and what is tagged with it (B-200)", async ({
+  page,
+}) => {
+  const name = "RV Unwritten Book";
+  await seedPage(page, "RV Book Reader", `- reading [[${name}]] tonight`);
+  await api(page, "page.create", {
+    name: "RV Book Tagged",
+    if_exists: "return",
+    properties: { tags: name },
+  });
+  // A plain mention: an unlinked reference on a real page, and nothing to show on this one.
+  await seedPage(page, "RV Book Mention", `- ${name} came up in passing`);
+
+  await page.goto(pagePath(name));
+  await expect(page.locator(".page-view-missing")).toContainText("doesn't exist yet");
+  const tagged = page.getByRole("region", { name: `Pages tagged ${name}` });
+  await expect(tagged.locator(".tagged-page-link")).toHaveText(["RV Book Tagged"]);
+  const linked = page.locator(".linked-references");
+  await expect(linked.locator(".reference-group-page")).toHaveText(["RV Book Reader"]);
+  await expect(linked.locator(".reference-item")).toContainText("reading");
+  // "Link all" would call `mentions.link`, which needs the page to exist.
+  await expect(page.locator(".unlinked-references")).toHaveCount(0);
+
+  // A reference still goes where it says.
+  await linked.locator(".reference-group-page", { hasText: "RV Book Reader" }).click();
+  await expect(page.locator(".page-title-input")).toHaveValue("RV Book Reader");
+  await page.goBack();
+
+  // Creating the page swaps to the ordinary view, which has the unlinked half too.
+  await page.locator(".page-view-missing button").click();
+  await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  await expect(page.locator(".page-title-input")).toHaveValue(name);
+  await expect(page.locator(".linked-references .reference-group-page")).toHaveText([
+    "RV Book Reader",
+  ]);
+  await expect(page.locator(".unlinked-references")).toBeVisible();
+});
+
+test("a journal day nobody has written shows the links to it, whatever date format the URL uses (B-200)", async ({
+  page,
+}) => {
+  // An offset no other spec uses, so no journal page exists there.
+  const iso = isoOffset(-333);
+  await seedPage(page, "RV Date Linker", `- remember [[${iso}]] for the review`);
+  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
+  const month = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ][m - 1];
+  const suffix =
+    d % 10 === 1 && d !== 11
+      ? "st"
+      : d % 10 === 2 && d !== 12
+        ? "nd"
+        : d % 10 === 3 && d !== 13
+          ? "rd"
+          : "th";
+  // Logseq's default title format, as an old link or a typed URL would spell it.
+  await page.goto(pagePath(`${month} ${d}${suffix}, ${y}`));
+  await expect(page.locator(".page-view-missing")).toBeVisible();
+  await expect(page.locator(".linked-references .reference-group-page")).toHaveText([
+    "RV Date Linker",
+  ]);
 });
