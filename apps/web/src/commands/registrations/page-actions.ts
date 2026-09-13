@@ -12,9 +12,9 @@
  * at registration, before the first render (B-87 — the same reason `edit.mergePage` is `edit.`).
  *
  * Which page: `args.page` (a page name) when given — the title row, or an agent through `ui_run`
- * (favourite only, below) — else the page the route shows. `WhenContext` cannot see the route, so off a page (the journal
- * stream, search) the three page commands quietly do nothing, as `edit.mergePage` does. Printing
- * needs no page: it prints whatever view is open.
+ * (favourite only, below) — else the page the route shows. `WhenContext` cannot see the route, so
+ * off a page (the journal stream, search) the three page commands quietly do nothing, as
+ * `edit.mergePage` does. Printing needs no page: it prints whatever view is open.
  */
 import type { Command, CommandContext } from "../types.js";
 

@@ -100,6 +100,12 @@ the web export, B-220) and sorts `ORDER BY order_key, id`. The named test fails 
 fix. The owner's graph (copy of 2026-09-13: 952 pages, 18,628 live blocks) has zero tied
 `(page_id, parent_id, order_key)` groups, so no mirror file there changes.
 
+**Note (adversarial verification, 2026-09-13):** the mirror and the browser export now agree with
+the editor, but `page.read` does not: `packages/server/src/data-api.ts` (the two child queries near
+line 162) still sorts `ORDER BY order_key` alone, and so do `embeddings/units.ts` and
+`ops/graph-overview.ts`. On a tie an agent reading the page sees the siblings in insertion order.
+Not changed here (outside this branch's files); no number left in B-220..B-229 to log it under.
+
 ---
 
 ### B-224 · A multi-line block renders its lines run together, with no line break
