@@ -20,10 +20,25 @@ B-391..B-399 in `docs/bugs-inbox/core-ops.md`.
   ambiguity (content = blank line then fence, on a block with a head or id) and literal `^id` text.
 - Read B-370 ordering (DFS over name claims), B-322 key change, B-311 pre-block, B-324 labels.
 
+- `49fe124`, `d13ced4` own unit/http tests: `core/src/outline.test.ts` › "serialize -> parse is
+  lossless across heads, ids, properties and content shapes" (2 tests, 192 blocks each; both fail
+  on 70c9bb9's parser); `server/src/ops/batch-undo-name-order.http.test.ts` +2 (three-step chain,
+  a created page renamed into a freed name; both pass); new
+  `server/src/ops/outline-empty-block-id.http.test.ts` (page.read `- ^id` lines fed to page.append
+  upsert the empty blocks; on the old parser it created two `^id` text blocks).
+- `c17cc71` own e2e: `fence-task-clipboard.spec.ts` (copy + paste a fence-first task with property
+  and child), `tasks-view-dates-phone.spec.ts` (iPhone 13: both dates stacked, no overflow). Both
+  pass on port 6401; row screenshot looked right (dates take ~45% of the row with times).
+- `nooklet verify` on the fresh copy: OK, 20,411 ops. Mirror probe on it: 2 pages / 20 blocks
+  differ (the known SCHEDULED lines) — matches the implementer's numbers.
+- e2e chunk 1 (36 files, a…link-unlinked): 176 passed, 1 failed, 1 skipped — the failure is
+  `editing.spec.ts` openJournal's draft race, B-335 (open, known); rerun of editing.spec failed
+  the same way in a different test (load average 112).
+
 ## In flight
 
-- e2e of the related specs on port 6401; browser check of the Tasks view at phone width.
+- e2e chunks 2 (files 37-72) and 3 (73-96) via `<scratch>/run-chunk.sh`, logs `e2e-chunk*.log`.
 
 ## Next
 
-- Own tests for the riskiest edges; fix anything real; commit each green step.
+- Fix anything real found; commit each green step; final report.
