@@ -65,9 +65,25 @@ port 6410. Bugs go to `docs/bugs-inbox/ref-pages.md` (new numbers B-440..B-449).
 
 ## Done (committed)
 
-(see git log; hashes filled in after each commit)
+- `c162820` server minting/junk deletion (`packages/server/src/ref-pages.ts`), migration
+  (`ref-pages-migration.ts`, run from `cli.ts#open`), importer skip + final mint, page.create claims
+  an unclaimed page, trash.list hides them, trash.restore/import evict them. Tests: ref-pages.test.ts
+  (17), ops/ref-pages.http.test.ts (6), ref-pages-migration.test.ts (3); 6 older tests updated to the
+  new rule (each with a comment).
+- `629d249` B-440 schema v7 indexes. Real-graph copy (17:34): migration 259 pages (248 keys + 11
+  ancestors) in 464 ms (was 13,946 ms before the indexes), 17 keys left = journal days, second run
+  no-op, `pnpm nooklet verify` OK 20,705 ops. Probe `tools/probes/ref-pages-migration-real-graph.ts`.
+- `0dd7874` B-442 refused-page adoption: push response `refused_pages` + `apps/web/src/sync/refused-page.ts`
+  (pull-time displacement too). Tests `apps/web/src/sync/e2e.test.ts` (2, fail without the fix).
+- `0373c8c` mirror: no file for an empty page; removed when the last block goes. `live.test.ts` +1,
+  4 fixtures given content.
+- `f161462` `e2e/tests/ref-pages.spec.ts` (5 tests, all green on 6410).
+
+Web: no PageView change was needed — an existing empty page already renders title + "Start typing…"
+row (B-410) + references; verified in the e2e spec.
 
 ## Next steps
 
-1. Commit unit 1 (server minting). 2. Migration on the real-graph copy: count, time, verify.
-3. Refused-page adoption (push response + sync-client). 4. Mirror. 5. Web + e2e. 6. ADR + inbox.
+1. Full e2e suite on 6410 (regressions from pages appearing for links in other specs).
+2. ADR 024 (023 is taken by client-plugin-host — tell the coordinator), inbox final, progress.
+3. MCP page_list check (optional), final unit/typecheck/biome/verify.
