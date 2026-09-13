@@ -14,10 +14,16 @@ import { seedPage } from "../helpers/index.js";
 test("a hybrid search on a graph with no embedding model says semantic search is not set up, and the button opens Settings at Search & embeddings", async ({
   page,
 }) => {
-  // The page name must not contain the query word, or the page itself is a second hit.
-  await seedPage(page, "Search Fallback Note Hit", "- a quokka sentence for the fallback note");
+  // The query word must be in no page name — this page's, or any other spec's: the e2e graph is
+  // shared by the whole run, and "quokka" also matched search-cleared.spec's "Cleared Search
+  // Quokka" page too, so the count below read 2 in every full-suite run (B-526).
+  await seedPage(
+    page,
+    "Search Fallback Note Hit",
+    "- a fallbacknotequokka sentence for the fallback note",
+  );
   await page.goto("/search");
-  await page.locator(".search-query-input").fill("quokka");
+  await page.locator(".search-query-input").fill("fallbacknotequokka");
   await expect(page.locator(".search-loading")).toBeHidden({ timeout: 15_000 });
 
   const note = page.locator(".search-fallback");

@@ -142,3 +142,20 @@ jsdom does not.
 each item one `<span>` holding its space and its button. The e2e test fails on the branch's code
 (`<For>`) and on `<Index>` with the fragment, passes with both changes on Chromium and on WebKit (run
 through a throwaway config — the committed WebKit project only matches `storage.spec.ts`).
+
+---
+
+### B-526 · `search-fallback.spec.ts`'s "not set up" test fails whenever `search-cleared.spec.ts` runs before it
+**Status:** fixed · **Severity:** low (test only) · **Found:** 2026-09-13, search-fallback verify ·
+**Test:** the e2e test itself, run as `search-cleared.spec.ts tests/search-fallback.spec.ts`
+
+The e2e server and its graph are shared by every spec in a run. `search-cleared.spec.ts` seeds a
+page named "Cleared Search Quokka"; the fallback test searches "quokka" and asserts
+`.search-summary` is exactly "1 result". Run together (alphabetical order puts search-cleared
+first, so every full-suite run does this): `Expected: "1 result" Received: "2 results"`, the second
+hit being the page "Cleared Search Quokka" (screenshot in the run's test-results). The branch's own
+runs used only search-fallback + settings + views, which is why it passed there.
+
+**Fixed 2026-09-13.** The test searches a word no other spec uses ("fallbacknotequokka"). The pair
+`search-cleared.spec.ts` + `search-fallback.spec.ts` on Chromium: 1 failed before ("2 results"),
+5 passed after.
