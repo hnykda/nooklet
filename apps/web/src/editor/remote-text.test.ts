@@ -111,6 +111,34 @@ describe("TextVersions (B-192)", () => {
     expect(v.decide("b", h(200), { sameText: false, unsaved: false })).toBe("take");
   });
 
+  it("a newer version that left the text the typing started from is not offered (B-462)", () => {
+    const v = new TextVersions();
+    v.noteShown("b", h(100));
+    // An agent flipped the task marker: a `block.text` of the same content, a newer `content_hlc`.
+    const flip = h(200, "bbbbbbbb");
+    const state = { sameText: false, unsaved: true, sameAsBeforeTyping: true };
+    expect(v.decide("b", flip, state)).toBe("untouched");
+    expect(v.decide("b", flip, state)).toBe("untouched");
+    // Not known: if the typing's write lost to it, the database holds it, and with nothing unsaved
+    // the editor takes it.
+    expect(v.decide("b", flip, { sameText: false, unsaved: false })).toBe("take");
+  });
+
+  it("a version that puts back the text the typing started from clears a standing offer (B-462)", () => {
+    const v = new TextVersions();
+    v.noteShown("b", h(100));
+    expect(v.decide("b", h(200, "bbbbbbbb"), { sameText: false, unsaved: true })).toBe("offer");
+    expect(
+      v.decide("b", h(300, "bbbbbbbb"), {
+        sameText: false,
+        unsaved: true,
+        sameAsBeforeTyping: true,
+      }),
+    ).toBe("untouched");
+    // The first version is no longer "already offered": offered again, it is a notice again.
+    expect(v.decide("b", h(400, "bbbbbbbb"), { sameText: false, unsaved: true })).toBe("offer");
+  });
+
   it("taking an offered version makes it known and clears the offer", () => {
     const v = new TextVersions();
     v.noteShown("b", h(100));

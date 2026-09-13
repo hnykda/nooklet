@@ -745,9 +745,13 @@ distance from the end, inside it goes to the end of the new span, and at the end
 stays at the end. With typing waiting, the buffer keeps the typing and the row shows "This block
 changed elsewhere." with **Use the other version** (writes that text as one undo step; the waiting
 keystrokes are dropped, and Cmd/Ctrl+Z brings them back) and **Keep mine** (dismisses; the typing is
-written as usual, and that version is not offered again). The typing's write is stamped newer than
-the offered version even when the other writer's clock runs ahead. The notice goes when editing leaves the
-block. A write that changes only a property line is not covered yet (B-460).
+written as usual, and that version is not offered again). A newer version whose text is the text
+the typing started from — a write that moved only the task marker, which `block.update` sends with
+a `block.text` of the same content — is not offered, and clears a standing notice (B-462). The
+editor's clock absorbs every `content_hlc` the page fetch brings, so a write of the typing, or of
+text typed into a version taken from elsewhere, is stamped newer than it even when the other
+writer's clock runs ahead (B-461). The notice goes when editing leaves the block. A write that
+changes only a property line is not covered yet (B-460).
 
 **R52.** `app.toggleSidebar` shows/hides the navigation sidebar (page tree, journals, tags).
 `app.openSettings` opens the settings view (which includes the keybindings editor, § G).

@@ -74,8 +74,11 @@ marker or date op writes a block column, not `block_prop`, and must not count).
 ---
 
 ### B-461 · With this tab's clock behind, typing on a text written elsewhere is silently lost
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, m11/remote-rewrite verification
-pass (adversarial e2e) · **Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, m11/remote-rewrite verification
+pass (adversarial e2e) · **Test:** `e2e/tests/remote-rewrite-edges.spec.ts` "with nothing typed and
+this tab's clock behind, typing on the taken text is saved", "with this tab's clock behind, typing
+into a block the row showed rewritten elsewhere is saved"; `remote-rewrite.spec.ts` "…the typing is
+kept even when this tab's clock runs behind" still guards the offer path
 
 Tab clock 20 s behind the server (`page.clock.setFixedTime(now − 20 s)`). Put the caret in
 `original`; an agent's `block.update` makes it `rewritten`; the editor takes it (B-192). Type
@@ -90,11 +93,22 @@ writer's `content_hlc`, and `applyBlockText` drops it as stale. B-192's fix made
 of an OFFERED version (`Clock.receive`, 99f54ff) but not of a taken one, nor of any text the tree
 shows.
 
+Fixed 2026-09-13: `BlockTree` absorbs the newest `content_hlc` of every page fetch into the editor
+clock (`absorbFetchedHlcs`, and once more when the clock loads after a fetch), which replaces the
+offer-only `receive`. Mutation-checked: with the absorb removed, both new tests and the existing
+offer-path skew test fail (3/3). Not covered: HLCs of property, marker and date columns — the page
+tree carries only `content_hlc` (the same gap as B-460), so a marker toggled right after a
+clock-ahead writer's marker write can still lose last-writer-wins within the skew (by reading, not
+probed).
+
 ---
 
 ### B-462 · An agent flipping the task marker while you type offers your own untyped text as "the other version"
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, m11/remote-rewrite verification pass
-(adversarial e2e) · **Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m11/remote-rewrite verification pass
+(adversarial e2e) · **Test:** `e2e/tests/remote-rewrite-edges.spec.ts` "an agent marking the task
+DONE while you type does not offer the old text back"; `apps/web/src/editor/remote-text.test.ts` "a
+newer version that left the text the typing started from is not offered (B-462)", "a version that
+puts back the text the typing started from clears a standing offer (B-462)"
 
 Type into `TODO call the plumber`; meanwhile an agent runs `block.update {old_str: "TODO", new_str:
 "DONE"}` — the flip `block_update`'s own description recommends. The pill turns DONE and the row
@@ -108,3 +122,10 @@ Cause: `block.update` with `content` or `old_str`/`new_str` always writes a `blo
 verdict (`editor/remote-text.ts#decide`) sees a newer `content_hlc` whose text differs from the
 buffer (the buffer has the typing) and offers it — it never asks whether the other writer changed
 the text the typing started from.
+
+Fixed 2026-09-13: `decide` takes `sameAsBeforeTyping` — the fetched text says what the buffer said
+when the unsaved typing began (`pendingEdit.treeBefore`) — and answers `untouched`: no notice, the
+typing stays, a standing notice for the block goes (the version it offered is no longer what the
+database holds). Like an offered version it is not recorded as known, so a typing write that still
+lost to it is followed on the next refetch with nothing unsaved. Mutation-checked: with
+`sameAsBeforeTyping: false` the e2e test fails (notice shown).

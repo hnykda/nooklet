@@ -237,6 +237,18 @@ export function BlockTree(props: {
   /** Which fetched texts are newer than anything this tree showed or wrote (B-192). */
   const textVersions = new TextVersions();
   textVersions.noteWrites(props.initialOps ?? []);
+  /**
+   * The newest `content_hlc` any fetch of this page brought, absorbed into the editor clock
+   * (B-461). The clock otherwise follows only wall time: behind another writer's clock, every
+   * keystroke on a text that writer wrote — taken into the editor (B-192) or clicked into after
+   * the row showed it — was stamped older than that text, and `applyBlockText` dropped it as stale
+   * with nothing on screen saying so. Lexicographic order is the HLC order, so the newest is enough.
+   */
+  let newestFetchedHlc = "";
+  function absorbFetchedHlcs(hlcs: Iterable<string>): void {
+    for (const hlc of hlcs) if (hlc > newestFetchedHlc) newestFetchedHlc = hlc;
+    if (newestFetchedHlc !== "") untrack(clockSig)?.receive?.(newestFetchedHlc);
+  }
   /** A newer text of the block being edited that arrived over unsaved typing, offered on its row
    * (B-192): its editing text, and the `content_hlc` it was fetched with. */
   const [remoteOffer, setRemoteOffer] = createSignal<{
@@ -251,6 +263,7 @@ export function BlockTree(props: {
     const editingBlockId = editingId();
     const contentHlcs = new Map<BlockId, string>();
     const flat = flattenBlockTreeNodes(data.blocks, contentHlcs);
+    absorbFetchedHlcs(contentHlcs.values());
     unseenCreations.seen(flat.map((b) => b.id));
     const attachedId =
       editingBlockId && surface.currentId() === editingBlockId ? editingBlockId : null;
@@ -282,6 +295,7 @@ export function BlockTree(props: {
           textVersions.decide(editingBlockId, hlc, {
             sameText: editTextMatches(fetchedEdited, live),
             unsaved: hasUnsavedTyping(editingBlockId),
+            sameAsBeforeTyping: sameAsBeforeTyping(editingBlockId, fetchedEdited),
           }),
         );
         if (verdict === "take") {
@@ -291,11 +305,10 @@ export function BlockTree(props: {
           flat[idx] = withEditText(flat[idx] as EditableBlock, live);
         }
         if (verdict === "offer") {
-          // The typing is kept, so its write must be newer than this version even when the other
-          // writer's clock runs ahead of ours — or it loses last-writer-wins and is taken back.
-          untrack(clockSig)?.receive?.(hlc);
+          // The typing is kept, and its write is newer than this version even when the other
+          // writer's clock runs ahead of ours: the clock absorbed it above (`absorbFetchedHlcs`).
           setRemoteOffer({ id: editingBlockId, hlc, text: editTextOf(fetchedEdited) });
-        } else if (verdict === "take" || verdict === "same") {
+        } else if (verdict === "take" || verdict === "same" || verdict === "untouched") {
           if (untrack(remoteOffer)?.id === editingBlockId) setRemoteOffer(null);
         }
       } else if (unseenCreations.has(editingBlockId)) {
@@ -524,7 +537,14 @@ export function BlockTree(props: {
     });
   });
   const [clockSig, setClockSig] = createSignal<Clock | undefined>(undefined);
-  onMount(() => void getClock().then(setClockSig));
+  onMount(
+    () =>
+      void getClock().then((clock) => {
+        // A fetch that answered before the clock loaded is absorbed now (B-461).
+        if (newestFetchedHlc !== "") clock.receive?.(newestFetchedHlc);
+        setClockSig(clock);
+      }),
+  );
 
   const history = new EditHistory();
 
@@ -625,6 +645,14 @@ export function BlockTree(props: {
     if (!pendingEdit || pendingEdit.id !== id) return false;
     const before = pendingEdit.treeBefore.byId.get(id) ?? untrack(editorTree).byId.get(id);
     return !before || blockTextPayloads(before, pendingEdit.content).length > 0;
+  }
+
+  /** The fetched `block` says what the buffer said before its unsaved typing began: the write
+   * that moved its `content_hlc` left the text alone — an agent's `block.update` flipping the task
+   * marker writes a `block.text` of the same content (B-462). */
+  function sameAsBeforeTyping(id: BlockId, block: EditableBlock): boolean {
+    const before = pendingEdit?.id === id ? pendingEdit.treeBefore.byId.get(id) : undefined;
+    return before !== undefined && editTextMatches(block, editTextOf(before));
   }
 
   function dropPendingEdit(): void {

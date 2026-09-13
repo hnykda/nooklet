@@ -69,3 +69,19 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
   `flushPendingEdit` uses), so the no-op pending edit `replaceContent` streams does not count.
 - Offered-but-not-taken versions are tracked separately, so a dismissed notice does not come back
   on every refetch, and a flush that loses LWW (skew) still gets taken on the next clean refetch.
+
+## Verification pass (2026-09-13, second agent)
+
+Scratch `…/scratchpad/m11/remote-rewrite-verify/`, same port 6412.
+
+- Re-ran on d54fd48: `remote-rewrite.spec.ts` 10/10; web unit 1156/1156.
+- Adversarial spec `e2e/tests/remote-rewrite-edges.spec.ts` (7). Against d54fd48, two failed and
+  were logged before fixing: B-461 (tab clock 20 s behind: typing on a taken text, or on a text the
+  row showed and was then clicked into, is dropped as stale — stored stayed `rewritten`) and B-462
+  (an agent's `old_str: TODO → new_str: DONE` while typing showed the notice offering the untyped
+  text). Passed on d54fd48 as well: undo while the notice stands, a second tab of the same browser,
+  Czech text on a namespaced page with the caret mid-text, a block with a property line.
+- Fix (one commit after 58597fa): `BlockTree#absorbFetchedHlcs` (every fetch's newest
+  `content_hlc` into the editor clock, replacing the offer-only receive) and `decide`'s
+  `sameAsBeforeTyping` → `untouched`. Both specs 17/17; mutation of each fix fails its tests
+  (4/4 with both mutated); web unit 1158/1158; `pnpm -r typecheck` clean.

@@ -32,6 +32,10 @@ export type RemoteVerdict =
   | "take"
   /** Newer, but there is unsaved typing: keep the typing, offer this version. */
   | "offer"
+  /** Newer, with unsaved typing, but it says what the buffer said before that typing began: the
+   * other write did not change the text (an agent flipping the task marker writes a `block.text`
+   * of the same content). Nothing to offer, and a standing notice for this block is moot (B-462). */
+  | "untouched"
   /** Newer, unsaved typing, and this exact version was already offered (the notice stands, or was
    * dismissed): nothing changes. */
   | "hold";
@@ -68,13 +72,18 @@ export class TextVersions {
 
   /**
    * The verdict for a fetched text of the block being edited. `sameText`: it says what the buffer
-   * already says. `unsaved`: the buffer holds typing not yet written.
+   * already says. `unsaved`: the buffer holds typing not yet written. `sameAsBeforeTyping`: it says
+   * what the buffer said before that typing began.
    *
    * Records what it decides: a taken or matching version becomes known; an offered one becomes
    * offered but NOT known — the database still holds it, and if the typing's write later loses to
    * it (a clock ahead of ours) the next refetch must still see it as newer and take it.
    */
-  decide(id: BlockId, hlc: string, state: { sameText: boolean; unsaved: boolean }): RemoteVerdict {
+  decide(
+    id: BlockId,
+    hlc: string,
+    state: { sameText: boolean; unsaved: boolean; sameAsBeforeTyping?: boolean },
+  ): RemoteVerdict {
     if (!this.isNewer(id, hlc)) {
       // A block first seen while being edited (created elsewhere, then focused before any refetch
       // showed it) starts known from here.
@@ -85,6 +94,12 @@ export class TextVersions {
       this.noteShown(id, hlc);
       this.offered.delete(id);
       return state.sameText ? "same" : "take";
+    }
+    if (state.sameAsBeforeTyping) {
+      // Not known, like an offered version: if the typing's write still loses to it, the next
+      // refetch with nothing unsaved takes it, and the editor never shows text the database lacks.
+      this.offered.delete(id);
+      return "untouched";
     }
     const offered = this.offered.get(id);
     if (offered !== undefined && offered >= hlc) return "hold";
