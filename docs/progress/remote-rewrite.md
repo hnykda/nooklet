@@ -113,3 +113,14 @@ Scratch `…/scratchpad/m11/remote-rewrite-verify/`, same port 6412.
 - B-464 (logged 90324a8): Keep mine, then a marker flip of the dismissed version inside one burst of
   typing, brought the notice back. Fix: `offered` keeps the text; same text under a newer HLC →
   `hold`. Edges test red before; both specs 19/19; remote-text unit 20/20.
+- Final HEAD (after 4487aa2): web unit 1159/1159; `pnpm -r typecheck` clean; biome on the branch's
+  files reports only the pre-existing `BlockRowView.tsx` row-div error. remote-rewrite ×2 specs +
+  editing, focus, undo-redo, remote-device (and the specs those names match): 63/63. A
+  `--repeat-each=2` of that set failed 10 tests, all in repeat 1 of specs that are not repeat-safe
+  (pages seeded once: doubled rows, "strict mode violation … resolved to 2 elements"); repeat 0 of
+  every test and both repeats of the two remote-rewrite specs passed.
+
+### Verification pass: in flight / next
+
+- Nothing in flight. Open: B-460 (property-only rewrite, as before). Not covered by anyone: WebKit,
+  a real iOS device, IME composition during a take.
