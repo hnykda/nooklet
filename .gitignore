@@ -23,3 +23,7 @@ playwright-report/
 apps/desktop/src-tauri/target/
 apps/desktop/.cache/
 apps/desktop/sidecar/
+# NOT a build output: the desktop launcher page (`frontendDist` in tauri.conf.json) is hand-written
+# source. `dist/` above swallowed it, so a clean checkout could not compile the desktop app at all
+# ("frontendDist … doesn't exist") and the page existed only on one machine (B-530).
+!apps/desktop/dist/

@@ -7,6 +7,15 @@ Date: 2026-09-11. Status: accepted. Supersedes the desktop half of ADR 005.
 > assembles node, the server, the web build, `vec0` and `esbuild`), unless a server already answers
 > there. "Not bundled in v1" below records the decision as it was made; the rest — loopback URL,
 > one client one build, no bundled web assets — still holds and is why bundling was additive.
+>
+> **Amended again 2026-09-13 (desktop-shell, B-530..B-534).** The shell now also injects
+> `window.__NOOKLET_DESKTOP__ = {platform, port}` into every page (`NOOKLET_PORT` moves it off
+> 6100); sets its own macOS menu (Tauri's default plus Settings…, Reload and Help — the client's
+> items reach it as a `nooklet:desktop-menu` DOM event); and sends new-window links to the system
+> browser (http, https, mailto only). "One client, one build" has a cost this ADR did not name: the
+> window runs whatever client its service worker holds, so an update depends on the worker taking
+> over (B-532) and on the page noticing it did — which it must do before WebKit's own update check,
+> one second after launch, not after its first API round trip (B-537).
 
 ## Decision
 

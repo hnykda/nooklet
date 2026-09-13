@@ -108,6 +108,19 @@ describe("createDispatcher — R12 dispatch order", () => {
     expect(c.exec).toHaveBeenCalledWith("format.bold", undefined);
   });
 
+  it("never matches edit.paste's Cmd+V: the native paste event must not be cancelled (R33, B-536)", () => {
+    const dispatcher = createDispatcher({
+      getBindings: () => [
+        { key: "Cmd+V", command: "edit.paste", when: "editorFocused", source: "base", order: 0 },
+      ],
+    });
+    const e = event("v", { metaKey: true });
+    const c = ctx({ editorFocused: true });
+    expect(dispatcher.handleKeyDown(e, c)).toBe(false);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(c.exec).not.toHaveBeenCalled();
+  });
+
   it("skips a row whose `when` is false and falls through to step 4 if nothing else matches", () => {
     const dispatcher = createDispatcher({
       getBindings: () => [

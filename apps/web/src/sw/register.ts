@@ -14,19 +14,22 @@ const UPDATE_CHECK_MS = 60 * 60 * 1000;
 export function registerServiceWorker(): void {
   if (!("serviceWorker" in navigator)) return;
 
-  const updateSW = registerSW({
+  // No `onNeedRefresh`: under `registerType: "autoUpdate"` it is never called. What applies an
+  // update is the worker itself (`skipWaiting` + `clientsClaim`, `vite.config.ts`), which takes the
+  // page over, and the `controllerchange` listener inline in `index.html`, which reloads onto it.
+  // There used to be an `onNeedRefresh` here that "applied" the update — dead code, which is how
+  // B-532 (the new worker waiting forever) hid behind B-20's fix.
+  //
+  // That reload is safe with respect to unsaved text: a pending edit is flushed on `pagehide` and
+  // `visibilitychange` (`editor/BlockTree.tsx`), both of which fire before it.
+  registerSW({
     immediate: true,
-    onNeedRefresh() {
-      // Apply it, rather than logging and hoping. Under `registerType: "autoUpdate"` the new
-      // worker has already taken control; this reloads the page onto the new assets.
-      //
-      // Safe with respect to unsaved text: a pending edit is flushed on `pagehide` and
-      // `visibilitychange` (`editor/BlockTree.tsx`), both of which fire before the reload.
-      //
-      // This used to only `console.info`, which meant a browser kept serving the first build it
-      // had ever cached — the app silently ran old code against a newer server indefinitely.
-      void updateSW(true);
-    },
+    // Not workbox's `window.location.reload()` on `activated`: that only fires for an update found
+    // AFTER this call registered, and this call waits on `/api/session` (`main.tsx`). WebKit's soft
+    // update finds a new build one second after navigation, so a slow session request meant no
+    // reload at all (B-537). The inline listener sees every takeover; a second reload here would only
+    // restart the navigation it already began.
+    onNeedReload() {},
     onOfflineReady() {
       console.info("[nooklet] ready to work offline.");
     },

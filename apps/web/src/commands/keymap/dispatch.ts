@@ -45,8 +45,18 @@ export interface Dispatcher {
   resetChord(): void;
 }
 
+/**
+ * R33: commands whose keybinding row only DISPLAYS a gesture the browser implements itself. They
+ * stay in the compiled keymap (the palette, Help → Keyboard shortcuts and the settings UI list them)
+ * but are never matched here. `edit.paste`'s Cmd/Ctrl+V is the native paste: the editor handles the
+ * `paste` EVENT that key produces (`editor/surface.ts`). Matching the key called `preventDefault()`,
+ * which cancels that event, and ran a command with no editor side — so Cmd+V into a block pasted
+ * nothing, in a browser and in the desktop app alike (B-536).
+ */
+const NATIVE_GESTURE_COMMANDS: ReadonlySet<string> = new Set(["edit.paste"]);
+
 function candidatesForKey(bindings: readonly ResolvedBinding[], key: string): ResolvedBinding[] {
-  const matching = bindings.filter((b) => b.key === key);
+  const matching = bindings.filter((b) => b.key === key && !NATIVE_GESTURE_COMMANDS.has(b.command));
   // R12 step 3: "user rows, reverse array order, then secondary defaults, then base defaults."
   const user = [...matching.filter((b) => b.source === "user")].sort((a, b) => b.order - a.order);
   const secondary = [...matching.filter((b) => b.source === "secondary")].sort(

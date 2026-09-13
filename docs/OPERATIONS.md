@@ -136,6 +136,20 @@ Practically, upgrading nooklet is:
 
 There's no separate `nooklet migrate` command — opening the database *is* the migration step.
 
+**The client updates itself.** Once the server serves a new web build, an open page reloads onto
+it within seconds (the new service worker takes the page over and a listener in `index.html`
+reloads onto it, B-532/B-537), and the desktop app shows it on its next launch — one reload flash,
+then the new client. The one exception is the launch that installs a client from before B-537: that
+page decides with its old code and, if `/api/session` was slow, shows the old client once more. Two things that look like "the update
+did not arrive" and are not:
+
+- The desktop app uses whatever nooklet already answers on its port (6100). If that is a
+  `nooklet serve` you started from a checkout, the window gets THAT server's `apps/web/dist`;
+  rebuilding the `.app` changes nothing it loads. Rebuild the client that server serves.
+- A second copy of the desktop app (a test build) needs its own port and graph:
+  `NOOKLET_PORT=6420 NOOKLET_DATA=<a copy> <app>/Contents/MacOS/nooklet-desktop`, and a different
+  bundle identifier, or it shares the first copy's WebKit store and service worker.
+
 ## 5. `nooklet verify`: the rebuild-parity check
 
 ```sh

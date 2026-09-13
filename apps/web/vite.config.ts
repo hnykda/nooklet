@@ -23,6 +23,14 @@ export default defineConfig({
       injectRegister: false,
       manifest: false, // we ship public/manifest.webmanifest directly
       workbox: {
+        // Both explicit, and both load-bearing (B-532). autoUpdate means "a new worker takes over
+        // and the page reloads onto it" — but the plugin only turns these two on for autoUpdate
+        // when `injectRegister` is "auto"/unset, and ours is `false`. Without them the new worker
+        // installed and then WAITED for every page to close: the desktop app ran the previous
+        // client for a whole session after each update, and a tab left open never updated at all.
+        // The reload itself is `virtual:pwa-register`'s, on the new worker's `activated`.
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,svg,woff2,wasm}"],
         maximumFileSizeToCacheInBytes: 6_000_000,
         navigateFallbackDenylist: [/^\/(api|sync)\//],

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>nooklet</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0; height: 100vh; display: grid; place-items: center;
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: Canvas; color: CanvasText;
+      }
+      main { max-width: 30rem; padding: 2rem; text-align: center; }
+      h1 { font-size: 1.1rem; margin: 0 0 .5rem; }
+      p { margin: .5rem 0; opacity: .8; }
+      code, pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8125rem;
+      }
+      pre {
+        text-align: left; padding: .75rem .9rem; border-radius: .5rem;
+        background: color-mix(in srgb, CanvasText 8%, transparent); overflow-x: auto;
+        user-select: all;
+      }
+      .row { display: flex; gap: .5rem; justify-content: center; margin-top: 1rem; }
+      button, input {
+        font: inherit; padding: .45rem .8rem; border-radius: .45rem;
+        border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+        background: Canvas; color: CanvasText;
+      }
+      input { min-width: 15rem; text-align: center; }
+      #err { color: #c92a2a; min-height: 1.4em; }
+      .spin { opacity: .6 }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>nooklet</h1>
+      <p id="status" class="spin">Connecting…</p>
+      <div id="help" hidden>
+        <p>Couldn't reach the nooklet server. Start it, then try again:</p>
+        <pre>pnpm nooklet serve</pre>
+        <div class="row">
+          <input id="url" aria-label="Server address" />
+          <button id="retry" type="button">Retry</button>
+        </div>
+        <p id="err"></p>
+      </div>
+    </main>
+    <script type="module">
+      // The desktop shell is deliberately a thin window onto the local server (ADR 016): loading
+      // the server's own origin is what keeps the token handshake, OPFS storage and the sync
+      // WebSocket working exactly as they do in a browser, with no CORS and no second copy of the
+      // client that could drift from what the server serves.
+      const KEY = "nooklet.desktop.serverUrl";
+      // The shell says which port its server is on (`shell_script` in src-tauri/src/main.rs), so
+      // `NOOKLET_PORT` moves the launcher with it.
+      const DEFAULT_URL = `http://127.0.0.1:${window.__NOOKLET_DESKTOP__?.port ?? 6100}`;
+      const serverUrl = () => localStorage.getItem(KEY) || DEFAULT_URL;
+
+      const status = document.getElementById("status");
+      const help = document.getElementById("help");
+      const err = document.getElementById("err");
+      const urlInput = document.getElementById("url");
+      urlInput.value = serverUrl();
+
+      /** `no-cors` because /healthz sends no CORS headers: an opaque response still proves the
+       * server answered, and a network failure still throws. That is all we need to know. */
+      async function reachable(base) {
+        try {
+          await fetch(new URL("/healthz", base), { mode: "no-cors", cache: "no-store" });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      async function attempt(base) {
+        status.hidden = false;
+        status.textContent = `Connecting to ${base}…`;
+        help.hidden = true;
+        if (await reachable(base)) {
+          localStorage.setItem(KEY, base);
+          location.replace(base);
+          return true;
+        }
+        status.hidden = true;
+        help.hidden = false;
+        return false;
+      }
+
+      document.getElementById("retry").addEventListener("click", async () => {
+        err.textContent = "";
+        let base;
+        try {
+          base = new URL(urlInput.value.trim()).origin;
+        } catch {
+          err.textContent = "That doesn't look like a URL.";
+          return;
+        }
+        if (!(await attempt(base))) err.textContent = "Still no answer.";
+      });
+
+      // Retry on a short backoff while the window is open, so starting the server elsewhere is
+      // enough — no need to come back and click.
+      let base = serverUrl();
+      if (!(await attempt(base))) {
+        setInterval(() => {
+          if (!help.hidden) void attempt(base);
+        }, 3000);
+      }
+    </script>
+  </body>
+</html>
