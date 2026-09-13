@@ -292,9 +292,11 @@ test("a refresh changes nothing on screen but the block that changed (B-500)", a
     await page.waitForTimeout(300);
   }
   const r = await page.evaluate(() => (window as unknown as { __regions: RegionRecord }).__regions);
-  console.log(JSON.stringify(r, null, 1));
   const changed = Object.fromEntries(
     [...Object.entries(r.seq), ...Object.entries(r.rows)].filter(([, s]) => s.length > 1),
   );
-  expect(changed).toEqual({});
+  // Any region or row that showed more than one text between the first pull and the last: a
+  // placeholder, a "Loading…", an empty word count — whatever it flashed is in the message.
+  expect(changed, JSON.stringify(r.mounts)).toEqual({});
+  expect(r.callbacks).toBeGreaterThan(5);
 });

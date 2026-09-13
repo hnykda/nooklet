@@ -39,13 +39,40 @@ never `docs/BUGS.md`.
   calls `invalidateBlockRefs()` on every change event naming `block`, which empties the whole
   `block-ref-cache.ts` record, so every `lookupBlockText` returns `undefined` until its refetch.
 
+- Step 3 "before" numbers (instrumented build of `52e5d20` + the B-500 test commit, real-graph
+  copy `<scratch>/graph`, `tools/probes/refresh-render-count.mjs`, 5 API writes per page, Chromium,
+  per refresh): see the table in "Measurements" below. Raw: `<scratch>/before.json`.
+- Step 2a, B-500 cache fix: `data/block-ref-cache.ts` rewritten (per-id signals, generation-stamped
+  stale-while-revalidate, batched `IN` reads, watcher-counted revalidation).
+  `data/block-ref-cache.test.ts` 8/8 (8/8 fail against the old file); e2e `ref-label-flash.spec.ts`
+  3/3 chromium, 3/3 webkit; web unit 1146/1146; typecheck clean.
+
+## Measurements (per refresh, averages of 5)
+
+| page (rows on screen) | build | resolver calls | ref queries | DOM records | elements created | snapshots with a flashed label |
+|---|---|---|---|---|---|---|
+| 2022-12-16 (90, 2 refs) | before | 6 | 2 | 16 | 29.6 | 5 |
+| OmnivoreSync (57, 556 props) | before | 0 | 0 | 402 | 855.6 | 0 |
+| Ref Heavy (150, 50 refs) | before | 2,550 | 50 | 3,230.6 | 1,880.2 | 53 (max 50 at once) |
+
+Before, also per refresh on every page: `rowBlockRead`, `dateChips`, `propEntries` = one per row
+(and `propEntries` 112 on OmnivoreSync), `treeEffect` 1, `contentView` 1, `tokenView` 9.6 / 256.6 /
+1,878.2.
+
 ## In flight
 
-- Step 2: rewriting `data/block-ref-cache.ts` as per-id signals, stale-while-revalidate, one
-  batched `IN (…)` re-read per change for the ids on screen.
+- Step 2b: the other remounts found by the recorder (B-511): query hits, reference items, date
+  chips, property rows rebuilt with identical content on every refresh. Then the "after" run.
 
 ## How to resume
 
 `git log --oneline 52e5d20..` shows what landed. Before each commit: biome check on the files,
 `pnpm -r typecheck`, `pnpm --filter @nooklet/web test`. e2e:
 `cd e2e && NOOKLET_E2E_PORT=6417 pnpm exec playwright test <specs> --project=chromium`.
+
+Measuring: `<scratch>/serve.sh` serves the real-graph copy on 6417 (refuses if busy),
+`<scratch>/stop.sh` stops it (only a process from this worktree), `<scratch>/measure.sh` runs the
+probe with the `Ref Heavy` ids. Apply `tools/probes/refresh-render-count.<before|after>.patch`,
+`pnpm --filter @nooklet/web build`, measure, then check the patched source files back out —
+never commit the counters. The e2e global setup rebuilds `apps/web/dist`, so rebuild after any e2e
+run before measuring.

@@ -1,0 +1,107 @@
+diff --git a/apps/web/src/data/block-ref-cache.ts b/apps/web/src/data/block-ref-cache.ts
+index a027cbc..4ee3ac9 100644
+--- a/apps/web/src/data/block-ref-cache.ts
++++ b/apps/web/src/data/block-ref-cache.ts
+@@ -22,6 +22,7 @@ const inFlight = new Set<string>();
+ function fetchBlockText(id: string): void {
+   if (inFlight.has(id)) return;
+   inFlight.add(id);
++  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("refQuery");
+   void queryAs<{ content: string }>(
+     "SELECT content FROM block WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+     [id],
+@@ -39,6 +40,7 @@ function fetchBlockText(id: string): void {
+  * falls back to a muted placeholder in the meantime, then re-renders).
+  */
+ export function lookupBlockText(id: string): string | undefined {
++  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("lookup");
+   const known = texts()[id];
+   if (known !== undefined) return known ?? undefined;
+   fetchBlockText(id);
+diff --git a/apps/web/src/editor/BlockProperties.tsx b/apps/web/src/editor/BlockProperties.tsx
+index a5b60bf..a90dd50 100644
+--- a/apps/web/src/editor/BlockProperties.tsx
++++ b/apps/web/src/editor/BlockProperties.tsx
+@@ -61,7 +61,10 @@ export function BlockProperties(props: {
+   /** A click that is not on a link inside a value: edit the block. */
+   onActivate: () => void;
+ }) {
+-  const entries = () => visibleProperties(props.properties);
++  const entries = () => {
++    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("propEntries");
++    return visibleProperties(props.properties);
++  };
+   return (
+     <Show when={entries().length > 0}>
+       {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: the row's own `.vr-block-view` is the keyboard route into edit mode (Enter); this is a pointer shortcut onto the same action, not a second control. */}
+diff --git a/apps/web/src/editor/BlockRowView.tsx b/apps/web/src/editor/BlockRowView.tsx
+index 67fb2d6..09f729a 100644
+--- a/apps/web/src/editor/BlockRowView.tsx
++++ b/apps/web/src/editor/BlockRowView.tsx
+@@ -78,7 +78,11 @@ export function BlockRowView(props: {
+   // but an `{{embed}}` was torn down to its one-line placeholder and back twice per keystroke in
+   // another block, and lost its unfolded rows (B-214). A memo on a string only notifies when the
+   // text actually changed.
+-  const text = createMemo(() => props.block.content);
++  (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("rowMount");
++  const text = createMemo(() => {
++    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("rowBlockRead");
++    return props.block.content;
++  });
+   const content = createMemo(() => classifyBlockContent(text()));
+   let rowEl: HTMLDivElement | undefined;
+ 
+diff --git a/apps/web/src/editor/BlockTree.tsx b/apps/web/src/editor/BlockTree.tsx
+index 209c034..45f12a5 100644
+--- a/apps/web/src/editor/BlockTree.tsx
++++ b/apps/web/src/editor/BlockTree.tsx
+@@ -233,6 +233,7 @@ export function BlockTree(props: {
+   createEffect(() => {
+     const data = treeResource();
+     if (!data) return;
++    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("treeEffect");
+     const editingBlockId = editingId();
+     const flat = flattenBlockTreeNodes(data.blocks);
+     unseenCreations.seen(flat.map((b) => b.id));
+diff --git a/apps/web/src/editor/DateChips.tsx b/apps/web/src/editor/DateChips.tsx
+index f1fbcc1..a5ab0e2 100644
+--- a/apps/web/src/editor/DateChips.tsx
++++ b/apps/web/src/editor/DateChips.tsx
+@@ -59,12 +59,13 @@ export function DateChips(props: {
+   onLocked?: () => void;
+ }): JSX.Element {
+   watchToday();
+-  const chips = createMemo(() =>
+-    dateChips(
++  const chips = createMemo(() => {
++    (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("dateChips");
++    return dateChips(
+       { scheduled: props.scheduled, deadline: props.deadline, marker: props.marker },
+       today(),
+-    ),
+-  );
++    );
++  });
+ 
+   return (
+     <Show when={chips().length > 0}>
+diff --git a/apps/web/src/editor/render/tokens.tsx b/apps/web/src/editor/render/tokens.tsx
+index 81d3c44..cfbe724 100644
+--- a/apps/web/src/editor/render/tokens.tsx
++++ b/apps/web/src/editor/render/tokens.tsx
+@@ -341,6 +341,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
+   return (
+     <>
+       {(() => {
++        (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("tokenView");
+         const tok = props.tok;
+         const ctx = props.ctx;
+         switch (tok.kind) {
+@@ -558,6 +559,7 @@ export function BlockContentView(props: { content: BlockContent; ctx: RenderCtx
+   return (
+     <>
+       {(() => {
++        (globalThis as unknown as { __rlfc?: (k: string) => void }).__rlfc?.("contentView");
+         const c = props.content;
+         const ctx = props.ctx;
+         switch (c.kind) {
