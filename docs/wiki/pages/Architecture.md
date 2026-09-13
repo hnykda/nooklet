@@ -33,7 +33,7 @@ tags:: reference
   - 014 Stay on Node, not Bun — sqlite-vec extension loading and `worker_threads`.
   - 015 Live UI control: a dedicated `/ui/live` socket, the existing command registry, consent by default-asymmetry.
   - 016 Desktop shell: Tauri, pointed at the local server. (The server is now bundled as a sidecar; the ADR's "v1 does not bundle" paragraph is superseded.)
-  - 017 Page-level tags, and how a journal becomes `#Journal`. (The `tagged_pages` group it promises is not built.)
+  - 017 Page-level tags, and how a journal becomes `#Journal`. (Its `tagged_pages` group on `page_backlinks` and the panel's "Pages tagged X" were built 2026-09-13, B-111.)
   - 018 Journal pages are stored by ISO date; the title format is a setting.
   - 020 Block/page refactors and graph replace are server ops; a merge rewrites, aliases and deletes.
   - There is no 019 file as of 2026-09-12, although code comments and the references panel cite one.

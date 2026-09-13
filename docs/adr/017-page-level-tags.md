@@ -46,9 +46,11 @@ Two sources feed it, and the distinction is the point:
   anything: the page either has a journal day or it does not.
 
 `page.backlinks` gains a `tagged_pages` group, so asking about `Journal` or `Person` returns the
-pages carrying that tag next to the blocks that link to it. *(Not built as of 2026-09-13: neither
-the op nor the References panel lists tagged pages; `page.list({tag})` over the `page_tag` index
-is the only way to ask. Logged in BUGS.md as an open gap.)*
+pages carrying that tag next to the blocks that link to it. *(Built 2026-09-13, B-111:
+`page.backlinks` returns `tagged_pages` + `tagged_total`, windowed by the same `limit`/`cursor` as
+`linked`, and the References panel shows "Pages tagged X" above linked references. The
+remove-control distinction in Consequences is still not built — the panel lists both sources
+alike.)*
 
 ## Why not the alternatives
 

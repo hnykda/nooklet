@@ -803,8 +803,12 @@ is never returned as an error — that case degrades silently to `mode_used: 'ke
 
 **Description**: "Lists blocks that reference a page or block: `[[page]]` links, `#tags`,
 `((block refs))`, and — if `include_unlinked` — plain-text mentions of the page's name that are
-not already a link. Each item has the referencing block's id, page, and text. Paginated. Use this
-before renaming or deleting a page to see what points at it."
+not already a link. Each item has the referencing block's id, page, and text. For a page it also
+lists `tagged_pages`: the pages that carry it as a page-level tag — a `tags::` page property naming
+it (source `property`), or every journal day under `Journal` (source `intrinsic`) — with
+`tagged_total`, so asking about `Person` or `Journal` returns its members. Paginated: `limit` and
+`cursor` advance `linked` and `tagged_pages` together. Use this before renaming or deleting a page
+to see what points at it."
 
 ```ts
 export const pageBacklinks = defineOp({
@@ -818,7 +822,13 @@ export const pageBacklinks = defineOp({
     target: z.string(),
     linked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() })),
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
-    cursor: z.string().optional(),
+    // ADR 017 (B-111): pages carrying the target as a page-level tag, from `page_tag`. Matched on
+    // the target's key and alias keys; the target itself is never listed; one row per page
+    // (`intrinsic` if any of its rows is); named pages by key, then journal days newest first.
+    tagged_pages: z.array(z.object({ id: z.string(), page: z.string(),
+      source: z.enum(['property', 'intrinsic']) })).default([]),
+    tagged_total: z.number().int().default(0),   // all of them; tagged_pages is this window
+    cursor: z.string().optional(),               // present while linked OR tagged_pages has more
   }),
   annotations: { readOnlyHint: true, idempotentHint: true }, scopes: ['read'],
   http: { alias: { method: 'GET', path: '/pages/{page}/backlinks' } },
@@ -843,9 +853,16 @@ export const pageBacklinks = defineOp({
   ],
   "unlinked": [
     { "id": "1k7f3qc59mgxr4", "page": "Vendors/Acme Supply", "text": "Quoted pricing for the Aurora launch" }
-  ]
+  ],
+  "tagged_pages": [
+    { "id": "1k7f3qd2x8mbc1", "page": "Projects/Aurora/Launch plan", "source": "property" }
+  ],
+  "tagged_total": 1
 }
 ```
+
+A target that is not a page yet still answers `tagged_pages` from the index: `Journal` usually has
+no page of its own, yet `{ "target": "Journal" }` lists every journal day (`source: "intrinsic"`).
 
 **Errors**: `not_found` — `target` resolves to no page and no block.
 

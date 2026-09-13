@@ -35,14 +35,24 @@ and immediately `git reset --hard da85cfb` before any work (no commits lost; not
   journals, references, refactor, shelf, history, page-icons + identity): 53 passed. Web unit
   692/692.
 
+- B-104 commit `713f059`.
+- B-111 fixed: `page-tags.ts#pagesTaggedWith`, `page.backlinks` `tagged_pages`/`tagged_total` +
+  description + render; spec §4.3.6, ADR 017 note, 3 wiki pages; client `api-client.ts` types,
+  `views/TaggedPages.tsx` + `tagged-pages.css`, hookup in `ReferencesPanel.tsx`. Server 528/528,
+  web 695/695 (one earlier full run had 1 failure in `page-title.test.ts`, passed alone and on the
+  full rerun — load), e2e tagged-pages 3/3 (all fail on da85cfb), neighbours 53 passed. Logged
+  B-200 (uncreated page shows no references) — open, not fixed.
+
 ## In flight
 
-- B-111.
+- Real-graph check (B-104 alias routes, B-111 `journal` page) + final verify.
 
 ## Next steps, in order
 
-1. B-111: server output (`tagged_pages`) + MCP description + spec; panel section; unit + e2e; commit.
-2. `pnpm nooklet verify` on the real-graph copy; real-graph check of Journal tag page and an alias.
+1. Serve the real-graph copy on 6406 (not during e2e), check `/page/daně` -> Taxes,
+   `/page/zahrada` -> Garden, `/page/journal` lists 825 days (200 shown), `page.backlinks
+   {target: "book"}` lists the tagged highlights page. Keep the probe in `tools/probes/`.
+2. `pnpm nooklet verify` on the copy again (reads/serve do not write ops, but check).
 
 ## How to resume
 

@@ -1,7 +1,8 @@
-import { normalizePageName } from "@nooklet/core";
+import { normalizePageName, refKeyOf } from "@nooklet/core";
 import { z } from "zod";
 import { unlinkedMentionRows } from "../data-api.js";
 import { pageLookupKeys } from "../page-aliases.js";
+import { pagesTaggedWith, type TaggedPageRow } from "../page-tags.js";
 import { pageWireNameById } from "../rows.js";
 import { ftsPhrase } from "./fts-query.js";
 import { defineOp } from "./registry.js";
@@ -14,8 +15,12 @@ export const pageBacklinks = defineOp({
   description:
     "Lists blocks that reference a page or block: [[page]] links, #tags, ((block refs)), and - if " +
     "include_unlinked - plain-text mentions of the page's name that are not already a link. Each " +
-    "item has the referencing block's id, page, and text. Paginated. Use this before renaming or " +
-    "deleting a page to see what points at it.",
+    "item has the referencing block's id, page, and text. For a page it also lists tagged_pages: " +
+    "the pages that carry it as a page-level tag - a tags:: page property naming it (source " +
+    "property), or every journal day under Journal (source intrinsic) - with tagged_total, so " +
+    "asking about Person or Journal returns its members. Paginated: limit and cursor advance " +
+    "linked and tagged_pages together. Use this before renaming or deleting a page to see what " +
+    "points at it.",
   input: z
     .object({
       target: z
@@ -32,6 +37,16 @@ export const pageBacklinks = defineOp({
       z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() }),
     ),
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
+    tagged_pages: z
+      .array(
+        z.object({
+          id: z.string(),
+          page: z.string(),
+          source: z.enum(["property", "intrinsic"]),
+        }),
+      )
+      .default([]),
+    tagged_total: z.number().int().default(0),
     cursor: z.string().optional(),
   }),
   annotations: {
@@ -43,7 +58,8 @@ export const pageBacklinks = defineOp({
   scopes: ["read"],
   expose: { http: { method: "GET", path: "/pages/{page}/backlinks" } },
   render: (out) =>
-    `${out.linked.length} linked, ${out.unlinked.length} unlinked reference(s) to ${out.target}`,
+    `${out.linked.length} linked, ${out.unlinked.length} unlinked reference(s) to ${out.target}` +
+    (out.tagged_total > 0 ? `; ${out.tagged_total} page(s) tagged ${out.target}` : ""),
   handler: async (input, ctx) => {
     const driver = ctx.db;
     const offset = input.cursor
@@ -59,6 +75,9 @@ export const pageBacklinks = defineOp({
       updated_at: number;
     }>;
     let unlinkedRows: Array<{ block_id: string; page_id: string; content: string }> = [];
+    // ADR 017: the pages carrying the target as a page-level tag, from the `page_tag` index. A
+    // block target has none — tags are names, and a block has no name to be tagged with.
+    let taggedRows: TaggedPageRow[] = [];
 
     if (asPage) {
       targetWire = wirePageName(asPage);
@@ -74,6 +93,7 @@ export const pageBacklinks = defineOp({
         [...keys, asPage.id],
       );
       if (input.include_unlinked) unlinkedRows = unlinkedMentionRows(driver, asPage, 50);
+      taggedRows = pagesTaggedWith(driver, keys, asPage.id);
     } else {
       const asBlock = await ctx.data.blocks.get(input.target);
       if (asBlock) {
@@ -104,6 +124,10 @@ export const pageBacklinks = defineOp({
            ORDER BY b.updated_at DESC`,
           [key],
         );
+        // `Journal` usually has no page of its own, yet every journal day carries it: a tag that
+        // only exists as an index key must still list its pages (B-111). Keyed the way `page_tag`
+        // is (`refKeyOf`), which differs from `key` only for a date-shaped name.
+        taggedRows = pagesTaggedWith(driver, [refKeyOf(input.target)], null);
         if (input.include_unlinked) {
           const plainName = input.target.split("/").pop() ?? input.target;
           if (plainName.length >= 3) {
@@ -121,11 +145,12 @@ export const pageBacklinks = defineOp({
       }
     }
 
-    const hasMore = linkedRows.length > offset + input.limit;
+    const end = offset + input.limit;
+    const hasMore = linkedRows.length > end || taggedRows.length > end;
 
     return {
       target: targetWire,
-      linked: linkedRows.slice(offset, offset + input.limit).map((r) => ({
+      linked: linkedRows.slice(offset, end).map((r) => ({
         id: r.block_id,
         page: pageWireNameById(driver, r.page_id),
         text: (r.content.split("\n")[0] ?? "").trim(),
@@ -136,7 +161,13 @@ export const pageBacklinks = defineOp({
         page: pageWireNameById(driver, r.page_id),
         text: (r.content.split("\n")[0] ?? "").trim(),
       })),
-      cursor: hasMore ? Buffer.from(String(offset + input.limit)).toString("base64") : undefined,
+      tagged_pages: taggedRows.slice(offset, end).map((r) => ({
+        id: r.page_id,
+        page: pageWireNameById(driver, r.page_id),
+        source: r.source,
+      })),
+      tagged_total: taggedRows.length,
+      cursor: hasMore ? Buffer.from(String(end)).toString("base64") : undefined,
     };
   },
 });

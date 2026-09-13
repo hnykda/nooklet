@@ -66,7 +66,44 @@ returns first.
 ---
 
 ### B-111 (existing) · ADR 017's `tagged_pages` group was never built
-**Status:** in progress · **Severity:** low · **Found:** 2026-09-12, wiki workstream (doc-vs-code
-drift) · **Test:** (pending)
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, wiki workstream (doc-vs-code
+drift) · **Tests:** `e2e/tests/tagged-pages.spec.ts` "a tag's page lists the pages tagged with it,
+above linked references (B-111)", "a page with tagged pages but no linked references still shows
+the panel (B-111)", "a page tagged later, by a property update, appears on the tag's page (B-111)";
+`packages/server/src/ops/page-backlinks-tagged.http.test.ts` (6: property tags by name, `Journal`
+intrinsic newest-first after named pages, alias-written tags and self-exclusion, shared
+limit/cursor, tag removal and block targets, MCP description + `tools/call`);
+`apps/web/src/views/TaggedPages.test.tsx`
+
+**Fixed 2026-09-13.** Server: `page-tags.ts#pagesTaggedWith` reads `page_tag` for the target's own
+key plus alias keys (the set linked references already match), one row per page (`intrinsic` wins),
+never the target itself, named pages by key then journal days newest first. `page.backlinks` returns
+`tagged_pages: [{id, page, source}]` and `tagged_total`; `limit`/`cursor` window `linked` and
+`tagged_pages` together (the cursor stays while either has more). A target with no page of its own
+(`Journal` on most graphs) still answers from the index. The MCP description names the group, the
+render line adds "N page(s) tagged X", `docs/spec/mcp-tools.md` §4.3.6 has the schema and example,
+ADR 017's "not built" note and the three wiki pages that said so are updated. Client:
+`views/TaggedPages.tsx` (own CSS file) renders "Pages tagged X" with the total as its count, a
+wrapped list of page names, collapsible, and "Showing N of M." when the panel's 200-row request
+returned fewer than exist; hooked into `ReferencesPanel` above linked references, which now also
+shows when tagged pages are all there is. All three e2e tests fail against `da85cfb`'s
+`ReferencesPanel.tsx`/`page-backlinks.ts` (checked). Not built: ADR 017's "a `property` tag is
+removable, an `intrinsic` one is not" control — the list marks `data-source` but offers no remove.
+
+---
+
+### B-200 · A page that does not exist yet shows none of its references
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, building B-111 · **Test:** none
+
+Open `/page/book` on a graph where pages carry `tags:: book` (the owner's has one) or where blocks
+say `[[book]]`, but no `book` page was ever created: the view says "This page doesn't exist yet"
+and a Create button, and nothing else. `page.backlinks {target: "book"}` answers with the linked
+references and, since B-111, the tagged pages — the server deliberately handles a not-yet-created
+target (see the comment in `ops/page-backlinks.ts`) — but `PageView.tsx` only mounts
+`ReferencesPanel` inside the `page()` branch. In a wiki a referenced-but-uncreated page is a normal
+thing to open, and its references are the reason to open it. Likely fix: mount
+`<ReferencesPanel target={props.name()} …>` under the missing-page message too. Not done here:
+it changes the missing-page view another branch (`m8/qafix-render-sync`) is editing, and whether an
+uncreated page should show references is a product call.
 
 ---

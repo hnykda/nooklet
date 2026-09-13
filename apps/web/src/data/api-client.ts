@@ -52,10 +52,22 @@ export interface BacklinkRef {
   updatedAt?: string;
 }
 
+/** A page carrying the backlinks target as a page-level tag (ADR 017, B-111). */
+export interface TaggedPage {
+  id: string;
+  /** Wire name — a journal's ISO date. */
+  page: string;
+  /** `intrinsic` is derived (every journal day is a `Journal`) and cannot be removed. */
+  source: "property" | "intrinsic";
+}
+
 export interface BacklinksResult {
   target: string;
   linked: BacklinkRef[];
   unlinked: BacklinkRef[];
+  taggedPages: TaggedPage[];
+  /** All tagged pages, of which `taggedPages` is the first page-worth. */
+  taggedTotal: number;
   cursor?: string;
 }
 
@@ -194,6 +206,8 @@ interface BacklinksWireOutput {
   target: string;
   linked: Array<{ id: string; page: string; text: string; updated_at: string }>;
   unlinked: Array<{ id: string; page: string; text: string }>;
+  tagged_pages?: TaggedPage[];
+  tagged_total?: number;
   cursor?: string;
 }
 
@@ -266,6 +280,8 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
           updatedAt: r.updated_at,
         })),
         unlinked: out.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
+        taggedPages: out.tagged_pages ?? [],
+        taggedTotal: out.tagged_total ?? 0,
         cursor: out.cursor,
       };
     },

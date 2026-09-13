@@ -1,0 +1,42 @@
+/* "Pages tagged X" (`TaggedPages.tsx`), the first section of the references panel. Its head reuses
+   the panel's toggle and count; the list is one wrapped run of page names, because a tag page is
+   read as "who is in this set" and a column of 40 people pushes the linked references off-screen.
+   Same register as the rest of the panel: neutral text, accent only on hover. */
+
+.tagged-pages {
+  margin-bottom: var(--space-xl);
+}
+
+.tagged-pages-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs) var(--space-xs);
+  margin: var(--space-xs) 0 0;
+  padding: 0 0 0 var(--space-lg);
+  border-left: 1px solid var(--hairline);
+}
+
+.tagged-page-link {
+  min-height: 26px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.tagged-page-link:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.tagged-pages .references-empty {
+  margin: var(--space-sm) 0 0 var(--space-lg);
+}

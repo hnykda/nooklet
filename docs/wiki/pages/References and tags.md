@@ -17,7 +17,7 @@ tags:: guide
   - The panel is answered by the server (`page_backlinks`), because the reference index is server-only. A link typed a moment ago appears once the write has been pushed (B-83).
 - ## Page-level tags
   - `tags:: person, czech` at the top of a page tags the page itself. The server indexes these in `page_tag` (ADR 017): `page_list({tag: "person"})` returns the pages, and `art`, `Art`, `#art` and `[[Art]]` are one tag (B-62). Every journal carries an intrinsic `Journal` tag that cannot be removed.
-  - Not built: ADR 017 says `page_backlinks` gains a `tagged_pages` group and that a tag page lists its members. As of 2026-09-12 neither the server op nor the app does this; this wiki's [[guide]], [[reference]] and [[concept]] pages list their members by hand.
+  - A tag's page lists its members: the references panel opens with **Pages tagged X** (collapsible, with a count) above the linked references, and `page_backlinks` returns the same list as `tagged_pages` with `tagged_total` (ADR 017, built 2026-09-13 as B-111). The `Journal` page lists every journal day, newest first. This wiki's [[guide]], [[reference]] and [[concept]] pages still also list their members by hand, for readers of the Markdown files.
 - ## Namespaces
   - `Projects/Aurora` is a page inside `Projects`. The parent page shows its children as a tree, the breadcrumb shows the path, and lists show the short form. Ancestors exist for navigation without being created as pages.
 - ## Renaming, merging, moving
