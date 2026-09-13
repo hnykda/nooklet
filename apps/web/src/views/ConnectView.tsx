@@ -13,6 +13,7 @@
  */
 
 import { createSignal, type JSX, Show } from "solid-js";
+import { describeError } from "../data/api-client.js";
 import { setStoredToken } from "../data/bootstrap.js";
 import "./connect.css";
 
@@ -49,7 +50,7 @@ export function ConnectView(props: { reason?: string; onSkip?: () => void }): JS
       // the honest way to get every transport onto the new credential.
       location.reload();
     } catch (err) {
-      setError(`Could not reach the server: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Could not reach the server: ${describeError(err)}`);
     } finally {
       setBusy(false);
     }

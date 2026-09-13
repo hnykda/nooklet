@@ -17,20 +17,38 @@ Brief, four parts:
 
 ## Done
 
-- (nothing yet)
+- Part 1 / B-330 (commit "refactor(web): one POST path for server ops…"): `apiClient` through
+  `callOp`; `refactor-api.ts#undoBatch` the one `batch.undo` wrapper (History's options and
+  `kept` moved there from `history.ts`); `describeError` in every UI file that shows an error.
+  Tests `data/api-client.test.ts` (7/10 failed before), `views/server-errors.test.tsx` (3/3 failed
+  before), `source-guards.test.ts` (2/2 failed before). Web unit 1015/1015; typecheck clean; e2e
+  views+replace+graph+history+trash+references+link-unlinked+diagnostics+settings+refactor+
+  plugins+connectivity+search-filters 95/96 — the one failure is `views.spec.ts:461` (palette
+  focus: `.cm-content` "inactive" after Escape), failed on rerun too; same test rv-web-security
+  saw failing at `da85cfb`. Checking it against `cf08d19` next.
 
 ## In flight
 
-- Reading the two reference commits against the merged tree.
+- Is `views.spec.ts:461` failing at `cf08d19` too? `git switch --detach cf08d19`, run that one
+  test on port 6405, `git switch m9/cleanup`. If the worktree is found detached, switch back first.
 
 ## Next steps, in order
 
-1. Part 1 (api-client) — log B-330, tests, fix, commit.
-2. Part 3 (B-144).
-3. Part 2 (page paths) — probe first.
-4. Part 4 (B-180).
+1. Part 3 (B-144).
+2. Part 2 (page paths) — probe first.
+3. Part 4 (B-180).
 
 ## Decisions
+
+- The one `undoBatch` lives in `refactor-api.ts` (as `3d73b13` put it), carrying History's richer
+  signature from the merged tree; Find & Replace and References still call it without options
+  (no behaviour change for them).
+- `describeError` also in ConnectView, GraphMismatchView and PluginFence, whose errors are not
+  server errors: `describeError` is identical to `err instanceof Error ? err.message : String(err)`
+  for those, and a guard with no exceptions is simpler than an allowlist.
+- `biome check` reports 4 errors in `views/DiagnosticsPanel.tsx` lines 62-64 (a11y suppressions in
+  a JSX comment) — present at `cf08d19` unchanged (checked by swapping the base file in); not
+  touched here.
 
 ## How to resume
 

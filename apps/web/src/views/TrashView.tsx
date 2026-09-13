@@ -57,7 +57,7 @@ export function TrashView(): JSX.Element {
           setSelectName(true);
         }
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(describeError(err));
       }
     } finally {
       setBusy(null);

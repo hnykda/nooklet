@@ -1,16 +1,19 @@
 /**
- * Small typed client for the read ops the local replica cannot answer on its own:
- * `search`, `page.backlinks` (docs/spec/mcp-tools.md §4.3.5/§4.3.6) and `graph.links`. The client-only schema
- * (`@nooklet/core`'s `CORE_SCHEMA_STATEMENTS`, mirrored by `../db/schema-client.ts`) has no
- * `ref`/`path_ref`/`block_fts`/`page_fts`/`embedding*` tables — those are server-only derived
- * tables (docs/spec/sql-schema.md rule 1) — so linked/unlinked references, full-text/semantic
- * search and the link graph MUST go over HTTP to `/api/v1/*` rather than through the worker/SqlDriver seam. This
- * mirrors `../sync/http-transport.ts`'s style (same `baseUrl`/`getToken` shape) deliberately, so
- * it reads as "the same kind of thing" rather than a one-off fetch wrapper.
+ * The client's one way to call a server op: `callOp` (`POST /api/v1/<op>` with this device's
+ * token, every failure an `ApiError`) and `describeError` to render one. Every panel that needs
+ * the server — Settings, References, Diagnostics, Trash/History (`./history.ts`), the refactor ops
+ * and `batch.undo` (`./refactor-api.ts`) — calls through it (B-330).
  *
- * Auth: `getToken` reads `./bootstrap.ts`'s token — handed out by `/api/session` on loopback,
- * pasted into the connect screen and kept in `localStorage` on any other device. It is a function
- * rather than a captured string so a token that arrives after this module loads is still seen.
+ * Also here: `apiClient`, the typed wrappers for the read ops the local replica cannot answer on
+ * its own — `search`, `page.backlinks` (docs/spec/mcp-tools.md §4.3.5/§4.3.6) and `graph.links`.
+ * The client-only schema (`@nooklet/core`'s `CORE_SCHEMA_STATEMENTS`, mirrored by
+ * `../db/schema-client.ts`) has no `ref`/`path_ref`/`block_fts`/`page_fts`/`embedding*` tables —
+ * those are server-only derived tables (docs/spec/sql-schema.md rule 1) — so references, search
+ * and the link graph must go over HTTP rather than through the worker.
+ *
+ * Auth: `./bootstrap.ts`'s token — handed out by `/api/session` on loopback, pasted into the
+ * connect screen and kept in `localStorage` on any other device — read on every call, so a token
+ * that arrives after this module loads is still seen.
  */
 
 import { apiBaseUrl, authToken } from "./bootstrap.js";
@@ -116,15 +119,8 @@ export interface GraphLinksInput {
   limit?: number;
 }
 
-export interface ApiClientOptions {
-  /** Origin the app is served from by default; override for a separately-hosted server. Same
-   * default convention as `sync/http-transport.ts`. */
-  baseUrl?: string;
-  getToken?: () => string | undefined;
-}
-
-function authHeaders(getToken?: () => string | undefined): HeadersInit {
-  const token = getToken?.();
+function authHeaders(): HeadersInit {
+  const token = authToken();
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
@@ -153,20 +149,6 @@ async function unwrap<TOut>(res: Response): Promise<TOut> {
   return json as TOut;
 }
 
-async function post<TOut>(
-  base: string,
-  opName: string,
-  body: unknown,
-  getToken?: () => string | undefined,
-): Promise<TOut> {
-  const res = await fetch(`${base}/api/v1/${opName}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...authHeaders(getToken) },
-    body: JSON.stringify(body),
-  });
-  return unwrap<TOut>(res);
-}
-
 /**
  * POST one op with this device's token and turn every failure into an `ApiError`.
  *
@@ -182,7 +164,7 @@ export async function callOp<TOut>(name: string, body: unknown): Promise<TOut> {
   try {
     res = await fetch(`${apiBaseUrl()}/api/v1/${name}`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...authHeaders(authToken) },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify(body),
     });
   } catch (err) {
@@ -243,133 +225,106 @@ export interface ApiClient {
   graphLinks(input?: GraphLinksInput): Promise<GraphLinksResult>;
 }
 
-export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
-  const base = opts.baseUrl ?? "";
+/** The typed read ops, through `callOp` like every other server call — so a search or a graph
+ * that cannot reach the server says where it tried, and a rejection keeps its hint (B-330). */
+export const apiClient: ApiClient = {
+  async search(input: SearchInput): Promise<SearchResult> {
+    const out = await callOp<SearchWireOutput>("search", {
+      query: input.query,
+      mode: input.mode ?? "hybrid",
+      scope: input.scope ?? "all",
+      tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
+      properties:
+        input.properties && Object.keys(input.properties).length > 0 ? input.properties : undefined,
+      namespace: input.namespace || undefined,
+      journals_only: input.journalsOnly ?? false,
+      updated_after: input.updatedAfter,
+      updated_before: input.updatedBefore,
+      limit: input.limit ?? 50,
+      cursor: input.cursor,
+    });
+    return {
+      hits: out.hits.map((h) => ({
+        kind: h.kind,
+        id: h.id,
+        page: h.page,
+        journalDate: h.journal_date,
+        snippet: h.snippet,
+        breadcrumb: h.breadcrumb,
+        score: h.score,
+        updatedAt: h.updated_at,
+      })),
+      cursor: out.cursor,
+      modeUsed: out.mode_used,
+    };
+  },
 
-  return {
-    async search(input: SearchInput): Promise<SearchResult> {
-      const out = await post<SearchWireOutput>(
-        base,
-        "search",
-        {
-          query: input.query,
-          mode: input.mode ?? "hybrid",
-          scope: input.scope ?? "all",
-          tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
-          properties:
-            input.properties && Object.keys(input.properties).length > 0
-              ? input.properties
-              : undefined,
-          namespace: input.namespace || undefined,
-          journals_only: input.journalsOnly ?? false,
-          updated_after: input.updatedAfter,
-          updated_before: input.updatedBefore,
-          limit: input.limit ?? 50,
-          cursor: input.cursor,
-        },
-        opts.getToken,
-      );
-      return {
-        hits: out.hits.map((h) => ({
-          kind: h.kind,
-          id: h.id,
-          page: h.page,
-          journalDate: h.journal_date,
-          snippet: h.snippet,
-          breadcrumb: h.breadcrumb,
-          score: h.score,
-          updatedAt: h.updated_at,
-        })),
-        cursor: out.cursor,
-        modeUsed: out.mode_used,
-      };
-    },
+  async pageBacklinks(target: string, includeUnlinked = true): Promise<BacklinksResult> {
+    // Follow the cursor to the end (B-253): the panel's count, its filter and Link all all work
+    // on the whole set, and a first page of 200 presented as the whole said "200" on a page
+    // with 836 references and let a filter report "No references match" when matches existed.
+    // Unlinked mentions are not paginated server-side, so they come with the first page only.
+    const first = await callOp<BacklinksWireOutput>("page.backlinks", {
+      target,
+      include_unlinked: includeUnlinked,
+      unlinked_limit: MAX_UNLINKED_MENTIONS,
+      limit: BACKLINKS_PAGE,
+    });
+    const linkedWire = [...first.linked];
+    // `cursor` advances `tagged_pages` together with `linked` (B-111), so both are collected.
+    const taggedWire = [...(first.tagged_pages ?? [])];
+    let cursor = first.cursor;
+    while (cursor && linkedWire.length < MAX_LINKED_REFERENCES) {
+      const next = await callOp<BacklinksWireOutput>("page.backlinks", {
+        target,
+        limit: BACKLINKS_PAGE,
+        cursor,
+      });
+      linkedWire.push(...next.linked);
+      taggedWire.push(...(next.tagged_pages ?? []));
+      cursor = next.cursor;
+    }
+    // The cursor is an offset into a list an edit can shift between two requests; a row seen
+    // twice would be counted twice.
+    const seen = new Set<string>();
+    const unique = linkedWire.filter((r) => !seen.has(r.id) && seen.add(r.id));
+    const seenTagged = new Set<string>();
+    const uniqueTagged = taggedWire.filter((r) => !seenTagged.has(r.id) && seenTagged.add(r.id));
+    return {
+      target: first.target,
+      linked: unique.slice(0, MAX_LINKED_REFERENCES).map((r) => ({
+        id: r.id,
+        page: r.page,
+        text: r.text,
+        updatedAt: r.updated_at,
+      })),
+      linkedTotal: first.linked_total ?? linkedWire.length,
+      unlinked: first.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
+      unlinkedTruncated: first.unlinked_truncated ?? false,
+      taggedPages: uniqueTagged,
+      taggedTotal: first.tagged_total ?? uniqueTagged.length,
+    };
+  },
 
-    async pageBacklinks(target: string, includeUnlinked = true): Promise<BacklinksResult> {
-      // Follow the cursor to the end (B-253): the panel's count, its filter and Link all all work
-      // on the whole set, and a first page of 200 presented as the whole said "200" on a page
-      // with 836 references and let a filter report "No references match" when matches existed.
-      // Unlinked mentions are not paginated server-side, so they come with the first page only.
-      const first = await post<BacklinksWireOutput>(
-        base,
-        "page.backlinks",
-        {
-          target,
-          include_unlinked: includeUnlinked,
-          unlinked_limit: MAX_UNLINKED_MENTIONS,
-          limit: BACKLINKS_PAGE,
-        },
-        opts.getToken,
-      );
-      const linkedWire = [...first.linked];
-      // `cursor` advances `tagged_pages` together with `linked` (B-111), so both are collected.
-      const taggedWire = [...(first.tagged_pages ?? [])];
-      let cursor = first.cursor;
-      while (cursor && linkedWire.length < MAX_LINKED_REFERENCES) {
-        const next = await post<BacklinksWireOutput>(
-          base,
-          "page.backlinks",
-          { target, limit: BACKLINKS_PAGE, cursor },
-          opts.getToken,
-        );
-        linkedWire.push(...next.linked);
-        taggedWire.push(...(next.tagged_pages ?? []));
-        cursor = next.cursor;
-      }
-      // The cursor is an offset into a list an edit can shift between two requests; a row seen
-      // twice would be counted twice.
-      const seen = new Set<string>();
-      const unique = linkedWire.filter((r) => !seen.has(r.id) && seen.add(r.id));
-      const seenTagged = new Set<string>();
-      const uniqueTagged = taggedWire.filter((r) => !seenTagged.has(r.id) && seenTagged.add(r.id));
-      return {
-        target: first.target,
-        linked: unique.slice(0, MAX_LINKED_REFERENCES).map((r) => ({
-          id: r.id,
-          page: r.page,
-          text: r.text,
-          updatedAt: r.updated_at,
-        })),
-        linkedTotal: first.linked_total ?? linkedWire.length,
-        unlinked: first.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
-        unlinkedTruncated: first.unlinked_truncated ?? false,
-        taggedPages: uniqueTagged,
-        taggedTotal: first.tagged_total ?? uniqueTagged.length,
-      };
-    },
-
-    async graphLinks(input: GraphLinksInput = {}): Promise<GraphLinksResult> {
-      const out = await post<GraphLinksWireOutput>(
-        base,
-        "graph.links",
-        // The server's own default (1500) is deliberately not repeated here: the cap is a
-        // property of what the backend can answer cheaply, not of this call site.
-        {
-          include_journals: input.includeJournals ?? false,
-          ...(input.limit ? { limit: input.limit } : {}),
-        },
-        opts.getToken,
-      );
-      return {
-        nodes: out.nodes.map((n) => ({
-          id: n.id,
-          name: n.name,
-          isJournal: n.is_journal,
-          refCount: n.ref_count,
-        })),
-        edges: out.edges.map((e) => ({ from: e.from, to: e.to, count: e.count })),
-        totalNodes: out.total_nodes,
-        totalEdges: out.total_edges,
-        truncated: out.truncated,
-        note: out.note,
-      };
-    },
-  };
-}
-
-/** The app-wide client, configured from Vite env (see vite-env.d.ts). A view can construct its
- * own `createApiClient(...)` in a test instead of importing this singleton. */
-export const apiClient: ApiClient = createApiClient({
-  baseUrl: apiBaseUrl(),
-  getToken: authToken,
-});
+  async graphLinks(input: GraphLinksInput = {}): Promise<GraphLinksResult> {
+    // The server's own default (1500) is deliberately not repeated here: the cap is a
+    // property of what the backend can answer cheaply, not of this call site.
+    const out = await callOp<GraphLinksWireOutput>("graph.links", {
+      include_journals: input.includeJournals ?? false,
+      ...(input.limit ? { limit: input.limit } : {}),
+    });
+    return {
+      nodes: out.nodes.map((n) => ({
+        id: n.id,
+        name: n.name,
+        isJournal: n.is_journal,
+        refCount: n.ref_count,
+      })),
+      edges: out.edges.map((e) => ({ from: e.from, to: e.to, count: e.count })),
+      totalNodes: out.total_nodes,
+      totalEdges: out.total_edges,
+      truncated: out.truncated,
+      note: out.note,
+    };
+  },
+};

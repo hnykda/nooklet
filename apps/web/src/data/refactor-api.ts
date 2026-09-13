@@ -1,14 +1,59 @@
 /**
  * The M7 refactor ops (`block.to_page`, `block.move_to_page`, `page.merge`, `graph.replace`) and
- * `batch.undo`, called the way `./api-client.ts` calls `search`: `POST /api/v1/<op>` with this
- * device's token. These are server ops rather than locally-minted op batches on purpose (ADR 020
- * §1): a merge and a graph-wide replace need the `ref` index, which only the server has, and the
+ * `batch.undo` — its one wrapper, `undoBatch` — through `./api-client.ts#callOp`. These are
+ * server ops rather than locally-minted op batches on purpose (ADR 020 §1): a merge and a graph-wide replace need the `ref` index, which only the server has, and the
  * context-menu item and the MCP tool must be the same code. After any of the writes the caller
  * pulls (`forceSync`) so the local replica — and every view on it — catches up at once instead of
  * on the next poke.
  */
 
 import { callOp } from "./api-client.js";
+
+/** Something an undo left as it is because another batch changed it afterwards (B-251). */
+export interface KeptEdit {
+  entityType: "page" | "block";
+  id: string;
+  /** The page it is on now. */
+  page: string;
+  fields: string[];
+}
+
+export interface UndoOptions {
+  /** Leave alone every field another batch changed after the one being undone. The History view
+   * always passes it: a person undoing an old change must not lose what was written since. */
+  keepLaterEdits?: boolean;
+  /** Changes by these batches do not count as later edits — a walk's own batches and undos. */
+  ignoreBatches?: readonly string[];
+}
+
+/**
+ * `batch.undo` — reverses one batch; the result's `batchId` is the undo's own (undo it to redo).
+ *
+ * The ONE wrapper for it (B-330): History, Find & Replace and the References panel's Link all undo
+ * through here. There were three, and only History's knew about `kept`.
+ */
+export async function undoBatch(
+  batchId: string,
+  options: UndoOptions = {},
+): Promise<{ batchId?: string; kept: KeptEdit[] }> {
+  const out = await callOp<{
+    batch_id?: string;
+    kept?: Array<{ entity_type: "page" | "block"; id: string; page: string; fields: string[] }>;
+  }>("batch.undo", {
+    batch_id: batchId,
+    ...(options.keepLaterEdits ? { keep_later_edits: true } : {}),
+    ...(options.ignoreBatches?.length ? { ignore_batches: [...options.ignoreBatches] } : {}),
+  });
+  return {
+    batchId: out.batch_id,
+    kept: (out.kept ?? []).map((k) => ({
+      entityType: k.entity_type,
+      id: k.id,
+      page: k.page,
+      fields: k.fields,
+    })),
+  };
+}
 
 export interface BlockToPageResult {
   page: string;
@@ -144,11 +189,7 @@ export const refactorApi = {
     };
   },
 
-  /** Reverse a previous write by its `batch_id`. Returns the undo's own batch id. */
-  async undoBatch(batchId: string): Promise<string | undefined> {
-    const out = await callOp<{ batch_id?: string }>("batch.undo", { batch_id: batchId });
-    return out.batch_id;
-  },
+  undoBatch,
 };
 
 export type RefactorApi = typeof refactorApi;

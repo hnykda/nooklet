@@ -373,7 +373,7 @@ function EmbeddingsSection(): JSX.Element {
       </Show>
       <Show when={status.error !== undefined}>
         <p class="set-error" role="alert">
-          Could not read the search settings: {String(status.error)}
+          Could not read the search settings: {describeError(status.error)}
         </p>
       </Show>
 

@@ -17,6 +17,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { render } from "solid-js/web";
 import { claimPopupKeys } from "../commands/popup-keys.js";
 import type { RefactorHost } from "../commands/registrations/refactor.js";
+import { describeError } from "../data/api-client.js";
 import { refactorApi } from "../data/refactor-api.js";
 import { useAllPages } from "../data/store.js";
 import { forceSync } from "../db/client.js";
@@ -166,10 +167,6 @@ export function pickPage(opts: { title: string; allowCreate: boolean }): Promise
   });
 }
 
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 export function createRefactorHost(deps: {
   navigate: (path: string) => void;
   /** The palette awaits a command before closing (`CommandPalette#selectRow`), so a command that
@@ -185,7 +182,7 @@ export function createRefactorHost(deps: {
       await forceSync();
     } catch (err) {
       console.error(`${label} failed`, err);
-      window.alert(`${label} failed: ${describe(err)}`);
+      window.alert(`${label} failed: ${describeError(err)}`);
     }
   }
   return {

@@ -1,9 +1,10 @@
 /**
  * Server-backed reads and writes behind the Trash view and a page's History view (M7 item 8,
- * ADR 022): `trash.list`, `trash.restore`, `page.history` and `batch.undo`. All four live on the
- * server because they read the `changes` audit log and the tombstones' attribution, which the
- * client replica does not carry (docs/spec/sql-schema.md rule 1) — so these go over HTTP to
- * `/api/v1/*`, the same way `./store.ts`'s backlinks and search do.
+ * ADR 022): `trash.list`, `trash.restore` and `page.history`; undo is `./refactor-api.ts#undoBatch`,
+ * the one wrapper for `batch.undo` (B-330). They live on the server because they read the
+ * `changes` audit log and the tombstones' attribution, which the client replica does not carry
+ * (docs/spec/sql-schema.md rule 1) — so these go over HTTP to `/api/v1/*`, the same way
+ * `./store.ts`'s backlinks and search do.
  *
  * Invalidation follows `./store.ts`'s `stamped` idiom with its own counters, because it also
  * bumps on the push queue draining (`onSyncStatus` below) where `store.ts`'s `stampedFor` does
@@ -271,47 +272,6 @@ export async function fetchPageHistory(page: string, cursor?: string): Promise<H
         before: fromWireSnapshot(e.before),
         after: fromWireSnapshot(e.after),
       })),
-    })),
-  };
-}
-
-/** Something an undo left as it is because another batch changed it afterwards (B-251). */
-export interface KeptEdit {
-  entityType: "page" | "block";
-  id: string;
-  /** The page it is on now. */
-  page: string;
-  fields: string[];
-}
-
-export interface UndoOptions {
-  /** Leave alone every field another batch changed after the one being undone. The History view
-   * always passes it: a person undoing an old change must not lose what was written since. */
-  keepLaterEdits?: boolean;
-  /** Changes by these batches do not count as later edits — a walk's own batches and undos. */
-  ignoreBatches?: readonly string[];
-}
-
-/** `batch.undo` — reverses one batch; the result's `batchId` is the undo's own (undo it to redo). */
-export async function undoBatch(
-  batchId: string,
-  options: UndoOptions = {},
-): Promise<{ batchId?: string; kept: KeptEdit[] }> {
-  const out = await callOp<{
-    batch_id?: string;
-    kept?: Array<{ entity_type: "page" | "block"; id: string; page: string; fields: string[] }>;
-  }>("batch.undo", {
-    batch_id: batchId,
-    ...(options.keepLaterEdits ? { keep_later_edits: true } : {}),
-    ...(options.ignoreBatches?.length ? { ignore_batches: [...options.ignoreBatches] } : {}),
-  });
-  return {
-    batchId: out.batch_id,
-    kept: (out.kept ?? []).map((k) => ({
-      entityType: k.entity_type,
-      id: k.id,
-      page: k.page,
-      fields: k.fields,
     })),
   };
 }

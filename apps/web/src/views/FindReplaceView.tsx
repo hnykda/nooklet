@@ -18,18 +18,12 @@ import {
   onCleanup,
   Show,
 } from "solid-js";
+import { describeError } from "../data/api-client.js";
 import { type ReplaceInput, type ReplaceResult, refactorApi } from "../data/refactor-api.js";
 import { forceSync } from "../db/client.js";
 import "./find-replace.css";
 
 const PREVIEW_LIMIT = 200;
-
-function errorText(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err ?? "");
-  if (/failed to fetch|networkerror|load failed/i.test(message))
-    return "Could not reach the server.";
-  return message;
-}
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -150,7 +144,7 @@ export function FindReplaceView(): JSX.Element {
       await forceSync();
       void refetch();
     } catch (err) {
-      setWriteError(errorText(err));
+      setWriteError(describeError(err));
     } finally {
       setBusy(false);
     }
@@ -167,7 +161,7 @@ export function FindReplaceView(): JSX.Element {
       await forceSync();
       void refetch();
     } catch (err) {
-      setWriteError(errorText(err));
+      setWriteError(describeError(err));
     } finally {
       setBusy(false);
     }
@@ -278,7 +272,7 @@ export function FindReplaceView(): JSX.Element {
       </Show>
       <Show when={!preview.loading && preview.error !== undefined}>
         <p class="replace-error" role="alert">
-          {errorText(preview.error)}
+          {describeError(preview.error)}
         </p>
       </Show>
       <Show when={safePreview()}>

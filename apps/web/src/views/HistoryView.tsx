@@ -28,11 +28,10 @@ import {
   type HistoryBatch,
   type HistoryEntry,
   type HistorySnapshot,
-  type KeptEdit,
-  undoBatch,
   usePageHistory,
 } from "../data/history.js";
 import { displayRefName } from "../data/page-title.js";
+import { type KeptEdit, undoBatch } from "../data/refactor-api.js";
 import { diffProperties, diffWords, formatWhen } from "./historyText.js";
 import { keptEditsSentence } from "./keptEdits.js";
 import { pageRoutePath, pathToPageName } from "./navigateTarget.js";
@@ -176,7 +175,7 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
       setStatus(withKept("Undone.", kept));
       history.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeError(err));
     } finally {
       setBusy(null);
     }
@@ -213,9 +212,7 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
       setStatus(withKept(`Restored: ${n} change${n === 1 ? "" : "s"} undone.`, kept));
     } catch (err) {
       setStatus(withKept(null, kept));
-      setError(
-        `Stopped after undoing ${done} of ${n}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      setError(`Stopped after undoing ${done} of ${n}: ${describeError(err)}`);
     } finally {
       setBusy(null);
       history.refetch();

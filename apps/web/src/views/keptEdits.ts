@@ -5,7 +5,7 @@
  * how many, and on which pages — the pages matter most, because they are usually not this one.
  */
 
-import type { KeptEdit } from "../data/history.js";
+import type { KeptEdit } from "../data/refactor-api.js";
 
 const MAX_PAGES_NAMED = 3;
 
