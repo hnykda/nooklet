@@ -1,0 +1,57 @@
+/**
+ * B-520: a hybrid search that falls back to keyword says why, and "not set up" leads to the place
+ * that sets it up.
+ *
+ * The owner saw "Fell back to keyword search. 4 results" and had to ask whether semantic search
+ * worked at all. The reason comes from the real server (`search`'s `fallback`), and the button
+ * raises the real shell-level Settings panel — neither exists in a unit test's world. A fresh e2e
+ * graph has no embedding model, which is exactly the owner's state.
+ */
+
+import { expect, test } from "@playwright/test";
+import { seedPage } from "../helpers/index.js";
+
+test("a hybrid search on a graph with no embedding model says semantic search is not set up, and the button opens Settings at Search & embeddings", async ({
+  page,
+}) => {
+  // The page name must not contain the query word, or the page itself is a second hit.
+  await seedPage(page, "Search Fallback Note Hit", "- a quokka sentence for the fallback note");
+  await page.goto("/search");
+  await page.locator(".search-query-input").fill("quokka");
+  await expect(page.locator(".search-loading")).toBeHidden({ timeout: 15_000 });
+
+  const note = page.locator(".search-fallback");
+  await expect(note).toBeVisible({ timeout: 15_000 });
+  // If this server could not load sqlite-vec, that — not "not set up" — is the true reason, and it
+  // has its own sentence with nothing to click.
+  const reason = await note.getAttribute("data-reason");
+  test.skip(reason === "sqlite_vec_unavailable", "sqlite-vec did not load on this server");
+
+  expect(reason).toBe("not_configured");
+  await expect(note).toHaveText(
+    "Fell back to keyword search: semantic search is not set up. Set up semantic search…",
+  );
+  // The keyword results are still there, under it.
+  await expect(page.locator(".search-summary")).toHaveText("1 result");
+  await expect(page.locator(".search-result", { hasText: "Search Fallback Note Hit" })).toHaveCount(
+    1,
+  );
+
+  await note.getByRole("button", { name: "Set up semantic search…" }).click();
+
+  const panel = page.locator(".set-panel");
+  await expect(panel).toBeVisible();
+  const section = panel.locator("#set-embeddings");
+  await expect(section).toContainText("Semantic search", { timeout: 10_000 });
+  await expect(section.getByRole("heading", { name: "Search & embeddings" })).toBeInViewport();
+  await expect(section.getByRole("button", { name: /Turn on semantic search/ })).toBeVisible();
+});
+
+test("a keyword search shows no fallback note", async ({ page }) => {
+  await seedPage(page, "Search Fallback Keyword Hit", "- a wombat sentence");
+  await page.goto("/search");
+  await page.locator(".search-mode-toggle button", { hasText: "keyword" }).click();
+  await page.locator(".search-query-input").fill("wombat");
+  await expect(page.locator(".search-summary")).toHaveText("1 result", { timeout: 15_000 });
+  await expect(page.locator(".search-fallback")).toHaveCount(0);
+});
