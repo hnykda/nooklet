@@ -6,7 +6,29 @@ Entries in `docs/BUGS.md`'s format, for the coordinator to fold in. Existing bug
 ---
 
 ### B-97 (existing) · "Collapse all" and "Expand all" do nothing
-**Status:** in progress · **Severity:** medium · **Found:** 2026-09-12, exposure audit
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-12, exposure audit · **Tests:**
+`e2e/tests/commands.spec.ts` "Collapse all and Expand all fold the whole page with nothing focused,
+and it persists (B-97)", "zoomed into a block, Collapse all and Expand all act on that subtree only
+(B-97)", "Collapse all while editing a block it hides ends editing, and the page stays editable
+(B-97)"; `apps/web/src/editor/collapse-all.test.ts`; `apps/web/src/editor/outline-registry.test.ts`
+
+Two causes, not one. The audit's reading was right that `BlockTree`'s `runCommand` and selection
+switch had no case for either id. But even with the cases, the palette row the audit tried — with
+nothing focused — could never reach a tree: structural commands go through
+`app/editor-host.ts#activeEditorHost()`, which is the inert no-op host unless a block is being
+edited or selected.
+
+**Fixed 2026-09-13.** `editor/collapse-all.ts#setAllCollapsedOps` builds one `block.prop
+collapsed` op per block with children whose flag changes — over the whole page, or, zoomed, over
+the zoom root's subtree (Collapse all leaves the root itself open, Expand all opens it). `BlockTree`
+commits them as one undoable batch through `commit`, the same path as Cmd+Up, so they sync and
+mirror like any collapse. If the row being edited (or part of a selection) folds away, editing ends
+— a surface left attached to an unmounted row swallows keystrokes. For the nothing-focused case,
+every editable `BlockTree` registers in `editor/outline-registry.ts` and the no-op host hands the
+two page-scoped ids (and only those) to all of them: on a page view that is the page; on the journal
+stream, every loaded day. All three e2e tests fail against `da85cfb`'s `BlockTree.tsx` /
+`editor-host.ts` (rows stay 6/4/2). Not covered by e2e: the journal stream fan-out (seeding journal
+days in a shared-server spec disturbs `journals.spec.ts`; the fan-out is unit-tested).
 
 ---
 

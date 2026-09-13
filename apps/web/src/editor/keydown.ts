@@ -25,6 +25,10 @@ export type CommandId =
   | "block.focusNextChar"
   | "block.collapse"
   | "block.expand"
+  // No default key, so `resolveCommand` never returns these two; they are here because this union
+  // is also the set `BlockTree` answers when the palette delegates a command to it (B-97).
+  | "block.collapseAll"
+  | "block.expandAll"
   | "block.zoomIn"
   | "block.zoomOut"
   | "block.selectBlock"
