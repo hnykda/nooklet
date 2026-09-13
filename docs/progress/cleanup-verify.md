@@ -1,0 +1,33 @@
+# cleanup-verify: adversarial check of m9/cleanup (B-330, B-331/332, B-144/334, B-180)
+
+Worktree `.claude/worktrees/wf_e473942f-106-10`, branch `m9/cleanup`, e2e port 6405. Scratch:
+`<scratchpad>/m9/cleanup-verify/` (NOOKLET_DATA, the real-graph copy, logs).
+
+## Done (verified, re-run by this agent)
+
+- Read the whole diff `cf08d19..816d9c3`; compared intent with `3d73b13` and `373c654`.
+- `pnpm -r typecheck` clean. `apps/web` 1024/1024; three full web runs at once (load ~34): 3×1024.
+  `packages/server` 610/610. Biome on the 52 changed files: only the 3 errors + 1 warning in
+  `DiagnosticsPanel.tsx`, identical at `cf08d19` (base file swapped in).
+- e2e (port 6405): namespace-paths, follow-link, navigation, references, history, trash, replace,
+  link-unlinked: 36/36.
+- Probe spec (not kept): namespaced names with Czech diacritics, `%`, `?`, `#`, quotes — hrefs
+  have no `%2F`, a full page load of each rendered href opens the page, clicks land on the same
+  URL; Alt+Enter on a lowercased Czech link and on a link to a not-yet-created page both open.
+- B-180: rebuilt the sidecar at HEAD, `tools/probes/sidecar-plugins.mjs` 4/4. Sidecar
+  `plugin list` from `/` on a scratch graph lists the 3 bundled plugins; dev `nooklet plugin list`
+  still lists the repo's 3. Sidecar `serve` on the real-graph copy: plugins listed,
+  `page.wordcount` on `TTRPG/VTM-alpha` = 157 blocks / 5110 words, the UI's word-count status item
+  shows "5110 words", no `%2F` among the page's hrefs, an aborted search shows
+  "Search failed. could not reach http://127.0.0.1:6405 (Failed to fetch)".
+- `built-ins.test.ts` + `bundled.test.ts` together 12× (they write the same `.nooklet-build`
+  files from two workers): 12/12.
+
+## In flight
+
+- A permanent test for the riskiest edge (special-character namespaced names through a full load
+  of the rendered href, and the path round-trip).
+
+## Next
+
+- Full e2e halves if time allows; final verdict.
