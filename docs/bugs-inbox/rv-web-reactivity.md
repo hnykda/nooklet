@@ -103,13 +103,25 @@ are listed in order. The unit case failed with `gaps = [27, 26]`.
 ---
 
 ### B-133 · A ```query hit nested more than 60 blocks deep into another hit is counted but not shown
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, web reactivity review (F5) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, web reactivity review (F5) ·
+**Tests:** `e2e/tests/review-reactivity.spec.ts` "a query hit nested past the 60 rendered
+descendants of another hit is still shown (B-133)"; `apps/web/src/data/queries.test.ts` "lists a
+nested hit on its own when its ancestor's rendered subtree was cut before it", "a cut-off hit
+brings its own nested hits back with it, each listed once"
 
 A `TODO` project block with 70 child notes and then a `TODO` subtask: the fence header says
 "2 blocks on 1 page" but only the project and its first 60 descendants render — the subtask is
 nowhere. `runQuery` folds a hit under its ancestor hit whenever it is anywhere in the ancestor's
 depth-3 subtree, but `toResultBlock` stops emitting after `QUERY_CHILD_CAP` (60) descendants.
+
+**Fixed 2026-09-13.** `toResultBlock` records every descendant it actually emits; `runQuery`
+renders the outermost hits first, then lists on its own any shown hit none of them emitted
+(outermost of those first, so a promoted hit's own nested hits stay folded under it and nothing is
+listed twice). `nested` now counts hits that are really rendered nested. Both the unit case and the
+e2e case failed first (the subtask absent). On a copy of the owner's graph (952 pages, 686 task
+markers, no `TODO`s — it uses LATER/NOW/DONE) the shape does not occur today: `DONE`, `LATER`,
+`NOW`, `WAITING` and `DONE limit:1000` give identical counts before and after, nothing missing,
+no id rendered twice.
 
 ---
 

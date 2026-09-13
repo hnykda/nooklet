@@ -6,7 +6,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { api, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import { api, openPage, pagePath, readBlocks, seedPage } from "../helpers/index.js";
 
 async function openSidebar(page: Page): Promise<void> {
   const sidebar = page.locator(".app-sidebar");
@@ -137,4 +137,21 @@ test("History lists every batch when the graph changes while Older changes is lo
   );
   expect(listed).toEqual(all.batches.map((b) => b.batch_id));
   expect(listed).toHaveLength(33);
+});
+
+test("a query hit nested past the 60 rendered descendants of another hit is still shown (B-133)", async ({
+  page,
+}) => {
+  // A project task with more notes under it than a result renders, then a subtask. The tag keeps
+  // other specs' tasks on the shared server out of the result.
+  const notes = Array.from({ length: 70 }, (_, i) => `  - note ${i}`);
+  await seedPage(
+    page,
+    "Capped Project",
+    ["- TODO the project #capcheck", ...notes, "  - TODO the late subtask #capcheck"].join("\n"),
+  );
+  const outliner = await openPage(page, "Capped Query", "- ```query\n  TODO tag:capcheck\n  ```");
+  const view = outliner.locator(".vr-query");
+  await expect(view.locator(".vr-query-count")).toHaveText("2 blocks on 1 page");
+  await expect(view.locator(".vr-query-hit", { hasText: "the late subtask" })).toHaveCount(1);
 });

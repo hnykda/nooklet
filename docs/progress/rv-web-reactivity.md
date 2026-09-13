@@ -35,9 +35,15 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
   (`page-title.test.ts` 5 s timeout, `render-seams.test.tsx` query-fence `waitFor` 1 s on the
   first lazy import; load average 44) — render-seams rerun 3× alone: pass, fail, pass.
 
+- F5 / B-133 — `queries.ts` lists a nested hit on its own when no rendered subtree emitted it;
+  two cases in `data/queries.test.ts` and one e2e case, all failed first. e2e review-reactivity (5)
+  + query (9) — 14/14. Web unit 698/698 (load average had dropped to ~19). Real-graph probe
+  (`<scratch>/rv/f5-real-graph.probe.ts`, run with `--config <scratch>/rv/vitest.rv.config.ts`
+  from `apps/web`): identical before/after, the shape does not occur in the owner's graph.
+
 ## In flight
 
-- F5: `queries.ts` nested hits only when actually emitted.
+- F6: catch in History "Older changes".
 
 ## Next steps, in order
 
@@ -45,7 +51,7 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
 2. (done) F2.
 3. (done) F3.
 4. (done) F4.
-5. F5 — `queries.ts` nested hits only when actually emitted; `queries.test.ts`.
+5. (done) F5.
 6. F6 — catch in Older changes; `HistoryView` test.
 7. F7 — `FindReplaceView` live input + disable while stale/loading; component test.
 8. F8 — `VirtualJournalDay` catch + restore draft; its test.
