@@ -30,6 +30,7 @@ import { type ChildRow, childLookup } from "./block-children.js";
 import { reindexPageIdentity, resolvePageIdForKey } from "./page-aliases.js";
 import { rebuildPageTags } from "./page-tags.js";
 import { runBeforeWrite } from "./plugins/before-write.js";
+import { planReferencedPages, REFERENCE_DEVICE_ID, referenceKeysBefore } from "./ref-pages.js";
 import {
   type BlockChangeSnapshot,
   type PageChangeSnapshot,
@@ -66,6 +67,13 @@ export interface ServerApplyOptions {
    * writes (API, MCP, importer, mirror) leave it unset, so every connection is poked.
    */
   deviceId?: string;
+  /**
+   * `"skip"` leaves references to missing pages dangling instead of creating the pages (ADR 024,
+   * `./ref-pages.ts`). Only for a writer that creates the referenced pages itself later — the
+   * importer, whose page B would otherwise already exist, minted from page A's `[[B]]`, when B's
+   * own file arrives — and that runs `mintDanglingReferencedPages` once it is done.
+   */
+  referencedPages?: "mint" | "skip";
 }
 
 export interface ServerApplyResult extends ApplyOpsResult {
@@ -153,8 +161,28 @@ export function serverApplyOps(
       for (const one of coreApplyOps(driver, repairs).results) r.results.push(one);
     }
 
-    const allOps = ops.concat(corrections);
+    let allOps = ops.concat(corrections);
+    const mintPages = opts.referencedPages !== "skip";
+    // Read before re-indexing: `ref`/`page_tag` still describe the pre-batch state here.
+    const keysBefore = mintPages ? referenceKeysBefore(driver, allOps, beforeSnapshots) : undefined;
     reindexTouchedEntities(driver, allOps);
+    // ADR 024: a reference makes its page exist, and an unclaimed page it made goes with its last
+    // reference — decided here, in the same transaction, as logged server ops (`./ref-pages.ts`).
+    if (keysBefore) {
+      const pageOps = planReferencedPages(driver, allOps, keysBefore, beforeSnapshots, (e, p) =>
+        makeOp(ctx.hlc.next(), REFERENCE_DEVICE_ID, e, p),
+      );
+      if (pageOps.length > 0) {
+        for (const op of pageOps) {
+          if (!beforeSnapshots.has(op.entity))
+            beforeSnapshots.set(op.entity, snapshotPage(driver, op.entity));
+        }
+        corrections.push(...pageOps);
+        for (const one of coreApplyOps(driver, pageOps).results) r.results.push(one);
+        reindexTouchedEntities(driver, pageOps);
+        allOps = ops.concat(corrections);
+      }
+    }
     const afterSnapshots = snapshotEntities(driver, allOps);
     recordChanges(driver, allOps, r.results, opts, batchId, beforeSnapshots, afterSnapshots);
 

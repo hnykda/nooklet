@@ -249,6 +249,12 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
     `CREATE INDEX path_ref_page_key ON path_ref(page_key);` (the primary key
     `(block_id, page_key)` already covers the `block_id` direction, e.g. "what pages does this
     block reference, directly or via ancestors").
+    By target page id, for "which keys point at this page" on every page write (schema v7, B-440):
+    `ref_dst_page_id ON ref(dst_page_id)`, `path_ref_page_id ON path_ref(page_id)`,
+    `page_tag_page ON page_tag(tag_page_id)`, each `WHERE … IS NOT NULL`.
+    A reference whose key resolves to nothing makes the server create the page (ADR 024,
+    `packages/server/src/ref-pages.ts`): after a write, `dst_page_id IS NULL` remains only for
+    journal days, which are never created from references.
 
 ### Full-text search
 
@@ -708,6 +714,7 @@ CREATE TABLE ref (
 CREATE INDEX ref_src           ON ref(src_block_id);
 CREATE INDEX ref_dst_page_key  ON ref(dst_page_key) WHERE dst_page_key IS NOT NULL;
 CREATE INDEX ref_dst_block     ON ref(dst_block_id) WHERE dst_block_id IS NOT NULL;
+CREATE INDEX ref_dst_page_id   ON ref(dst_page_id) WHERE dst_page_id IS NOT NULL;
 
 CREATE TABLE path_ref (
   block_id TEXT NOT NULL REFERENCES block(id),
@@ -716,6 +723,7 @@ CREATE TABLE path_ref (
   PRIMARY KEY (block_id, page_key)
 ) WITHOUT ROWID;
 CREATE INDEX path_ref_page_key ON path_ref(page_key);
+CREATE INDEX path_ref_page_id  ON path_ref(page_id) WHERE page_id IS NOT NULL;
 
 CREATE TABLE page_alias (
   page_id   TEXT NOT NULL REFERENCES page(id),
@@ -841,6 +849,7 @@ CREATE TABLE page_tag (
   PRIMARY KEY (page_id, tag_key)
 ) WITHOUT ROWID;
 CREATE INDEX page_tag_key ON page_tag(tag_key);
+CREATE INDEX page_tag_page ON page_tag(tag_page_id) WHERE tag_page_id IS NOT NULL;
 
 -- api-and-plugin-types.md §4: `ctx.kv`, one namespace per plugin.
 CREATE TABLE plugin_kv (

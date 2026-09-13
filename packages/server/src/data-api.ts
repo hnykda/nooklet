@@ -45,6 +45,7 @@ import { suggestedJournalTitleFormat } from "./journal-format.js";
 import { journalTemplateNode } from "./journal-template.js";
 import { ftsPhrase } from "./ops/fts-query.js";
 import { pageLookupKeys, resolvePageIdForKey } from "./page-aliases.js";
+import { unclaimedReferencePageForKey } from "./ref-pages.js";
 import {
   BLOCK_COLUMNS,
   type BlockRow,
@@ -506,17 +507,27 @@ export function createDataApi(serverCtx: ServerContext, meta: WriteMeta): DataAp
     },
 
     async create(spec) {
-      const id = newId();
+      // An empty page a reference made (ADR 024) is taken over, as `ops/page-create.ts` does: a
+      // `page.create` for its name would be refused as a key collision.
+      const claim = unclaimedReferencePageForKey(driver, normalizePageName(spec.name));
+      const id = claim ?? newId();
       const now = Date.now();
-      const ops: Op[] = [
-        mint(id, {
-          kind: "page.create",
-          name: spec.name,
-          journalDay: null,
-          properties: spec.properties,
-          createdAt: now,
-        }),
-      ];
+      const ops: Op[] = claim
+        ? [
+            mint(id, { kind: "page.rename", name: spec.name }),
+            ...Object.entries(spec.properties ?? {}).map(([key, value]) =>
+              mint(id, { kind: "page.prop", key, value }),
+            ),
+          ]
+        : [
+            mint(id, {
+              kind: "page.create",
+              name: spec.name,
+              journalDay: null,
+              properties: spec.properties,
+              createdAt: now,
+            }),
+          ];
       // One batch, so the page and its first block land (and are audited, and can be undone)
       // together rather than as two writes the second of which could fail alone.
       if (spec.firstBlock) {

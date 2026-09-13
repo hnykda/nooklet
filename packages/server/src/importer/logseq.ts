@@ -46,6 +46,8 @@ import {
 import { type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { assetMarkdownPath, mimeFromFilename, storeAssetBytes } from "../assets/store.js";
 import { setSuggestedJournalTitleFormat } from "../journal-format.js";
+import { REFERENCE_DEVICE_ID, unclaimedReferencePageForKey } from "../ref-pages.js";
+import { mintDanglingReferencedPages } from "../ref-pages-migration.js";
 
 // -------------------------------------------------------------------------------------------
 // config.edn (tiny EDN subset)
@@ -446,6 +448,26 @@ const IMPORTER_ACTOR = "logseq-import";
  *  transaction either. */
 const CHUNK_SIZE = 500;
 
+function evictUnclaimedReferencePage(
+  ctx: ServerContext,
+  name: string,
+  journalDay: number | null,
+): void {
+  if (journalDay !== null) return; // journal days are never minted from references
+  const holder = unclaimedReferencePageForKey(ctx.driver, normalizePageName(name));
+  if (!holder) return;
+  serverApplyOps(
+    ctx,
+    [
+      makeOp(ctx.hlc.next(), REFERENCE_DEVICE_ID, holder, {
+        kind: "page.delete",
+        deletedAt: Date.now(),
+      }),
+    ],
+    { origin: "import", actor: IMPORTER_ACTOR, referencedPages: "skip" },
+  );
+}
+
 function buildPageOps(
   entry: FileEntry,
   ids: IdAssignment,
@@ -509,7 +531,13 @@ function applyChunked(ctx: ServerContext, ops: readonly Op[]): AppliedOpResult[]
   const results: AppliedOpResult[] = [];
   for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
     const chunk = ops.slice(i, i + CHUNK_SIZE);
-    const res = serverApplyOps(ctx, chunk, { origin: "import", actor: IMPORTER_ACTOR });
+    // Minting off: page A's `[[B]]` would create B before B's own file arrives, and B's
+    // `page.create` would then collide. `importLogseqGraph` mints what is still missing at the end.
+    const res = serverApplyOps(ctx, chunk, {
+      origin: "import",
+      actor: IMPORTER_ACTOR,
+      referencedPages: "skip",
+    });
     results.push(...res.results);
   }
   return results;
@@ -533,6 +561,8 @@ export interface ImportStats {
   pagesImported: number;
   /** Journal pages successfully created. */
   journalsImported: number;
+  /** Pages no file defined, created because the graph references them (ADR 024). */
+  referencedPagesCreated: number;
   /** Blocks successfully created, summed across every imported page. */
   blocksImported: number;
   /** Files skipped entirely: a duplicate resolved page name, or a page-level failure (below). */
@@ -619,6 +649,10 @@ export async function importLogseqGraph(
   for (const entry of entries) {
     try {
       const createdAt = Math.round(statSync(entry.filePath).mtimeMs);
+      // Importing into a graph that already references this name: the empty page the reference
+      // made gives way to the file's page (ADR 024). Minted before `buildPageOps` takes its HLCs,
+      // so the deletion precedes the create in the log's own order too.
+      evictUnclaimedReferencePage(ctx, entry.resolvedName, entry.journalDay);
       const { ops, dangling, danglingAssets } = buildPageOps(
         entry,
         ids,
@@ -657,9 +691,14 @@ export async function importLogseqGraph(
     }
   }
 
+  // ADR 024: every name the graph references and no file defined becomes a page, now that every
+  // file had its chance to define it.
+  const referenced = mintDanglingReferencedPages(ctx);
+
   return {
     pagesImported,
     journalsImported,
+    referencedPagesCreated: referenced.created,
     blocksImported,
     pagesSkipped,
     danglingBlockRefs,

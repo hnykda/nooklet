@@ -22,6 +22,20 @@ beforeEach(() => {
   data = createDataApi(ctx, { origin: "api", actor: "test" });
 });
 
+describe("PagesApi.create over a page a reference made (ADR 024)", () => {
+  it("takes the empty page over — same id, the asked-for name and properties — instead of throwing", async () => {
+    const notes = await data.pages.create({ name: "Notes" });
+    await data.blocks.insert({ page: notes.id, content: "see [[plugin made]]" });
+    const auto = await data.pages.get({ name: "plugin made" });
+    expect(auto).not.toBeNull();
+
+    const page = await data.pages.create({ name: "Plugin Made", properties: { type: "log" } });
+    expect(page.id).toBe(auto?.id);
+    expect(page.name).toBe("Plugin Made");
+    expect(page.properties).toEqual({ type: "log" });
+  });
+});
+
 describe("QueryApi.unlinkedRefs", () => {
   it("finds plain-text mentions on other pages that do not already link, aliases included", async () => {
     const target = await data.pages.create({

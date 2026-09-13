@@ -393,7 +393,9 @@ describe("page.list", () => {
       namespace: "Projects",
     });
     expect(status).toBe(200);
+    // `Projects` itself exists too: a namespaced page makes its ancestors exist (ADR 024).
     expect(json.items.map((p: { name: string }) => p.name).sort()).toEqual([
+      "Projects",
       "Projects/A",
       "Projects/B",
     ]);
@@ -757,20 +759,21 @@ describe("graph.links", () => {
     expect(json.truncated).toBe(false);
   });
 
-  it("resolves an edge to a page that was created after the link was written", async () => {
-    // `ref.dst_page_id` is NULL until rule 18's refresh runs, which is exactly why the handler
-    // joins on `page.key` instead. Linking a page that does not exist yet and creating it
-    // afterwards is the normal wiki order of events, and the edge must appear.
+  it("has the edge to a linked page from the moment of the link, and keeps it once someone creates the page", async () => {
+    // Linking a page nobody has written yet is the normal wiki order of events. The link itself
+    // makes the page exist (ADR 024), so the edge is there at once; an explicit page.create later
+    // takes that page over rather than making a second one.
     await post(s.app, "/api/v1/page.create", s.writeToken, {
       name: "Early",
       markdown: "- points at [[Later]]",
     });
     const before = await post(s.app, "/api/v1/graph.links", s.writeToken, {});
-    expect(before.json.edges).toHaveLength(0);
+    expect(before.json.edges).toHaveLength(1);
 
     await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Later" });
     const after = await post(s.app, "/api/v1/graph.links", s.writeToken, {});
     expect(after.json.edges).toHaveLength(1);
+    expect(after.json.nodes).toHaveLength(2);
   });
 
   it("drops an edge whose block was deleted", async () => {

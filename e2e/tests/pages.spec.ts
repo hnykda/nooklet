@@ -110,8 +110,9 @@ test("a #tag typed on a block makes the tag page reachable, and it lists the blo
     .toBe(1);
   await outliner.locator(".vr-tag", { hasText: "#PagesTagFresh" }).click();
 
+  // The tag made the page exist (ADR 024): an ordinary page, nothing to create.
   await expect(page).toHaveURL(/\/page\/PagesTagFresh$/);
-  await page.locator(".page-view-missing button").click();
+  await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("PagesTagFresh");
   await expect(page.locator(".page-view-missing")).toHaveCount(0);
 
   const linked = page.locator(".linked-references");
@@ -121,15 +122,16 @@ test("a #tag typed on a block makes the tag page reachable, and it lists the blo
   await expect(linked.locator(".reference-item")).toContainText("about");
 });
 
-test("a tag page created straight after typing the tag shows the reference without a reload", async ({
+test("a tag page opened straight after typing the tag shows the reference without a reload", async ({
   page,
 }) => {
   const outliner = await openEditing(page, "Pages Tag Quick Source", "- about\n- other");
   await page.keyboard.type(" #PagesTagQuick ");
   await clickRow(page, outliner, 1);
   await outliner.locator(".vr-tag", { hasText: "#PagesTagQuick" }).click();
-  await page.locator(".page-view-missing button").click();
-  await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  // Opened before the typed tag has reached the server, the page may not be here yet; the server
+  // creates it from the tag (ADR 024) and the view becomes the ordinary page on its own.
+  await expect(page.locator(".page-view-missing")).toHaveCount(0, { timeout: 15_000 });
   // The reference exists on the server within moments; the panel has to pick it up on its own.
   await expect(page.locator(".linked-references .reference-count")).toHaveText("1", {
     timeout: 15_000,

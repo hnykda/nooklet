@@ -29,11 +29,19 @@ import {
   type ApplyOpsResult,
   applyOps as coreApplyOps,
   Hlc,
+  makeOp,
   newDeviceId,
   type Op,
   resolvePendingTextConflict,
   type SqlDriver,
 } from "@nooklet/core";
+import {
+  type CapturedPage,
+  captureAndRemoveRefusedPage,
+  insertPageSnapshot,
+  pagesDisplacedByPull,
+  reapplyCapturedPage,
+} from "./refused-page.js";
 import type { PushResponse, SyncStatus, SyncTransport } from "./types.js";
 
 const PULL_LIMIT = 1000;
@@ -66,7 +74,8 @@ export interface SyncClientOptions {
   onAppliedOps?: (ops: readonly Op[]) => void;
   /** Called once a `bootstrap()` finishes: unlike the other three sources, a snapshot is inserted
    * as raw rows (see `bootstrap()`'s doc), not `Op`s, so there is nothing to pass `onAppliedOps`;
-   * treat this as "everything may have changed". */
+   * treat this as "everything may have changed". Also called after a refused page was dropped
+   * from the replica (`./refused-page.ts`), for the same reason. */
   onBootstrap?: () => void;
   /** Page size for `/sync/pull`; small values let tests exercise pagination cheaply. */
   pullLimit?: number;
@@ -252,7 +261,17 @@ export class SyncClient {
     // `HlcDriftError`, ADR 003) so a drifted server clock rejects the whole batch cleanly rather
     // than leaving state partially applied with a clock that never caught up to it.
     for (const c of res.corrections) this.hlc.receive(c.hlc);
+    const refused = res.refused_pages ?? [];
+    for (const r of refused) this.hlc.receive(r.page.name_hlc);
+    const captured: Array<{ page: CapturedPage; winnerId: string }> = [];
     this.driver.transaction(() => {
+      // Before the outbox rows go: the refused page's content is read from the replica, and its
+      // pending ops are superseded by what `reapplyCapturedPage` re-sends (`./refused-page.ts`).
+      for (const r of refused) {
+        const page = captureAndRemoveRefusedPage(this.driver, r.refused_id);
+        insertPageSnapshot(this.driver, r);
+        if (page) captured.push({ page, winnerId: r.page.id });
+      }
       for (const a of res.accepted) this.driver.run("DELETE FROM pending_op WHERE id = ?", [a.id]);
       for (const r of res.rejected) this.driver.run("DELETE FROM pending_op WHERE id = ?", [r.id]);
       if (res.corrections.length > 0) coreApplyOps(this.driver, res.corrections);
@@ -260,6 +279,20 @@ export class SyncClient {
     this.persistHlc();
     this.refreshPendingCount();
     if (res.corrections.length > 0) this.onAppliedOpsCb?.(res.corrections);
+    this.reapplyCaptured(captured);
+  }
+
+  /** Re-send refused pages' content onto the pages that won their names, as fresh local ops. */
+  private reapplyCaptured(captured: ReadonlyArray<{ page: CapturedPage; winnerId: string }>): void {
+    if (captured.length === 0) return;
+    const ops = captured.flatMap(({ page, winnerId }) =>
+      reapplyCapturedPage(page, winnerId, (entity, payload) =>
+        makeOp(this.nextHlc(), this.deviceId, entity, payload),
+      ),
+    );
+    if (ops.length > 0) this.applyLocal(ops);
+    // Pages and blocks were removed outside any op: every view may be showing one of them.
+    this.onBootstrapCb?.();
   }
 
   /**
@@ -286,7 +319,15 @@ export class SyncClient {
           for (const op of res.ops) this.hlc.receive(op.hlc);
           const extraOps = this.resolveTextConflicts(res.ops);
           for (const op of extraOps) this.hlc.receive(op.hlc);
+          const captured: Array<{ page: CapturedPage; winnerId: string }> = [];
           this.driver.transaction(() => {
+            // A local page holding a name the server's page arrives under: move out of its way
+            // first, or the server's page is refused here and the replicas never converge
+            // (`./refused-page.ts`). Its content is re-sent onto that page below.
+            for (const d of pagesDisplacedByPull(this.driver, res.ops)) {
+              const page = captureAndRemoveRefusedPage(this.driver, d.refusedId);
+              if (page) captured.push({ page, winnerId: d.winnerId });
+            }
             // Merge ops go in the SAME batch as the pulled ops they resolve: they carry newer
             // HLCs, so applying them together means the merged text wins deterministically here
             // and, once pushed, on every other device too.
@@ -301,6 +342,7 @@ export class SyncClient {
           this.persistHlc();
           this.refreshPendingCount();
           this.onAppliedOpsCb?.(res.ops);
+          this.reapplyCaptured(captured);
         } else {
           this.setState(SYNC_STATE_SERVER_CURSOR, String(res.cursor));
         }

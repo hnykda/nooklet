@@ -131,7 +131,7 @@ test("revealing a block lands on its row, not on a query result above it (B-211)
   await expect(outliner.locator(".vr-query-hit.shelf-reveal-target")).toHaveCount(0);
 });
 
-test("a page that does not exist yet shows what links to it and what is tagged with it (B-200)", async ({
+test("a page nobody wrote but something links shows what links to it and what is tagged with it (B-200)", async ({
   page,
 }) => {
   const name = "RV Unwritten Book";
@@ -141,32 +141,25 @@ test("a page that does not exist yet shows what links to it and what is tagged w
     if_exists: "return",
     properties: { tags: name },
   });
-  // A plain mention: an unlinked reference on a real page, and nothing to show on this one.
+  // A plain mention: an unlinked reference on a real page.
   await seedPage(page, "RV Book Mention", `- ${name} came up in passing`);
 
+  // The link made the page exist (ADR 024): the ordinary view, empty, with everything pointing at
+  // it. ("Doesn't exist yet" with references is now a journal day's view — the next test.)
   await page.goto(pagePath(name));
-  await expect(page.locator(".page-view-missing")).toContainText("doesn't exist yet");
+  await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue(name);
+  await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  await expect(page.locator(".vr-empty-start")).toBeVisible();
   const tagged = page.getByRole("region", { name: `Pages tagged ${name}` });
   await expect(tagged.locator(".tagged-page-link")).toHaveText(["RV Book Tagged"]);
   const linked = page.locator(".linked-references");
   await expect(linked.locator(".reference-group-page")).toHaveText(["RV Book Reader"]);
   await expect(linked.locator(".reference-item")).toContainText("reading");
-  // "Link all" would call `mentions.link`, which needs the page to exist.
-  await expect(page.locator(".unlinked-references")).toHaveCount(0);
+  await expect(page.locator(".unlinked-references")).toBeVisible();
 
   // A reference still goes where it says.
   await linked.locator(".reference-group-page", { hasText: "RV Book Reader" }).click();
-  await expect(page.locator(".page-title-input")).toHaveValue("RV Book Reader");
-  await page.goBack();
-
-  // Creating the page swaps to the ordinary view, which has the unlinked half too.
-  await page.locator(".page-view-missing button").click();
-  await expect(page.locator(".page-view-missing")).toHaveCount(0);
-  await expect(page.locator(".page-title-input")).toHaveValue(name);
-  await expect(page.locator(".linked-references .reference-group-page")).toHaveText([
-    "RV Book Reader",
-  ]);
-  await expect(page.locator(".unlinked-references")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("RV Book Reader");
 });
 
 test("a journal day nobody has written shows the links to it, whatever date format the URL uses (B-200)", async ({
@@ -293,7 +286,9 @@ test("a page that does not exist yet keeps its references panel, and its place i
   page,
 }) => {
   await page.setViewportSize({ width: 1000, height: 500 });
-  const name = "RV Keep Place Target";
+  // A journal day: since ADR 024 a linked ordinary name is a page, and a day nobody wrote is what
+  // still shows the missing view with references. An offset no other spec uses.
+  const name = isoOffset(-777);
   for (let p = 0; p < 6; p++) {
     await seedPage(
       page,
@@ -328,7 +323,8 @@ test("a page that does not exist yet keeps its references panel, and its place i
     properties: { tags: name },
   });
   await expect(
-    page.getByRole("region", { name: `Pages tagged ${name}` }).locator(".tagged-page-link"),
+    // Titled with the day as the reader reads dates, not the ISO name.
+    page.getByRole("region", { name: /^Pages tagged / }).locator(".tagged-page-link"),
   ).toHaveText(["RV Keep Place Tagger"]);
 
   const after = await page.evaluate(() => {

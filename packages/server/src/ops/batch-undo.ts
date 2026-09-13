@@ -33,6 +33,7 @@
 
 import { aliasKeysOf, normalizePageName, type Op } from "@nooklet/core";
 import { z } from "zod";
+import { isUnclaimedReferencePage } from "../ref-pages.js";
 import {
   type BlockChangeSnapshot,
   type PageChangeSnapshot,
@@ -269,6 +270,7 @@ export const batchUndo = defineOp({
       // a page delete would un-delete the blocks onto a page that stays in the trash and still
       // report "restored". Ask first, so the caller hears why; the savepoint in
       // `applyAllOrNothing` below catches any rejection this check does not foresee.
+      const evicted = new Set<string>();
       for (const row of batchPageRows) {
         const plan = pagePlan(row);
         const liveAfter = plan?.deletedAfter === null;
@@ -287,7 +289,10 @@ export const batchUndo = defineOp({
           "SELECT id, name FROM page WHERE key = ? AND deleted_at IS NULL AND id != ?",
           [keyAfter, row.entity_id],
         );
-        if (clash && !firstByEntity.has(clash.id)) {
+        // An empty page links made after the batch (ADR 024) is no owner of the name: it gives way.
+        if (clash && !firstByEntity.has(clash.id) && isUnclaimedReferencePage(ctx.db, clash.id)) {
+          evicted.add(clash.id);
+        } else if (clash && !firstByEntity.has(clash.id)) {
           throw new OpError(
             "conflict",
             `cannot restore page "${plan.nameAfter}": a live page is already named "${clash.name}"`,
@@ -363,6 +368,11 @@ export const batchUndo = defineOp({
       const touchedPages = new Set<string>();
       const summaryLines: string[] = [];
       const now = Date.now();
+      // First, so the name is free before any restore claims it (B-370's rule, for pages outside
+      // the batch).
+      for (const id of evicted) {
+        ops.push(ctx.mintOp(id, { kind: "page.delete", deletedAt: now }));
+      }
 
       for (const row of restoreOrder) {
         const skip = laterEdits(row);

@@ -28,7 +28,12 @@ function createPage(name: string) {
   return id;
 }
 
-function createBlock(pageId: string, content: string, parentId: string | null = null) {
+function createBlock(
+  pageId: string,
+  content: string,
+  parentId: string | null = null,
+  referencedPages: "mint" | "skip" = "mint",
+) {
   const id = newId();
   const hlc = ctx.hlc.next();
   serverApplyOps(
@@ -47,7 +52,7 @@ function createBlock(pageId: string, content: string, parentId: string | null = 
         },
       },
     ],
-    { origin: "user", actor: "test" },
+    { origin: "user", actor: "test", referencedPages },
   );
   return id;
 }
@@ -90,9 +95,11 @@ describe("db + schema", () => {
 });
 
 describe("serverApplyOps: refs and path_ref indexing", () => {
-  it("indexes a [[page]] ref and resolves dst_page_id once the target exists", () => {
+  it("indexes a [[page]] ref and, with minting skipped (the importer), resolves dst_page_id once the target exists", () => {
     const p1 = createPage("Page One");
-    const b1 = createBlock(p1, "See [[Page Two]] and #tag");
+    // An ordinary write would create both pages at once (ADR 024, `ref-pages.test.ts`); the
+    // importer writes with minting off, and this is the resolution it then relies on.
+    const b1 = createBlock(p1, "See [[Page Two]] and #tag", null, "skip");
 
     let refs = ctx.driver.all<{
       kind: string;
@@ -134,7 +141,11 @@ describe("serverApplyOps: refs and path_ref indexing", () => {
         "SELECT dst_page_key, dst_page_id FROM ref WHERE src_block_id = ? ORDER BY dst_page_key",
         [b],
       );
-    expect(dstOf().map((r) => r.dst_page_id)).toEqual([null, null]);
+    // The references made their pages exist (ADR 024): empty pages, nobody's but the references'.
+    const [nickPage, nicknamePage] = dstOf().map((r) => r.dst_page_id);
+    expect(nickPage).not.toBeNull();
+    expect(nicknamePage).not.toBeNull();
+    expect(nickPage).not.toBe(real);
 
     // Setting the property is what populates the index — never a direct write to page_alias.
     const setAlias = (value: string | null) => {
@@ -160,14 +171,17 @@ describe("serverApplyOps: refs and path_ref indexing", () => {
         [real],
       ),
     ).toEqual([{ alias_key: "nick" }, { alias_key: "nickname" }]); // never its own key
+    // The empty pages give the names up to the alias (an own key would otherwise outrank it).
     expect(dstOf().map((r) => r.dst_page_id)).toEqual([real, real]);
 
-    // Removing an alias un-resolves the references that reached the page through it.
+    // Removing an alias un-resolves the references that reached the page through it — to a new
+    // empty page the reference keeps (ADR 024), not the real page and not the old tombstone.
     setAlias("Nickname");
-    expect(dstOf()).toEqual([
-      { dst_page_key: "nick", dst_page_id: null },
-      { dst_page_key: "nickname", dst_page_id: real },
-    ]);
+    const afterRemoval = dstOf();
+    expect(afterRemoval.map((r) => r.dst_page_key)).toEqual(["nick", "nickname"]);
+    expect(afterRemoval[0]?.dst_page_id).not.toBeNull();
+    expect([real, nickPage]).not.toContain(afterRemoval[0]?.dst_page_id);
+    expect(afterRemoval[1]?.dst_page_id).toBe(real);
 
     // A real page with that name outranks the alias.
     const nick = createPage("Nickname");
@@ -192,11 +206,16 @@ describe("serverApplyOps: refs and path_ref indexing", () => {
       });
     };
     apply({ kind: "page.rename", name: "After" });
-    expect(target()).toBeNull(); // `[[Before]]` no longer names a page
+    // `[[Before]]` no longer names this page — it names the empty page the reference keeps (ADR 024)
+    const kept = target();
+    expect(kept).not.toBeNull();
+    expect(kept).not.toBe(p);
     apply({ kind: "page.prop", key: "alias", value: "Before" });
     expect(target()).toBe(p); // ...until the old name is kept as an alias
     apply({ kind: "page.delete", deletedAt: Date.now() });
-    expect(target()).toBeNull();
+    // Deleted with the alias: the still-referenced name gets an empty page once more — a new one.
+    expect(target()).not.toBeNull();
+    expect([p, kept]).not.toContain(target());
     expect(
       ctx.driver.get<{ n: number }>("SELECT count(*) AS n FROM page_alias WHERE page_id = ?", [p])
         ?.n,

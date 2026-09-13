@@ -69,6 +69,7 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE INDEX ref_src ON ref(src_block_id)`,
   `CREATE INDEX ref_dst_page_key ON ref(dst_page_key) WHERE dst_page_key IS NOT NULL`,
   `CREATE INDEX ref_dst_block ON ref(dst_block_id) WHERE dst_block_id IS NOT NULL`,
+  `CREATE INDEX ref_dst_page_id ON ref(dst_page_id) WHERE dst_page_id IS NOT NULL`,
 
   `CREATE TABLE path_ref (
     block_id TEXT NOT NULL REFERENCES block(id),
@@ -77,6 +78,7 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
     PRIMARY KEY (block_id, page_key)
   ) WITHOUT ROWID`,
   `CREATE INDEX path_ref_page_key ON path_ref(page_key)`,
+  `CREATE INDEX path_ref_page_id ON path_ref(page_id) WHERE page_id IS NOT NULL`,
 
   `CREATE TABLE page_tag (
     page_id     TEXT NOT NULL REFERENCES page(id),
@@ -86,6 +88,7 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
     PRIMARY KEY (page_id, tag_key)
   ) WITHOUT ROWID`,
   `CREATE INDEX page_tag_key ON page_tag(tag_key)`,
+  `CREATE INDEX page_tag_page ON page_tag(tag_page_id) WHERE tag_page_id IS NOT NULL`,
 
   `CREATE TABLE page_alias (
     page_id   TEXT NOT NULL REFERENCES page(id),
@@ -358,9 +361,28 @@ export const MIGRATIONS: readonly Migration[] = [
       ) WITHOUT ROWID`);
     },
   },
+  {
+    version: 7,
+    description:
+      "index the derived tables by target page id (B-440: every page write scanned path_ref)",
+    up: (driver) => {
+      // `page-aliases.ts#reindexPageIdentity` asks all three tables "which keys point at this page"
+      // on every page write, and only their `*_key` columns were indexed: ~50 ms per page op on the
+      // owner's graph (32k path_ref rows), 14 s for ADR 024's 259-page migration.
+      driver.exec(
+        "CREATE INDEX IF NOT EXISTS ref_dst_page_id ON ref(dst_page_id) WHERE dst_page_id IS NOT NULL",
+      );
+      driver.exec(
+        "CREATE INDEX IF NOT EXISTS path_ref_page_id ON path_ref(page_id) WHERE page_id IS NOT NULL",
+      );
+      driver.exec(
+        "CREATE INDEX IF NOT EXISTS page_tag_page ON page_tag(tag_page_id) WHERE tag_page_id IS NOT NULL",
+      );
+    },
+  },
 ];
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {
