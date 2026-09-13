@@ -234,6 +234,7 @@ only, which is itself a deliberate, unambiguous choice, not an omission).
 | `block.indentSelected` | Indent selected blocks | Tab | Tab | `blockSelected` |
 | `block.outdentSelected` | Outdent selected blocks | Shift+Tab | Shift+Tab | `blockSelected` |
 | `block.copySelection` | Copy selected blocks as markdown | Cmd+C | Ctrl+C | `blockSelected` |
+| `block.cutSelection` | Cut selected blocks as markdown | Cmd+X | Ctrl+X | `blockSelected` |
 | `block.duplicate` | Duplicate block | Cmd+Shift+D | Ctrl+Shift+D | `editorFocused \|\| blockSelected` |
 | `block.copyRef` | Copy block reference | Cmd+Shift+C | Ctrl+Shift+C | `editorFocused \|\| blockSelected` |
 | `block.openOnShelf` | Open on shelf | — | — | `editorFocused \|\| blockSelected` |
@@ -374,6 +375,10 @@ batch, not by another selected block's "younger siblings" step; implementations 
 (`- text\n  - child`) to the system clipboard; this is an informational binding (the actual
 trigger is the outliner container's native `copy` event, intercepted the same way `edit.paste`
 intercepts `paste` — § R33 applies analogously).
+`block.cutSelection` writes exactly the text `block.copySelection` would to the system clipboard
+and then deletes the selection exactly as `block.deleteSelected` does, as ONE undo step (a single
+`edit.undo` restores every cut block). The delete MUST wait for the clipboard write to succeed:
+where there is no clipboard (no secure context) or the write is refused, nothing is deleted.
 
 **R32.** `block.duplicate` inserts a deep copy of the block and its subtree as its own next
 sibling, with fresh ids for every copied block (never reusing an id, so copies never collide with

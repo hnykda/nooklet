@@ -28,14 +28,7 @@
  * passes `resolveBlockRef` from `data/block-ref-cache.ts`.
  */
 import type { EditorView } from "@codemirror/view";
-import {
-  blockTextPayloads,
-  formatDayTime,
-  makeOp,
-  type Op,
-  type OutlineNode,
-  serializeOutline,
-} from "@nooklet/core";
+import { blockTextPayloads, formatDayTime, makeOp, type Op } from "@nooklet/core";
 import "./editor.css";
 import {
   createEffect,
@@ -105,9 +98,10 @@ import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
 import { createReadOnlyNotice } from "./ReadOnlyNotice.js";
 import { isReadOnlyValue, READ_ONLY_PROPERTY } from "./readOnly.js";
 import type { NavigateTarget } from "./render/tokens.js";
+import { cutToClipboard, selectionMarkdown } from "./selection-clipboard.js";
 import { createSurface, type Surface } from "./surface.js";
 import { cycleMarker, toggleDone } from "./task.js";
-import { buildEditorTree, childrenIds, flattenVisible, getBlock } from "./tree.js";
+import { buildEditorTree, childrenIds, flattenVisible } from "./tree.js";
 import type { BlockId, CaretSpec, Clock, EditableBlock, EditorTree, FocusChange } from "./types.js";
 import { UnseenCreations } from "./unseen-creations.js";
 
@@ -1098,38 +1092,21 @@ export function BlockTree(props: {
       case "block.selectAll":
         setSelection({ anchorId: sel.anchorId, focusId: sel.focusId, ids: visibleIds() });
         return;
-      case "block.copySelection": {
-        // R31: the selection as outline markdown, subtrees included, through the same serializer
-        // the mirror uses — so what you paste elsewhere is exactly what a page file would say.
-        // A block whose ancestor is also selected is already inside that ancestor's subtree.
-        const chosen = new Set(sel.ids);
-        const inSelectedAncestor = (id: BlockId): boolean => {
-          let cur = getBlock(tree, id).parentId;
-          while (cur !== null) {
-            if (chosen.has(cur)) return true;
-            cur = getBlock(tree, cur).parentId;
-          }
-          return false;
-        };
-        const toNode = (id: BlockId): OutlineNode => {
-          const b = getBlock(tree, id);
-          return {
-            content: b.content,
-            marker: b.marker,
-            priority: b.priority,
-            // Copied blocks keep their properties — a numbered list pasted elsewhere stays one.
-            properties: { ...b.properties },
-            collapsed: b.collapsed,
-            children: childrenIds(tree, id).map(toNode),
-          };
-        };
-        const roots = visibleIds().filter((id) => chosen.has(id) && !inSelectedAncestor(id));
-        const text = serializeOutline(
-          { properties: {}, blocks: roots.map(toNode) },
-          { ids: "none" },
-        );
+      case "block.copySelection":
         // Registered but never implemented (B-84): Cmd+C on a selection copied nothing at all.
-        void navigator.clipboard?.writeText(text);
+        void navigator.clipboard?.writeText(selectionMarkdown(tree, sel.ids, visibleIds()));
+        return;
+      case "block.cutSelection": {
+        // B-245: Copy's exact text, then Delete's exact ops as ONE commit, so one Cmd+Z undoes the
+        // whole cut. The delete waits for the clipboard write (see `cutToClipboard`), so it builds
+        // against the tree as it is then, keeping only blocks that still exist.
+        const text = selectionMarkdown(tree, sel.ids, visibleIds());
+        void cutToClipboard(text, navigator.clipboard, () => {
+          const now = editorTree();
+          const live = sel.ids.filter((id) => now.byId.has(id));
+          commit(deleteSelectedBlocks(now, live, clock).ops, now, "structure", null, null);
+          if (selection() === sel) setSelection(null);
+        });
         return;
       }
       case "block.deleteSelected": {

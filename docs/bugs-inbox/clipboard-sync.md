@@ -31,7 +31,50 @@ exists to prove the assertion was state-dependent.
 
 In one of those runs, `editing.spec.ts` "typing immediately after Enter is not discarded" failed
 once after the reload (1 row, expected 2: the new block and its text both gone) and passed on the
-two reruns — the same loss mechanism as B-247, not this bug; see there.
+two reruns — plausibly the loss mechanism of B-247 (not verified at this point), not this bug; see there.
 
 ---
+
+### B-245 (existing)
+
+Taken on 2026-09-13 (clipboard-sync). Plan as the entry proposed: `block.cutSelection` =
+`block.copySelection`'s text on the clipboard, then `block.deleteSelected`'s ops, recorded as one
+undo step; a spec row before the code.
+
+**Fixed 2026-09-13.** `block.cutSelection` (Cmd+X / Ctrl+X, `blockSelected`) — spec row in §E and
+a paragraph in R31 of `docs/spec/commands-and-keymap.md`. The copy text now comes from one function,
+`editor/selection-clipboard.ts#selectionMarkdown`, which both Copy and Cut call (moved out of
+`BlockTree.tsx` unchanged, plus a guard for an id no longer in the tree). The cut writes that text,
+and only once the clipboard write has resolved builds `deleteSelectedBlocks` against the tree as it
+is then and commits it as ONE history entry (`cutToClipboard`): with no `navigator.clipboard` (plain
+http from another machine is not a secure context) or a refused write, nothing is deleted. Like
+Copy, it is reached through the command registry's key binding, not `keydown.ts#resolveCommand`
+(spec §E note 11). Tests: `e2e/tests/selection.spec.ts` "Cmd/Ctrl+X cuts the selection as markdown,
+and one undo brings it all back (B-245)" — clipboard text, rows gone from the page and from the
+server, one Cmd+Z restores all three blocks with the child still indented, on the server too; it
+fails with the registration removed (clipboard stays "sentinel"). Unit:
+`apps/web/src/editor/selection-clipboard.test.ts` (subtree written once, reading order, properties
+kept, delete only after the write resolved, nothing deleted with no clipboard or a refused write).
+
+Not done: no "Cut" entry in the block context menu (`app/BlockContextMenu.tsx` lists Delete but not
+Copy either); `docs/wiki/pages/Keyboard shortcuts.md` is generated and was not regenerated here —
+run `node docs/wiki/tools/generate-shortcuts.mjs` after merging.
+
+---
+
+### B-300 · With a block selection standing, Backspace in the page title deletes the selected block
+
+**Status:** open · **Severity:** medium (a destructive key goes to blocks the user is not looking
+at; undo restores them) · **Found:** 2026-09-13, clipboard-sync, while checking where the new
+Cmd+X can fire · **Test:** — (probe: see below)
+
+Select a block (Escape), click into the page title, press End, Shift+Home, Backspace. Expected: the
+title's text is selected and deleted. Seen: the title is unchanged and the selected BLOCK is
+deleted — on the server too. The same with Cmd+X since B-245 (the block is cut). The selection
+survives the click (still 1 `.vr-row-selected`, `document.activeElement` is the title input), and
+the global keydown dispatcher (`app/CommandLayer.tsx#KeyboardDispatch`, capture phase, no check of
+the event target) matches `block.deleteSelected` on `blockSelected` before the input sees the key.
+Measured with a throwaway Playwright spec on `m9/clipboard-sync` (Backspace: stored `["two"]`,
+title unchanged; Meta+x: the same). Only a pointerdown while EDITING ends the session
+(`BlockTree.tsx`'s capture-phase listener); a standing selection has no equivalent.
 

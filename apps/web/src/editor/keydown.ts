@@ -33,6 +33,8 @@ export type CommandId =
   | "block.zoomOut"
   | "block.selectBlock"
   | "block.copySelection"
+  // Like copySelection, reached through the command registry's Cmd/Ctrl+X, never `resolveCommand`.
+  | "block.cutSelection"
   | "block.editSelected"
   | "block.clearSelection"
   | "block.extendSelectionUp"

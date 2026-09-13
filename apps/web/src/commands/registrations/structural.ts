@@ -193,6 +193,13 @@ const STRUCTURAL_COMMANDS: readonly StructuralSpec[] = [
     when: "blockSelected",
   },
   {
+    id: "block.cutSelection",
+    title: "Cut selected blocks as markdown",
+    mac: "Cmd+X",
+    other: "Ctrl+X",
+    when: "blockSelected",
+  },
+  {
     id: "block.duplicate",
     title: "Duplicate block",
     mac: "Cmd+Shift+D",

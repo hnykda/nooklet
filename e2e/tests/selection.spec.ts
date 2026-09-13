@@ -1,7 +1,7 @@
 /**
  * Block-selection mode (docs/spec/commands-and-keymap.md R28–R31): Escape selects, Shift+Up/Down
  * extends, Backspace deletes, Tab/Shift+Tab indent the selection, Cmd/Ctrl+A selects all,
- * Cmd/Ctrl+C copies markdown, Enter edits, and a click clears. Two ways in — Escape from the
+ * Cmd/Ctrl+C copies markdown, Cmd/Ctrl+X cuts it, Enter edits, and a click clears. Two ways in — Escape from the
  * editor, and Cmd/Ctrl+click on a rendered row — both have to leave the keyboard working.
  */
 
@@ -12,6 +12,7 @@ import {
   editor,
   MOD,
   openEditing,
+  readBlocks,
   rowDepths,
   rowTexts,
 } from "../helpers/index.js";
@@ -135,6 +136,40 @@ test("Cmd/Ctrl+C copies the selection as markdown (R31)", async ({ page, context
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toMatch(/^- parent\n\s+- child\s*$/);
+});
+
+test("Cmd/Ctrl+X cuts the selection as markdown, and one undo brings it all back (B-245)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const name = "Sel Cut B245";
+  const outliner = await openEditing(page, name, "- parent\n  - child\n- other\n- keep");
+  await clickRow(page, outliner, 0);
+  await page.evaluate(() => navigator.clipboard.writeText("sentinel"));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+ArrowDown");
+  expect(await selectedTexts(page, outliner)).toEqual(["parent", "child", "other"]);
+
+  await page.keyboard.press(`${MOD}+x`);
+  // What Cmd+C would have copied — the same text, subtree included.
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toMatch(/^- parent\n\s+- child\n- other\s*$/);
+  // Gone from the page AND from the database, not just hidden.
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["keep"]);
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["keep"]);
+
+  // One step: a single undo restores every cut block, the child still under its parent.
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["parent", "child", "other", "keep"]);
+  expect(await rowDepths(page, outliner)).toEqual([0, 1, 0, 0]);
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["parent", "child", "other", "keep"]);
 });
 
 test("Alt+Down moves the selected block and keeps it selected (R22)", async ({ page }) => {
