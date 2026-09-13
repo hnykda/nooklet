@@ -73,15 +73,19 @@ through `editor/render/asset-url.ts#assetUrl`, and now so does this.
 ---
 
 ### B-139 · Alt+Enter on a `((block ref))` does nothing
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, reading `app/hosts.ts` for B-137 ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, reading `app/hosts.ts` for B-137 ·
+**Tests:** `e2e/tests/follow-link.spec.ts` "Alt+Enter on a block ref opens the referenced block on
+its page"; `apps/web/src/app/hosts.test.ts` "nav.followLink for block refs"
 
-Put the caret inside `((<block id>))` and press Alt+Enter: nothing happens. Found by reading, not
-yet reproduced in a browser. `followLink`'s block case resolves the page through
-`NavDeps.pageNameForId(link.id)`, but B-82's fix wired `pageNameForId` to `store.ts#resolvePageName`,
-which looks the id up in the PAGE table — a block id never matches, so the navigation is silently
-skipped. Fix: resolve a block's page with `resolveBlockPageName` in that case (a separate dep, or
-call it directly as `revealBlock` already does).
+Put the caret inside `((<block id>))` and press Alt+Enter ("Follow link under cursor"): nothing
+happens — the URL stays on the current page. Reproduced in the e2e test before the fix (received
+`/page/Follow%20Ref%20Source`).
+
+**Fixed 2026-09-13.** `followLink`'s block case resolved the page through
+`NavDeps.pageNameForId(link.id)`, but B-82's fix wired `pageNameForId` to
+`store.ts#resolvePageName`, which looks the id up in the PAGE table, so a block id never matched and
+the navigation was silently skipped. The block case now asks `resolveBlockPageName` (as
+`revealBlock` already did) and zooms with `pageZoomRoutePath`.
 
 ---
 

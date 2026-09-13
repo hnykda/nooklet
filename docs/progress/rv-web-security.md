@@ -84,28 +84,20 @@ review doc only.
   `resolveBlockPageName`. `e2e/tests/follow-link.spec.ts` failed on the old build (stayed on the
   source page), passes now; `hosts.test.ts` 9/9 (block case failed before); e2e
   follow-link+untrusted-content+navigation 12/12.
-- B-139 commit `e2cd507`.
-- Final verification at `e2cd507`: `pnpm -r test` core 332/332, plugin-api 17/17, server 521/521,
-  web 739/739; typecheck clean; combined e2e over all 22 touched/affected specs 126/126 (the
-  palette-focus test that failed three times earlier passed here: flaky under load, also failed at
-  `da85cfb`).
-- Review doc `docs/review/2026-09-13-m7-rv-web-security.md` and probes
-  `tools/probes/javascript-href-sinks.mjs` / `katex-output-attributes.cjs` (both re-run; results in
-  their headers) committed last.
 
 ## In flight
 
-- Nothing. The brief is complete: all ten findings reproduced and fixed (F6's CSS half declined
-  with a probe), B-139 found and fixed, review doc written.
+- Review doc `docs/review/2026-09-13-m7-rv-web-security.md` and final verification runs.
 
 ## Next steps, in order
 
-1. Coordinator: merge `docs/bugs-inbox/rv-web-security.md` (B-135..B-139) into `docs/BUGS.md`.
-2. If `views.spec.ts:461` (palette focus) fails again, give it a bug number: it failed at
-   `da85cfb` too.
-3. Open follow-ups recorded in the review doc's "Not done": SPA CSP, `\kern` bound,
-   `SearchView#errorText`.
+1. Final full web/core/server unit runs; one combined e2e run of every spec this branch touched.
+2. Copy the reviewer's probes that settled facts (`resource-error-probe3.mjs`,
+   `jslink-probe-engine.mjs`, `winopen-probe.mjs`, `katex-dom-probe.cjs`) into `tools/probes/`
+   with result headers.
+3. Write and commit the review doc last.
 
 ## How to resume
 
-`git log --oneline da85cfb..HEAD` shows what landed; each commit names its finding.
+`git log --oneline da85cfb..HEAD` shows what landed; each commit names its finding. Re-read this
+file's "In flight" and check `git status` for uncommitted work in the files it names.

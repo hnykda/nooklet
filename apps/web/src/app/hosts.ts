@@ -251,8 +251,11 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
         return;
       }
       if (link.type === "block" && link.id) {
-        void deps.pageNameForId(link.id).then((pageName) => {
-          if (pageName) deps.navigate(`${pagePath(pageName)}?block=${link.id}`);
+        const blockId = link.id;
+        // By BLOCK id. `deps.pageNameForId` takes a page id (B-82) and found nothing for a block,
+        // so Alt+Enter on a ((ref)) silently went nowhere (B-139).
+        void resolveBlockPageName(blockId).then((pageName) => {
+          if (pageName) deps.navigate(`${pagePath(pageName)}?block=${blockId}`);
         });
       }
     },
