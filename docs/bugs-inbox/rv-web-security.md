@@ -120,3 +120,17 @@ word only — the rule `resolveLanguage` already used for the grammar — reduce
 branches of `CodeFence` use it. `data-lang` keeps the raw info string (an inert attribute value).
 In the owner's graph every fence info string but one is a single language word; the exception is a
 log line pasted after the backticks, which now yields `language-Wed`.
+
+3. **Formula sizes (F6).** KaTeX ran with its default `maxSize` of Infinity, so
+   `$\rule{99999em}{99999em}$` painted a box 99,999em square: the e2e test measured its row at
+   1,574,998 px tall before the fix. `\raisebox{99999em}` and `\hspace{99999em}` did the same.
+
+**Fixed 2026-09-13 (formula sizes).** `editor/render/math.ts#renderTexSync` passes `maxSize: 20`,
+which KaTeX applies to `\rule`, `\raisebox` and `\hspace`. `\kern` is not capped by KaTeX; it
+shifts content sideways, and the e2e test checks a `\kern99999em` block does not widen the page.
+The review also suggested `display: inline-block; overflow: hidden` on `.vr-math-rendered`; not
+done: `tools/probes/inline-block-clip-baseline.mjs` shows it lifts every formula 11 px off the text
+baseline in Chromium and WebKit, and clipping would not stop a tall box growing its row anyway.
+`math.test.ts` (real KaTeX; failed before) and the e2e test above.
+
+---

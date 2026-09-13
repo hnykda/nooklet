@@ -37,7 +37,15 @@ export function isMathLoaded(): boolean {
 /** KaTeX HTML for `tex`, or `null` if KaTeX has not loaded yet (call `loadMath`). Errors render
  * as the source in KaTeX's own error colour rather than throwing — a half-typed formula is the
  * normal case in an editor. `trust: false` (the default, stated) keeps `\href`/`\url`/`\htmlClass`
- * inert, which is what makes `innerHTML` of the result safe. */
+ * inert, which is what makes `innerHTML` of the result safe.
+ *
+ * `maxSize` caps user-given sizes (`\rule`, `\raisebox`, `\hspace`) at 20em. KaTeX's default is
+ * Infinity, and block text comes from sync, imports and agents: `\rule{99999em}{99999em}` painted a
+ * 1.6-million-pixel box over the outline (docs/BUGS.md B-138). KaTeX does not apply it to `\kern`,
+ * which only shifts content sideways; the row's and panels' own containment bound that. The cap is
+ * the fix rather than `overflow` on `.vr-math-rendered`: clipping would not stop the box inflating
+ * its row, and an inline-block with non-visible overflow sits on its bottom edge instead of the
+ * text baseline (`tools/probes/inline-block-clip-baseline.mjs`: 11px off in Chromium and WebKit). */
 export function renderTexSync(tex: string, displayMode = false): string | null {
   if (!katex) return null;
   return katex.renderToString(tex, {
@@ -45,6 +53,7 @@ export function renderTexSync(tex: string, displayMode = false): string | null {
     displayMode,
     trust: false,
     strict: "ignore",
+    maxSize: 20,
   });
 }
 

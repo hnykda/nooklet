@@ -7,7 +7,7 @@
  * - B-137: Alt+Enter on an asset link opens the asset, not `/page/assets/…` (B-51 on the keyboard
  *   path).
  * - B-138: a `[label](javascript:…)` link gets no `href`, and Alt+Enter on it opens nothing; a
- *   fence's info string cannot add app classes.
+ *   fence's info string cannot add app classes; KaTeX cannot paint a 99999em box.
  */
 
 import { expect, test } from "@playwright/test";
@@ -68,4 +68,27 @@ test("a fence's info string names a language, not arbitrary classes", async ({ p
   const classes = ((await code.getAttribute("class")) ?? "").split(/\s+/);
   expect(classes).toEqual(["language-js", "hljs"]);
   await expect(page.locator(".cmd-overlay")).toHaveCount(0);
+});
+
+test("a KaTeX size command cannot paint a page-covering box", async ({ page }) => {
+  const outliner = await openPage(
+    page,
+    "Untrusted Math Size",
+    "- $\\rule{99999em}{99999em}$\n- $\\kern99999em x$ after a kern",
+  );
+  const math = outliner.locator(".vr-math-rendered");
+  await expect(math).toHaveCount(2);
+  // Before the cap this row was 1,574,998 px tall.
+  const row = outliner.locator(".vr-row").first();
+  expect((await row.boundingBox())?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(1000);
+  expect((await math.first().boundingBox())?.width ?? Number.POSITIVE_INFINITY).toBeLessThan(2000);
+  // `\kern` is not capped by KaTeX; the row's containment must keep it from widening the page.
+  const widest = await page.evaluate(() => {
+    let max = document.documentElement.scrollWidth;
+    for (let el = document.querySelector(".vr-outliner"); el; el = el.parentElement) {
+      max = Math.max(max, el.scrollWidth);
+    }
+    return max;
+  });
+  expect(widest).toBeLessThan(5000);
 });
