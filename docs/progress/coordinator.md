@@ -52,6 +52,25 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
 4. Publish-a-graph (2–3 days per the audit) — the wiki is the first candidate. Owner's call.
 5. `changes-since.ts`: classify asset rows beyond "uploaded" (GC deletions, dedupe touches).
 
+## M11 runs — 2026-09-13 evening (in flight)
+
+- `wf_975bcd44-fae` (base `52e5d20`, branches `m11/<slug>`, ports 6410–6415): ref-pages (pages exist once
+  referenced — owner request; ADR 023), keys-in-fields (B-300 option c), remote-rewrite (B-192),
+  mirror-escape (B-342 option b), repair-agenda (SCHEDULED text repair tool — coordinator applies it
+  to the live graph after reading the report; agenda non-task dated blocks + overdue collapse),
+  delete-launcher (Delete page; B-430). Each verified adversarially.
+- `wf_b8e786c1-020` (base `52e5d20`, ports 6416–6418): webkit-focus (B-42 — owner: desktop app only,
+  on sync refresh mid-`[[dru`), ref-label-flash (B-500 — `((id))` on every refresh), search-fallback
+  (explain why search fell back; embeddings were never configured on the owner's graph; Ollama +
+  bge-m3 available).
+- Still from M10 (`wf_ced35de1-fb8`): `m10/editor-keys` (verifier running), `m10/tests-desktop`
+  (finishing). Merged already: `m10/core-ops`, `m10/qafix-regression`.
+- Held until M10 lands: B-380 option (c) (no tag popup inside an existing tag), mermaid out of the
+  PWA precache, sidecar reusing the web build's mermaid.
+- Owner decisions recorded 2026-09-13: all twelve recommendations accepted (see BUGS.md B-194,
+  B-291; spec R38). `/Applications/nooklet.app` removed (in the Trash); never copy builds there.
+  A fresh desktop build from `adadff1` is at `apps/desktop/src-tauri/target/release/bundle/macos/`.
+
 ## M10 run — 2026-09-13 (in flight)
 
 Workflow `wf_ced35de1-fb8`, base `70c9bb9`, branches `m10/<slug>`. editor-keys (B-282/294/295/344/346,
