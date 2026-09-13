@@ -15,6 +15,7 @@ import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
+import { useCanonicalPageRoute } from "./canonicalPageRoute.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
 import { PageIconEditor } from "./PageIcon.js";
@@ -35,6 +36,7 @@ export function PageView(props: PageViewProps): JSX.Element {
   const pageId = () => page()?.id;
   const properties = usePageProperties(pageId);
   const blockId = () => props.blockId?.();
+  useCanonicalPageRoute(props.name, page, blockId);
 
   /** A journal's title is its date, rendered in the reader's chosen format (ADR 018) — there is no
    *  name to edit, so the input becomes a heading. */

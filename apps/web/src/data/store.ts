@@ -58,6 +58,7 @@ import {
   type SearchResult,
 } from "./api-client.js";
 import { invalidateBlockRefs } from "./block-ref-cache.js";
+import { type AliasCandidate, findPageByAlias } from "./page-alias.js";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult, TaskRow } from "./types.js";
 
 // ---------------------------------------------------------------------------------------------
@@ -327,32 +328,49 @@ export function usePageByName(
     () => {
       const n = name();
       if (n === undefined) return undefined;
-      return stamped(n, ["page"]);
+      // `page_prop` too: an alias added or removed changes what this name resolves to (B-104).
+      return stamped(n, ["page", "page_prop"]);
     },
-    async ({ value: n }) => {
-      const rows = await queryAs<PageSqlRow>(
-        "SELECT * FROM page WHERE key = ? AND deleted_at IS NULL LIMIT 1",
-        [normalizePageName(n)],
-      );
-      if (rows[0]) return toPageRow(rows[0]);
-
-      // A journal day can be addressed by ANY of its title formats, while the page itself is
-      // stored under whichever format the graph was written with — "Mon, 07.09.2026" in a Logseq
-      // graph using that pattern. Search results and block references both hand out the ISO date
-      // (`journal_date`), so a name lookup alone reported "This page doesn't exist yet" for a
-      // journal that plainly did exist. Resolve through the day number, which is format-agnostic.
-      const day = parseJournalTitle(n);
-      if (day !== null) {
-        const byDay = await queryAs<PageSqlRow>(
-          "SELECT * FROM page WHERE journal_day = ? AND deleted_at IS NULL LIMIT 1",
-          [day],
-        );
-        if (byDay[0]) return toPageRow(byDay[0]);
-      }
-      return null;
+    async ({ value: n }, { value: previous }): Promise<PageRow | null> => {
+      // The same object back when nothing about the row changed (B-201). Every refetch built a
+      // fresh row, and a resource whose value is a new object notifies every reader — so a page
+      // created or renamed ANYWHERE re-ran `PageView`'s title-draft effect and threw away a title
+      // being typed. Same fields, same reference, no notification.
+      const row = await findPageRowByName(n);
+      return row && previous && samePageRow(row, previous) ? previous : row;
     },
   );
   return resource;
+}
+
+async function findPageRowByName(n: string): Promise<PageRow | null> {
+  const rows = await queryAs<PageSqlRow>(
+    "SELECT * FROM page WHERE key = ? AND deleted_at IS NULL LIMIT 1",
+    [normalizePageName(n)],
+  );
+  if (rows[0]) return toPageRow(rows[0]);
+
+  // A journal day can be addressed by ANY of its title formats, while the page itself is
+  // stored under whichever format the graph was written with — "Mon, 07.09.2026" in a Logseq
+  // graph using that pattern. Search results and block references both hand out the ISO date
+  // (`journal_date`), so a name lookup alone reported "This page doesn't exist yet" for a
+  // journal that plainly did exist. Resolve through the day number, which is format-agnostic.
+  const day = parseJournalTitle(n);
+  if (day !== null) {
+    const byDay = await queryAs<PageSqlRow>(
+      "SELECT * FROM page WHERE journal_day = ? AND deleted_at IS NULL LIMIT 1",
+      [day],
+    );
+    if (byDay[0]) return toPageRow(byDay[0]);
+  }
+  // Last: a page that lists this name as an `alias::` (B-104; `./page-alias.ts`).
+  const aliased = await findPageByAlias<PageSqlRow & AliasCandidate>(n);
+  if (aliased) return toPageRow(aliased);
+  return null;
+}
+
+function samePageRow(a: PageRow, b: PageRow): boolean {
+  return (Object.keys(a) as Array<keyof PageRow>).every((k) => a[k] === b[k]);
 }
 
 /** Every live page, journals included — the page switcher (`views/PageFinder.tsx`) fuzzy-matches
@@ -624,7 +642,10 @@ export function useLinkedReferences(
       // …and on `syncVersion`: a push landing means the server can see a write it could not
       // when this was last fetched (B-83).
       syncVersion();
-      return stamped(t, ["block", "page"]);
+      // …and on `page_prop`: "Pages tagged X" comes from other pages' `tags::`, and a page's
+      // `alias::` decides which links count. Another device changing either arrives as a pulled
+      // `page.prop` op, which bumps `page_prop` and nothing else — the list stayed stale (B-202).
+      return stamped(t, ["block", "page", "page_prop"]);
     },
     ({ value: t }) => apiClient.pageBacklinks(t),
   );

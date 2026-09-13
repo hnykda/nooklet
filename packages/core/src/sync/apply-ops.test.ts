@@ -251,6 +251,86 @@ describe("block.create placement + reserved properties", () => {
     expect(props).toEqual([{ key: "area", value: "writing", hlc: expect.any(String) }]);
   });
 
+  it("marker/priority/collapsed in the properties bag land in their columns (B-89)", () => {
+    // The row INSERT stamps marker_hlc/priority_hlc/collapsed_hlc with the create's own HLC, and
+    // the bag used to go through the LWW writer afterwards — which refuses a write whose HLC ties
+    // the column's. So these three keys, and only these, vanished from a bag (`scheduled` worked).
+    const pageId = newId();
+    const blockId = newId();
+    const ops = [
+      makeOp(hlcAt(BASE, DEV_A), DEV_A, pageId, {
+        kind: "page.create",
+        name: "B-89",
+        journalDay: null,
+        createdAt: BASE,
+      }),
+      makeOp(hlcAt(BASE + 1, DEV_A), DEV_A, blockId, {
+        kind: "block.create",
+        place: { pageId, parentId: null, order: "a0" },
+        content: "ship it",
+        properties: { marker: "TODO", priority: "A", collapsed: "true", area: "writing" },
+        createdAt: BASE + 1,
+      }),
+    ];
+    const res = applyOps(driver, ops);
+    expect(res.applied).toBe(2);
+    const block = getBlock(driver, blockId);
+    expect(block?.marker).toBe("TODO");
+    expect(block?.priority).toBe("A");
+    expect(block?.collapsed).toBe(true);
+    // Reserved keys never leak into block_prop (rule 4); the ordinary key still does.
+    expect(listBlockProps(driver, blockId)).toEqual([
+      { key: "area", value: "writing", hlc: expect.any(String) },
+    ]);
+    // A replay of the same op on another device lands on the same row (what `verify` compares).
+    const other = newDb();
+    rebuild(other, ops);
+    expect(getBlock(other, blockId)).toEqual(block);
+  });
+
+  it("a set top-level field wins over the bag; an unset one takes the bag's value (B-89)", () => {
+    // Core producers (templates, outline import) always send `marker: null` / `collapsed: false`
+    // next to a bag, so "unset" has to mean null/false, not only "key absent" — otherwise their
+    // explicit defaults would shadow a bag value exactly the way the HLC tie used to.
+    const pageId = createPage(hlcAt(BASE, DEV_A), DEV_A);
+    const blockId = newId();
+    applyOps(driver, [
+      makeOp(hlcAt(BASE + 1, DEV_A), DEV_A, blockId, {
+        kind: "block.create",
+        place: { pageId, parentId: null, order: "a0" },
+        content: "x",
+        marker: "DOING",
+        priority: null,
+        collapsed: false,
+        properties: { marker: "TODO", priority: "A", collapsed: "true" },
+        createdAt: BASE + 1,
+      }),
+    ]);
+    const block = getBlock(driver, blockId);
+    expect([block?.marker, block?.priority, block?.collapsed]).toEqual(["DOING", "A", true]);
+  });
+
+  it("an invalid reserved value in the bag is dropped, the block is still created (B-89)", () => {
+    // Same contract as every other bag key: an invalid inline property is not written, but it
+    // does not fail the create. Only a top-level marker/priority rejects outright.
+    const pageId = createPage(hlcAt(BASE, DEV_A), DEV_A);
+    const blockId = newId();
+    const res = applyOps(driver, [
+      makeOp(hlcAt(BASE + 1, DEV_A), DEV_A, blockId, {
+        kind: "block.create",
+        place: { pageId, parentId: null, order: "a0" },
+        content: "x",
+        properties: { marker: "SOMEDAY", priority: "Z" },
+        createdAt: BASE + 1,
+      }),
+    ]);
+    expect(res.applied).toBe(1);
+    const block = getBlock(driver, blockId);
+    expect(block?.marker).toBeNull();
+    expect(block?.priority).toBeNull();
+    expect(listBlockProps(driver, blockId)).toEqual([]);
+  });
+
   it("falls back an invalid/missing parent to top-level and logs the corrected place", () => {
     const pageId = createPage(hlcAt(BASE, DEV_A), DEV_A);
     const blockId = newId();

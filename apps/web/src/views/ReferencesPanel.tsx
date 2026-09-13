@@ -56,6 +56,7 @@ import {
 } from "./referenceGrouping.js";
 import { countLabel, firstRows, REFERENCE_ROWS_STEP } from "./referenceWindow.js";
 import "./references.css";
+import { TaggedPages } from "./TaggedPages.js";
 
 export interface ReferencesPanelProps {
   /** The page name/date passed to `page.backlinks`'s `target`. */
@@ -322,7 +323,11 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   };
 
   const hasAnything = createMemo(
-    () => allLinked().length > 0 || unlinkedCount() > 0 || linkResult() !== null,
+    () =>
+      allLinked().length > 0 ||
+      unlinkedCount() > 0 ||
+      linkResult() !== null ||
+      (data()?.taggedPages.length ?? 0) > 0,
   );
 
   return (
@@ -340,6 +345,13 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
             </button>
           </p>
         </Show>
+
+        <TaggedPages
+          target={props.target}
+          pages={data()?.taggedPages ?? []}
+          total={data()?.taggedTotal ?? 0}
+          onNavigate={props.onNavigate}
+        />
 
         <Show when={allLinked().length > 0}>
           <section class="linked-references" aria-label="Linked references">

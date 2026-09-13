@@ -88,3 +88,34 @@ export function rebuildPageTags(driver: SqlDriver, pageId: string): void {
     ]);
   }
 }
+
+export interface TaggedPageRow {
+  page_id: string;
+  source: "property" | "intrinsic";
+}
+
+/**
+ * The live pages carrying any of `tagKeys` (a tag page's own key plus its alias keys — the same set
+ * backlinks match references against), excluding `excludePageId`: a page tagged with itself is not
+ * news on its own tag page. A page tagged twice over (by its name and by an alias) is listed once,
+ * as `intrinsic` if either row is. Ordinary pages come first by name, then journal days newest
+ * first — under `Journal` that is the order a reader scans, and under a tag mixing both the named
+ * pages are worth seeing before a run of dates. ADR 017's `tagged_pages` (B-111).
+ */
+export function pagesTaggedWith(
+  driver: SqlDriver,
+  tagKeys: readonly string[],
+  excludePageId: string | null,
+): TaggedPageRow[] {
+  if (tagKeys.length === 0) return [];
+  const placeholders = tagKeys.map(() => "?").join(",");
+  return driver.all<TaggedPageRow>(
+    `SELECT pt.page_id AS page_id,
+            CASE WHEN MAX(pt.source = 'intrinsic') THEN 'intrinsic' ELSE 'property' END AS source
+     FROM page_tag pt JOIN page p ON p.id = pt.page_id AND p.deleted_at IS NULL
+     WHERE pt.tag_key IN (${placeholders}) AND p.id IS NOT ?
+     GROUP BY pt.page_id
+     ORDER BY p.journal_day IS NOT NULL, p.journal_day DESC, p.key`,
+    [...tagKeys, excludePageId],
+  );
+}

@@ -7,6 +7,7 @@ export * from "./model.js";
 export * from "./ops.js";
 export * from "./order.js";
 export * from "./outline.js";
+export * from "./page-alias.js";
 export * from "./page-name.js";
 export * from "./query.js";
 export * from "./refs.js";

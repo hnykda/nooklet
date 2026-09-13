@@ -52,6 +52,15 @@ export interface BacklinkRef {
   updatedAt?: string;
 }
 
+/** A page carrying the backlinks target as a page-level tag (ADR 017, B-111). */
+export interface TaggedPage {
+  id: string;
+  /** Wire name — a journal's ISO date. */
+  page: string;
+  /** `intrinsic` is derived (every journal day is a `Journal`) and cannot be removed. */
+  source: "property" | "intrinsic";
+}
+
 export interface BacklinksResult {
   target: string;
   /** Every linked reference, up to `MAX_LINKED_REFERENCES` (see `linkedTotal`). */
@@ -61,6 +70,9 @@ export interface BacklinksResult {
   unlinked: BacklinkRef[];
   /** More unlinked mentions exist than `unlinked` holds. */
   unlinkedTruncated: boolean;
+  taggedPages: TaggedPage[];
+  /** How many pages carry the target as a page-level tag, whether or not all are in `taggedPages`. */
+  taggedTotal: number;
 }
 
 /** Linked references fetched per page (the server's `Limit` ceiling). */
@@ -209,6 +221,8 @@ interface BacklinksWireOutput {
   linked_total?: number;
   unlinked: Array<{ id: string; page: string; text: string }>;
   unlinked_truncated?: boolean;
+  tagged_pages?: TaggedPage[];
+  tagged_total?: number;
   cursor?: string;
 }
 
@@ -282,6 +296,8 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
         opts.getToken,
       );
       const linkedWire = [...first.linked];
+      // `cursor` advances `tagged_pages` together with `linked` (B-111), so both are collected.
+      const taggedWire = [...(first.tagged_pages ?? [])];
       let cursor = first.cursor;
       while (cursor && linkedWire.length < MAX_LINKED_REFERENCES) {
         const next = await post<BacklinksWireOutput>(
@@ -291,12 +307,15 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
           opts.getToken,
         );
         linkedWire.push(...next.linked);
+        taggedWire.push(...(next.tagged_pages ?? []));
         cursor = next.cursor;
       }
       // The cursor is an offset into a list an edit can shift between two requests; a row seen
       // twice would be counted twice.
       const seen = new Set<string>();
       const unique = linkedWire.filter((r) => !seen.has(r.id) && seen.add(r.id));
+      const seenTagged = new Set<string>();
+      const uniqueTagged = taggedWire.filter((r) => !seenTagged.has(r.id) && seenTagged.add(r.id));
       return {
         target: first.target,
         linked: unique.slice(0, MAX_LINKED_REFERENCES).map((r) => ({
@@ -308,6 +327,8 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
         linkedTotal: first.linked_total ?? linkedWire.length,
         unlinked: first.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
         unlinkedTruncated: first.unlinked_truncated ?? false,
+        taggedPages: uniqueTagged,
+        taggedTotal: first.tagged_total ?? uniqueTagged.length,
       };
     },
 
