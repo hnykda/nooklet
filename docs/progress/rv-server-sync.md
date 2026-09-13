@@ -21,8 +21,8 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 |---|---|---|---|
 | F1 children orphaned when a later device place wins over a server cross-page move | high | B-120 | fixed b913148 |
 | F2 deleted descendants left behind by a cross-page move; restore → invisible | medium | B-120 (same mechanism) | fixed 6e1281f |
-| F3 to_page / move_to_page / merge commit, then throw | medium | B-122 | fixed (see Done) |
-| F4 batch.undo / trash.restore report success on a rejected un-delete | medium | B-90 (existing) | logged |
+| F3 to_page / move_to_page / merge commit, then throw | medium | B-122 | fixed 05e0145 |
+| F4 batch.undo / trash.restore report success on a rejected un-delete | medium | B-90 (existing) | fixed (see Done) |
 | F5 verify replays rejected ops | medium | B-123 | logged |
 | F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | logged |
 | F7 query `ref` prefilter drops property-only refs | low | B-124 | logged |
@@ -44,14 +44,18 @@ re-pointed at `da85cfb` before any work, as the brief requires.
   back, 0 mismatches, verify ok. Suites: core 335, server 526, web 684 — all pass (flaky timeouts
   under load 20–40 rerun green: core property test, tokens quadratic timing, plugin host, web
   render-seams). `verify` on the real graph copy OK (20,411 ops).
-- F3 / B-122 — (this commit): `ops/apply-all-or-nothing.ts` (savepoint + rollback before throwing)
+- F3 / B-122 — `05e0145`: `ops/apply-all-or-nothing.ts` (savepoint + rollback before throwing)
   used by `block.to_page`, `block.move_to_page`, `page.merge`; `resolveOrMintPage` returns a live
   page already stored under the would-be key. Tests `ops/refactor-atomicity.test.ts` (4, all fail
   before). Server suite 530/530.
+- F4 / B-90 follow-up — (this commit): `batch.undo` pre-checks page-name clashes (conflict) and
+  applies all-or-nothing; `trash.restore` refuses `new_name` on a journal day and applies
+  all-or-nothing. Tests `ops/undelete-collision.http.test.ts` (2) + 2 guard tests in
+  `ops/refactor-atomicity.test.ts`; all four fail before.
 
 ## Next steps, in order
 
-F4, F5, F6, F7, F8, F9, F10, then the review doc.
+F5, F6, F7, F8, F9, F10, then the review doc.
 
 ## How to resume
 

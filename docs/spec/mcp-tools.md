@@ -1439,7 +1439,11 @@ single-page `outline`/`page` convention the other 17 tools use cannot represent;
 **Errors**: `not_found` — no `changes` row exists for `batch_id`; `invalid` — `batch_id` touched an
 entity type outside the op log (currently only `asset`, from `asset_upload`), which cannot be
 reconstructed through `applyOps` (`hint`: "only page/block changes recorded via the op log can be
-undone; asset uploads are not reversible this way").
+undone; asset uploads are not reversible this way"), or the reducer rejected any compensating op
+(nothing is written); `conflict` — a page the undo would bring back or rename back has lost its
+name to a live page (`details.live_page_id`, `details.page_id`); nothing is written (B-90
+follow-up: the page's op used to be rejected while its blocks were un-deleted, and the call
+reported success).
 
 ---
 
@@ -2200,8 +2204,10 @@ against LIVE pages with the key.
   "seq": 48260, "batch_id": "1k7f3qj4x1wzr2", "dry_run": false }
 ```
 
-**Errors**: `invalid` — neither or both of `id`/`page` given, `new_name` on a block, or the target
-exists but is not in the trash; `not_found` — no such id, or no deleted page with that name;
+**Errors**: `invalid` — neither or both of `id`/`page` given, `new_name` on a block or on a
+journal day (its name is its date, ADR 018), the target exists but is not in the trash, or the
+reducer rejected any op of the restore (nothing is written); `not_found` — no such id, or no
+deleted page with that name;
 `conflict` — a live page has the (new) name (`details.live_page_id`, `hint` mentions `new_name`),
 or the block's page is itself in the trash (`details.page_id`, `hint` gives the `trash_restore`
 call for the page).

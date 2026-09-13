@@ -107,6 +107,17 @@ still deleted, its blocks un-deleted onto it. `trash.restore {new_name}` on a jo
 coerces the rename back to the ISO date, rename and un-delete are both rejected, blocks
 un-deleted, 200. `trash-restore.ts`'s header still says core does not re-check the name.
 
+**Fixed 2026-09-13.** `batch.undo` checks, before minting anything, that every page it would bring
+back (or rename back) still has its name free, and answers `conflict` with
+`details.live_page_id` otherwise. `trash.restore` refuses `new_name` for a journal day (`invalid`:
+its name is its date). Both now apply through `ops/apply-all-or-nothing.ts` (B-122), so anything
+core still rejects rolls the whole call back. Header and mcp-tools.md §4.3.17/§4.3.30 updated.
+Tests: `packages/server/src/ops/undelete-collision.http.test.ts` "batch.undo of a page delete,
+after a new page took the name, is conflict" and "trash.restore refuses new_name for a journal
+day, whose name is its date" (both fail before: 200); the savepoint guard:
+`packages/server/src/ops/refactor-atomicity.test.ts` "batch.undo writes nothing when core rejects
+any op of it" and "trash.restore writes nothing when core rejects any op of it" (fail without it).
+
 ---
 
 ### B-123 · `nooklet verify` reports divergence after a late push loses a page-name collision

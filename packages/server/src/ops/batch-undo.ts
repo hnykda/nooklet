@@ -24,7 +24,7 @@
  *    into thinking an asset upload was undone.
  */
 
-import type { Op } from "@nooklet/core";
+import { normalizePageName, type Op } from "@nooklet/core";
 import { z } from "zod";
 import {
   type BlockChangeSnapshot,
@@ -34,6 +34,7 @@ import {
   snapshotPage,
   wirePageNameOf,
 } from "../rows.js";
+import { applyAllOrNothing } from "./apply-all-or-nothing.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { currentHeadSeq } from "./resolve.js";
@@ -70,7 +71,9 @@ export const batchUndo = defineOp({
     "undo, call batch_undo again with THIS call's batch_id (there is no separate redo concept). " +
     "It does NOT check whether the entity changed again after the original batch - it applies the " +
     "restore unconditionally, and since every field is last-writer-wins by a fresh timestamp, the " +
-    "undo always wins over anything in between. Cannot undo asset_upload (assets are not in the " +
+    "undo always wins over anything in between. If a page it would restore has lost its name to a " +
+    "live page since, it fails with conflict and writes nothing; so does any restore the database " +
+    "rejects. Cannot undo asset_upload (assets are not in the " +
     "op log); such a batch_id fails with an invalid error. Use dry_run to preview what would be " +
     "restored/deleted without writing anything.",
   input: z
@@ -119,6 +122,29 @@ export const batchUndo = defineOp({
       const firstByEntity = new Map<string, ChangeRow>();
       for (const row of rows) {
         if (!firstByEntity.has(row.entity_id)) firstByEntity.set(row.entity_id, row);
+      }
+
+      // A page this undo brings back to life (or renames back) needs its old name free. Core
+      // rejects the page's op if a live page has taken it (B-90) but applies the rest of the
+      // batch, so undoing a page delete would un-delete the blocks onto a page that stays in the
+      // trash and still report "restored". Ask first, so the caller hears why; the savepoint in
+      // `applyAllOrNothing` below catches any rejection this check does not foresee.
+      for (const row of firstByEntity.values()) {
+        if (row.entity_type !== "page" || row.before_json === null) continue;
+        const before = JSON.parse(row.before_json) as PageChangeSnapshot;
+        if (before.deleted_at !== null) continue;
+        const clash = ctx.db.get<{ id: string; name: string }>(
+          "SELECT id, name FROM page WHERE key = ? AND deleted_at IS NULL AND id != ?",
+          [normalizePageName(before.name), row.entity_id],
+        );
+        if (clash && !firstByEntity.has(clash.id)) {
+          throw new OpError(
+            "conflict",
+            `cannot restore page "${before.name}": a live page is already named "${clash.name}"`,
+            "rename or delete the live page first, or restore the deleted page from the trash with trash_restore and new_name",
+            { live_page_id: clash.id, page_id: row.entity_id },
+          );
+        }
       }
 
       const ops: Op[] = [];
@@ -205,7 +231,8 @@ export const batchUndo = defineOp({
         }
       }
 
-      const applyResult = ops.length > 0 ? await ctx.applyOps(ops) : undefined;
+      const applyResult =
+        ops.length > 0 ? await applyAllOrNothing(ctx, ops, "batch_undo") : undefined;
       return {
         page: summarizePages(touchedPages),
         created: [],

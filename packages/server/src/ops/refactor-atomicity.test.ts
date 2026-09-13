@@ -140,3 +140,61 @@ describe("refactor ops are all or nothing (B-122)", () => {
     expect(shape(await tree("Tgt"))).toEqual([["t", []]]);
   });
 });
+
+/** Like `rejectOneMoveInTheNextWrite`, for writes that carry no move: the next write's first
+ * block op becomes a `block.place` onto a page that does not exist, so core rejects it. */
+function rejectOneOpInTheNextWrite(): void {
+  let armed = true;
+  unregister = registerBeforeWrite(s.serverCtx, (tx) => {
+    if (!armed) return;
+    const i = tx.ops.findIndex((op) => op.payload.kind.startsWith("block."));
+    const op = tx.ops[i];
+    if (!op) return;
+    armed = false;
+    tx.ops[i] = {
+      ...op,
+      payload: {
+        kind: "block.place",
+        place: { pageId: "nopage00000000", parentId: null, order: "a0" },
+      },
+    };
+  });
+}
+
+describe("batch.undo and trash.restore are all or nothing too (B-90 follow-up)", () => {
+  it("batch.undo writes nothing when core rejects any op of it", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Undo Me",
+      markdown: "- a\n- b",
+    });
+    const [a] = await tree("Undo Me");
+    const edit = await post(s.app, "/api/v1/block.update", s.writeToken, {
+      id: a.id,
+      content: "a edited",
+    });
+    expect(edit.status).toBe(200);
+    const before = counts();
+    rejectOneOpInTheNextWrite();
+    const u = await post(s.app, "/api/v1/batch.undo", s.writeToken, {
+      batch_id: edit.json.batch_id,
+    });
+    expect(u.status).toBe(400);
+    expect(counts()).toEqual(before);
+    expect(shape(await tree("Undo Me"))).toEqual([
+      ["a edited", []],
+      ["b", []],
+    ]);
+  });
+
+  it("trash.restore writes nothing when core rejects any op of it", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Bin", markdown: "- p\n  - c" });
+    const [p] = await tree("Bin");
+    await post(s.app, "/api/v1/block.delete", s.writeToken, { id: p.id });
+    const before = counts();
+    rejectOneOpInTheNextWrite();
+    const r = await post(s.app, "/api/v1/trash.restore", s.writeToken, { id: p.id });
+    expect(r.status).toBe(400);
+    expect(counts()).toEqual(before);
+    expect(await tree("Bin")).toEqual([]);
+  });
+});
