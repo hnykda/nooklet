@@ -4,8 +4,9 @@ import { z } from "zod";
 import {
   checkSemanticAvailability,
   distanceToScore,
-  embedQueryVector,
+  embedQueryForSearch,
   rrfFuse,
+  type SemanticFallback,
   semanticCandidates,
 } from "../embeddings/index.js";
 import { wirePageNameOf } from "../rows.js";
@@ -95,8 +96,9 @@ export const search = defineOp({
   description:
     'Finds blocks and pages. mode: "hybrid" (default) combines full-text and semantic ' +
     'similarity; "keyword" for exact words or "quoted phrases" and -exclusions; "semantic" for ' +
-    "meaning-based matches (falls back to keyword if no embedding model is configured - check " +
-    "mode_used). Filters: tags (all must match), properties (exact key=value, e.g. finding " +
+    "meaning-based matches (falls back to keyword if semantic search is unavailable - mode_used " +
+    "says which ran, and fallback says why: not set up, still indexing, embedding server " +
+    "unreachable, ...). Filters: tags (all must match), properties (exact key=value, e.g. finding " +
     "scheduled or marker values), namespace, pages (restrict to specific pages), " +
     "updated_after/updated_before, journals_only. Each hit has the block or page id, its page, a " +
     "snippet with the match highlighted, a breadcrumb, and a 0-1 score. Paginated. Read around a " +
@@ -141,6 +143,33 @@ export const search = defineOp({
     mode_used: z
       .enum(["hybrid", "keyword", "semantic"])
       .describe('"keyword" if hybrid/semantic was requested but embeddings are unavailable'),
+    // B-520: `mode_used` alone reached the reader as "Fell back to keyword search", with nothing
+    // to say whether to open Settings, start Ollama, or wait for indexing. `../embeddings/
+    // semantic-search.ts` owns the reasons and their wording.
+    fallback: z
+      .object({
+        reason: z.enum([
+          "sqlite_vec_unavailable",
+          "not_configured",
+          "indexing",
+          "index_incomplete",
+          "provider_unreachable",
+          "model_missing",
+          "query_embedding_failed",
+        ]),
+        message: z.string().describe("One sentence saying why, fit to show as-is"),
+        provider: z.string().optional(),
+        model: z.string().optional(),
+        host: z.string().optional().describe("The embedding server's address"),
+        indexed: z.number().int().optional().describe("Vectors stored so far"),
+        total: z.number().int().optional().describe("Units the finished index will hold"),
+        errors: z.number().int().optional().describe("Units that failed to embed"),
+        error: z.string().optional().describe("The underlying error, verbatim"),
+      })
+      .optional()
+      .describe(
+        "Present exactly when mode_used is not the mode requested: why semantic search did not run",
+      ),
   }),
   annotations: {
     readOnlyHint: true,
@@ -150,7 +179,8 @@ export const search = defineOp({
   },
   scopes: ["read"],
   expose: { mcp: { alwaysLoad: true } },
-  render: (out) => `${out.hits.length} hit(s) (${out.mode_used})`,
+  render: (out) =>
+    `${out.hits.length} hit(s) (${out.mode_used})${out.fallback ? ` - ${out.fallback.message}` : ""}`,
   handler: async (input, ctx) => {
     const driver = ctx.db;
     const updatedAfter =
@@ -159,7 +189,9 @@ export const search = defineOp({
       input.updated_before !== undefined ? parseWhen("updated_before", input.updated_before) : null;
     const pageIds = input.pages ? await resolvePageIds(ctx, input.pages) : undefined;
     if (input.pages && input.pages.length > 0 && pageIds && pageIds.length === 0) {
-      return { hits: [], mode_used: "keyword" as const };
+      // Nothing was searched, so nothing fell back: answering "keyword" here told an agent that
+      // semantic search was unavailable when it had not even been tried (B-521).
+      return { hits: [], mode_used: input.mode };
     }
 
     // Built once, never the raw string: FTS5's query language throws on ordinary punctuation
@@ -170,15 +202,19 @@ export const search = defineOp({
     const candidates: Candidate[] = [];
 
     // Soft-fail per ADR 010: hybrid/semantic degrade to keyword whenever sqlite-vec isn't loaded,
-    // no active embedding model exists, or embedding the query itself fails (network/Ollama down).
+    // no active embedding model exists, or embedding the query itself fails (network/Ollama down)
+    // — and `fallback` records which of those it was (B-520).
     const availability =
       input.mode !== "keyword" ? checkSemanticAvailability(driver) : { available: false as const };
-    const queryVec =
+    const embedded =
       availability.available && availability.model
-        ? await embedQueryVector(driver, availability.model, input.query, ctx.signal)
+        ? await embedQueryForSearch(driver, availability.model, input.query, ctx.signal)
         : undefined;
+    const queryVec = embedded?.vector;
     const modeUsed: "hybrid" | "keyword" | "semantic" =
       input.mode === "keyword" || !queryVec ? "keyword" : input.mode;
+    const fallback: SemanticFallback | undefined =
+      modeUsed === input.mode ? undefined : (availability.fallback ?? embedded?.fallback);
 
     if (input.scope === "blocks" || input.scope === "all") {
       const conditions = ["b.deleted_at IS NULL"];
@@ -407,6 +443,7 @@ export const search = defineOp({
       })),
       cursor: hasMore ? Buffer.from(String(offset + input.limit)).toString("base64") : undefined,
       mode_used: modeUsed,
+      fallback,
     };
   },
 });

@@ -16,3 +16,18 @@ same words cover every other reason the server degrades: sqlite-vec not loaded, 
 server not answering, a model registered but still backfilling, a backfill that stopped on errors.
 The server already knows which one it is (`checkSemanticAvailability`, `embeddings.status`); the
 `search` op only returns `mode_used`.
+
+---
+
+### B-521 · `search` with a `pages` filter naming no existing page answers `mode_used: "keyword"` for a hybrid request
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, search-fallback (adding B-520's
+`fallback`) · **Test:** `packages/server/src/ops/search-fallback.http.test.ts` › "reports the
+requested mode — nothing was searched, so nothing fell back"
+
+`pages: ["No Such Page"]` short-circuits before anything runs and returned `mode_used: "keyword"`,
+which the op's own description tells an agent to read as "embeddings are unavailable". Nothing was
+searched in any mode. It now returns the requested mode, empty hits, and no `fallback`. The web
+client never sends `pages`, so this was agent-visible only.
+
+**Fixed 2026-09-13.** `packages/server/src/ops/search.ts` (the early return). The test fails on
+the old code.

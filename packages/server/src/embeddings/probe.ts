@@ -27,7 +27,8 @@ export interface ProviderProbe {
 
 const DEFAULT_TIMEOUT_MS = 2500;
 
-function messageOf(err: unknown): string {
+/** An error as one line, with `fetch`'s `.cause` attached. Also used by `./semantic-search.ts`. */
+export function messageOf(err: unknown): string {
   if (err instanceof Error) {
     // `fetch` reports a refused connection as an opaque "fetch failed" with the real reason on
     // `.cause` — which is the half that tells you it was ECONNREFUSED rather than DNS or TLS.
