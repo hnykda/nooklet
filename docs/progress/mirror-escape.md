@@ -60,8 +60,14 @@ Bugs go to `docs/bugs-inbox/mirror-escape.md` (new numbers B-470..B-479), never 
   blocks). Unit: core 416/416, server 676/676, web 1138/1138; typecheck clean. One core run had
   `sync.property.test.ts` "converges regardless of interleaving" time out at 5.4 s under load;
   12/12 on rerun alone (does not touch outline).
-
-- Step 2 (this commit): `server/src/ops/shaped-content-lines.http.test.ts` (4: page_read escaped +
+- Step 3 (this commit): `e2e/tests/shaped-line-clipboard.spec.ts` — the bug's own steps (Shift+Enter,
+  type `scheduled:: 2026-09-20`, click away), copy the row (`ids: "none"` text) and paste it.
+  Base `outline.ts` swapped in: red at the clipboard text (`scheduled::` unescaped); a throwaway
+  variant with a loose clipboard check showed the paste gives content `call mom` +
+  a real `scheduled` = `2026-09-20` property. Green with the fix. Related e2e specs (block-properties,
+  agent-ops, context-menu, mirror-live, page-export, selection, paste-page-properties,
+  fence-task-clipboard, journal-agenda, embeds + the new one): 86 passed, 1 skipped, port 6413.
+- `a770aaa` step 2: `server/src/ops/shaped-content-lines.http.test.ts` (4: page_read escaped +
   an unrelated old_str edit keeps the line text — on base it silently gave the task a scheduled
   date; old_str copied from page_read edits it and dropping the backslash makes it real; escaped
   markdown writes text next to a real property; content copied from page_read round-trips), and
@@ -76,10 +82,7 @@ Bugs go to `docs/bugs-inbox/mirror-escape.md` (new numbers B-470..B-479), never 
 
 ## Next steps
 
-1. e2e: copy/paste of a block whose text has a typed `scheduled::` line (selection-clipboard
-   `ids: "none"` → paste `parseOutline`), like `e2e/tests/fence-task-clipboard.spec.ts` for B-310.
-   Check red on base (swap base outline.ts, rebuild), green after. Port 6413.
-2. Log the other lossy shapes found by `scratchpad/.../other-shapes.ts` (bullet-shaped
+1. Log the other lossy shapes found by `scratchpad/.../other-shapes.ts` (bullet-shaped
    continuation lines `- `/`* `/`+ `/`1. ` become child blocks; a text starting with a task-marker
    word or `[#A]` becomes a task/priority) as B-470/B-471, with a probe in `tools/probes/`.
-3. Inbox B-342 "Fixed" paragraph; final suites; StructuredOutput.
+2. Inbox B-342 "Fixed" paragraph; final suites; StructuredOutput.
