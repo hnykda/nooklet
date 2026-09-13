@@ -34,18 +34,23 @@ name conflict is a UI dead end (medium); Q6 trash restore ignores aliases (low).
   Megapage `## Plánování…` → existing page, `created: false`, block `## [[Plánování…]]`;
   `[[Alex]] by chtěl…` → page `Alex by chtěl něco jako:`; verify OK (20,421 ops).
 
-- Q5 (B-255) — Trash: a page restore refused with `conflict` opens `TrashRenameForm` on the row
+- Q5 (B-255) `7d30652` — Trash: a page restore refused with `conflict` opens `TrashRenameForm` on the row
   (prefilled "X (restored)", passes `new_name`); name state lifted into `TrashView`, unchanged
   rows keep their objects across refetches. Test: `e2e/tests/trash-conflict.spec.ts` (2, both
   failed before). Real graph: `@Sam Example` restored under the suggested name from the form.
 
+- Q6 (B-256) — `trash.restore` refuses a name a live page uses as an alias (`livePageAliasing`,
+  `assertNameFree`), own name and `new_name`. Tests: `trash-restore-alias.http.test.ts` (2; the
+  merge case failed before), alias case in `e2e/tests/trash-conflict.spec.ts`. Real graph: merge
+  Alex → @Alex, restore Alex → 409, `new_name` works; verify OK.
+
 ## In flight
 
-- Q6: starting — `packages/server/src/ops/trash-restore.ts` `livePageWithKey` ignores aliases.
+- Final pass: all touched e2e specs in one run, full unit suites, verify on a fresh copy.
 
 ## Next, in order
 
-Q6, then a final pass: rerun touched e2e specs together, unit suites, verify.
+Final pass, then hand back.
 
 ## How to resume
 

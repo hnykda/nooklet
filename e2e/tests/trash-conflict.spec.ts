@@ -56,3 +56,33 @@ test("Cancel closes the rename form and leaves the row in the trash", async ({ p
   await expect(row.locator(".trash-rename")).toHaveCount(0);
   await expect(row).toHaveCount(1);
 });
+
+test("a name another page uses as an alias is refused the same way, with the reason (B-256)", async ({
+  page,
+}) => {
+  await seedPage(page, "Trash Alias Nick", "- the old nickname page");
+  await api(page, "page.delete", { page: "Trash Alias Nick" });
+  await api(page, "page.create", {
+    name: "Trash Alias Real",
+    properties: { alias: "Trash Alias Nick" },
+    markdown: "- the real page",
+    if_exists: "return",
+  });
+
+  await page.goto("/trash");
+  const row = page.locator(".trash-row", { hasText: "Trash Alias Nick" });
+  await row.locator(".trash-restore").click();
+  const form = row.locator(".trash-rename");
+  await expect(form).toContainText(
+    'a live page, "Trash Alias Real", uses "Trash Alias Nick" as an alias',
+  );
+  await form.locator(".trash-rename-submit").click();
+  await expect(page.locator(".trash-notice")).toContainText(
+    'Restored "Trash Alias Nick (restored)"',
+  );
+  // The alias still reaches the real page.
+  const read = await api<{ page: { name: string } }>(page, "page.read", {
+    page: "Trash Alias Nick",
+  });
+  expect(read.page.name).toBe("Trash Alias Real");
+});

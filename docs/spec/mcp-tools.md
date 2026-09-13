@@ -2166,8 +2166,8 @@ page is back.
 what is there and its ids). A page comes back with every block that was deleted along with it; a
 block comes back with the subtree deleted along with it, plus any deleted ancestor it needs in
 order to be visible. Pass `id` (a page or block id from `trash_list`) or `page` (the name of a
-deleted page). If a live page now has the restored page's name, this fails with `conflict` — pass
-`new_name` to restore it under another name instead. A block whose whole page is in the trash is
+deleted page). If a live page now has the restored page's name, or uses it as an alias, this fails
+with `conflict` — pass `new_name` to restore it under another name instead. A block whose whole page is in the trash is
 refused with `conflict`: restore the page. The restore is itself a normal write with its own
 `batch_id`, so `batch_undo` reverses it. The trash has no expiry (ADR 022): nothing is ever
 purged, so anything `trash_list` shows can be restored. Use `dry_run` to see what would come
@@ -2222,7 +2222,9 @@ against LIVE pages with the key.
 
 **Errors**: `invalid` — neither or both of `id`/`page` given, `new_name` on a block, or the target
 exists but is not in the trash; `not_found` — no such id, or no deleted page with that name;
-`conflict` — a live page has the (new) name (`details.live_page_id`, `hint` mentions `new_name`),
+`conflict` — a live page has the (new) name or lists it in `alias::` (B-256: a page's own key wins
+over an alias, so restoring would re-point that alias's links; `details.live_page_id`, `hint`
+mentions `new_name`),
 or the block's page is itself in the trash (`details.page_id`, `hint` gives the `trash_restore`
 call for the page).
 

@@ -140,3 +140,31 @@ Real graph copy: `@Sam Example` (4 blocks) restored as `@Sam Example (restored)`
 form, content identical, the new live page untouched.
 Not changed: two trash rows with the same title are still told apart by block count and deletion
 time only.
+
+---
+
+### B-256 · Restoring a merged page from the trash took its name back from the merge target's alias
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA on the real graph
+(finding Q6) · **Test:** `packages/server/src/ops/trash-restore-alias.http.test.ts`,
+`e2e/tests/trash-conflict.spec.ts`
+
+Merge `Alex` into `@Alex` (19 links rewritten, `alias:: Alex` on `@Alex`), then Restore the `Alex`
+row in `/trash`: "Restored "Alex"." `page.read Alex` now returns the empty restored page while
+`@Alex` still lists `Alex` as an alias, and since a page's own key wins over an alias, every
+`[[Alex]]` link goes to the empty page instead of `@Alex`.
+
+Cause: `trash.restore` checked the restored name against live pages' keys only
+(`livePageWithKey`), not against `page_alias`.
+
+**Fixed 2026-09-13.** A name that a live page (other than the one being restored) uses as an
+alias is a `conflict` too, for the page's own name and for `new_name`: "a live page, "@Alex", uses
+"Alex" as an alias", with a hint to restore under another name or remove the alias. The Trash
+view's rename form (B-255) shows it like any other name conflict.
+`trash-restore-alias.http.test.ts` failed before (200, restored as "Alex"); the e2e alias case in
+`trash-conflict.spec.ts` covers the form. Real graph copy: after merging Alex into @Alex, restoring
+Alex answers 409 with that message, `page.read Alex` still gives @Alex, and `new_name: "Alex
+(restored)"` succeeds; verify OK (20,434 ops).
+
+Not changed, for the owner: `page.create` does not check aliases either — creating a page named
+like another page's alias silently takes that name's links over. Same shape, but a deliberate
+create is arguably what the user asked for; left as it is.
