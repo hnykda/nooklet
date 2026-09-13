@@ -31,7 +31,9 @@ B-390..B-399), never `docs/BUGS.md`.
   `server/src/ops/batch-undo-name-order.http.test.ts` (3, incl. the swap cycle still refused).
   Server 673 green. `5f0e4ac`. Still to run: e2e undo/history/trash specs.
 - B-324 — `web/views/taskFilters.ts#taskDateLabels` + `TasksView.tsx` + `styles/views.css`. Tests
-  `taskFilters.test.ts` (+2), `e2e/tests/tasks-view-dates.spec.ts` (1 passed, port 6401).
+  `taskFilters.test.ts` (+2), `e2e/tests/tasks-view-dates.spec.ts` (1 passed, port 6401). `f565e8a`.
+- B-311 — `web/editor/paste.ts#pastedBlocks` keeps a pre-block as an empty block with those
+  properties. Tests `paste.test.ts` (+4), `e2e/tests/paste-page-properties.spec.ts` (1 passed).
 
 ## Real-graph checks (copy taken 13:08)
 

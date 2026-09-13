@@ -97,3 +97,18 @@ rendered by `views/TasksView.tsx` (`.task-due .task-date`), styled in `styles/vi
 `e2e/tests/tasks-view-dates.spec.ts` (1, Chromium, port 6401: both labels on a scheduled task with
 a deadline, a lone deadline with its time, a lone scheduled date, none for an undated task, and the
 row found by its deadline in a Due window still labelled). Not checked at phone width by a test.
+
+---
+
+### B-311 (existing)
+
+**Fixed 2026-09-13.** `apps/web/src/editor/paste.ts#pastedBlocks`: when the pasted text parses with
+page properties (lines before the first bullet, or a first bullet of nothing but property lines),
+they become an empty first block carrying them as its properties, inserted with the rest — not
+dropped. The pre-block's `id::` is not carried (a page id; paste mints new ids anyway). Text that
+is nothing but property lines now creates that one block (before, no block at all, and an empty
+target was still deleted with focus sent to id ""). Tests: `apps/web/src/editor/paste.test.ts` ›
+"property lines the parser reads as a page-properties pre-block (B-311)" (4; 3 fail on the old
+code) and `e2e/tests/paste-page-properties.spec.ts` (1, Chromium, port 6401: a real paste event
+into a production build; the stored tree has the property block between the anchor and the pasted
+bullets).

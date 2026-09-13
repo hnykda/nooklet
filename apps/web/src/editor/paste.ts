@@ -18,6 +18,7 @@ import {
   type Op,
   type OutlineNode,
   ordersBetween,
+  type ParsedPage,
   parseOutline,
 } from "@nooklet/core";
 import { callOp } from "../data/api-client.js";
@@ -38,7 +39,7 @@ export function pasteMarkdownAsTree(
   clock: Clock,
   now: number = Date.now(),
 ): PasteTreeResult {
-  const parsed = parseOutline(text);
+  const parsed = { blocks: pastedBlocks(parseOutline(text)) };
   const target = getBlock(tree, targetId);
   const targetIsEmpty = target.content === "" && (tree.childrenOf.get(targetId)?.length ?? 0) === 0;
 
@@ -89,6 +90,29 @@ export function pasteMarkdownAsTree(
   }
 
   return { ops, focus: { id: lastTopId, caret: { offset: lastTopContentLength } } };
+}
+
+/**
+ * The blocks a paste creates. To the parser, property lines before the first bullet — or a first
+ * bullet holding nothing but property lines (`- type:: book`) — are a page's properties (OUT-2),
+ * and a paste has no page to give them to: only `.blocks` was inserted, so those lines vanished
+ * without a word (B-311, the same silent drop B-235 was on the server). They become a block of
+ * their own instead, an empty one carrying them as its properties, first — which is also what
+ * copying such a block writes back out. Not `id`: the pre-block's `id::` is a page's id (OUT-15),
+ * and a paste mints new ids for everything it creates anyway.
+ */
+function pastedBlocks(parsed: ParsedPage): OutlineNode[] {
+  const { id: _pageId, ...properties } = parsed.properties;
+  if (Object.keys(properties).length === 0) return parsed.blocks;
+  const preBlock: OutlineNode = {
+    content: "",
+    marker: null,
+    priority: null,
+    properties,
+    collapsed: false,
+    children: [],
+  };
+  return [preBlock, ...parsed.blocks];
 }
 
 function previousSiblingOrder(
