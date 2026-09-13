@@ -99,6 +99,17 @@ describe("breadcrumbLabel", () => {
   it("is the first non-blank line, trimmed", () => {
     expect(breadcrumbLabel("child line\nsecond line")).toBe("child line");
     expect(breadcrumbLabel("\n  \n  indented start \nmore")).toBe("indented start");
-    expect(breadcrumbLabel("")).toBe("");
+    expect(breadcrumbLabel("")).toBe("(empty)");
+  });
+
+  it("drops a heading's #s and skips lines that render as nothing inline (B-552)", () => {
+    expect(breadcrumbLabel("## 🔖 Articles")).toBe("🔖 Articles");
+    expect(breadcrumbLabel("###### [[Page]] heading\nbody")).toBe("[[Page]] heading");
+    expect(breadcrumbLabel("```python\nprint(1)\n```")).toBe("print(1)");
+    expect(breadcrumbLabel("~~~\n\n~~~")).toBe("(empty)");
+    expect(breadcrumbLabel("---\nafter the rule")).toBe("after the rule");
+    // Not headings: a tag, and seven #s.
+    expect(breadcrumbLabel("#tag and text")).toBe("#tag and text");
+    expect(breadcrumbLabel("####### seven")).toBe("####### seven");
   });
 });

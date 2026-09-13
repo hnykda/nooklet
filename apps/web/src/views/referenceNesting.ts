@@ -93,12 +93,19 @@ export function visibleParents(
   return sameParents(mine, referenceParents(previousId, trees)) ? [] : mine;
 }
 
-/** What one breadcrumb step shows: the parent's first non-blank line. A block's text can run to
- * pages, and a breadcrumb is a way to tell where you are, not a second copy of the parent. */
+/** What one breadcrumb step shows: the parent's first line that says something. A block's text can
+ * run to pages, and a breadcrumb is a way to tell where you are, not a second copy of the parent.
+ *
+ * The step renders through `InlineContent`, and the inline tokenizer draws NOTHING for a heading
+ * line, a fence's opening or closing line, or a thematic break — they are block-level. Taken as
+ * written, `## 🔖 Articles` was an empty step: the breadcrumb vanished, or began with a stray "›"
+ * (B-552; 94 steps on the owner's graph). So a heading loses its `#`s, those other lines are
+ * skipped, and a parent with nothing left says so rather than rendering as a gap. */
 export function breadcrumbLabel(content: string): string {
   for (const line of content.split("\n")) {
-    const t = line.trim();
-    if (t !== "") return t;
+    const t = line.trim().replace(/^#{1,6}\s+/, "");
+    if (t === "" || /^(`{3,}|~{3,})/.test(t) || /^([-*_])(\s*\1){2,}$/.test(t)) continue;
+    return t;
   }
-  return "";
+  return "(empty)";
 }

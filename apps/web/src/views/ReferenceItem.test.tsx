@@ -109,6 +109,28 @@ describe("ReferenceBreadcrumb", () => {
     expect(onNavigate).toHaveBeenCalledWith({ kind: "page", name: "Alice" });
   });
 
+  it("a heading, a fence or an empty parent still reads as a step with text (B-552)", () => {
+    // The inline renderer draws nothing for a heading line or a fence's opening line — they are
+    // block-level — so a step built from the parent's first line as written came out empty.
+    const { container } = render(() => (
+      <ReferenceBreadcrumb
+        parents={[
+          { id: "articles", content: "## 🔖 Articles" },
+          { id: "code", content: "```js\nconst answer = 42;\n```" },
+          { id: "blank", content: "" },
+          { id: "linked", content: "### [[Alice]] notes" },
+        ]}
+        onNavigate={() => {}}
+      />
+    ));
+    expect(crumbs(container)).toEqual([
+      "🔖 Articles",
+      "const answer = 42;",
+      "(empty)",
+      "Alice notes",
+    ]);
+  });
+
   it("renders nothing for a top-level block", () => {
     const { container } = render(() => <ReferenceBreadcrumb parents={[]} onNavigate={() => {}} />);
     expect(container.querySelector(".reference-breadcrumb")).toBeNull();

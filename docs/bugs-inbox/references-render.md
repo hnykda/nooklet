@@ -61,3 +61,27 @@ is also a hidden property key, so nothing else says it is numbered).
 Children are easy — their siblings are all in the tree. The root is not: its ordinal depends on
 siblings on its page that the view does not have (a reference to item 3 of a list would read "1."),
 which is why this was logged rather than folded into B-550.
+
+---
+
+### B-552 · A breadcrumb step whose parent is a heading (`## Articles`) renders empty — the breadcrumb vanishes or starts with a stray "›"
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of B-550 on a
+copy of the owner's graph · **Test:** `apps/web/src/views/ReferenceItem.test.tsx` › "a heading, a fence
+or an empty parent still reads as a step with text (B-552)"; `apps/web/src/views/referenceNesting.test.ts`
+› "drops a heading's #s and skips lines that render as nothing inline (B-552)"
+
+`views/ReferenceItem.tsx#ReferenceBreadcrumb` renders each step as
+`<InlineContent content={breadcrumbLabel(parent.content)}>`, and `breadcrumbLabel` is the parent's
+first non-blank line as written. `tokenizeContent` returns NO tokens for a heading line
+(`## 🔖 Articles`, `### Content`, `# [[@Alex]]`), a fence's opening line (```` ```js ````, `~~~`) or a
+thematic break (`---`) — they are block-level — so the step is an empty, zero-width, focusable
+`<span>` with only its `title` saying what it was. On the real graph that is 94 steps on 62 target
+pages: every OmnivoreSync article referenced from a journal day sits under `## 🔖 Articles` and shows
+no breadcrumb at all (`/page/2024-10-23`), and `/page/arguments` shows `› Poznámky k rekonstrukci a … › Rozpočet a materiál`, the first step (`## Plánování zahradních úprav`) missing.
+An empty parent block (2 on the real graph) gives the same stray separator.
+
+**Fixed 2026-09-13.** `views/referenceNesting.ts#breadcrumbLabel` drops a heading's `#`s, skips fence
+delimiter lines and thematic breaks, and says `(empty)` (as the zoom trail does) when nothing is
+left. Both tests failed before the change (the component rendered `["", "", "", ""]`). Checked on the
+graph copy: `/page/2024-10-23` shows `🔖 Articles` over its OmnivoreSync article, `/page/arguments`
+shows `Plánování zahradních úprav › Poznámky k rekonstrukci a … › Rozpočet a materiál`.
