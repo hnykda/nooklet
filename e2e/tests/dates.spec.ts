@@ -12,6 +12,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   api,
   caret,
+  clickRow,
   editingRowIndex,
   editor,
   editorText,
@@ -21,6 +22,7 @@ import {
   openEditing,
   openPage,
   readBlocks,
+  rowDepths,
 } from "../helpers/index.js";
 
 interface Node {
@@ -250,4 +252,49 @@ test("from block selection, the palette's Set deadline date opens the picker and
   ]);
   await expect(editor(page)).toHaveCount(0);
   await expect(outliner.locator(".vr-row-selected")).toHaveCount(1);
+});
+
+test("while the picker is open, the structural keys never reach the tree, and a date past the calendar is refused without an error (B-145)", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e)));
+  const outliner = await openEditing(page, "Dates Keys Held", "- first\n- second");
+  // Edit the SECOND block, where Tab would indent it and Alt+Up would move it above "first".
+  await clickRow(page, outliner, 1);
+  await page.keyboard.press("End");
+  await slash(page, "deadl", "Deadline");
+
+  for (const key of ["Tab", "Shift+Tab", "Alt+ArrowUp", "Alt+ArrowDown", "Delete"]) {
+    await page.keyboard.press(key);
+  }
+  // `+10000y` once stored `deadline:: 1202-60-91`, and `+99999999d` threw from the preview on
+  // every keystroke (B-145).
+  await page.keyboard.type("+99999999d");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toBeVisible();
+  await expect(picker(page).locator(".dp-preview--error")).toContainText('"+99999999d" is too far');
+  await page.keyboard.press("Alt+Backspace");
+  await page.keyboard.type("+10000y");
+  await page.keyboard.press("Enter");
+  await expect(picker(page).locator(".dp-preview--error")).toContainText('"+10000y" is too far');
+  await page.keyboard.press("Escape");
+
+  await expect(picker(page)).toHaveCount(0);
+  await expectEditorFocusedNow(page, "after Escape");
+  expect(await editingRowIndex(page, outliner)).toBe(1);
+  expect(await rowDepths(page, outliner)).toEqual([0, 0]);
+  expect(await editorText(page)).toBe("second ");
+  await page.waitForTimeout(600);
+  // Order and content only (the trigger's leftover space may not be flushed yet): Alt+Up would
+  // have swapped them, Delete at the line end would have joined them.
+  expect((await readBlocks(page, "Dates Keys Held")).map((b) => b.content.trim())).toEqual([
+    "first",
+    "second",
+  ]);
+  expect((await propsOf(page, "Dates Keys Held")).map((p) => p.deadline)).toEqual([
+    undefined,
+    undefined,
+  ]);
+  expect(pageErrors).toEqual([]);
 });

@@ -159,7 +159,9 @@ had one, and the last 3 in a row were clean. A timed probe of the
 `apps/web/src/commands/date-picker/parse.test.ts` "an offset that leaves the calendar is not a date
 — never a garbage or NaN day (B-145)" and "refuses to format a day that is not on the calendar…",
 `DatePicker.test.tsx` "a typed offset past the calendar's end is an error line, not a crash or a
-write (B-145)"
+write (B-145)", `e2e/tests/dates.spec.ts` "while the picker is open, the structural keys never
+reach the tree, and a date past the calendar is refused without an error (B-145)" (fails against
+the pre-fix parser: Enter closed the picker having written nothing)
 
 Offsets were the one input with no size limit. `/scheduled`, `+10000y`, Enter: the preview said
 "Sun, Sep 13, 12026", and the server then held `scheduled:: 1202-60-91` — `formatStoredDate`
