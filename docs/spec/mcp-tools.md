@@ -422,7 +422,8 @@ export const MarkdownInput = z.string().min(1).max(200_000).describe(
   'Markdown. Each "- " bullet (or loose paragraph) becomes a block; 2 spaces (or a tab) of extra '
   + 'indent per level nests children; "key:: value" lines under a bullet become properties; a '
   + 'fenced code block stays one block; "- [ ]"/"- [x]" become TODO/DONE; a trailing ^id on a '
-  + 'bullet updates that existing block in place instead of creating a new one');
+  + 'bullet updates that existing block in place instead of creating a new one; "key:: value" '
+  + 'lines before the first bullet are page properties, which only page_create accepts');  // B-235
 
 export class OpError extends Error {
   constructor(
@@ -995,7 +996,10 @@ export const pageCreate = defineOp({
 
 **Errors**: `conflict` — page exists and `if_exists: 'error'` (`details.page_id` gives the
 existing page); `invalid` — `name` resolves to a journal date (create journals via `page_append`,
-hint given).
+hint given). A page-properties pre-block in `markdown` (`key:: value` lines before the first
+bullet, markdown-grammar.md OUT-2) becomes the new page's properties, `properties` winning for any key
+both give; appending to a page that exists (`if_exists: 'append'`) refuses one like `page_append` does
+(B-235).
 
 ---
 
@@ -1047,7 +1051,8 @@ export const pageAppend = defineOp({
 
 **Errors**: `not_found` — `parent` given but not a block on `page`; `invalid` — `markdown` fails to
 parse (dangling fence, a bullet with an unknown `^id`), or `create_page: false` and the page does
-not exist; `too_large` — `markdown` over 200 KB.
+not exist, or `markdown` starts with a page-properties pre-block (only `page_create` applies one;
+hint points at `page_update` — B-235); `too_large` — `markdown` over 200 KB.
 
 ---
 
@@ -1093,7 +1098,8 @@ export const blockInsert = defineOp({
 ```
 
 **Errors**: `not_found` — `ref` does not exist; `conflict` — `if_version` given and stale
-(`details.current_version`); `invalid` — malformed `markdown`.
+(`details.current_version`); `invalid` — malformed `markdown`, or `markdown` starting with a
+page-properties pre-block (B-235, as `page_append`).
 
 ---
 

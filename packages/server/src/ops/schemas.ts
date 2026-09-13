@@ -160,5 +160,6 @@ export const MarkdownInput = z
     'Markdown. Each "- " bullet (or loose paragraph) becomes a block; 2 spaces (or a tab) of extra ' +
       'indent per level nests children; "key:: value" lines under a bullet become properties; a ' +
       'fenced code block stays one block; "- [ ]"/"- [x]" become TODO/DONE; a trailing ^id on a ' +
-      "bullet updates that existing block in place instead of creating a new one",
+      'bullet updates that existing block in place instead of creating a new one; "key:: value" ' +
+      "lines before the first bullet are page properties, which only page_create accepts",
   );

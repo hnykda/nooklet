@@ -108,6 +108,20 @@ describe("block.update on multi-line raw text (B-172)", () => {
     expect(b.properties.scheduled).toBe("2026-09-15");
   });
 
+  it("edits an empty block that has only a property line (not a page pre-block)", async () => {
+    const created = await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "B172 Empty",
+      markdown: "- anchor\n-\n  type:: book",
+    });
+    const id = created.json.created[1] as string;
+    const { status, json } = await update({ id, old_str: "book", new_str: "article" });
+    expect(status, JSON.stringify(json)).toBe(200);
+    expect(json.before).toBe("\ntype:: book");
+    const b = await readBlock(id);
+    expect(b.content).toBe("");
+    expect(b.properties).toEqual({ type: "article" });
+  });
+
   it("refuses a nested bullet in content with the block_insert hint", async () => {
     const id = await seed("B172 Child", "- parent");
     const { status, json } = await update({ id, content: "parent\n- child" });

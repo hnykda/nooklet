@@ -58,6 +58,12 @@ describe("single-block text round trip (B-172)", () => {
       block({ content: "```js\nconst x = 1;\n```", properties: { foo: "bar" } }),
     ],
     ["a collapsed block", block({ content: "parent", collapsed: true })],
+    // As the first (only) bullet of a text, a block with no content and only property lines is
+    // what the parser reads as a page-properties pre-block (OUT-2): it came back as no block.
+    [
+      "an empty block with only properties, collapsed",
+      block({ content: "", properties: { type: "book" }, collapsed: true }),
+    ],
   ];
 
   for (const [name, b] of cases) {

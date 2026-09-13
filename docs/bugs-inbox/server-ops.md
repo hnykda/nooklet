@@ -65,6 +65,15 @@ hint, rebuild parity). `tools/probes/block-update-property-roundtrip.ts` now pri
 three cases. `e2e/tests/journal-agenda.spec.ts`'s `properties: { marker: "DONE" }` workaround is
 left as it is (it works either way).
 
+Second cause, found while fixing B-235 and fixed in its commit: a block with **empty content and
+only property lines** (10 such blocks in the owner's graph) still failed, because as the first
+bullet of the parsed text it is exactly what the parser reads as a page-properties pre-block (OUT-2)
+— no block came back, and its `collapsed` was lost with it. `parseSingleBlockGrammar` now parses
+behind a throwaway first bullet (`- -`) and takes the second block. Tests: the round-trip case "an
+empty block with only properties, collapsed" in `outline-bridge.test.ts` (failed "content must
+describe exactly one block" before) and "edits an empty block that has only a property line (not a
+page pre-block)" in `block-update-text.http.test.ts`.
+
 ---
 
 ### B-236 (existing)
@@ -77,5 +86,70 @@ journal's properties can be set, and the refusal's hint says how. Test that woul
 day (with rebuild parity), a real rename still refused with nothing written, `new_name` equal to
 the day's own name accepted (the first and third failed with "cannot rename a journal day" before
 the fix).
+
+---
+
+### B-235 (existing)
+
+**Fixed 2026-09-13.** Cause as logged: `prepareMarkdownInsert` kept `parseOutline(...).blocks` and
+never looked at `.properties`. `page.append` and `block.insert` dropped a pre-block the same way
+(confirmed: both returned 200 with nothing set, before the fix). Now
+(`packages/server/src/ops/outline-bridge.ts#prepareMarkdownInsert(…, "accept" | "refuse")`):
+
+- `page.create` on a new page applies the pre-block as `page.prop` ops right after its
+  `page.create` op (explicit `properties` win for keys both give), and markdown that is only a
+  pre-block creates the page with those properties and no blocks (it used to fail "markdown did not
+  parse to any blocks").
+- `page.append`, `block.insert` and `page.create` with `if_exists: "append"` on an existing page
+  refuse one: 400 `invalid`, "markdown starts with page properties (read-only), which only
+  page_create applies", hint pointing at `page_update` and at putting block properties under a
+  bullet. Refused rather than applied because an append silently changing the page's own
+  properties would be as surprising as dropping them, and a first bullet holding only property
+  lines (`- type:: book\n- next`) is a pre-block to the parser — an agent that meant a block needs
+  to hear that.
+
+`MarkdownInput`'s description and mcp-tools.md §4.3.8–10 say so. Test that would have caught it:
+`packages/server/src/ops/markdown-page-properties.http.test.ts` (7 of its 8 cases failed before the
+fix — every one but "still takes block properties under a bullet").
+
+An ordering trap met on the way, recorded because the obvious code hits it: minting the block ops
+before the `page.create` op (to fold the pre-block into its `properties`) gives the page a later HLC,
+`applyOps` sorts by HLC, and every block is rejected for a page that does not exist yet.
+
+---
+
+### B-311 · Pasting outline text with a page-properties pre-block drops those lines
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, server-ops (fixing B-235) · **Test:**
+none; read, not run
+
+`apps/web/src/editor/paste.ts#pasteMarkdownAsTree` inserts `parseOutline(text).blocks` and never
+looks at `.properties`, so pasting `tags:: x\n\n- a\n- b` (or `- type:: book\n- next`, a bulleted
+pre-block to the parser) into a block creates `a` and `b` and loses the property lines — the same
+silent drop B-235 was on the server. Not fixed here (web editor, outside this branch). Fix
+direction: paste has no page to give properties to, so keep such lines as a block of their own
+(e.g. insert the pre-block's lines as one block's properties) rather than discard them.
+
+---
+
+### B-312 · A refused `page.append` to a page that does not exist yet leaves that page behind, empty
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, server-ops (fixing B-235) · **Test:**
+none yet; reproduced with a throwaway vitest probe (not kept — the fix's test replaces it)
+
+`page.append {page: "Fresh", markdown: "- a ^1k7f3q9xz2hav4"}` (an unknown `^id`) answers 400 — and
+`SELECT COUNT(*) FROM page` went 1 → 2: `resolvePageRef(…, {create: true})` creates the page (or
+journal day) with its own `applyOps` before the markdown is parsed or validated, and nothing rolls
+that back when validation throws. Same for a dangling fence / markdown with no blocks, and for
+B-235's new pre-block refusal. An agent retrying with fixed markdown gets its blocks on the stray
+page, so the visible damage is an empty page (or an empty journal day) when it gives up instead.
+
+---
+
+**Fixed 2026-09-13.** `outline-bridge.ts#checkWriteMarkdown` parses and refuses write markdown
+without touching anything; `page-append.ts` calls it before `resolvePageRef`, then hands the checked
+tree to `prepareMarkdownInsert`. A `parent` no longer creates the page either (a page that does not
+exist holds no parent; 404 as before, nothing written). Test that would have caught it:
+`packages/server/src/ops/markdown-page-properties.http.test.ts` › "a refused page.append creates no
+page (B-312)" — pre-block, unknown `^id`, unknown `^id` on an unwritten journal day, `parent` on a
+missing page; all four failed on the old `page-append.ts` (row counts moved).
 
 ---
