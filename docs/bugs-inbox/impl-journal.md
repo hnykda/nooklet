@@ -122,3 +122,47 @@ caught it: `journal-stream-editing.spec.ts` "typing in an earlier day keeps edit
 write, and every key lands (B-174)" (fails on a clean `da85cfb` build: the editor is gone after the
 first write), and `JournalStreamView.test.tsx` "keeps every day's outline mounted when a write
 refetches the stream (B-174)" (old view: 13 `BlockTree` mounts after three refetches instead of 4).
+
+---
+
+### B-175 · A web link inside a "Scheduled and deadline" row opens the task instead of the link
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal (real
+Chromium against `nooklet serve` on a copy of the owner's graph plus seeded dated tasks) ·
+**Test:** none yet
+
+A task `TODO zavolat [[@Robin]] kvůli dárku https://example.com/darek` scheduled for today: in
+today's agenda, clicking the `https://…` link opened no tab; the app navigated to
+`/page/Úkoly — Čeština?block=…` instead. The `[[@Robin]]` link in the same row works (its handler
+stops the event). Cause (read): `JournalAgenda.tsx`'s row `onClick` calls `preventDefault()` on
+every click that bubbles up to it, and plain web links (`link`/`autolink` tokens in
+`render/tokens.tsx`) have no handler of their own, so the browser's "open in new tab" is cancelled
+and the row navigates. `QueryFenceView.tsx`'s hit rows have the same shape (`stop(e)` on the row)
+and so very likely the same defect — not reproduced, not touched here.
+
+---
+
+### B-176 · Any write rebuilds every "Scheduled and deadline" row, dropping keyboard focus on one
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal · **Test:**
+none yet
+
+Reproduced in real Chromium on a copy of the owner's graph: Tab-focus an agenda row on today's
+journal, then let any write land (here `page.append` to an unrelated page through the API — a sync
+pull or an agent does the same) — `document.activeElement` becomes `<body>`. Marking the rows'
+DOM nodes and typing one character anywhere in the stream replaced 5 of 5 rows; on a stress copy
+(686 dated open tasks) 587 of 587 on every debounced write (~800 DOM mutations each; no frame over
+50 ms on this machine, so it is a focus/selection defect rather than a speed one). Cause: the agenda
+resource refetches on every `block` write and `agendaForDay` builds new group and entry objects;
+`<For>` is keyed by reference, so each row is torn down and rebuilt — the B-174 pattern, one level
+down.
+
+---
+
+### B-177 · After midnight, a day pinned from the calendar can be Today too, rendered twice
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying impl-journal (B-170's
+rollover with Playwright's fake clock) · **Test:** none yet
+
+At 23:59 pin tomorrow from the stream's calendar (allowed: it is not today). At 00:00 B-170 moves
+Today to that day, and the pinned section stays — the same journal page is rendered by two
+editable `BlockTree`s one above the other (seen: Today and "Back to stream" sections both listing
+block `1m2cv41ffra8gm`). Before B-170 "today" never changed while the view was mounted, so a pin
+could never equal it.
