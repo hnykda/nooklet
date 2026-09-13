@@ -54,6 +54,42 @@ the way the marker does. The e2e test was red before the fix (no notice) and gre
 
 ---
 
+### B-342 · A typed `scheduled::` line is stored as text, but the markdown mirror presents it as a real date
+**Status:** open (needs owner decision) · **Severity:** medium · **Found:** 2026-09-13, exploratory
+QA of M8 editor features (Q3, `scratchpad/m9/qa-m8-editor/typedkey.mjs`, `dates2.mjs`) · **Test:**
+none yet; probe `tools/probes/serialize-property-shaped-content.ts`
+
+`- TODO call mom`: Mod+End, Shift+Enter, type `scheduled:: 2026-09-20`, click another row. The block
+is stored with content `call mom\nscheduled:: 2026-09-20` and no scheduled date: no chip, not on the
+agenda. But `page.read` text and `graph/pages/<name>.md` show `- TODO call mom` / `  scheduled::
+2026-09-20`, which is exactly how a real date is written — and re-importing that text produces a real
+`scheduled` date. The database, the row and the mirror disagree, and the "lossless" mirror is not.
+A block that also has a real date gets both lines.
+
+What the probe shows (2026-09-13, `pnpm exec tsx tools/probes/serialize-property-shaped-content.ts`):
+this is not specific to dates. Every content line shaped like a property or a Logseq timestamp is
+written verbatim and read back by shape — `scheduled:: …`, `deadline:: …`, `SCHEDULED: <…>`,
+`foo:: bar`, `marker:: DONE` all came back as properties, content `call mom`, `lossless=false`.
+Since B-101 a typed generic `foo:: bar` line becomes a real property, so the editor no longer
+produces that one; the reserved keys (`scheduled deadline repeat done marker priority collapsed id`),
+`heading::` and `SCHEDULED:`/`DEADLINE:` lines still stay text by design (OUT-22a, B-101), and older
+content or an API write can hold any of them.
+
+Why not fixed here: both ways out change a documented contract, and they are the owner's call.
+1. The editor makes a typed reserved line real when the edit ends and its value is valid (ADR 011
+   form): the row, agenda and mirror then agree with what the text says. Costs: OUT-22a's reason for
+   keeping them text (half-typed dates) moves to "only on blur / only when valid"; a typed date line
+   vanishes from the buffer into a chip; deleting that line afterwards must not be read as "remove
+   the date" (the buffer never shows reserved keys). Does nothing for older content or
+   `SCHEDULED:` lines.
+2. The serializer escapes a content line that would re-read as a property or timestamp (an OUT-13
+   style `\` rule, e.g. `scheduled\:: 2026-09-20`) and the parser un-escapes it. Makes the mirror
+   lossless for every shape at once; the typed line stays plain text everywhere. Costs: a grammar
+   addition in `core/outline.ts` (parse and serialize) that every reader of the mirror, `block.update`
+   `old_str` matching, and a Logseq round trip would see.
+
+---
+
 ### B-343 · After `/image` or an image paste the caret stays before the inserted image markdown
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA of M8 editor features
 (Q4, `scratchpad/m9/qa-m8-editor/misc2.mjs`) · **Test:** `e2e/tests/image-insert.spec.ts`, both
@@ -71,6 +107,30 @@ maps a cursor that sits exactly at an insertion point to before the inserted tex
 were red before (`look  Z![](assets/….png)`, `pasted  Z![](…)`) and green after. The other branch of
 that function (the editor has moved to another block; the text is written into the old block's
 content) has no caret to place and is unchanged.
+
+---
+
+### B-344 · `/mermaid` at the end of existing text puts the fence inline, and the diagram never renders
+**Status:** open (feature gap) · **Severity:** low · **Found:** 2026-09-13, exploratory QA of M8
+editor features (Q5, `scratchpad/m9/qa-m8-editor/misc2.mjs`) · **Test:** none yet
+
+`- after text`, End, ` /mermaid`, Enter, leave the block: the stored content is `after text` followed
+on the same line by the starter fence (```` ```mermaid ````, `graph TD`, `A --> B`, closing fence), the
+row shows the raw text, and there is no `svg`. The same command on an empty block renders one
+diagram.
+
+Why this is not fixed by the obvious one-liner: `plugins/mermaid/src/client.ts` could put the starter
+on its own line, but a fence only renders when it is line 1 of a block's content —
+`core/tokens.ts#classifyFence` looks at the first line only. Checked with `classifyBlockContent`
+(2026-09-13, `tsx -e`): `"after text ```mermaid…"` → `paragraph`, `"after text\n```mermaid…"` →
+`paragraph`, `"```mermaid…"` → `fence`. So the diagram can only render if `/mermaid` on a non-empty
+block puts the starter into a NEW block after it (or the renderer learns to draw a fence below a
+paragraph, which is a grammar change, spec §2.7). The plugin cannot do the first today: it only sees
+`editor.insertText`, and the client plugin host throws "not supported" for `editor.currentBlock`,
+`editor.insertBlockAfter` and `editor.focusBlock` (ADR 023 list in `api-and-plugin-types.md` §5);
+`EditorHost` has no "new block after the current one" operation a host implementation could call.
+Needs one of: those three plugin-host methods, a block-level option on `insertText`, or mixed
+paragraph+fence rendering. Skipped here as a feature gap.
 
 ---
 
