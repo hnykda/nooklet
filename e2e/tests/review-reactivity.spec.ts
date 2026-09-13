@@ -186,10 +186,11 @@ test("a failed Older changes says so instead of silently re-enabling the button 
 test("Replace all pressed right after editing the replacement writes the edited text (B-134)", async ({
   page,
 }) => {
-  // A word of its own: other specs on the shared server leave their own words behind.
-  await seedPage(page, "Replace Race", "- the quokka smiles");
+  // A word no other spec seeds: popups.spec and replace-stale.spec leave "quokka…" blocks on the
+  // shared server earlier in a full run, and a graph-wide replace counts those too.
+  await seedPage(page, "Replace Race", "- the zorillo smiles");
   await page.goto("/replace");
-  await page.locator(".replace-query").fill("quokka");
+  await page.locator(".replace-query").fill("zorillo");
   await page.locator(".replace-replacement").fill("wombat");
   await expect(page.locator(".replace-after").first()).toContainText("wombat");
   await expect(page.locator(".replace-all")).toBeEnabled();
