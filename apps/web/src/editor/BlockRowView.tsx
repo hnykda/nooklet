@@ -194,6 +194,8 @@ export function BlockRowView(props: {
                     source: props.block.content,
                     onNavigate: props.onNavigate,
                     onShelfOpen: props.onShelfOpen,
+                    // So an `{{embed}}` that would render this very row again stops (render/EmbedView.tsx).
+                    embedPath: [props.id],
                     // `((id))` renders the referenced block's own text rather than an opaque id.
                     // Resolved through a cache that fetches on a miss and re-renders when the
                     // text lands (`../data/block-ref-cache.ts`).
