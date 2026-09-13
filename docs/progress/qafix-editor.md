@@ -12,7 +12,7 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
 |---|---|---|---|
 | Q1 redo of undone create never reaches server | B-240 | high | fixed (first commit) |
 | Q2 Cmd+Z after deleting a selection does nothing | B-241 | high | fixed (second commit) |
-| Q3 undo of Alt+Up/Down drops focus | B-242 | medium | todo |
+| Q3 undo of Alt+Up/Down drops focus | B-242 | medium | fixed (third commit) |
 | Q4 cold client: journal draft text lost when pull says today exists | B-243 | medium | todo |
 | Q5 cold client: `[[` New page writes `]]` to DB not editor | B-244 | medium | todo |
 | Q6 Cmd+X on selection does nothing | B-245 | low | feature gap: logged, skipped |
@@ -33,20 +33,25 @@ Bugs go to `docs/bugs-inbox/qafix-editor.md` (NOT `docs/BUGS.md`), numbers B-240
   `undo-redo.spec.ts` (failed 3/3 before), 2 unit in `editor-host.test.ts`. E2E undo-redo +
   selection + focus + phone + context-menu: 71 passed, 1 skipped (pre-existing skip).
 
+- Q2/B-241 committed as `fdddec7`.
+- Q3/B-242 `fix(web): undo and redo of a block move keep the editor focused`: `BlockTree.tsx`
+  `refocusAfterReorder` (extracted from `doMoveStep`), called in `doUndo`/`doRedo`'s
+  same-block branch. 2 e2e tests in `undo-redo.spec.ts` (failed 2/2 before). E2E undo-redo +
+  focus + selection + editing + parity: 72/72.
+
 ## 2. In flight
 
 - (nothing)
 
 ## 3. Next steps, in order
 
-1. (done) Q1, Q2.
+1. (done) Q1, Q2, Q3.
 2. Unverified side observation, not fixed: the global keydown dispatcher matches `edit.undo`
    (`when: "true"`) and preventDefaults it everywhere, so native Cmd+Z inside a plain `<input>`
    (search, page title) is probably swallowed. Probe it before logging as a bug.
-3. Q3 (B-242): refocus after undo/redo of a move. Test in `undo-redo.spec.ts`.
-4. Q4 (B-243): journal draft unmount must commit its text. Needs a cold-client e2e (fresh
+3. Q4 (B-243): journal draft unmount must commit its text. Needs a cold-client e2e (fresh
    context + server that already has today).
-5. Q5 (B-244): popup New page during initial pull. Needs a slow-pull fixture.
+4. Q5 (B-244): popup New page during initial pull. Needs a slow-pull fixture.
 
 ## 4. How to resume
 

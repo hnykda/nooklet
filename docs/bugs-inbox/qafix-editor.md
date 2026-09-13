@@ -55,11 +55,20 @@ selection. The e2e tests fail without the change (3/3) and pass with it.
 ---
 
 ### B-242 · Undoing Alt+Up/Down drops editor focus; the next keystrokes are lost
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q3) · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q3) · **Test:**
+`e2e/tests/undo-redo.spec.ts` "typing right after undoing or redoing Alt+ArrowDown lands in the
+moved block (B-242)" (and the Alt+ArrowUp variant)
 
 Editing `one` on `one, two, three`: Alt+Down moves it (focus kept, B-68), Cmd+Z moves it back and
 the row still shows the editor, but `document.activeElement` is `<body>`. Typing `X` goes nowhere.
 Undoing a Tab indent keeps focus.
+
+**Fixed 2026-09-13.** Undo and redo of a move reorder the edited row exactly like the move itself:
+the keyed `<For>` moves the row's DOM node, which blurs it. B-68's deferred refocus lived only in
+`doMoveStep`; when undo/redo target the block already being edited, `doUndo`/`doRedo` just placed
+the caret. The refocus is now `BlockTree.tsx#refocusAfterReorder`, called from all three. Undo of
+an indent kept focus because a depth change updates the row in place. Both e2e variants fail
+without the change (the X is never stored) and pass with it.
 
 ---
 

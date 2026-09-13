@@ -418,11 +418,18 @@ export function BlockTree(props: {
     const r = moveBlock(editorTree(), id, direction, clock);
     if (!r) return;
     runStructural({ ops: r.ops });
-    // Keyed `<For>` reorders by MOVING the row's DOM node, and a moved node loses focus — so after
-    // the move the editor was still attached to a block nobody was focused on (B-48). The move
-    // happens when Solid reconciles, after this function returns, so the refocus has to be
-    // deferred past it: a microtask for the common case and a frame later as the backstop, the
-    // same two-stage dance `surface.attach` does, guarded so a genuine click-away is not fought.
+    refocusAfterReorder(id);
+  }
+
+  /**
+   * Keyed `<For>` reorders by MOVING the row's DOM node, and a moved node loses focus — so after
+   * a move the editor was still attached to a block nobody was focused on (B-48). The move
+   * happens when Solid reconciles, after the caller returns, so the refocus has to be deferred
+   * past it: a microtask for the common case and a frame later as the backstop, the same two-stage
+   * dance `surface.attach` does, guarded so a genuine click-away is not fought. Undo and redo of a
+   * move reorder the edited row just the same (B-242).
+   */
+  function refocusAfterReorder(id: BlockId): void {
     if (editingId() !== id) return;
     const refocus = (): void => {
       if (editingId() === id && !surface.view()?.hasFocus) surface.focus();
@@ -466,6 +473,7 @@ export function BlockTree(props: {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
       surface.setCaret(res.focus.caret);
+      refocusAfterReorder(res.focus.id);
     } else {
       attachEditing(res.focus.id, res.focus.caret);
     }
@@ -489,6 +497,7 @@ export function BlockTree(props: {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
       surface.setCaret(res.focus.caret);
+      refocusAfterReorder(res.focus.id);
     } else {
       attachEditing(res.focus.id, res.focus.caret);
     }
