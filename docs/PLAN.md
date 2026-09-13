@@ -138,6 +138,9 @@ Block { id, pageId, parentId | null, order, content, marker, priority, collapsed
   page name (and aliases) in blocks that do not already reference P.
 - Namespaces: the name holds the path; ancestors are implied. `[[C]]` typed inside namespace
   `A/B` resolves by shortest unambiguous suffix, like Foam and SilverBullet.
+- A page exists once anything references it (ADR 024): links, tags, property values and the Task
+  tag make the server create the page and its namespace ancestors; an empty page it made goes
+  again with its last reference. Journal days are not created from date links.
 - Page identity is the lowercased, NFC-normalized name. Journal pages carry `journalDay`
   (YYYYMMDD); their display title is formatted by a user setting, and references written in
   many date formats resolve to the same day.

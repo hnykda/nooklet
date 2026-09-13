@@ -959,9 +959,14 @@ export const changesSince = defineOp({
 
 **Description**: "Creates a page with optional properties and initial Markdown content. If the
 page already exists: `if_exists: 'return'` (default) returns the existing page untouched — safe
-to retry; `'append'` appends the given markdown to it; `'error'` fails with a conflict. You do
-not need this for journal days — `page_append` creates them implicitly; use `page_create` for a
-named page you want to exist even with no content yet, or to set page properties at creation."
+to retry; `'append'` appends the given markdown to it; `'error'` fails with a conflict. A page that
+exists only because something links to it, and that nobody has written in, does not count as
+existing: page_create fills it in (existed: false, same page_id). You do not need this for journal
+days — `page_append` creates them implicitly; use `page_create` for a named page you want to exist
+even with no content yet, or to set page properties at creation."
+
+(ADR 024: every reference makes its page exist, so "fills in" is the common case for an agent that
+links a page before writing it.)
 
 ```ts
 export const pageCreate = defineOp({
