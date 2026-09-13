@@ -17,12 +17,20 @@ New bug numbers available: B-502..B-509 (B-501 used by the author).
   Chromium keeps 59 and appends. No focusout in WebKit, 1 DOM op on the focused subtree. Same
   family as the author's B-501 (Alt+Up/Down). Traces in scratch traces/structural/.
 
+- Mechanism traced (probe tools/probes/edited-row-move-mechanism.spec.ts): WebKit fires no focusout
+  on the move, CM6 keeps a stale cached DOM selection, view.focus() writes nothing, WebKit's focus
+  leaves the caret at 0. Logged B-502 + failing test `40fc589`.
+- Fix `3973aa1` in editor/surface.ts#focus (write state selection to DOM if they disagree; no
+  BlockTree hunk). Against a probe server: edited-row-move-caret chromium 2/2 + webkit 2/2.
+- B-503 (focus log logged emoji/decomposed accents as typed) fixed `c665747`, unit 8/8.
+- `6034ec1` tests: undo of Alt+Up caret; focus log ON changes nothing about editing (both engines).
+
 ## In flight
 
-- Evidence for the mechanism in WebKit (activeElement / selection right after the DOM move,
-  focus() calls, selectionchange).
+- Proper e2e runs (global setup, port 6416): before-fix (surface.ts from 40fc589) and after-fix for
+  edited-row-move-caret + focus-log + webkit-refresh-focus in both projects; then the broad list
+  in chromium and webkit (temp config without testMatch, deleted after).
 
 ## Next
 
-1. Diagnose + fix (small BlockTree/surface hunk), e2e that fails in WebKit before and passes after.
-2. Review focus-log.ts for behaviour changes when on (prototype patches), privacy leaks.
+1. Report. Remaining notes: playwright.config.ts conflict with m11/ref-label-flash (union regex).
