@@ -81,3 +81,48 @@ test("closing Settings re-runs a search that had fallen back, so its note is not
   await rerun;
   await expect(note).toBeVisible();
 });
+
+test("Try again and Check again keep keyboard focus on the pressed button when the same reason comes back (B-525)", async ({
+  page,
+}) => {
+  // An e2e server has no embedding host, so the reasons that offer a retry cannot happen for real
+  // here. The search itself runs against the real server; only its reply is rewritten into the
+  // fallback, and each reply carries a new object with a new count — which is what a real
+  // "still indexing" answer does. jsdom cannot catch this: it does not blur a focused element
+  // that is moved by `insertBefore`, and a move is what a browser blurs on.
+  await seedPage(page, "Search Fallback Focus Hit", "- a bilby sentence");
+  let indexed = 0;
+  let reason: "provider_unreachable" | "indexing" = "provider_unreachable";
+  await page.route("**/api/v1/search", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    indexed += 1;
+    const fallback =
+      reason === "indexing"
+        ? { reason, message: "…", indexed, total: 100, errors: 0 }
+        : { reason, message: "…", host: "http://127.0.0.1:59999", error: `refused #${indexed}` };
+    await route.fulfill({ response, json: { ...body, mode_used: "keyword", fallback } });
+  });
+  await page.goto("/search");
+  await page.locator(".search-query-input").fill("bilby");
+  const note = page.locator(".search-fallback");
+  await expect(note).toHaveAttribute("data-reason", "provider_unreachable", { timeout: 15_000 });
+
+  const retry = note.getByRole("button", { name: "Try again" });
+  await retry.focus();
+  const before = indexed;
+  await page.keyboard.press("Enter");
+  await expect(note.locator(".search-fallback-detail")).toHaveText(`(refused #${before + 1})`);
+  await expect(retry).toBeFocused();
+
+  reason = "indexing";
+  await page.keyboard.press("Enter");
+  await expect(note).toHaveAttribute("data-reason", "indexing");
+  const check = note.getByRole("button", { name: "Check again" });
+  // The reason changed and so did the button's label; the keyboard user is still on it.
+  await expect(check).toBeFocused();
+  const shown = indexed;
+  await page.keyboard.press("Enter");
+  await expect(note).toContainText(`(${shown + 1} of 100 embedded)`);
+  await expect(check).toBeFocused();
+});

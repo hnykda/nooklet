@@ -112,8 +112,11 @@ semantic scores, and no agent can threshold on it. Not changed here.
 ---
 
 ### B-525 · "Try again" / "Check again" on the search fallback note drops keyboard focus to `<body>`
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, search-fallback verify (real-graph
-copy on :6418, Chromium and WebKit) · **Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, search-fallback verify (real-graph
+copy on :6418, Chromium and WebKit) · **Test:** `e2e/tests/search-fallback.spec.ts` › "Try again
+and Check again keep keyboard focus on the pressed button when the same reason comes back (B-525)";
+`apps/web/src/views/SearchView.test.tsx` › "Check again keeps keyboard focus on the button when the
+same reason comes back (B-525)" (the `<For>` half only)
 
 Tab to "Try again" (embedding server unreachable) or "Check again" (index still building) and press
 Enter: the search re-runs, the note comes back with the same reason, and `document.activeElement`
@@ -126,3 +129,16 @@ Cause: `SearchFallbackNote` renders its actions with `<For each={explained().act
 `explainFallback` builds fresh `{kind, label}` objects on every call. `<For>` is keyed by
 reference, so every new result — even one with the identical reason — disposes the focused button
 and mounts a new one.
+
+That was only half of it. Switching to `<Index>` kept the same button node (unit test green), and
+focus STILL fell to `<body>` in Chromium: a MutationObserver on the note showed the button removed
+and re-added on every result. Each item was `<>{" "}<button/></>`; Solid's `normalizeIncomingArray`
+(solid-js 1.9.15 `web.js`) recurses into a nested array with the single previous node as
+`current`, so the `" "` string never matches a previous text node and becomes a new one each time,
+and `reconcileArrays` then re-inserts the button next to it — a move, which a browser blurs and
+jsdom does not.
+
+**Fixed 2026-09-13.** `apps/web/src/views/SearchFallbackNote.tsx`: `<Index>` over the actions, and
+each item one `<span>` holding its space and its button. The e2e test fails on the branch's code
+(`<For>`) and on `<Index>` with the fragment, passes with both changes on Chromium and on WebKit (run
+through a throwaway config — the committed WebKit project only matches `storage.spec.ts`).

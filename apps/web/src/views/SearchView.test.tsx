@@ -204,6 +204,28 @@ describe("SearchView fallback note (B-520)", () => {
     expect(lastInput?.query).toBe("pricing");
   });
 
+  it("Check again keeps keyboard focus on the button when the same reason comes back (B-525)", async () => {
+    // A keyboard user presses Enter on "Check again" while the index builds; the answer is the
+    // same reason with a new count. The button must be the same node, still focused — not a
+    // replacement mounted by a `<For>` keyed on freshly built action objects, which left focus on
+    // <body> in Chromium and WebKit. This covers that half only: jsdom does not blur an element
+    // Solid MOVES, the other half of B-525, which `e2e/tests/search-fallback.spec.ts` covers.
+    serverFallback = { reason: "indexing", message: "…", indexed: 3, total: 9, errors: 0 };
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+    await screen.findByText(/still being built \(3 of 9 embedded\)/);
+    const button = screen.getByRole("button", { name: "Check again" });
+    button.focus();
+    expect(document.activeElement).toBe(button);
+
+    serverFallback = { reason: "indexing", message: "…", indexed: 8, total: 9, errors: 0 };
+    fireEvent.click(button);
+    await screen.findByText(/still being built \(8 of 9 embedded\)/);
+    expect(screen.getByRole("button", { name: "Check again" })).toBe(button);
+    expect(button.isConnected).toBe(true);
+    expect(document.activeElement).toBe(button);
+  });
+
   it("closing Settings re-runs a search that fell back, and only one that did (B-523)", async () => {
     serverFallback = { reason: "not_configured", message: "…" };
     await renderSearch();

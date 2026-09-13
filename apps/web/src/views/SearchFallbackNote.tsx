@@ -11,7 +11,7 @@
  * `message`; a server too old to send `fallback` gets the old sentence.
  */
 
-import { For, type JSX, Show } from "solid-js";
+import { Index, type JSX, Show } from "solid-js";
 import type { SearchFallback } from "../data/api-client.js";
 import "./search-fallback.css";
 
@@ -116,23 +116,30 @@ export function SearchFallbackNote(props: {
           </>
         )}
       </Show>
-      <For each={explained().actions}>
+      {/* Two things keep the button a keyboard user just pressed alive across "Try again" /
+          "Check again" (B-525). `<Index>`, not `<For>`: `explainFallback` builds new action
+          objects for every result and `<For>` keys by reference, so each answer — even the same
+          reason — disposed the focused button. And one element per item, with its space inside
+          it: a `{" "}` string next to the button in a fragment is turned into a NEW text node on
+          every update, which made Solid move the button with `insertBefore`, and a browser blurs
+          an element it moves (jsdom does not, so only the e2e test sees this). */}
+      <Index each={explained().actions}>
         {(action) => (
-          <>
+          <span class="search-fallback-action-slot">
             {" "}
             <button
               type="button"
               class="search-fallback-action"
-              data-action={action.kind}
+              data-action={action().kind}
               onClick={() =>
-                action.kind === "settings" ? props.onOpenSettings() : props.onRetry()
+                action().kind === "settings" ? props.onOpenSettings() : props.onRetry()
               }
             >
-              {action.label}
+              {action().label}
             </button>
-          </>
+          </span>
         )}
-      </For>
+      </Index>
     </p>
   );
 }
