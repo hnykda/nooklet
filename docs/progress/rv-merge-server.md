@@ -18,7 +18,8 @@ evidence, not tests. Every finding gets a real test in the repo.
 |---|---|---|---|
 | F1 live mirror never retries a failed page (B-126 x B-260) | medium | B-365 | fixed 2677236 |
 | F2 batch.undo name pre-check ignores keep_later_edits | low | B-366 | fixed d4f1335 |
-| F3 batch.undo name pre-check ignores aliases (B-256) | low | B-367 | fixed (F3 commit) |
+| F3 batch.undo name pre-check ignores aliases (B-256) | low | B-367 | fixed b36d2f2 |
+| (found) keep_later_edits undo's outline names the before-image name | low | B-369 | logged, open |
 | F4 core pageMirrorPath lacks NAME_MAX shortening | low | B-368 | todo |
 
 ## Done
@@ -39,17 +40,26 @@ evidence, not tests. Every finding gets a real test in the repo.
   base). mcp-tools.md §4.3.17 errors updated. Server 611/611, typecheck clean, verify OK on
   real-graph copy (20,411 ops; untouched copy, so only a smoke check).
 
-- F3 / B-367 — fix(ops) commit "batch.undo refuses a name a live page uses as an alias":
+- F3 / B-367 — `b36d2f2`:
   pre-check calls `trash-restore.ts#livePageAliasing` (exported; takes a list of page ids to leave
   out, via `json_each`) for pages not in the batch, and a lazily built index of the aliases the undo
   leaves each batch page. Pages that are live under the same key before and after are not checked
   (moves no name). New `ops/batch-undo-alias.http.test.ts` (4; 2 failed before). Tool description +
   mcp-tools.md §4.3.17 errors. Server 615/615, typecheck clean.
 
+- Real graph, F2+F3: `tools/probes/undo-names-real-graph.ts` on a fresh copy — real alias
+  (Taxes `alias:: daně`) refuses the undo of a "Daně" delete with 409, same as trash.restore;
+  merge of "Balení" (98 linked refs) into Taxes undone -> 200, 98 links back; kept-alias variant
+  409, LWW 200; kept rename (Czech name) 200 / LWW 409; kept delete 200; verify 0 divergences.
+  Seen on the way: `page.delete {page: "Daně"}` while Taxes aliases "daně" deletes Taxes (alias
+  resolution on a destructive op) — noted for the review doc, not a bug entry. Outline wording bug
+  logged as B-369.
+- e2e (port 6471): history-later-edits, history, trash-conflict, trash, mirror-live, replace,
+  link-unlinked — 23 passed, 0 failed.
+
 ## In flight
 
-- Real-graph check of F2+F3 through a server on the graph copy, then `verify`; e2e
-  `history-later-edits.spec.ts`, `trash-conflict.spec.ts` (+ other history/trash specs) on port 6471.
+- F4 / B-368: core `pageMirrorPath` NAME_MAX shortening.
 
 ## Next steps
 

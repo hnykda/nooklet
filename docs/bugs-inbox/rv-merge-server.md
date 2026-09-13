@@ -100,3 +100,16 @@ undo that moves no name (the page is live under the same key before and after) i
 an alias that page already shadowed, which `page.create` allows. Test that would have caught it:
 `ops/batch-undo-alias.http.test.ts` (4; the delete-then-alias case and the kept-alias merge case
 answered 200 before this fix, at `d4f1335`; the other two guard the exemptions).
+
+---
+
+### B-369 · A keep_later_edits undo says "restored page "Old name"" for a page it left renamed or in the trash
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, while checking B-366 on a copy of the
+real graph (`tools/probes/undo-names-real-graph.ts`) · **Test:** none yet
+
+Set a property on "Plánování zahradních úprav", rename the page to "Plánování (přejmenováno)",
+then undo the property change with `keep_later_edits` (History's Undo): the call succeeds, the page
+keeps its new name, and the outline — the text an agent reads, and the MCP tool result — says
+`restored page "Plánování zahradních úprav"`. Likewise for a page deleted since: `restored page
+"Garden"` while Garden stays in the trash. The summary line names the before-image's name whenever
+the undo wrote any op for the page, whatever it left the name and tombstone as.
