@@ -20,6 +20,7 @@ import type {
 import type { BlockTaskSnapshot, Store } from "../commands/types.js";
 import { applyOp, applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
 import { forceSync, queryAs } from "../db/client.js";
+import { assetUrl } from "../editor/render/asset-url.js";
 import { isSafeHref } from "../editor/render/safe-href.js";
 import { flashRemoteTouch } from "../live/flash-bus.js";
 import type { PageRefQuery } from "../live/resolve-page-ref.js";
@@ -237,8 +238,11 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
     },
     followLink(link: LinkAtCaret) {
       if (link.type === "url" && link.href) {
-        // Same guard as the rendered link (B-268): the URL is content, and may be `javascript:`.
-        if (isSafeHref(link.href)) window.open(link.href, "_blank", "noopener");
+        // Through `assetUrl`, as the rendered link is: a raw `assets/x.pdf` resolves against the
+        // current `/page/...` URL and opens the SPA fallback instead of the file (B-137, B-51).
+        // Same scheme guard as the rendered link (B-268): the URL is content, and may be `javascript:`.
+        const url = assetUrl(link.href);
+        if (isSafeHref(url)) window.open(url, "_blank", "noopener");
         return;
       }
       if ((link.type === "page" || link.type === "tag") && link.name) {
