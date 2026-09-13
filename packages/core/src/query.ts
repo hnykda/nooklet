@@ -25,7 +25,7 @@ import { addDays, addMonths, addWeeks, addYears } from "date-fns";
 import { dateToJournalDay, journalDayToDate } from "./journal.js";
 import type { Priority, Properties, TaskMarker } from "./model.js";
 import { normalizePageName } from "./page-name.js";
-import { extractRefs } from "./refs.js";
+import { extractRefs, TASK_TAG } from "./refs.js";
 
 // ---------------------------------------------------------------------------------------------
 // AST
@@ -849,13 +849,19 @@ function dateFieldValue(field: DateField, b: QueryBlock, env: QueryEnv): number 
   }
 }
 
+const TASK_KEY = normalizePageName(TASK_TAG);
+
 /** Every page the block references, normalized — tags and `[[links]]` are the same thing here
- * (a tag is a page, ADR 004), so `tag:work` finds `#work` and `[[work]]` alike. */
+ * (a tag is a page, ADR 004), so `tag:work` finds `#work` and `[[work]]` alike. A marked block
+ * also references `Task` (`refs.ts#TASK_TAG`), exactly as the server's `ref` index says: reading
+ * the text alone, `tag:task` found none of the 686 tasks on the real graph that `[[Task]]`'s
+ * backlinks listed, and `not #task` matched every one of them (B-263). */
 function refKeys(b: QueryBlock): Set<string> {
   const refs = extractRefs(b.content, b.properties);
   const out = new Set<string>();
   for (const r of refs.tags) out.add(normalizePageName(r));
   for (const r of refs.pageRefs) out.add(normalizePageName(r));
+  if (b.marker !== null) out.add(TASK_KEY);
   return out;
 }
 
@@ -1049,16 +1055,19 @@ function termSql(term: QueryTerm, today: number): QueryPrefilter {
       if (term.mode === "any") return { sql: "b.priority IS NOT NULL", params: [], exact: true };
       if (term.mode === "none") return { sql: "b.priority IS NULL", params: [], exact: true };
       return inList("b.priority", term.values);
-    case "ref":
+    case "ref": {
       // Anything that can carry a reference: a `#`, a `[[`, or a `tags::` property. Necessary,
       // not sufficient — `extractRefs` decides for real (code spans, escapes, the exact name).
-      return {
-        sql:
-          "(instr(b.content, '#') > 0 OR instr(b.content, '[[') > 0 OR EXISTS " +
-          "(SELECT 1 FROM block_prop bp WHERE bp.block_id = b.id AND bp.key = 'tags'))",
-        params: [],
-        exact: false,
-      };
+      const textual =
+        "instr(b.content, '#') > 0 OR instr(b.content, '[[') > 0 OR EXISTS " +
+        "(SELECT 1 FROM block_prop bp WHERE bp.block_id = b.id AND bp.key = 'tags')";
+      // `Task` is also carried by the marker column, with nothing in the text (B-263).
+      const sql =
+        normalizePageName(term.name) === TASK_KEY
+          ? `(b.marker IS NOT NULL OR ${textual})`
+          : `(${textual})`;
+      return { sql, params: [], exact: false };
+    }
     case "page":
       return { sql: "p.key = ?", params: [normalizePageName(term.name)], exact: true };
     case "namespace": {

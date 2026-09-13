@@ -28,3 +28,21 @@ export async function runWithDryRun<T>(
     sp.rollback();
   }
 }
+
+/**
+ * The text an MCP client reads for a tool result: the op's own `render`, prefixed when the call was
+ * a dry run.
+ *
+ * `render` functions describe what an op did, in the past tense ("merged Alex into @Alex: 19
+ * reference(s) rewritten"), and a dry run runs the very same handler — so a preview read exactly
+ * like the real thing, and only `structuredContent.dry_run` said otherwise (B-267). An agent acts on
+ * the text. Doing this once here, keyed on the `dry_run` field every dry-runnable op returns,
+ * covers all of them (page_merge, page_delete, block_update, batch, …) and any op added later,
+ * instead of fifteen `render`s each remembering.
+ */
+export function renderToolText<T>(render: ((out: T) => string) | undefined, out: T): string {
+  const text = render ? render(out) : JSON.stringify(out);
+  const dryRun =
+    typeof out === "object" && out !== null && (out as { dry_run?: unknown }).dry_run === true;
+  return dryRun ? `dry run, nothing written: ${text}` : text;
+}

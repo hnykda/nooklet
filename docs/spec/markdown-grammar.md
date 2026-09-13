@@ -209,8 +209,10 @@ conventions glossary — not added there because this task may only touch this f
   4. If the line matches the property regex (OUT-18), extract it (OUT-19/20).
   5. If the line matches `^\s*SCHEDULED:\s*<([^>]+)>\s*$` or `^\s*DEADLINE:\s*<([^>]+)>\s*$`
      (org timestamp syntax, optionally with a leading weekday abbreviation and a repeater — e.g.
-     `<2026-09-12 Sat .+1w>`, `<2026-09-14 Sat 14:00 +1d>`): parse the date (`YYYY-MM-DD`),
-     optional `HH:MM` time, and optional repeater `[.+]{1,2}(\d+)([dwmy])`; discard the line;
+     `<2026-09-12 Sat .+1w>`, `<2026-09-14 Sat 14:00 +1d>`): parse the date (`YYYY-MM-DD`, or with
+     a one-digit month, day or hour — `<2023-2-17 Fri>`, `9:05` — as the owner's Logseq data has
+     and mldoc accepts; stored zero-padded, B-266), optional `HH:MM` time, and optional repeater
+     `[.+]{1,2}(\d+)([dwmy])`; discard the line;
      set `scheduled::`/`deadline::` (OUT-22 shape, weekday dropped) and, if a repeater was
      present, `repeat:: <n><unit>` (the `+`/`++`/`.+` dialect marker is discarded — ADR 011 keeps
      one repeat shape, not three). If a `repeat::` property is set by more than one of these
@@ -422,6 +424,13 @@ Each entry: trigger, exact rule, produced token kind (types in §3).
   digit. `$5 and $10` therefore never matches (the candidate closer before "10" is followed by a
   digit); `$E=mc^2$ today` does. `tex` is the raw text between the delimiters, unparsed (a future
   KaTeX/MathJax render step interprets it; this grammar only delimits it).
+- **Display math** `$$...$$` (Logseq's display form; added 2026-09-13, B-264 — the owner's graph
+  has `$$CO_2$$`, which §9's single-`$` counts did not look for). Tried before inline math at a
+  `$$`: the scan looks for the next `$$` on the same line; the text between must not be blank and
+  the character after the closer (if any) must not be a digit (the inline rule's price guard, so
+  `$$5 and $$10` stays text). Produces a `math` token with `display: true`; `tex` excludes both
+  delimiters. An unclosed or blank `$$` is not display math and falls through to the inline rule
+  above. A `$$` block spanning several lines is not recognized (the tokenizer is per line).
 - **Checkbox** `[ ]`, `[x]`, `[X]` (optional per the task brief; included because Obsidian/GitHub
   paste is common). Recognized anywhere on a line as exactly those three characters, **except**
   when immediately followed by `(` — in that case the markdown-link rule (which is tried first at
@@ -505,7 +514,7 @@ export type InlineToken =
   | (TokBase & { kind: "strike"; children: InlineToken[] })
   | (TokBase & { kind: "highlight"; children: InlineToken[] })
   | (TokBase & { kind: "code"; code: string })
-  | (TokBase & { kind: "math"; tex: string })
+  | (TokBase & { kind: "math"; tex: string; display?: true })
   | (TokBase & { kind: "checkbox"; checked: boolean });
 
 export type Align = "left" | "center" | "right" | null;
@@ -594,7 +603,7 @@ export function extractRefs(content: string, properties?: Properties): Extracted
 | `strike` | `<s>` | — |
 | `highlight` | `<mark>` | `.vr-highlight` |
 | `code` | `<code>` | `.vr-inline-code` |
-| `math` | KaTeX/MathJax render of `tex` (plugin-provided; plain `$tex$` text if no renderer is loaded) | `.vr-math` |
+| `math` | KaTeX/MathJax render of `tex`, in display mode when `display` (plain `$tex$` / `$$tex$$` text if no renderer is loaded) | `.vr-math` |
 | `checkbox` | `<input type="checkbox" disabled checked?>` | `.vr-checkbox` |
 | content `heading` | `<h1>`…`<h6>` per `level` | `.vr-heading` |
 | content `fence` | `<pre><code class="language-<lang>">`, syntax-highlighted (shiki or highlight.js, editor spec's call) | `.vr-fence`, `data-lang="<lang>"` |

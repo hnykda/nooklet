@@ -13,7 +13,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { openDb } from "../db.js";
-import { exportAll, exportPage, isOwnWrite, pageFilePath, renderPageToOutline } from "./export.js";
+import {
+  changesHead,
+  exportAll,
+  exportPage,
+  isOwnWrite,
+  pageFilePath,
+  pagesTouchedSince,
+  renderPageToOutline,
+} from "./export.js";
 
 let ctx: ServerContext;
 let dataDir: string;
@@ -350,5 +358,64 @@ describe("exportAll", () => {
 
     const row = ctx.driver.get("SELECT * FROM mirror_file WHERE page_id = ?", [p1]);
     expect(row).toBeUndefined();
+  });
+});
+
+describe("exportAll with sinceSeq (B-260)", () => {
+  it("renders only the pages a change after the cursor touched, whatever the op kind", () => {
+    const quiet = createPage("Quiet Page");
+    createBlock(quiet, "untouched");
+    const renamed = createPage("Before Rename");
+    createBlock(renamed, "body");
+    const from = createPage("Move From");
+    const moving = createBlock(from, "travels");
+    const to = createPage("Move To");
+    createBlock(to, "here");
+    expect(exportAll(ctx.driver, dataDir).exported).toBe(4);
+
+    const cursor = changesHead(ctx.driver);
+    expect(pagesTouchedSince(ctx.driver, cursor)).toEqual([]);
+
+    renamePage(renamed, "After Rename");
+    const hlc = ctx.hlc.next();
+    serverApplyOps(
+      ctx,
+      [
+        {
+          id: hlc,
+          hlc,
+          device: "aaaaaaaa",
+          entity: moving,
+          payload: { kind: "block.place", place: { pageId: to, parentId: null, order: "a1" } },
+        },
+      ],
+      { origin: "user", actor: "test" },
+    );
+
+    // The page it left and the page it joined both count; the quiet page does not.
+    expect(new Set(pagesTouchedSince(ctx.driver, cursor))).toEqual(new Set([renamed, from, to]));
+    const r = exportAll(ctx.driver, dataDir, { sinceSeq: cursor });
+    expect(r).toEqual({ exported: 3, skipped: 1, deleted: 0 });
+    expect(existsSync(join(dataDir, "pages", "After Rename.md"))).toBe(true);
+    expect(existsSync(join(dataDir, "pages", "Before Rename.md"))).toBe(false);
+    expect(readFileSync(join(dataDir, "pages", "Move From.md"), "utf8")).not.toContain("travels");
+    expect(readFileSync(join(dataDir, "pages", "Move To.md"), "utf8")).toContain("travels");
+  });
+});
+
+describe("exportAll rebuilds missing files (B-262)", () => {
+  it("rewrites a page whose file is gone even though mirror_file says it is up to date", () => {
+    const pageId = createPage("Vanished File");
+    createBlock(pageId, "still in the database");
+    createPage("Still There");
+    expect(exportAll(ctx.driver, dataDir).exported).toBe(2);
+
+    // A database copied without its pages/, or a file deleted by hand: the row stays, the file
+    // does not.
+    const file = join(dataDir, pageFilePath({ name: "Vanished File", journalDay: null }));
+    rmSync(file);
+
+    expect(exportAll(ctx.driver, dataDir)).toEqual({ exported: 1, skipped: 1, deleted: 0 });
+    expect(readFileSync(file, "utf8")).toContain("still in the database");
   });
 });

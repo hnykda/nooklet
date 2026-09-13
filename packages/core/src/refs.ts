@@ -20,6 +20,16 @@ export interface ExtractedRefs {
   blockRefs: string[];
 }
 
+/**
+ * The page every block with a task marker references, without `#Task` in its text. Capitalised
+ * because it is a page name people see and link to by hand; lookups normalise case. Tasks live in
+ * the reference machinery like everything else (`[[Task]]` lists them all, `tag:task` finds them).
+ * A projection of `block.marker`, not something `extractRefs` can see — the server's `ref` index
+ * adds it on write (`packages/server/src/apply-ops.ts`) and the query language adds it on match
+ * (`./query.ts`). Both read this one name, so they cannot drift apart again (B-263).
+ */
+export const TASK_TAG = "Task";
+
 const UUID_BODY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FENCE_RE = /^\s*(`{3,}|~{3,})/;
 const TAG_STOP = new Set([" ", "\t", "\n", ",", ";", ")", "]", "}", "'", '"']);

@@ -130,6 +130,25 @@ describe("parseOutline", () => {
     const p = parseOutline("- a\r\n\t- b\r\n");
     expect(p.blocks[0]?.children[0]?.content).toBe("b");
   });
+
+  // B-266: the owner's graph has `SCHEDULED: <2023-2-17 Fri>` — month and day without zero
+  // padding, which mldoc reads (`Scanf.sscanf s "%d-%d-%d"`). They stayed in the text as literal
+  // lines, with no schedule. An hour without padding was worse: the line was consumed and the
+  // reducer then refused `2026-09-14 9:05`, so the schedule vanished entirely.
+  it("reads org timestamps without zero padding, and stores them padded", () => {
+    const p = parseOutline(
+      "- DONE Mirek\n  SCHEDULED: <2023-2-17 Fri>\n- LATER call\n  DEADLINE: <2022-12-8 Thu 9:05 .+1w>\n",
+    );
+    expect(p.blocks[0]).toMatchObject({
+      content: "Mirek",
+      marker: "DONE",
+      properties: { scheduled: "2023-02-17" },
+    });
+    expect(p.blocks[1]).toMatchObject({
+      content: "call",
+      properties: { deadline: "2022-12-08 09:05", repeat: "1w" },
+    });
+  });
 });
 
 describe("serializeOutline", () => {

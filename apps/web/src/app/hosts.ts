@@ -20,6 +20,7 @@ import type {
 import type { BlockTaskSnapshot, Store } from "../commands/types.js";
 import { applyOp, applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
 import { forceSync, queryAs } from "../db/client.js";
+import { isSafeHref } from "../editor/render/safe-href.js";
 import { flashRemoteTouch } from "../live/flash-bus.js";
 import type { PageRefQuery } from "../live/resolve-page-ref.js";
 import { resolvePageRef } from "../live/resolve-page-ref.js";
@@ -236,7 +237,8 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
     },
     followLink(link: LinkAtCaret) {
       if (link.type === "url" && link.href) {
-        window.open(link.href, "_blank", "noopener");
+        // Same guard as the rendered link (B-268): the URL is content, and may be `javascript:`.
+        if (isSafeHref(link.href)) window.open(link.href, "_blank", "noopener");
         return;
       }
       if ((link.type === "page" || link.type === "tag") && link.name) {

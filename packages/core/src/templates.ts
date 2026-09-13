@@ -109,12 +109,21 @@ export function expandTemplateTokens(text: string, ctx: TemplateExpansion): stri
 }
 
 /** The nodes an insertion actually places: the template block itself, or only its children when
- * it says `template-including-parent:: false`. */
+ * it says `template-including-parent:: false` — always unfolded.
+ *
+ * A template is folded in the library to keep the library tidy, not so that every copy arrives
+ * folded: the owner's imported "Meeting" template (`collapsed:: true`) inserted as one empty bullet
+ * with Objectives / Agenda / Notes hidden beneath it (B-265). Only the top-level nodes are
+ * unfolded — a fold further down is part of the template's shape. Every insertion path goes
+ * through here (`templateInsertOps`, the client's caret and journal-day inserts), which is why
+ * the rule lives here rather than in `templateNodesOps`. Not verified: what Logseq itself does. */
 export function templateRoots(root: TemplateNode): TemplateNode[] {
-  return isTruthyProp(root.properties[TEMPLATE_INCLUDING_PARENT_PROP]) ||
+  const roots =
+    isTruthyProp(root.properties[TEMPLATE_INCLUDING_PARENT_PROP]) ||
     root.properties[TEMPLATE_INCLUDING_PARENT_PROP] === undefined
-    ? [root]
-    : root.children;
+      ? [root]
+      : root.children;
+  return roots.map((node) => (node.collapsed ? { ...node, collapsed: false } : node));
 }
 
 /** A copy of `properties` without the template-only keys. */

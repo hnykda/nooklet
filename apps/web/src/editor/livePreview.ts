@@ -48,20 +48,24 @@ function cursorTouches(from: number, to: number, head: number): boolean {
 const mathReady = StateEffect.define<null>();
 
 class MathWidget extends WidgetType {
-  constructor(readonly tex: string) {
+  constructor(
+    readonly tex: string,
+    readonly display: boolean,
+  ) {
     super();
   }
 
   override eq(other: MathWidget): boolean {
-    return other.tex === this.tex;
+    return other.tex === this.tex && other.display === this.display;
   }
 
   override toDOM(): HTMLElement {
     const span = document.createElement("span");
-    const html = renderTexSync(this.tex);
+    const html = renderTexSync(this.tex, this.display);
     if (html === null) {
+      const delim = this.display ? "$$" : "$";
       span.className = "vr-math";
-      span.textContent = `$${this.tex}$`;
+      span.textContent = `${delim}${this.tex}${delim}`;
     } else {
       span.className = "vr-math vr-math-rendered";
       span.innerHTML = html; // KaTeX output with `trust: false` — see `render/math.ts`.
@@ -194,7 +198,7 @@ function buildRanges(doc: string, head: number): Built {
             hide.push({
               from: tok.start,
               to: tok.end,
-              deco: Decoration.replace({ widget: new MathWidget(tok.tex) }),
+              deco: Decoration.replace({ widget: new MathWidget(tok.tex, tok.display === true) }),
             });
           }
           break;

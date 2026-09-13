@@ -26,7 +26,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   formatDayTime,
@@ -64,13 +64,17 @@ export interface ExportAllResult {
 
 export interface ExportAllOptions {
   /**
-   * When true, skip pages that could not possibly have changed since their last export (no
-   * live block or the page row itself touched after `mirror_file.written_at`) without even
-   * rendering them. Purely a perf fast path — `exportPage` already no-ops on an unchanged
-   * render regardless of this flag, so results are identical either way, just cheaper to reach
-   * on a large graph where most pages are untouched between calls.
+   * Only consider pages that a `changes` row with `seq > sinceSeq` touched (`pagesTouchedSince`),
+   * instead of rendering every live page. Deleted pages are pruned either way.
+   *
+   * This replaced an `onlyChanged` flag that picked pages whose `page.updated_at` or newest
+   * `block.updated_at` was later than `mirror_file.written_at` (B-260). Only `block.text` moves
+   * `updated_at`: a rename, a property, a marker, an indent or a move between pages reached the
+   * database and never the file. `changes` has a row for every entity every commit touched,
+   * whatever the op kind, and `seq` is a counter rather than a clock, so there is no
+   * same-millisecond race either.
    */
-  onlyChanged?: boolean;
+  sinceSeq?: number;
 }
 
 interface BlockRow {
@@ -189,7 +193,7 @@ export function pageFilePath(page: { name: string; journalDay: number | null }):
 /**
  * Render + write one page's mirror file, skipping the write entirely when the rendered content
  * hash matches what `mirror_file` already recorded for this page (echo-suppression bookkeeping,
- * ADR 002). Writes atomically (`<path>.tmp-<random>` then `fs.rename`). If the page's file path
+ * ADR 002) and the file is still on disk. Writes atomically (`<path>.tmp-<random>` then `fs.rename`). If the page's file path
  * changed since the last export (a rename), the old file and its stale `mirror_file` row are
  * removed.
  */
@@ -204,11 +208,19 @@ export function exportPage(driver: SqlDriver, dataDir: string, pageId: string): 
     [pageId],
   );
 
-  if (existing && existing.path === relPath && existing.content_hash === contentHash) {
+  const absPath = join(dataDir, relPath);
+  // The row only says what we last wrote, not that it is still there (B-262): it travels with a
+  // copied or restored `graph.sqlite` while `pages/` does not, and a file can be deleted by hand.
+  // Trusting it alone made `nooklet export` of a copied database write 6 files out of 972.
+  if (
+    existing &&
+    existing.path === relPath &&
+    existing.content_hash === contentHash &&
+    existsSync(absPath)
+  ) {
     return { path: relPath, contentHash, changed: false };
   }
 
-  const absPath = join(dataDir, relPath);
   mkdirSync(dirname(absPath), { recursive: true });
   const tmpPath = join(dirname(absPath), `.${randomBytes(8).toString("hex")}.tmp`);
   writeFileSync(tmpPath, text, "utf8");
@@ -239,10 +251,37 @@ export function exportPage(driver: SqlDriver, dataDir: string, pageId: string): 
   return { path: relPath, contentHash, changed: true };
 }
 
+/** The newest `changes.seq` — the cursor to pass as `sinceSeq` next time. */
+export function changesHead(driver: SqlDriver): number {
+  return driver.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes")?.n ?? 0;
+}
+
 /**
- * Export every live page, then clean up mirror files for pages that are no longer live: soft
- * deleted (`page.deleted_at IS NOT NULL`, `mirror_file` row still present) or hard-gone (the
- * page id no longer exists in `page` at all).
+ * Ids of the pages whose mirror file a commit after `sinceSeq` could have changed: a page row
+ * that was written (create, rename, property, delete), and every page a written block was on
+ * before or after the write. Both sides matter for a move — the page it left needs the block gone
+ * from its file just as much as the page it joined needs it added. `changes` stores the block's
+ * page in its snapshots (`rows.ts#snapshotBlock`), so this needs no reconstruction from ops.
+ */
+export function pagesTouchedSince(driver: SqlDriver, sinceSeq: number): string[] {
+  return driver
+    .all<{ page_id: string | null }>(
+      `SELECT entity_id AS page_id FROM changes WHERE seq > ? AND entity_type = 'page'
+       UNION
+       SELECT json_extract(before_json, '$.place.pageId') FROM changes
+         WHERE seq > ? AND entity_type = 'block' AND before_json IS NOT NULL
+       UNION
+       SELECT json_extract(after_json, '$.place.pageId') FROM changes
+         WHERE seq > ? AND entity_type = 'block' AND after_json IS NOT NULL`,
+      [sinceSeq, sinceSeq, sinceSeq],
+    )
+    .flatMap((r) => (r.page_id === null ? [] : [r.page_id]));
+}
+
+/**
+ * Export every live page (or, with `sinceSeq`, every live page touched since then), then clean up
+ * mirror files for pages that are no longer live: soft deleted (`page.deleted_at IS NOT NULL`,
+ * `mirror_file` row still present) or hard-gone (the page id no longer exists in `page` at all).
  */
 export function exportAll(
   driver: SqlDriver,
@@ -251,26 +290,11 @@ export function exportAll(
 ): ExportAllResult {
   const allLivePages = driver.all<{ id: string }>("SELECT id FROM page WHERE deleted_at IS NULL");
 
-  const candidates = opts.onlyChanged
-    ? driver.all<{ id: string }>(
-        `SELECT p.id AS id
-         FROM page p
-         LEFT JOIN mirror_file mf ON mf.page_id = p.id
-         LEFT JOIN (
-           SELECT page_id,
-                  MAX(updated_at) AS last_update,
-                  MAX(COALESCE(deleted_at, 0)) AS last_delete
-           FROM block GROUP BY page_id
-         ) b ON b.page_id = p.id
-         WHERE p.deleted_at IS NULL
-           AND (
-             mf.path IS NULL
-             OR p.updated_at > mf.written_at
-             OR COALESCE(b.last_update, 0) > mf.written_at
-             OR COALESCE(b.last_delete, 0) > mf.written_at
-           )`,
-      )
-    : allLivePages;
+  let candidates = allLivePages;
+  if (opts.sinceSeq !== undefined) {
+    const touched = new Set(pagesTouchedSince(driver, opts.sinceSeq));
+    candidates = allLivePages.filter((p) => touched.has(p.id));
+  }
 
   let exported = 0;
   let skipped = allLivePages.length - candidates.length;

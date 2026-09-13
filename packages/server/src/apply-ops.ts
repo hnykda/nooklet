@@ -22,6 +22,7 @@ import {
   makeOp,
   newId,
   normalizePageName,
+  TASK_TAG,
 } from "@nooklet/core";
 import { reindexPageIdentity, resolvePageIdForKey } from "./page-aliases.js";
 import { rebuildPageTags } from "./page-tags.js";
@@ -207,10 +208,6 @@ function reindexBlockAndSubtree(driver: SqlDriver, blockId: string): void {
     [blockId, Date.now()],
   );
 }
-
-/** The page every task block references. Capitalised because it is a page name people will see
- * and link to by hand; lookups normalise case anyway (`normalizeKey`). */
-const TASK_TAG = "Task";
 
 export function rebuildRefRows(
   driver: SqlDriver,
