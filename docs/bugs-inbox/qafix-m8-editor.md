@@ -51,3 +51,23 @@ chip's click handler opened `blockDatePicker` unconditionally, and nothing passe
 **Fixed 2026-09-13.** `DateChips` takes `onLocked`; `BlockRowView` sets it on a locked row to its new
 `onReadOnlyRefused`, which `BlockTree` wires to the read-only notice — so the chip refuses exactly
 the way the marker does. The e2e test was red before the fix (no notice) and green after.
+
+---
+
+### B-343 · After `/image` or an image paste the caret stays before the inserted image markdown
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA of M8 editor features
+(Q4, `scratchpad/m9/qa-m8-editor/misc2.mjs`) · **Test:** `e2e/tests/image-insert.spec.ts`, both
+tests (they now type after the insert)
+
+`- image here`, End, ` /image`, Enter, pick a PNG, wait for the upload, type `Z`: the block became
+`image here Z![](assets/….png)`. The upload and the image itself are fine; the caret was left just
+before the image, so whatever is typed next lands in front of it instead of after it (the way
+`/mermaid` and every other editor places the caret).
+
+Cause: `BlockTree.tsx#insertUploadedImage` dispatched the insertion with no `selection`, and CM6
+maps a cursor that sits exactly at an insertion point to before the inserted text.
+
+**Fixed 2026-09-13.** The dispatch sets `selection: {anchor: head + markdown.length}`. Both e2e tests
+were red before (`look  Z![](assets/….png)`, `pasted  Z![](…)`) and green after. The other branch of
+that function (the editor has moved to another block; the text is written into the old block's
+content) has no caret to place and is unchanged.

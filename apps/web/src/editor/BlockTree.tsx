@@ -917,7 +917,12 @@ export function BlockTree(props: {
       const view = surface.view();
       if (view && surface.currentId() === id) {
         const head = view.state.selection.main.head;
-        view.dispatch({ changes: { from: head, to: head, insert: asset.markdown } });
+        // With no `selection`, CM6 maps a caret sitting exactly at the insertion point to BEFORE
+        // the inserted text, so the next keystroke landed in front of the image (B-343).
+        view.dispatch({
+          changes: { from: head, to: head, insert: asset.markdown },
+          selection: { anchor: head + asset.markdown.length },
+        });
         return;
       }
       const clock = clockSig();

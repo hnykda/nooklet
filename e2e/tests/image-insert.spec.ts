@@ -44,6 +44,11 @@ test("/image opens a file chooser and inserts the uploaded image at the caret (B
   await expect
     .poll(async () => (await readBlocks(page, "Image Slash"))[0]?.content ?? "")
     .toMatch(new RegExp(`^look ${IMAGE_MD.source}$`));
+  // Typing goes on after the image, not in front of it (B-343: the caret stayed before it).
+  await page.keyboard.type(" Z");
+  await expect
+    .poll(async () => (await readBlocks(page, "Image Slash"))[0]?.content ?? "")
+    .toMatch(new RegExp(`^look ${IMAGE_MD.source} Z$`));
   // The chooser's input is gone again: nothing left behind in the document per use.
   await expect(page.locator("input[data-nooklet-image-picker]")).toHaveCount(0);
   await clickAway(page);
@@ -67,6 +72,10 @@ test("pasting an image uploads it with the client's credential and inserts it (B
   await expect
     .poll(async () => (await readBlocks(page, "Image Paste"))[0]?.content ?? "")
     .toMatch(new RegExp(`^pasted ${IMAGE_MD.source}$`));
+  await page.keyboard.type(" Z");
+  await expect
+    .poll(async () => (await readBlocks(page, "Image Paste"))[0]?.content ?? "")
+    .toMatch(new RegExp(`^pasted ${IMAGE_MD.source} Z$`));
   await clickAway(page);
   await expectRenderedImage(page);
 });

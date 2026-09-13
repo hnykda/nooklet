@@ -10,9 +10,9 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
 | QA | Bug | Severity | State |
 |---|---|---|---|
 | Q1 merge drops marker/dates/properties | B-340 | high | fixed `94776a3` |
-| Q2 date chip writes on a read-only page | B-341 | medium | fixed (next commit after 94776a3) |
+| Q2 date chip writes on a read-only page | B-341 | medium | fixed `7bec2d2` |
 | Q3 typed `scheduled::` line: DB text, mirror property | B-342 | medium | queued (may be owner decision) |
-| Q4 caret before inserted image | B-343 | low | queued |
+| Q4 caret before inserted image | B-343 | low | fixed (commit after 7bec2d2) |
 | Q5 `/mermaid` after text inline, never renders | B-344 | low | queued |
 | Q6 Set scheduled date on multi-selection dates one block | B-345 | low | queued |
 
@@ -23,17 +23,17 @@ Bugs go to `docs/bugs-inbox/qafix-m8-editor.md` (NOT `docs/BUGS.md`), numbers B-
   (`ReadOnlyNotice.tsx#show(text)`); spec R20a. Unit: `commands.test.ts` (4/6 new red on base).
   E2E `merge-keeps-fields.spec.ts` (2/2 red on base, green after). Related specs (merge, editing,
   block-properties, read-only, parity, undo-redo, focus, editing-row-leaves): 79 passed.
-- Q2/B-341: `DateChips.tsx` `onLocked`, `BlockRowView.tsx` `onReadOnlyRefused`, one line in
+- `7bec2d2` Q2/B-341: `DateChips.tsx` `onLocked`, `BlockRowView.tsx` `onReadOnlyRefused`, one line in
   `BlockTree.tsx`. E2E `read-only.spec.ts` B-341 test red before, green after; read-only + dates +
   journal-agenda: 21 passed.
 
 ## 2. In flight
 
-- Q4 next.
+- Q5 next.
 
 ## 3. Next steps, in order
 
-1. Q4, Q5, Q6, then assess Q3.
+1. Q5, Q6, then assess Q3.
 
 ## Notes
 
