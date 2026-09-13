@@ -356,3 +356,32 @@ two) — not measured. Harmless to correctness (the last answer wins, and each f
 are idempotent), but it multiplies server-backed reads (History, and whatever `store.ts` fetches
 over HTTP) on exactly the busy moments. Likely fix: wrap both loops in `batch(() => …)`. Not changed
 here: a second bug found while fixing B-403, and `store.ts` feeds every view.
+
+---
+
+### B-405 · B-333's new tokenizer line-length check is itself a load flake on a machine with efficiency cores
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verification of m10/tests-desktop ·
+**Test:** `packages/core/src/tokens.test.ts` "costs the same per character on a line four times as
+long"
+
+The check B-333 added compared the best of three ~3 ms CPU runs over an ~83k-character line with the
+best of three ~25 ms runs over a ~333k one and required the ratio under 8. Run on its own under 84
+busy node loops (load average 100-140), an exact copy of it logging the ratio read **8.32** (1 of
+50) and **8.16** (1 of 45) — failed — with a median of 5.8 against 4.4 idle and several runs at
+7.0-7.6; at 56 loops the top was 7.61. `process.cpuUsage()` does not cancel load out on this M4 Pro
+(10 performance + 4 efficiency cores): a busy scheduler runs the thread on an efficiency core for
+whole quanta, which bills about twice the CPU time for the same work. The short side's minimum, a
+window under one quantum, nearly always caught an undisturbed stretch; the long side's, spanning
+several, often did not — so the ratio was biased upward exactly under load, the thing B-333 was
+about.
+
+**Fixed 2026-09-13.** Both sides now tokenize the same number of characters (the short line four
+times, the long one once — ~2 ms of CPU each, under a quantum), alternate, and keep the least of
+fifteen; the limit is 2 (linear 1, quadratic 4), which is the old 8 over 4. Measured in the same
+vitest runs as the old form, at the same load (84 loops, load average 100-140, 45 runs): old form
+median 5.81, top 8.16 (failed); new form median 1.083, range 0.92-1.18. Idle: 1.08-1.10. Detection
+unchanged: with length-quadratic work planted in `tokenizeContent` (a rescan to the end from every
+Nth character), both forms fail for N = 512, 1024, 2048 (new 3.45, 3.01, 2.67), and N = 4096 sits at
+the limit in both (new 2.08-2.15 and once under 2; old 8.7-10.1 here, 6.2 in B-333's run). Proof:
+the committed test 30 of 30 under 84 loops (load average ≈ 105), and `packages/core` 399 of 399
+twice, niced, at the same load.

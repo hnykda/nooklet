@@ -468,21 +468,41 @@ describe("performance (§7): tokenizeContent over 20,000 synthetic blocks", () =
 
   it("costs the same per character on a line four times as long", () => {
     // One long paragraph line — the owner's largest page is 1.7 MB — made of the templates without
-    // their hard breaks: ~83k and ~333k characters. Linear work quadruples when the line does and
-    // quadratic work grows ~16x, whatever the machine's speed or load; 8 sits between with room
-    // either side. Each side is the least-disturbed of three runs (a GC pause lands in one, not
-    // all), the short line first after a warm-up so JIT compilation is billed to neither.
+    // their hard breaks: ~83k and ~333k characters. Both sides tokenize the SAME number of
+    // characters (the short line four times, the long one once), so linear work costs the same on
+    // each and quadratic work costs ~4x more on the long side; 2 sits between with room either side.
+    //
+    // CPU time is not load-proof on its own (B-405): on a machine with performance and efficiency
+    // cores (the M4 Pro this runs on has both), a busy scheduler parks a thread on an efficiency
+    // core for whole quanta and bills roughly twice the CPU time for the same work. This test's
+    // first form compared the best of three ~3 ms short runs with the best of three ~25 ms long
+    // runs: the short minimum nearly always caught an undisturbed stretch, the long one often did
+    // not, and at load average 100-140 the ratio read 8.16 and 8.32 against a limit of 8 (2 of 95
+    // runs; median 5.8 against 4.4 idle). So the sides alternate, each window is only ~2 ms of
+    // CPU — shorter than a quantum — and each side keeps the least-disturbed of fifteen: at the
+    // same load the ratio then stayed in 0.92-1.18 over 45 runs (1.08-1.10 idle). Detection is
+    // what it was: length-quadratic work planted in `tokenizeContent` (a rescan to the end from
+    // every Nth character) fails for N = 512-2048 in both forms, and N = 4096 sits at the limit in
+    // both, going either way from run to run.
     const unit = templates.map((t) => t.replaceAll("\n", " ")).join(" ");
     const line = (copies: number) => Array.from({ length: copies }, () => unit).join(" ");
-    const tokenize = (content: string) => () => {
-      for (let i = 0; i < 8; i++) tokenizeContent(content);
-    };
-    const bestOfThree = (fn: () => void) => Math.min(cpuMs(fn), cpuMs(fn), cpuMs(fn));
     const short = line(160);
     const long = line(640);
-    tokenize(short)();
-    const shortMs = bestOfThree(tokenize(short));
-    const growth = bestOfThree(tokenize(long)) / shortMs;
-    expect(growth).toBeLessThan(8);
+    const tokenizeShort = () => {
+      for (let i = 0; i < 4; i++) tokenizeContent(short);
+    };
+    const tokenizeLong = () => {
+      tokenizeContent(long);
+    };
+    // Warm-up, so JIT compilation is billed to neither side.
+    tokenizeShort();
+    tokenizeLong();
+    let shortMs = Number.POSITIVE_INFINITY;
+    let longMs = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 15; i++) {
+      shortMs = Math.min(shortMs, cpuMs(tokenizeShort));
+      longMs = Math.min(longMs, cpuMs(tokenizeLong));
+    }
+    expect(longMs / shortMs).toBeLessThan(2);
   }, 60_000);
 });
