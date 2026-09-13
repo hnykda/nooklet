@@ -422,3 +422,33 @@ plugin's error, as for B-402. Test: the one above, two such plugins beside a wor
 new check disabled it fails at setup with `TypeError: Cannot read properties of undefined (reading
 'toUpperCase')`, with it both are `error` and the working plugin's op answers 200. Server
 `src/plugins` 62 of 62.
+
+---
+
+### B-407 · B-403's race is also in the two sibling "failed … load" tests, and under load it fails them nearly every time
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, verification of m10/tests-desktop
+(B-403's claim "the whole spec: 7 passed" under load) · **Test:**
+`e2e/tests/review-reactivity.spec.ts` "a failed trash load says so and Retry recovers…" and "a
+failed history load says so and Retry recovers…" (B-131)
+
+Under 56 busy loops (load average ≈ 70), `-g B-131 --repeat-each=12` (stopped after 32 tests):
+"a failed Older changes…" (B-403's fixed test) 10 of 10 passed, "a failed history load…" 6 of 11,
+"a failed trash load…" 0 of 11 — each failure the 30 s test timeout on `locator.click` of the Retry
+button, `element was detached from the DOM, retrying`, with the page showing the loaded view. Both
+passed 3 of 3 without the busy loops. Neither test is changed on this branch.
+
+Cause, from the trash failure's trace (network and actions on one clock): the routed `trash.list`
+aborted at 44427 ms and the error rendered; the fresh context's `/sync/snapshot` answered only at
+44762; its bootstrap ChangeEvent refetched `trash.list` twice (B-404) at 44794, as the test
+unrouted (44796) — the pending requests fell through to the network, answered 200, the error
+unmounted, and the click waited on a Retry button that no longer existed. It is B-403's race: a view
+that fetches over HTTP renders its error before a fresh context's replica has bootstrapped, and the
+bootstrap's refetch lands inside the test's error-then-retry sequence. Load only makes the snapshot
+late enough to hit it every time. The product does the right thing (it recovered on its own).
+
+**Fixed 2026-09-13.** Both tests now call the spec's new `bootstrapReplica(page, name)` first —
+seed a page, open it, wait for a row from the replica — the same step B-403's fix inlined, and only
+then route the failure and load Trash / History (a warm start). Proof, under 56 busy loops: the fixed
+pair `--repeat-each=8`, 16 of 16 (load average 39-63 as the loops started); and in one control run
+with the branch-head copy of the spec beside the fixed one, `--repeat-each=4` (load average
+59-69): the old tests failed 1 of 4 each (trash, history), the fixed ones passed 8 of 8.

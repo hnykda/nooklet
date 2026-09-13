@@ -8,6 +8,20 @@
 import { expect, type Page, test } from "@playwright/test";
 import { api, openPage, pagePath, readBlocks, runName, seedPage } from "../helpers/index.js";
 
+/**
+ * Opens `name` (seeding it with one block if needed) and waits for its rows, which come from the
+ * replica — so the fresh context's first `/sync/snapshot` has landed and its ChangeEvent has fired
+ * before the caller routes a failure and loads a server-backed view. That event refetches every
+ * such view; landing between the test's failed load and its Retry click, it recovered the view on
+ * its own and the click waited on a detached button (B-403, B-407). A `goto` after this is a warm
+ * start: no bootstrap, and an empty pull names no tables.
+ */
+async function bootstrapReplica(page: Page, name: string): Promise<void> {
+  await seedPage(page, name, "- warm");
+  await page.goto(pagePath(name));
+  await expect(page.locator(".vr-outliner").first().locator(".vr-row").first()).toBeVisible();
+}
+
 async function openSidebar(page: Page): Promise<void> {
   const sidebar = page.locator(".app-sidebar");
   if ((await sidebar.count()) === 0) {
@@ -47,6 +61,7 @@ test("after visiting Trash, an open page still picks up a write made elsewhere (
 test("a failed trash load says so and Retry recovers, instead of Loading… forever (B-131)", async ({
   page,
 }) => {
+  await bootstrapReplica(page, "Trash Load Fails Warmup");
   await page.route("**/api/v1/trash.list", (route) => route.abort("failed"));
   await page.goto("/trash");
   const error = page.locator(".trash-error[role='alert']");
@@ -63,6 +78,7 @@ test("a failed history load says so and Retry recovers, instead of Loading… fo
   page,
 }) => {
   await seedPage(page, "History Load Fails", "- one");
+  await bootstrapReplica(page, "History Load Fails");
   await page.route("**/api/v1/page.history", (route) => route.abort("failed"));
   await page.goto("/history/History%20Load%20Fails");
   const error = page.locator(".history-error[role='alert']");
