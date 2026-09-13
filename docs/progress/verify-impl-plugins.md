@@ -7,8 +7,8 @@ Branch head at start: `b6c199d`.
 
 ## State
 
-Done: B-183/B-184/B-185 fixed in `f62e74e`; B-186 fixed in the next commit. Remaining: final
-report only.
+Done: B-183/B-184/B-185 fixed in `f62e74e`, B-186 in `9242a15`. Final e2e plugins + popups 50/50.
+Nothing in flight.
 
 Reruns on the branch head as received: typecheck clean; web unit 703/703 (first run 702/703 — a
 displayPageName import timeout under load, green on rerun); server 523/523; plugin-api 17/17;
@@ -48,7 +48,7 @@ e2e plugins.spec 6/6.
 ## Commits added
 
 - `f62e74e` fix(web,mermaid): B-183, B-184, B-185 (+ e2e/unit tests)
-- next: fix(server): B-186
+- `9242a15` fix(server): B-186 (+ bundler.test.ts)
 
 ## Test counts (final code)
 
