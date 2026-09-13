@@ -453,7 +453,7 @@ back to its `text/plain` sibling) except behind a future "paste as markdown" plu
 | `task.setMarkerDone` | Mark DONE | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerWaiting` | Mark WAITING | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerCanceled` | Mark CANCELED | — | — | `editorFocused \|\| blockSelected` |
-| `task.clearMarker` | Clear task marker | — | — | `isTask` |
+| `task.clearMarker` | Clear task marker | — | — | `isTask \|\| blockSelected` |
 
 **R34.** `task.cycle` reads the target block's current `marker` and advances it exactly:
 `null → TODO → DOING → DONE → null` (wrapping). `WAITING` and `CANCELED` are never reached by
@@ -525,6 +525,10 @@ side effects beyond that (no `done` stamping — only reaching `DONE` triggers R
 `done` untouched (clearing the marker does not delete task metadata, so re-adding a marker later
 restores the same schedule). None of the six has a default keybinding; all six are reachable from
 the palette, the block's context menu, and (for Todo only) the slash menu's "TODO/task" item.
+In block-selection mode all six act on **every** selected block (`clearMarker` on those that have a
+marker), as one write and one undo step (B-346); `task.setMarkerDone` completes each block from its
+own dates. `clearMarker` is enabled for any block selection because the context's `isTask` is read
+from the edited block only.
 
 #### E.3 Navigation and palette (categories `Navigation`)
 
@@ -824,6 +828,16 @@ replaces the span from just after `[[` through the caret with `<title>]]` (consu
 already-present auto-paired `]]` rather than duplicating it) and places the caret after the
 closing `]]`. Closes on: Escape (leaves `[[` and whatever was typed as plain text — no
 completion is applied); deleting back through either `[` of the trigger; or selecting an item.
+*As built (B-294):* the editor does not auto-pair `]]`; instead, when the text after the caret closes
+the link the caret is in (`[^[\]\n]*]]`), the replaced span runs through that `]]`, so a pick inside
+an existing link — the caret walked in, or the link's name being retyped — replaces the whole link.
+`((` does the same with `))`. `#` does not (no closer to find; B-380). There the "Create" row names
+the whole link, the query plus the rest of the name up to `]]` (`[[Walkin Unm|ade Page]]` offers
+`New page "Walkin Unmade Page"`, and none when that page exists), so picking it never deletes part of
+the name (B-382). Inside a complete link the first row is the one that re-links what the link
+already names — its page when one has that whole name (ahead of shorter names and of the date
+shortcuts), else, only with an empty query, that "Create" row — so Enter on the popup a walk-in opened
+leaves the link as it was (B-384).
 
 **R57.** `#` (tag): triggers on `matchBefore(/(^|\s)#([^\s#]*)$/)` (start-of-run, same rule as the
 slash trigger, so `word#tag` does not open it). Matching and the "Create" affordance are identical
@@ -837,7 +851,9 @@ a full-text-style match, not the title-only match of R56/R57), each result shown
 snippet of the block's rendered text plus its page name/breadcrumb. There is no "Create" item
 (you cannot create a new block purely by referencing one). Selecting an item inserts `((<id>))`
 and moves the caret past the closing `))`. Closes on Escape (as R56, leaves typed text as-is),
-deleting back through either `(`, or selecting an item.
+deleting back through either `(`, or selecting an item. *As built (B-384):* with the caret inside a
+complete `((ref))` it lists nothing — the query there is a fragment of an id, which matches only
+blocks whose text contains that id — so Enter leaves the ref alone.
 
 **R59.** Keyboard navigation is identical across `[[`, `#`, `((`, and the slash menu: Up/Down move
 the highlight without wraparound; Enter selects the highlighted item; Tab also selects it (an
@@ -1262,9 +1278,9 @@ Given commands `["Toggle sidebar" (app.toggleSidebar), "Open settings" (app.open
    noisy in practice.
 9. **Bulk task-cycling**: `task.cycle` only fires with `selectionCount == 1` in block-selection
    mode (R34); cycling every selected block's marker at once is out of scope for v1, matching the
-   plan's general "small scope" stance — a user wanting to mark several tasks DONE at once uses
-   `task.setMarkerDone` from the block context menu on each, or the Tasks view's bulk actions
-   (outside this spec).
+   plan's general "small scope" stance — a user wanting to mark several tasks DONE at once selects
+   them and runs `task.setMarkerDone` from the palette, which acts on every selected block as one
+   undo step (R39, B-346).
 10. **`keybindings.json` storage**: this spec fixes the JSON *shape* and its merge/precedence/
     conflict semantics (R63–R68) but defers the literal settings-storage table/op (how
     `input.keybindings` is persisted and synced) to a future settings spec, consistent with this

@@ -13,6 +13,7 @@
  * commands do not fire at all — this is just belt and braces).
  */
 
+import type { Block } from "@nooklet/core";
 import { createSignal } from "solid-js";
 import type {
   EditorHost,
@@ -117,6 +118,7 @@ const NOOP_HOST: EditorHost = {
   },
   commitOps: () => false,
   getLinkAtCaret: () => null,
+  currentBlock: () => null,
 };
 
 /** The `EditorHost` the command system should use right now. Never null, so callers need no
@@ -146,6 +148,7 @@ export const liveEditorHost: EditorHost = {
     ).runStructuralCommand(id, ctx),
   commitOps: (batch) => commitThroughEditor(batch),
   getLinkAtCaret: () => activeEditorHost().getLinkAtCaret(),
+  currentBlock: () => activeEditorHost().currentBlock(),
 };
 
 /** A live host view over one editor surface. `BlockTree` builds this once and registers it. */
@@ -161,6 +164,8 @@ export interface EditorHostBacking {
   /** `EditorHost.commitOps`: the tree commits the batch through its own history, or says no. */
   commitOps(batch: OpBatch): boolean;
   linkAtCaret(): LinkAtCaret | null;
+  /** `EditorHost.currentBlock`. */
+  currentBlock(): Block | null;
 }
 
 export function createEditorHost(backing: EditorHostBacking): EditorHost {
@@ -208,6 +213,10 @@ export function createEditorHost(backing: EditorHostBacking): EditorHost {
 
     getLinkAtCaret(): LinkAtCaret | null {
       return backing.linkAtCaret();
+    },
+
+    currentBlock() {
+      return backing.currentBlock();
     },
   };
 }

@@ -80,6 +80,7 @@ import {
   setCollapsed,
   splitBlock,
 } from "./commands.js";
+import { findTreeNode, toCoreBlock } from "./current-block.js";
 import {
   caretInEditText,
   contentOffsetOf,
@@ -1102,6 +1103,15 @@ export function BlockTree(props: {
       return true;
     },
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
+    currentBlock: () => {
+      const id = surface.currentId();
+      const block = id ? untrack(editorTree).byId.get(id) : undefined;
+      if (!id || !block) return null;
+      // Not `treeResource()` bare: reading an errored resource re-throws.
+      const data = treeResource.error ? undefined : untrack(treeResource);
+      const node = findTreeNode(data?.blocks ?? [], id);
+      return toCoreBlock(block, props.pageId, surface.content(), node);
+    },
   });
   // Mounted, not only focused: a date picked from a chip is written with nothing here edited or
   // selected, and still belongs in this tree's undo history (B-142). Released in the cleanup below.

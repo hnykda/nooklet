@@ -12,6 +12,7 @@ function ctx(partial: Partial<CommandContext> = {}): CommandContext {
       getBlockTaskState: vi.fn(),
       setBlockProp: vi.fn(),
       setBlockProps: vi.fn(),
+      setPropsOfBlocks: vi.fn(),
       applyOps: vi.fn(),
     },
     exec: vi.fn(async () => {}),

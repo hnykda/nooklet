@@ -24,6 +24,7 @@ vi.stubGlobal("window", { open });
 
 import type { Op } from "@nooklet/core";
 import type { OpBatch } from "../commands/hosts/editor-host.js";
+import { editingEndRequest } from "../editor/focus-request.js";
 import { createNavigationHost, createStore } from "./hosts.js";
 
 const navigate = vi.fn();
@@ -85,6 +86,32 @@ describe("nav.followLink for page links", () => {
   );
 });
 
+describe("nav.followLink ends editing before it leaves the page (B-295)", () => {
+  // The page being left stays mounted until the route has resolved the new one, and keys typed in
+  // that gap went into the block being left. Every tree ends editing on `requestEditingEnd`.
+  it.each([
+    ["page", { type: "page", name: "Projects/Aurora" }],
+    ["tag", { type: "tag", name: "aurora" }],
+    ["block", { type: "block", id: "blk00000000001" }],
+  ] as const)("a %s link", async (_kind, link) => {
+    navigate.mockReset();
+    const before = editingEndRequest();
+    const ticksAtNavigate: number[] = [];
+    navigate.mockImplementation(() => ticksAtNavigate.push(editingEndRequest()));
+    host().followLink(link);
+    // Asked at once, not once the block's page has been looked up.
+    expect(editingEndRequest()).toBe(before + 1);
+    await vi.waitFor(() => expect(ticksAtNavigate).toEqual([before + 1]));
+    navigate.mockReset();
+  });
+
+  it("not for a web link, which opens in another tab", () => {
+    const before = editingEndRequest();
+    host().followLink({ type: "url", href: "https://example.com" });
+    expect(editingEndRequest()).toBe(before);
+  });
+});
+
 describe("createStore block-property writes (B-142)", () => {
   function store(accept: boolean) {
     const batches: OpBatch[] = [];
@@ -129,6 +156,29 @@ describe("createStore block-property writes (B-142)", () => {
     expect(s.batches.map((b) => b.ops.map((o) => o.payload))).toEqual([
       [{ kind: "block.prop", key: "priority", value: "A" }],
     ]);
+    expect(s.applied).toEqual([]);
+  });
+
+  it("several blocks' properties go as ONE batch, anchored on the first block (B-346)", async () => {
+    const s = store(true);
+    await s.store.setPropsOfBlocks([
+      { blockId: "blk1", props: { marker: "DONE", done: "2026-09-13T10:00:00Z" } },
+      { blockId: "blk2", props: { marker: "DONE" } },
+    ]);
+    expect(s.batches).toHaveLength(1);
+    expect(s.batches[0]?.anchorId).toBe("blk1");
+    expect(s.batches[0]?.ops.map((o) => [o.entity, o.payload])).toEqual([
+      ["blk1", { kind: "block.prop", key: "marker", value: "DONE" }],
+      ["blk1", { kind: "block.prop", key: "done", value: "2026-09-13T10:00:00Z" }],
+      ["blk2", { kind: "block.prop", key: "marker", value: "DONE" }],
+    ]);
+    expect(s.applied).toEqual([]);
+  });
+
+  it("writes nothing for an empty list of blocks", async () => {
+    const s = store(true);
+    await s.store.setPropsOfBlocks([]);
+    expect(s.batches).toEqual([]);
     expect(s.applied).toEqual([]);
   });
 

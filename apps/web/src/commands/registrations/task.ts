@@ -1,6 +1,6 @@
 /** E.2 Tasks (category `Task`) — R34-R39. */
 import type { TaskMarker } from "@nooklet/core";
-import type { Command, CommandContext } from "../types.js";
+import type { BlockPropsWrite, Command, CommandContext } from "../types.js";
 import type { DatePickerHost } from "./date-picker-host.js";
 import { completeTask, nextCycleMarker } from "./task-logic.js";
 
@@ -11,7 +11,17 @@ function targetBlockId(ctx: CommandContext): string | null {
   return ctx.focusedBlockId ?? ctx.selectedBlockIds[0] ?? null;
 }
 
-async function applyCompletion(ctx: CommandContext, blockId: string): Promise<void> {
+/** The blocks a marker command writes: the focused block, or EVERY selected block. Only the first
+ * selected one used to be marked, and the rest of the selection silently kept its marker (B-346). */
+function targetBlockIds(ctx: CommandContext): string[] {
+  return ctx.focusedBlockId ? [ctx.focusedBlockId] : ctx.selectedBlockIds;
+}
+
+/** R35's completion patch for one block, from its current state. */
+async function completionPatch(
+  ctx: CommandContext,
+  blockId: string,
+): Promise<Record<string, string | null>> {
   const snapshot = await ctx.store.getBlockTaskState(blockId);
   const result = completeTask({
     marker: snapshot?.marker ?? null,
@@ -22,22 +32,47 @@ async function applyCompletion(ctx: CommandContext, blockId: string): Promise<vo
   const patch: Record<string, string | null> = { marker: result.marker, done: result.done };
   if (result.scheduled !== undefined) patch.scheduled = result.scheduled;
   if (result.deadline !== undefined) patch.deadline = result.deadline;
-  await ctx.store.setBlockProps(blockId, patch);
+  return patch;
 }
 
-function setMarker(id: string, title: string, marker: TaskMarker): Command {
+async function applyCompletion(ctx: CommandContext, blockId: string): Promise<void> {
+  await ctx.store.setBlockProps(blockId, await completionPatch(ctx, blockId));
+}
+
+type SerialRun = (run: (ctx: CommandContext) => Promise<void>) => Command["run"];
+
+/**
+ * Runs the task commands one after another. `task.cycle` and its kin READ the marker, then write
+ * the next one, and the dispatcher does not wait for a command before running the next key
+ * (`keymap/dispatch.ts#runRow`). Two Cmd/Ctrl+Enter back to back both read the marker before the
+ * first write landed, both wrote `TODO`, and the second press was lost (B-282). Queued, the second
+ * reads after the first has committed: the tree's `applyOps` posts the write to the DB worker
+ * before the store's next query is posted, and the worker answers them in that order.
+ */
+function createSerialRun(): SerialRun {
+  let tail: Promise<void> = Promise.resolve();
+  return (run) => (ctx) => {
+    const next = tail.then(() => run(ctx));
+    // A command that throws must not stall every later one.
+    tail = next.catch(() => {});
+    return next;
+  };
+}
+
+function setMarker(serial: SerialRun, id: string, title: string, marker: TaskMarker): Command {
   return {
     id,
     title,
     category: "Task",
     defaultKeys: {},
     when: "editorFocused || blockSelected",
-    async run(ctx) {
-      const blockId = targetBlockId(ctx);
-      if (!blockId) return;
+    run: serial(async (ctx) => {
       // R39: a plain marker write, no `done` stamping — only reaching DONE goes through R35.
-      await ctx.store.setBlockProp(blockId, "marker", marker);
-    },
+      // Every selected block in ONE write, so one Cmd/Ctrl+Z takes the command back (B-346).
+      await ctx.store.setPropsOfBlocks(
+        targetBlockIds(ctx).map((blockId) => ({ blockId, props: { marker } })),
+      );
+    }),
   };
 }
 
@@ -67,6 +102,7 @@ async function runDateCommand(
 }
 
 export function createTaskCommands(deps: { datePicker: DatePickerHost }): Command[] {
+  const serial = createSerialRun();
   return [
     {
       id: "task.cycle",
@@ -74,7 +110,7 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
       category: "Task",
       defaultKeys: { mac: "Cmd+Enter", other: "Ctrl+Enter" },
       when: "editorFocused || (blockSelected && selectionCount == 1)",
-      async run(ctx) {
+      run: serial(async (ctx) => {
         const blockId = targetBlockId(ctx);
         if (!blockId) return;
         const snapshot = await ctx.store.getBlockTaskState(blockId);
@@ -86,7 +122,7 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
         }
         const next = nextCycleMarker(current);
         await ctx.store.setBlockProp(blockId, "marker", next);
-      },
+      }),
     },
     {
       id: "task.toggleDone",
@@ -94,7 +130,7 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
       category: "Task",
       defaultKeys: {},
       when: "isTask",
-      async run(ctx) {
+      run: serial(async (ctx) => {
         const blockId = targetBlockId(ctx);
         if (!blockId) return;
         const snapshot = await ctx.store.getBlockTaskState(blockId);
@@ -109,36 +145,46 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
         // practice; defensively no-op rather than "completing" a canceled task.
         if (snapshot?.marker === "CANCELED") return;
         await applyCompletion(ctx, blockId);
-      },
+      }),
     },
-    setMarker("task.setMarkerTodo", "Mark TODO", "TODO"),
-    setMarker("task.setMarkerDoing", "Mark DOING", "DOING"),
-    setMarker("task.setMarkerWaiting", "Mark WAITING", "WAITING"),
-    setMarker("task.setMarkerCanceled", "Mark CANCELED", "CANCELED"),
+    setMarker(serial, "task.setMarkerTodo", "Mark TODO", "TODO"),
+    setMarker(serial, "task.setMarkerDoing", "Mark DOING", "DOING"),
+    setMarker(serial, "task.setMarkerWaiting", "Mark WAITING", "WAITING"),
+    setMarker(serial, "task.setMarkerCanceled", "Mark CANCELED", "CANCELED"),
     {
       id: "task.setMarkerDone",
       title: "Mark DONE",
       category: "Task",
       defaultKeys: {},
       when: "editorFocused || blockSelected",
-      async run(ctx) {
-        const blockId = targetBlockId(ctx);
-        if (!blockId) return;
-        await applyCompletion(ctx, blockId); // R39: repeat-aware, unlike the other five.
-      },
+      run: serial(async (ctx) => {
+        // R39: repeat-aware, unlike the other five — each block from its own dates, all of them in
+        // one write so one Cmd/Ctrl+Z takes the command back (B-346).
+        const writes: BlockPropsWrite[] = [];
+        for (const blockId of targetBlockIds(ctx)) {
+          writes.push({ blockId, props: await completionPatch(ctx, blockId) });
+        }
+        await ctx.store.setPropsOfBlocks(writes);
+      }),
     },
     {
       id: "task.clearMarker",
       title: "Clear task marker",
       category: "Task",
       defaultKeys: {},
-      when: "isTask",
-      async run(ctx) {
-        const blockId = targetBlockId(ctx);
-        if (!blockId) return;
-        // R39: leaves priority/scheduled/deadline/repeat/done untouched.
-        await ctx.store.setBlockProp(blockId, "marker", null);
-      },
+      // `isTask` is read from the EDITED block only (a selection leaves it false), so without
+      // `blockSelected` no selection was ever offered this command (B-346).
+      when: "isTask || blockSelected",
+      run: serial(async (ctx) => {
+        // R39: leaves priority/scheduled/deadline/repeat/done untouched. Only blocks that have a
+        // marker are written, so the undo step holds nothing that did not change.
+        const writes: BlockPropsWrite[] = [];
+        for (const blockId of targetBlockIds(ctx)) {
+          const snapshot = await ctx.store.getBlockTaskState(blockId);
+          if (snapshot?.marker) writes.push({ blockId, props: { marker: null } });
+        }
+        await ctx.store.setPropsOfBlocks(writes);
+      }),
     },
     {
       id: "task.setPriorityA",

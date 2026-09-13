@@ -14,6 +14,7 @@ import {
   For,
   onCleanup,
   Show,
+  untrack,
 } from "solid-js";
 import { journalTitleFormat } from "../../data/page-title.js";
 import type { EditorHost } from "../hosts/editor-host.js";
@@ -22,7 +23,7 @@ import { claimPopupKeys } from "../popup-keys.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import { dateShortcuts } from "./dates.js";
-import type { AutocompleteMatch } from "./trigger.js";
+import { type AutocompleteMatch, existingRefTailLength } from "./trigger.js";
 import "../styles.css";
 
 export type AutocompleteVariant = "page" | "tag" | "block";
@@ -87,6 +88,10 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     if (!trig) return [];
 
     if (props.variant === "block") {
+      // Walked into a complete `((ref))`: the query is a fragment of the ref's id, not text anyone
+      // typed, so it matched only blocks whose TEXT holds that id — the edited block first — and
+      // Enter, replacing through `))` (B-294), silently re-pointed the ref (B-384). Offer nothing.
+      if (untrack(() => insideClosedLink(trig, VARIANT_SHAPE.block))) return [];
       const results = blockResults() ?? [];
       return results.map(
         (b): Row => ({ id: b.id, label: b.snippet, sublabel: b.pageTitle, block: b }),
@@ -103,6 +108,14 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       label: r.item.title,
       page: r.item,
     }));
+    // Walked into a complete link, the row Enter takes must be the one that leaves the link as it
+    // is. Ranked by the fragment before the caret alone, a shorter name (`[[Jan| Novak]]` offered
+    // "Jan" first) or, with nothing before the caret, today's date came first — and the pick,
+    // replacing through `]]` (B-294), re-pointed the link with nothing on screen looking wrong
+    // (B-384). Untracked like `createName` below.
+    const keep = untrack(() => rowKeepingClosedLink(trig, candidates));
+    const keepFirst = (list: Row[]): Row[] =>
+      keep ? [keep, ...list.filter((r) => r.id !== keep.id)] : list;
 
     // Nothing typed yet, linking a page: offer the dates. This is the single most common thing
     // anyone links to from a journal, and writing the title format out by hand is tedious.
@@ -113,16 +126,19 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
         sublabel: formatJournalTitle(d.day, journalTitleFormat()),
         day: d.day,
       }));
-      return [...dateRows, ...pageRows];
+      return keepFirst([...dateRows, ...pageRows]);
     }
 
     // R56/R57: append "Create <query>" unless some candidate's title matches the query exactly
-    // (case-insensitive), and only once the user has typed something.
+    // (case-insensitive), and only once the user has typed something. Inside a closed link the
+    // name is the whole link's, not the text before the caret (B-382). Untracked: the memo already
+    // re-runs on every trigger, which is rebuilt on every keyup.
     if (trig.query.trim() !== "") {
-      const q = trig.query.toLowerCase();
+      const name = untrack(() => createName(trig, VARIANT_SHAPE[props.variant]));
+      const q = name.toLowerCase();
       const hasExact = candidates.some((p) => p.title.toLowerCase() === q);
       if (!hasExact) {
-        pageRows.push({ id: "__create__", label: `New page "${trig.query}"`, isCreate: true });
+        pageRows.push({ id: "__create__", label: `New page "${name}"`, isCreate: true });
       }
     }
 
@@ -133,7 +149,7 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
         pageRows.push({ id: `block:${b.id}`, label: b.snippet, sublabel: b.pageTitle, block: b });
       }
     }
-    return pageRows;
+    return keepFirst(pageRows);
   });
 
   async function selectRow(row: Row) {
@@ -148,9 +164,10 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       // the late insertion, which then landed on a buffer that had moved on (B-244). A `[[link]]`
       // to a page that does not exist yet is an ordinary state — references are keyed by name,
       // not id — so nothing depends on the page being there first.
-      replaceQueryWith(trig, shape, trig.query);
+      const name = createName(trig, shape);
+      replaceQueryWith(trig, shape, name);
       props.onDismiss();
-      void props.pages.createPage(trig.query).then(
+      void props.pages.createPage(name).then(
         (created) => mru.record("page", created.id),
         (err) => console.error("nooklet: creating the linked page failed", err),
       );
@@ -171,7 +188,7 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
       // block ref rather than a page link.
       if (props.variant === "page") {
         const from = trig.from;
-        const to = trig.from + shape.delimiterLen + trig.query.length;
+        const to = queryEnd(trig, shape);
         const text = `((${row.block.id}))`;
         props.editor.replaceRange({ from, to, text, caretOffset: text.length });
       } else {
@@ -194,9 +211,58 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     title: string,
   ): void {
     const from = trig.from + shape.delimiterLen;
-    const to = from + trig.query.length;
+    const to = queryEnd(trig, shape);
     const text = `${title}${shape.closer}`;
     props.editor.replaceRange({ from, to, text, caretOffset: text.length });
+  }
+
+  /** Where the replaced text ends: the caret, or — when the caret is inside a link that is already
+   * closed — that link's closer, so the old link's tail does not stay behind the new one (B-294). */
+  function queryEnd(trig: AutocompleteMatch, shape: { delimiterLen: number; closer: string }) {
+    const caret = trig.from + shape.delimiterLen + trig.query.length;
+    if (shape.closer !== "]]" && shape.closer !== "))") return caret;
+    const content = props.editor.getSelection()?.content ?? "";
+    return caret + existingRefTailLength(content.slice(caret), shape.closer);
+  }
+
+  /** The caret sits inside a `[[link]]` / `((ref))` that is already closed (walked in, or a name
+   * being retyped): a pick replaces through its closer (`queryEnd`). */
+  function insideClosedLink(
+    trig: AutocompleteMatch,
+    shape: { delimiterLen: number; closer: string },
+  ): boolean {
+    return queryEnd(trig, shape) !== trig.from + shape.delimiterLen + trig.query.length;
+  }
+
+  /**
+   * The row that re-links what a complete `[[link]]` the caret sits in already names, or `null`:
+   * its page when one has that whole name, else — only with nothing before the caret, where no
+   * query can have been typed — "New page" for the whole name, as B-382's row names it. With text
+   * before the caret and no such page, that text may be a search typed to retarget the link
+   * (`[[Walkin Oth|Goal Page]]`), so ranking decides, as before.
+   */
+  function rowKeepingClosedLink(trig: AutocompleteMatch, candidates: PageSummary[]): Row | null {
+    const shape = VARIANT_SHAPE[props.variant];
+    if (props.variant !== "page" || !insideClosedLink(trig, shape)) return null;
+    const name = createName(trig, shape);
+    if (name.trim() === "") return null;
+    const q = name.toLowerCase();
+    const page = candidates.find((p) => p.title.toLowerCase() === q);
+    if (page) return { id: page.id, label: page.title, page };
+    if (trig.query !== "") return null;
+    return { id: "__create__", label: `New page "${name}"`, isCreate: true };
+  }
+
+  /** The page "New page" creates and links: the query, and — with the caret inside a link that is
+   * already closed — the rest of that link's name after the caret. The replaced range runs to the
+   * link's `]]` (`queryEnd`), so a name of only the query deleted the rest of the link and created
+   * a page named after the fragment: `[[Walkin Unm|ade Page]]` became `[[Walkin Unm]]` (B-382). */
+  function createName(trig: AutocompleteMatch, shape: { delimiterLen: number; closer: string }) {
+    const caret = trig.from + shape.delimiterLen + trig.query.length;
+    const end = queryEnd(trig, shape);
+    if (end === caret) return trig.query;
+    const content = props.editor.getSelection()?.content ?? "";
+    return trig.query + content.slice(caret, end - shape.closer.length);
   }
 
   /** The popup's keymap (R12 step 2). Reached two ways: from the editor's own key dispatch via

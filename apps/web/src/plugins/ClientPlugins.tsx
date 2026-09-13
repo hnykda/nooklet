@@ -15,7 +15,9 @@ import { type EditorHost, useCommands } from "../commands/index.js";
 import { contributeSlashItem } from "../commands/slash/contributed.js";
 import { apiBaseUrl, authToken } from "../data/bootstrap.js";
 import { loadPage } from "../data/plugin-lookups.js";
-import { resolvePageName, serverCaughtUpVersion, stampedFor } from "../data/store.js";
+import { blockAfterOps } from "../data/plugin-writes.js";
+import { applyOps, resolvePageName, serverCaughtUpVersion, stampedFor } from "../data/store.js";
+import { requestBlockFocus } from "../editor/focus-request.js";
 import { registerFenceRenderer } from "../editor/render/PluginFence.js";
 import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { BUILTIN_CLIENT_PLUGINS } from "./builtins.js";
@@ -50,6 +52,9 @@ export function ClientPlugins(props: { editor: EditorHost; mobile: boolean }): n
     contributeSlashItem,
     registerFenceRenderer,
     addStatusItem,
+    blockAfterOps,
+    applyOps,
+    focusBlock: requestBlockFocus,
   });
   onMount(() => void host.start(BUILTIN_CLIENT_PLUGINS));
   onCleanup(() => void host.stop());

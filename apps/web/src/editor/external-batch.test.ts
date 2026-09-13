@@ -81,6 +81,21 @@ describe("prepareExternalBatch", () => {
     expect(prepareExternalBatch({ ops: [moveAway], anchorId: "b1" }, page, clock)).toBeNull();
   });
 
+  it("refuses a batch that writes a block this tree does not show (B-346)", () => {
+    const clock = makeFakeClock();
+    const two = tree(
+      makeBlock({ id: "b1", order: "a0", content: "one" }),
+      makeBlock({ id: "b2", order: "a1", content: "two" }),
+    );
+    const marker = (id: string) => minted(id, { kind: "block.prop", key: "marker", value: "TODO" });
+    expect(
+      prepareExternalBatch({ ops: [marker("b1"), marker("b2")], anchorId: "b1" }, two, clock)?.ops,
+    ).toHaveLength(2);
+    expect(
+      prepareExternalBatch({ ops: [marker("b1"), marker("other")], anchorId: "b1" }, two, clock),
+    ).toBeNull();
+  });
+
   it("refuses an op the undo history cannot invert, rather than half-committing it", () => {
     const pageOp = minted("page1", { kind: "page.rename", name: "Other" });
     expect(
