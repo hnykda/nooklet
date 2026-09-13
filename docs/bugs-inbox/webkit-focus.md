@@ -66,9 +66,9 @@ branch), `e2e/tests/focus-log.spec.ts` (2, both projects), `apps/web/src/app/foc
 ---
 
 ### B-501 · In WebKit, Alt+Up/Down moves the block but the caret jumps to the start of it
-**Diagnosed 2026-09-13 (verification):** the same DOM-move mechanism as B-502 below; test
-`e2e/tests/edited-row-move-caret.spec.ts` "Alt+Up moves the block being edited without moving the
-caret (B-501)" fails in WebKit (caret 0), passes in Chromium.
+**Diagnosed and fixed 2026-09-13 (verification):** the same DOM-move mechanism as B-502 below,
+same fix. Test `e2e/tests/edited-row-move-caret.spec.ts` "Alt+Up moves the block being edited
+without moving the caret (B-501)" failed in WebKit (caret 0) before, passes after; Chromium both.
 
 **Status:** needs-repro (in the desktop app) · **Severity:** low · **Found:** 2026-09-13,
 m11/webkit-focus, running `focus.spec.ts` in Playwright's WebKit · **Test:** `e2e/tests/focus.spec.ts`
@@ -97,7 +97,7 @@ the page — expected there, and why the webkit project does not run the suite. 
 ---
 
 ### B-502 · In WebKit, a refresh that moves the block being edited puts the caret at the start, with the `[[` popup left open
-**Status:** open · **Severity:** medium (the Mac app's engine; the next keystroke lands in the wrong
+**Status:** fixed (in Playwright's WebKit; not checked in the desktop app) · **Severity:** medium (the Mac app's engine; the next keystroke lands in the wrong
 place) · **Found:** 2026-09-13, verifying m11/webkit-focus (probe
 `tools/probes/refresh-focus-structural.spec.ts`) · **Test:**
 `e2e/tests/edited-row-move-caret.spec.ts` "another device moving the block you are typing a link
@@ -126,3 +126,9 @@ Same cause as B-501 (Alt+Up/Down), which is the same DOM move made locally. Whet
 owner sees as B-42 is not established: the owner's report (pause mid-link, a refresh, focus gone)
 does not involve anything moving the block, and this leaves the editor focused rather than
 unfocused.
+
+**Fixed 2026-09-13** in `editor/surface.ts#focus` (the only caller is `refocusAfterReorder`): after
+`view.focus()`, if the document selection disagrees with the editor state, write the state's
+selection into it in the same task, before any `selectionchange` — the repair
+`commands/focus-return.ts` already makes for B-296. No timer, no BlockTree change. The test above
+fails in WebKit before (2/2, caret 0) and passes after (2/2), Chromium passes both.
