@@ -79,16 +79,25 @@ Bugs go to `docs/bugs-inbox/mirror-escape.md` (new numbers B-470..B-479), never 
   the fix vs `graph-before/` (base code): **2 of 953 files change** (`journals/2022_12_16.md`,
   `journals/2023_02_17.md`), 20 lines, every one `SCHEDULED: <…>` → `SCHEDULED\: <…>` — exactly
   the 20 blocks the round-trip probe flagged.
-- Step 4 (this commit): inbox B-342 "Fixed 2026-09-13" paragraph with every test; new B-470
+- `164bad9` step 4: inbox B-342 "Fixed 2026-09-13" paragraph with every test; new B-470
   (bullet-shaped later text line → child block), B-471 (`TODO `/`[#A]` text on a plain block →
   task/priority), B-472 (a `foo:: bar` TEXT line becomes a property on the first edit in the app —
   needs owner decision; B-342's fix makes it easier to reach). Probe
   `tools/probes/content-shapes-beyond-b342.ts` shows all three (16 lossless=false lines, 4 controls
   lossless, and the editor payloads). None fixed here: each is a grammar or editor-text decision
   beyond the brief.
+- `4b4d279` wiki `Markdown format.md` names the escape.
+- Step 5 (this commit), final suites on `4b4d279`: unit core 416/416, server 681/681, web
+  1138/1138, other packages 17/17 (one `pnpm -r test` run had `tokens.test.ts` "stays far away from
+  quadratic" fail at 817 ms under load; core 416/416 on rerun — tokens.ts untouched). Typecheck
+  clean, biome clean on touched files. Whole Chromium e2e suite in three chunks on port 6413 (each
+  its own fresh server): 118 passed + 1 skipped; 210 passed + 3 failed; 204 passed + 1 skipped. The 3
+  failures are `editing.spec.ts` (3 of 4), reproduced with the six-spec prefix of chunk 2 with the
+  BASE `outline.ts` too — a chunking artifact logged as B-473 (today virtual + agenda outliner →
+  strict-mode violation; the file-order full run has `a-fresh-journal.spec.ts` first).
+  `editing.spec.ts` alone: 4/4.
 
 ## Next steps
 
-1. Final suites: unit core/server/web, typecheck, biome on touched files; e2e in chunks on 6413
-   (full suite if time allows — 98 spec files, 1 worker).
-2. StructuredOutput.
+None — brief done. Left for the owner: B-472 (decision), B-470/B-471 (grammar additions of the
+same kind), B-473 (test harness).

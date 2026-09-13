@@ -100,6 +100,22 @@ would have meant", which B-342's fix made untrue: the file now keeps it text. Re
 (`scheduled:: …`) are not affected — the buffer never splits them. B-342's fix makes this easier to
 reach: an agent can now write such text through markdown, where before `foo:: bar` was always a
 property and `foo\:: bar` stayed text with its backslash, which the buffer does not split; and
-copy then paste now keeps it text, where before the paste made it a property. Ways out, owner's call: the buffer shows such a line escaped (`foo\:: bar`) and
-the split un-escapes it — lossless, the same rule as the mirror, but a backslash in the editor —
-or keep the promotion and document it.
+copy then paste now keeps it text, where before the paste made it a property. Ways out, owner's
+call: the buffer shows such a line escaped (`foo\:: bar`) and the split un-escapes it — lossless,
+the same rule as the mirror, but a backslash in the editor — or keep the promotion and document it.
+
+---
+
+### B-473 · `editing.spec.ts` fails when a run has no `a-fresh-journal.spec.ts` before it but has `dates.spec.ts`
+**Status:** open (test harness) · **Severity:** low · **Found:** 2026-09-13, mirror-escape (running
+the e2e suite in three chunks on port 6413) · **Test:** none yet
+
+`NOOKLET_E2E_PORT=6413 pnpm exec playwright test tests/agent-ops.spec.ts
+tests/autocomplete-busy-replica.spec.ts tests/block-timestamps.spec.ts
+tests/context-menu-placement.spec.ts tests/dates.spec.ts tests/editing.spec.ts --project=chromium`:
+3 of `editing.spec.ts`'s 4 tests fail in its local `openJournal`, with the base `outline.ts` too
+(so not B-342's change): `virtualDraft.or(outliner)` is a strict-mode violation — today is still
+virtual (`.vr-draft-input` shown) AND today's "Scheduled and deadline" section, filled by
+`dates.spec.ts`'s tasks, renders a `.vr-outliner vr-outliner-readonly`. The whole suite in file
+order passes because `a-fresh-journal.spec.ts` runs first and makes today real. `editing.spec.ts`
+alone: 4/4. `e2e/helpers/editor.ts#openJournal` has the same locator.
