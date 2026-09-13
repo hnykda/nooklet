@@ -212,3 +212,63 @@ sidecar/web holds the marker; …`. Step 5 of `apps/desktop/build-sidecar.mjs` n
 `index.html`; the probe then prints `fresh: sidecar/web is a client built by this run`. Test that
 would have caught it: that probe (there is no test suite for `apps/desktop`; the probe is the check,
 and it exits 1 on a stale client). Cost: the web build, seconds, on every sidecar build.
+
+---
+
+### B-336 (existing)
+
+**Fixed 2026-09-13.** Reproduced first at `70c9bb9`, with a sidecar built by `apps/desktop/build-sidecar.mjs`
+and `tools/probes/sidecar-user-plugin.mjs apps/desktop/sidecar 6412`: `hello.say -> 404`, log `plugin
+"hello" failed to activate: … Could not resolve "@nooklet/plugin-api" … Could not resolve "zod"`.
+
+The fix ships the host-provided modules as files and points the loader at them:
+- `packages/server/src/plugins/bundled.ts#packageHostModules(outDir)` writes `@nooklet/plugin-api`,
+  `@nooklet/core`, `zod` and `hono` as one ESM file each (`nooklet__plugin-api.mjs`,
+  `nooklet__core.mjs`, `zod.mjs`, `hono.mjs`; 7 KiB, 0.2, 0.7, 0.1 MiB), resolved from the server
+  package's own dependencies, platform-neutral so a client half can use them too, each keeping the
+  OTHER host modules as imports so a plugin that imports two of them still gets one copy of each.
+- `bundler.ts#hostAliasMap` uses `$NOOKLET_HOST_MODULES_DIR/<file>` when the variable is set and the
+  file exists, BEFORE `require.resolve` — so a sidecar never picks up a copy from some
+  `node_modules` above wherever the app sits. Unset (every `nooklet serve` from the repo), nothing
+  changes.
+- `build-sidecar.mjs` step 7 writes `sidecar/host-modules/`, and `server.mjs`'s banner sets
+  `NOOKLET_HOST_MODULES_DIR` beside `NOOKLET_BUNDLED_PLUGINS_DIR`, so `main.rs` needs no change (the
+  whole `sidecar/` directory is already a Tauri resource).
+
+Tests that would have caught it: `packages/server/src/plugins/bundled.test.ts` "a user's plugin
+where the host modules are shipped as files (B-336)" — "aliases every host-provided import to the
+shipped file, not to node_modules" and "builds, activates, answers its op, and bridges its OpError"
+(also checks the plugin's bundle names `zod.mjs`/`nooklet__plugin-api.mjs` as inputs and no
+`node_modules/…zod`). With `hostAliasMap` made to ignore the variable (the old behaviour) both fail;
+with the fix, server unit 669/669. The whole path is the probe: with a freshly built sidecar,
+`hello.say -> 200 {"hi":"there"}`, exit 0; the same sidecar with `host-modules/` deleted: 404 and
+the two `Could not resolve` errors again. Also run by hand, the sidecar started as `main.rs` does
+on a scratch `NOOKLET_DATA` with a user plugin that has a server half (`defineOp` + `OpError` + `zod`)
+and a client half (importing `zod`): the op answered `{"greeting":"Ahoj, Dan!"}`, its `OpError` came
+back as 404, the client bundle was served (200), neither bundle mentions `node_modules`, and the
+built-ins are listed as before (`tools/probes/sidecar-plugins.mjs`: all checks ok).
+
+The probe's own plugin had to change: it declared an op without `summary`, `annotations` or
+`scopes`, and once its imports resolved that op crashed the server at startup — B-402.
+
+---
+
+### B-402 · A plugin op missing `annotations` stops the whole server from starting
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, m10/tests-desktop (verifying B-336)
+· **Test:** none yet
+
+A plugin whose `ctx.ops.register(defineOp({...}))` leaves out `annotations` does not just fail to
+load: `nooklet serve` exits at startup with `nooklet: Cannot read properties of undefined (reading
+'readOnlyHint')`. Reproduced both ways: with the repo's `pnpm nooklet serve` on a scratch data dir,
+and with the built desktop sidecar — where it means the Mac app never starts, and a person cannot
+reach Settings → Plugins to turn the plugin off. The op in question was B-336's own probe plugin
+(`name`, `description`, `input`, `output`, `scope: "read"`, `handler` — no `summary`,
+`annotations`, `scopes`). TypeScript would have refused it, but a plugin is bundled with esbuild,
+which does not type-check. `ops/registry.ts#register` checks the name, MCP tool-name clashes and
+`render`, but not the rest of `OpDef`'s required fields; mounting the HTTP route then reads
+`op.annotations.readOnlyHint` (`registry.ts`, the `GET` alias) and throws outside any per-plugin
+guard. The policy the host already follows for other plugin faults (`host.test.ts` "an unsupported
+api major is a per-plugin error that never aborts the server") says this should be that plugin's
+error, not the server's. Likely fix: validate a plugin op's shape in `register` (or
+`plugins/ops-bridge.ts#wrapPluginOp`) and throw a message naming the missing fields, so activation
+fails for that plugin alone.

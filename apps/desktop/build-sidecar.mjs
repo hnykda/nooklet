@@ -26,6 +26,10 @@
  *   `NOOKLET_BUNDLED_PLUGINS_DIR` — set by its own first line, so the sidecar needs nothing from
  *   `main.rs` to find them. Before this the app had no `page.wordcount` op or MCP tool, and
  *   Settings → Plugins was empty.
+ * - **`host-modules/`** — `@nooklet/plugin-api`, `@nooklet/core`, `zod` and `hono` as one ESM file
+ *   each, for the plugins a USER puts in `<data>/plugins`, which are still bundled at runtime and
+ *   import those from the host (B-336). `NOOKLET_HOST_MODULES_DIR`, set by the same first line,
+ *   points the loader at them.
  */
 
 import { spawnSync } from "node:child_process";
@@ -131,13 +135,14 @@ await esbuild.build({
   external: ["sqlite-vec"],
   logLevel: "warning",
   // The bundle is ESM but some dependencies still reach for `require`; give them a real one. And
-  // the built-in plugins are in `plugins/` beside this file (step 6) — unless someone set the
-  // variable already.
+  // the built-in plugins are in `plugins/` beside this file, the modules a user's plugin imports
+  // from the host in `host-modules/` (step 6) — unless someone set the variables already.
   banner: {
     js: [
       "import{createRequire as __nooklet_cr}from'node:module';const require=__nooklet_cr(import.meta.url);",
       "import{fileURLToPath as __nooklet_fp}from'node:url';",
       "process.env.NOOKLET_BUNDLED_PLUGINS_DIR??=__nooklet_fp(new URL('./plugins',import.meta.url));",
+      "process.env.NOOKLET_HOST_MODULES_DIR??=__nooklet_fp(new URL('./host-modules',import.meta.url));",
     ].join(""),
   },
 });
@@ -193,7 +198,7 @@ console.log("web/              (client build)");
 // Through `tsx`, because the packaging module is the server's own TypeScript and imports its
 // siblings as `.js`, which Node's built-in type stripping does not map to `.ts`.
 const { tsImport } = await import(pathToFileURL(require.resolve("tsx/esm/api")).href);
-const { packageBundledPlugins } = await tsImport(
+const { packageBundledPlugins, packageHostModules } = await tsImport(
   pathToFileURL(join(repoRoot, "packages", "server", "src", "plugins", "bundled.ts")).href,
   import.meta.url,
 );
@@ -204,6 +209,18 @@ for (const p of packaged) {
 }
 if (!packaged.some((p) => p.id === "word-count")) {
   throw new Error("no word-count plugin was packaged — the built-in plugins are missing");
+}
+
+// 7. What a USER's plugin imports from the host (`@nooklet/plugin-api`, `@nooklet/core`, `zod`,
+// `hono`), as files. The built-ins above arrive pre-bundled, but a plugin dropped into
+// `<data>/plugins` is bundled at runtime, and the loader resolved those imports through the
+// server's `node_modules` — which a one-file `server.mjs` does not have, so every such plugin
+// failed with `Could not resolve "@nooklet/plugin-api"` (B-336). The loader aliases to these when
+// `NOOKLET_HOST_MODULES_DIR` is set, which the banner above does.
+// `tools/probes/sidecar-user-plugin.mjs` runs a user plugin in a sidecar copied out of the repo.
+const hostModules = await packageHostModules(join(outDir, "host-modules"));
+for (const file of hostModules) {
+  console.log(`${`host-modules/${file.split(/[\\/]/).pop()}`.padEnd(38)}${mib(file)}`);
 }
 
 console.log(`\nsidecar ready at ${outDir}`);

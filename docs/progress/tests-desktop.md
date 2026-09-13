@@ -43,16 +43,20 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
   base, fresh after). The sidecar's Node runtime was copied from the main checkout's
   `apps/desktop/.cache` (ignored build cache) to avoid a download.
 
+- **B-336** — commit "fix(desktop): a user's plugin can import the host modules in the sidecar
+  (B-336)". `plugins/bundled.ts#packageHostModules`, `plugins/bundler.ts#hostAliasMap` prefers
+  `$NOOKLET_HOST_MODULES_DIR`, `build-sidecar.mjs` step 7 + banner; tests in `bundled.test.ts`;
+  probe `sidecar-user-plugin.mjs` 200/exit 0 (control without host-modules: 404). Sidecar started
+  by hand on scratch `NOOKLET_DATA` (script `sidecar-manual.sh` in scratch): user op, OpError, client
+  bundle, built-ins all fine. Server unit 669/669. New open bug B-402 (op without `annotations`
+  crashes server at startup, dev and sidecar).
+
 ## 2. In flight
 
 - nothing (between steps).
 
 ## 3. Next steps
 
-1. B-336 (user plugins in the sidecar cannot import host modules) — reproduced with
-   `node tools/probes/sidecar-user-plugin.mjs apps/desktop/sidecar 6412` (404, "Could not
-   resolve"). Plan: a build-time `packageHostModules` in `plugins/bundled.ts` writes
-   `sidecar/host-modules/*.mjs` (each host specifier bundled with the others external);
-   `bundler.ts#hostAliasMap` prefers `$NOOKLET_HOST_MODULES_DIR` (set by the server.mjs banner)
-   over `require.resolve`.
-2. Start the built sidecar with a scratch NOOKLET_DATA; check healthz, web, built-in + user plugin.
+1. B-402 — small: validate plugin op shape at register so it is a per-plugin error. Decide: fix
+   (with a host.test) if it stays small, else leave logged.
+2. Final: full e2e run of touched specs + opfs-pool, `pnpm -r test` once, return summary.

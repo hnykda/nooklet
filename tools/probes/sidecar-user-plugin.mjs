@@ -12,6 +12,8 @@
  * On `m9/cleanup` (after B-180) it printed `hello.say -> 404` and the server log said
  * `Could not resolve "@nooklet/plugin-api"` / `Could not resolve "zod"`: the loader aliases those to
  * the server's own installed copies, and a bundled server has none. Exits non-zero while that holds.
+ * Same at `70c9bb9` (m10/tests-desktop). Fixed there by shipping those modules in the sidecar's
+ * `host-modules/` (`packages/server/src/plugins/bundled.ts#packageHostModules`): exits 0.
  */
 
 import { spawn } from "node:child_process";
@@ -42,12 +44,24 @@ writeFileSync(
 );
 writeFileSync(
   join(plugin, "src", "server.ts"),
+  // A complete `OpDef` (docs/spec/api-and-plugin-types.md §1.2). The first version of this probe
+  // left out `summary`, `annotations` and `scopes`; once the imports resolved (B-336), that op took
+  // the whole server down at startup — B-402.
   `import { defineOp, type ServerPluginModule } from "@nooklet/plugin-api";
 import { z } from "zod";
 const mod: ServerPluginModule = {
   activate(ctx) {
-    ctx.ops.register(defineOp({ name: "hello.say", description: "hi", input: z.object({}),
-      output: z.object({ hi: z.string() }), scope: "read", handler: async () => ({ hi: "there" }) }));
+    ctx.ops.register(defineOp({
+      name: "hello.say",
+      summary: "Say hi",
+      description: "Says hi.",
+      input: z.object({}),
+      output: z.object({ hi: z.string() }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      scopes: ["read"],
+      expose: { http: true },
+      handler: async () => ({ hi: "there" }),
+    }));
   },
 };
 export default mod;
@@ -56,6 +70,7 @@ export default mod;
 
 const env = { ...process.env, NOOKLET_DATA: data, NODE_ENV: "production" };
 delete env.NOOKLET_BUNDLED_PLUGINS_DIR;
+delete env.NOOKLET_HOST_MODULES_DIR;
 env.NOOKLET_SQLITE_VEC_PATH = join(
   sidecar,
   process.platform === "darwin" ? "vec0.dylib" : "vec0.so",
