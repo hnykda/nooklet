@@ -196,6 +196,32 @@ test.describe("an agent's block.update on the block being edited", () => {
       .toEqual([`mine typed${typed}${more}`, "other changed"]);
     await expect(notice(page)).toHaveCount(0);
   });
+
+  test("with unsaved typing, the typing is kept even when this tab's clock runs behind", async ({
+    page,
+  }) => {
+    // Last-writer-wins by HLC: a write stamped by a clock behind the other writer's loses to it,
+    // and the next refetch would then take the other version over what the person chose to keep.
+    // Twenty seconds behind the server, within the drift the sync accepts.
+    await page.clock.setFixedTime(Date.now() - 20_000);
+    const name = unique("Remote Rewrite Agent Skew");
+    await openEditing(page, name, "- mine\n- other");
+    const id = await idOf(page, name, "mine");
+
+    await page.keyboard.type(" typed");
+    const write = api(page, "block.update", { id, content: "theirs" });
+    const typed = await typeWhile(page, async () => (await notice(page).count()) > 0);
+    await notice(page).getByRole("button", { name: "Keep mine" }).click();
+    await write;
+
+    await expect.poll(() => storedText(page, name), { timeout: 15_000 }).toBe(`mine typed${typed}`);
+    // And it stays: the refetch after the write does not take "theirs" back into the editor.
+    await page.locator(".vr-row").nth(1).locator(".vr-block-view").click();
+    await expect
+      .poll(() => page.locator(".vr-row").first().textContent())
+      .toBe(`mine typed${typed}`);
+    expect(await storedText(page, name)).toBe(`mine typed${typed}`);
+  });
 });
 
 // The other half of the rule: this tab's OWN writes are never a change from elsewhere. Tab writes
@@ -300,9 +326,14 @@ test.describe("another device rewrites the block being edited", () => {
       await expect
         .poll(() => storedText(page, name), { timeout: 15_000 })
         .toBe("shared start from B");
-      // Both devices converge on it.
+      // Both devices converge on it. The rendered text, not the whole row: on a loaded machine a
+      // keystroke gap can outlast the debounce, and if that write of A's was still unpushed when
+      // B's arrived, the sync layer keeps A's text as a `conflict_copy` property (ADR 003) — seen
+      // once at load average 100, as a chip on B's row. That is sync doing its job, not this bug.
       await expect
-        .poll(() => b.page.locator(".vr-row").first().textContent(), { timeout: 20_000 })
+        .poll(() => b.page.locator(".vr-row").first().locator(".vr-block-view").textContent(), {
+          timeout: 20_000,
+        })
         .toBe("shared start from B");
     } finally {
       await b.context.close();

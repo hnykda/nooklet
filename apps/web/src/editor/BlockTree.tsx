@@ -291,6 +291,9 @@ export function BlockTree(props: {
           flat[idx] = withEditText(flat[idx] as EditableBlock, live);
         }
         if (verdict === "offer") {
+          // The typing is kept, so its write must be newer than this version even when the other
+          // writer's clock runs ahead of ours — or it loses last-writer-wins and is taken back.
+          untrack(clockSig)?.receive?.(hlc);
           setRemoteOffer({ id: editingBlockId, hlc, text: editTextOf(fetchedEdited) });
         } else if (verdict === "take" || verdict === "same") {
           if (untrack(remoteOffer)?.id === editingBlockId) setRemoteOffer(null);

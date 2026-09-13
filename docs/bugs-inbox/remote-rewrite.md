@@ -17,8 +17,11 @@ Stale read vs newer write is decided by HLC, not timing (`apps/web/src/editor/re
 write the database kept over anything this tree wrote — last-writer-wins on `content_hlc` — so it is
 from elsewhere; a refetch that read before this tree's own write carries an older one and the buffer
 wins, as B-66 needs. "Unsaved typing" is a pending edit that `flushPendingEdit` would still write. An
-offered version is not recorded as known, so if the typing's write later loses to it (a clock ahead
-of this one) the next refetch takes it; a dismissed one is not offered again. "Use the other
+offered version is not recorded as known (if the typing's write still loses to it, the next refetch
+takes it — the editor never shows text the database does not hold), and the editor clock absorbs its
+HLC (`Clock.receive`, `editor/clock.ts`) so the typing's write is newer even when the other writer's
+clock runs ahead — without that, a tab 20 s behind lost the kept typing to "theirs" (e2e below); a
+dismissed version is not offered again. "Use the other
 version" writes the other text as one undo step (Cmd/Ctrl+Z puts the typing back) and drops the
 unwritten keystrokes rather than writing them first. Caret: `mapThroughRewrite` — before the changed
 span it stays, after it keeps its distance from the end, at the very end it stays at the end.
@@ -29,10 +32,12 @@ the workaround also did — flush the keystrokes still inside the 500 ms debounc
 (the context menu keeps focus in the editor, so nothing else flushed them). `refactor-host.tsx`'s
 `write` now calls `editor/outline-registry.ts#flushTyping` before its push.
 
-Tests: `e2e/tests/remote-rewrite.spec.ts` (9): an agent's `block.update` with nothing typed; with an
+Tests: `e2e/tests/remote-rewrite.spec.ts` (10): an agent's `block.update` with nothing typed; with an
 edit before the caret; with unsaved typing then "Use the other version" (Cmd/Ctrl+Z brings the typing
 back, redo takes it again); with unsaved typing then leaving the block; with unsaved typing then
-"Keep mine" while typing continues through another refetch; a second browser context (its own
+"Keep mine" while typing continues through another refetch; "…the typing is kept even when this
+tab's clock runs behind" (`page.clock.setFixedTime(now − 20 s)`; failed before `Clock.receive` with
+the stored text `"theirs"`); a second browser context (its own
 replica and device) with nothing typed and with unsaved typing; "Turn into page" on the edited row
 with typing inside the debounce; and "typing straight on after Tab is never offered back as a change
 from elsewhere". Run against the old code, the first seven written all failed (the clean cases showed

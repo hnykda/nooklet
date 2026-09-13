@@ -37,17 +37,23 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
   were the probe reading DOM text where live preview hides `[[ ]]`; fixed in the probe).
   `pnpm nooklet verify` on the copy: 20484 ops replayed, OK.
 
+- next commit (skew): "Keep mine" under clock skew lost the typing — the editor clock never observed
+  the offered HLC. Optional `Clock.receive` (`types.ts`, `clock.ts`), called on an "offer" in
+  `BlockTree`. E2E "…kept even when this tab's clock runs behind" (`page.clock.setFixedTime`, 20 s
+  behind) red before (stored `"theirs"`), green after. Device-dirty test's B-row check now reads
+  `.vr-block-view`: one run at load average ~100 showed a `conflict_copy` chip (a keystroke gap
+  outlasted the debounce and the sync layer's ADR 003 merge kept A's text) — rerun 20/20.
+  Spec 10/10; web unit 1156/1156.
+
 ## 2. In flight
 
-- "Keep mine" under clock skew: the editor clock never observes the offered HLC, so if the other
-  writer's clock is ahead, the typing's flush loses LWW and the next refetch takes the other version.
-  Plan: optional `Clock.receive` (types.ts, clock.ts), called on an "offer"; e2e with
-  `page.clock.setFixedTime(past)` to make this tab's clock lag — check red first, then fix.
+- Final checks.
 
 ## 3. Next steps, in order
 
-1. The skew fix above (commit the probe + progress first).
-2. Final: web unit + typecheck + biome; rerun editor e2e chunks once more.
+1. Final: typecheck + biome on touched files; rerun editor e2e chunks (editing, focus, undo-redo,
+   redo, undo-gaps, template-undo, merge-keeps-fields, editing-row-leaves, refactor, journal-*,
+   block-properties, dates, date-picker-type-ahead) since `BlockTree`/`clock.ts` changed again.
 
 ## Design notes
 
