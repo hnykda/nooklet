@@ -57,8 +57,10 @@ over the owner's 20,411 ops with the new `resolvePlace`.
 ---
 
 ### B-121 · A page deleted by a plugin comes back from the trash without its blocks
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, M7 server/sync review (F9) ·
-**Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, M7 server/sync review (F9) ·
+**Test:** `packages/server/src/data-api-delete-instant.test.ts` "a page deleted through ctx.data
+comes back from the trash with all its blocks" and "a subtree deleted through ctx.data comes back
+whole"
 
 `DataApi.pages.delete` and `DataApi.blocks.delete` (what plugins reach through `ctx.data`) call
 `Date.now()` for every op they mint. `trash.restore` brings back a page's blocks — and a block's
@@ -67,6 +69,11 @@ action. A plugin delete that spans a millisecond therefore restores a page with 
 blocks become separate trash entries. Probe: `Date.now` advancing 1 ms per call,
 `api.pages.delete` on a 3-block page, then `trash.restore` → 1 entity restored, page empty.
 `ops/page-delete.ts` and `ops/block-delete.ts` already take one `now`.
+
+**Fixed 2026-09-13.** `DataApi.pages.delete` and `DataApi.blocks.delete` (both modes) take one
+`now` per call and stamp it on every op. Both tests run the delete with `Date.now` advancing a
+millisecond per call and fail before (1 of 4 entities restored; three trash entries instead of
+one).
 
 ---
 

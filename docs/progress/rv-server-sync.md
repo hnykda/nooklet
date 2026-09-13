@@ -27,9 +27,9 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 | F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | fixed 668c0d3 |
 | F7 query `ref` prefilter drops property-only refs | low | B-124 | fixed b035d86 |
 | F8 recordChanges O(n²) | low | note under B-85 (existing) | fixed 33b4797; no unit test, probe |
-| F9 DataApi deletes: one timestamp per op | low | B-121 | logged |
+| F9 DataApi deletes: one timestamp per op | low | B-121 | fixed (see Done) |
 | F10 asset GC ignores history snapshots | low | B-91 (existing) | logged |
-| (found) cross-page move of a big subtree takes ~23 s: reindex walks unindexed | — | note under B-85 (existing) | fixed (see Done) |
+| (found) cross-page move of a big subtree takes ~23 s: reindex walks unindexed | — | note under B-85 (existing) | fixed df6b6fc |
 
 ## Done
 
@@ -64,16 +64,18 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 - F8 — `33b4797`: `recordChanges` uses a Map. Probe `tools/probes/apply-ops-batch-scaling.ts`
   (16k ops: find 1,364 ms vs Map 2 ms; serverApplyOps 8.2 s → 7.7 s). Still quadratic: the reindex
   walk (`subtreeIds`, unindexed `parent_id = ?`).
-- F8 second half — (this commit): `block-children.ts#childLookup` (index for live children, one scan
+- F8 second half — `df6b6fc`: `block-children.ts#childLookup` (index for live children, one scan
   for tombstones) shared by the reindex walk, the subtree repair and the B-86 re-index;
   `reindexTouchedEntities` rebuilds refs first, then path_ref once for the union of subtrees. Test
   `block-children.test.ts` (EXPLAIN QUERY PLAN). Probe `tools/probes/reindex-parity-real-graph.ts`:
   identical ref (2,185) and path_ref (32,671) rows on the real graph. 16k batch 7.7 s → 1.8 s; 961
   subtree move 23 s → 0.46 s. Server 540/540; verify OK.
+- F9 / B-121 — (this commit): one `now` per `DataApi.pages.delete` / `blocks.delete`. Tests
+  `data-api-delete-instant.test.ts` (2, fail before).
 
 ## Next steps, in order
 
-F9, F10, then e2e (trash, refactor, history, remote-device), then the review doc.
+F10, then e2e (trash, refactor, history, remote-device), then the review doc.
 
 ## How to resume
 
