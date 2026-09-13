@@ -149,3 +149,40 @@ a page does not load offline — which is what that rule reads as promising. (`n
 is tested against the pathname and does work.) Likely fix: match on `({ url }) => url.pathname
 .startsWith("/assets/")`, after checking what an authenticated asset response should do in a shared
 cache. Not verified in a browser; found by reading the generated SW and workbox's matcher.
+
+---
+
+### B-333 (existing)
+
+**Reproduced 2026-09-13 (m10/tests-desktop).** Not at 56 busy loops (all 398 passed; the property
+tests at 6-8x their idle time). With `packages/core`'s suite run under `nice -n 20` and 140 busy
+loops (load average 102-140): 3 of B-333's 4 failures — "stays far away from quadratic" (673 ms
+against 500), "converges regardless of interleaving…" (6,260 ms against 5 s) and "content and each
+prop key converge independently…" (5,358 ms against 5 s); "dense adversarial moves" took 16.8 s of
+its 30. Cause, as the entry guessed: wall-clock limits. Nothing in these tests is broken, and
+nothing in the property tests measures cost at all — a Vitest timeout is the only clock in them.
+
+**Fixed 2026-09-13.**
+- `packages/core/src/tokens.test.ts` measures PROCESS CPU TIME (`process.cpuUsage()`) instead of
+  `performance.now()`, keeping the 500 ms budget. Probe `tools/probes/cpu-vs-wall-under-load.ts`
+  (same 20,000 blocks): idle 18-20 ms CPU and wall; under 140 busy loops, niced (load average
+  85-142), 19-32 ms CPU against 144-684 ms wall. That budget never could see what "quadratic" in
+  a tokenizer usually means — cost growing with LINE length; its blocks are 70-90 characters — so a
+  second test, "costs the same per character on a line four times as long", compares CPU time for
+  one ~83k-character line against a ~333k one (best of three each, short first after a warm-up)
+  and requires growth under 8 (linear is 4, quadratic 16). Measured growth: 4.4 idle, 4.4-5.1 at
+  load average 122-153. It was checked against injected regressions: a char-by-char rescan from
+  every 1024th character read 8.3 and failed; every 4096th, 6.2, and every 16384th, 4.9, passed —
+  it catches a quadratic once that costs about as much as the tokenizer itself at ~300k characters,
+  not a milder one. Both tests take a 60 s Vitest timeout as a hang guard (the scaling check took
+  2.7 s of wall time at that load for ~0.2 s of CPU).
+- `packages/core/src/sync/sync.property.test.ts`: every fast-check property gets a 120 s Vitest
+  timeout, documented at the top of the file as a hang guard only (~100x the slowest idle time).
+  `numRuns` is unchanged: these assert over a fixed number of runs, and trimming runs to fit a clock
+  is how coverage disappears.
+
+Tests: the tests themselves. Proof: the whole `packages/core` suite three times under `nice -n 20`
+and 140 busy loops (load average 122-153): 399 passed each time, with "stays far away from
+quadratic" at 451-661 ms wall (the old wall budget would have failed 2 of 3), "converges regardless
+of interleaving" at 4.7-5.7 s (over the old 5 s twice) and "dense adversarial moves" at 16-20 s.
+Idle: 399 passed.

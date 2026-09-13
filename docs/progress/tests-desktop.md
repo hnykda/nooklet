@@ -31,6 +31,11 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
   `apps/web/src/db/sqlite-wasm-driver.ts`; regression `e2e/tests/opfs-pool.spec.ts`; probe
   `tools/probes/page-boot-under-load.spec.ts`. New open bugs logged: B-400 (worker init failure →
   eternal "Loading…"), B-401 (workbox runtimeCaching regexes never match). Web unit 1126/1126.
+- **B-333** (core tests) — commit "test(core): tokenizer budget in CPU time, property-test timeouts
+  as hang guards (B-333)". Reproduced 3 of 4 with core niced under 140 busy loops.
+  `tokens.test.ts`: CPU-time budget + new line-length scaling check (verified against injected
+  quadratics); `sync.property.test.ts`: 120 s timeouts, numRuns unchanged. Probe
+  `tools/probes/cpu-vs-wall-under-load.ts`. Core 399/399 idle and 3x under load.
 
 ## 2. In flight
 
@@ -38,6 +43,5 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
 
 ## 3. Next steps
 
-1. B-333 — core timing/property tests.
-2. B-371 — comment.
-3. B-337, B-336 — sidecar build + user plugin host modules; verify with a built sidecar.
+1. B-371 — comment.
+2. B-337, B-336 — sidecar build + user plugin host modules; verify with a built sidecar.
