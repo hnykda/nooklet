@@ -126,13 +126,15 @@ export interface RestoreResult {
   batchId?: string;
 }
 
-export async function restoreFromTrash(id: string): Promise<RestoreResult> {
+/** `trash.restore`. `newName` restores a page under another name — what a `conflict` (the name is
+ * taken by a live page, or is another page's alias) asks for. */
+export async function restoreFromTrash(id: string, newName?: string): Promise<RestoreResult> {
   const out = await callOp<{
     kind: "page" | "block";
     page: string;
     restored: string[];
     batch_id?: string;
-  }>("trash.restore", { id });
+  }>("trash.restore", newName === undefined ? { id } : { id, new_name: newName });
   return { kind: out.kind, page: out.page, restored: out.restored, batchId: out.batch_id };
 }
 

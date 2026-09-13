@@ -28,19 +28,24 @@ name conflict is a UI dead end (medium); Q6 trash restore ignores aliases (low).
   (failed before: 200 vs 205), `page-backlinks-totals.http.test.ts` (3), `referenceWindow.test.ts`
   (4). Real graph: CAMP 836/189, @Alex 756/465 match the API.
 
-- Q4 (B-254) — `block.to_page` names the page by `pageNameFromFirstLine`: heading marker off the
+- Q4 (B-254) `15a98ac` — `block.to_page` names the page by `pageNameFromFirstLine`: heading marker off the
   name (kept on the link block), inline links reduced to their text, sole link (with label) names
   that page. Test: `block-to-page-name.test.ts` (4, all failed before). Real graph copy:
   Megapage `## Plánování…` → existing page, `created: false`, block `## [[Plánování…]]`;
   `[[Alex]] by chtěl…` → page `Alex by chtěl něco jako:`; verify OK (20,421 ops).
 
+- Q5 (B-255) — Trash: a page restore refused with `conflict` opens `TrashRenameForm` on the row
+  (prefilled "X (restored)", passes `new_name`); name state lifted into `TrashView`, unchanged
+  rows keep their objects across refetches. Test: `e2e/tests/trash-conflict.spec.ts` (2, both
+  failed before). Real graph: `@Sam Example` restored under the suggested name from the form.
+
 ## In flight
 
-- Q5: starting — `apps/web/src/views/TrashView.tsx` restore with `new_name` on conflict.
+- Q6: starting — `packages/server/src/ops/trash-restore.ts` `livePageWithKey` ignores aliases.
 
 ## Next, in order
 
-Q5 → Q6.
+Q6, then a final pass: rerun touched e2e specs together, unit suites, verify.
 
 ## How to resume
 

@@ -7,14 +7,19 @@
  *
  * Read from the server (`../data/history.ts`), not the local replica: who deleted something lives
  * in the `changes` audit log, which only the server has.
+ *
+ * A page restore the server refuses with `conflict` — its name is taken — opens
+ * `TrashRenameForm` on that row instead of ending in an error line (B-255).
  */
 
 import { A } from "@solidjs/router";
-import { createSignal, For, type JSX, Show } from "solid-js";
+import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { ApiError } from "../data/api-client.js";
 import { restoreFromTrash, type TrashItem, useTrash } from "../data/history.js";
 import { displayRefName } from "../data/page-title.js";
 import { formatWhen } from "./historyText.js";
 import { pageRoutePath } from "./navigateTarget.js";
+import { suggestedRestoreName, TrashRenameForm } from "./TrashRenameForm.js";
 import "./trash.css";
 
 export function TrashView(): JSX.Element {
@@ -22,15 +27,21 @@ export function TrashView(): JSX.Element {
   const [busy, setBusy] = createSignal<string | null>(null);
   const [notice, setNotice] = createSignal<{ text: string; page: string } | null>(null);
   const [error, setError] = createSignal<string | null>(null);
+  /** The row whose restore was refused for its name, and why. */
+  const [conflict, setConflict] = createSignal<{ id: string; reason: string } | null>(null);
+  // The name in the rename form lives here, not in the form: see `TrashRenameForm.tsx`.
+  const [renameTo, setRenameTo] = createSignal("");
+  const [selectName, setSelectName] = createSignal(false);
 
-  async function restore(item: TrashItem): Promise<void> {
+  async function restore(item: TrashItem, newName?: string): Promise<void> {
     setBusy(item.id);
     setError(null);
     try {
-      const result = await restoreFromTrash(item.id);
+      const result = await restoreFromTrash(item.id, newName);
+      setConflict(null);
       const what =
         item.kind === "page"
-          ? `Restored "${displayRefName(item.title)}"`
+          ? `Restored "${displayRefName(newName ?? item.title)}"`
           : `Restored the block "${item.title || "(empty)"}"`;
       const n = result.restored.length - 1;
       setNotice({
@@ -39,13 +50,45 @@ export function TrashView(): JSX.Element {
       });
       refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (item.kind === "page" && err instanceof ApiError && err.code === "conflict") {
+        setConflict({ id: item.id, reason: err.message });
+        if (newName === undefined) {
+          setRenameTo(suggestedRestoreName(item.title));
+          setSelectName(true);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setBusy(null);
     }
   }
 
   const count = () => items()?.length ?? 0;
+
+  // The list refetches on every graph change and each fetch builds new objects, and `<For>` is
+  // keyed by reference — so without this every row, and an open rename form with it, was torn
+  // down and rebuilt whenever anything anywhere was edited. An unchanged item keeps its object.
+  let previous = new Map<string, TrashItem>();
+  const rows = createMemo((): TrashItem[] => {
+    const next = items.error === undefined ? (items() ?? []) : [];
+    const kept = new Map<string, TrashItem>();
+    const out = next.map((item) => {
+      const old = previous.get(item.id);
+      const same =
+        old !== undefined &&
+        old.title === item.title &&
+        old.page === item.page &&
+        old.blockCount === item.blockCount &&
+        old.deletedAt === item.deletedAt &&
+        old.deletedBy?.batchId === item.deletedBy?.batchId;
+      const chosen = same ? old : item;
+      kept.set(item.id, chosen);
+      return chosen;
+    });
+    previous = kept;
+    return out;
+  });
 
   return (
     <div class="trash-view">
@@ -95,7 +138,7 @@ export function TrashView(): JSX.Element {
       </Show>
 
       <ul class="trash-list">
-        <For each={items()}>
+        <For each={rows()}>
           {(item) => (
             <li class={`trash-row trash-row-${item.kind}`} data-id={item.id}>
               <span class="trash-kind">{item.kind}</span>
@@ -124,6 +167,20 @@ export function TrashView(): JSX.Element {
                     )}
                   </Show>
                 </div>
+                <Show when={conflict()?.id === item.id}>
+                  <TrashRenameForm
+                    reason={conflict()?.reason ?? ""}
+                    name={renameTo()}
+                    onName={(name) => {
+                      setRenameTo(name);
+                      setSelectName(false);
+                    }}
+                    busy={busy() === item.id}
+                    selectOnMount={selectName()}
+                    onRestore={(name) => void restore(item, name)}
+                    onCancel={() => setConflict(null)}
+                  />
+                </Show>
               </div>
               <button
                 type="button"

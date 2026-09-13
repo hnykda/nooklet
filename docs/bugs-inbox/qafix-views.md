@@ -116,3 +116,27 @@ the page's outline), and inline `[[Page]]` / `[[Page|label]]` links are reduced 
 show. The existing sole-link rule is applied after the heading marker comes off.
 `packages/server/src/ops/block-to-page-name.test.ts` — failed before with the page named
 `## Plánování zahradních úprav`.
+
+---
+
+### B-255 · Restoring a trashed page whose name is taken was a dead end in the Trash view
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA on the real graph
+(finding Q5) · **Test:** `e2e/tests/trash-conflict.spec.ts`
+
+Delete `@Sam Example` (4 blocks) through the API, create a new `@Sam Example`, open `/trash`
+and click Restore on the deleted row: "Could not restore: a live page is already named
+"@Sam Example"" and nothing else — no way to restore under another name, although
+`trash.restore` takes `new_name` and its 409 hint says to pass it. The row stayed; the only way
+out was to leave, rename or delete the other page, and come back.
+
+**Fixed 2026-09-13.** A `conflict` on a page restore opens a small form on that row: the server's
+message, a name field prefilled with "<name> (restored)", Restore under this name (which passes
+`new_name`), and Cancel. A second conflict (the new name is taken too) says so in the same form.
+`restoreFromTrash` takes the name. The name lives in the view, and unchanged trash rows keep
+their objects across refetches: the first version of the fix kept the name in the form, and the
+test caught a refetch (from a page created meanwhile) rebuilding the row and restoring under the
+suggestion instead of the typed name. `e2e/tests/trash-conflict.spec.ts` — failed before: no form.
+Real graph copy: `@Sam Example` (4 blocks) restored as `@Sam Example (restored)` from the
+form, content identical, the new live page untouched.
+Not changed: two trash rows with the same title are still told apart by block count and deletion
+time only.
