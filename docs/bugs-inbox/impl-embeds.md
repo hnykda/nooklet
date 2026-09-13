@@ -110,7 +110,8 @@ the embed is torn down and rebuilt twice per keystroke, and each rebuild shows t
 *below* an embed (a page with `{{embed [[2024-09-29]]}}` above it) moved the editor on screen
 between y=309, 875 and 1233 while typing six characters. A row unfolded with the embed's own toggle
 folds again on the next keystroke anywhere on the page. Probes:
-`impl-embeds-verify/probe-remount2.mjs`, `probe-flash.mjs`, `probe-toggle.mjs` (scratch).
+`tools/probes/embeds-typing-remount.mjs`, `embeds-typing-flash.mjs`,
+`embeds-toggle-survives-typing.mjs`.
 
 Cause (verified by tagging DOM nodes): `BlockTree` hands every row a new `block` object whenever the
 page tree re-reads (every write), and `BlockRowView`'s `content` memo and its `ctx.source` both read
@@ -157,7 +158,7 @@ inside an embedded row opens the link, not the block (B-216)" and `apps/web/src/
 The owner's 2024-09-29 embed carries a row that is just a Mattermost URL. Clicking that link on its
 own page (2024-09-26, zoomed to the block) opens it in a new tab; clicking the same link inside the
 embed opened no tab and navigated the app to `/page/2024-09-26?block=…` (probe
-`impl-embeds-verify/probe-extlink.mjs`, external requests fulfilled locally). `EmbedRow`'s row
+`tools/probes/embeds-external-link.mjs`, external requests fulfilled locally). `EmbedRow`'s row
 handler calls `preventDefault()` on every click that bubbles up to it, which cancels an `<a
 href target=_blank>`'s own navigation; only `[[page]]` links survived, because `NavLink` stops the
 click first. Enter on a focused link inside a row had the same fate through the row's `keydown`.
