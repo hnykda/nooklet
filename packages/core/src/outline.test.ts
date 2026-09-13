@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { OutlineNode, ParsedPage } from "./model.js";
 import { parseOutline, serializeOutline } from "./outline.js";
 
 const roundTrip = (text: string) => serializeOutline(parseOutline(text));
@@ -166,6 +167,135 @@ describe("serializeOutline", () => {
   it("writes a lone-id first line before a fence (OUT-14)", () => {
     const text = "- ^64f1a2b3000041\n  ```js\n  const x = 1;\n  ```\n";
     expect(roundTrip(text)).toBe(text);
+  });
+
+  // B-310: a task whose content opens with a fence. With ids, OUT-14 wrote the id alone and dropped
+  // the marker; without ids, `- TODO ```js` never opened the fence on re-read, so the code's `- `
+  // lines became child blocks and the content shrank to its first line.
+  describe("a task block that opens with a fence (B-310)", () => {
+    const node = (over: Partial<OutlineNode>): OutlineNode => ({
+      content: "",
+      marker: null,
+      priority: null,
+      properties: {},
+      collapsed: false,
+      children: [],
+      ...over,
+    });
+    const fenceTask = (withIds: boolean): ParsedPage => ({
+      properties: {},
+      blocks: [
+        node({
+          ...(withIds ? { id: "1k7f3q9xz2hav4" } : {}),
+          content: "```js\n- not a bullet\nfoo:: not a property\n```",
+          marker: "TODO",
+          priority: "A",
+          properties: { foo: "bar" },
+          children: [node({ ...(withIds ? { id: "1k7f3q9xz2hav5" } : {}), content: "child" })],
+        }),
+        node({ content: "next" }),
+      ],
+    });
+
+    it("keeps the marker and priority in the mirror: head and id alone on line 1", () => {
+      const page = fenceTask(true);
+      const text = serializeOutline(page);
+      expect(text).toBe(
+        "- TODO [#A] ^1k7f3q9xz2hav4\n  foo:: bar\n  ```js\n  - not a bullet\n  foo:: not a property\n  ```\n  - child ^1k7f3q9xz2hav5\n- next\n",
+      );
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("keeps the fence whole without ids, properties after the closed fence", () => {
+      const page = fenceTask(false);
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe(
+        "- TODO [#A] ```js\n  - not a bullet\n  foo:: not a property\n  ```\n  foo:: bar\n  - child\n- next\n",
+      );
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("writes the head alone before a fence that never closes, when there are properties", () => {
+      const page: ParsedPage = {
+        properties: {},
+        blocks: [node({ content: "```js\ncode", marker: "LATER", properties: { foo: "bar" } })],
+      };
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe("- LATER\n  foo:: bar\n  ```js\n  code\n");
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("writes a task without properties or ids as typed: `- TODO ```js`", () => {
+      const page: ParsedPage = {
+        properties: {},
+        blocks: [node({ content: "```js\n- x\n```", marker: "DONE" }), node({ content: "next" })],
+      };
+      const text = serializeOutline(page, { ids: "none" });
+      expect(text).toBe("- DONE ```js\n  - x\n  ```\n- next\n");
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("still reads inline code after a marker as text, not as a fence", () => {
+      const p = parseOutline("- TODO ```x``` later\n- next\n");
+      expect(p.blocks.map((b) => [b.marker, b.content])).toEqual([
+        ["TODO", "```x``` later"],
+        [null, "next"],
+      ]);
+    });
+  });
+
+  // B-390: a line 1 holding nothing but `^id` (after any marker/priority) kept the id only when
+  // another line followed, so every empty block in the mirror (`- ^id`) and the owner's one task
+  // whose content opens with a blank line (`- LATER ^id` + text) came back with `^id` as text.
+  describe("a block whose line 1 is only its id (B-390)", () => {
+    const node = (over: Partial<OutlineNode>): OutlineNode => ({
+      content: "",
+      marker: null,
+      priority: null,
+      properties: {},
+      collapsed: false,
+      children: [],
+      ...over,
+    });
+
+    it("round-trips empty blocks with ids, including a page's first block", () => {
+      const page: ParsedPage = {
+        properties: { title: "X" },
+        blocks: [
+          node({ id: "1k7f3q9xz2hav4" }),
+          node({ id: "1k7f3q9xz2hav5", content: "a", children: [node({ id: "1k7f3q9xz2hav6" })] }),
+          node({ id: "1k7f3q9xz2hav7", marker: "TODO" }),
+          node({ id: "1k7f3q9xz2hav8", priority: "B", collapsed: true, properties: { k: "v" } }),
+        ],
+      };
+      const text = serializeOutline(page);
+      expect(text).toBe(
+        "title:: X\n- ^1k7f3q9xz2hav4\n- a ^1k7f3q9xz2hav5\n  - ^1k7f3q9xz2hav6\n- TODO ^1k7f3q9xz2hav7\n- [#B] ^1k7f3q9xz2hav8\n  collapsed:: true\n  k:: v\n",
+      );
+      expect(parseOutline(text)).toEqual(page);
+      // With no page properties the empty first block is still a block, not a pre-block.
+      const bare: ParsedPage = { properties: {}, blocks: page.blocks.slice(0, 1) };
+      expect(parseOutline(serializeOutline(bare))).toEqual(bare);
+    });
+
+    it("round-trips a content whose line 1 is empty, with and without a marker", () => {
+      const page: ParsedPage = {
+        properties: {},
+        blocks: [
+          node({ id: "1m287mdbgs5v8t", marker: "LATER", content: "\n> Hm, quoted" }),
+          node({ id: "1k7f3q9xz2hav4", content: "\nsecond" }),
+        ],
+      };
+      const text = serializeOutline(page);
+      expect(text).toBe("- LATER ^1m287mdbgs5v8t\n  > Hm, quoted\n- ^1k7f3q9xz2hav4\n  second\n");
+      expect(parseOutline(text)).toEqual(page);
+    });
+
+    it("keeps a page-level `id::` pre-block line a page property (OUT-15)", () => {
+      const p = parseOutline("id:: 64f1a2b3-0000-4000-8000-000000000001\n\n- ^1k7f3q9xz2hav4\n");
+      expect(p.properties).toEqual({ id: "64f1a2b3-0000-4000-8000-000000000001" });
+      expect(p.blocks).toEqual([node({ id: "1k7f3q9xz2hav4" })]);
+    });
   });
 
   // B-151: without an id to stand alone on line 1, property lines written straight after a

@@ -11,8 +11,8 @@
  *   - TODO [#A] child block ^1k7f3q9xz2hav5
  *     scheduled:: 2026-09-12
  *     repeat:: 1w
- *   - ^1k7f3q9xz2hav6                   <- when line 1 would open a fence, the id sits alone
- *     ```js                                on its own first line (OUT-14)
+ *   - TODO ^1k7f3q9xz2hav6              <- when line 1 would open a fence, the marker/priority
+ *     ```js                                and the id sit alone on the first line (OUT-14)
  *     - not a bullet: inside a fence
  *     ```
  *
@@ -45,7 +45,8 @@ const PRIORITY_RE = /^\[#([ABC])\](?=\s|$)/;
 const FRONT_MATTER_LINE_RE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):\s*(.*)$/;
 /** OUT-12: a trailing " ^id" suffix on a line that also has other content. */
 const ID_SUFFIX_RE = / \^([0-9a-z]{14})$/;
-/** OUT-14: a line that is *only* an id (used when line 1 would otherwise open a fence). */
+/** OUT-14: what is left of line 1 when it holds nothing but an id — an empty block (`- ^id`), or
+ * a task whose marker strip also took the space before `^` (`- TODO ^id`). */
 const ID_ALONE_RE = /^\^([0-9a-z]{14})$/;
 /** OUT-23: org timestamp lines. Group 1 = SCHEDULED|DEADLINE, group 2 = the `<...>` interior. */
 const SCHEDULED_DEADLINE_RE = /^\s*(SCHEDULED|DEADLINE):\s*<([^>]+)>\s*$/;
@@ -138,6 +139,38 @@ function openingFence(text: string): string | null {
   return fence;
 }
 
+/** OUT-16: a first line's task head (marker, then priority) split from the rest of the line.
+ * Shared by the fence check and `finalizeNode`, so both read the same line 1 (B-310). */
+function splitTaskHead(line: string): {
+  marker: TaskMarker | null;
+  priority: Priority | null;
+  rest: string;
+} {
+  let rest = line;
+  let marker: TaskMarker | null = null;
+  let priority: Priority | null = null;
+  const mm = MARKER_RE.exec(rest);
+  if (mm) {
+    const rawMarker = mm[1] as string;
+    marker = MARKER_ALIASES[rawMarker] ?? (rawMarker as TaskMarker);
+    rest = rest.slice(rawMarker.length).trimStart();
+  }
+  const pm = PRIORITY_RE.exec(rest);
+  if (pm) {
+    priority = pm[1] as Priority;
+    rest = rest.slice(pm[0].length).trimStart();
+  }
+  return { marker, priority, rest };
+}
+
+/** Whether a block's line 1 opens a fence — looked for after its marker/priority, because
+ * `TODO ```js` is a task whose content opens with a fence. Checked on the raw line the fence never
+ * opened: the code's `- ` lines came back as child blocks and its `key:: value` lines as
+ * properties (B-310). */
+function firstLineOpensFence(line: string): string | null {
+  return openingFence(splitTaskHead(line).rest);
+}
+
 function closesFence(text: string, fence: string): boolean {
   const t = text.trimStart();
   if (!t.startsWith(fence)) return false;
@@ -175,7 +208,7 @@ export function parseOutline(text: string): ParsedPage {
     stack.push(node);
     current = node;
     pendingBlank = 0;
-    fence = openingFence(firstLine);
+    fence = firstLineOpensFence(firstLine);
   };
 
   for (; i < lines.length; i++) {
@@ -227,11 +260,20 @@ export function parseOutline(text: string): ParsedPage {
     startNode(w, line.slice(ws.length), false);
   }
 
-  const nodes = roots.map(finalizeNode);
+  const caretIds = new WeakSet<OutlineNode>();
+  const nodes = roots.map((raw) => finalizeNode(raw, caretIds));
 
-  // Pre-block: a leading property-only block holds the page properties (OUT-2).
+  // Pre-block: a leading property-only block holds the page properties (OUT-2). Not an empty block
+  // with a `^id` (OUT-11): that is a block's own id, never a page's, and a mirror file whose first
+  // block is empty (`- ^id`) would otherwise lose that block into `page.properties.id` (B-390).
   const first = nodes[0];
-  if (first && first.content === "" && first.marker === null && first.children.length === 0) {
+  if (
+    first &&
+    first.content === "" &&
+    first.marker === null &&
+    first.children.length === 0 &&
+    !caretIds.has(first)
+  ) {
     const hasProps = Object.keys(first.properties).length > 0 || first.id !== undefined;
     if (hasProps || !(roots[0] as RawNode).bullet) {
       if (first.id !== undefined) page.properties.id = first.id;
@@ -249,7 +291,9 @@ function normalizePropertyKey(raw: string): string {
   return PROPERTY_KEY_REMAP[lower] ?? lower.replace(/_/g, "-");
 }
 
-function finalizeNode(raw: RawNode): OutlineNode {
+/** `caretIds` collects the nodes whose id came from `^id` syntax (OUT-11/14) rather than an `id::`
+ * line (OUT-15), for the pre-block rule. */
+function finalizeNode(raw: RawNode, caretIds: WeakSet<OutlineNode>): OutlineNode {
   const properties: Properties = {};
   const kept: string[] = [];
   let id: string | undefined;
@@ -300,7 +344,7 @@ function finalizeNode(raw: RawNode): OutlineNode {
     }
     if (kept.length === 0 && idx === 0) firstKeptWasFirstLine = true;
     kept.push(line);
-    fence = openingFence(line);
+    fence = idx === 0 ? firstLineOpensFence(line) : openingFence(line);
   });
 
   let marker: TaskMarker | null = null;
@@ -308,35 +352,26 @@ function finalizeNode(raw: RawNode): OutlineNode {
   let idFromSuffix: string | undefined;
 
   if (firstKeptWasFirstLine && kept.length > 0) {
-    // OUT-14: the id sits alone on line 1 when the real first line would open a fence
-    // (accepted harmlessly whenever a further line follows, even a non-fence one).
-    if (kept.length > 1) {
-      const aloneMatch = ID_ALONE_RE.exec(kept[0] as string);
-      if (aloneMatch && isId(aloneMatch[1] as string)) {
-        idFromSuffix = aloneMatch[1];
-        kept.shift();
-      }
+    const head = splitTaskHead(kept[0] as string);
+    marker = head.marker;
+    priority = head.priority;
+    let first = head.rest;
+    // OUT-12: a trailing " ^id" suffix, checked after marker/priority are stripped — or OUT-14, a
+    // line 1 holding nothing but the id. B-390: that form needs no further line. It is how an empty
+    // block (`- ^id`) and a task with an empty line 1 (`- LATER ^id`) are written, and requiring
+    // one read both back with `^id` as their text and no id.
+    const idMatch = ID_SUFFIX_RE.exec(first) ?? ID_ALONE_RE.exec(first);
+    if (idMatch && isId(idMatch[1] as string)) {
+      idFromSuffix = idMatch[1];
+      first = first.slice(0, idMatch.index);
     }
-    if (idFromSuffix === undefined) {
-      let first = kept[0] as string;
-      const mm = MARKER_RE.exec(first);
-      if (mm) {
-        const rawMarker = mm[1] as string;
-        marker = MARKER_ALIASES[rawMarker] ?? (rawMarker as TaskMarker);
-        first = first.slice(rawMarker.length).trimStart();
-      }
-      const pm = PRIORITY_RE.exec(first);
-      if (pm) {
-        priority = pm[1] as Priority;
-        first = first.slice(pm[0].length).trimStart();
-      }
-      // OUT-12: trailing " ^id" suffix, checked after marker/priority are stripped.
-      const suffixMatch = ID_SUFFIX_RE.exec(first);
-      if (suffixMatch && isId(suffixMatch[1] as string)) {
-        idFromSuffix = suffixMatch[1];
-        first = first.slice(0, suffixMatch.index);
-      }
-      kept[0] = first;
+    kept[0] = first;
+    // OUT-14: a line 1 left empty by its head and/or id, followed by a line that opens a fence, is
+    // not a content line — the serializer wrote the head there because the content opens with that
+    // fence. Only then: before any other line, an empty line 1 is the content's own.
+    const headOrId = marker !== null || priority !== null || idFromSuffix !== undefined;
+    if (first === "" && headOrId && kept.length > 1 && openingFence(kept[1] as string) !== null) {
+      kept.shift();
     }
   }
 
@@ -359,9 +394,10 @@ function finalizeNode(raw: RawNode): OutlineNode {
     priority,
     properties,
     collapsed,
-    children: raw.children.map(finalizeNode),
+    children: raw.children.map((child) => finalizeNode(child, caretIds)),
   };
   if (id !== undefined) node.id = id;
+  if (idFromSuffix !== undefined) caretIds.add(node);
   return node;
 }
 
@@ -404,19 +440,26 @@ export function serializeOutline(page: ParsedPage, opts: SerializeOptions = {}):
     for (const [k, v] of Object.entries(node.properties)) props.push(`${k}:: ${v}`);
 
     if (suffixId !== undefined && openingFence(first) !== null) {
-      // OUT-14: line 1 would open a fence, so the id sits alone and the fence starts on line 2.
-      out.push(`${indent}- ^${suffixId}`, ...props.map(contLine), ...contentLines.map(contLine));
-    } else if (head === "" && props.length > 0 && openingFence(first) !== null) {
+      // OUT-14: line 1 would open a fence, so the head and the id sit alone on it and the fence
+      // starts on line 2. B-310: this used to write the id only, and the marker and priority were
+      // gone the first time the mirror was read back.
+      out.push(
+        `${indent}- ${[head, `^${suffixId}`].filter((s) => s !== "").join(" ")}`,
+        ...props.map(contLine),
+        ...contentLines.map(contLine),
+      );
+    } else if (props.length > 0 && openingFence(first) !== null) {
       // B-151: with no id to stand alone on line 1, property lines after line 1 sit inside the
       // fence it opens and re-parse as code — `ids: "none"` text (copy, `block.update`'s
       // before-text) silently lost the block's properties. `block-text.ts#joinBlockText`'s
       // placements instead: after the content once every fence in it has closed (the parser takes
-      // a property line wherever it sits outside a fence), otherwise on the bullet line itself,
-      // before the fence opens. (A marker or priority on line 1 keeps the fence from opening
-      // there, so those blocks never reach this branch — B-310.)
+      // a property line wherever it sits outside a fence); otherwise before the fence opens — a
+      // task's head alone on line 1 (OUT-14's form without the id, B-310), else the bullet line.
       if (fencesClosed(contentLines)) {
-        out.push(`${indent}- ${first}`, ...contentLines.slice(1).map(contLine));
-        out.push(...props.map(contLine));
+        out.push(`${indent}- ${[head, first].filter((s) => s !== "").join(" ")}`);
+        out.push(...contentLines.slice(1).map(contLine), ...props.map(contLine));
+      } else if (head !== "") {
+        out.push(`${indent}- ${head}`, ...props.map(contLine), ...contentLines.map(contLine));
       } else {
         out.push(`${indent}- ${props[0]}`, ...props.slice(1).map(contLine));
         out.push(...contentLines.map(contLine));

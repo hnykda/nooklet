@@ -20,23 +20,21 @@ B-390..B-399), never `docs/BUGS.md`.
 
 ## Done (committed)
 
-(nothing yet)
+- B-310 + B-390 (new, found fixing B-310) — `core/outline.ts` parser/serializer; spec OUT-14 and
+  OUT-18; tests `core/src/outline.test.ts` (8 new) and `server/src/mirror/export.test.ts` (+1);
+  probe `tools/probes/mirror-roundtrip-graph.ts`. Core 406, server 668, web 1126 green; typecheck
+  clean; `nooklet verify` on the copy OK (20,411 ops). Commit: see git log ("fix(core): B-310").
 
-## In flight
+## Real-graph checks (copy taken 13:08)
 
-- B-310: `packages/core/src/outline.ts` (parser opens a fence after marker/priority on line 1;
-  OUT-14 lone line keeps the head), `outline.test.ts`, spec OUT-14/OUT-18.
-
-## Findings
-
-- Real graph copy: 0 blocks with marker + fence-first content; 1 live block (`LATER`, id
-  `1m287mdbgs5v8t`) whose content opens with a newline — serialized as `- LATER ^id` + continuation,
-  and today it re-parses with content `^1m287mdbgs5v8t\n> …` and no id (the ` ^id` suffix regex
-  needs the space the marker strip removed). Logging as B-390; same parser line as B-310.
+- `tools/probes/mirror-roundtrip-graph.ts`: old parser — 441 of 952 pages' mirror text reads back
+  differently (578 ids, 598 contents: every empty block `- ^id` → text `^id`; plus the one
+  `LATER` block with an empty line 1). New parser — 2 pages, 20 blocks, all pre-B-266 literal
+  `SCHEDULED: <…>` lines. 0 blocks with marker + fence-first content (B-310 itself not in the data).
 
 ## Next steps
 
-1. B-310 (+B-390) in core, tests, spec, commit.
+1. (done) B-310 (+B-390).
 2. B-322 server `page-backlinks.ts` + http test.
 3. B-370 `batch.undo` ordering + http test.
 4. B-324 Tasks view both dates + component/e2e test.

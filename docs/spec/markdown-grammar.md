@@ -114,24 +114,31 @@ conventions glossary — not added there because this task may only touch this f
   written `\^` (backslash before the caret). The parser recognizes `\ \^` at end of line, does
   not extract an id, and leaves `\^…` in `content` (the backslash is resolved by the inline
   tokenizer's escaping rule, §2.9-ESC).
-- **OUT-14.** Code-fence special case: if the block's first content-bearing line would otherwise
-  **open a fence** (starts with a fence marker per §2.7-C after marker/priority stripping) and
-  the block has an id, the id MUST NOT be appended to that line (it would land inside or after
-  the fence's info string). Instead the bullet's first line contains **only** `^id` (nothing
-  else — no marker/priority text precedes it in this case, since a fenced block cannot also carry
-  inline text on line 1), and the fence-opening line becomes line 1 of `content`, indented at the
-  content column like any continuation line. Example:
+- **OUT-14.** Code-fence special case: if the block's first content line would otherwise
+  **open a fence** (starts with a fence marker per §2.7-C) and the block has an id, the id MUST
+  NOT be appended to that line (it would land inside or after the fence's info string). Instead
+  the bullet's first line holds **only** the block's marker and priority (OUT-16), if any, and
+  `^id`; the fence-opening line becomes line 1 of `content`, indented at the content column like
+  any continuation line. Example:
   ```
-  - ^1k7f3q9xz2hav4
+  - TODO [#A] ^1k7f3q9xz2hav4
     ```js
     const x = 1;
     ```
   ```
-  Parsing: a block whose first content-bearing line matches exactly `^([0-9a-hjkmnp-tv-z]{14})$`
-  (nothing else on the line) and which has at least one more line MUST treat that line as
-  id-only: extract the id, and start `content` from the next line. (This form is also accepted,
-  harmlessly, when the following line does not happen to open a fence; the serializer just never
-  produces it in that case.)
+  (Revised 2026-09-13, B-310: this used to write `^id` alone even for a task, and the marker and
+  priority were lost on re-read.) Written without an id, the same task goes out as
+  `- TODO [#A] ```js`; the fence is looked for on line 1 **after** marker/priority stripping,
+  wherever line 1 is read (block-level fence tracking and OUT-23 alike), so the fence opens there.
+  Parsing: once marker and priority are stripped, a first line that is exactly `^id` (nothing
+  else) carries the id (OUT-12's suffix, whose space the strip took) — also on a block's only line:
+  `- ^id` is an empty block, `- TODO ^id` an empty task (B-390, 2026-09-13; requiring a further
+  line read 441 of the owner's 952 mirror files back with `^id` as text). When what is left of
+  line 1 after stripping a marker, priority and/or id is empty **and** the next content line opens
+  a fence, line 1 is not a content line: `content` starts at that fence. Otherwise an empty line 1
+  is the content's own (`- LATER ^id` + `  > text` is the content `"\n> text"`). Consequence: a
+  content that is a blank line followed by a fence cannot be written for a block with a head or
+  an id. An empty block with a `^id` is never a page-properties pre-block (OUT-2).
 - **OUT-15.** Import tolerance for Logseq's own id spelling: a block property line `id::
   <value>` (§2.4) — value either a Logseq UUID or a 14-character id — sets the block's `id`,
   exactly as today. If both an `^id` suffix (OUT-12) and an `id:: value` property line are
@@ -164,12 +171,13 @@ conventions glossary — not added there because this task may only touch this f
 - **OUT-18.** Property lines match `^([A-Za-z0-9_][A-Za-z0-9_.-]*):: ?(.*)$` and, for a block,
   MUST form a contiguous run starting immediately after line 1 (Logseq's rule; unchanged). For a
   page's pre-block they are the whole pre-block. One exception, serializer side (B-151, 2026-09-13):
-  a block written **without** an id whose line 1 opens a fence (no marker/priority, so OUT-14's
-  lone `^id` line is not available) cannot take them after line 1 — they would be inside the fence.
-  The serializer writes them after the content when every fence in it closes, else as the bullet
-  line itself (`- key:: value`, the fence opening on the next line). The parser already reads a
-  property line anywhere outside a fence, so both forms parse without a grammar change; these are
-  the same placements as editing text (OUT-22a).
+  a block written **without** an id whose content opens with a fence (OUT-14's head-and-`^id` line
+  is not available) cannot take them after line 1 — they would be inside the fence.
+  The serializer writes them after the content when every fence in it closes; else, for a task,
+  after its marker/priority alone on line 1 (OUT-14's form minus the id, B-310), and otherwise as
+  the bullet line itself (`- key:: value`, the fence opening on the next line). The parser reads a
+  property line anywhere outside a fence, so all three parse back; the first and last are the
+  same placements as editing text (OUT-22a).
 - **OUT-19.** Key normalization (parse-time), applied in this order:
   1. Lowercase the raw key.
   2. Apply the Logseq-compatibility remap table: `custom_id` → `id`, `custom-id` → `id`,
