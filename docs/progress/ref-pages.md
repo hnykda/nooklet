@@ -92,7 +92,19 @@ row (B-410) + references; verified in the e2e spec.
   OK 20,730 ops; mirror dropped 37 rows of pre-existing empty pages (see inbox B-441).
 - Unit after all: core 408, plugin-api 17, server 704, web 1,140; `pnpm -r typecheck` clean.
 
+- After the second full run started: `b66b00a` ctx.data.pages.create claims; `e2f920f` page.update
+  rename onto a linked name; `be99561` batch.undo evicts; `9bb1286` pull-time displacement only for
+  unconfirmed local pages + no tombstone revival (B-443 open); ADR/inbox updates.
+- Second full e2e run (code as of `116bdb9`): 536 passed, 3 failed (editing "typing immediately
+  after Enter", review-reactivity B-131 ×2), 2 skipped, 13.3 min, load average ~77. Reruns: editing
+  passed alone; B-131 tests flaky under load (B-444, open).
+- Subset e2e on the final code (ref-pages, page-rename, trash, trash-conflict, undo-redo, history,
+  history-later-edits, journal-draft-sync, remote-device, pages, refactor, agent-ops, connectivity,
+  mirror-live, a-fresh-journal, editing): 67 passed, 1 failed (remote-device "paired remote device
+  can read"), which passed 3/3 alone.
+- Unit on the final code: core 408, plugin-api 17, server 709, web 1,142; `pnpm -r typecheck` clean.
+
 ## Next steps
 
-1. Second full e2e run on 6410 (in flight, log `<scratch>/e2e-full-2.log`) — expect 0 failed.
-2. Final progress/inbox commit, return summary to the coordinator.
+None in scope. Left for the owner/coordinator: B-443 (tombstone gap on a replica), B-444 (flaky
+B-131 tests under load), the 37 pre-existing empty pages whose mirror files the new rule removes.

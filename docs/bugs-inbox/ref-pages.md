@@ -96,6 +96,23 @@ with collisions resolved in the server's favour.
 
 ---
 
+### B-444 · `review-reactivity.spec.ts`'s B-131 failure-path tests fail at random on a loaded machine: a refetch removes the Retry button before the click
+**Status:** open · **Severity:** low (test only) · **Found:** 2026-09-13, ref-pages, full e2e runs on
+port 6410 with load average 70–82 (other agents' suites on 6188, 6191, 6414–6418)
+
+"a failed trash load says so and Retry recovers…", "a failed history load…" and "a failed Older
+changes says so…" route the op to fail, wait for the error, `unroute`, then click Retry. Under load
+the replica's first sync finishes after the `unroute`; its change event refetches the list, which now
+succeeds, the error and its Retry button unmount, and the click waits out the 30 s test timeout
+("element was detached from the DOM, retrying"). Same code, three runs: run 1 all three passed; run 2
+trash + history failed; `--repeat-each 2` of the three: 4 passed, 2 failed (trash once, Older
+changes once — history passed). Not caused by ADR 024's changes as far as could be told (run 1 and 2
+had identical client and server code), but not proven on `main` under the same load. A fix would wait
+for the first sync (`synced` in the status bar) before routing the failure, or assert the recovery
+whether it came from Retry or a refetch.
+
+---
+
 ### B-440 · Every page write scanned `path_ref`: ~50 ms per page op on the owner's graph
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, ref-pages (the ADR 024 migration
 took 13.9 s for 259 page creates) · **Test:** `packages/server/src/db.test.ts` (schema version and
