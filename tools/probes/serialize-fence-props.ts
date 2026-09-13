@@ -9,6 +9,9 @@
  * id (the mirror's default) OUT-14 puts `^id` alone on line 1 and the round trip holds, which is
  * why the mirror never showed it. `ids: "none"` callers: `block.copySelection` (Cmd+C on selected
  * blocks) and the server's `renderSingleBlockText` (`block.update`'s before-text).
+ *
+ * After the B-151 fix (2026-09-13, server-ops): YES for both — `ids=none` now writes
+ * `- ```js\n  code\n  ```\n  foo:: bar\n`.
  */
 import { parseOutline, serializeOutline } from "../../packages/core/src/outline.js";
 

@@ -163,7 +163,13 @@ conventions glossary — not added there because this task may only touch this f
 
 - **OUT-18.** Property lines match `^([A-Za-z0-9_][A-Za-z0-9_.-]*):: ?(.*)$` and, for a block,
   MUST form a contiguous run starting immediately after line 1 (Logseq's rule; unchanged). For a
-  page's pre-block they are the whole pre-block.
+  page's pre-block they are the whole pre-block. One exception, serializer side (B-151, 2026-09-13):
+  a block written **without** an id whose line 1 opens a fence (no marker/priority, so OUT-14's
+  lone `^id` line is not available) cannot take them after line 1 — they would be inside the fence.
+  The serializer writes them after the content when every fence in it closes, else as the bullet
+  line itself (`- key:: value`, the fence opening on the next line). The parser already reads a
+  property line anywhere outside a fence, so both forms parse without a grammar change; these are
+  the same placements as editing text (OUT-22a).
 - **OUT-19.** Key normalization (parse-time), applied in this order:
   1. Lowercase the raw key.
   2. Apply the Logseq-compatibility remap table: `custom_id` → `id`, `custom-id` → `id`,
