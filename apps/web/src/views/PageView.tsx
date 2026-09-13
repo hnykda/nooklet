@@ -210,7 +210,12 @@ export function PageView(props: PageViewProps): JSX.Element {
               >
                 History
               </A>
-              <PageActions pageName={p().name} favorite={isFavoriteValue(properties().favorite)} />
+              <PageActions
+                pageId={p().id}
+                pageName={p().name}
+                favorite={isFavoriteValue(properties().favorite)}
+                icon={properties().icon}
+              />
             </div>
             <PageProperties pageId={p().id} properties={properties()} />
             <find.Bar scope={() => viewEl} />

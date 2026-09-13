@@ -8,18 +8,34 @@
  * The star is always visible, filled when the page is a favourite. It is NOT hidden until hover
  * like the History link: the whole complaint (audit §1.7) was that nothing on a page says it can
  * be favourited, and a phone has no hover to reveal it with.
+ *
+ * The menu also carries the title row's two hover-revealed controls, History and the empty icon
+ * slot (B-225). A phone has no hover, so `page-actions.css` takes both out of the row on a coarse
+ * pointer — invisible, they were still tap targets eating a third of the title's width — and this
+ * menu is where a touch reaches them. They are here on a desktop too, where the row keeps its
+ * hover reveal. Neither is a palette command: History is a link, as it is in the row, and
+ * "Add icon" opens the row's own editor (`./page-icon-request.ts`).
  */
 
-import { Copy, Ellipsis, FileDown, Printer, Star } from "lucide-solid";
+import { A } from "@solidjs/router";
+import { Copy, Ellipsis, FileDown, History, Printer, SmilePlus, Star } from "lucide-solid";
 import { createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { buildContextBase } from "../app/editor-host.js";
 import { createStore } from "../app/hosts.js";
 import { pageActionNotice } from "../app/page-actions.js";
 import { detectPlatformFromEnvironment, useCommands } from "../commands/index.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
+import { pageNameToPath } from "./navigateTarget.js";
+import { requestPageIconEdit } from "./page-icon-request.js";
 import "./page-actions.css";
 
-export function PageActions(props: { pageName: string; favorite: boolean }): JSX.Element {
+export function PageActions(props: {
+  pageId: string;
+  pageName: string;
+  favorite: boolean;
+  /** The page's `icon` property, when it has one: the menu offers "Add icon" only without. */
+  icon: string | undefined;
+}): JSX.Element {
   const { buildContext } = useCommands();
   const { platform, mobile } = detectPlatformFromEnvironment();
   const store = createStore();
@@ -129,6 +145,27 @@ export function PageActions(props: { pageName: string; favorite: boolean }): JSX
             >
               <Printer size={15} /> Print / Save as PDF
             </button>
+            <A
+              role="menuitem"
+              class="page-actions-item"
+              href={`/history/${pageNameToPath(props.pageName)}`}
+              onClick={() => setMenuOpen(false)}
+            >
+              <History size={15} /> Page history
+            </A>
+            <Show when={!props.icon}>
+              <button
+                type="button"
+                role="menuitem"
+                class="page-actions-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  requestPageIconEdit(props.pageId);
+                }}
+              >
+                <SmilePlus size={15} /> Add icon
+              </button>
+            </Show>
           </div>
         </Show>
       </div>

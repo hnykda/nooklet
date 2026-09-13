@@ -46,6 +46,20 @@
     width: var(--touch);
     height: var(--touch);
   }
+
+  /* B-225: the History link and the empty icon slot (`styles/views.css`) are revealed by hovering
+     the title row, and a touch screen cannot hover — at 390 px they were invisible tap targets
+     that left the title 164 px of a 366 px row. Out of the row entirely; the "…" menu carries both
+     (`PageActions.tsx`). A page that HAS an icon keeps it: that one is always visible. */
+  .page-title-row .page-history-link,
+  .page-title-row .page-icon-button-empty {
+    display: none;
+  }
+}
+
+/* A link in the menu (Page history) looks like the buttons around it. */
+a.page-actions-item {
+  text-decoration: none;
 }
 
 .page-actions-menu-anchor {

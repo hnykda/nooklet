@@ -57,6 +57,35 @@ test("a multi-line block renders each line on its own line (B-224)", async ({ pa
   }
 });
 
+test("on a desktop the title row keeps History and the icon slot behind hover; the menu has both (B-225)", async ({
+  page,
+}) => {
+  const name = "RV Desktop Title Row";
+  await openPage(page, name, "- a block");
+  const row = page.locator(".page-title-row");
+  const history = row.locator(".page-history-link");
+  const slot = row.locator(".page-icon-button-empty");
+  const opacity = (l: typeof history) => l.evaluate((el) => getComputedStyle(el).opacity);
+  // Unchanged on a fine pointer: in the row, muted until hovered.
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(history)).toBe("0");
+  await expect.poll(() => opacity(slot)).toBe("0");
+  await row.hover();
+  await expect.poll(() => opacity(history)).toBe("1");
+  await expect.poll(() => opacity(slot)).toBe("1");
+
+  await page.getByRole("button", { name: "Page actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Page history" })).toHaveAttribute(
+    "href",
+    "/history/RV%20Desktop%20Title%20Row",
+  );
+  await page.getByRole("menuitem", { name: "Add icon" }).click();
+  await expect(page.locator(".page-actions-menu")).toHaveCount(0);
+  await expect(page.locator(".page-icon-input")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(slot).toHaveCount(1);
+});
+
 test("revealing a block lands on its row, not on a query result above it (B-211)", async ({
   page,
 }) => {

@@ -8,8 +8,9 @@
  * (Ctrl/Cmd+Space, Win+.), and a popover of 1,800 glyphs is the kind of thing this app is not.
  */
 
-import { createEffect, createSignal, type JSX, Show } from "solid-js";
+import { createEffect, createSignal, type JSX, Show, untrack } from "solid-js";
 import { setPageIcon } from "../data/store.js";
+import { consumePageIconEdit, pendingPageIconEdit } from "./page-icon-request.js";
 
 /** Trim to something that reads as one icon: the first grapheme, so a flag or a skin-toned emoji
  * survives intact but "🔥🔥🔥 wow" becomes "🔥". */
@@ -43,6 +44,13 @@ export function PageIconEditor(props: { pageId: string; icon: string | undefined
       input?.focus();
       input?.select();
     }
+  });
+
+  // The page actions menu's "Add icon" (B-225: on a phone the empty slot is not shown at all).
+  createEffect(() => {
+    if (pendingPageIconEdit() !== props.pageId) return;
+    consumePageIconEdit();
+    untrack(open);
   });
 
   function open(): void {

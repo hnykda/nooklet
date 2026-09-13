@@ -30,19 +30,34 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   e2e render-views, query, query-task-tag, query-limits, embeds, plugins, journal-agenda,
   shelf-outline, shelf, review-reactivity: 54 passed.
 
+- B-225 — commit "fix(web): a phone reaches History and Add icon through the page menu".
+  `views/page-actions.css` (coarse pointer: row's History link and empty icon slot `display:
+  none`), `views/PageActions.tsx` (menu items "Page history" link, "Add icon"),
+  new `views/page-icon-request.ts` (signal), `views/PageIcon.tsx` (consumes it), one hookup in
+  `views/PageView.tsx` (`pageId`, `icon` props). Tests: new `e2e/tests/render-views-phone.spec.ts`,
+  desktop test in `render-views.spec.ts`. e2e render-views(+phone), history, page-export,
+  page-icons, phone, page-title-draft, page-rename, read-only, page-identity: 44 passed. Unit web
+  1004/1004 (a first run under load timed out in page-title/SearchView/render-seams; all green on
+  rerun, file-level and full).
+
 ## 2. In flight
 
-- B-225 next.
+- B-200 next.
 
 ## 3. Next steps, in order
 
-3. B-225 — `@media (pointer: coarse)` reveal for `.page-history-link` / `.page-icon-button-empty`,
-   in a new CSS module; phone e2e (iPhone 13 descriptor).
 4. B-200 — `ReferencesPanel` under the missing-page view (linked + tagged; "Link all" cannot work
    on a page that does not exist — `mentions.link` calls `requirePage`).
 5. B-171 — `filterTasks` due window matches scheduled OR deadline; unit test; e2e in tasks area.
 
 ## 4. Decisions
+
+- B-225: moved the two hover-only controls into the "…" menu on a coarse pointer rather than
+  revealing them in the row (the `all-pages.css` recipe). Measured: revealed, the title input had
+  164 of 366 px at 390 px and a name clipped at 13 characters. The menu items are on desktop too.
+- B-211: attribute rename (`data-query-hit-id`, `data-agenda-block-id`), as the entry proposed and
+  as embeds already do, rather than narrowing every lookup to `.vr-row[data-block-id]` — keeps
+  `[data-block-id]` meaning "outliner row" for every present and future caller.
 
 ## 5. How to resume
 

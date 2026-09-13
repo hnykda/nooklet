@@ -92,7 +92,27 @@ browser-side trigger short of a plugin; `e2e/tests/journal-agenda.spec.ts` still
 ---
 
 ### B-225 (existing)
-**Status:** in progress · **Test:** —
+**Status:** fixed · **Test:** `e2e/tests/render-views-phone.spec.ts` ("a phone's title row has no
+invisible controls; History and Add icon are in the … menu"), `e2e/tests/render-views.spec.ts` ("on
+a desktop the title row keeps History and the icon slot behind hover; the menu has both")
+
+Measured before fixing (iPhone 13 descriptor, production build, `cf08d19`): in a 366 px title row
+the invisible empty icon slot took 39 px and the invisible History link 55 px, leaving the title
+input 164 px; forcing both visible showed the name clipped to "RV Phone Prob".
+
+**Fixed 2026-09-13.** Revealing both on a coarse pointer (the `all-pages.css` recipe) would have
+made them reachable but kept the title at 164 px, so instead: under `@media (pointer: coarse)`
+`views/page-actions.css` takes `.page-history-link` and `.page-icon-button-empty` out of the row
+(`display: none`; a page that has an icon keeps it, it was never hidden), and the "…" page actions
+menu gains "Page history" (a link to `/history/<name>`) and, while the page has no icon, "Add icon",
+which opens the row's own editor through `views/page-icon-request.ts` (a page-id-keyed signal the
+editor consumes). The menu items are there on a desktop too; the desktop row is unchanged (hover
+reveal, checked by the desktop e2e). One hookup line in `PageView.tsx` passes `pageId` and `icon` to
+`PageActions`. The phone e2e taps through both menu items and checks the title now takes over 60% of
+the row; with the old `page-actions.css` it failed at "History link hidden" (received: visible —
+an opacity-0 element is a live tap target). Ran under the descriptor's own engine, as
+`phone.spec.ts` does; not tried on a physical iPhone, where focusing the icon input from a menu tap
+depends on WebKit's user-gesture rule.
 
 ---
 
