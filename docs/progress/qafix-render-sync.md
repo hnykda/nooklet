@@ -20,7 +20,7 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 | Q6 collapsed template copy | B-265 | low | fixed |
 | Q7 unpadded SCHEDULED dates | B-266 | low | fixed |
 | Q8 page_merge dry-run text | B-267 | low | fixed |
-| Q9 `javascript:` hrefs | B-268 | low | next |
+| Q9 `javascript:` hrefs | B-268 | low | fixed |
 
 ## Done (commits)
 
@@ -32,11 +32,12 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `cf5ae1c` B-264 `$$…$$` display math (core tokenizer + MathView + MathWidget + spec; unit + `e2e/tests/math-display.spec.ts` 2/2)
 - `8bc4179` B-265 template roots inserted unfolded (`core/templates.ts#templateRoots`; unit + `e2e/tests/template-collapsed.spec.ts` 1/1, `templates.spec.ts` 8/8; real graph Meeting)
 - `81bb2b2` B-266 unpadded org timestamps (`core/outline.ts`; unit + importer test; real data 20/20; existing DB rows not repaired — owner)
-- B-267 MCP text says "dry run, nothing written" for every dry-run op (`ops/dry-run.ts#renderToolText`; unit)
+- `8ae97c0` B-267 MCP text says "dry run, nothing written" for every dry-run op (`ops/dry-run.ts#renderToolText`; unit)
+- B-268 script-capable link schemes never become an href or a `window.open` (`editor/render/safe-href.ts`; unit + `e2e/tests/link-scheme.spec.ts` 1/1)
 
 ## In flight
 
-- Q9/B-268.
+- Final verification pass: every new/touched e2e spec together, unit suites, typecheck, verify.
 
 ## Decisions
 
@@ -44,6 +45,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
   untouched. First sweep after start is a full render (~200 ms on the real graph).
 - Scripts for real-graph checks: `<scratch>/serve.sh <name>` (fresh copy served on 6462) and
   `<scratch>/q1-real.mjs`. The sandbox refuses `bash $VAR/...`; call scripts by literal path.
+- B-268: denylist of script-capable schemes (javascript, vbscript, data, blob, filesystem), not an
+  allowlist — custom app schemes like `zotero://` keep working.
 - e2e specs share one graph per run: `template-collapsed.spec.ts` deletes its library page in
   `afterAll`, because `templates.spec.ts` asserts the exact template list Settings offers.
 - B-261: the title calls the server op (push → `page.update` → pull → navigate); an offline rename

@@ -204,10 +204,26 @@ body (with `dry_run`) and was not changed. `mcp-tools.md` §3.1 rule 3 amended.
 ---
 
 ### B-268 · Markdown links render `javascript:` URLs as clickable hrefs
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q9) · **Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q9) · **Test:**
+`e2e/tests/link-scheme.spec.ts` "a javascript: link renders without an href; web and mail links
+keep theirs", `apps/web/src/editor/render/safe-href.test.ts` (3 tests),
+`apps/web/src/app/follow-link.test.ts` "opens web links and refuses javascript: ones"
 
 `click [me](javascript:document.title='PWNED') here` renders
 `<a class="vr-link" target="_blank" rel="noopener" href="javascript:…">`. In headless Chromium the
 click opened `about:blank` and did not run in the app origin, so it was not exploitable there;
 WKWebView (the Tauri app) was not tested. Content arrives from sync and from MCP agents, so the
 renderer should not hand an arbitrary scheme to the browser.
+
+**Fixed 2026-09-13.** `render/tokens.tsx`'s `link` case passed the URL through `assetUrl` and
+straight into `href`; the "follow link at caret" command (`app/hosts.ts#followLink`) likewise gave
+any `url` link to `window.open`. Both now go through `editor/render/safe-href.ts`: a blocked scheme
+leaves the `<a>` with no `href` (the label stays, inert) and the command does nothing. Blocked:
+`javascript`, `vbscript`, `data`, `blob`, `filesystem`, read the way the URL standard reads a
+scheme (edge C0/space stripped, tabs and newlines removed, case folded), so `" JaVa\tscript:"` is
+caught too. A denylist rather than the http/https/mailto allowlist QA suggested: every other scheme
+only hands off to the OS, and note-takers link to apps (`zotero://`, `obsidian://`); an allowlist
+would break those silently. The owner's graph uses only `https` (2,114), `http` (338), `mailto` (12)
+and `tel` (5), all still live. Autolinks were already safe — the tokenizer only makes them from
+`http://`/`https://`. Images were left alone (`javascript:` in `img src` does not run). The e2e
+test failed before the fix (`href="javascript:document.title='PWNED'"`). WKWebView still not tested.

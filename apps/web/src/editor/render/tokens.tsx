@@ -52,6 +52,7 @@ import {
 import { assetUrl } from "./asset-url.js";
 import { canHighlight, highlightCode, highlightSync } from "./highlight.js";
 import { loadMath, renderTexSync } from "./math.js";
+import { safeHref } from "./safe-href.js";
 
 export type NavigateTarget = { kind: "page"; name: string } | { kind: "block"; id: string };
 export type Navigate = (t: NavigateTarget) => void;
@@ -383,7 +384,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
             return (
               <a
                 class="vr-link"
-                href={assetUrl(tok.href)}
+                href={safeHref(assetUrl(tok.href))}
                 target="_blank"
                 rel="noopener"
                 data-from={tok.start}
