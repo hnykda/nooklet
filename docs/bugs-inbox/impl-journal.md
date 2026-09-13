@@ -49,7 +49,10 @@ Today to the new day when the local day changes (B-170)" (fails on the old view:
 stays on the old day); `streamToday.test.ts` — midnight, visible-after-sleep, "waits for typing in
 the stream to pause before moving, then moves", "does not wait on an idle caret". Not covered by
 e2e: Playwright's clock could fake it, but the stream would need a page open across a fake
-midnight; the unit tests drive the same signal.
+midnight; the unit tests drive the same signal. **Update (verification pass):** now covered —
+`e2e/tests/journal-midnight.spec.ts` opens `/journals` at a fake 23:59:45 and fast-forwards past
+midnight (Today's agenda moves to the new day), and does the same for a `scheduled:today` query
+fence (B-94). Both fail when `day-clock.ts#check` stops moving the day.
 
 ---
 
