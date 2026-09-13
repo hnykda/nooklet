@@ -40,6 +40,9 @@ export function BlockRowView(props: {
   numbering: number | undefined;
   editing: boolean;
   selected: boolean;
+  /** Find in page: `true` for a match, `false` for an ancestor shown only as context, absent when
+   * no find is active. */
+  findMatch?: boolean;
   surfaceHost: (el: HTMLDivElement) => void;
   onEnterEdit: (offset: number) => void;
   onToggleCollapse: () => void;
@@ -108,7 +111,12 @@ export function BlockRowView(props: {
   return (
     <div
       class="vr-row"
-      classList={{ "vr-row-editing": props.editing, "vr-row-selected": props.selected }}
+      classList={{
+        "vr-row-editing": props.editing,
+        "vr-row-selected": props.selected,
+        "vr-row-find-match": props.findMatch === true,
+        "vr-row-find-context": props.findMatch === false,
+      }}
       style={{ "--depth": props.depth }}
       data-block-id={props.id}
       ref={rowEl}

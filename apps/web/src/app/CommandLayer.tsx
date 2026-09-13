@@ -74,6 +74,7 @@ import {
   createStore,
   pagePath,
 } from "./hosts.js";
+import { openPageFind, pageFindAvailable } from "./page-find.js";
 import { createRefactorHost } from "./refactor-host.js";
 import { useTheme } from "./theme.js";
 
@@ -223,7 +224,8 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     openSettings: openSettingsPanel,
   });
 
-  const getContext = (): ContextBase => buildContextBase(store, platform, mobile);
+  const getContext = (): ContextBase =>
+    buildContextBase(store, platform, mobile, pageFindAvailable());
 
   const [triggers, setTriggers] = createSignal<Triggers>(NO_TRIGGERS);
   const [caretPos, setCaretPos] = createSignal({ top: 0, left: 0 });
@@ -306,6 +308,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       navigate: (path) => navigate(path),
       closePalette: () => palette.close(),
     }),
+    pageFind: { open: () => openPageFind(editor.getSelection()) },
   });
 
   const anyAutocomplete = createMemo(() => {

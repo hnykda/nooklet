@@ -34,6 +34,8 @@ export interface WhenContext {
   popupOpen: boolean;
   composing: boolean;
   zoomed: boolean;
+  /** The main view is one page's outline (a page route, zoomed or not). */
+  pageView: boolean;
   platform: "mac" | "windows" | "linux" | "ios" | "android";
   mobile: boolean;
 }
@@ -58,6 +60,7 @@ export const WHEN_CONTEXT_FIELD_TYPES: Readonly<
   popupOpen: "boolean",
   composing: "boolean",
   zoomed: "boolean",
+  pageView: "boolean",
   platform: "string",
   mobile: "boolean",
 };
@@ -80,6 +83,7 @@ export const DEFAULT_WHEN_CONTEXT: WhenContext = {
   popupOpen: false,
   composing: false,
   zoomed: false,
+  pageView: false,
   platform: "mac",
   mobile: false,
 };

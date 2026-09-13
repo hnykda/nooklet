@@ -38,3 +38,47 @@ that is no longer being edited. Inferred from the same mechanism the B-230 foote
 failed with `activeElement is body` without the guard); not separately reproduced on a separator.
 Likely fix: `onMouseDown={(e) => e.preventDefault()}` on the `.ctx-menu` container itself in
 `app/BlockContextMenu.tsx`, plus an e2e test pressing on a separator.
+
+---
+
+### B-232 · There is no way to search within the page you are on
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit §2 #16 · **Test:**
+`e2e/tests/page-find.spec.ts`, `apps/web/src/editor/pageFilter.test.ts`
+
+Cmd/Ctrl+F on a page does only what the browser's find does, which cannot see blocks under a
+collapsed parent (they are not in the DOM) and matches the rendered text, not what was typed.
+"Search inside … page with Ctrl+F" has 78 votes on the Logseq forum (research/13 §3.1) and is done
+in Logseq.
+
+**Fixed 2026-09-13.** Cmd/Ctrl+F on a page (`search.findInPage`, `when: pageView` — a new
+`WhenContext` key, spec R7 and R44a) opens a find bar above the outline. A non-blank query shows
+only matching blocks plus their ancestors, under collapsed parents too, without writing any op;
+matches are counted ("1 of 3") and highlighted in the rendered text through the CSS Custom
+Highlight API; Enter/Shift+Enter step and scroll; Escape closes and returns the caret to where it
+was. Opening the bar ends editing first: without that, Enter typed into the bar split the block
+the caret had left ("alpha beta" became "alpha" / " beta" — reproduced by removing the call and
+running the e2e test below). On every other view no binding matches, so the browser's find still
+opens. Files: `app/page-find.ts`, `views/PageFindBar.tsx` + `page-find.css`,
+`editor/pageFilter.ts`, `commands/registrations/page-find.ts`, `requestEditingEnd` and a caret on
+`requestBlockFocus` in `editor/focus-request.ts`; hookups in `BlockTree.tsx` (`filter` /
+`onFilterMatches` props, a focus request for a row that is not rendered is dropped instead of
+editing an invisible row), `BlockRowView.tsx` (match/context classes), `PageView.tsx`,
+`CommandLayer.tsx`, `editor-host.ts`, `commands/types.ts`, `registrations/index.ts`.
+Tests that would have caught it: `e2e/tests/page-find.spec.ts` (6 tests; with `when: "true"` the
+"left to the browser" test fails, and without `requestEditingEnd` the two editing tests fail —
+both checked), `apps/web/src/editor/pageFilter.test.ts`, `apps/web/src/app/page-find.test.ts`.
+
+---
+
+### B-233 · `editing.spec.ts` "Enter creates a second bullet" fails when run right after `a-fresh-journal.spec.ts`
+**Status:** open · **Severity:** low (test harness) · **Found:** 2026-09-13, impl-small · **Test:**
+the spec itself
+
+`cd e2e && NOOKLET_E2E_PORT=<port> pnpm exec playwright test tests/a-fresh-journal.spec.ts
+tests/editing.spec.ts --project=chromium` → "Enter creates a second bullet and both keep their
+text" sees 3 rows, not 2. Reproduced on the base commit `da85cfb` (extracted with `git archive`),
+so not caused by this branch. All specs share ONE server per run (`global-setup.ts` runs once;
+`playwright.config.ts`'s comment "Each spec gets its own server" is wrong), `a-fresh-journal`
+leaves two blocks in today's journal, and `editing.spec.ts`'s `openJournal` only seeds a VIRTUAL
+day. Presumably passes in the full suite only because of what the specs between them do — not
+checked. Fix: give that test its own page (as the next test in the file already does).

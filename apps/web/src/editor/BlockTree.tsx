@@ -40,6 +40,7 @@ import {
   createMemo,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -72,12 +73,18 @@ import {
   setCollapsed,
   splitBlock,
 } from "./commands.js";
-import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
+import {
+  blockFocusCaret,
+  blockFocusRequest,
+  clearBlockFocusRequest,
+  editingEndRequest,
+} from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
 import { deriveNumbering } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
+import { filterVisible } from "./pageFilter.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
 import type { NavigateTarget } from "./render/tokens.js";
 import { createSurface, type Surface } from "./surface.js";
@@ -156,6 +163,11 @@ export function BlockTree(props: {
   rootBlockId?: string;
   onNavigate?: (t: NavigateTarget) => void;
   readOnly?: boolean;
+  /** Find in page (`./pageFilter.ts`): while non-blank, only matching blocks and their ancestors
+   * are shown. Purely visual — no op is written. */
+  filter?: string;
+  /** The matching block ids in reading order, on every change while `filter` is set. */
+  onFilterMatches?: (ids: readonly string[]) => void;
 }) {
   const treeResource = usePageTree(() => props.pageId);
   const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
@@ -200,8 +212,16 @@ export function BlockTree(props: {
     const want = blockFocusRequest();
     if (!want || props.readOnly) return;
     if (!editorTree().byId.has(want)) return;
+    // In the tree but not on screen — under a collapsed parent, or outside the zoom root. Find in
+    // page can hand back such a block (it was showing while the filter was on); attaching to it
+    // would put the editor in a row that is not rendered, with the keyboard going nowhere.
+    if (!rowById().has(want)) {
+      clearBlockFocusRequest();
+      return;
+    }
+    const caret = blockFocusCaret() ?? { at: "end" };
     clearBlockFocusRequest();
-    attachEditing(want, { at: "end" });
+    attachEditing(want, caret);
   });
   const [localZoomRoot, setLocalZoomRoot] = createSignal<BlockId | undefined>(undefined);
   const effectiveRoot = createMemo(() => localZoomRoot() ?? props.rootBlockId);
@@ -236,7 +256,25 @@ export function BlockTree(props: {
     return trail;
   });
 
-  const rows = createMemo(() => flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }));
+  // Declared here rather than with the rest of the editing state below: `filtered` reads it, and
+  // a memo runs as soon as it is created.
+  const [editingId, setEditingId] = createSignal<BlockId | null>(null);
+  const filtered = createMemo(() => {
+    const q = props.filter;
+    if (!q) return null;
+    return filterVisible(editorTree(), q, { rootBlockId: effectiveRoot(), keep: editingId() });
+  });
+  const findMatches = createMemo(() => {
+    const f = filtered();
+    return f ? new Set(f.matches) : null;
+  });
+  createEffect(() => {
+    const f = filtered();
+    if (f) props.onFilterMatches?.(f.matches);
+  });
+  const rows = createMemo(
+    () => filtered()?.rows ?? flattenVisible(editorTree(), { rootBlockId: effectiveRoot() }),
+  );
   const visibleIds = createMemo(() => rows().map((r) => r.id));
   // Rendering iterates `visibleIds()` (strings, compared by value) rather than `rows()` (fresh
   // objects on every rebuild), so `<For>` reuses each row's DOM instead of recreating it. This is
@@ -256,7 +294,6 @@ export function BlockTree(props: {
     return out;
   });
 
-  const [editingId, setEditingId] = createSignal<BlockId | null>(null);
   const [selection, setSelection] = createSignal<SelectionState | null>(null);
   let outlinerEl: HTMLDivElement | undefined;
 
@@ -303,6 +340,21 @@ export function BlockTree(props: {
     document.addEventListener("pointerdown", onPointerDown, true);
     onCleanup(() => document.removeEventListener("pointerdown", onPointerDown, true));
   });
+  // `requestEditingEnd()` (`./focus-request.ts`): something outside the outline took the keyboard.
+  createEffect(
+    on(
+      editingEndRequest,
+      () => {
+        if (editingId() !== null) {
+          flushPendingEdit();
+          surface.detach();
+          setEditingId(null);
+        }
+        setSelection(null);
+      },
+      { defer: true },
+    ),
+  );
   const [clockSig, setClockSig] = createSignal<Clock | undefined>(undefined);
   onMount(() => void getClock().then(setClockSig));
 
@@ -1068,6 +1120,11 @@ export function BlockTree(props: {
                         numbering={numbering().get(id)}
                         editing={editingId() === id}
                         selected={selection()?.ids.includes(id) ?? false}
+                        findMatch={
+                          findMatches()
+                            ? (findMatches()?.has(id) ?? false) || editingId() === id
+                            : undefined
+                        }
                         surfaceHost={(el) => surfaceHostRef(el, id)}
                         onEnterEdit={(offset) => !props.readOnly && attachEditing(id, { offset })}
                         onToggleCollapse={() => onToggleCollapse(id)}

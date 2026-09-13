@@ -22,17 +22,28 @@ based on `da85cfb` (the worktree was created at an older commit, `41666ee`; the 
   block-timestamps + context-menu 16 passed, 1 skipped (pre-existing fixme B-73). Logged B-231
   (open) in passing.
 
+- #16 find in page (B-232) — commit "feat(web): find in page with Cmd/Ctrl+F". New:
+  `app/page-find.ts` (+test), `views/PageFindBar.tsx`, `views/page-find.css`,
+  `editor/pageFilter.ts` (+test), `commands/registrations/page-find.ts`,
+  `e2e/tests/page-find.spec.ts`. Hookups: `BlockTree.tsx`, `BlockRowView.tsx`, `PageView.tsx`,
+  `CommandLayer.tsx`, `editor-host.ts`, `commands/types.ts` (new `pageView` when-key),
+  `registrations/index.ts` (+ its test literals), `editor/focus-request.ts`, spec R7/R44a.
+  Unit web 707/707 (one run had a flaky `page-title.test.ts` failure that passed on rerun twice);
+  e2e page-find 6/6 plus editing, focus, selection, journals, a-fresh-journal, templates,
+  navigation, popups, help, context-menu, block-timestamps: 138 passed, 1 failed, 1 skipped — the
+  failure is B-233, reproduced on base `da85cfb`.
+
 ## 2. In flight
 
-- #16 search in the current page.
+- #17 read-only page lock.
 
 ## 3. Next steps, in order
 
-1. #15 block timestamps footer in `app/BlockContextMenu.tsx` (new module + one-line hookup).
-2. #16 search in the current page.
-3. #17 read-only page lock.
-4. #18 random page.
-5. #11 search filters.
+1. #17 read-only page lock (`BlockTree` already has an unused `readOnly` prop — check every
+   write path: container keys, marker click, collapse, context menu, palette via editor host,
+   drag/swipe, title input, page properties).
+2. #18 random page.
+3. #11 search filters.
 
 ## 4. Decisions
 
@@ -40,6 +51,13 @@ based on `da85cfb` (the worktree was created at an older commit, `41666ee`; the 
   e.g. `BlockContextMenu.tsx:134` `useSemanticElements` on `role="separator"`). My files are clean;
   I do not fix others' lint in shared files (merge conflicts).
 - #15: "Edited" rather than "Updated", because `updated_at` moves only on `block.text`.
+- #16: the command is gated by a NEW `WhenContext` key `pageView` (spec R7) rather than a
+  hard-coded keydown listener, so it stays rebindable and palette-filtered. Coordinator: another
+  branch adding a page-scoped command (favourite, print, copy as markdown) should reuse it.
+- #16: filter on stored text (not rendered), diacritic-folded; ancestors shown; purely visual.
+  Opening the bar calls `requestEditingEnd()` — verified necessary (Enter split the block without).
+- A copy of the base commit for "is it pre-existing?" e2e runs lives at `<scratch>/impl-small/base`
+  (extracted from `da85cfb`, pnpm installed). Use port 6409 only when this branch is not using it.
 
 ## 5. How to resume
 

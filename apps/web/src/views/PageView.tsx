@@ -15,6 +15,7 @@ import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
+import { usePageFind } from "./PageFindBar.js";
 import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
@@ -33,6 +34,9 @@ export function PageView(props: PageViewProps): JSX.Element {
   const pageId = () => page()?.id;
   const properties = usePageProperties(pageId);
   const blockId = () => props.blockId?.();
+  // Find in page (audit §2 #16): Cmd/Ctrl+F narrows the outline below.
+  const find = usePageFind(props.name, () => Boolean(page()));
+  let viewEl: HTMLDivElement | undefined;
 
   /** A journal's title is its date, rendered in the reader's chosen format (ADR 018) — there is no
    *  name to edit, so the input becomes a heading. */
@@ -90,7 +94,7 @@ export function PageView(props: PageViewProps): JSX.Element {
   }
 
   return (
-    <div class="page-view">
+    <div class="page-view" ref={viewEl}>
       <Show when={blockId()}>
         <div class="page-view-breadcrumb">
           <button
@@ -153,7 +157,14 @@ export function PageView(props: PageViewProps): JSX.Element {
               </A>
             </div>
             <PageProperties pageId={p().id} properties={properties()} />
-            <BlockTree pageId={p().id} rootBlockId={blockId()} onNavigate={onNavigate} />
+            <find.Bar scope={() => viewEl} />
+            <BlockTree
+              pageId={p().id}
+              rootBlockId={blockId()}
+              onNavigate={onNavigate}
+              filter={find.filter()}
+              onFilterMatches={find.onMatches}
+            />
 
             <Show when={!blockId()}>
               <NamespaceChildren name={p().name} onNavigate={onNavigate} />
