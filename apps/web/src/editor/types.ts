@@ -74,4 +74,8 @@ export interface FocusChange {
 export interface Clock {
   next(): string;
   readonly device: string;
+  /** Make every later `next()` newer than `hlc` (`@nooklet/core`'s `Hlc.receive`). Optional: only
+   * the real editor clock has it, for typing that must win over a version seen from elsewhere
+   * (B-192). */
+  receive?(hlc: string): void;
 }

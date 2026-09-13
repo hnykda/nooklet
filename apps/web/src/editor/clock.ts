@@ -17,7 +17,17 @@ export function getClock(): Promise<Clock> {
   if (!clockPromise) {
     clockPromise = initDb().then(({ deviceId }) => {
       const hlc = new Hlc(deviceId);
-      return { next: () => hlc.next(), device: deviceId } satisfies Clock;
+      return {
+        next: () => hlc.next(),
+        device: deviceId,
+        receive: (remote) => {
+          // A remote clock more than the allowed drift ahead throws; this clock then stays where it
+          // is, and that one write loses last-writer-wins as it would have anyway.
+          try {
+            hlc.receive(remote);
+          } catch {}
+        },
+      } satisfies Clock;
     });
   }
   return clockPromise;

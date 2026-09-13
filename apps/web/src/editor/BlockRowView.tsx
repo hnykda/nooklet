@@ -14,6 +14,7 @@ import { Bullet } from "./Bullet.js";
 import { resolveClickOffset } from "./caret.js";
 import { DateChips } from "./DateChips.js";
 import { attachSwipeRow } from "./gestures/swipeAttach.js";
+import { RemoteChangeNotice } from "./RemoteChangeNotice.js";
 import { BlockContentView, type Navigate } from "./render/tokens.js";
 import type { EditableBlock } from "./types.js";
 
@@ -71,6 +72,9 @@ export function BlockRowView(props: {
   /** Long-press-the-bullet-to-drag-reorder (research/08-mobile.md §3.6), one call per row
    * crossed — see `Bullet.tsx`. */
   onDragStep?: (direction: "up" | "down") => void;
+  /** B-192: this block, edited with unsaved typing, was rewritten elsewhere — the other version's
+   * editing text, and the two answers. Absent otherwise. */
+  remoteChange?: { other: string; onTake: () => void; onKeep: () => void };
 }) {
   // The string first, and everything rendered reads THAT: `BlockTree` hands this row a new `block`
   // object on every re-read of the page (every write anywhere on it), and reading
@@ -235,6 +239,15 @@ export function BlockRowView(props: {
             }
           >
             <div class="vr-surface-host" ref={props.surfaceHost} />
+          </Show>
+          <Show when={props.editing && props.remoteChange}>
+            {(change) => (
+              <RemoteChangeNotice
+                other={change().other}
+                onTake={change().onTake}
+                onKeep={change().onKeep}
+              />
+            )}
           </Show>
           <Show when={!props.editing}>
             <BlockProperties

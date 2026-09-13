@@ -53,7 +53,7 @@ describe("refactor commands", () => {
     ]);
   });
 
-  it("Move to page… leaves ending edit mode to the tree (B-88); Turn into page ends it first (B-192)", async () => {
+  it("neither block command ends edit mode: the tree follows the rewrite or the move (B-88, B-192)", async () => {
     const execs: string[] = [];
     const editing = ctx({
       editorFocused: true,
@@ -64,25 +64,15 @@ describe("refactor commands", () => {
     });
     const { host, calls } = createFakeRefactorHost({ pick: "Elsewhere" });
     await command("block.moveToPage", host).run(editing);
-    expect(execs).toEqual([]);
     await command("block.turnIntoPage", host).run(editing);
-    expect(execs).toEqual(["block.selectBlock"]);
+    // "Turn into page" used to run `block.selectBlock` first, because the editor kept its stale
+    // buffer over the rewrite (B-192); the editor takes the rewrite now (`editor/remote-text.ts`).
+    expect(execs).toEqual([]);
     expect(calls.map((c) => c.method)).toEqual([
       "pickPage",
       "moveBlockToPage",
       "turnBlockIntoPage",
     ]);
-
-    // From selection mode there is no editor to leave.
-    const selected = ctx({
-      blockSelected: true,
-      selectedBlockIds: ["b2"],
-      exec: async (id) => {
-        execs.push(id);
-      },
-    });
-    await command("block.turnIntoPage", host).run(selected);
-    expect(execs).toHaveLength(1);
   });
 
   it("the block commands are offered only with a block to act on", () => {

@@ -30,18 +30,11 @@ function targetBlock(ctx: CommandContext): string | null {
   return ctx.focusedBlockId ?? ctx.selectedBlockIds[0] ?? null;
 }
 
-/**
- * "Turn into page" REWRITES the block under the caret (its text becomes `[[First line]]`), and
- * `BlockTree` never pushes a refetched text into the buffer being typed into (it cannot tell a
- * stale read from an external change, B-66). Left in edit mode, the editor kept showing the old
- * first line, and the next keystroke wrote it back over the link — seen in a probe on 2026-09-13
- * (`"[[Probe kickoff]]"` became `"Probe kickoff typed"`); B-192. `block.selectBlock` ends editing
- * before the op, so the row renders from the tree. "Move to page…" needs no such step: the block
- * leaves the page, and the tree ends editing on its own when it does (B-88).
- */
-async function leaveEditing(ctx: CommandContext): Promise<void> {
-  if (ctx.editorFocused) await ctx.exec("block.selectBlock");
-}
+// Neither block command leaves editing first. "Turn into page" rewrites the block under the caret
+// (`[[First line]]`), and the editor takes that rewrite when the pull brings it, like any other
+// write from elsewhere (B-192, `editor/remote-text.ts`); the host writes the typing still inside
+// the editor's debounce before the op, so the op sees it. "Move to page…" takes the block off the
+// page, and the tree ends editing when it goes (B-88).
 
 export function createRefactorCommands(deps: { refactor: RefactorHost }): Command[] {
   const { refactor } = deps;
@@ -56,7 +49,6 @@ export function createRefactorCommands(deps: { refactor: RefactorHost }): Comman
       async run(ctx) {
         const id = targetBlock(ctx);
         if (!id) return;
-        await leaveEditing(ctx);
         await refactor.turnBlockIntoPage(id);
       },
     },
@@ -72,8 +64,6 @@ export function createRefactorCommands(deps: { refactor: RefactorHost }): Comman
         if (!id) return;
         const page = await refactor.pickPage({ title: "Move to page", allowCreate: true });
         if (!page) return;
-        // No `leaveEditing`: the block leaves this page, and `BlockTree` ends editing when the pull
-        // takes it away (B-88).
         await refactor.moveBlockToPage(id, page);
       },
     },

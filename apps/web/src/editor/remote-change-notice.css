@@ -1,0 +1,46 @@
+/* B-192: "This block changed elsewhere" under the block being edited (`RemoteChangeNotice.tsx`).
+   Row metadata in size and tone, like the date chips: it must be noticed, not shout over the text
+   being typed above it. */
+
+.vr-remote-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  margin-top: var(--space-xs);
+  color: var(--warn);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.vr-remote-notice-button {
+  min-height: 19px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.vr-remote-notice-button:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.vr-remote-notice-keep {
+  background: color-mix(in srgb, var(--muted) 11%, transparent);
+  color: var(--fg-soft);
+}
+
+.vr-remote-notice-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+@media print {
+  .vr-remote-notice {
+    display: none;
+  }
+}

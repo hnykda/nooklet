@@ -40,3 +40,25 @@ export function runOnOutlines(commandId: string): number {
   for (const handler of [...outlines]) handler(commandId);
   return outlines.size;
 }
+
+/**
+ * Typing still inside a tree's write debounce, written now, by every mounted tree (B-192).
+ *
+ * For a write that happens somewhere other than the local replica — a server op, like "Turn into
+ * page". `forceSync` pushes what the replica holds, and the last keystrokes are not in it until the
+ * debounce ends: the op read the text as it was before them, and the rewrite that came back met
+ * the editor still holding them. The palette and a picker take focus and flush on the way out; the
+ * block context menu keeps focus in the editor, so nothing did. Each tree writes only its own
+ * pending edit, and one that has none does nothing.
+ */
+const typingFlushes = new Set<() => void>();
+
+/** Register a mounted tree's flush; call the returned function on unmount. */
+export function registerTypingFlush(flush: () => void): () => void {
+  typingFlushes.add(flush);
+  return () => typingFlushes.delete(flush);
+}
+
+export function flushTyping(): void {
+  for (const flush of [...typingFlushes]) flush();
+}

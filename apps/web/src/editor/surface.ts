@@ -49,9 +49,11 @@ export interface Surface {
   /**
    * Replace the whole document while attached to `id`, keeping the caret where it was (clamped).
    * For changes that arrive from OUTSIDE the editor — undo, a merge, a pull from another device —
-   * which used to be silently discarded because the live buffer always won (B-46).
+   * which used to be silently discarded because the live buffer always won (B-46). `selection`,
+   * when given, is where the caret goes instead: a rewrite from elsewhere maps it through the
+   * change (B-192, `remote-text.ts#mapThroughRewrite`).
    */
-  replaceContent(id: string, content: string): void;
+  replaceContent(id: string, content: string, selection?: { anchor: number; head: number }): void;
   /** The live CM6 view, for callers that must dispatch through the real editor (the command
    * system's `EditorHost` bridge). `null` when nothing is attached. */
   view(): EditorView | null;
@@ -280,14 +282,15 @@ export function createSurface(deps: SurfaceDeps): Surface {
       // trigger (B-501, B-502). The same repair as `commands/focus-return.ts` (B-296).
       syncDomSelectionToState();
     },
-    replaceContent(id, content) {
+    replaceContent(id, content, selection) {
       if (current !== id) return;
       const doc = view.state.doc;
       if (doc.toString() === content) return;
-      const head = Math.min(view.state.selection.main.head, content.length);
+      const clamp = (n: number): number => Math.max(0, Math.min(n, content.length));
+      const head = clamp(selection?.head ?? view.state.selection.main.head);
       view.dispatch({
         changes: { from: 0, to: doc.length, insert: content },
-        selection: { anchor: head },
+        selection: { anchor: selection ? clamp(selection.anchor) : head, head },
       });
     },
   };
