@@ -123,6 +123,18 @@ export function resolveLanguage(lang: string): string | null {
   return KNOWN.has(name) ? name : null;
 }
 
+/**
+ * The `language-*` class for a fence's `<code>`: the info string's first word, reduced to the
+ * characters a language name uses. Never the raw info string — a class attribute is a
+ * space-separated list, so ```` ```js cmd-overlay ```` put the command palette's fixed,
+ * full-screen `.cmd-overlay` on a block that any synced device or agent could write
+ * (docs/BUGS.md B-138). `data-lang` may keep the raw string; an attribute value is inert.
+ */
+export function languageClass(lang: string): string {
+  const first = lang.trim().split(/\s+/)[0] ?? "";
+  return `language-${first.replace(/[^\w+-]/g, "")}`;
+}
+
 export function canHighlight(lang: string): boolean {
   return resolveLanguage(lang) !== null;
 }

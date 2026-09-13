@@ -84,3 +84,39 @@ skipped. Fix: resolve a block's page with `resolveBlockPageName` in that case (a
 call it directly as `revealBlock` already does).
 
 ---
+
+### B-138 · Block text reaches the render sinks unchecked: `javascript:` links, app classes, page-sized formulas
+**Status:** fixed · **Severity:** low (security hardening) · **Found:** 2026-09-13, web review
+(F4, F5, F6) · **Tests:** `e2e/tests/untrusted-content.spec.ts` (one test per sink);
+`apps/web/src/editor/render/untrusted-content.test.tsx`; `apps/web/src/app/hosts.test.ts`
+
+Block text arrives by sync, import and MCP agents, so anything it can make the renderer do, a
+synced device or an agent can do. Three sinks took it as given:
+
+1. **Links (F4).** `[x](javascript:alert(document.domain))` rendered as
+   `<a class="vr-link" href="javascript:…">`, and Alt+Enter handed the same href to `window.open`.
+   In Chromium and WebKit neither ran script in the app origin (where `localStorage` holds the
+   device token), but only because both sinks carry `target=_blank`/`noopener` — the review's
+   probe leaked the token from the same anchor without `target`. The SPA sends no CSP, and the
+   Tauri WKWebView (`csp: null`) was not tested. Reproduced in the e2e test before the fix: the
+   anchor carried `href="javascript:alert(document.domain)"`.
+
+**Fixed 2026-09-13 (links).** `editor/render/asset-url.ts#safeHref` allows http, https, mailto, tel
+and relative hrefs, reading the scheme with the WHATWG URL parser so `java\tscript:` or a leading
+control character resolve as the browser would; anything else renders its label with no `href`,
+and `followLink` opens nothing. The allowlist is exactly what the owner's graph uses (2,298 links:
+https/http/relative/mailto/tel — `tools/probes/link-schemes-in-graph.ts`), so no existing link
+lost its target; an app scheme added later (`zotero://`) needs adding there.
+
+2. **Code fence classes (F5).** The whole fence info string went into `<code class>`, so
+   ```` ```js cmd-overlay ```` gave `class="language-js cmd-overlay hljs"`: any app class, including
+   the command palette's fixed full-screen `.cmd-overlay` scrim, from one synced block. Inside the
+   outline `.vr-row`'s `content-visibility: auto` contains a fixed descendant to its row; in the
+   Shelf, which has no containment, it covers the viewport. Reproduced in the e2e test before the
+   fix (`["language-js", "cmd-overlay", "vr-row", "hljs"]`).
+
+**Fixed 2026-09-13 (fence classes).** `editor/render/highlight.ts#languageClass` takes the first
+word only — the rule `resolveLanguage` already used for the grammar — reduced to `[\w+-]`; both
+branches of `CodeFence` use it. `data-lang` keeps the raw info string (an inert attribute value).
+In the owner's graph every fence info string but one is a single language word; the exception is a
+log line pasted after the backticks, which now yields `language-Wed`.

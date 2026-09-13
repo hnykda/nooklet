@@ -50,7 +50,7 @@ import {
   Suspense,
 } from "solid-js";
 import { assetUrl } from "./asset-url.js";
-import { canHighlight, highlightCode, highlightSync } from "./highlight.js";
+import { canHighlight, highlightCode, highlightSync, languageClass } from "./highlight.js";
 import { loadMath, renderTexSync } from "./math.js";
 import { safeHref } from "./safe-href.js";
 
@@ -122,11 +122,11 @@ function CodeFence(props: { code: string; lang: string; ctx: RenderCtx }) {
   const html = (): string | null => custom() ?? auto();
   return (
     <pre class="vr-fence" data-lang={props.lang}>
-      <Show when={html()} fallback={<code class={`language-${props.lang}`}>{props.code}</code>}>
+      <Show when={html()} fallback={<code class={languageClass(props.lang)}>{props.code}</code>}>
         {(h) => (
           // Highlighter output only (escaped by highlight.js, or by the `highlightCode` override's
           // contract) — never raw user text.
-          <code class={`language-${props.lang} hljs`} innerHTML={h()} />
+          <code class={`${languageClass(props.lang)} hljs`} innerHTML={h()} />
         )}
       </Show>
     </pre>

@@ -47,16 +47,17 @@ review doc only.
   (NUL, 0x01) into raw bytes twice. Write such escapes through `perl -pi -e` from Bash, and let
   the guard test catch any that slip.
 
+- F5 / B-138 (fence classes): `highlight.ts#languageClass` (first word, `[\w+-]` only), 3 lines
+  in tokens.tsx. `untrusted-content.test.tsx` 3 new cases (failed before); render unit 69/69; e2e
+  untrusted-content+rendering+render 10/10.
+
 ## In flight
 
-- F5: `untrusted-content.test.tsx` has the 3 fence-class tests (fail on current code, verified);
-  fix not written yet.
+- nothing uncommitted.
 
 ## Next steps, in order
 
-1. F5 (fence class from first word only: `languageClass` in highlight.ts + 2 lines in tokens.tsx;
-   e2e fence test from the full spec copy)
-2. F6 (KaTeX maxSize + math.css containment; e2e math test from the full spec copy)
+1. F6 (KaTeX maxSize + math.css containment; e2e math test from the full spec copy)
 3. F8 (api-client consolidation, one undoBatch, describeError in FindReplaceView)
 4. F9 (pageRoutePath everywhere)
 5. F10 (stale comments)
