@@ -276,3 +276,104 @@ test("a page created offline under a name another device's link made converges: 
     await online.close();
   }
 });
+
+test("what an offline device typed into a linked page survives another device removing the link (B-445)", async ({
+  browser,
+}) => {
+  const name = `Offline Draft ${stamp}`;
+  const linking = await browser.newContext();
+  const offline = await browser.newContext();
+  try {
+    const a = await linking.newPage();
+    const b = await offline.newPage();
+
+    // A links the page; the server makes it.
+    const day = await openJournalBlock(a, -616, `offline draft link ${stamp}`);
+    await typeLink(a, name);
+    await clickAway(a);
+    await expect.poll(() => pageExists(a, name), { timeout: 10_000 }).toBe(true);
+
+    // B has it open as the empty page it is, then loses the network and types into it.
+    await b.goto(pagePath(name));
+    await expect(b.locator(".vr-empty-start")).toBeVisible();
+    await offline.setOffline(true);
+    await b.locator(".vr-empty-start").click();
+    await expect(editor(b)).toBeFocused();
+    await b.keyboard.type("written while the link went", { delay: 20 });
+    await b.locator(".page-title-input").click();
+    await b.waitForTimeout(800);
+
+    // Meanwhile A edits the link away, and the server removes the page nobody (it knows of) wrote in.
+    await a
+      .locator(".vr-outliner")
+      .first()
+      .locator(".vr-block-view", { hasText: `offline draft link ${stamp}` })
+      .click({ position: { x: 4, y: 4 } });
+    await expect(editor(a)).toBeFocused();
+    await a.keyboard.press(`${MOD}+End`);
+    const link = ` [[${name}]]`;
+    for (let i = 0; i < link.length; i++) await a.keyboard.press("Backspace");
+    await clickAway(a);
+    await expect
+      .poll(async () => (await readBlocks(a, day)).map((x) => x.content))
+      .toContain(`offline draft link ${stamp}`);
+    await expect.poll(() => pageExists(a, name), { timeout: 10_000 }).toBe(false);
+
+    // B comes back: its writing is on a live page, for both devices, and not stranded in the trash.
+    await offline.setOffline(false);
+    await b.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect
+      .poll(async () => (await readBlocks(a, name).catch(() => [])).map((x) => x.content), {
+        timeout: 20_000,
+      })
+      .toEqual(["written while the link went"]);
+    await a.goto(pagePath(name));
+    await expect(a.locator(".vr-outliner").first()).toContainText("written while the link went");
+    await expect(a.locator(".page-view-missing")).toHaveCount(0);
+    await b.goto(pagePath(name));
+    await expect(b.locator(".vr-outliner").first()).toContainText("written while the link went");
+  } finally {
+    await linking.close();
+    await offline.close();
+  }
+});
+
+test("typing on a page this device created offline carries on while sync moves it onto the server's page of that name", async ({
+  browser,
+}) => {
+  // B-442's client repair removes the refused page and re-creates its blocks on the server's page
+  // while the editor may be open in one of them: nothing typed before, during or after may be lost,
+  // and the caret must stay in the block.
+  const name = `Capture While Typing ${stamp}`;
+  const offline = await browser.newContext();
+  const online = await browser.newContext();
+  try {
+    const a = await offline.newPage();
+    const b = await online.newPage();
+    await a.goto(pagePath(name));
+    await expect(a.locator(".page-view-missing")).toBeVisible();
+    await offline.setOffline(true);
+    await api(b, "page.append", { page: isoOffset(-617), markdown: `- link [[${name}]]` });
+    await expect.poll(() => pageExists(b, name), { timeout: 10_000 }).toBe(true);
+
+    await a.locator(".page-view-missing button").click();
+    await expect(editor(a)).toBeFocused();
+    await a.keyboard.type("first part", { delay: 20 });
+    await a.waitForTimeout(800);
+    await offline.setOffline(false);
+    await a.evaluate(() => window.dispatchEvent(new Event("online")));
+    await a.keyboard.type(" and the rest typed during sync", { delay: 60 });
+    await a.waitForTimeout(1500);
+    await expect(editor(a)).toBeFocused();
+    await a.keyboard.type(" END", { delay: 40 });
+    await a.locator(".page-title-input").click();
+    await expect
+      .poll(async () => (await readBlocks(b, name)).map((x) => x.content), { timeout: 20_000 })
+      .toEqual(["first part and the rest typed during sync END"]);
+    const same = (await pageNames(b)).filter((n) => n.toLowerCase() === name.toLowerCase());
+    expect(same).toEqual([name]);
+  } finally {
+    await offline.close();
+    await online.close();
+  }
+});

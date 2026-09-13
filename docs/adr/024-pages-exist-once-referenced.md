@@ -215,6 +215,7 @@ synced; the graph, search and `page_list` read the server.
   a device's accepted page of a name whose older page the server deleted stays put, both orders;
   and B-445 — an offline device's writing on a page whose link another device removed keeps the
   page on every replica.
-- `e2e/tests/ref-pages.spec.ts` (5): the owner's scenario in a journal block; All pages, graph,
+- `e2e/tests/ref-pages.spec.ts` (7): the owner's scenario in a journal block; All pages, graph,
   search, `[[` popup; no junk from a slow link edit; removal vs a page typed into; the two-device
-  race in two browser contexts.
+  race in two browser contexts; typing that carries on while that race is repaired; an offline
+  device's writing on a page whose link another device removed (B-445).

@@ -30,6 +30,14 @@ Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-1`, e2e port 6410. Scratch
   linked a page deletes that page even after someone typed into it (batch.undo's LWW contract; it
   is in the trash with its block).
 
+- `nooklet import ~/notes-graph` into a fresh scratch dir: 127 pages + 825
+  journals + 259 referenced pages, 18,628 blocks, 0 errors, 4.6 s; 1,211 live pages, 17 dangling
+  keys (journal days); `verify` OK over 19,839 ops. Real-graph copy after the browser writes:
+  `verify` OK over 20,745 ops.
+- e2e: B-445 in two Chromium contexts (fails on `3fbd9de`'s server, passes now); a probe of typing
+  that continues while B-442's client repair moves a refused page (caret stays, nothing lost) —
+  both added to `e2e/tests/ref-pages.spec.ts`, 7/7.
+
 ## Next
 
 1. (done) B-445.

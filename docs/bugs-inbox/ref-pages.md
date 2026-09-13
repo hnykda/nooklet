@@ -137,7 +137,9 @@ for all three.
 adversarial verification · **Tests:** `packages/server/src/ref-pages.test.ts` "writing that reaches a
 page after the junk rule deleted it (B-445)" (4), `apps/web/src/sync/e2e.test.ts` "writing that
 reaches a linked page after its link was removed keeps the page, on every replica" — all five fail
-against `3fbd9de`'s `ref-pages.ts` (checked by swapping the file back)
+against `3fbd9de`'s `ref-pages.ts` (checked by swapping the file back); and in Chromium,
+`e2e/tests/ref-pages.spec.ts` "what an offline device typed into a linked page survives another
+device removing the link (B-445)" (two contexts; fails on `3fbd9de`, passes on the fix)
 
 Device B has the empty page `[[Offline Notes]]` made (ADR 024) and, offline, types into it. Device
 A edits the only link away; the server deletes the page as unclaimed junk. B comes back online: its
