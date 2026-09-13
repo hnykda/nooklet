@@ -185,12 +185,21 @@ existing data.
 ---
 
 ### B-267 · `page_merge` with `dry_run: true` says "merged" in the past tense
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q8) · **Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q8) · **Test:**
+`packages/server/src/mcp/server.test.ts` "says a dry run wrote nothing, for every write tool, in the
+text itself"
 
 MCP `tools/call page_merge {source: "Alex", target: "@Alex", dry_run: true}` answers
 `merged Alex into @Alex: 0 block(s) moved, 19 reference(s) rewritten`. Nothing was written (op log
 did not advance, "Alex" still live); only `structuredContent.dry_run` says so. An agent reading the
 text can believe the merge happened.
+
+**Fixed 2026-09-13.** Not only `page_merge`: every dry-runnable op's `render` is written in the past
+tense (`deleted N block(s)`, `created …`, `moved …`) and a dry run executes the same handler inside a
+rolled-back savepoint, so all of them read like a real write. `mcp/server.ts` now builds the text
+through `ops/dry-run.ts#renderToolText`, which prefixes `dry run, nothing written: ` whenever the
+output's `dry_run` is true — one place, so an op added later cannot forget. HTTP returns the JSON
+body (with `dry_run`) and was not changed. `mcp-tools.md` §3.1 rule 3 amended.
 
 ---
 

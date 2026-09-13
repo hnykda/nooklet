@@ -19,8 +19,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 | Q5 `$$…$$` display math | B-264 | low | fixed |
 | Q6 collapsed template copy | B-265 | low | fixed |
 | Q7 unpadded SCHEDULED dates | B-266 | low | fixed |
-| Q8 page_merge dry-run text | B-267 | low | next |
-| Q9 `javascript:` hrefs | B-268 | low | queued |
+| Q8 page_merge dry-run text | B-267 | low | fixed |
+| Q9 `javascript:` hrefs | B-268 | low | next |
 
 ## Done (commits)
 
@@ -31,11 +31,12 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `a287309` B-263 derived Task tag in queries (`core/refs.ts#TASK_TAG`; unit + `e2e/tests/query-task-tag.spec.ts` 2/2; real graph 686)
 - `cf5ae1c` B-264 `$$…$$` display math (core tokenizer + MathView + MathWidget + spec; unit + `e2e/tests/math-display.spec.ts` 2/2)
 - `8bc4179` B-265 template roots inserted unfolded (`core/templates.ts#templateRoots`; unit + `e2e/tests/template-collapsed.spec.ts` 1/1, `templates.spec.ts` 8/8; real graph Meeting)
-- B-266 unpadded org timestamps (`core/outline.ts`; unit + importer test; real data 20/20; existing DB rows not repaired — owner)
+- `81bb2b2` B-266 unpadded org timestamps (`core/outline.ts`; unit + importer test; real data 20/20; existing DB rows not repaired — owner)
+- B-267 MCP text says "dry run, nothing written" for every dry-run op (`ops/dry-run.ts#renderToolText`; unit)
 
 ## In flight
 
-- Q8/B-267.
+- Q9/B-268.
 
 ## Decisions
 

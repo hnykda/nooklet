@@ -36,6 +36,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import type { ServerContext } from "../apply-ops.js";
 import { allScopesFor, verifyToken } from "../auth/tokens.js";
+import { renderToolText } from "../ops/dry-run.js";
 import {
   buildOpContext,
   mcpExpose,
@@ -156,9 +157,7 @@ export function buildMcpServerInstance(
           );
           const out = await runOpHandler(op, input, opCtx);
           return {
-            content: [
-              { type: "text" as const, text: op.render ? op.render(out) : JSON.stringify(out) },
-            ],
+            content: [{ type: "text" as const, text: renderToolText(op.render, out) }],
             structuredContent: out as Record<string, unknown>,
           };
         } catch (e) {

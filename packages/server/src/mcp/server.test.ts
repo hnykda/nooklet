@@ -167,6 +167,43 @@ describe("MCP tools/call", () => {
     expect(body.result.content[0].text).toContain("created");
   });
 
+  // B-267: the text is what an agent reads. `page_merge {dry_run: true}` answered "merged Alex into
+  // @Alex: … 19 reference(s) rewritten" with only structuredContent.dry_run saying otherwise.
+  it("says a dry run wrote nothing, for every write tool, in the text itself", async () => {
+    for (const name of ["Merge Dry Source", "Merge Dry Target"]) {
+      await rpc(s.app, s.writeToken, "tools/call", {
+        name: "page_create",
+        arguments: { name, markdown: "- body" },
+      });
+    }
+    const merge = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_merge",
+      arguments: { source: "Merge Dry Source", target: "Merge Dry Target", dry_run: true },
+    });
+    expect(merge.body.result.isError).toBeFalsy();
+    expect(merge.body.result.structuredContent.dry_run).toBe(true);
+    expect(merge.body.result.content[0].text).toMatch(/^dry run, nothing written: /);
+    // And it really was not written.
+    const read = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_read",
+      arguments: { page: "Merge Dry Source" },
+    });
+    expect(read.body.result.isError).toBeFalsy();
+
+    const create = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_create",
+      arguments: { name: "Dry Created", dry_run: true },
+    });
+    expect(create.body.result.content[0].text).toMatch(/^dry run, nothing written: /);
+
+    // A real write is not prefixed.
+    const real = await rpc(s.app, s.writeToken, "tools/call", {
+      name: "page_merge",
+      arguments: { source: "Merge Dry Source", target: "Merge Dry Target" },
+    });
+    expect(real.body.result.content[0].text).toMatch(/^merged /);
+  });
+
   it("returns isError for a not_found case", async () => {
     const { body } = await rpc(s.app, s.writeToken, "tools/call", {
       name: "page_read",

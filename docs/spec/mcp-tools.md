@@ -66,8 +66,9 @@ Adds to `00-conventions.md`'s glossary (not yet appended there — see Open issu
    `BlockId`); aliases are listed per tool in §4.3 and are sugar over the same handler.
 3. MCP registration follows the ADR 008 sketch: `registerTool(mcpName, { title: summary,
    description, inputSchema, outputSchema, annotations: { openWorldHint: false, ...annotations }
-   }, handler)`. `content[0].text` = `render(output, input)`; `structuredContent` = the raw
-   output. A token's scopes filter `tools/list` (a `read`-only token never sees write tools).
+   }, handler)`. `content[0].text` = `render(output, input)`, prefixed `dry run, nothing written: `
+   when `output.dry_run` is true (B-267 — every `render` is past tense, and an agent acts on the
+   text); `structuredContent` = the raw output. A token's scopes filter `tools/list` (a `read`-only token never sees write tools).
 4. `_meta` carries `"anthropic/alwaysLoad": true` for the 4 ops marked always-load in §4.2,
    `"anthropic/requiresUserInteraction": true` for `page_delete`, and
    `"anthropic/maxResultSizeChars": 200000` for `page_read`. Server instructions (shown to every
