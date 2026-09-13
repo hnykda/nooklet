@@ -24,20 +24,18 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
 - `a628fb9` test(e2e): remote-rewrite page names per repeat: `--repeat-each=3` 21/21.
 - `f824ee9` B-460 logged, open (a property-only rewrite stays stale in the editor until editing
   ends); probe `tools/probes/remote-property-while-editing.spec.ts`.
-- next commit (spec + tests): `commands-and-keymap.md` R32b corrected ("Both leave editing first"
+- `47f9859` (spec + tests): `commands-and-keymap.md` R32b corrected ("Both leave editing first"
   was wrong), R51b added; `remote-rewrite.spec.ts` now 9 tests (undo/redo of the take, leaving the
   block, Keep mine through a refetch while still typing, own writes after Tab never offered).
   Mutation checks: `hold` removed → Keep mine fails 2/2; own writes unrecorded → the Tab test fails
   2/2, while editing/focus/undo-redo/journal-day-start (46 tests) did NOT catch that mutation.
   `--repeat-each=2`: 18/18.
-
-- Real graph (copy of `~/.nooklet/default/graph.sqlite` via `.backup`, served on 6413, killed after):
+- `45029a3` Real graph (copy of `~/.nooklet/default/graph.sqlite` via `.backup`, served on 6413, killed after):
   `tools/probes/remote-rewrite-real-graph.mjs` on 2026-08-17 (20 rows, Czech block
   `[[@Robin]] co juli jí, jídlo, dieta`) — all 7 checks ok, no console errors (first run's 3 FAILs
   were the probe reading DOM text where live preview hides `[[ ]]`; fixed in the probe).
   `pnpm nooklet verify` on the copy: 20484 ops replayed, OK.
-
-- next commit (skew): "Keep mine" under clock skew lost the typing — the editor clock never observed
+- `99f54ff` (skew): "Keep mine" under clock skew lost the typing — the editor clock never observed
   the offered HLC. Optional `Clock.receive` (`types.ts`, `clock.ts`), called on an "offer" in
   `BlockTree`. E2E "…kept even when this tab's clock runs behind" (`page.clock.setFixedTime`, 20 s
   behind) red before (stored `"theirs"`), green after. Device-dirty test's B-row check now reads
@@ -45,15 +43,20 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
   outlasted the debounce and the sync layer's ADR 003 merge kept A's text) — rerun 20/20.
   Spec 10/10; web unit 1156/1156.
 
+- Final sweep after `99f54ff`: 17 editor-related specs, 130 passed, 1 skipped.
+
 ## 2. In flight
 
-- Final checks.
+- Nothing. Branch complete.
 
-## 3. Next steps, in order
+## 3. Not done / left open
 
-1. Final: typecheck + biome on touched files; rerun editor e2e chunks (editing, focus, undo-redo,
-   redo, undo-gaps, template-undo, merge-keeps-fields, editing-row-leaves, refactor, journal-*,
-   block-properties, dates, date-picker-type-ahead) since `BlockTree`/`clock.ts` changed again.
+- B-460 (logged, open): a property-only write from elsewhere stays stale in the editor until editing
+  ends; needs the tree to carry `block_prop` HLCs (worker change) — left, as asked, for a later pass.
+- Not covered: undo/redo while a notice stands (the step is recorded; not tested); the notice on a
+  phone layout (not looked at); WebKit (the suite's WebKit project runs only `storage.spec.ts`).
+- Pre-existing, not mine: `biome check` reports `noStaticElementInteractions` on
+  `BlockRowView.tsx`'s row `<div onContextMenu>` on base `52e5d20` as well.
 
 ## Design notes
 
