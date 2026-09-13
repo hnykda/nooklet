@@ -7,39 +7,20 @@
  *  - the served client had no API credential, so sync sat flapping "offline".
  */
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { editor, openJournal, openPage, runName } from "../helpers/index.js";
 
-/**
- * Opens the journal and guarantees a real, CodeMirror-backed outliner to type into.
- *
- * Today starts *virtual* (PLAN.md §8: "today is virtual until it has a block"), rendered by
- * `VirtualJournalDay` as a plain `<textarea>`. Committing it creates the page and its first block
- * and swaps in the real `BlockTree`. That two-stage handover is itself part of what made the
- * original bug confusing: the first bullet typed fine because it was a textarea, and editing only
- * died once CodeMirror took over.
- */
-async function openJournal(page: Page): Promise<void> {
-  await page.goto("/journals");
-  const virtualDraft = page.locator(".vr-draft-input").first();
-  const outliner = page.locator(".vr-outliner").first();
-
-  await expect(virtualDraft.or(outliner)).toBeVisible();
-  if (await virtualDraft.isVisible()) {
-    await virtualDraft.fill("seed");
-    await virtualDraft.blur();
-  }
-  await expect(outliner).toBeVisible();
-}
-
-/** The editable surface for the row currently being edited. */
-function editor(page: Page) {
-  return page.locator(".cm-content");
-}
+// `openJournal` (helpers/editor.ts) guarantees a real, CodeMirror-backed outliner for TODAY. Today
+// starts *virtual* (PLAN.md §8: "today is virtual until it has a block"), rendered by
+// `VirtualJournalDay` as a plain `<textarea>`, and that two-stage handover is itself part of what
+// made the original bug confusing: the first bullet typed fine because it was a textarea, and
+// editing only died once CodeMirror took over. The handover has its own specs
+// (`a-fresh-journal.spec.ts`, `journal-draft-sync.spec.ts`); these start past it.
 
 test("types a whole sentence into a bullet without editing dying", async ({ page }) => {
-  await openJournal(page);
+  const outliner = await openJournal(page);
 
-  const first = page.locator(".vr-outliner").first().locator(".vr-block-view").first();
+  const first = outliner.locator(".vr-block-view").first();
   await first.click();
   await expect(editor(page)).toBeFocused();
   await page.keyboard.press("ControlOrMeta+a");
@@ -53,9 +34,8 @@ test("types a whole sentence into a bullet without editing dying", async ({ page
 });
 
 test("text survives blurring the block, without a reload", async ({ page }) => {
-  await openJournal(page);
+  const outliner = await openJournal(page);
 
-  const outliner = page.locator(".vr-outliner").first();
   await outliner.locator(".vr-block-view").first().click();
   await page.keyboard.press("End");
   await page.keyboard.type(" persisted text", { delay: 20 });
@@ -66,13 +46,12 @@ test("text survives blurring the block, without a reload", async ({ page }) => {
 
   // And it must still be there after a full reload, i.e. it really reached the database.
   await page.reload();
-  await expect(page.locator(".vr-outliner").first()).toContainText("persisted text");
+  await expect(page.locator(".journal-day-today .vr-outliner")).toContainText("persisted text");
 });
 
 test("Enter creates a second bullet and both keep their text", async ({ page }) => {
-  await openJournal(page);
+  const outliner = await openJournal(page);
 
-  const outliner = page.locator(".vr-outliner").first();
   // Today's journal is shared by every spec on the one e2e server, so how many rows it already has
   // depends on which specs ran first and whether their pushes landed before their browser context
   // closed (`a-fresh-journal.spec.ts` leaves two). An absolute "2" failed whenever that race went
@@ -93,29 +72,16 @@ test("Enter creates a second bullet and both keep their text", async ({ page }) 
   await expect(outliner).toContainText("second bullet");
 
   await page.reload();
-  const reloaded = page.locator(".vr-outliner").first();
+  const reloaded = page.locator(".journal-day-today .vr-outliner");
   await expect(reloaded).toContainText("first bullet");
   await expect(reloaded).toContainText("second bullet");
 });
 
-test("typing immediately after Enter is not discarded", async ({ page }) => {
+test("typing immediately after Enter is not discarded", async ({ page }, info) => {
   // Its own page: the specs share one server, so the journal accumulates state across tests and
-  // this assertion needs an exactly-known starting point.
-  await page.goto("/journals");
-  await page.evaluate(async () => {
-    const token = (window as unknown as { __NOOKLET__?: { token?: string } }).__NOOKLET__?.token;
-    const call = (op: string, body: unknown) =>
-      fetch(`/api/v1/${op}`, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
-    await call("page.create", { name: "Enter Probe" });
-    await call("page.append", { page: "Enter Probe", markdown: "- alpha" });
-  });
-
-  await page.goto("/page/Enter%20Probe");
-  const outliner = page.locator(".vr-outliner").first();
+  // this assertion needs an exactly-known starting point. Per repeat, too: with one fixed name the
+  // second `--repeat-each` run found the first run's rows and failed on the count (B-292).
+  const outliner = await openPage(page, runName("Enter Probe", info), "- alpha");
   await expect(outliner.locator(".vr-row")).toHaveCount(1);
 
   await outliner.locator(".vr-block-view").first().click();

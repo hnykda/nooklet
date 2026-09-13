@@ -26,11 +26,39 @@ const hostRequire = createRequire(import.meta.url);
 
 /** Bare specifiers a plugin may import that the HOST provides, resolved to this package's own
  * installed copy so a plugin never needs its own `node_modules` for these. */
-const HOST_PROVIDED_SPECIFIERS = ["@nooklet/plugin-api", "@nooklet/core", "zod", "hono"] as const;
+export const HOST_PROVIDED_SPECIFIERS = [
+  "@nooklet/plugin-api",
+  "@nooklet/core",
+  "zod",
+  "hono",
+] as const;
 
-function hostAliasMap(): Record<string, string> {
+/** The file a host-provided specifier is shipped as in a host-modules directory
+ * (`./bundled.ts#packageHostModules`): `@nooklet/plugin-api` → `nooklet__plugin-api.mjs`. */
+export function hostModuleFileName(spec: string): string {
+  return `${spec.replace(/^@/, "").replaceAll("/", "__")}.mjs`;
+}
+
+/**
+ * Where each host-provided specifier points a plugin's bundle.
+ *
+ * `$NOOKLET_HOST_MODULES_DIR` first, when it is set and has the file: the desktop sidecar's
+ * `server.mjs` is ONE bundled file with no `node_modules` beside it, so `hostRequire.resolve` finds
+ * nothing there, the map came out empty, and every plugin a user wrote the documented way failed to
+ * build with `Could not resolve "@nooklet/plugin-api"` / `"zod"` (B-336). The sidecar build ships
+ * those modules as files (`packageHostModules`) and its `server.mjs` sets the variable. They are
+ * preferred over resolution, not a fallback to it, so a sidecar never picks up whatever copy
+ * happens to sit in a `node_modules` above wherever the app was unpacked.
+ */
+export function hostAliasMap(): Record<string, string> {
   const alias: Record<string, string> = {};
+  const shipped = process.env.NOOKLET_HOST_MODULES_DIR;
   for (const spec of HOST_PROVIDED_SPECIFIERS) {
+    const file = shipped ? join(shipped, hostModuleFileName(spec)) : undefined;
+    if (file && existsSync(file)) {
+      alias[spec] = file;
+      continue;
+    }
     try {
       alias[spec] = hostRequire.resolve(spec);
     } catch {

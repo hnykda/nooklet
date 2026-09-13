@@ -11,7 +11,8 @@
  * 2. Focused unit tests for grammar corners the corpus doesn't fully exercise: offsets over
  *    multi-byte/emoji content, strong/em delimiter-length edge cases, escaping edge cases,
  *    quote/heading multi-line assembly, fence closing-run length, table edge cases.
- * 3. A performance test: `tokenizeContent` over 20,000 synthetic blocks in < 50ms (§7).
+ * 3. Performance (§7): `tokenizeContent` over 20,000 synthetic blocks within a CPU-time budget, and
+ *    a cost that grows linearly with line length.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -424,36 +425,84 @@ describe("tokenizeContent: empty and edge content", () => {
 });
 
 describe("performance (§7): tokenizeContent over 20,000 synthetic blocks", () => {
-  // The budget is deliberately an ORDER OF MAGNITUDE above the ~30 ms this actually takes, not a
-  // tight bound. A wall-clock assertion in a unit suite measures the machine as much as the code:
-  // at 50 ms this failed intermittently at 60-71 ms purely from other suites running alongside it,
-  // and passed every time in isolation. A test that fails when the laptop is busy teaches nobody
-  // anything and trains people to re-run until green. What is worth catching here is the
-  // accidental quadratic — a regression that makes this seconds, not milliseconds — and 500 ms
-  // catches that just as well while never firing on load.
+  // Measured in PROCESS CPU TIME (`process.cpuUsage()`), never wall-clock. Wall-clock in a unit
+  // suite measures the machine as much as the code: this test's first form, a 50 ms wall budget,
+  // failed at 60-71 ms whenever other suites ran alongside; raised to 500 ms it still failed at
+  // 1,488 ms when a dozen agents shared the machine (B-333), which teaches nobody anything and
+  // trains people to re-run until green. CPU time counts only the work: probe
+  // `tools/probes/cpu-vs-wall-under-load.ts` measured these 20,000 blocks at 18-20 ms CPU and wall
+  // idle, and at 19-32 ms CPU but 144-684 ms wall at load average 85-142.
+  //
+  // What is worth catching is a change in kind, not a few milliseconds, so the budget stays an
+  // order of magnitude above the real cost. It cannot see a cost that grows with LINE LENGTH —
+  // these blocks are 70-90 characters — which is where a tokenizer really goes quadratic (a regex
+  // that backtracks, a rescan per delimiter); the second test measures that as a ratio, which the
+  // machine's speed cancels out of.
+  const templates = [
+    "Plain text block with a [[Wikilink Target]] and a #tag mid-sentence.",
+    "A **bold** claim, an *em* aside, and a `code span` for good measure.",
+    "See ((1k7f3q9xz2hav4)) and {{embed [[Some Page]]}} plus a [link](https://example.com/x).",
+    "Price is $5 not math, but $E=mc^2$ genuinely is, #namespace/tag too.",
+    "Multi\nline\nparagraph\nwith several hard breaks and a #tag on the third #line.",
+    "~~gone~~ and ==kept== and _emphasis_ and normal_snake_case_var untouched.",
+    "![alt](assets/1k7f3q9xz2hav9.png) plus checkbox [ ] and [x] done markers.",
+  ];
+  /** CPU milliseconds (user + system) spent in `fn`. */
+  const cpuMs = (fn: () => void): number => {
+    const start = process.cpuUsage();
+    fn();
+    const used = process.cpuUsage(start);
+    return (used.user + used.system) / 1000;
+  };
+  // Vitest's timeout (the 60_000 below) is wall-clock too, so it is only a hang guard.
+
   it("stays far away from quadratic", () => {
-    const templates = [
-      "Plain text block with a [[Wikilink Target]] and a #tag mid-sentence.",
-      "A **bold** claim, an *em* aside, and a `code span` for good measure.",
-      "See ((1k7f3q9xz2hav4)) and {{embed [[Some Page]]}} plus a [link](https://example.com/x).",
-      "Price is $5 not math, but $E=mc^2$ genuinely is, #namespace/tag too.",
-      "Multi\nline\nparagraph\nwith several hard breaks and a #tag on the third #line.",
-      "~~gone~~ and ==kept== and _emphasis_ and normal_snake_case_var untouched.",
-      "![alt](assets/1k7f3q9xz2hav9.png) plus checkbox [ ] and [x] done markers.",
-    ];
-    const blocks: string[] = [];
-    for (let i = 0; i < 20_000; i++) {
-      blocks.push(templates[i % templates.length] as string);
-    }
-
-    const start = performance.now();
+    const blocks = Array.from({ length: 20_000 }, (_, i) => templates[i % templates.length]);
     let tokenCount = 0;
-    for (const block of blocks) {
-      tokenCount += tokenizeContent(block).length;
-    }
-    const elapsed = performance.now() - start;
-
+    const elapsed = cpuMs(() => {
+      for (const block of blocks) tokenCount += tokenizeContent(block as string).length;
+    });
     expect(tokenCount).toBeGreaterThan(0);
     expect(elapsed).toBeLessThan(500);
-  });
+  }, 60_000);
+
+  it("costs the same per character on a line four times as long", () => {
+    // One long paragraph line — the owner's largest page is 1.7 MB — made of the templates without
+    // their hard breaks: ~83k and ~333k characters. Both sides tokenize the SAME number of
+    // characters (the short line four times, the long one once), so linear work costs the same on
+    // each and quadratic work costs ~4x more on the long side; 2 sits between with room either side.
+    //
+    // CPU time is not load-proof on its own (B-405): on a machine with performance and efficiency
+    // cores (the M4 Pro this runs on has both), a busy scheduler parks a thread on an efficiency
+    // core for whole quanta and bills roughly twice the CPU time for the same work. This test's
+    // first form compared the best of three ~3 ms short runs with the best of three ~25 ms long
+    // runs: the short minimum nearly always caught an undisturbed stretch, the long one often did
+    // not, and at load average 100-140 the ratio read 8.16 and 8.32 against a limit of 8 (2 of 95
+    // runs; median 5.8 against 4.4 idle). So the sides alternate, each window is only ~2 ms of
+    // CPU — shorter than a quantum — and each side keeps the least-disturbed of fifteen: at the
+    // same load the ratio then stayed in 0.92-1.18 over 45 runs (1.08-1.10 idle). Detection is
+    // what it was: length-quadratic work planted in `tokenizeContent` (a rescan to the end from
+    // every Nth character) fails for N = 512-2048 in both forms, and N = 4096 sits at the limit in
+    // both, going either way from run to run.
+    const unit = templates.map((t) => t.replaceAll("\n", " ")).join(" ");
+    const line = (copies: number) => Array.from({ length: copies }, () => unit).join(" ");
+    const short = line(160);
+    const long = line(640);
+    const tokenizeShort = () => {
+      for (let i = 0; i < 4; i++) tokenizeContent(short);
+    };
+    const tokenizeLong = () => {
+      tokenizeContent(long);
+    };
+    // Warm-up, so JIT compilation is billed to neither side.
+    tokenizeShort();
+    tokenizeLong();
+    let shortMs = Number.POSITIVE_INFINITY;
+    let longMs = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 15; i++) {
+      shortMs = Math.min(shortMs, cpuMs(tokenizeShort));
+      longMs = Math.min(longMs, cpuMs(tokenizeLong));
+    }
+    expect(longMs / shortMs).toBeLessThan(2);
+  }, 60_000);
 });

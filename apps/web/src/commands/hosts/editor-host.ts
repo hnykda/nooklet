@@ -7,14 +7,21 @@
  * CodeMirror instance.
  *
  * Design notes for whoever wires this up:
- * - `getSelection()` is the ONLY read path. It always returns the focused block's *whole* logical
- *   content (not just the selected substring) plus the selection's offsets into it, so a caller
- *   that wants "the whole block" (e.g. `block.setHeading1` prefixing content) can ignore
- *   `start`/`end` and a caller that wants "the current selection" (e.g. `format.bold` toggling a
- *   wrap) can slice `content.slice(start, end)` itself. A collapsed caret has `start === end`.
+ * - `getSelection()` is the ONLY read path. It always returns the focused block's *whole* editing
+ *   text (not just the selected substring) plus the selection's offsets into it, so a caller that
+ *   wants "the whole block" (e.g. `block.setHeading1` prefixing content) can ignore `start`/`end`
+ *   and a caller that wants "the current selection" (e.g. `format.bold` toggling a wrap) can slice
+ *   `content.slice(start, end)` itself. A collapsed caret has `start === end`.
+ * - The editing text is NOT the block's content (B-101, B-371): it is the editor's buffer, the
+ *   content followed by the block's editable properties as `key:: value` lines, and the offsets are
+ *   offsets into that buffer. For a block without properties the two are the same string, which is
+ *   exactly why treating one as the other passes a quick test and then breaks on a real block
+ *   (B-361). A caller that needs the content itself splits the buffer with `splitBlockText`, as
+ *   `registrations/insert-logic.ts` and `registrations/templates.ts` do; `../../editor/editText.ts`
+ *   is the boundary and explains it.
  * - `replaceRange()` is the ONLY write path for text commands. `from`/`to` are offsets into the
- *   *same* logical content string `getSelection()` returned — commands/ never touches DOM ranges,
- *   CM6 positions, or line/column pairs.
+ *   *same* editing text `getSelection()` returned — commands/ never touches DOM ranges, CM6
+ *   positions, or line/column pairs.
  * - `runStructuralCommand()` is the escape hatch for the `Block` category (split, indent, outdent,
  *   merge, move, focus navigation, collapse, expand, zoom, block selection, duplicate, copyRef,
  *   copySelection) plus
@@ -33,15 +40,17 @@ import type { CommandContext } from "../types.js";
 
 export interface EditorSelection {
   blockId: string;
-  /** The focused block's whole logical content (not just the selected substring). */
+  /** The focused block's whole editing text — its content, then its editable properties as
+   * `key:: value` lines (B-101) — not just the selected substring, and not the bare content. The
+   * field keeps its old name; `editor/editText.ts` is where the two are told apart. */
   content: string;
-  /** Offsets into `content`. `start === end` for a collapsed caret. */
+  /** Offsets into that editing text. `start === end` for a collapsed caret. */
   start: number;
   end: number;
 }
 
 export interface ReplaceRangeSpec {
-  /** Offsets into the focused block's current `content` (as returned by `getSelection()`). */
+  /** Offsets into the focused block's current editing text (`getSelection().content`). */
   from: number;
   to: number;
   text: string;
@@ -73,12 +82,12 @@ export type LinkAtCaret =
   | { type: "url"; href: string };
 
 export interface EditorHost {
-  /** The focused block's content + selection, or `null` when no `Surface` is mounted
+  /** The focused block's editing text + selection, or `null` when no `Surface` is mounted
    * (`!editorFocused`). Every text-mutating command in this package calls this first. */
   getSelection(): EditorSelection | null;
 
-  /** Replace `[from, to)` of the focused block's content with `text` and move the caret. This is
-   * the only way anything in `commands/` mutates editor text. */
+  /** Replace `[from, to)` of the focused block's editing text with `text` and move the caret. This
+   * is the only way anything in `commands/` mutates editor text. */
   replaceRange(spec: ReplaceRangeSpec): void;
 
   /** Delegate a `Block`-category structural command (or `edit.paste` / `block.insertImage`) that

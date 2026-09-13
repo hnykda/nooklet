@@ -36,7 +36,16 @@ interface Sqlite3Db {
 
 interface Sqlite3OpfsSAHPoolUtil {
   OpfsSAHPoolDb: new (filename: string) => Sqlite3Db;
+  /** Grow the pool to at least `min` files; resolves to the capacity. */
+  reserveMinimumCapacity(min: number): Promise<number>;
 }
+
+/**
+ * How many OPFS files the pool must hold before the database is opened: sqlite-wasm's own default
+ * `initialCapacity`. SQLite needs one per file it opens: at least the database and, from the first
+ * write on, its rollback journal.
+ */
+const MIN_POOL_CAPACITY = 6;
 
 interface Sqlite3Namespace {
   installOpfsSAHPoolVfs(opts: { name?: string }): Promise<Sqlite3OpfsSAHPoolUtil>;
@@ -167,6 +176,13 @@ export async function openSqliteWasmDriver(
     // the leader tab holds it.
     if (opts.memory) throw new Error("memory requested by the caller");
     const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: "nooklet-opfs-sahpool" });
+    // Topped up on EVERY start, not left to the install (B-323). sqlite-wasm fills the pool only
+    // when it finds it empty, one file at a time and asynchronously, so a first start torn down
+    // part-way (a reload or navigation in its first tenth of a second) leaves one to five files and
+    // no later start adds any. With one, the database took it, the journal had nowhere to go, the
+    // schema's first CREATE failed with SQLITE_CANTOPEN, and the app sat on "Loading…" on every
+    // start after — the pool lives in OPFS. `e2e/tests/opfs-pool.spec.ts` builds that state.
+    await poolUtil.reserveMinimumCapacity(MIN_POOL_CAPACITY);
     db = new poolUtil.OpfsSAHPoolDb(filename);
   } catch (err) {
     storage = "memory";

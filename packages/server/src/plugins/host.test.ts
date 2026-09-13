@@ -90,6 +90,93 @@ describe("plugin ops appear in HTTP + MCP", () => {
     expect(json.error.hint).toBe("try something else");
   });
 
+  it("an op missing required OpDef fields is that plugin's error, and the server still starts (B-402)", async () => {
+    // Plugins are bundled by esbuild, which does not type-check, so nothing stopped this op —
+    // no `summary`, `annotations` or `scopes` — from reaching the registry. Mounting its route read
+    // `annotations.readOnlyHint` and took `nooklet serve` (and the desktop app) down at startup.
+    const root = tmpDir("nooklet-host-test-incomplete-op-");
+    writePluginFixture(
+      root,
+      "incomplete",
+      { id: "incomplete", api: "1", server: "./src/server.ts" },
+      {
+        "src/server.ts": `
+import { defineOp } from "@nooklet/plugin-api";
+import { z } from "zod";
+export default {
+  activate(ctx) {
+    ctx.ops.register(defineOp({ name: "incomplete.say", description: "hi", input: z.object({}),
+      output: z.object({ hi: z.string() }), scope: "read", handler: async () => ({ hi: "there" }) }));
+  },
+};
+`,
+      },
+    );
+    writePluginFixture(
+      root,
+      "good",
+      { id: "good", api: "1", server: "./src/server.ts" },
+      { "src/server.ts": ECHO_OP_PLUGIN },
+    );
+    const setup = await makePluginTestSetup([root]);
+
+    const incomplete = setup.host.list().find((p) => p.id === "incomplete");
+    expect(incomplete?.status).toBe("error");
+    expect(incomplete?.error).toMatch(/incomplete\.say/);
+    expect(incomplete?.error).toMatch(/summary/);
+    expect(incomplete?.error).toMatch(/annotations/);
+    expect(incomplete?.error).toMatch(/scopes/);
+    expect(setup.registry.get("incomplete.say")).toBeUndefined();
+    const { status } = await post(setup.app, "/api/v1/test.echo", setup.readToken, { text: "hi" });
+    expect(status).toBe(200);
+  });
+
+  it("a REST alias missing its method or path is that plugin's error, and the server still starts (B-406)", async () => {
+    // Every top-level field is there, so B-402's check alone let these through, and mounting the
+    // alias read `path.replace` / Hono's `method.toUpperCase` at startup, outside any plugin guard.
+    const root = tmpDir("nooklet-host-test-incomplete-alias-");
+    const aliasPlugin = (op: string, http: string) => `
+import { defineOp } from "@nooklet/plugin-api";
+import { z } from "zod";
+export default {
+  activate(ctx) {
+    ctx.ops.register(defineOp({ name: "${op}", summary: "Say", description: "hi", input: z.object({}),
+      output: z.object({ hi: z.string() }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      scopes: ["read"], expose: { http: ${http} }, handler: async () => ({ hi: "there" }) }));
+  },
+};
+`;
+    writePluginFixture(
+      root,
+      "nopath",
+      { id: "nopath", api: "1", server: "./src/server.ts" },
+      { "src/server.ts": aliasPlugin("nopath.say", `{ method: "GET" }`) },
+    );
+    writePluginFixture(
+      root,
+      "nomethod",
+      { id: "nomethod", api: "1", server: "./src/server.ts" },
+      { "src/server.ts": aliasPlugin("nomethod.say", `{ path: "/nomethod/say" }`) },
+    );
+    writePluginFixture(
+      root,
+      "good",
+      { id: "good", api: "1", server: "./src/server.ts" },
+      { "src/server.ts": ECHO_OP_PLUGIN },
+    );
+    const setup = await makePluginTestSetup([root]);
+
+    for (const id of ["nopath", "nomethod"]) {
+      const plugin = setup.host.list().find((p) => p.id === id);
+      expect(plugin?.status).toBe("error");
+      expect(plugin?.error).toMatch(/expose\.http's method and path/);
+      expect(setup.registry.get(`${id}.say`)).toBeUndefined();
+    }
+    const { status } = await post(setup.app, "/api/v1/test.echo", setup.readToken, { text: "hi" });
+    expect(status).toBe(200);
+  });
+
   it("an unsupported api major is a per-plugin error that never aborts the server", async () => {
     const root = tmpDir("nooklet-host-test-badapi-");
     writePluginFixture(

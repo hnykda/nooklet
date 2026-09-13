@@ -28,6 +28,16 @@ import { getBlock, listBlockProps } from "./queries.js";
 import { initSchema } from "./schema.js";
 
 const DEVICE_IDS = ["aaaaaaa0", "aaaaaaa1", "aaaaaaa2", "aaaaaaa3"];
+
+// Every fast-check property below passes Vitest a 120_000 ms timeout: a HANG guard, nothing else.
+// They assert convergence over a FIXED number of runs (`numRuns`), so what they cover never depends
+// on the machine's speed; their wall-clock time does. Idle they take 0.3-1.3 s. They used to carry
+// 30 s or Vitest's default 5 s, and with a dozen agents on the machine (load average 62-84) "dense
+// adversarial moves" hit 30 s and the two 5 s ones hit theirs (B-333); reproduced with the suite
+// niced under 140 busy loops at 6.3 s and 5.4 s. Nothing here measures cost and `fc.assert` never
+// cuts runs short, so a limit that fires on a slow machine only teaches re-running. Two minutes is
+// ~100x the slowest idle time: only a genuine hang (a cycle check or replay that never ends) gets
+// there. Never lower `numRuns` to fit a clock — that is how coverage quietly disappears.
 const BASE = Date.UTC(2026, 8, 10, 0, 0, 0);
 
 function newDriver(): SqlDriver {
@@ -495,7 +505,7 @@ describe("multi-device sync convergence", () => {
       ),
       { numRuns: 200 },
     );
-  }, 30_000);
+  }, 120_000);
 
   it("dense adversarial moves on a small block pool still never produce a cycle, and still converge", () => {
     fc.assert(
@@ -526,7 +536,7 @@ describe("multi-device sync convergence", () => {
       ),
       { numRuns: 200 },
     );
-  }, 30_000);
+  }, 120_000);
 });
 
 // -------------------------------------------------------------------------------------------
@@ -551,7 +561,7 @@ describe("long-offline device reconnects with a large backlog", () => {
       ),
       { numRuns: 40 },
     );
-  }, 30_000);
+  }, 120_000);
 });
 
 // -------------------------------------------------------------------------------------------
@@ -788,7 +798,7 @@ describe("interleaved delete/restore/move of the same block", () => {
       ),
       { numRuns: 100 },
     );
-  });
+  }, 120_000);
 });
 
 // -------------------------------------------------------------------------------------------
@@ -930,7 +940,7 @@ describe("property writes racing text writes on the same block", () => {
       ),
       { numRuns: 100 },
     );
-  });
+  }, 120_000);
 });
 
 // -------------------------------------------------------------------------------------------
@@ -1005,5 +1015,5 @@ describe("op-log GC", () => {
       ),
       { numRuns: 60 },
     );
-  }, 30_000);
+  }, 120_000);
 });

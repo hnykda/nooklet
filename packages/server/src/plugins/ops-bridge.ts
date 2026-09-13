@@ -30,12 +30,61 @@ function isOpErrorShaped(
   );
 }
 
+/**
+ * Refuses a plugin `OpDef` that lacks a field the registry relies on, naming every missing one.
+ *
+ * A plugin reaches here through esbuild, which strips types without checking them, so `defineOp`'s
+ * signature guarantees nothing at runtime. An op with no `annotations` used to be accepted, and
+ * mounting its HTTP route read `annotations.readOnlyHint` outside any per-plugin guard: `nooklet
+ * serve` — and the desktop app, which then never opened — exited at startup (B-402). Thrown from
+ * `ctx.ops.register`, inside the plugin's `activate()`, this is that plugin's error instead.
+ * (`render` is the registry's own check: it is required only when the op is exposed to MCP.)
+ * A REST alias (`expose.http` as an object) is checked too: mounting one reads its `method` and
+ * `path`, and either missing took the server down the same way (B-406).
+ */
+/** `expose.http` is absent, a boolean, or an alias with a string `method` and `path`. */
+function isCompleteHttpAlias(expose: unknown): boolean {
+  if (typeof expose !== "object" || expose === null) return true;
+  const http = (expose as { http?: unknown }).http;
+  if (typeof http !== "object" || http === null) return true;
+  const alias = http as { method?: unknown; path?: unknown };
+  return typeof alias.method === "string" && typeof alias.path === "string";
+}
+
+function assertCompleteOpDef(def: PluginOpDef): void {
+  const d = def as unknown as Record<string, unknown>;
+  const isSchema = (v: unknown) =>
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as { safeParse?: unknown }).safeParse === "function";
+  const missing = [
+    typeof d.name === "string" ? null : "name",
+    typeof d.summary === "string" ? null : "summary",
+    typeof d.description === "string" ? null : "description",
+    isSchema(d.input) ? null : "input (a zod schema)",
+    isSchema(d.output) ? null : "output (a zod schema)",
+    typeof d.annotations === "object" && d.annotations !== null ? null : "annotations",
+    Array.isArray(d.scopes) ? null : "scopes",
+    typeof d.handler === "function" ? null : "handler",
+    isCompleteHttpAlias(d.expose)
+      ? null
+      : "expose.http's method and path (a REST alias needs both)",
+  ].filter((f): f is string => f !== null);
+  if (missing.length > 0) {
+    const name = typeof d.name === "string" ? `"${d.name}"` : "(unnamed)";
+    throw new Error(
+      `op ${name} is missing ${missing.join(", ")} — see defineOp's OpDef in @nooklet/plugin-api`,
+    );
+  }
+}
+
 /** Wraps a plugin's `OpDef` so its `handler` runs unchanged, but any thrown "op error shaped"
  * value (whichever `OpError` class produced it) is normalized to THIS package's own `OpError`
  * before it reaches `toErrorBody`. Returns a value structurally assignable to `../ops/registry.ts`'s
  * `OpDef` (plugin-api's `OpDef` and the registry's are the same shape by construction — see
  * `@nooklet/plugin-api/src/op-def.ts`'s header comment). */
 export function wrapPluginOp(def: PluginOpDef): ServerOpDef {
+  assertCompleteOpDef(def);
   const wrapped: ServerOpDef = {
     ...(def as unknown as ServerOpDef),
     handler: async (input, ctx) => {

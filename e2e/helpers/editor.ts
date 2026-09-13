@@ -4,7 +4,8 @@
  * Two entry points, lifted from `parity.spec.ts` / `editing.spec.ts` and kept as they were there:
  * `openEditing` seeds an ordinary page through the API and puts the caret at the end of its first
  * block; `openJournal` guarantees a materialised outliner on the journal stream (today starts
- * virtual — PLAN.md §8 — and only becomes a real `BlockTree` once it has a block).
+ * virtual — PLAN.md §8 — and only becomes a real `BlockTree` once it has a block; since B-335 it
+ * makes today real through the API rather than through the draft).
  *
  * Everything else here reads the editor's state the way a person sees it: the CM6 buffer text,
  * the caret as a character offset, each row's depth and rendered text. Nothing reaches into
@@ -12,7 +13,7 @@
  */
 
 import { expect, type Locator, type Page } from "@playwright/test";
-import { pagePath, seedPage } from "./api.js";
+import { api, isoOffset, pagePath, readBlocks, seedPage } from "./api.js";
 
 /** Seeds a page with `markdown`, opens it, and puts the caret at the end of the first block.
  * Returns the page's outliner. */
@@ -40,20 +41,31 @@ export async function openPage(page: Page, name: string, markdown = "- start"): 
   return outliner;
 }
 
-/** Opens the journal and guarantees a real, CodeMirror-backed outliner to type into. Writes to
- * TODAY's journal if it is still virtual — only use this from a test that exists to exercise the
- * journal (docs/BUGS.md B-32). */
-export async function openJournal(page: Page): Promise<void> {
+/**
+ * Opens the journal with TODAY materialised and returns today's outliner. Writes to TODAY's
+ * journal (one "seed" block, only if it has none) — only use this from a test that exists to
+ * exercise the journal (docs/BUGS.md B-32).
+ *
+ * Today is made real through the API BEFORE the page loads, not by committing the virtual draft in
+ * the browser, which is what this used to do. Every test gets a fresh browser context and so an
+ * empty replica, and the stream draws today as a draft until the first snapshot has said whether
+ * today already exists (`journal-draft-sync.spec.ts`, B-243). A draft seen here could therefore be
+ * one about to be swapped for the real outliner: the helper filled it, the swap removed it, and
+ * `blur()` then waited the whole 30 s test timeout for an element that no longer existed (B-335).
+ * How long that window stays open is how long the snapshot takes, so it hit under load. Seeding
+ * first leaves exactly one thing to wait for.
+ *
+ * Scoped to `.journal-day-today`: an "Upcoming" day another spec created renders ABOVE today, so
+ * an unscoped `.vr-outliner` `.first()` picks whichever day happens to be on top.
+ */
+export async function openJournal(page: Page): Promise<Locator> {
+  const today = isoOffset(0);
+  const existing = await readBlocks(page, today).catch(() => []);
+  if (existing.length === 0) await api(page, "page.append", { page: today, markdown: "- seed" });
   await page.goto("/journals");
-  const virtualDraft = page.locator(".vr-draft-input").first();
-  const outliner = page.locator(".vr-outliner").first();
-
-  await expect(virtualDraft.or(outliner)).toBeVisible();
-  if (await virtualDraft.isVisible()) {
-    await virtualDraft.fill("seed");
-    await virtualDraft.blur();
-  }
-  await expect(outliner).toBeVisible();
+  const outliner = page.locator(".journal-day-today .vr-outliner");
+  await expect(outliner.locator(".vr-row").first()).toBeVisible();
+  return outliner;
 }
 
 /** The editable surface for the row currently being edited. */
