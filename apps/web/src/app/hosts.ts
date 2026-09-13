@@ -20,6 +20,7 @@ import type {
 import type { BlockPropsWrite, BlockTaskSnapshot, Store } from "../commands/types.js";
 import { applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
 import { forceSync, queryAs } from "../db/client.js";
+import { requestEditingEnd } from "../editor/focus-request.js";
 import { assetUrl } from "../editor/render/asset-url.js";
 import { isSafeHref } from "../editor/render/safe-href.js";
 import type { Clock } from "../editor/types.js";
@@ -246,9 +247,21 @@ function pageRefQuery(): PageRefQuery {
   };
 }
 
+/**
+ * Called before a navigation that leaves the page from a key or a command: end editing FIRST. The
+ * page being left stays mounted until the new route has resolved its page (a replica read), and its
+ * editor kept focus through that gap — so keys typed straight after Alt+Enter went into the block
+ * being left and were saved on a page no longer on screen (B-295; the palette's form was B-293).
+ * Focus then sits on `<body>` until the new page is clicked into, as after any click on a link.
+ */
+function endEditingBeforeLeaving(): void {
+  requestEditingEnd();
+}
+
 export function createNavigationHost(deps: NavDeps): NavigationHost {
   return {
     openPage(pageId) {
+      endEditingBeforeLeaving();
       void deps.pageNameForId(pageId).then((name) => {
         if (name) deps.navigate(pageRoutePath(name));
       });
@@ -278,6 +291,7 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
         return;
       }
       if ((link.type === "page" || link.type === "tag") && link.name) {
+        endEditingBeforeLeaving();
         // The name as written, as a click on the rendered link navigates. Not
         // `normalizePageName`: that is the lookup KEY, lowercased, and the canonical-route effect
         // leaves a URL that differs from the page's name only in case (B-332).
@@ -285,6 +299,7 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
         return;
       }
       if (link.type === "block" && link.id) {
+        endEditingBeforeLeaving();
         const blockId = link.id;
         // By BLOCK id. `deps.pageNameForId` takes a page id (B-82) and found nothing for a block,
         // so Alt+Enter on a ((ref)) silently went nowhere (B-139).
@@ -294,6 +309,7 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
       }
     },
     openPageByRef(ref, blockId) {
+      endEditingBeforeLeaving();
       void resolvePageRef(ref, pageRefQuery()).then((resolved) => {
         if (!resolved) return;
         const path = blockId

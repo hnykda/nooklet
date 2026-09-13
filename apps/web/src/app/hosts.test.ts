@@ -24,6 +24,7 @@ vi.stubGlobal("window", { open });
 
 import type { Op } from "@nooklet/core";
 import type { OpBatch } from "../commands/hosts/editor-host.js";
+import { editingEndRequest } from "../editor/focus-request.js";
 import { createNavigationHost, createStore } from "./hosts.js";
 
 const navigate = vi.fn();
@@ -83,6 +84,32 @@ describe("nav.followLink for page links", () => {
       expect(navigate).toHaveBeenCalledWith("/page/Projects/Aurora%20Launch");
     },
   );
+});
+
+describe("nav.followLink ends editing before it leaves the page (B-295)", () => {
+  // The page being left stays mounted until the route has resolved the new one, and keys typed in
+  // that gap went into the block being left. Every tree ends editing on `requestEditingEnd`.
+  it.each([
+    ["page", { type: "page", name: "Projects/Aurora" }],
+    ["tag", { type: "tag", name: "aurora" }],
+    ["block", { type: "block", id: "blk00000000001" }],
+  ] as const)("a %s link", async (_kind, link) => {
+    navigate.mockReset();
+    const before = editingEndRequest();
+    const ticksAtNavigate: number[] = [];
+    navigate.mockImplementation(() => ticksAtNavigate.push(editingEndRequest()));
+    host().followLink(link);
+    // Asked at once, not once the block's page has been looked up.
+    expect(editingEndRequest()).toBe(before + 1);
+    await vi.waitFor(() => expect(ticksAtNavigate).toEqual([before + 1]));
+    navigate.mockReset();
+  });
+
+  it("not for a web link, which opens in another tab", () => {
+    const before = editingEndRequest();
+    host().followLink({ type: "url", href: "https://example.com" });
+    expect(editingEndRequest()).toBe(before);
+  });
 });
 
 describe("createStore block-property writes (B-142)", () => {

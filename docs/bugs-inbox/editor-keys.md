@@ -76,3 +76,22 @@ two cases look identical to the popup (same text before and after the caret). Op
 inside a word that already follows `#`.
 
 ---
+
+### B-295 (existing)
+**Fixed 2026-09-13.** The general fix the entry named: a navigation requested from a key or command
+ends editing when it is requested, not when the page unmounts. `app/hosts.ts#createNavigationHost`
+calls `requestEditingEnd()` (the same signal Cmd/Ctrl+F uses) at the start of `followLink` for page,
+tag and block links, `openPage` (palette page rows, Random page) and `openPageByRef` (`nav.openPage`,
+agents). Every tree flushes what was typed and detaches the editor, so focus is on `<body>` until the
+new page is clicked into — where `cf08d19` left it after the palette form (B-293). Not changed: web
+links (they open in another tab and the editor keeps focus), `back`/`forward`/`openJournals`/
+`openSearch` (not measured whether keys typed straight after them can land in the block being left)
+and `revealBlock` (documented as not changing focus). Where the correct page already showed, nothing
+is lost but the caret: keys typed before the new page is clicked into go nowhere. **Test:**
+`e2e/tests/follow-link-typing.spec.ts` — "Alt+Enter on a [[link]], then typing at once: nothing lands
+in the block being left (B-295)" and the `((block ref))` form; red before (5 of 5 each with
+`--repeat-each=5`: `.cm-content` still focused straight after Alt+Enter; one earlier single run of the
+`[[link]]` form passed, so the race is timing-dependent), green after (5 of 5 each). Unit:
+`app/hosts.test.ts` "nav.followLink ends editing before it leaves the page (B-295)" (4).
+
+---

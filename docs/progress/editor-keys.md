@@ -22,16 +22,19 @@ first for each. Bug notes go to `docs/bugs-inbox/editor-keys.md`, not BUGS.md.
   (`trigger.ts#existingRefTailLength`, `AutocompletePopup.tsx#queryEnd`). e2e
   `autocomplete-inside-link.spec.ts` (3; 2 red before). Tag form left open as new B-380 (owner
   decision; probe `tools/probes/autocomplete-tag-walk.spec.ts`). Autocomplete/follow-link specs green.
+  Commit `86897db`.
+- B-295: `createNavigationHost` ends editing (`requestEditingEnd`) at the start of followLink
+  (page/tag/block), openPage, openPageByRef. e2e `follow-link-typing.spec.ts` (2) red 5/5 before,
+  green 5/5 after; navigation/focus specs 74 passed.
 
 ## In flight
 
-- (next) B-295.
+- (next) B-344.
 
 ## Next
 
-1. B-295 (follow link ends editing / keys typed after Alt+Enter)
-2. B-344 (mermaid starter into its own block)
-3. Full e2e run at the end.
+1. B-344 (mermaid starter into its own block) — likely needs a plugin-host / EditorHost addition.
+2. Full e2e run at the end.
 
 ## Decisions
 
