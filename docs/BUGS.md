@@ -480,6 +480,9 @@ relabeled by their true name." A refresh (pull after a push, or a poke) re-rende
 their block-reference labels go back to the unresolved placeholder until the lookup answers again —
 resolved labels are not kept across a refresh.
 
+
+**Owner, later the same day:** "that refresh with id might have been just one isolated case, don't over do it." Scope: fix the cause if it is the obvious one (the whole block-ref cache emptied on every block write), with one test; no broader re-rendering work under this entry.
+
 ---
 
 ### B-540 · Syncing is visible: every ordinary push and pull shows on screen
@@ -491,6 +494,9 @@ desktop app (B-42), rows re-rendering, the sync indicator changing on every rout
 that changes nothing on screen must change nothing visible; the indicator should appear only when
 something needs attention (offline, pending for seconds, an error). Being handled with B-500 on
 `m11/ref-label-flash`.
+
+
+**Owner:** keep this proportionate — see B-500's note. The follow-up is limited to making the sync indicator quiet during routine push/pull (shown only when offline, on error, or pending for several seconds); no rendering overhaul.
 
 ---
 
