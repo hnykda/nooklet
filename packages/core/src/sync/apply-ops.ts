@@ -41,6 +41,8 @@ import type { SqlDriver } from "./driver.js";
 import type { AppliedOpResult, ApplyOpsResult, ApplyReason } from "./types.js";
 
 const PRIORITIES = new Set(["A", "B", "C"]);
+/** Bag keys whose columns `block.create`'s INSERT stamps with the op's own HLC (B-89). */
+const INSERT_STAMPED_KEYS = new Set(["marker", "priority", "collapsed"]);
 const SCHEDULED_RE = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/;
 const DONE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
@@ -353,19 +355,34 @@ function applyBlockCreate(
     return { status: "rejected", reason: "no-such-page" };
   }
 
-  const marker = payload.marker ?? null;
-  if (marker !== null && !(TASK_MARKERS as readonly string[]).includes(marker)) {
+  if (payload.marker != null && !(TASK_MARKERS as readonly string[]).includes(payload.marker)) {
     return { status: "rejected", reason: "invalid-marker" };
   }
-  const priority = payload.priority ?? null;
-  if (priority !== null && !PRIORITIES.has(priority)) {
+  if (payload.priority != null && !PRIORITIES.has(payload.priority)) {
     return { status: "rejected", reason: "invalid-priority" };
   }
+
+  // `marker`/`priority`/`collapsed` may also arrive in the properties bag (an API or plugin caller
+  // passing `{ properties: { marker: "TODO" } }`). They have to go into the INSERT itself: the
+  // INSERT stamps `marker_hlc`/`priority_hlc`/`collapsed_hlc` with this op's HLC, so routing them
+  // through `writeBlockField` afterwards ties the column's HLC and the LWW guard refuses the write
+  // — which silently dropped exactly these three keys while `scheduled` and friends, whose `_hlc`
+  // the INSERT leaves NULL, worked (B-89). A set top-level field wins over the bag; an unset one
+  // (`null`, or `collapsed: false`, which the model cannot tell from unset) takes the bag's value.
+  // An invalid bag value is dropped like any invalid inline property, without failing the create.
+  const bag = payload.properties ?? {};
+  const bagMarker =
+    bag.marker != null && (TASK_MARKERS as readonly string[]).includes(bag.marker)
+      ? bag.marker
+      : null;
+  const bagPriority = bag.priority != null && PRIORITIES.has(bag.priority) ? bag.priority : null;
+  const marker: string | null = payload.marker ?? bagMarker;
+  const priority = payload.priority ?? bagPriority;
+  const collapsed = payload.collapsed || bag.collapsed === "true" ? 1 : 0;
 
   // A brand-new id can never be its own ancestor (rule 24), so block.create needs no cycle check
   // — only the same missing/invalid-parent fallback block.place uses.
   const place = resolvePlace(driver, payload.place);
-  const collapsed = payload.collapsed ? 1 : 0;
 
   let changed = false;
   const ins = driver.run(
@@ -395,6 +412,8 @@ function applyBlockCreate(
 
   if (payload.properties) {
     for (const [k, v] of Object.entries(payload.properties)) {
+      // Already folded into the INSERT above (B-89).
+      if (INSERT_STAMPED_KEYS.has(k)) continue;
       // Invalid inline properties don't fail the whole creation (the block itself is still
       // structurally valid); they're simply not written. Only a dedicated `block.prop` op for
       // that one key rejects outright (see applyBlockProp / rule 10).

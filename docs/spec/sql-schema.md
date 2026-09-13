@@ -388,7 +388,11 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
       record the op with the corrected `place`, since a genuinely new id cannot create a cycle.
       `INSERT OR IGNORE INTO block(id, page_id, parent_id, order_key, content, marker, priority,
       collapsed, created_at, updated_at, place_hlc, content_hlc, marker_hlc, priority_hlc,
-      collapsed_hlc) VALUES (entity, ..., op.hlc, op.hlc, op.hlc, op.hlc, op.hlc)`. For each
+      collapsed_hlc) VALUES (entity, ..., op.hlc, op.hlc, op.hlc, op.hlc, op.hlc)`. A
+      `marker`/`priority`/`collapsed` key in `properties` is folded into that INSERT — a set
+      top-level field (non-null; `collapsed: true`) wins, otherwise a valid bag value is used, an
+      invalid one is dropped — because routing it through the LWW writer afterwards would tie the
+      HLC the INSERT just stamped and be refused (B-89). For every other
       `properties` entry: reserved keys (`scheduled`/`deadline`/`repeat`/`done`) parse into their
       dedicated columns with `hlc = op.hlc` (rule 10); everything else upserts into `block_prop`
       with `hlc = op.hlc`. Then (same transaction): extract refs from `content` + the resulting
