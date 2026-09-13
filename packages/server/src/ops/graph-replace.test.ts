@@ -95,6 +95,34 @@ describe("graph.replace", () => {
     expect(json.matches[0].after).toBe("the money-colour");
   });
 
+  it("regexes run in Unicode mode, so \\p{…} classes and whole-word lookarounds work on Czech (B-128)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Czech",
+      markdown: "- Schůzka s Alešem: Černá kniha\n- Aleš přišel",
+    });
+    // Without the u flag `\p{Lu}` is the literal text "p{Lu}": zero matches, no error.
+    const words = await replace({
+      query: "\\p{Lu}\\p{Ll}+",
+      regex: true,
+      case_sensitive: true,
+      replacement: "<$&>",
+      dry_run: true,
+    });
+    expect(words.status).toBe(200);
+    expect(words.json.matches.map((m: JsonAny) => m.after).sort()).toEqual([
+      "<Aleš> přišel",
+      "<Schůzka> s <Alešem>: <Černá> kniha",
+    ]);
+    // The whole-word form the description recommends does not rewrite part of "Alešem".
+    const whole = await replace({
+      query: "(?<![\\p{L}\\p{N}_])Aleš(?![\\p{L}\\p{N}_])",
+      regex: true,
+      replacement: "Petr",
+      dry_run: true,
+    });
+    expect(whole.json.matches.map((m: JsonAny) => m.after)).toEqual(["Petr přišel"]);
+  });
+
   it("a literal replacement containing $1 stays literal", async () => {
     await seed();
     const { json } = await replace({ query: "money", replacement: "$1 & $&", dry_run: true });
@@ -125,6 +153,82 @@ describe("graph.replace", () => {
     // Nothing was written by any of the three.
     expect(allContents()).toContain("the colour of money");
   });
+
+  it("a backtracking pattern is refused within the time budget, and the server answers meanwhile (B-125)", async () => {
+    // `(a+)+$` against 40 `a`s and a `!` backtracks ~2^40 steps. Run on the event loop, as it
+    // was, 25 `a`s already held `/healthz` for 5 s; 40 would never return.
+    const n = 40;
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Redos",
+      markdown: `- ${"a".repeat(n)}!\n- an ordinary block`,
+    });
+    const started = Date.now();
+    const pending = replace({ query: "(a+)+$", regex: true, replacement: "x", dry_run: true });
+    // Asked 100 ms in; timed from `started`, because a blocked event loop delays the timer itself.
+    const health = new Promise<{ status: number; ms: number }>((resolve) => {
+      setTimeout(async () => {
+        const res = await s.app.request("/healthz");
+        resolve({ status: res.status, ms: Date.now() - started });
+      }, 100);
+    });
+    const { status, json } = await pending;
+    const totalMs = Date.now() - started;
+
+    expect((await health).status).toBe(200);
+    expect((await health).ms).toBeLessThan(1000);
+    expect(status).toBe(400);
+    expect(json.error.code).toBe("invalid");
+    expect(json.error.message).toContain("too long");
+    expect(totalMs).toBeLessThan(6000);
+    expect(allContents()).toContain(`${"a".repeat(n)}!`);
+  }, 20_000);
+
+  it("refuses a replacement that would grow a block past the content cap, even in a dry run (B-125)", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Grow",
+      markdown: `- ${"a".repeat(60)}`,
+    });
+    // 60 × 2000 = 120,000 characters: more than block.update would ever accept.
+    const body = { query: "a", replacement: "x".repeat(2000) };
+    const preview = await replace({ ...body, dry_run: true });
+    expect(preview.status).toBe(413);
+    expect(preview.json.error.code).toBe("too_large");
+    expect(preview.json.error.details.length).toBe(120_000);
+    const real = await replace(body);
+    expect(real.status).toBe(413);
+    expect(allContents()).toEqual(["a".repeat(60)]);
+  });
+
+  it("still edits a block that is already past the cap, as long as the edit does not grow it", async () => {
+    // The owner's graph has a 120,016-character block; a cap on the result alone would lock it.
+    const big = `${"b".repeat(100_050)} tail`;
+    await post(s.app, "/api/v1/page.create", s.writeToken, { name: "Big", markdown: `- ${big}` });
+    const { status, json } = await replace({ query: "tail", replacement: "TAIL" });
+    expect(status).toBe(200);
+    expect(json.blocks_matched).toBe(1);
+    expect(allContents()).toEqual([`${"b".repeat(100_050)} TAIL`]);
+  });
+
+  it("a block the replacement would blow up to hundreds of megabytes is refused unbuilt, and the process lives (B-125)", async () => {
+    // The largest block page.create accepts, every character a match, the longest replacement:
+    // ~400 million characters. Built inside a worker with a 256 MB heap cap this did not end the
+    // worker — V8 aborted the whole process ("Reached heap limit", exit 134).
+    const n = 199_990;
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Explode",
+      markdown: `- ${"a".repeat(n)}`,
+    });
+    const { status, json } = await replace({
+      query: "a",
+      replacement: "x".repeat(2000),
+      dry_run: true,
+    });
+    expect(status).toBe(413);
+    expect(json.error.code).toBe("too_large");
+    expect(json.error.details.length).toBe(n * 2000);
+    const health = await s.app.request("/healthz");
+    expect(health.status).toBe(200);
+  }, 20_000);
 
   it("limit caps the preview list, not the counts", async () => {
     await seed();

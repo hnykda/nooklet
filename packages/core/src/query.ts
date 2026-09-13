@@ -592,8 +592,23 @@ class ParseError extends Error {
   }
 }
 
+/**
+ * Limits on what a query may be (B-129). A fence is block content that syncs to every device and
+ * any writer (an MCP agent included) can author, so its size is not ours to choose. Without a
+ * depth limit, 20k `(` or 30k `not` overflowed this recursive-descent parser's stack, a
+ * `RangeError` that escaped `parseQuery`'s promise never to throw; without a filter limit, ~1,000
+ * juxtaposed words compiled to a flat `a AND b AND …` that SQLite refuses past an expression depth
+ * of 1,000. At these limits the prefilter's SQL depth stays under ~150, and nobody writes a task
+ * query with a hundred filters by hand.
+ */
+const MAX_QUERY_DEPTH = 32;
+const MAX_QUERY_FILTERS = 100;
+
 class Parser {
   private pos = 0;
+  /** Open `(` and `not`/`-` around the token being parsed. */
+  private depth = 0;
+  private filters = 0;
   readonly mods: Modifiers = {};
 
   constructor(
@@ -653,13 +668,30 @@ class Parser {
     return items.length === 1 ? (items[0] as QueryExpr) : { kind: "and", items };
   }
 
+  /** Enter one level of `(` or `not`, refusing past `MAX_QUERY_DEPTH` before recursing further. */
+  private nest<T>(t: Tok, fn: () => T): T {
+    if (this.depth >= MAX_QUERY_DEPTH) {
+      throw new ParseError(
+        `query is nested too deeply (more than ${MAX_QUERY_DEPTH} levels of parentheses and "not")`,
+        t.start,
+        t.end,
+      );
+    }
+    this.depth++;
+    try {
+      return fn();
+    } finally {
+      this.depth--;
+    }
+  }
+
   /** `null` only when the token was a modifier (consumed into `mods`). */
   private parseUnary(): QueryExpr | null {
     const t = this.peek();
     if (!t) return null;
     if (t.kind === "not") {
       this.pos++;
-      const inner = this.parseUnary();
+      const inner = this.nest(t, () => this.parseUnary());
       if (!inner) {
         const next = this.peek();
         throw new ParseError('"not" needs a filter after it', t.start, next ? next.end : t.end);
@@ -668,7 +700,7 @@ class Parser {
     }
     if (t.kind === "lparen") {
       this.pos++;
-      const inner = this.parseOr();
+      const inner = this.nest(t, () => this.parseOr());
       const close = this.peek();
       if (!close || close.kind !== "rparen") {
         throw new ParseError("missing closing )", t.start, this.eofSpan().end);
@@ -685,6 +717,13 @@ class Parser {
     try {
       const term = parseWord(t, this.mods);
       if (term === null) return null;
+      if (++this.filters > MAX_QUERY_FILTERS) {
+        throw new ParseError(
+          `query has too many filters (more than ${MAX_QUERY_FILTERS})`,
+          t.start,
+          t.end,
+        );
+      }
       return { kind: "term", term, start: t.start, end: t.end };
     } catch (e) {
       if (e instanceof TermError) throw new ParseError(e.message, t.start, t.end);

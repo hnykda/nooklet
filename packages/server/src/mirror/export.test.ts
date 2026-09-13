@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -395,7 +395,7 @@ describe("exportAll with sinceSeq (B-260)", () => {
     // The page it left and the page it joined both count; the quiet page does not.
     expect(new Set(pagesTouchedSince(ctx.driver, cursor))).toEqual(new Set([renamed, from, to]));
     const r = exportAll(ctx.driver, dataDir, { sinceSeq: cursor });
-    expect(r).toEqual({ exported: 3, skipped: 1, deleted: 0 });
+    expect(r).toEqual({ exported: 3, skipped: 1, deleted: 0, failed: [] });
     expect(existsSync(join(dataDir, "pages", "After Rename.md"))).toBe(true);
     expect(existsSync(join(dataDir, "pages", "Before Rename.md"))).toBe(false);
     expect(readFileSync(join(dataDir, "pages", "Move From.md"), "utf8")).not.toContain("travels");
@@ -415,7 +415,85 @@ describe("exportAll rebuilds missing files (B-262)", () => {
     const file = join(dataDir, pageFilePath({ name: "Vanished File", journalDay: null }));
     rmSync(file);
 
-    expect(exportAll(ctx.driver, dataDir)).toEqual({ exported: 1, skipped: 1, deleted: 0 });
+    expect(exportAll(ctx.driver, dataDir)).toEqual({
+      exported: 1,
+      skipped: 1,
+      deleted: 0,
+      failed: [],
+    });
     expect(readFileSync(file, "utf8")).toContain("still in the database");
+  });
+});
+
+describe("pages whose file cannot be written as named (B-126)", () => {
+  // 300 characters of Czech: ~350 UTF-8 bytes, past the 255-byte file-name limit of APFS/ext4,
+  // and well inside the 512 characters a page name may have.
+  const longName = "Poznámky z porady o rozpočtu na příští čtvrtletí ".repeat(8).slice(0, 300);
+
+  function pagesDir(): string[] {
+    return readdirSync(join(dataDir, "pages")).sort();
+  }
+
+  it("a name past NAME_MAX gets a shortened, hash-suffixed file that keeps the full name as title::", () => {
+    const alpha = createPage("Alpha");
+    createBlock(alpha, "a");
+    exportAll(ctx.driver, dataDir);
+
+    const long = createPage(longName);
+    createBlock(long, "long");
+    const zeta = createPage("Zeta");
+    createBlock(zeta, "z");
+    deletePage(alpha);
+
+    const result = exportAll(ctx.driver, dataDir);
+    expect(result.failed).toEqual([]);
+    const files = pagesDir();
+    expect(files.filter((f) => f.endsWith(".tmp"))).toEqual([]);
+    expect(files).toContain("Zeta.md");
+    expect(files).not.toContain("Alpha.md");
+
+    const longFile = files.find((f) => f.startsWith("Pozn")) as string;
+    expect(Buffer.byteLength(longFile, "utf8")).toBeLessThanOrEqual(255);
+    expect(longFile).toMatch(/~[0-9a-f]{8}\.md$/);
+    expect(pageFilePath({ name: longName, journalDay: null })).toBe(`pages/${longFile}`);
+    const text = readFileSync(join(dataDir, "pages", longFile), "utf8");
+    expect(parseOutline(text).properties.title).toBe(longName);
+
+    // Stable across sweeps: nothing is rewritten, nothing accumulates.
+    expect(exportAll(ctx.driver, dataDir).exported).toBe(0);
+    expect(pagesDir()).toEqual(files);
+  });
+
+  it("a short name is untouched, and two long names sharing a prefix get different files", () => {
+    expect(pageFilePath({ name: "Alpha", journalDay: null })).toBe("pages/Alpha.md");
+    const a = pageFilePath({ name: `${longName}A`, journalDay: null });
+    const b = pageFilePath({ name: `${longName}B`, journalDay: null });
+    expect(a).not.toBe(b);
+    // Never cut inside a %XX escape: 100 `#`s encode to 300 bytes of `%23`.
+    const hashes = pageFilePath({ name: "#".repeat(100), journalDay: null });
+    expect(hashes).toMatch(/^pages\/(%23)+~[0-9a-f]{8}\.md$/);
+  });
+
+  it("one page that fails to write does not stop the others or the prune, and leaves no temp file", () => {
+    const gone = createPage("Gone");
+    createBlock(gone, "g");
+    exportAll(ctx.driver, dataDir);
+    deletePage(gone);
+
+    const blocked = createPage("Blocked");
+    createBlock(blocked, "b");
+    // A non-empty directory where the file should go: the rename fails whatever the name.
+    mkdirSync(join(dataDir, "pages", "Blocked.md", "inside"), { recursive: true });
+    const fine = createPage("Fine");
+    createBlock(fine, "f");
+
+    const result = exportAll(ctx.driver, dataDir);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0]?.pageId).toBe(blocked);
+    expect(result.deleted).toBe(1);
+    const files = pagesDir();
+    expect(files).toContain("Fine.md");
+    expect(files).not.toContain("Gone.md");
+    expect(files.filter((f) => f.endsWith(".tmp"))).toEqual([]);
   });
 });

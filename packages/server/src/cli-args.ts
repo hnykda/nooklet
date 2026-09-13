@@ -4,8 +4,13 @@
  *
  *   positional        -> `_`
  *   --flag            -> flags.flag = true
+ *   --flag=value      -> flags.flag = "value"   (split at the first `=`)
  *   --flag value      -> flags.flag = "value"   (any next token not starting with `--`)
  *   --no-flag         -> flags.flag = false
+ *
+ * Destructive commands also map their flags here (`parseGcFlags`) rather than inline in `cli.ts`,
+ * so the wiring is tested: B-109's `--no-flag` change left `gc` reading a `no-backup` key that no
+ * longer existed, and nothing noticed because nothing could run it.
  */
 
 export interface Args {
@@ -23,6 +28,13 @@ export function parseArgs(argv: string[]): Args {
       continue;
     }
     const key = a.slice(2);
+    // `--flag=value`. Unsplit, `nooklet gc --dry-run=true` was a flag named "dry-run=true", so gc
+    // saw no --dry-run and ran for real: the flag meant to make it safe did the opposite.
+    const eq = key.indexOf("=");
+    if (eq > 0) {
+      flags.set(key.slice(0, eq), key.slice(eq + 1));
+      continue;
+    }
     // `--no-<flag>` is the flag set to false. It used to land as a key called "no-mirror" that
     // nothing read, so `--no-mirror` did nothing (B-109) — unnoticed while `serve` never wrote the
     // mirror, a live bug the moment B-95 made it write.
@@ -39,4 +51,56 @@ export function parseArgs(argv: string[]): Args {
     }
   }
   return { _, flags };
+}
+
+/** A flag the command cannot use as given; `cli.ts` prints the message and exits 1. */
+export class CliArgError extends Error {}
+
+/** Throws `CliArgError` naming every flag outside `known`. For commands where a typo must stop
+ * the run instead of being ignored (`gc`, `restore`). */
+export function checkFlags(args: Args, known: readonly string[]): void {
+  const unknown = [...args.flags.keys()].filter((k) => !known.includes(k));
+  if (unknown.length > 0) {
+    throw new CliArgError(
+      `unknown flag${unknown.length === 1 ? "" : "s"} ${unknown.map((k) => `--${k}`).join(", ")}`,
+    );
+  }
+}
+
+/** A yes/no flag: bare, `--no-x`, or `--x=true|false` (also yes/no, 1/0). Anything else throws. */
+export function booleanFlag(args: Args, name: string, fallback: boolean): boolean {
+  const v = args.flags.get(name);
+  if (v === undefined) return fallback;
+  if (typeof v === "boolean") return v;
+  const s = v.toLowerCase();
+  if (s === "true" || s === "yes" || s === "1") return true;
+  if (s === "false" || s === "no" || s === "0") return false;
+  throw new CliArgError(`--${name} is a yes/no flag; got "${v}"`);
+}
+
+export interface GcFlags {
+  dryRun: boolean;
+  noBackup: boolean;
+  assetGraceDays: number | undefined;
+}
+
+export const GC_FLAGS = ["data", "dry-run", "backup", "asset-grace"] as const;
+export const RESTORE_FLAGS = ["data", "force"] as const;
+
+/** `nooklet gc [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]`. */
+export function parseGcFlags(args: Args): GcFlags {
+  checkFlags(args, GC_FLAGS);
+  const grace = args.flags.get("asset-grace");
+  let assetGraceDays: number | undefined;
+  if (grace !== undefined) {
+    assetGraceDays = typeof grace === "string" && grace.trim() !== "" ? Number(grace) : Number.NaN;
+    if (!(Number.isFinite(assetGraceDays) && assetGraceDays >= 0)) {
+      throw new CliArgError("--asset-grace takes a number of days (0 or more)");
+    }
+  }
+  return {
+    dryRun: booleanFlag(args, "dry-run", false),
+    noBackup: !booleanFlag(args, "backup", true),
+    assetGraceDays,
+  };
 }

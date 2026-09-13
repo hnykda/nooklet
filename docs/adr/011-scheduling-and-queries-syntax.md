@@ -54,7 +54,10 @@ not have to reverse-engineer either from `packages/core/src/query.ts`.
 
 Whitespace-separated terms; juxtaposition is `and`; `or` binds loosest, `not` (or a `-` prefix)
 tightest; parentheses group. Parsing never throws: a malformed query is an error with a message
-in words and the offending span, rendered as such.
+in words and the offending span, rendered as such. A query may nest at most 32 levels of
+parentheses and `not`, and hold at most 100 filters; past either it is such an error (B-129 — a
+fence is synced content any writer can author, and past those sizes the parser's stack or
+SQLite's expression depth gave out).
 
 | write | means |
 |---|---|

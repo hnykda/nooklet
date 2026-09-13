@@ -3,7 +3,7 @@
  * `nooklet export`.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { newId, type Op } from "@nooklet/core";
@@ -253,5 +253,32 @@ describe("startLiveMirror", () => {
     ]);
     await wait(50);
     expect(existsSync(join(dataDir, "pages", "Mirror Stopped.md"))).toBe(false);
+  });
+  it("a page name past NAME_MAX neither stalls later sweeps nor leaves temp files behind (B-126)", async () => {
+    const logs: string[] = [];
+    const mirror = startLiveMirror(ctx, dataDir, { debounceMs: 5, log: (m) => logs.push(m) });
+    try {
+      const page = (name: string): string => {
+        const id = newId();
+        write([op(id, { kind: "page.create", name, journalDay: null, createdAt: 1 })]);
+        return id;
+      };
+      const alpha = page("Alpha");
+      mirror.flush();
+      page("Poznámky z porady o rozpočtu na příští čtvrtletí ".repeat(8).slice(0, 300));
+      mirror.flush();
+      page("Beta");
+      write([op(alpha, { kind: "page.delete", deletedAt: 2 })]);
+      mirror.flush();
+
+      const files = readdirSync(join(dataDir, "pages"));
+      expect(files.filter((f) => f.endsWith(".tmp"))).toEqual([]);
+      expect(files).toContain("Beta.md");
+      expect(files).not.toContain("Alpha.md");
+      expect(files.some((f) => f.startsWith("Pozn"))).toBe(true);
+      expect(logs.filter((l) => l.includes("could not") || l.includes("failed"))).toEqual([]);
+    } finally {
+      mirror.stop();
+    }
   });
 });

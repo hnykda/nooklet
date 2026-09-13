@@ -26,7 +26,7 @@
  * `asset` rows is a follow-up.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
   type AppliedOpResult,
@@ -357,10 +357,24 @@ function importAssets(
   const paths = new Map<string, string>();
   let imported = 0;
   if (!existsSync(dir)) return { paths, imported };
-  for (const name of readdirSync(dir)) {
+  // Symlinks are never followed, here or per entry below (B-127). An imported asset is served
+  // WITHOUT authentication at /assets/:id and syncs to every device, so a link in a graph someone
+  // else made — `assets/pic.png -> ~/.ssh/id_ed25519` — would publish whatever it points at. The
+  // old `statSync(path).isFile()` followed links, and threw ENOENT out of the whole import on a
+  // dangling one. Dirent types come from lstat, so they describe the link, not its target.
+  if (lstatSync(dir).isSymbolicLink()) {
+    warnings.push("assets/ is a symbolic link, not followed: no assets were imported");
+    return { paths, imported };
+  }
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const name = entry.name;
     if (name.startsWith(".")) continue;
+    if (entry.isSymbolicLink()) {
+      warnings.push(`assets/${name}: a symbolic link, not followed`);
+      continue;
+    }
+    if (!entry.isFile()) continue;
     const filePath = join(dir, name);
-    if (!statSync(filePath).isFile()) continue;
     try {
       const stored = storeAssetBytes(ctx.driver, dataDir, {
         bytes: readFileSync(filePath),

@@ -33,7 +33,15 @@ import { WebSocketServer } from "ws";
 import { createServerContext, type ServerContext } from "./apply-ops.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
 import { createBackup, restoreBackup } from "./backup/index.js";
-import { type Args, parseArgs } from "./cli-args.js";
+import {
+  type Args,
+  booleanFlag,
+  CliArgError,
+  checkFlags,
+  parseArgs,
+  parseGcFlags,
+  RESTORE_FLAGS,
+} from "./cli-args.js";
 import { openDb } from "./db.js";
 import {
   activateModel,
@@ -170,6 +178,16 @@ function die(message: string): never {
   process.exit(1);
 }
 
+/** Runs a `cli-args.ts` flag parser, turning its `CliArgError` into `die`. */
+function cliArg<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch (err) {
+    if (err instanceof CliArgError) die(err.message);
+    throw err;
+  }
+}
+
 const USAGE = `nooklet — a local-first outliner server
 
   nooklet serve  [--data <dir>] [--port <n>] [--web <dir>]
@@ -286,6 +304,8 @@ async function main(): Promise<void> {
       const { ctx, config } = open(args);
       const result = exportAll(ctx.driver, config.dataDir);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      // Every other page was still written; say so in the exit status too.
+      if (result.failed.length > 0) process.exitCode = 1;
       return;
     }
 
@@ -563,13 +583,14 @@ async function main(): Promise<void> {
     case "restore": {
       const archivePath = args._[1];
       if (!archivePath) die("restore needs a path to a backup archive (see: nooklet backup)");
+      const force = cliArg(() => {
+        checkFlags(args, RESTORE_FLAGS);
+        return booleanFlag(args, "force", false);
+      });
       // Deliberately does NOT call open(args): that would create/initialize a fresh database at
       // the target data dir before restoreBackup ever gets to run its own refuse-to-clobber check.
       const dir = dataDir(args);
-      const result = restoreBackup(resolve(archivePath), {
-        dataDir: dir,
-        force: args.flags.get("force") === true,
-      });
+      const result = restoreBackup(resolve(archivePath), { dataDir: dir, force });
       process.stdout.write(
         `restored ${result.filesRestored} file(s) into ${dir} ` +
           `(archive schema version ${result.manifest.schemaVersion})\n` +
@@ -579,21 +600,10 @@ async function main(): Promise<void> {
     }
 
     case "gc": {
+      // Parsed before the database is opened: a flag gc does not understand stops the run.
+      const gcFlags = cliArg(() => parseGcFlags(args));
       const { ctx, config } = open(args);
-      const graceFlag = args.flags.get("asset-grace");
-      const assetGraceDays = typeof graceFlag === "string" ? Number(graceFlag) : undefined;
-      if (
-        assetGraceDays !== undefined &&
-        !(Number.isFinite(assetGraceDays) && assetGraceDays >= 0)
-      ) {
-        die("--asset-grace takes a number of days (0 or more)");
-      }
-      const report = runGc(ctx, {
-        dataDir: config.dataDir,
-        dryRun: args.flags.get("dry-run") === true,
-        noBackup: args.flags.get("no-backup") === true,
-        assetGraceDays,
-      });
+      const report = runGc(ctx, { dataDir: config.dataDir, ...gcFlags });
       // The op-log half can be refused (no device has synced yet); the asset half never is, so
       // both are always reported.
       if (report.refused) {

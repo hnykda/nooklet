@@ -8,13 +8,22 @@
  * away, not a per-block clean-up.
  *
  * Matching runs in JavaScript over a plain `SELECT`, not through SQL `LIKE`/`lower()`: SQLite's
- * `lower()` folds ASCII only, and this graph is half Czech. A regex needs the scan anyway. 18k
- * blocks take a few milliseconds.
+ * `lower()` folds ASCII only, and this graph is half Czech. A regex needs the scan anyway. The scan
+ * runs in a worker with a time budget (`./replace-scan.ts`, B-125): a backtracking pattern on the
+ * event loop used to freeze the whole server. 18k blocks take ~20 ms, most of it worker start-up.
  */
 
 import { z } from "zod";
 import { pageWireNameById } from "../rows.js";
 import { defineOp, OpError } from "./registry.js";
+import {
+  MAX_BLOCK_CHARS,
+  MAX_OUTPUT_CHARS,
+  runScan,
+  SCAN_BUDGET_MS,
+  type ScanResult,
+  ScanTimeoutError,
+} from "./replace-scan.js";
 import { currentHeadSeq, resolvePageIds } from "./resolve.js";
 import { BatchIdOut, BlockId, IdempotencyKey, PageRef } from "./schemas.js";
 
@@ -25,7 +34,10 @@ function escapeRegExp(s: string): string {
 /** Compile the query, refusing a pattern that could not be meant: invalid, or one that matches
  * the empty string (which would insert `replacement` between every two characters of the graph). */
 export function compileQuery(query: string, regex: boolean, caseSensitive: boolean): RegExp {
-  const flags = caseSensitive ? "g" : "gi";
+  // `u`, or the dialect is the ASCII one on a half-Czech graph (B-128): `\p{Lu}` silently became
+  // the literal text "p{Lu}" and matched nothing. `escapeRegExp`'s output is valid under `u`.
+  // `\w` and `\b` stay ASCII-only even so; the description says how to write a whole word.
+  const flags = caseSensitive ? "gu" : "giu";
   let re: RegExp;
   try {
     re = new RegExp(regex ? query : escapeRegExp(query), flags);
@@ -58,15 +70,17 @@ export const graphReplace = defineOp({
   description:
     "Finds query in the text of every block (or only blocks on pages, if given) and replaces " +
     "each occurrence with replacement. Literal text by default, case-insensitive unless " +
-    "case_sensitive; regex: true reads query as a JavaScript regular expression, in which case " +
-    "replacement may use $1-style group references. ALWAYS call with dry_run: true first: it " +
+    "case_sensitive; regex: true reads query as a JavaScript regular expression in Unicode (u) " +
+    "mode, in which case replacement may use $1-style group references. \\p{L} matches any " +
+    "letter, but \\w and \\b are ASCII-only: for a whole word write " +
+    "(?<![\\p{L}\\p{N}_])word(?![\\p{L}\\p{N}_]). ALWAYS call with dry_run: true first: it " +
     "returns every block that would change with its text before and after, and writes nothing. " +
     "Then call again without dry_run to apply. The real run changes every matched block in ONE " +
     "batch and returns its batch_id, so batch_undo reverses the whole replacement at once. Only " +
     "block text is touched - not page names, not properties. Refuses to change more than " +
     "max_blocks blocks (default 2000) so a loose pattern cannot rewrite the graph by accident; " +
     "matches lists at most limit blocks, with truncated: true and the full counts when there are " +
-    "more.",
+    "more. A pattern that runs longer than 2 seconds is refused as invalid; simplify it.",
   input: z
     .object({
       query: z.string().min(1).max(500),
@@ -121,11 +135,6 @@ export const graphReplace = defineOp({
     `${out.blocks_matched} block(s), ${out.occurrences} occurrence(s) ${out.dry_run ? "would change" : "changed"}`,
   handler: async (input, ctx) => {
     const re = compileQuery(input.query, input.regex, input.case_sensitive);
-    // A literal replacement must stay literal: `String.replace` reads `$&`/`$1` in the
-    // replacement string, which a person typing "$5" as the new text does not mean.
-    const replacer: string | (() => string) = input.regex
-      ? input.replacement
-      : () => input.replacement;
 
     const conditions = ["b.deleted_at IS NULL", "p.deleted_at IS NULL"];
     const params: unknown[] = [];
@@ -153,30 +162,95 @@ export const graphReplace = defineOp({
       params,
     );
 
-    const changed: Array<Candidate & { after: string; count: number }> = [];
-    let occurrences = 0;
-    for (const row of rows) {
-      re.lastIndex = 0;
-      const count = [...row.content.matchAll(re)].length;
-      if (count === 0) continue;
-      const after = row.content.replace(re, replacer as string);
-      if (after === row.content) continue;
-      changed.push({ ...row, after, count });
-      occurrences += count;
+    let scan: ScanResult;
+    try {
+      scan = await runScan({
+        contents: rows.map((r) => r.content),
+        source: re.source,
+        flags: re.flags,
+        replacement: input.replacement,
+        // A literal replacement must stay literal: `String.replace` reads `$&`/`$1` in the
+        // replacement string, which a person typing "$5" as the new text does not mean.
+        literalReplacement: !input.regex,
+        limits: {
+          maxBlocks: input.max_blocks,
+          maxBlockChars: MAX_BLOCK_CHARS,
+          maxOutputChars: MAX_OUTPUT_CHARS,
+        },
+      });
+    } catch (err) {
+      if (!(err instanceof ScanTimeoutError)) throw err;
+      throw input.regex
+        ? new OpError(
+            "invalid",
+            `the pattern took too long to run (over ${SCAN_BUDGET_MS / 1000} s); simplify it`,
+            "nested quantifiers such as (a+)+ or (\\w+\\s?)+ backtrack exponentially on text " +
+              "that almost matches; make the repeat unambiguous, or search literally with regex: false",
+          )
+        : new OpError(
+            "too_large",
+            `the search took too long to run (over ${SCAN_BUDGET_MS / 1000} s)`,
+            "narrow it with pages",
+          );
     }
-
-    if (changed.length > input.max_blocks) {
-      throw new OpError(
-        "too_large",
-        `${changed.length} blocks match, more than max_blocks (${input.max_blocks})`,
-        "narrow the query (pages, case_sensitive, a longer literal) or raise max_blocks deliberately",
-        { blocks_matched: changed.length, occurrences },
-      );
+    switch (scan.kind) {
+      case "too_many_blocks":
+        throw new OpError(
+          "too_large",
+          `${scan.blocksMatched} blocks match, more than max_blocks (${input.max_blocks})`,
+          "narrow the query (pages, case_sensitive, a longer literal) or raise max_blocks deliberately",
+          { blocks_matched: scan.blocksMatched, occurrences: scan.occurrences },
+        );
+      case "block_too_long": {
+        const row = rows[scan.index] as Candidate;
+        throw new OpError(
+          "too_large",
+          `the replacement would make block ${row.id} ${scan.length} characters long, more than ` +
+            `a block may hold (${scan.maxBlockChars})`,
+          "use a shorter replacement, or leave that block out with pages",
+          { block_id: row.id, length: scan.length, max: scan.maxBlockChars },
+        );
+      }
+      case "output_too_large":
+        throw new OpError(
+          "too_large",
+          `the replaced text would be more than ${scan.maxOutputChars} characters in total`,
+          "narrow the query (pages, a longer literal) or use a shorter replacement",
+        );
     }
+    const { occurrences } = scan;
+    const changed = scan.hits.map((h) => ({
+      ...(rows[h.index] as Candidate),
+      after: h.after,
+      count: h.count,
+    }));
 
     let seq = currentHeadSeq(ctx.db);
     let batchId: string | undefined;
     if (!input.dry_run && changed.length > 0) {
+      // Awaiting the scan let other work run, and `/sync/push` does not take `writeLock`: a
+      // device's edit to a matched block may have landed since the SELECT. Writing `after`,
+      // computed from the old text, would silently overwrite it. Re-read the matched blocks here,
+      // with no await between this check and `applyOps`, and refuse if any of them moved.
+      const current = new Map(
+        ctx.db
+          .all<{ id: string; content: string }>(
+            `SELECT b.id AS id, b.content AS content
+             FROM json_each(?) j JOIN block b ON b.id = j.value JOIN page p ON p.id = b.page_id
+             WHERE b.deleted_at IS NULL AND p.deleted_at IS NULL`,
+            [JSON.stringify(changed.map((c) => c.id))],
+          )
+          .map((r) => [r.id, r.content]),
+      );
+      const moved = changed.filter((c) => current.get(c.id) !== c.content);
+      if (moved.length > 0) {
+        throw new OpError(
+          "conflict",
+          `${moved.length} matched block(s) changed while the replacement was being computed; nothing was written`,
+          "run graph.replace again (dry_run first, to re-check the preview)",
+          { block_ids: moved.slice(0, 20).map((c) => c.id) },
+        );
+      }
       const applyResult = await ctx.applyOps(
         changed.map((c) => ctx.mintOp(c.id, { kind: "block.text", content: c.after })),
       );

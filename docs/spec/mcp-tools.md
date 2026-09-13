@@ -2027,14 +2027,17 @@ SQLite's `lower()` folds ASCII only and a regex needs the scan anyway.
 
 **Description**: "Finds `query` in the text of every block (or only blocks on `pages`, if given)
 and replaces each occurrence with `replacement`. Literal text by default, case-insensitive unless
-`case_sensitive`; `regex: true` reads `query` as a JavaScript regular expression, in which case
-`replacement` may use `$1`-style group references. ALWAYS call with `dry_run: true` first: it
+`case_sensitive`; `regex: true` reads `query` as a JavaScript regular expression in Unicode (u)
+mode, in which case `replacement` may use `$1`-style group references. `\p{L}` matches any letter,
+but `\w` and `\b` are ASCII-only: for a whole word write
+`(?<![\p{L}\p{N}_])word(?![\p{L}\p{N}_])`. ALWAYS call with `dry_run: true` first: it
 returns every block that would change with its text before and after, and writes nothing. Then
 call again without `dry_run` to apply. The real run changes every matched block in ONE batch and
 returns its `batch_id`, so `batch_undo` reverses the whole replacement at once. Only block text is
 touched — not page names, not properties. Refuses to change more than `max_blocks` blocks
 (default 2000) so a loose pattern cannot rewrite the graph by accident; `matches` lists at most
-`limit` blocks, with `truncated: true` and the full counts when there are more."
+`limit` blocks, with `truncated: true` and the full counts when there are more. A pattern that
+runs longer than 2 seconds is refused as invalid; simplify it."
 
 ```ts
 export const graphReplace = defineOp({
@@ -2059,8 +2062,17 @@ export const graphReplace = defineOp({
 ```
 
 A literal `replacement` is inserted verbatim (`$1` stays `$1`); only `regex: true` interprets
-it. A pattern that is invalid, or that matches the empty string, is `invalid`. `batch_id` is
-absent on `dry_run` and when nothing matched. `matches` is ordered by page name.
+it. A pattern that is invalid, or that matches the empty string, is `invalid`. The scan runs in a
+worker thread with a 2 s budget (B-125): a pattern still running then is `invalid` ("took too long
+to run"), so a backtracking regex cannot stall the server. `too_large` covers more than
+`max_blocks`: a replacement that grows any block past 100,000 characters (`block.update`'s cap; an
+already longer block may still be edited if the edit does not grow it), more than 20 M characters
+of replaced text in one call. Each block's replaced length is computed from its matches before
+the text is built, so an oversized block is refused without building it. All are decided in the
+dry run too. The real run re-reads the matched
+blocks before writing and is `conflict`, writing nothing, if any changed during the scan (a device
+sync can land meanwhile). `batch_id` is absent on `dry_run` and when nothing matched. `matches`
+is ordered by page name.
 
 **HTTP**: `POST /api/v1/graph.replace`.
 
