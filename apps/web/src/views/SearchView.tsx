@@ -9,6 +9,7 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { SearchHit, SearchInput } from "../data/api-client.js";
+import { displayRefName } from "../data/page-title.js";
 import { useSearchResults } from "../data/store.js";
 import { pageRoutePath, pageZoomRoutePath } from "./navigateTarget.js";
 import "./search-filters.css";
@@ -208,7 +209,9 @@ export function SearchView(): JSX.Element {
                   <li class="search-result">
                     <button type="button" class="search-result-open" onClick={() => openHit(hit)}>
                       <div class="search-result-page">
-                        {hit.page}
+                        {/* A journal day in the reader's title format, not its ISO storage name
+                            (ADR 018, B-354). The hit carries only the name, so `displayRefName`. */}
+                        {displayRefName(hit.page)}
                         <Show when={hit.breadcrumb.length > 0}>
                           <span class="search-result-breadcrumb">
                             {" "}

@@ -113,12 +113,20 @@ LATER → hint only, 0 rows; typing again under LATER → 2 results. Test that w
 ---
 
 ### B-354 · Search hits and Find & Replace groups name journal days by their ISO storage name
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, M8 views QA (finding Q5) ·
-**Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, M8 views QA (finding Q5) ·
+**Test:** `e2e/tests/journal-display-names.spec.ts`
 
 With the journal title format `E, dd.MM.yyyy`, a search hit reads "2024-09-22 › todo" and a Find &
 Replace group "2022-12-16", while the agenda and tagged-pages lists on the same screens say "Sun,
 22.09.2024". ADR 018: every place that shows a page name to a person goes through the display name.
+
+**Fixed 2026-09-13.** Both render `data/page-title.ts#displayRefName(name)` (the hit and the match
+carry only a name, which is the case that function exists for) in `views/SearchView.tsx` and
+`views/FindReplaceView.tsx`; navigation still uses the stored name. Real graph copy: hits read
+"Sun, 22.09.2024 › todo › zaplatit zalohu na delnase", replace groups "Fri, 16.12.2022". Tests that
+would have caught it: `e2e/tests/journal-display-names.spec.ts` — the search test failed before
+(received `["2026-08-13", "Journal Names Plain Page"]`), and the replace test failed with only
+`SearchView.tsx` fixed.
 
 ---
 

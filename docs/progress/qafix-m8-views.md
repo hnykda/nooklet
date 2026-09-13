@@ -41,14 +41,19 @@ replace (low, B-354); Q6 search filter order splits the date range (low, B-355).
   The same probe recorded the Q5/Q6 "before" state (ISO names in hits and replace groups; filter
   order Tag, Namespace, Updated after, Task, Show, Journals only, Updated before).
 
+- Q5 (B-354) — `displayRefName` for search hit pages and replace group headings. Test
+  `e2e/tests/journal-display-names.spec.ts` (2; each failed without its half of the fix). Nearby:
+  search-cleared, search-filters, replace, replace-stale, replace-unicode, dates, journals — 23
+  passed. Real graph probe `search.mjs phone`: "Sun, 22.09.2024 › todo…", "Fri, 16.12.2022".
+
 ## In flight
 
-- Q5 next.
+- Q6 next.
 
 ## Next steps
 
-Q5 → Q6, one commit each, each with its failing test first. Then a final pass over all touched
-specs, `pnpm -r test`, `pnpm -r typecheck`.
+Q6, with its failing test first. Then a final pass over all touched specs, `pnpm -r test`,
+`pnpm -r typecheck`.
 
 ## Decisions
 

@@ -18,6 +18,7 @@ import {
   onCleanup,
   Show,
 } from "solid-js";
+import { displayRefName } from "../data/page-title.js";
 import { type ReplaceInput, type ReplaceResult, refactorApi } from "../data/refactor-api.js";
 import { forceSync } from "../db/client.js";
 import "./find-replace.css";
@@ -294,7 +295,9 @@ export function FindReplaceView(): JSX.Element {
                 {(m) => (
                   <li class="replace-result">
                     <div class="replace-result-page">
-                      {m.page}
+                      {/* A journal day in the reader's title format, not its ISO storage name
+                          (ADR 018, B-354). */}
+                      {displayRefName(m.page)}
                       <span class="replace-result-count">
                         {m.count} match{m.count === 1 ? "" : "es"}
                       </span>
