@@ -70,8 +70,10 @@ blocks become separate trash entries. Probe: `Date.now` advancing 1 ms per call,
 ---
 
 ### B-122 · `block.to_page`, `block.move_to_page` and `page.merge` commit their writes, then answer 400
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, M7 server/sync review (F3) ·
-**Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, M7 server/sync review (F3) ·
+**Test:** `packages/server/src/ops/refactor-atomicity.test.ts` "block.to_page onto an ordinary page
+named like a date extends that page", and "… writes nothing when any op of its batch is rejected"
+for each of the three ops
 
 `ctx.applyOps` commits immediately; these three handlers look for a rejected result only
 afterwards and throw, so the caller gets an error with no `batch_id` while part of the batch has
@@ -82,6 +84,15 @@ create is rejected, the continuation-line `block.create` is rejected (no such pa
 moves are rejected — and the `block.text` replacing the block with `[[2026-09-07]]` is applied.
 Block `2026-09-07\nmore text` with a child: `block.to_page` → 400 `rejected: page-key-collision`;
 the block now reads `[[2026-09-07]]` and `more text` exists nowhere. `verify` is clean.
+
+**Fixed 2026-09-13.** Both halves. `resolveOrMintPage` (`ops/block-move-to-page.ts`) looks for a
+live page under the key the new page would be stored with, whatever its `journal_day`, before
+minting a create — the ordinary `2026-09-07` page is the target. And all three handlers apply
+their batch through `ops/apply-all-or-nothing.ts`: inside a savepoint, rolled back before the
+`invalid` error is thrown, so a rejected op leaves nothing behind. The three rollback tests inject
+the rejection with a `beforeWrite` hook that points one move at a missing page, and assert the
+`op` and `changes` row counts are unchanged. All four tests fail without the fix. mcp-tools.md
+§4.3.25–27 errors updated.
 
 ---
 

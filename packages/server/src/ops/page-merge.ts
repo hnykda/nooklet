@@ -14,6 +14,7 @@ import {
   subtreePlaceOps,
 } from "../data-api.js";
 import { aliasKeysOf, pageLookupKeys } from "../page-aliases.js";
+import { applyAllOrNothing } from "./apply-all-or-nothing.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
 import { checkIfVersion, pageMetaWire, requirePage, wirePageName } from "./resolve.js";
@@ -166,9 +167,7 @@ export const pageMerge = defineOp({
       // 4. Source goes. Its blocks are already target's, so nothing else needs a tombstone.
       ops.push(ctx.mintOp(source.id, { kind: "page.delete", deletedAt: Date.now() }));
 
-      const applyResult = await ctx.applyOps(ops);
-      const rejected = applyResult.results.find((r) => r.status === "rejected");
-      if (rejected) throw new OpError("invalid", `merge rejected: ${rejected.reason}`);
+      const applyResult = await applyAllOrNothing(ctx, ops, "merge");
 
       const after = await ctx.data.pages.get(target.id);
       if (!after) throw new OpError("internal", "target disappeared during merge");

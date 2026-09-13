@@ -9,6 +9,7 @@ import { newId, type Op } from "@nooklet/core";
 import { z } from "zod";
 import { boundsForPageEnd, newOrderKeys, subtreePlaceOps } from "../data-api.js";
 import { getBlockRow, pageWireNameById } from "../rows.js";
+import { applyAllOrNothing } from "./apply-all-or-nothing.js";
 import { resolveOrMintPage } from "./block-move-to-page.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";
@@ -121,9 +122,7 @@ export const blockToPage = defineOp({
       if (row.content !== link)
         ops.push(ctx.mintOp(input.id, { kind: "block.text", content: link }));
 
-      const applyResult = await ctx.applyOps(ops);
-      const rejected = applyResult.results.find((r) => r.status === "rejected");
-      if (rejected) throw new OpError("invalid", `rejected: ${rejected.reason}`);
+      const applyResult = await applyAllOrNothing(ctx, ops, "block.to_page");
 
       return {
         page: pageWireNameById(ctx.db, target.page.id),

@@ -1859,7 +1859,10 @@ Every descendant of every child gets its own `block.place` so nothing is strande
 ```
 
 **Errors**: `not_found` — `id` unknown; `invalid` — the block has no first line and no `name`
-was given, or the name exceeds 512 chars; `conflict` — stale `if_version`.
+was given, or the name exceeds 512 chars, or the reducer rejected any op of the batch (nothing is
+written: the batch runs in a savepoint and is rolled back first, B-122); `conflict` — stale
+`if_version`. A name whose stored form already belongs to a live page — an ordinary page called
+`2026-09-07`, say — extends that page rather than minting a colliding create.
 
 ---
 
@@ -1913,7 +1916,8 @@ export const blockMoveToPage = defineOp({
 ```
 
 **Errors**: `not_found` — `id` unknown, or `page` unknown with `create_page: false`; `conflict` —
-stale `if_version`; `invalid` — the reducer rejected the placement.
+stale `if_version`; `invalid` — the reducer rejected any op of the batch, in which case nothing is
+written (B-122).
 
 ---
 
@@ -1986,7 +1990,8 @@ link is `[[X|label]]` is not in `ref` until B-86 is fixed; the alias covers it m
 ```
 
 **Errors**: `not_found` — either page unknown; `invalid` — same page (also via an alias), or
-`source` is a journal day; `conflict` — stale `if_version`.
+`source` is a journal day, or the reducer rejected any op of the batch (nothing is written,
+B-122); `conflict` — stale `if_version`.
 
 ---
 

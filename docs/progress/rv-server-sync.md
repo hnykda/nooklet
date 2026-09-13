@@ -20,8 +20,8 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 | Finding | Severity | Bug | Status |
 |---|---|---|---|
 | F1 children orphaned when a later device place wins over a server cross-page move | high | B-120 | fixed b913148 |
-| F2 deleted descendants left behind by a cross-page move; restore → invisible | medium | B-120 (same mechanism) | fixed (see Done) |
-| F3 to_page / move_to_page / merge commit, then throw | medium | B-122 | logged |
+| F2 deleted descendants left behind by a cross-page move; restore → invisible | medium | B-120 (same mechanism) | fixed 6e1281f |
+| F3 to_page / move_to_page / merge commit, then throw | medium | B-122 | fixed (see Done) |
 | F4 batch.undo / trash.restore report success on a rejected un-delete | medium | B-90 (existing) | logged |
 | F5 verify replays rejected ops | medium | B-123 | logged |
 | F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | logged |
@@ -35,7 +35,7 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 
 - F1 / B-120 — `b913148`: `packages/server/src/subtree-page-repair.ts` + hookup in `apply-ops.ts`;
   tests `subtree-page-repair.test.ts` (3, all fail without the pass).
-- F2 / B-120 — (this commit): the walk includes tombstoned descendants (live via the partial
+- F2 / B-120 — `6e1281f`: the walk includes tombstoned descendants (live via the partial
   `block_children` index, tombstoned from one scan — a per-parent unfiltered query was 6.4 s of
   full scans on a 961-block real subtree); walks only blocks that changed page in the batch; core
   `resolvePlace` keeps a tombstoned parent the block already has. Tests: 2 more in
@@ -44,10 +44,14 @@ re-pointed at `da85cfb` before any work, as the brief requires.
   back, 0 mismatches, verify ok. Suites: core 335, server 526, web 684 — all pass (flaky timeouts
   under load 20–40 rerun green: core property test, tokens quadratic timing, plugin host, web
   render-seams). `verify` on the real graph copy OK (20,411 ops).
+- F3 / B-122 — (this commit): `ops/apply-all-or-nothing.ts` (savepoint + rollback before throwing)
+  used by `block.to_page`, `block.move_to_page`, `page.merge`; `resolveOrMintPage` returns a live
+  page already stored under the would-be key. Tests `ops/refactor-atomicity.test.ts` (4, all fail
+  before). Server suite 530/530.
 
 ## Next steps, in order
 
-F3, F4, F5, F6, F7, F8, F9, F10, then the review doc.
+F4, F5, F6, F7, F8, F9, F10, then the review doc.
 
 ## How to resume
 
