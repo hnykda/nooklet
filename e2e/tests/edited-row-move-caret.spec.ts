@@ -78,6 +78,9 @@ test("Alt+Up moves the block being edited without moving the caret (B-501)", asy
   await expect.poll(() => editorText(page)).toBe("twoX");
 });
 
+// A guard, not a reproduction: this one passed in WebKit before the fix too (undo places the caret
+// itself after the reorder). It covers the fix's riskiest caller — a refocus after a move whose
+// caret the undo, not the user, decided.
 test("undoing Alt+Up moves the block back without moving the caret (B-501)", async ({
   page,
   browserName,
