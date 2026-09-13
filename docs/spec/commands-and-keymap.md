@@ -746,7 +746,8 @@ stays at the end. With typing waiting — or with a `[[`/`#`/`((` or `/` popup o
 offsets into the buffer (B-463) — the buffer keeps the typing and the row shows "This block
 changed elsewhere." with **Use the other version** (writes that text as one undo step; the waiting
 keystrokes are dropped, and Cmd/Ctrl+Z brings them back) and **Keep mine** (dismisses; the typing is
-written as usual, and that version is not offered again). A newer version whose text is the text
+written as usual, and that version is not offered again — nor its text under a newer `content_hlc`,
+B-464). A newer version whose text is the text
 the typing started from — a write that moved only the task marker, which `block.update` sends with
 a `block.text` of the same content — is not offered, and clears a standing notice (B-462). The
 editor's clock absorbs every `content_hlc` the page fetch brings, so a write of the typing, or of

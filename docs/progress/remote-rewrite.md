@@ -103,3 +103,13 @@ Scratch `…/scratchpad/m11/remote-rewrite-verify/`, same port 6412.
   marker flip LATER→NOW over typing: no notice, typing and NOW both stored (B-462); clock 20 s
   behind: rewrite taken, typing on it stored (B-461); block put back. `pnpm nooklet verify` on the
   copy: 20,498 ops replayed, OK.
+- Touch (Pixel 7 emulation in Chromium, scratch run, not kept): tapping either notice button keeps
+  the editor focused and does what the button says. Regression on 6412 after B-463: journals,
+  journal-midnight, page-rename, read-only, phone, embeds, paste-page-properties,
+  fence-task-clipboard, follow-link, follow-link-popup, date-picker-type-ahead, palette-text-keys,
+  focus-return, block-timestamps 59/59; editing, focus, undo-redo, redo, undo-gaps, remote-device,
+  editing-row-leaves, journal-stream-editing, selection 79/79. Edges spec `--repeat-each=3` 24/24
+  (after c0524a9 made the popup test's page names per repeat).
+- B-464 (logged 90324a8): Keep mine, then a marker flip of the dismissed version inside one burst of
+  typing, brought the notice back. Fix: `offered` keeps the text; same text under a newer HLC →
+  `hold`. Edges test red before; both specs 19/19; remote-text unit 20/20.

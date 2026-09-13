@@ -36,8 +36,8 @@ export type RemoteVerdict =
    * other write did not change the text (an agent flipping the task marker writes a `block.text`
    * of the same content). Nothing to offer, and a standing notice for this block is moot (B-462). */
   | "untouched"
-  /** Newer, unsaved typing, and this exact version was already offered (the notice stands, or was
-   * dismissed): nothing changes. */
+  /** Newer, unsaved typing, and this version was already offered (the notice stands, or was
+   * dismissed) — the same `content_hlc`, or the same text under a newer one: nothing changes. */
   | "hold";
 
 function later(a: string | undefined, b: string): string {
@@ -47,8 +47,8 @@ function later(a: string | undefined, b: string): string {
 export class TextVersions {
   /** Per block: the newest HLC of a text the tree showed (or loaded into the editor) or wrote. */
   private readonly known = new Map<BlockId, string>();
-  /** Per block: the newest HLC offered in a notice and not taken. */
-  private readonly offered = new Map<BlockId, string>();
+  /** Per block: the newest version offered in a notice and not taken — its HLC and its text. */
+  private readonly offered = new Map<BlockId, { hlc: string; text: string | undefined }>();
 
   /** Ops this tab wrote: `block.text` sets a block's `content_hlc`, and so does `block.create`. */
   noteWrites(ops: readonly Pick<Op, "hlc" | "entity" | "payload">[]): void {
@@ -73,7 +73,8 @@ export class TextVersions {
   /**
    * The verdict for a fetched text of the block being edited. `sameText`: it says what the buffer
    * already says. `unsaved`: the buffer holds typing not yet written. `sameAsBeforeTyping`: it says
-   * what the buffer said before that typing began.
+   * what the buffer said before that typing began. `text`: its editing text, which tells a version
+   * already offered arriving again under a newer HLC (a marker flip of it) from a new one.
    *
    * Records what it decides: a taken or matching version becomes known; an offered one becomes
    * offered but NOT known — the database still holds it, and if the typing's write later loses to
@@ -82,7 +83,7 @@ export class TextVersions {
   decide(
     id: BlockId,
     hlc: string,
-    state: { sameText: boolean; unsaved: boolean; sameAsBeforeTyping?: boolean },
+    state: { sameText: boolean; unsaved: boolean; sameAsBeforeTyping?: boolean; text?: string },
   ): RemoteVerdict {
     if (!this.isNewer(id, hlc)) {
       // A block first seen while being edited (created elsewhere, then focused before any refetch
@@ -102,8 +103,14 @@ export class TextVersions {
       return "untouched";
     }
     const offered = this.offered.get(id);
-    if (offered !== undefined && offered >= hlc) return "hold";
-    this.offered.set(id, hlc);
+    if (offered !== undefined && offered.hlc >= hlc) return "hold";
+    // The text already offered, under a newer HLC: a write that left it alone — an agent flipping
+    // the task marker — is not a new version, and a dismissed notice must not come back (B-464).
+    if (offered !== undefined && state.text !== undefined && offered.text === state.text) {
+      this.offered.set(id, { hlc, text: offered.text });
+      return "hold";
+    }
+    this.offered.set(id, { hlc, text: state.text });
     return "offer";
   }
 

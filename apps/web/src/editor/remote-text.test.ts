@@ -139,6 +139,20 @@ describe("TextVersions (B-192)", () => {
     expect(v.decide("b", h(400, "bbbbbbbb"), { sameText: false, unsaved: true })).toBe("offer");
   });
 
+  it("an offered version's text again under a newer HLC is held, not offered again (B-464)", () => {
+    const v = new TextVersions();
+    v.noteShown("b", h(100));
+    const typing = { sameText: false, unsaved: true };
+    expect(v.decide("b", h(200, "bbbbbbbb"), { ...typing, text: "theirs" })).toBe("offer");
+    // Dismissed, still typing; the other writer flips the marker: same text, newer HLC.
+    expect(v.decide("b", h(300, "bbbbbbbb"), { ...typing, text: "theirs" })).toBe("hold");
+    // A different text is a new version.
+    expect(v.decide("b", h(400, "bbbbbbbb"), { ...typing, text: "theirs, again" })).toBe("offer");
+    // Without a text to compare, only the HLC decides, as before.
+    expect(v.decide("b", h(500, "bbbbbbbb"), typing)).toBe("offer");
+    expect(v.decide("b", h(600, "bbbbbbbb"), typing)).toBe("offer");
+  });
+
   it("taking an offered version makes it known and clears the offer", () => {
     const v = new TextVersions();
     v.noteShown("b", h(100));

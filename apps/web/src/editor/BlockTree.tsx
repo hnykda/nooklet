@@ -299,6 +299,7 @@ export function BlockTree(props: {
             // Enter then garbled the rewrite (B-463). The newer version is offered instead.
             unsaved: hasUnsavedTyping(editingBlockId) || isEditorPopupOpen(),
             sameAsBeforeTyping: sameAsBeforeTyping(editingBlockId, fetchedEdited),
+            text: editTextOf(fetchedEdited),
           }),
         );
         if (verdict === "take") {

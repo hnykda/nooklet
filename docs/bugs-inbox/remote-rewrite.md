@@ -156,8 +156,10 @@ still takes the other text whole. The test failed before the fix (no notice: the
 ---
 
 ### B-464 · "Keep mine", then a write elsewhere that leaves that version's text alone, brings the notice back
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, m11/remote-rewrite verification pass
-(scratch e2e) · **Test:** none yet
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m11/remote-rewrite verification pass
+(scratch e2e) · **Test:** `e2e/tests/remote-rewrite-edges.spec.ts` "Keep mine, then a marker flip of
+the dismissed version: the notice stays gone"; `apps/web/src/editor/remote-text.test.ts` "an offered
+version's text again under a newer HLC is held, not offered again (B-464)"
 
 Type into `TODO mine` without pausing; an agent writes `TODO theirs`; the notice comes; click **Keep
 mine** and keep typing. The agent then flips the marker (`old_str: TODO → new_str: DONE`, a
@@ -167,3 +169,7 @@ typing is written, the database holds it and a later flip carries it (B-462's `u
 
 Cause: `TextVersions` remembers a dismissed version by its `content_hlc` only (`offered`), and the
 flip moved the HLC without changing the text.
+
+Fixed 2026-09-13: `offered` keeps the offered version's editing text with its HLC, and `decide`
+(given `text`) answers `hold` for that text under a newer HLC. The e2e test failed before the fix
+(notice count 1).

@@ -248,3 +248,32 @@ test("a rewrite while the [[ popup is open does not garble the pick", async ({ p
     .poll(() => storedText(page, name), { timeout: 15_000 })
     .toBe(`ALPHA BETA see [[${query}`);
 });
+
+test("Keep mine, then a marker flip of the dismissed version: the notice stays gone", async ({
+  page,
+}) => {
+  const name = unique("Remote Edge Keep Flip");
+  await openEditing(page, name, "- TODO mine\n- other");
+  const id = await idOf(page, name, "mine");
+
+  await page.keyboard.type(" typed");
+  const write = api(page, "block.update", { id, content: "TODO theirs" });
+  const typed = await typeWhile(page, async () => (await notice(page).count()) > 0);
+  await notice(page).getByRole("button", { name: "Keep mine" }).click();
+
+  // Still typing: the flip carries the dismissed text `theirs` under a newer `content_hlc` (B-464).
+  const flip = api(page, "block.update", { id, old_str: "TODO", new_str: "DONE" });
+  const more = await typeWhile(
+    page,
+    async () => (await page.locator(".vr-row").first().locator(".vr-marker-DONE").count()) > 0,
+    "y",
+  );
+  const serverMeanwhile = await storedText(page, name);
+  await Promise.all([write, flip]);
+  await expect(notice(page)).toHaveCount(0);
+  expect(serverMeanwhile, "the typing stayed unsaved through the flip").toBe("theirs");
+
+  await expect
+    .poll(() => storedText(page, name), { timeout: 15_000 })
+    .toBe(`mine typed${typed}${more}`);
+});
