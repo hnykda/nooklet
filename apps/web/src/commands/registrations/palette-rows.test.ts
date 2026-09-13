@@ -18,6 +18,7 @@ import { matchesWhen } from "../when/index.js";
 import { createFakeDatePickerHost } from "./date-picker-host.js";
 import { createCoreCommands } from "./index.js";
 import { createFakeRefactorHost } from "./refactor.js";
+import { createFakeShelfHost } from "./shelf.js";
 
 function setup() {
   const editor = createFakeEditorHost(undefined);
@@ -26,6 +27,7 @@ function setup() {
   const palette = createPaletteController();
   const datePicker = createFakeDatePickerHost();
   const refactor = createFakeRefactorHost({ page: "Current", pick: "Target" });
+  const shelf = createFakeShelfHost();
   const commands = createCoreCommands({
     editor,
     navigation,
@@ -33,6 +35,7 @@ function setup() {
     palette,
     datePicker,
     refactor: refactor.host,
+    shelf,
   });
   const effects = (): number =>
     editor.structuralCalls.length +
@@ -40,6 +43,7 @@ function setup() {
     app.calls.length +
     datePicker.calls.length +
     refactor.calls.length +
+    shelf.calls.length +
     (palette.isOpen() ? 1 : 0);
   return { commands, effects, palette };
 }

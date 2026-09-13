@@ -235,6 +235,7 @@ only, which is itself a deliberate, unambiguous choice, not an omission).
 | `block.copySelection` | Copy selected blocks as markdown | Cmd+C | Ctrl+C | `blockSelected` |
 | `block.duplicate` | Duplicate block | Cmd+Shift+D | Ctrl+Shift+D | `editorFocused \|\| blockSelected` |
 | `block.copyRef` | Copy block reference | Cmd+Shift+C | Ctrl+Shift+C | `editorFocused \|\| blockSelected` |
+| `block.openOnShelf` | Open on shelf | — | — | `editorFocused \|\| blockSelected` |
 | `edit.paste` | Paste | Cmd+V | Ctrl+V | `editorFocused` |
 
 **R16.** `block.split` MUST split the block's `content` at the caret offset into `before`/`after`
@@ -373,6 +374,11 @@ copy's top block at its original caret offset. `block.copyRef` copies the string
 the focused/anchor block to the system clipboard (no popup, no autocomplete — this is the
 "canonical block reference" text a user pastes elsewhere).
 
+**R32a.** `block.openOnShelf` puts the focused block (or the first selected block) on the
+right-hand shelf, exactly as a Shift+click on its bullet does: newest card first, a block already
+on the shelf moves back to the top. It is also a bullet context-menu entry. No focus or selection
+change.
+
 **R33.** `edit.paste`'s keybinding row is informational: `Cmd+V`/`Ctrl+V` is the OS/browser paste
 gesture and is never matched by the keydown dispatcher (R12); the actual trigger is the editor's
 native `paste` DOM event (`EditorView.domEventHandlers({ paste })`, research 04 §3.7), listed here
@@ -473,6 +479,7 @@ the palette, the block's context menu, and (for Todo only) the slash menu's "TOD
 | `nav.forward` | Go forward | Cmd+] | Alt+Right | `true` |
 | `nav.followLink` | Follow link under cursor | Alt+Enter | Alt+Enter | `editorFocused && caretInLink` |
 | `search.open` | Open search | Cmd+Shift+F | Ctrl+Shift+F | `true` |
+| `nav.openPageOnShelf` | Open this page on shelf | — | — | `true` |
 
 **R40.** `palette.open` opens one shared palette component (§ Interfaces, `PaletteState`) in
 **mixed mode**: as the user types, results interleave fuzzy-matched pages/journals and fuzzy-
@@ -503,6 +510,11 @@ URL opens in a new tab/window. The pointer equivalent while editing is Cmd/Ctrl+
 click only moves the caret, since the block is in raw-markdown edit mode); while **not** editing
 (rendered view), a plain click on any of these already navigates, so `nav.followLink`'s keyboard
 form exists specifically for the editing case.
+
+**R43a.** `nav.openPageOnShelf` puts the page the current route shows on the shelf (a no-op off a
+page route — `when` cannot see the route). In the palette, Shift+Enter or Shift+click on a page row
+puts that page on the shelf instead of opening it, and the palette shows a one-line hint saying so
+while a page row is highlighted.
 
 **R44.** `search.open` opens the full-text/semantic/hybrid search view (PLAN §9) — filterable by
 tag/page/namespace/date/marker, with snippets. This is **not** the excluded graph-view feature

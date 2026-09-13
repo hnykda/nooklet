@@ -160,6 +160,38 @@ describe("<CommandPalette>", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  // B-160: the shelf's keyboard way in from the page switcher, same modifier as Shift+click.
+  it("Shift+Enter on a page row shelves it instead of opening it, and says so", async () => {
+    const onSelectPage = vi.fn();
+    const onShelfPage = vi.fn();
+    function HarnessWithShelf() {
+      const pages = createFakePageSource([
+        { id: "p1", title: "Recipes", aliases: [], updatedAt: 1 },
+      ]);
+      return (
+        <CommandProvider commands={[]} platform="mac">
+          <Opener />
+          <CommandPalette
+            pages={pages}
+            getContext={baseContext}
+            onSelectPage={(p) => onSelectPage(p.id)}
+            onShelfPage={(p) => onShelfPage(p.id)}
+          />
+        </CommandProvider>
+      );
+    }
+    render(() => <HarnessWithShelf />);
+    fireEvent.click(screen.getByTestId("opener"));
+    const input = await screen.findByRole("combobox");
+    fireEvent.input(input, { target: { value: "Recipes" } });
+    await screen.findByText("Recipes");
+    expect(screen.getByText(/Shift\+Enter to open on the shelf/)).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    await waitFor(() => expect(onShelfPage).toHaveBeenCalledWith("p1"));
+    expect(onSelectPage).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  });
+
   it("selecting a page calls onSelectPage and closes", async () => {
     const onSelectPage = vi.fn();
     render(() => <Harness onSelectPage={onSelectPage} />);

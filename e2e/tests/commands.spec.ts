@@ -180,3 +180,66 @@ test("Open plugin manager opens Settings at the list of running plugins, not a b
   expect(running.length).toBeGreaterThan(0);
   await expect(section.locator(".set-plugin .set-label")).toHaveText(running);
 });
+
+// ── B-160: Open on shelf ────────────────────────────────────────────────────────────────────────
+
+function shelfCards(page: Page): Locator {
+  return page.locator(".app-shelf .shelf-card");
+}
+
+test("the bullet context menu's Open on shelf puts that block on the shelf (B-160)", async ({
+  page,
+}) => {
+  const outliner = await openEditing(page, "Commands Shelf Menu", "- first\n- shelve me");
+  await expect(page.locator(".app-shelf")).toHaveCount(0);
+
+  await outliner.locator(".vr-row").nth(1).click({ button: "right" });
+  const menu = page.locator(".ctx-menu");
+  await menu.locator(".ctx-item", { hasText: "Open on shelf" }).click();
+  await expect(menu).toHaveCount(0);
+
+  await expect(shelfCards(page)).toHaveCount(1);
+  await expect(shelfCards(page).first()).toContainText("shelve me");
+  await expect(page.locator(".app-shelf .shelf-crumb").first()).toContainText(
+    "Commands Shelf Menu",
+  );
+});
+
+test("Open on shelf and Open this page on shelf run from the palette (B-160)", async ({ page }) => {
+  const outliner = await openEditing(page, "Commands Shelf Palette", "- palette block");
+  await expect(editor(page)).toHaveText("palette block");
+
+  await runFromPalette(page, "Open on shelf");
+  await expect(shelfCards(page)).toHaveCount(1);
+  await expect(shelfCards(page).first()).toContainText("palette block");
+
+  await runFromPalette(page, "Open this page on shelf");
+  await expect(shelfCards(page)).toHaveCount(2);
+  // Newest first: the page card is on top, and it is the page, not the block again.
+  await expect(shelfCards(page).nth(0)).toHaveAttribute(
+    "data-shelf-key",
+    "page:commands shelf palette",
+  );
+  await expect(shelfCards(page).nth(1)).toHaveAttribute("data-shelf-key", /^block:/);
+  await expect(outliner.locator(".vr-row")).toHaveCount(1);
+});
+
+test("Shift+Enter on a page in the palette shelves it without leaving the current page (B-160)", async ({
+  page,
+}) => {
+  await openPage(page, "Commands Shelf Target", "- target body text");
+  await openPage(page, "Commands Shelf Here", "- where I am");
+  const url = page.url();
+
+  await page.keyboard.press(`${MOD}+k`);
+  const input = palette(page).locator(".cmd-input");
+  await input.fill("Commands Shelf Target");
+  await expect(palette(page).locator(".cmd-row--active")).toHaveText("Commands Shelf Target");
+  await expect(palette(page).locator(".cmd-hint")).toContainText("Shift+Enter");
+  await input.press("Shift+Enter");
+  await expect(palette(page)).toHaveCount(0);
+
+  expect(page.url()).toBe(url);
+  await expect(shelfCards(page)).toHaveCount(1);
+  await expect(shelfCards(page).first()).toContainText("target body text");
+});

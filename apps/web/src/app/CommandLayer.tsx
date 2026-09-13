@@ -76,6 +76,8 @@ import {
   pagePath,
 } from "./hosts.js";
 import { createRefactorHost } from "./refactor-host.js";
+import { openOnShelf } from "./shelf.js";
+import { createShelfHost } from "./shelf-host.js";
 import { useTheme } from "./theme.js";
 
 type ContextBase = Omit<CommandContext, "exec" | "args">;
@@ -311,6 +313,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       navigate: (path) => navigate(path),
       closePalette: () => palette.close(),
     }),
+    shelf: createShelfHost(),
   });
 
   const anyAutocomplete = createMemo(() => {
@@ -331,6 +334,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
         pages={pages}
         getContext={getContext}
         onSelectPage={(p) => navigation.openPage(p.id)}
+        onShelfPage={(p) => openOnShelf({ kind: "page", name: p.title })}
         onCreatePage={(name) => {
           // Create it and go there in one step. `page.create` is the same op the API uses, so a
           // page made this way is indistinguishable from one an agent or an import produced.

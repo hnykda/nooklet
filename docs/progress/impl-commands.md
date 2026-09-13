@@ -20,22 +20,26 @@ to `docs/bugs-inbox/impl-commands.md` (never `docs/BUGS.md`). e2e port 6402.
   Neighbours on 6402: commands+views+selection+context-menu+journals = 69 passed, 1 skipped
   (pre-existing fixme).
 
-- B-98 (commit after 0e42a75, "fix(web): Open plugin manager…"): `views/PluginsSection.tsx`,
+- `b9c4b48` B-98: `views/PluginsSection.tsx`,
   `data/plugins.ts`, one-line hookup in `SettingsPanel.tsx`, `AppDeps.openPluginManager` wired in
   `CommandLayer.tsx`; spec R52. e2e commands.spec (5) + settings.spec (8) = 13 passed on 6402.
 
+- B-160 / audit item 6 (commit after b9c4b48, "feat(web): Open on shelf…"):
+  `commands/registrations/shelf.ts` (+ test), `app/shelf-host.ts`, hookups in
+  `registrations/index.ts`, `CommandLayer.tsx`, `BlockContextMenu.tsx` ENTRIES, palette
+  Shift+Enter/Shift+click + `.cmd-hint` (`commands/styles.css`); spec R32a/R43a + table rows;
+  `context-menu.spec.ts` pinned list. e2e on 6402: commands+context-menu+shelf = 27 passed,
+  1 skipped (pre-existing fixme); views+navigation+pages = 50 passed.
+
 ## 2. In flight
 
-- Nothing uncommitted after the B-98 commit.
+- Nothing uncommitted after the B-160 commit.
 
 ## 3. Next steps, in order
 
-1. Audit item 6 (B-160): `block.openOnShelf` (focused/selected block), a current-page-on-shelf
-   command (area must be a core area — `page.` throws at boot, B-87), context-menu entry,
-   Shift+Enter on a palette page row; update `context-menu.spec.ts`'s pinned label list.
-2. B-106: a test that diffs the spec's E-tables against the registrations; fix the tables;
+1. B-106: a test that diffs the spec's E-tables against the registrations; fix the tables;
    DiagnosticsPanel's `app.diagnostics` comment.
-3. Final: full related e2e, `pnpm -r test`, typecheck, report.
+2. Final: full related e2e, `pnpm -r test`, typecheck, report.
 
 ## 4. Decisions
 

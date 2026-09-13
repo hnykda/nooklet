@@ -28,6 +28,10 @@ export interface CommandPaletteProps {
    * was to type a `[[link]]` to it first — which is fine once you know, and a dead end if you do
    * not. */
   onCreatePage?: (name: string) => void;
+  /** Shift+Enter or Shift+click on a page row: put that page on the shelf instead of opening it
+   * (B-160) — the same modifier that shelves a bullet or a `[[link]]`. Without it, Shift does
+   * nothing special. */
+  onShelfPage?: (page: PageSummary) => void;
 }
 
 interface Row {
@@ -147,7 +151,13 @@ export function CommandPalette(props: CommandPaletteProps) {
     setHighlight(0);
   }
 
-  async function selectRow(row: Row) {
+  async function selectRow(row: Row, shift = false) {
+    if (shift && row.kind === "page" && row.page && props.onShelfPage) {
+      mru.record("page", row.page.id);
+      props.onShelfPage(row.page);
+      palette.close();
+      return;
+    }
     if (row.kind === "create") {
       props.onCreatePage?.(palette.state().query.trim());
       palette.close();
@@ -183,7 +193,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     if (e.key === "Enter") {
       e.preventDefault();
       const row = list[highlight()];
-      if (row) void selectRow(row);
+      if (row) void selectRow(row, e.shiftKey);
     }
   }
 
@@ -232,7 +242,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   aria-selected={i() === highlight()}
                   classList={{ "cmd-row": true, "cmd-row--active": i() === highlight() }}
                   onMouseEnter={() => setHighlight(i())}
-                  onClick={() => void selectRow(row)}
+                  onClick={(e) => void selectRow(row, e.shiftKey)}
                 >
                   <span>{row.title}</span>
                   <Show when={row.subtitle}>
@@ -245,6 +255,10 @@ export function CommandPalette(props: CommandPaletteProps) {
               <div class="cmd-empty">No results</div>
             </Show>
           </div>
+          {/* Said on screen because the shelf is otherwise found only by accident (B-160). */}
+          <Show when={props.onShelfPage && rows()[highlight()]?.kind === "page"}>
+            <div class="cmd-hint">Enter to open · Shift+Enter to open on the shelf</div>
+          </Show>
         </div>
       </div>
     </Show>

@@ -9,6 +9,7 @@ import { createFormatCommands } from "./format.js";
 import { createInsertCommands } from "./insert.js";
 import { createNavCommands } from "./nav.js";
 import { createRefactorCommands, type RefactorHost } from "./refactor.js";
+import { createShelfCommands, type ShelfHost } from "./shelf.js";
 import { createStructuralCommands } from "./structural.js";
 import { createTaskCommands } from "./task.js";
 import { createTemplateCommands } from "./templates.js";
@@ -23,6 +24,8 @@ export interface CoreCommandDeps {
   /** M7 refactors (ADR 020). Optional so a host without a server connection — or a test that
    * does not care — simply has no "Turn into page"/"Merge"/"Find and replace" commands. */
   refactor?: RefactorHost;
+  /** "Open on shelf" (B-160). Optional like `refactor`: a host with no shelf has no such commands. */
+  shelf?: ShelfHost;
 }
 
 /** Every command core registers at startup (E.1-E.6 of the spec). Structural `Block`-category
@@ -42,6 +45,7 @@ export function createCoreCommands(deps: CoreCommandDeps): Command[] {
     ...createTemplateCommands({ editor: deps.editor }),
     ...createAppCommands({ app: deps.app }),
     ...(deps.refactor ? createRefactorCommands({ refactor: deps.refactor }) : []),
+    ...(deps.shelf ? createShelfCommands({ shelf: deps.shelf }) : []),
   ];
 }
 
@@ -55,6 +59,7 @@ export {
   createRefactorCommands,
   type RefactorHost,
 } from "./refactor.js";
+export { createFakeShelfHost, createShelfCommands, type ShelfHost } from "./shelf.js";
 export { createStructuralCommands } from "./structural.js";
 export { createTaskCommands } from "./task.js";
 export {

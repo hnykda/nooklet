@@ -72,9 +72,25 @@ that ignores a delegate (B-97's shape); `e2e/tests/commands.spec.ts` covers that
 ---
 
 ### B-160 · The shelf is reachable only by Shift+click
-**Status:** in progress · **Severity:** low · **Found:** 2026-09-12, exposure audit
-(`docs/review/2026-09-12-exposure-audit.md` §1.4, §1.10 #15, §2 item 6) · **Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-12, exposure audit
+(`docs/review/2026-09-12-exposure-audit.md` §1.4, §1.10 #15, §2 item 6) · **Tests:**
+`e2e/tests/commands.spec.ts` "the bullet context menu's Open on shelf puts that block on the shelf
+(B-160)", "Open on shelf and Open this page on shelf run from the palette (B-160)", "Shift+Enter on
+a page in the palette shelves it without leaving the current page (B-160)";
+`apps/web/src/commands/registrations/shelf.test.ts`; `CommandPalette.test.tsx` "Shift+Enter on a
+page row shelves it instead of opening it, and says so"
 
 Nothing in the palette, the bullet context menu or the page switcher puts a block or a page on the
 shelf; the only way in is a Shift+click on a bullet or a `[[link]]`, which nothing on screen
 mentions. A keyboard user cannot shelve anything at all.
+
+**Fixed 2026-09-13.** Two commands (`commands/registrations/shelf.ts`, host `app/shelf-host.ts`,
+both landing in `app/shelf.ts#openOnShelf` like a Shift+click): `block.openOnShelf` "Open on shelf"
+(`editorFocused || blockSelected`; the focused block or the first selected) and
+`nav.openPageOnShelf` "Open this page on shelf" (the page on the current route; `nav.` because
+`page.` is not an R2 area and would blank the app, B-87). "Open on shelf" is in the bullet context
+menu under "Zoom in" (`context-menu.spec.ts`'s pinned label list updated). In the palette,
+Shift+Enter — or Shift+click — on a page row shelves the page instead of opening it, and a hint line
+under the list says so whenever a page row is highlighted. Limitation, same as `edit.mergePage`:
+"Open this page on shelf" is listed off a page route too (journals, search) and does nothing there,
+because `WhenContext` cannot see the route.
