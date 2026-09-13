@@ -29,14 +29,27 @@ notification per rollover).
 ---
 
 ### B-170 · The journal stream keeps yesterday as "Today" after midnight
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, impl-journal (reading
-`views/JournalStreamView.tsx` while adding the "Scheduled and deadline" section) · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, impl-journal (reading
+`views/JournalStreamView.tsx` while adding the "Scheduled and deadline" section) ·
+**Test:** `apps/web/src/views/streamToday.test.ts`, `apps/web/src/views/JournalStreamView.test.tsx`
 
 `JournalStreamView` reads `todayJournalDay()` once, when it mounts. A tab left open overnight —
 the normal state of a desktop outliner — still shows yesterday under "Today" the next morning, with
 no virtual row for the real today; typing lands on yesterday's page. Only navigating away and back
 fixes it. Same root cause as B-94 (no signal for "the local day changed"); it matters more once the
 day carries a "Scheduled and deadline" list, which would show yesterday's agenda as today's.
+
+**Fixed 2026-09-13.** `views/streamToday.ts#createStreamToday` gives the stream a "Today" that
+follows `data/day-clock.ts#currentDay()` (midnight timer, visibility, focus — see B-94). It holds
+back only while input in the stream is less than two seconds old: moving "Today" unmounts the
+`BlockTree` showing yesterday's page, and a typed edit still inside that tree's 500 ms debounce is
+not flushed on unmount, so switching mid-sentence at 00:00 could drop keystrokes. An idle caret
+does not hold the day back. Tests that would have caught it: `JournalStreamView.test.tsx` "moves
+Today to the new day when the local day changes (B-170)" (fails on the old view: the virtual row
+stays on the old day); `streamToday.test.ts` — midnight, visible-after-sleep, "waits for typing in
+the stream to pause before moving, then moves", "does not wait on an idle caret". Not covered by
+e2e: Playwright's clock could fake it, but the stream would need a page open across a fake
+midnight; the unit tests drive the same signal.
 
 ---
 

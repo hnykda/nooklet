@@ -38,6 +38,19 @@ Updated after every meaningful step. If you are reading this after a restart, co
   (load average 45; passes alone with `--testTimeout=60000`), `render-seams.test.tsx` (a 1 s `waitFor`
   on a lazily loaded fence view that mocks `useQueryResults`) passed on 3 of 3 reruns. e2e for the fence not yet run (step 4).
 
+- `feat(web): Scheduled and deadline section on journal days; the stream's Today follows the
+  local day (B-170)` —
+  `data/agenda.ts` (one SQL read of open dated tasks, `useAgendaTasks`) + `agenda.test.ts` (real
+  SQLite, 3 tests incl. an EXPLAIN QUERY PLAN guard), `views/agendaDay.ts` (pure rules) +
+  `agendaDay.test.ts` (7), `views/JournalAgenda.tsx` + `journal-agenda.css` +
+  `JournalAgenda.test.tsx` (5), `views/streamToday.ts` + `streamToday.test.ts` (4),
+  hookups in `JournalStreamView.tsx` (every day section: upcoming, today, pinned, earlier) and
+  `PageView.tsx` (a whole journal page), `JournalStreamView.test.tsx` +2 tests. Web unit suite
+  714/714, `pnpm -r typecheck` exit 0.
+- Naming note: the pure module was first `views/journalAgenda.ts` next to `JournalAgenda.tsx`; on
+  macOS's case-insensitive disk `./JournalAgenda.js` resolved to the `.ts` file and the component
+  import came back `undefined`. Renamed to `agendaDay.ts` before committing.
+
 ## In flight
 
 - Nothing mid-edit.
@@ -45,10 +58,8 @@ Updated after every meaningful step. If you are reading this after a restart, co
 ## Next steps
 
 1. (done) day clock + B-94.
-2. `data/agenda.ts` (query) + `views/journalAgenda.ts` (pure selection/grouping, unit tests) +
-   `views/JournalAgenda.tsx` (component).
-3. Hook into `JournalStreamView` (all day sections) and `PageView` (journal pages); stream `today`
-   follows the day clock without unmounting a live editor (B-170).
+2. (done) agenda data + rules + component.
+3. (done) hookups + B-170.
 4. e2e `e2e/tests/journal-agenda.spec.ts`; run with journals/tasks/query specs.
 5. Real-graph perf check; record numbers here.
 

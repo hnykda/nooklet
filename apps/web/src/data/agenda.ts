@@ -1,0 +1,99 @@
+/**
+ * The rows behind a journal day's "Scheduled and deadline" section (PLAN.md §8): every open task
+ * that carries a scheduled or deadline date, read from the LOCAL replica — `scheduled_day`,
+ * `deadline_day` and `marker` are shared-schema block columns, so this works offline and needs
+ * no server round trip.
+ *
+ * ONE query serves every day on screen. The journal stream renders fourteen days and grows as it
+ * scrolls; a query per day would multiply every refetch (and every edit refetches — the resource
+ * is stamped on `block`) by the number of days loaded. Deciding which task belongs to which day
+ * is plain array work in `../views/agendaDay.ts`, over a set that is small by nature: open
+ * tasks with a date.
+ *
+ * Open markers only, not "anything but DONE/CANCELED": a block with a date and no marker can
+ * never be completed, so as an "overdue" item it would stay on today's journal forever. The
+ * marker list is spelled out as literals rather than bound parameters to match the partial
+ * index `block_open_tasks`'s own predicate; SQLite picks `block_marker` either way (checked with
+ * `EXPLAIN QUERY PLAN` on the owner's graph, 2026-09-13), which reads only the open tasks.
+ */
+
+import type { Priority, TaskMarker } from "@nooklet/core";
+import { type Accessor, createResource, type InitializedResource } from "solid-js";
+import { queryAs } from "../db/client.js";
+import { stampedFor } from "./store.js";
+
+export interface AgendaTask {
+  id: string;
+  pageId: string;
+  pageName: string;
+  pageJournalDay: number | null;
+  /** Sibling order within its parent — only a tiebreak between tasks on the same page. */
+  order: string;
+  content: string;
+  marker: TaskMarker;
+  priority: Priority | null;
+  scheduledDay: number | null;
+  scheduledTime: string | null;
+  deadlineDay: number | null;
+  deadlineTime: string | null;
+}
+
+interface AgendaSqlRow {
+  id: string;
+  page_id: string;
+  order_key: string;
+  content: string;
+  marker: TaskMarker;
+  priority: Priority | null;
+  scheduled_day: number | null;
+  scheduled_time: string | null;
+  deadline_day: number | null;
+  deadline_time: string | null;
+  page_name: string;
+  page_journal_day: number | null;
+}
+
+export const AGENDA_SQL = `SELECT b.id, b.page_id, b.order_key, b.content, b.marker, b.priority,
+    b.scheduled_day, b.scheduled_time, b.deadline_day, b.deadline_time,
+    p.name AS page_name, p.journal_day AS page_journal_day
+  FROM block b JOIN page p ON p.id = b.page_id AND p.deleted_at IS NULL
+  WHERE b.deleted_at IS NULL
+    AND b.marker IN ('TODO','DOING','LATER','NOW','WAITING')
+    AND (b.scheduled_day IS NOT NULL OR b.deadline_day IS NOT NULL)`;
+
+export type AgendaSqlRunner = <T>(sql: string, params?: unknown[]) => Promise<T[]>;
+
+/** One read. `sql` is injectable for tests; production callers pass nothing. */
+export async function loadAgendaTasks(sql: AgendaSqlRunner = queryAs): Promise<AgendaTask[]> {
+  const rows = await sql<AgendaSqlRow>(AGENDA_SQL);
+  return rows.map((r) => ({
+    id: r.id,
+    pageId: r.page_id,
+    pageName: r.page_name,
+    pageJournalDay: r.page_journal_day,
+    order: r.order_key,
+    content: r.content,
+    marker: r.marker,
+    priority: r.priority,
+    scheduledDay: r.scheduled_day,
+    scheduledTime: r.scheduled_time,
+    deadlineDay: r.deadline_day,
+    deadlineTime: r.deadline_time,
+  }));
+}
+
+/**
+ * Live open tasks with a date. Refetches after any write to `block` (a marker, a date, the text)
+ * or `page` (a rename, a deletion). `enabled` lets a view that only sometimes shows the section —
+ * `PageView`, for journal pages — skip the read entirely otherwise.
+ */
+export function useAgendaTasks(
+  enabled: Accessor<boolean> = () => true,
+): InitializedResource<AgendaTask[]> {
+  const [resource] = createResource(
+    () => (enabled() ? stampedFor(true, ["block", "page"]) : undefined),
+    () => loadAgendaTasks(),
+    { initialValue: [] },
+  );
+  return resource;
+}

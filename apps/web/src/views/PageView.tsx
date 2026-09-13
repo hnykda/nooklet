@@ -8,11 +8,14 @@
 import { isoJournalName, newId, orderBetween, parseJournalTitle } from "@nooklet/core";
 import { A, useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
+import { useAgendaTasks } from "../data/agenda.js";
+import { currentDay } from "../data/day-clock.js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
 import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { requestBlockFocus } from "../editor/focus-request.js";
+import { JournalAgenda } from "./JournalAgenda.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
 import { PageIconEditor } from "./PageIcon.js";
@@ -37,6 +40,8 @@ export function PageView(props: PageViewProps): JSX.Element {
   /** A journal's title is its date, rendered in the reader's chosen format (ADR 018) — there is no
    *  name to edit, so the input becomes a heading. */
   const isJournal = () => (page()?.journalDay ?? null) !== null;
+  // Read only for a whole journal page, the one place here the "Scheduled and deadline" list shows.
+  const agenda = useAgendaTasks(() => isJournal() && !blockId());
   const title = () => {
     const p = page();
     return p ? displayPageName(p) : props.name();
@@ -156,6 +161,16 @@ export function PageView(props: PageViewProps): JSX.Element {
             <BlockTree pageId={p().id} rootBlockId={blockId()} onNavigate={onNavigate} />
 
             <Show when={!blockId()}>
+              <Show when={p().journalDay}>
+                {(day) => (
+                  <JournalAgenda
+                    day={day()}
+                    today={currentDay()}
+                    tasks={agenda}
+                    onNavigate={onNavigate}
+                  />
+                )}
+              </Show>
               <NamespaceChildren name={p().name} onNavigate={onNavigate} />
               <ReferencesPanel target={p().name} onNavigate={onNavigate} />
             </Show>
