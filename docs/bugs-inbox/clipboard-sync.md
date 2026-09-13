@@ -90,6 +90,16 @@ key means, and each has a cost that needs a decision:
   outside the outliner: the most general, in `app/CommandLayer.tsx`, and needs checking against
   every command that is meant to work from such a field.
 
+**Also the command palette, measured 2026-09-13 (verify pass).** The same dispatch reaches the
+palette's own input, which is where this bites hardest: Escape out of an edit (a selection now
+stands), Cmd+K, type `abc`, Backspace — the palette still reads `abc` and the selected block is
+DELETED on the server (throwaway spec, stored `["two","three"]` from `one/two/three`). Cmd+A there
+runs `block.selectAll` on the page behind the palette, and Cmd+X then cuts every block of the page
+(stored `[]`, clipboard `- one\n- two\n`). Backspace predates this branch; Cmd+X's part is new with
+B-245. Suggest raising B-300 to high: the palette is opened from a selection all the time. Not
+seen: a selection standing in one journal day does not capture Cmd+X in a block being edited in
+another day — the editing tree's context wins and the text is cut natively (checked the same way).
+
 ### B-247 (existing)
 
 **Measured 2026-09-13 (clipboard-sync)** with `tools/probes/replica-busy-window.mjs` against a copy
