@@ -48,7 +48,7 @@ describe("page find state", () => {
 
   it("Escape-style close puts the caret back where editing was when the bar opened", () => {
     release = registerPageFindHost();
-    openPageFind({ blockId: "b1", end: 3 });
+    openPageFind({ blockId: "b1", content: "hello", start: 3, end: 3 });
     // A second Cmd+F from inside the bar (nothing being edited) keeps the original place.
     openPageFind(null);
     closePageFind({ restoreFocus: true });
@@ -57,9 +57,21 @@ describe("page find state", () => {
     expect(blockFocusCaret()).toEqual({ offset: 3 });
   });
 
+  it("puts back a content offset when the editing buffer shows property lines (B-361)", () => {
+    release = registerPageFindHost();
+    // The editor's selection is into its buffer, which lists `list:: number` after line 1
+    // (B-101). The caret after "second" is 31 there and 17 in the content — and the tree that
+    // takes the focus request maps a content offset into its buffer itself.
+    const buffer = "first line\nlist:: number\nsecond line";
+    const head = buffer.indexOf("second") + "second".length;
+    openPageFind({ blockId: "b1", content: buffer, start: head, end: head });
+    closePageFind({ restoreFocus: true });
+    expect(blockFocusCaret()).toEqual({ offset: "first line\nsecond".length });
+  });
+
   it("a close that does not restore focus leaves no focus request behind", () => {
     release = registerPageFindHost();
-    openPageFind({ blockId: "b1", end: 3 });
+    openPageFind({ blockId: "b1", content: "hello", start: 3, end: 3 });
     closePageFind({ restoreFocus: false });
     expect(blockFocusRequest()).toBeUndefined();
   });

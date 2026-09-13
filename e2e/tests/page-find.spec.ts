@@ -14,6 +14,7 @@ import {
   caret,
   editingRowIndex,
   editor,
+  editorText,
   expectEditorFocusedNow,
   MOD,
   openEditing,
@@ -267,4 +268,34 @@ test("closing the bar with its button leaves the caret in the block being edited
   expect(await editingRowIndex(page, outliner)).toBe(2);
   await page.keyboard.type("!");
   await expect(editor(page)).toHaveText("alpha two!");
+});
+
+test("Escape puts the caret back in the same place in a block that shows a property line (B-361)", async ({
+  page,
+}) => {
+  // The editor shows `list:: number` as line 2 of the block (B-101). The caret saved on open was an
+  // offset into that buffer, and Escape put it back as if it were an offset into the text — the
+  // property line's length further along.
+  const name = "Find Property Caret";
+  const outliner = await openPage(page, name, "- first line\n  list:: number\n  second line here");
+  await outliner.locator(".vr-block-view").first().click();
+  await expect(editor(page)).toBeFocused();
+  await expect.poll(() => editorText(page)).toBe("first line\nlist:: number\nsecond line here");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+  for (let i = 0; i < " line here".length; i++) await page.keyboard.press("ArrowLeft");
+  const afterSecond = "first line\nlist:: number\nsecond".length;
+  expect(await caret(page)).toEqual({ anchor: afterSecond, head: afterSecond });
+
+  await openFind(page);
+  await expect(editor(page)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toHaveCount(0);
+  await expect(editor(page)).toBeFocused();
+  expect(await caret(page)).toEqual({ anchor: afterSecond, head: afterSecond });
+  await page.keyboard.type("!");
+  await expect
+    .poll(async () => (await readBlocks(page, name))[0]?.content)
+    .toBe("first line\nsecond! line here");
 });

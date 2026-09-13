@@ -22,10 +22,11 @@
  * component already computes is exactly what research 04 §5 says "makes tier 2 a contained
  * change" later. See the package summary for the actual 1.7 MB-page measurement.
  *
- * Known data-seam gaps (not bugs in this file): no page-existence index (`.vr-ref-new` never
- * renders), and `{{embed}}` renders a placeholder rather than a live tree — called out where it
- * bites in `render/tokens.tsx`. `((block refs))` do render their target's text: `BlockRowView`
- * passes `resolveBlockRef` from `data/block-ref-cache.ts`.
+ * Known data-seam gap (not a bug in this file): no page-existence index, so `.vr-ref-new` never
+ * renders — called out where it bites in `render/tokens.tsx`. `((block refs))` do render their
+ * target's text: `BlockRowView` passes `resolveBlockRef` from `data/block-ref-cache.ts`. And
+ * `{{embed}}` renders its target read-only through `render/EmbedView.tsx` (B-210); editing
+ * happens where the block lives.
  */
 import type { EditorView } from "@codemirror/view";
 import {
@@ -310,7 +311,10 @@ export function BlockTree(props: {
   const [editingId, setEditingId] = createSignal<BlockId | null>(null);
   const filtered = createMemo(() => {
     const q = props.filter;
-    if (!q) return null;
+    // Paper gets the page, not the find: the whole outline with collapsed children expanded
+    // (`rows` below), no faded ancestors. An active filter used to win over printing, and the
+    // print was just the matches (B-363). `afterprint` brings the filter back as it was.
+    if (!q || isPrinting()) return null;
     return filterVisible(editorTree(), q, { rootBlockId: effectiveRoot(), keep: editingId() });
   });
   const findMatches = createMemo(() => {
@@ -621,9 +625,11 @@ export function BlockTree(props: {
     if (!res.focus) return;
     // Focus staying on the block being edited (a command's batch written into it, B-108): the
     // buffer was synced by `commit`, and `attachEditing` with the same id re-renders nothing, so
-    // the caret would never move. Same case as in `doUndo`.
+    // the caret would never move. Same case as in `doUndo`, and like there the caret is a CONTENT
+    // caret that has to be mapped into the buffer: set as-is, `/template`'s `{at: "end"}` in an
+    // empty numbered item landed after `list:: number` and the next keystroke edited that (B-360).
     if (res.focus.id === editingId() && surface.currentId() === res.focus.id)
-      surface.setCaret(res.focus.caret);
+      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
     else attachEditing(res.focus.id, res.focus.caret);
   }
 
@@ -662,7 +668,20 @@ export function BlockTree(props: {
     );
   }
 
+  /**
+   * Undo and redo write, so a locked page refuses them like every other writer here. They need
+   * their own check: after a session ends Cmd/Ctrl+Z still reaches this tree through
+   * `historyEditorHost` (B-241) — and locking is one of the things that ends a session, so the
+   * edit the lock had just stopped was reverted on the locked page, editor and all (B-362).
+   */
+  function refuseHistoryWhenLocked(): boolean {
+    if (!readOnly()) return false;
+    readOnlyNotice.show();
+    return true;
+  }
+
   function doUndo(): void {
+    if (refuseHistoryWhenLocked()) return;
     const clock = clockSig();
     if (!clock) return;
     flushPendingEdit();
@@ -688,6 +707,7 @@ export function BlockTree(props: {
   }
 
   function doRedo(): void {
+    if (refuseHistoryWhenLocked()) return;
     const clock = clockSig();
     if (!clock) return;
     flushPendingEdit();

@@ -11,6 +11,8 @@
  */
 
 import { createSignal } from "solid-js";
+import type { EditorSelection } from "../commands/hosts/editor-host.js";
+import { contentOffsetOf } from "../editor/editText.js";
 import { requestBlockFocus, requestEditingEnd } from "../editor/focus-request.js";
 import type { CaretSpec } from "../editor/types.js";
 
@@ -50,11 +52,18 @@ export const pageFindFocusRequest = focusTick;
  * Editing is ended rather than left running behind the bar: a tree that is still editing keeps
  * publishing `editorFocused`, and the keymap would then run block commands for keys typed into
  * the find input (`../editor/focus-request.ts#requestEditingEnd`).
+ *
+ * The caret is saved as an offset into the block's CONTENT. `editing` comes from the editor host,
+ * whose text and offsets are the editing buffer — content plus property lines (B-101) — while a
+ * focus request's caret is a content caret the tree maps into its buffer itself. Saved as-is, a
+ * caret below a `list:: number` line came back that line's length further along (B-361).
  */
-export function openPageFind(editing: { blockId: string; end: number } | null): void {
+export function openPageFind(editing: EditorSelection | null): void {
   if (!pageFindAvailable()) return;
-  if (editing) returnTo = { blockId: editing.blockId, caret: { offset: editing.end } };
-  else if (!open()) returnTo = null;
+  if (editing) {
+    const offset = contentOffsetOf(editing.content, editing.end);
+    returnTo = { blockId: editing.blockId, caret: { offset } };
+  } else if (!open()) returnTo = null;
   setOpen(true);
   setFocusTick((n) => n + 1);
   requestEditingEnd();

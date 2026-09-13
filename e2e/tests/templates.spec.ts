@@ -140,6 +140,32 @@ test("/template into an empty bullet: the copy has the template's shape, fresh i
   expect(new Set(copied).size).toBe(3);
 });
 
+test("/template into an empty numbered item: what is typed next extends the text, not the list property (B-360)", async ({
+  page,
+}) => {
+  // The block keeps its `list:: number`, which the editor shows as a line below the text (B-101).
+  // The caret after the insertion was placed at the end of that whole buffer — inside the property
+  // line — so the next keystroke turned `list:: number` into `list:: numberx`.
+  const name = "Templates Numbered Into";
+  const outliner = await openEditing(page, name, "- first\n  list:: number");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["first", "\nlist:: number"]);
+  await pickTemplate(page, "daily");
+
+  const today = defaultTitle(isoOffset(0));
+  await expect.poll(() => rowTexts(page, outliner)).toHaveLength(4);
+  expect(await editingRowIndex(page, outliner)).toBe(1);
+  await page.keyboard.type("!");
+  await expect
+    .poll(async () =>
+      (await readTree(page, name)).map((n) => ({ content: n.content, properties: n.properties })),
+    )
+    .toEqual([
+      { content: "first", properties: { list: "number" } },
+      { content: `Daily plan for [[${today}]]!`, properties: { list: "number" } },
+    ]);
+});
+
 test("/template after a bullet with text: inserted as the next siblings, caret in the first new block", async ({
   page,
 }) => {
