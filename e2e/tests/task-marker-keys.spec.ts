@@ -4,7 +4,7 @@
  */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { api, MOD, openEditing } from "../helpers/index.js";
+import { api, isoOffset, MOD, openEditing } from "../helpers/index.js";
 
 interface Node {
   content: string;
@@ -123,4 +123,36 @@ test("the marker commands act on every selected block, as one undo step (B-346)"
     "multi two",
     "multi three",
   ]);
+});
+
+// The per-block half of B-346's DONE: each block completes from ITS own dates (R35), all in one
+// batch. The repeating one is rescheduled and reopened while its neighbour is closed, and the one
+// undo step has to restore `scheduled` — a reserved key the tree holds in its own column — as well
+// as both markers. Added by the adversarial verification of m10/editor-keys.
+test("Mark DONE on a selection with a repeating task reschedules only that one, and one undo restores both (B-346)", async ({
+  page,
+}) => {
+  const name = "Task Keys Multi Repeat";
+  const yesterday = isoOffset(-1);
+  const outliner = await openEditing(
+    page,
+    name,
+    `- TODO multi repeat\n  scheduled:: ${yesterday}\n  repeat:: 1d\n- TODO multi once`,
+  );
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+ArrowDown");
+  await expect(outliner.locator(".vr-row-selected")).toHaveCount(2);
+
+  await runFromPalette(page, "Mark DONE");
+  await expect.poll(() => markers(page, name)).toEqual(["TODO", "DONE"]);
+  const [repeating, once] = await serverBlocks(page, name);
+  expect(repeating?.properties?.scheduled).toBe(isoOffset(0));
+  expect(repeating?.properties?.done).toBeTruthy();
+  expect(once?.properties?.done).toBeTruthy();
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(() => markers(page, name)).toEqual(["TODO", "TODO"]);
+  const restored = await serverBlocks(page, name);
+  expect(restored.map((b) => b.properties?.scheduled ?? null)).toEqual([yesterday, null]);
+  expect(restored.map((b) => b.properties?.done ?? null)).toEqual([null, null]);
 });

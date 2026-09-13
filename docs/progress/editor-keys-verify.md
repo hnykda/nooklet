@@ -15,16 +15,21 @@ branch and worktree. Scratch: `scratchpad/m10/editor-keys-verify/`. e2e port 640
 
 ## Found
 
-- B-382 (logged, fixing): walking into `[[Walkin Unmade Page]]` and pressing Enter on the "New page"
-  row deletes the rest of the name — `alpha [[Walkin Unm]] omega` — and creates a page "Walkin Unm".
-  Red e2e added to `autocomplete-inside-link.spec.ts`.
+- B-382 (fixed, `dc86f5b`): walking into `[[Walkin Unmade Page]]` and pressing Enter on the "New
+  page" row deleted the rest of the name — `alpha [[Walkin Unm]] omega` — and created a page "Walkin
+  Unm". The row now names the whole link. e2e red before, green after; 2 unit tests.
+- B-383 (open, logged): `/mermaid` and `/template` on a zoom root insert outside the zoomed view.
+- Added guard e2e: Mark DONE on a selection with a repeating task, one undo (`task-marker-keys`).
+- Confirmed working: rapid Cmd+Enter ×3/×4/×6 under CPU throttling ×6 (CDP), and interleaved with
+  typing; five rapid presses and five undos; Mark DONE with `repeat:: 1d` in a selection, undo, redo.
+- Unit (`pnpm -r test`) after `dc86f5b`: core 398, 17, server 667, web 1,154 — all passed.
+  `pnpm -r typecheck` clean.
 
 ## In flight
 
-- B-382 fix in `commands/autocomplete/AutocompletePopup.tsx`.
+- Full e2e run in halves on the head.
 
 ## Next
 
-1. Fix B-382, unit test, e2e green, commit.
-2. Log the zoom-root `/mermaid` (and `/template`) out-of-view insert.
-3. Full e2e run in halves; typecheck; biome.
+1. Commit the guard test + B-383 entry.
+2. Full e2e `tests/[a-l]` and `tests/[m-z]`; rerun any failure alone once.

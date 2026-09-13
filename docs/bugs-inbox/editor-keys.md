@@ -172,3 +172,23 @@ and "offers no New page inside a complete link whose whole name is an existing p
 the fix reverted).
 
 ---
+
+### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
+m10/editor-keys (`/template`: pre-existing; `/mermaid`: reachable since the B-344 fix, `30e9a71`) ·
+**Test:** —
+
+Page `- zoom root` / `  - zoom child` / `- outside`, opened at `?block=<zoom root>`, click the root
+row, End, type ` /merm`, Enter: the starter is stored as a new top-level block between `zoom root`
+and `outside` — the next sibling of the zoom root, which is not rendered in the zoomed view. On
+screen only the slash text disappears; the focus request for the new block is dropped by
+`BlockTree` (in the tree but not on screen), the caret stays in the root, and a key typed next goes
+there (`zoom root Z`). `/template` with text in the zoom root does the same (stored
+`["tpl root ", "tpl child", "EKV Checklist", "step one", "tpl outside"]`, rows still
+`["tpl root ", "tpl child"]`): both place "after a bullet with text" with
+`data/templates.ts#nextSiblingOrder`. Before `30e9a71` `/mermaid` put the fence inline in the root
+(visible, never rendered — B-344). Options: insert as the zoom root's first child when the anchor is
+the tree's root, or navigate out of the zoom. Probe: `e2e/tests/zz-ekv-probe.spec.ts` P10/P10b/P11
+(throwaway, not committed).
+
+---
