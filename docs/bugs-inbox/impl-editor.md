@@ -124,3 +124,19 @@ other writers. A fix needs a way to tell a stale read from a newer write — the
 `content_hlc` against the HLC of the last text op this tab wrote, for one — and a decision on what
 to do with unflushed keystrokes when a newer external text arrives (the owner's call: merge,
 prefer local, or prefer remote).
+
+---
+
+### B-193 · `views.spec.ts` "opening the palette while editing and closing it hands focus back to the editor" fails here, on the base commit too
+**Status:** needs-repro · **Severity:** low · **Found:** 2026-09-13, impl-editor's wider e2e run ·
+**Test:** `e2e/tests/views.spec.ts` "opening the palette while editing and closing it hands focus
+back to the editor" (B-72's test)
+
+Cmd/Ctrl+K while editing, Escape: the palette closes, but `.cm-content` is not focused ("inactive")
+for the whole 10 s wait. Failed 3 of 3 runs on `m8/impl-editor` (port 6405), and 1 of 1 with
+`apps/web` checked out at `da85cfb`, so this branch did not cause it. Not diagnosed. The
+coordinator's full run on `a6c2859` did not list it as failing, and nothing under `apps/web` or
+`e2e/` changed between `a6c2859` and `da85cfb` — so either it is load- or machine-dependent (the
+machine was running a dozen agents' builds and browsers) or that run passed it by chance. Next
+step: run the single test on an idle machine; if it still fails, trace focus on Escape
+(`e2e/helpers/focus.ts#installFocusTrace`).

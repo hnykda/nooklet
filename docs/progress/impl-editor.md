@@ -27,11 +27,15 @@ Playwright test first, then the fix, then remove the refactor-command workaround
   "Move to page…" workaround removed; "Turn into page" keeps ending editing (probe showed the
   stale buffer overwriting the `[[link]]` rewrite) — B-192 logged. Tests
   `e2e/tests/editing-row-leaves.spec.ts` (both failed before), `unseen-creations.test.ts`,
-  `refactor.test.ts` updated. Commit: the one after `e2698fd`.
+  `refactor.test.ts` updated. Commit `351c77b`.
   e2e runs after the fix: editing-row-leaves + refactor + focus + editing + selection +
   context-menu = 73 passed, 1 skipped (pre-existing `test.fixme`); parity + popups +
   autocomplete + journals + a-fresh-journal + templates + template-undo + redo + tasks + replace +
-  query + phone = 104 passed.
+  query + phone = 104 passed. Then the other 22 Chromium specs on `351c77b`, in two runs: 50
+  passed; 64 passed, 1 skipped, 1 failed — `views.spec.ts` palette-focus test, which fails the same
+  way with `apps/web` at `da85cfb` (logged B-193, not this branch's). So every Chromium spec ran
+  once against this branch's code: 291 passed, 1 failed (pre-existing), 2 skipped — in four
+  separate server runs, not one shared-server full run.
 
 ## In flight
 
@@ -39,10 +43,10 @@ Playwright test first, then the fix, then remove the refactor-command workaround
 
 ## Next, in order
 
-1. (Optional, for whoever merges) run the whole Chromium e2e suite once on the merged branch —
-   this branch ran 18 of the 40 specs (after the B-88 fix), the ones that edit through `BlockTree`.
-2. B-191 and B-192 are open and need no action from this branch; B-192 needs an owner decision
-   on what wins when an external text rewrite meets unflushed keystrokes.
+1. (For whoever merges) one shared-server full e2e run on the merged branch: this branch's specs
+   ran in four batches, each on its own server, so cross-spec state was only partly exercised.
+2. B-191, B-192, B-193 are open and need nothing more from this branch; B-192 needs an owner
+   decision on what wins when an external text rewrite meets unflushed keystrokes.
 
 ## Decisions
 
