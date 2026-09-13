@@ -32,7 +32,7 @@ test("mechanism: remote move of the edited block", async ({ page, browserName })
       const c = document.querySelector(".cm-content");
       const s = window.getSelection();
       if (!s || s.rangeCount === 0) return "rangeCount=0";
-      if (!c || !c.contains(s.focusNode)) return `outside(${(s.focusNode as Element)?.nodeName})`;
+      if (!c?.contains(s.focusNode)) return `outside(${(s.focusNode as Element)?.nodeName})`;
       const r = document.createRange();
       r.selectNodeContents(c);
       r.setEnd(s.focusNode as Node, s.focusOffset);

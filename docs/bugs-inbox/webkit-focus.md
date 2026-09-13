@@ -61,6 +61,16 @@ Tests added (guards, not a fix): `e2e/tests/webkit-refresh-focus.spec.ts` (3; ru
 webkit — all six runs fail against a build that blurs on every replica change, all pass on this
 branch), `e2e/tests/focus-log.spec.ts` (2, both projects), `apps/web/src/app/focus-log.test.ts` (8).
 
+**Verification (2026-09-13, same branch):** the "ruled out" above holds for the refreshes traced
+there — ones that leave the row list around the edited block alone. A refresh CAN move the edited
+row: when another device moves that block. In Playwright's WebKit that did not lose focus but did
+put the caret at 0 with the `[[` popup still open (B-502, fixed; Chromium was unaffected). Five other
+structural refreshes (a block inserted above, siblings reordered, the edited block indented, a child
+added above, a real second client editing the block below) and typing straight through remote
+inserts kept focus and caret in both engines (probe `tools/probes/refresh-focus-structural.spec.ts`).
+So the owner's report is still not reproduced; a focus log from a loss showing `dom insertBefore` on
+the edited row right before `LOST` would point at this family rather than at the text input client.
+
 **Next, needs the owner:** a focus log from the desktop app covering one loss.
 
 ---
@@ -99,9 +109,10 @@ the page — expected there, and why the webkit project does not run the suite. 
 ### B-502 · In WebKit, a refresh that moves the block being edited puts the caret at the start, with the `[[` popup left open
 **Status:** fixed (in Playwright's WebKit; not checked in the desktop app) · **Severity:** medium (the Mac app's engine; the next keystroke lands in the wrong
 place) · **Found:** 2026-09-13, verifying m11/webkit-focus (probe
-`tools/probes/refresh-focus-structural.spec.ts`) · **Test:**
+`tools/probes/refresh-focus-structural.spec.ts`) · **Tests:**
 `e2e/tests/edited-row-move-caret.spec.ts` "another device moving the block you are typing a link
-into keeps the caret and the popup (B-502)" (chromium + webkit)
+into keeps the caret and the popup (B-502)"; `e2e/tests/focus-log.spec.ts` "recording changes
+nothing about editing: a refresh mid-link, another device's move, undo" (both chromium + webkit)
 
 Type `base testing [[dru` in a block so the `[[` popup is open. Another device (here an API
 `block.move`) moves that block above its sibling. After the pull: in Playwright's WebKit the editor
@@ -131,7 +142,11 @@ unfocused.
 `view.focus()`, if the document selection disagrees with the editor state, write the state's
 selection into it in the same task, before any `selectionchange` — the repair
 `commands/focus-return.ts` already makes for B-296. No timer, no BlockTree change. The test above
-fails in WebKit before (2/2, caret 0) and passes after (2/2), Chromium passes both.
+fails in WebKit before (2/2, caret 0) and passes after (2/2), Chromium passes both. Full measurement
+on port 6416, `edited-row-move-caret` + `focus-log` + `webkit-refresh-focus`, both projects: pre-fix
+`surface.ts` 15 passed / 3 failed (all WebKit, all caret 0); fixed 18/18. Guards added with it, which
+pass before and after: undo of Alt+Up; a mid-line caret on a line whose `[[ ]]`/`**` markers the
+live preview hides (the fix writes through `domAtPos`, where DOM and document offsets differ).
 
 ---
 
