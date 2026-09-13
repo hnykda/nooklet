@@ -31,15 +31,22 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
   2/2, while editing/focus/undo-redo/journal-day-start (46 tests) did NOT catch that mutation.
   `--repeat-each=2`: 18/18.
 
+- Real graph (copy of `~/.nooklet/default/graph.sqlite` via `.backup`, served on 6413, killed after):
+  `tools/probes/remote-rewrite-real-graph.mjs` on 2026-08-17 (20 rows, Czech block
+  `[[@Robin]] co juli jí, jídlo, dieta`) — all 7 checks ok, no console errors (first run's 3 FAILs
+  were the probe reading DOM text where live preview hides `[[ ]]`; fixed in the probe).
+  `pnpm nooklet verify` on the copy: 20484 ops replayed, OK.
+
 ## 2. In flight
 
-- Real-graph check (next step 1).
+- "Keep mine" under clock skew: the editor clock never observes the offered HLC, so if the other
+  writer's clock is ahead, the typing's flush loses LWW and the next refetch takes the other version.
+  Plan: optional `Clock.receive` (types.ts, clock.ts), called on an "offer"; e2e with
+  `page.clock.setFixedTime(past)` to make this tab's clock lag — check red first, then fix.
 
 ## 3. Next steps, in order
 
-1. Real graph: copy `~/.nooklet/default/graph.sqlite`, serve, open a journal day with Czech text,
-   edit a block while an API `block.update` rewrites it (clean and typing); `pnpm nooklet verify`
-   (no ops/schema touched, cheap).
+1. The skew fix above (commit the probe + progress first).
 2. Final: web unit + typecheck + biome; rerun editor e2e chunks once more.
 
 ## Design notes
