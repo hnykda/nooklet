@@ -221,11 +221,33 @@ test("choosing a page in the palette while editing: what is typed before it show
     const active = await activeElement(page);
     expect(active, `${label}: focus straight after Enter`).not.toContain("cm-content");
     await page.keyboard.type("qq");
-    await expect(page).toHaveURL(new RegExp(encodeURIComponent(pick).replace(/%20/g, "%20")));
+    await expect(page).toHaveURL(new RegExp(encodeURIComponent(pick), "i"));
     await page.waitForTimeout(700); // past the 500 ms edit flush, had anything been typed
     expect(
       (await readBlocks(page, from)).map((b) => b.content),
       label,
     ).toEqual(["origin"]);
   }
+});
+
+test("following a link from the palette while editing: what is typed before the page shows never lands in the block being left", async ({
+  page,
+}, info) => {
+  // B-293, the command-row form: "Follow link under cursor" resolves the link before it navigates.
+  const target = runName("Follow Target", info);
+  const from = runName("Follow From", info);
+  await seedPage(page, target, "- over there");
+  await openEditing(page, from, `- go [[${target}]]`);
+  await page.keyboard.press(`${MOD}+k`);
+  await expect(page.locator(".cmd-palette .cmd-input")).toBeFocused();
+  await page.keyboard.type(">Follow link under cursor");
+  await expect(page.locator(".cmd-palette .cmd-row--active")).toContainText(
+    "Follow link under cursor",
+  );
+  await page.keyboard.press("Enter");
+  expect(await activeElement(page), "focus straight after Enter").not.toContain("cm-content");
+  await page.keyboard.type("qq");
+  await expect(page).toHaveURL(new RegExp(encodeURIComponent(target), "i")); // routed by the lowercased name
+  await page.waitForTimeout(700);
+  expect((await readBlocks(page, from)).map((b) => b.content)).toEqual([`go [[${target}]]`]);
 });

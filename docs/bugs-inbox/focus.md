@@ -255,12 +255,44 @@ block stays `origin` (both). "Open journals" run from the palette does not show 
 is synchronous, so the editor is already detached when the palette closes).
 
 **Fixed 2026-09-13.** `commands/palette/CommandPalette.tsx#selectRow` skips the focus return for the
-two rows that leave the page (a page, "Create page"); Escape, Cmd/Ctrl+K, a backdrop click, a
-command row and Shift+Enter onto the shelf still give focus back. Focus after a page pick is where
-`cf08d19` left it (`<body>` until the new page is clicked into). The test runs both rows, reads
-`activeElement` straight after Enter, types `qq` and checks the stored block on the page left: it
-failed 3 of 3 (`--repeat-each=3`) before the change (`activeElement` `.cm-content`), and
-`focus-return.spec.ts` passed 24 of 24 (`--repeat-each=3`) after; views + shelf 35 passed.
-Not covered: a palette COMMAND that navigates asynchronously ("Follow link under cursor" run from
-the palette resolves the ref first) — rare from the palette, and Alt+Enter itself has always left
-the editor focused through the same gap.
+rows that leave the page: a page, "Create page", and a command in the `Navigation` category (probe:
+"Follow link under cursor" run from the palette resolves the link before it navigates — `qq` went
+into the block 1 of 2 on the branch, 0 of 2 with `apps/web/src` at `cf08d19`). Escape, Cmd/Ctrl+K, a
+backdrop click, any other command row (and a command that closes the palette itself, like Move to
+page…) and Shift+Enter onto the shelf still give focus back. Focus after such a row is where
+`cf08d19` left it (`<body>` until the new page is clicked into). Tests that would have caught it:
+`e2e/tests/focus-return.spec.ts` "choosing a page in the palette while editing: what is typed before
+it shows never lands in the block being left" (page row and create row) and "following a link from
+the palette while editing: what is typed before the page shows never lands in the block being left";
+each reads `activeElement` straight after Enter, types `qq`, and checks the stored block on the page
+left. The first failed 3 of 3 before the change, the second 2 of 2 with only the page-row half in;
+after: `focus-return.spec.ts --repeat-each=2` 18 of 18, views + follow-link + commands 42 passed.
+A plugin command that navigates asynchronously from outside the `Navigation` category is not
+covered.
+
+---
+
+### B-294 · Enter on the autocomplete that walking into an existing `[[link]]` opened duplicates the link's tail
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of m9/focus
+(pre-existing: same result with `apps/web/src` at `cf08d19`) · **Test:** none yet
+
+`- alpha [[Target]] omega`, Home, ArrowRight ×9 (caret after `[[T`): the `[[` autocomplete opens
+over a link that is already complete (B-203's precondition). Enter picks the active row and replaces
+only the text between the trigger and the caret, so the rest of the old link stays behind it:
+`alpha [[Target]]arget]] omega` (probe `zz-verify-focus.spec.ts` "P2b", seen on `cf08d19` and on the
+branch; on the branch the active row was the query itself once, giving `alpha [[T]]arget]] omega`).
+Either the autocomplete should not open inside a complete link (noted, not asked, in
+`docs/progress/focus.md` §3) or picking a row should replace up to the link's `]]`.
+
+---
+
+### B-295 · Keys typed straight after Alt+Enter follows a link go into the block being left
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of m9/focus
+(pre-existing: `cf08d19` 2 of 2, branch 3 of 3) · **Test:** none yet
+
+Editing `- go [[Target]]`, End, Alt+Enter, type `qq` at once: the stored block on the page left is
+`go [[Target]]qq`. `nav.followLink` → `hosts.ts#openPageByRef` resolves the ref with a replica read
+before it navigates, and the editor keeps focus through that gap. The palette form of the same thing
+was B-293's; this one is older and not the branch's. A general fix would end editing when a
+navigation is requested rather than when the page unmounts — broader than a focus bug, so left for a
+decision.

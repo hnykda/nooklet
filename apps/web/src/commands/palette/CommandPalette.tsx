@@ -69,9 +69,10 @@ export function CommandPalette(props: CommandPaletteProps) {
   // (B-161). Captured in the effect that runs as `isOpen` flips — synchronously, before the
   // input's own focus microtask below — and given back in the same task as the closing key.
   //
-  // Except when the chosen row leaves the page (a page, "Create page"): that navigation lands only
-  // after a replica read or a write, and an editor given focus meanwhile took the next keys into a
-  // block on a page no longer on screen (B-293). `selectRow` clears this for those rows.
+  // Except when the chosen row leaves the page (a page, "Create page", a Navigation command): that
+  // navigation lands only after a replica read, a write or a `popstate`, and an editor given focus
+  // meanwhile took the next keys into a block on a page no longer on screen (B-293). `selectRow`
+  // clears this for those rows.
   let overlayEl: HTMLDivElement | undefined;
   let giveFocusBack = true;
   createEffect(() => {
@@ -185,6 +186,9 @@ export function CommandPalette(props: CommandPaletteProps) {
     if (row.kind === "command") {
       const ctx = buildContext(props.getContext());
       await ctx.exec(row.id);
+      // Same for a navigation command: following a link resolves it first, Back waits for
+      // `popstate` — the page is left after `exec` returns (B-293).
+      if (registry.get(row.id)?.category === "Navigation") giveFocusBack = false;
     } else if (row.page) {
       mru.record("page", row.page.id);
       props.onSelectPage?.(row.page);
