@@ -1382,9 +1382,11 @@ immediately before that batch, or soft-deleting it (undoable in turn) if the bat
 Works from the before/after snapshot every write already records for audit purposes (ADR 013) — it
 never re-parses Markdown or guesses at the reverse edit. This call is itself a brand-new,
 separately-audited batch: to undo the undo, call `batch_undo` again with THIS call's
-`batch_id` (there is no separate redo concept). It does NOT check whether the entity changed
-again after the original batch — it applies the restore unconditionally, and since every field is
-last-writer-wins by a fresh timestamp (ADR 003), the undo always wins over anything in between.
+`batch_id` (there is no separate redo concept). By default it does NOT check whether the entity
+changed again after the original batch — it applies the restore unconditionally, and since every
+field is last-writer-wins by a fresh timestamp (ADR 003), the undo always wins over anything in
+between. Pass `keep_later_edits: true` to leave alone every field some other batch changed after
+this one (listed in `kept`) — use it when undoing anything but your own latest write.
 Cannot undo `asset_upload` (assets are not in the op log); such a `batch_id` fails with an
 `invalid` error. Use `dry_run` to preview what would be restored/deleted without writing anything."
 
@@ -1393,11 +1395,16 @@ export const batchUndo = defineOp({
   name: 'batch.undo', summary: 'Undo every page/block change from a previous batch_id',
   input: z.object({
     batch_id: z.string().min(1).max(64).describe('A batch_id from a previous write\'s response or a changes_since item\'s batch_id field'),
+    keep_later_edits: z.boolean().default(false),   // B-251: skip fields another batch changed since
+    ignore_batches: z.array(BatchId).max(10_000).default([]), // a walk's own batches and undos
     dry_run: z.boolean().default(false), idempotency_key: IdempotencyKey,
   }).strict(),
   // `batch_id` in the result is this undo's OWN batch, like every other write's — pass it back to
   // batch_undo to undo the undo.
-  output: WriteResult,
+  output: WriteResult.extend({
+    kept: z.array(z.object({ entity_type: z.enum(['page', 'block']), id: z.string(),
+      page: z.string(), fields: z.array(z.string()) })).default([]),
+  }),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, scopes: ['write'],
   render: renderBatchUndo, handler: (i, ctx) => ctx.graph.undoBatch(i, ctx),
 });
@@ -1411,6 +1418,16 @@ properties/`deleted_at` for a block) is written back via ordinary `page.*`/`bloc
 `ctx.applyOps` — never raw SQL — so the undo is itself a normal, fully-audited write. When one
 `batch_id` touched the same entity more than once, the entity's original pre-batch state is taken
 from its *first* (lowest-`seq`) `changes` row under that `batch_id`, not any later one.
+
+**`keep_later_edits`** (B-251, 2026-09-13). For each entity, every `changes` row with a higher
+`seq` whose `batch_id` is neither this one nor in `ignore_batches` is diffed before-vs-after, field
+by field (`place`, `content`, `marker`, `priority`, `collapsed`, `name`, `deleted`, `prop:<key>`);
+those fields are not written back. An entity the batch created is not soft-deleted if any such
+row exists. `kept` lists, per entity, the skipped fields that the undone batch itself had changed
+(a field it never touched is skipped silently — restoring it was never part of the reversal). To
+restore a page to an older version, undo each newer batch newest first with
+`keep_later_edits: true` and `ignore_batches` = every batch in the walk plus each undo's own
+`batch_id` so far; otherwise the walk's own first step counts as a later edit to the second.
 
 **HTTP**: `POST /api/v1/batch.undo`.
 
