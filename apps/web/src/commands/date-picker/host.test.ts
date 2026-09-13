@@ -143,3 +143,42 @@ describe("task.setScheduled / task.setDeadline route to the host (R38)", () => {
     await expect(deadline?.run(ctx(42))).rejects.toThrow(/date string or null/);
   });
 });
+
+describe("createDatePickerHost.open holds type-ahead (B-147)", () => {
+  function fakeHold(cancelled = false) {
+    return { take: vi.fn(() => []), cancelled: vi.fn(() => cancelled), release: vi.fn() };
+  }
+
+  it("starts holding when asked to open, hands the hold to the picker, and releases it after", async () => {
+    const store = createFakeStore({ b1: { marker: "TODO" } });
+    const hold = fakeHold();
+    const holdInput = vi.fn(() => hold);
+    const requests: DatePickRequest[] = [];
+    const host = createDatePickerHost({
+      store,
+      holdInput,
+      pick: async (req) => {
+        requests.push(req);
+        return undefined;
+      },
+      today: () => TODAY,
+    });
+    host.open({ blockId: "b1", field: "scheduled" });
+    // Synchronously, before the store read the picker waits on.
+    expect(holdInput).toHaveBeenCalledTimes(1);
+    await settle();
+    expect(requests[0]?.typeAhead).toBe(hold);
+    expect(hold.release).toHaveBeenCalled();
+  });
+
+  it("a hold cancelled during the read (Escape, a shortcut, a click) never opens the picker", async () => {
+    const store = createFakeStore({ b1: { marker: "TODO" } });
+    const hold = fakeHold(true);
+    const pick = vi.fn(async () => undefined);
+    const host = createDatePickerHost({ store, holdInput: () => hold, pick, today: () => TODAY });
+    host.open({ blockId: "b1", field: "deadline" });
+    await settle();
+    expect(pick).not.toHaveBeenCalled();
+    expect(hold.release).toHaveBeenCalled();
+  });
+});

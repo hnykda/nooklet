@@ -38,6 +38,7 @@ import { render } from "solid-js/web";
 import { claimPopupKeys } from "../popup-keys.js";
 import type { DatePickRequest, DatePickResult } from "./host.js";
 import { addDays, addMonths, parseDateInput, weekdayIndex } from "./parse.js";
+import { type HeldInput, insertedText, pickerKeyAction } from "./type-ahead.js";
 import "../styles.css";
 import "./date-picker.css";
 
@@ -92,7 +93,13 @@ export function anchorForBlock(blockId: string): { top: number; left: number } {
   return { top: 80, left: 80 };
 }
 
-function DatePicker(props: DatePickerOptions & { close: () => void }) {
+function DatePicker(
+  props: DatePickerOptions & {
+    close: () => void;
+    /** Hands `openDatePicker` the function that feeds held type-ahead in, as if just typed. */
+    bindFeed: (feed: (input: HeldInput) => void) => void;
+  },
+) {
   // What the arrows, the month buttons and clicks have chosen. The typed query is layered on top
   // (`day()`/`time()`/`repeat()` below) rather than written into these on every keystroke, so
   // backspacing "fri 14:00" to "fri" gives back the time the block already had.
@@ -239,32 +246,55 @@ function DatePicker(props: DatePickerOptions & { close: () => void }) {
   const release = claimPopupKeys((key) => handleKey({ key, shiftKey: false, altKey: false }));
   onCleanup(release);
 
+  /** Text from anywhere but a keydown — a paste, an IME commit, held type-ahead. */
+  function addText(text: string): void {
+    edit(query() + text.replace(/\s+/g, " "));
+  }
+
+  props.bindFeed((input) => {
+    if (input.kind === "text") addText(input.text);
+    else handleKey(input.key);
+  });
+
   onMount(() => {
+    // `pickerKeyAction` is shared with the hold that takes keys before this listener exists
+    // (`./type-ahead.ts`, B-147), so an early key means what it would have meant now.
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.isComposing) return;
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key === "Backspace") {
-        e.preventDefault();
-        e.stopPropagation();
-        edit("");
-        return;
+      const action = pickerKeyAction(e);
+      switch (action.kind) {
+        case "ignore":
+        case "paste": // arrives as a `paste` event below
+          return;
+        case "shortcut":
+          // Close, and let the shortcut do what it always does.
+          cancel();
+          return;
+        case "clear":
+          e.preventDefault();
+          e.stopPropagation();
+          edit("");
+          return;
+        case "key":
+          e.preventDefault();
+          e.stopPropagation();
+          handleKey(action.key);
+          return;
       }
-      if (mod && (e.key === "v" || e.key === "V")) return; // arrives as a `paste` event below
-      if (mod) {
-        // Close, and let the shortcut do what it always does.
-        cancel();
-        return;
-      }
-      if (["Shift", "Alt", "Meta", "Control", "CapsLock"].includes(e.key)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      handleKey(e);
     };
     const onPaste = (e: ClipboardEvent): void => {
       e.preventDefault();
       e.stopPropagation();
-      const text = e.clipboardData?.getData("text/plain") ?? "";
-      edit(query() + text.replace(/\s+/g, " "));
+      addText(e.clipboardData?.getData("text/plain") ?? "");
+    };
+    // Text with no keydown of its own — an IME commit, dictation, a virtual keyboard — used to go
+    // straight into the block behind the picker (B-147). Composed text cannot be caught this way
+    // (its `beforeinput` is not cancelable); see `./type-ahead.ts`.
+    const onBeforeInput = (e: InputEvent): void => {
+      const text = insertedText(e);
+      if (text === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      addText(text);
     };
     // A click anywhere but here means "never mind" — and still does whatever it was aimed at.
     const onPointerDown = (e: PointerEvent): void => {
@@ -273,10 +303,12 @@ function DatePicker(props: DatePickerOptions & { close: () => void }) {
       cancel();
     };
     window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("beforeinput", onBeforeInput, true);
     window.addEventListener("paste", onPaste, true);
     window.addEventListener("pointerdown", onPointerDown, true);
     onCleanup(() => {
       window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("beforeinput", onBeforeInput, true);
       window.removeEventListener("paste", onPaste, true);
       window.removeEventListener("pointerdown", onPointerDown, true);
     });
@@ -451,6 +483,13 @@ let closeOpen: (() => void) | undefined;
  * cancelled. */
 export function openDatePicker(opts: DatePickerOptions): () => void {
   closeOpen?.();
+  const hold = opts.typeAhead;
+  if (hold?.cancelled()) {
+    // Escape, a shortcut or a click elsewhere came while this was loading: never open.
+    hold.release();
+    opts.onCancel();
+    return () => {};
+  }
   const host = document.createElement("div");
   document.body.appendChild(host);
   let disposed = false;
@@ -482,7 +521,24 @@ export function openDatePicker(opts: DatePickerOptions): () => void {
     }
   };
   closeOpen = closeAsCancel;
-  dispose = render(() => <DatePicker {...wrapped} close={close} />, host);
+  let feed: ((input: HeldInput) => void) | undefined;
+  dispose = render(
+    () => <DatePicker {...wrapped} close={close} bindFeed={(f) => (feed = f)} />,
+    host,
+  );
   if (disposed) dispose();
+  // Replay what was typed while this was on its way (B-147), now that the picker's own listeners
+  // exist — here, after `render` has returned, so a replayed Enter that closes the picker can
+  // dispose it. Nothing can be typed in between: this is all one synchronous stretch, and the
+  // hold is released in the same stretch. Keys held after one that closed the picker are
+  // dropped: they were swallowed already and cannot be given back to the block.
+  if (hold) {
+    const held = hold.take();
+    hold.release();
+    for (const input of held) {
+      if (disposed) break;
+      feed?.(input);
+    }
+  }
   return closeAsCancel;
 }

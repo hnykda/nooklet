@@ -115,3 +115,61 @@ redundant but harmless). Test that would have caught it: `e2e/tests/focus-return
 (a separator, then the menu's padding at (2, 2), focus read after each, Escape, `End` + `!` in the
 stored block); failed before the change, passes after. context-menu + block-timestamps +
 focus-return + selection: 41 passed, 1 skipped.
+
+---
+
+### B-291 · Text composed in place (an IME's marked text, a dead-key accent) while the date picker is open goes into the block behind it
+**Status:** open (needs the owner's call) · **Severity:** low · **Found:** 2026-09-13, m9/focus
+(split out of B-147) · **Test:** none; probe `tools/probes/date-picker-composition.spec.ts`
+
+B-147's second half, the part its fix could not reach. With the picker open over a block being
+edited, a composition — emulated through CDP `Input.imeSetComposition` ("ˇ", then "č") and committed
+with `Input.insertText` — is written into the block: editor `"compose ˇ"`, then `"compose č"`, and
+the picker's query stays empty. Plain `insertText` right after it (what the B-147 fix takes) reached
+the picker (`"zítra"`), so the probe tells the two apart. A composition's `beforeinput`
+(`insertCompositionText`) cannot be cancelled, and CodeMirror applies the DOM change itself, so no
+listener can keep it out while the editor holds DOM focus.
+
+Unverified on real hardware: which layouts compose. By the B-147 entry's reading, a Czech Mac
+layout's number-row letters are ordinary keydowns (fine), while háček/čárka dead keys and every CJK
+IME compose (this bug). The picker's vocabulary is English words and digits, so what lands is junk
+in the block, not a wrong date.
+
+Why it is not fixed here: the only robust fix is for the picker to OWN focus while open — a
+visually hidden input inside it takes every kind of text input natively — and hand focus back on
+close (`commands/focus-return.ts#rememberFocus` now does that part). That reverses a deliberate
+design choice in `DatePicker.tsx` ("the editor KEEPS focus… the caret is exactly where it was by
+never having left"), changes what `e2e/tests/dates.spec.ts` asserts ("while the picker is open" the
+editor is focused), and on a phone a focus move between inputs affects the virtual keyboard in ways
+nobody here can test. Owner decision: keep "editor keeps focus" and accept this, or move focus
+into the picker.
+
+---
+
+### B-147 (existing)
+
+**Fixed 2026-09-13** — both holes the entry names, except composition, now B-291. Reproduced first:
+the four e2e tests below failed on `cf08d19` (keys typed in the gap went to the block and the
+picker's query stayed empty; Escape in the gap dropped the block into selection mode and the
+picker opened anyway; `insertText("zítra")` went into the block).
+
+1. **Type-ahead.** `commands/date-picker/type-ahead.ts#holdPickerInput`: the host
+   (`date-picker/host.ts#open`) starts a window capture hold the moment it is asked to open — before
+   the replica read and the lazy import. The hold reads each key with the picker's own
+   `pickerKeyAction` (shared, so an early key means what it would have meant later), swallows and
+   keeps the picker's keys and keydown-less text, cancels on Escape (swallowed, and later keys are
+   the block's again), on a Cmd/Ctrl shortcut (left to do its job) and on a press anywhere.
+   `openDatePicker` does not open for a cancelled hold, and otherwise replays the held input right
+   after `render` returns — one synchronous stretch, so nothing can be typed between the replay and
+   the picker's own listener — then releases it. Keys held after one that closed the picker (a
+   replayed Enter) are dropped; they were already swallowed and cannot go back to the block.
+2. **No keydown.** The open picker and the hold both take `beforeinput` `insertText`.
+
+Tests that would have caught it: `e2e/tests/date-picker-type-ahead.spec.ts` "keys typed before the
+picker is listening go to the picker, not the block", "a whole date and Enter typed before the
+picker is listening sets the date once it is", "Escape typed before the picker is listening cancels
+it: nothing opens, nothing is stored", "text that arrives without a keydown goes to the open picker,
+not the block" — the gap is made deterministic by delaying the picker's chunk 800 ms with
+`page.route` (service workers blocked so the request is routable), not by typing fast. Unit:
+`commands/date-picker/type-ahead.test.ts` (10), `host.test.ts` "createDatePickerHost.open holds
+type-ahead (B-147)" (2). With `dates.spec.ts`: 11 of 11 passed at load average 82.
