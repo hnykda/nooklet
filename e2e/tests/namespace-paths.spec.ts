@@ -190,3 +190,35 @@ test("search, all pages and tasks open a namespaced page at its path", async ({ 
   await expect(page.getByText("nspathleafword").first()).toBeVisible({ timeout: 15_000 });
   await expectNoEncodedSlash(page);
 });
+
+test("a copied link to a namespaced page opens it, whatever the name holds: Czech, %, ?, #, quotes", async ({
+  page,
+}) => {
+  // What B-331 is about is the link used as a URL — copied, bookmarked, middle-clicked — so each
+  // href is loaded fresh, with nothing but the address to go on. "?" and "#" would end the path if
+  // a segment were not fully encoded, and "%" would not decode; the names with quotes and Czech are
+  // shaped like the owner's graph (`TTRPG/VTM-alpha/Isabella D'Angelo`).
+  const names = [
+    "NSPath Odd/Příliš žluťoučký kůň",
+    "NSPath Odd/50% off",
+    "NSPath Odd/What? #1",
+    `NSPath Odd/Isabella D'Angelo "Bella"`,
+  ];
+  for (const name of names) await seedPage(page, name, "- an odd leaf");
+  await seedPage(page, "NSPath Odd Links", names.map((n) => `- to [[${n}]]`).join("\n"));
+  await page.goto(pagePath("NSPath Odd Links"));
+  const links = page.locator(".vr-outliner").first().locator("a.vr-page-ref");
+  await expect(links).toHaveCount(names.length);
+  const hrefs = await links.evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
+  expect(hrefs).toEqual(names.map(pagePath));
+
+  for (const [i, name] of names.entries()) {
+    const href = hrefs[i] ?? "";
+    await page.goto(href);
+    await expect(page.locator(".page-title-input")).toHaveValue(name);
+    // Still there once the page has loaded: no canonical-route redirect, no query or fragment split off.
+    await expect(page).toHaveURL(
+      (url) => url.pathname === href && url.search === "" && url.hash === "",
+    );
+  }
+});

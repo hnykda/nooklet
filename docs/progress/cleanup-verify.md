@@ -23,10 +23,17 @@ Worktree `.claude/worktrees/wf_e473942f-106-10`, branch `m9/cleanup`, e2e port 6
 - `built-ins.test.ts` + `bundled.test.ts` together 12× (they write the same `.nooklet-build`
   files from two workers): 12/12.
 
+- Riskiest edge, now tested: a namespaced name holding what a URL gives meaning to.
+  `e2e/tests/namespace-paths.spec.ts` "a copied link to a namespaced page opens it, whatever the
+  name holds: Czech, %, ?, #, quotes" (loads each rendered href fresh) and
+  `apps/web/src/views/navigateTarget.test.ts` "… survives the browser's URL parser, with a zoom
+  query after it" (6 names, incl. the owner's `TTRPG/VTM-alpha/Isabella D'Angelo`). Both pass
+  (spec 10/10); both fail with `pageNameToPath` mutated to `encodeURI` per segment (e2e 1/1
+  failed, unit 1 failed), and the unit cases fail with whole-name `encodeURIComponent`.
+
 ## In flight
 
-- A permanent test for the riskiest edge (special-character namespaced names through a full load
-  of the rendered href, and the path round-trip).
+- nothing uncommitted after the test commit.
 
 ## Next
 
