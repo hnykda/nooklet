@@ -186,3 +186,18 @@ could never equal it.
 **Fixed 2026-09-13.** `JournalStreamView` clears the pin when Today becomes the pinned day — the
 pin's whole meaning was "a day that is not Today". The test fails without the fix (the "Jumped-to
 day" region is still there after the fake clock moves to the pinned day).
+
+---
+
+### B-178 · `journal-stream-editing.spec.ts` types into another spec's block when the whole suite runs
+**Status:** fixed · **Severity:** low (test only) · **Found:** 2026-09-13, verifying impl-journal
+(full chromium e2e run on port 6403) · **Test:** the spec itself
+
+The B-174 spec wrote to the journal day nine days back, "a past day no other spec writes to" — but
+`graph.spec.ts` appends `journal mentions [[Graph Leaf]]` to that same day, and sorts first. In a
+full run the spec clicked the section's FIRST block (graph's), typed there, and failed waiting for
+`["earlier day baseabc"]` (got `["journal mentions [[Graph Leaf]]abc", "earlier day base"]`). It
+passed whenever it ran without `graph.spec.ts`, which is how it was verified. **Fixed 2026-09-13:**
+an unused day (-8), a click on the spec's own block by its text, and a `toContain` on the stored
+blocks. Still fails on `da85cfb`'s `JournalStreamView.tsx` (editor focus lost), so it still guards
+B-174.
