@@ -115,6 +115,19 @@ fallback), edits, and reloads. At `70c9bb9`'s driver it failed with the B-323 pa
 average 60-75): 56 passed each. `references.spec.ts` keeps its extra `/journals` load: it is what
 exercised this path.
 
+**Verified 2026-09-13 (second agent).** `e2e/tests/opfs-pool.spec.ts` passes at the branch head
+(2 of 2) and fails with the one line commented out (`element(s) not found` for "still here"). The
+two things the entry had by reading only, now run: (1) a REAL first start cut short leaves a short
+pool — probe `tools/probes/opfs-pool-interrupted-start.spec.ts` navigated away 70-113 ms after
+`/journals` committed and found 1, 1, 1, 2, 4 and 5 files in 6 of 60 runs, every next start on the
+fixed client rendering and synced; on the unfixed client 3- and 4-file pools still worked, so only a
+one-file pool is fatal. (2) A browser the OLD client already broke recovers on the fixed one — probe
+`tools/probes/opfs-pool-upgrade-recovery.mjs`, one persistent profile and origin with the server
+restarted between an unfixed and a fixed client build: unfixed, `SAH pool is full. Cannot create file
+/nooklet.sqlite3-journal`, nothing rendered, the one file now the database's (4096 bytes); fixed,
+same profile, the page rendered, `synced`, an edit survived a reload and reached the server, and the
+pool held six files.
+
 ---
 
 ### B-400 · When the DB worker fails to start, every view says "Loading…" forever and nothing says why
