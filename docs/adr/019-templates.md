@@ -89,7 +89,7 @@ by ops.
   focused and takes the characters typed to filter at the document's capture phase, the way the
   slash menu keeps its query out of the block.
 - Inserting a template from `/template` bypasses the editor's undo history (`BlockTree`'s
-  `commit`), so Cmd/Ctrl+Z does not remove it (B-108). The ops are ordinary and `batch_undo`
+  `commit`), so Cmd/Ctrl+Z does not remove it (B-108; fixed, see the amendment below). The ops are ordinary and `batch_undo`
   reverses an API-side insertion as usual.
 - A template's `properties` are copied to the copy, including `scheduled`/`deadline`/`repeat`;
   `template`, `journal-template` and `template-including-parent` are dropped from every copied
@@ -97,3 +97,19 @@ by ops.
 - Client-created days now apply the page, the template and the typed block in one `applyOps`
   batch from one clock (`getOpClock`), sized from the loaded template, rather than three
   sequential single-op writes.
+
+## Amendment 2026-09-13: the insertion is one editor batch (B-108)
+
+`/template` no longer writes around the editor. `data/templates.ts` builds the ops without
+applying them (`templateAfterOps`, `templateIntoBlockOps`) and the command hands them to
+`EditorHost.commitOps`, which the mounted `BlockTree` commits through the same `runStructural`
+path as a split — so the whole insertion is one Cmd/Ctrl+Z, and redo puts it back. The "into an
+empty bullet" text is now a `block.text` op in that batch instead of an `EditorHost.replaceRange`:
+the reason for `replaceRange` above (an op beside the open buffer is flushed over) does not apply
+to a batch the editor commits itself, since it syncs its buffer to what it commits. When no
+mounted editor shows the block (the person left the page while the template was being read) the
+command applies the ops directly, which is correct but not undoable from the keyboard.
+
+Cost: the tree's undo can only restore properties it models (`invert.ts#propValueBefore`). A
+generic property the template writes onto the bullet is undone to "absent", which is only wrong
+if the empty bullet already carried that same key — logged as B-191.

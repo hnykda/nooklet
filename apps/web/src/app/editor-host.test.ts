@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { OpBatch } from "../commands/hosts/editor-host.js";
 import type { CommandContext } from "../commands/types.js";
 import {
   activeEditorHost,
@@ -18,6 +19,8 @@ function backing(content = "hello world", anchor = 0, head = 0) {
     head,
     writes: [] as Array<{ id: string; text: string; caret: unknown }>,
     structural: [] as Array<{ id: string | null; commandId: string }>,
+    batches: [] as OpBatch[],
+    acceptBatches: true,
   };
   const b: EditorHostBacking = {
     currentId: () => state.id,
@@ -27,6 +30,10 @@ function backing(content = "hello world", anchor = 0, head = 0) {
     setText: (id, text, caret) => state.writes.push({ id, text, caret }),
     runStructural: (id, commandId) => {
       state.structural.push({ id, commandId });
+    },
+    commitOps: (batch) => {
+      state.batches.push(batch);
+      return state.acceptBatches;
     },
     linkAtCaret: () => ({ type: "page", name: "Target" }),
   };
@@ -77,6 +84,16 @@ describe("createEditorHost", () => {
     createEditorHost(b).runStructuralCommand("block.indent", {} as CommandContext);
     expect(state.structural[0]).toEqual({ id: "blk1", commandId: "block.indent" });
   });
+
+  it("hands a command's op batch to the tree and reports whether the tree took it (B-108)", () => {
+    const { state, b } = backing();
+    const host = createEditorHost(b);
+    const batch: OpBatch = { ops: [], anchorId: "blk1", focus: { blockId: "blk1", caret: "end" } };
+    expect(host.commitOps(batch)).toBe(true);
+    expect(state.batches).toEqual([batch]);
+    state.acceptBatches = false;
+    expect(host.commitOps(batch)).toBe(false);
+  });
 });
 
 describe("activeEditorHost", () => {
@@ -87,6 +104,8 @@ describe("activeEditorHost", () => {
     expect(host.getLinkAtCaret()).toBeNull();
     // Must not throw — commands' `when` clauses gate these, this is belt and braces.
     expect(() => host.replaceRange({ from: 0, to: 0, text: "x" })).not.toThrow();
+    // No editor to commit through: the caller must apply the ops itself, so this says so.
+    expect(host.commitOps({ ops: [], anchorId: "b" })).toBe(false);
   });
 
   it("returns the registered host once a surface focuses, and releases it on blur", () => {

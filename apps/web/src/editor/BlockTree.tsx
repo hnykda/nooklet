@@ -70,6 +70,7 @@ import {
   setCollapsed,
   splitBlock,
 } from "./commands.js";
+import { prepareExternalBatch } from "./external-batch.js";
 import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
 import { EditHistory } from "./history.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
@@ -83,6 +84,7 @@ import { createSurface, type Surface } from "./surface.js";
 import { cycleMarker, toggleDone } from "./task.js";
 import { buildEditorTree, childrenIds, flattenVisible, getBlock } from "./tree.js";
 import type { BlockId, CaretSpec, Clock, EditableBlock, EditorTree, FocusChange } from "./types.js";
+import { UnseenCreations } from "./unseen-creations.js";
 
 interface SelectionState {
   anchorId: BlockId;
@@ -159,12 +161,14 @@ export function BlockTree(props: {
   const treeResource = usePageTree(() => props.pageId);
   const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
   const deletedCache = new Map<string, EditableBlock>();
+  const unseenCreations = new UnseenCreations();
 
   createEffect(() => {
     const data = treeResource();
     if (!data) return;
     const editingBlockId = editingId();
     const flat = flattenBlockTreeNodes(data.blocks);
+    unseenCreations.seen(flat.map((b) => b.id));
     if (editingBlockId && surface.currentId() === editingBlockId) {
       const live = surface.content();
       const idx = flat.findIndex((b) => b.id === editingBlockId);
@@ -176,7 +180,7 @@ export function BlockTree(props: {
         // Local operations that change this block's text — undo, redo, a merge — update the
         // editor themselves at commit time (`commit`), where there is nothing to guess.
         flat[idx] = { ...(flat[idx] as EditableBlock), content: live };
-      } else {
+      } else if (unseenCreations.has(editingBlockId)) {
         // The block being edited is not in this query result yet — it was just created
         // optimistically (Enter for a new sibling) and the write has not committed by the time
         // this refetch resolved. Dropping it here would unmount its row mid-keystroke, detaching
@@ -185,6 +189,18 @@ export function BlockTree(props: {
         // the next refetch, which will contain it, take over.
         const local = untrack(localBlocks).find((b) => b.id === editingBlockId);
         if (local) flat.push({ ...local, content: live });
+      } else {
+        // The block being edited was in the database and no longer is on this page: deleted or
+        // moved away by another device, an agent, or a server-side refactor. Keeping its row (what
+        // every absence used to get) left it on screen with the old text until the next click
+        // (B-88). End editing like a click-away does; unflushed keystrokes are still written, to
+        // the block by id, wherever it went. Untracked: this effect must not start depending on
+        // what `flushPendingEdit` reads.
+        untrack(() => {
+          flushPendingEdit();
+          surface.detach();
+          setEditingId(null);
+        });
       }
     }
     // A refetch reorders the edited row too. One that READ before an Alt+Up/Down (or its undo)
@@ -331,6 +347,7 @@ export function BlockTree(props: {
     blockId: BlockId | null = null,
   ): void {
     if (ops.length === 0) return;
+    unseenCreations.note(ops);
     setLocalBlocks((prev) => applyOptimistic(prev, ops as unknown as OptimisticOp[], deletedCache));
     history.record(ops, treeBefore, kind, before, after, blockId);
     void applyOps(ops);
@@ -458,7 +475,13 @@ export function BlockTree(props: {
       ? { id: curId, caret: { offset: surface.head() } }
       : null;
     commit(res.ops, treeBefore, "structure", before, res.focus ?? before);
-    if (res.focus) attachEditing(res.focus.id, res.focus.caret);
+    if (!res.focus) return;
+    // Focus staying on the block being edited (a command's batch written into it, B-108): the
+    // buffer was synced by `commit`, and `attachEditing` with the same id re-renders nothing, so
+    // the caret would never move. Same case as in `doUndo`.
+    if (res.focus.id === editingId() && surface.currentId() === res.focus.id)
+      surface.setCaret(res.focus.caret);
+    else attachEditing(res.focus.id, res.focus.caret);
   }
 
   function commitOne(op: Op): void {
@@ -502,6 +525,7 @@ export function BlockTree(props: {
     flushPendingEdit();
     const res = history.undo(clock);
     if (!res) return;
+    unseenCreations.note(res.ops);
     setLocalBlocks((prev) =>
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );
@@ -526,6 +550,7 @@ export function BlockTree(props: {
     flushPendingEdit();
     const res = history.redo(clock);
     if (!res) return;
+    unseenCreations.note(res.ops);
     setLocalBlocks((prev) =>
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );
@@ -809,6 +834,13 @@ export function BlockTree(props: {
       // Neither: undo/redo after the session ended (`historyEditorHost`, B-241).
       else if (cmd === "edit.undo") doUndo();
       else if (cmd === "edit.redo") doRedo();
+    },
+    commitOps: (batch) => {
+      const clock = clockSig();
+      const prepared = clock && !props.readOnly && prepareExternalBatch(batch, editorTree(), clock);
+      if (!prepared) return false;
+      runStructural(prepared);
+      return true;
     },
     linkAtCaret: () => linkAtCaret(surface.content(), surface.head()),
   });
