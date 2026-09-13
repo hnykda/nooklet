@@ -15,7 +15,7 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 ## Open
 
 ### B-42 · Typing into the `[[` popup keeps dropping editor focus
-**Status:** needs-repro · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
+**Status:** open · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
 [[new/page` → then context window open → but when I keep typing then the edit focus keeps
 deselecting and I have to click again to type")
 
@@ -42,6 +42,14 @@ What remains is the reporter's runtime: a stale desktop bundle (this is B-15's e
 on 2026-09-11 and only delivered by a rebuild — see the delivery-path lesson under B-20), or
 something about the real WKWebView that Playwright's WebKit does not share. Needs: which app,
 which build, and whether it reproduces at `127.0.0.1:6100` after a hard reload.
+
+
+**Owner report 2026-09-13 (reproduces):** in the desktop app (Tauri, WKWebView), NOT in the web app in
+Chromium, on a build from today's main (B-65's fix included). Typing `testing [[new/page`, or pausing
+mid-link like `[[dru` to think: the app syncs/refreshes, and editor focus is lost — you have to click
+to type again. So the trigger is a sync-driven refresh while the `[[` autocomplete is open, and the
+engine matters: WebKit loses focus where Chromium keeps it. All nine earlier repro attempts ran in
+Chromium, which is why none reproduced.
 
 ---
 
@@ -460,6 +468,17 @@ nooklet`, exit. `main.rs` inherits the child's stderr (nobody sees it from Finde
 whether the child exited, and `wait_until_ready` just times out into the generic page. Fix: keep
 the child's stderr tail, detect early exit, and show that message on the launcher page (with
 "update the app" for a schema-too-new exit); only say "start a server" when nothing was spawned.
+
+---
+
+### B-500 · Every sync refresh briefly turns block references into `((id))` placeholders
+**Status:** open · **Severity:** medium (seen constantly in daily use) · **Found:** 2026-09-13, owner
+report · **Test:** none yet
+
+"The syncs/refreshes are very annoying because all references briefly become ((id)) until they are
+relabeled by their true name." A refresh (pull after a push, or a poke) re-renders the page's rows and
+their block-reference labels go back to the unresolved placeholder until the lookup answers again —
+resolved labels are not kept across a refresh.
 
 ---
 
