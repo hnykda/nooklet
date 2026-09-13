@@ -21,8 +21,10 @@ function lateTonight(): Date {
 
 const dayNumber = (iso: string): string => iso.replaceAll("-", "");
 
+// A DEADLINE, not a scheduled date: the suite shares one server, and `query.spec.ts` counts every
+// open task scheduled for tomorrow.
 test.beforeEach(async ({ page }) => {
-  await seedPage(page, "Midnight Source", `- TODO mdn due tomorrow\n  scheduled:: ${isoOffset(1)}`);
+  await seedPage(page, "Midnight Source", `- TODO mdn due tomorrow\n  deadline:: ${isoOffset(1)}`);
 });
 
 test("the journal stream's Today and its agenda move to the new day at midnight", async ({
@@ -48,14 +50,14 @@ test("the journal stream's Today and its agenda move to the new day at midnight"
   });
   await expect(row).toHaveCount(1);
   // Due on its own day: not overdue, and the chip names no date.
-  await expect(row.locator(".journal-agenda-date")).toHaveText("Scheduled");
+  await expect(row.locator(".journal-agenda-date")).toHaveText("Deadline");
   // Yesterday's Today is an earlier day now, not a second Today.
   await expect(page.locator(".journal-day-today")).toHaveCount(1);
   await expect(todayAgenda(today)).toHaveCount(0);
 });
 
 test("a query fence asking for today answers for the new day after midnight", async ({ page }) => {
-  await seedPage(page, "Midnight Query", "- ```query\n  marker:open scheduled:today\n  ```");
+  await seedPage(page, "Midnight Query", "- ```query\n  marker:open deadline:today\n  ```");
   await page.clock.install({ time: lateTonight() });
   await page.goto(pagePath("Midnight Query"));
 
