@@ -129,3 +129,19 @@ typing stays, a standing notice for the block goes (the version it offered is no
 database holds). Like an offered version it is not recorded as known, so a typing write that still
 lost to it is followed on the next refetch with nothing unsaved. Mutation-checked: with
 `sameAsBeforeTyping: false` the e2e test fails (notice shown).
+
+---
+
+### B-463 · A rewrite taken into the editor while the `[[` popup is open garbles the pick
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, m11/remote-rewrite verification pass
+(scratch e2e) · **Test:** none yet
+
+Type ` see [[Zz Tar` into `alpha` and pause past the write debounce, popup open. An agent's
+`block.update {old_str: "alpha", new_str: "ALPHA BETA"}` lands; with nothing unsaved the editor takes
+`ALPHA BETA see [[Zz Tar` (B-192) and the popup stays open. Enter picks `Zz Target Page`: the
+editor and the server both get `ALPHA BETA sZz Target Page]]z Tar`.
+
+Cause: the `[[`/`#`/`((`/`/` popups keep the trigger's `from` offset, and `CommandLayer` re-detects
+triggers only on keyup and pointerup. The take (`BlockTree#takeRemoteText`) changes the document
+with neither, so the pick replaces a range computed against the text before the rewrite. Undo with
+a popup open does not hit this: Cmd/Ctrl+Z's own keyup re-detects.
