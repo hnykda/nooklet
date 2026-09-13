@@ -221,3 +221,9 @@ after typing cuts the text as typed, while the replica is still busy (B-303)" �
 property line reaches the clipboard and that one undo brings the typed text back on the server.
 Not covered: the effect re-running between the answer and the refetch that follows it (one query
 round trip) still shows the old text — only if editing changes in exactly that window.
+
+Real graph (copy, 952 pages; `tools/probes/cut-just-typed.mjs`, no artificial load): on
+`Megapage` (201 rows), type into row 2, Escape, Cmd+X 0 / 150 / 350 ms after the last key — the
+pre-fix build put the OLD text on the clipboard all three times while the cut removed the block;
+the fixed build put the typed text there all three times (and on `2026-05-03`), and one undo
+restored the block with it each time. `nooklet verify` on the copy afterwards: OK, 20,485 ops.
