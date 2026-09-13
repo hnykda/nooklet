@@ -76,6 +76,13 @@ Related set run together after the fix (before the 7th keys-in-fields test was a
 the table plus `selection`, `popups`, `help`, `navigation`, `phone-palette`, `undo-redo`, `redo`,
 `context-menu`, `page-icons` — 216 passed, 1 skipped, 0 failed.
 
+Full e2e suite after the fix, in three runs of the 98 spec files (one server each, load average
+65–106): 175 passed + 1 skipped (`context-menu` fixme); 197 passed + 1 failed (`parity` "the palette
+offers to create a page…", then on a same-order rerun `parity` "right-clicking a bullet opens an app
+context menu" instead — `parity.spec.ts` alone: 14/14, twice); 167 passed + 1 skipped (`storage`'s
+in-memory test, WebKit-only) + 1 failed (`review-reactivity` trash Retry — B-451, fails identically with
+the fix disabled). 543 tests in all.
+
 Behaviour changes to know about:
 - Escape typed in a field outside the outliner no longer clears a standing block selection (it did
   from the title; the palette, find bar and pickers already took Escape themselves).
@@ -110,3 +117,22 @@ keyboard acts on), which is why this is a decision, not a bug fix: B-300's optio
 inputs, textareas and contenteditables only. Candidates: count `button`/`[role=button]`/`a[href]`
 as fields for Enter and Space only; or end a standing selection when focus moves to a control
 outside the outliner.
+
+---
+
+### B-451 · `review-reactivity.spec.ts`'s two "Retry recovers" tests time out: the Retry button detaches before the click
+
+**Status:** open (cause not traced) · **Severity:** low (test; the view itself ends up loaded) ·
+**Found:** 2026-09-13, keys-in-fields (full e2e run) · **Test:** the spec itself
+
+"a failed trash load says so and Retry recovers, instead of Loading… forever (B-131)" and "a failed
+history load says so and Retry recovers…" fail with `locator.click: Test timeout of 30000ms
+exceeded … locator resolved to <button class="trash-retry">Retry</button> … element was detached
+from the DOM, retrying`. The page snapshot at the timeout shows the trash LOADED ("Trash 0 · The
+trash is empty.") — so the error state went away by itself after `page.unroute`, before the test's
+click landed, and the click then waits for a button that no longer exists. Seen 3 times in a row on
+port 6411: in a full run (trash only), alone (both), and alone with this branch's one dispatch line
+disabled (both) — so not caused by B-300's fix. Machine load average 65–106 throughout. Not
+checked: whether it also fails at `52e5d20` on an idle machine, and what refetches the view (a live
+sync poke or a focus refetch would both do it) — which decides whether the fix is in the test
+(click Retry OR accept a recovered view) or in the view.

@@ -37,11 +37,14 @@ numbers B-450..B-459), never `docs/BUGS.md`.
 - Tests: `app/text-field-keys.test.ts` (+3), `e2e/tests/keys-in-fields.spec.ts` (7). 5 of the e2e
   tests fail with the dispatch line disabled (checked).
 - Suites: web unit 1141/1141, `pnpm -r typecheck` clean, biome clean on touched files. Related e2e
-  set (27 spec files) 216 passed / 1 skipped before test 7 was added; keys-in-fields 7/7.
-- Commit: see git log (this file is committed with the fix).
+  set (26 spec files) 216 passed / 1 skipped before test 7 was added; keys-in-fields 7/7.
+- `6447615` fix + tests + spec R12b + inbox (B-300 existing, B-450 new) + probe.
+- Full e2e suite in 3 runs (543 tests, load avg 65–106): 539 passed, 2 skipped, 2 failed — `parity`
+  (a different test each of two same-order runs; the spec alone 14/14 twice: load) and
+  `review-reactivity` trash Retry (fails alone too, and with the dispatch line disabled → logged as
+  B-451, not this branch's). Recorded in the inbox; committed after `6447615`.
+- No ops/sync/schema/parser touched → `pnpm nooklet verify` not needed.
 
 ## Next steps
 
-1. Re-run the related e2e set with all 7 keys-in-fields tests; record exact counts + which skipped
-   in the inbox entry; commit.
-2. Return to the coordinator.
+1. Return to the coordinator. Open for the owner: B-450 (buttons), B-451 (Retry test race).
