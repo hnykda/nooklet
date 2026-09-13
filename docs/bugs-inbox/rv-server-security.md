@@ -128,8 +128,9 @@ real run would rewrite part of a longer word — and the op description does not
 ---
 
 ### B-129 · A deeply nested or very long query fence throws out of `parseQuery` or breaks the SQL prefilter
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, server security review (F7) ·
-**Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, server security review (F7) ·
+**Test:** `packages/core/src/query.test.ts` "refuses a query nested too deeply or with too many
+filters, in words, without throwing (B-129)"; `e2e/tests/query-limits.spec.ts`
 
 `query.ts` promises "never throws", but `Parser.parseUnary` recurses once per `(` and `not` with no
 depth cap: 20,000 nested parentheses or 30,000 `not`s overflow the stack, and `parseQuery` re-throws
@@ -138,6 +139,21 @@ the `RangeError` instead of returning `{ ok: false }`. `joinSql` emits a flat `a
 large (maximum depth 1000)"). Query fences are block content, sync to every device, and any writer
 (an MCP agent included) can author one; the client parses them in a `createMemo`
 (`QueryFenceView.tsx`).
+
+What it looked like in the app (seen in Chromium against the real server before the fix, via
+`e2e/tests/query-limits.spec.ts`): the page itself survived, but both fences — 5,000 nested
+parentheses, and 1,000 words — rendered as raw code with no query view and no error, so the
+reader was never told why the query did nothing.
+
+**Fixed 2026-09-13.** `query.ts`'s `Parser` counts nesting (`(` and `not`/`-`) and filters, and
+refuses past 32 levels or 100 filters with a `ParseError` in words ("query is nested too deeply
+(more than 32 levels of parentheses and "not")", "query has too many filters (more than 100)"),
+checked before recursing so the stack is never at risk. At those limits the prefilter's SQL stays
+far inside SQLite's depth of 1,000. ADR 011 records the limits. Tests: `query.test.ts` "refuses a
+query nested too deeply or with too many filters, in words, without throwing (B-129)" (threw
+`RangeError` before), "the largest query the parser accepts compiles to SQL that SQLite accepts
+(B-129)"; `e2e/tests/query-limits.spec.ts` (2 — both failed before, `.vr-query-error` not found;
+pass after, with `query.spec.ts` 9/9 alongside).
 
 ---
 

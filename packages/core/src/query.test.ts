@@ -308,6 +308,23 @@ describe("parseQuery — boolean structure", () => {
     ];
     for (const j of junk) expect(() => parseQuery(j)).not.toThrow();
   });
+
+  it("refuses a query nested too deeply or with too many filters, in words, without throwing (B-129)", () => {
+    // Query fences are block content: any writer, an MCP agent included, can sync one of these to
+    // every device. 20k parentheses or 30k `not`s used to overflow the parser's stack.
+    expect(fail(`${"(".repeat(20_000)}TODO${")".repeat(20_000)}`)).toMatch(/nested too deeply/);
+    expect(fail(`${"not ".repeat(30_000)}TODO`)).toMatch(/nested too deeply/);
+    expect(fail(`${"-".repeat(33)}TODO`)).toMatch(/nested too deeply/);
+    expect(fail(Array.from({ length: 40_000 }, (_, i) => `w${i}`).join(" "))).toMatch(
+      /too many filters/,
+    );
+    expect(fail(Array.from({ length: 101 }, () => "TODO").join(" or "))).toMatch(
+      /too many filters/,
+    );
+    // At the limits it still parses.
+    expect(parseQuery(`${"not ".repeat(32)}TODO`).ok).toBe(true);
+    expect(parseQuery(Array.from({ length: 100 }, (_, i) => `w${i}`).join(" ")).ok).toBe(true);
+  });
 });
 
 describe("resolveQueryDate", () => {
@@ -601,6 +618,26 @@ describe("queryPrefilter is a sound over-approximation of matchQuery", () => {
       if (pre.exact) expect([...sqlIds].sort()).toEqual([...jsIds].sort());
     });
   }
+
+  it("the largest query the parser accepts compiles to SQL that SQLite accepts (B-129)", () => {
+    // 1,001 `not`s or ~1,000 words used to reach SQLite's "Expression tree is too large (maximum
+    // depth 1000)". The parser's limits keep every accepted query well inside it.
+    const widest = Array.from({ length: 50 }, (_, i) => `(scheduled:today or w${i})`).join(" ");
+    const deepest = `${"not (".repeat(8)}${"not ".repeat(16)}TODO${")".repeat(8)}`;
+    const nested = `${"(".repeat(31)}${Array.from({ length: 99 }, (_, i) => `prop:k${i}`).join(" ")} TODO${")".repeat(31)}`;
+    for (const text of [widest, deepest, nested]) {
+      const r = parseQuery(text);
+      expect(r.ok, text.slice(0, 40)).toBe(true);
+      if (!r.ok) continue;
+      const pre = queryPrefilter(r.query.where, env);
+      expect(() =>
+        driver.all(
+          `SELECT b.id FROM block b JOIN page p ON p.id = b.page_id WHERE ${pre.sql}`,
+          pre.params,
+        ),
+      ).not.toThrow();
+    }
+  });
 
   it("marks pure column queries exact and text/ref/prop-value queries inexact", () => {
     expect(queryPrefilter(parse("TODO scheduled:today page:x").where, env).exact).toBe(true);

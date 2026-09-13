@@ -58,9 +58,15 @@ start, you were restarted: read it, then continue from "Next steps".
   `--dry-run=true` dropped 20,404 ops; 5 cli-args tests. Green: 58 files / 542; CLI rerun on a
   fresh copy behaves. `graph-gc/` in scratch is disposable (gc ran on it).
 
+- F6 hash `fe5837a`.
+- F7 (B-129) — commit "fix(core): query fences refuse more than 32 levels of nesting or 100
+  filters". Red: core test (RangeError), new e2e `query-limits.spec.ts` 2/2 failed on the old
+  parser (fences rendered as raw code, no error). Green: core 16 files / 334, web 72 / 684,
+  e2e `query.spec.ts` + `query-limits.spec.ts` 11/11 on 6471.
+
 ## 2. In flight
 
-- F7.
+- F8.
 
 ## 3. Next steps, in order
 
