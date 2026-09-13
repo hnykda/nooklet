@@ -79,6 +79,28 @@ describe("templateRoots / copiedProperties / isTruthyProp", () => {
     expect(templateRoots(root)).toEqual(root.children);
   });
 
+  // B-265: the owner's imported "Meeting" template is `collapsed:: true` in the library — folded
+  // there to keep the library tidy — and every copy arrived folded, showing one empty bullet.
+  it("hands back the inserted nodes expanded, and leaves folds below them alone", () => {
+    const folded = node("folded inside", { collapsed: true, children: [node("hidden")] });
+    const root = node("", {
+      properties: { template: "Meeting", type: "meeting" },
+      collapsed: true,
+      children: [node("Agenda:"), folded],
+    });
+    const [copy] = templateRoots(root);
+    expect(copy?.collapsed).toBe(false);
+    expect(copy?.children[1]?.collapsed).toBe(true);
+    expect(root.collapsed).toBe(true); // the template itself is not touched
+
+    const childrenOnly = node("", {
+      properties: { template: "m", "template-including-parent": "false" },
+      children: [folded],
+    });
+    expect(templateRoots(childrenOnly).map((n) => n.collapsed)).toEqual([false]);
+    expect(folded.collapsed).toBe(true);
+  });
+
   it("drops only the template-describing keys", () => {
     expect(
       copiedProperties({
@@ -131,7 +153,8 @@ describe("templateInsertOps", () => {
     expect(rootOp?.payload).toMatchObject({
       place: { pageId: "page1", parentId: null },
       content: "Daily plan for [[Sep 12th, 2026]]",
-      collapsed: true,
+      // The template root is folded in the library; the copy is not (B-265).
+      collapsed: false,
       properties: { tags: "daily" },
       createdAt: 1_700_000_000_000,
     });

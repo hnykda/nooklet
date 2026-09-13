@@ -136,13 +136,24 @@ KaTeX's `displayMode`. Spec updated (`markdown-grammar.md`, "Display math"). Rea
 ---
 
 ### B-265 · Inserting a collapsed template gives a collapsed copy with its content hidden
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q6) · **Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, exploratory QA (Q6) · **Test:**
+`e2e/tests/template-collapsed.spec.ts` "a folded template inserts unfolded, keeping folds below its
+top", `packages/core/src/templates.test.ts` "hands back the inserted nodes expanded, and leaves folds
+below them alone"
 
 On the real graph, `/template` → "Meeting" inserts one empty bullet. Stored: the root (content
 `""`, properties `participants`, `projects`, `type`) with `collapsed: true` and the three children
 (Objectives / Agenda / Notes) hidden under it. The template's root is `collapsed:: true` in the
 library — collapsed there to keep the library tidy — and the copy inherits it. Not verified:
 whether Logseq itself clears `collapsed` on insert.
+
+**Fixed 2026-09-13.** Every node was copied with `collapsed: node.collapsed`. The fold is now
+dropped from the nodes an insertion places at the top (`core/templates.ts#templateRoots`, which the
+caret insert, the insert-into-empty-bullet path, and both journal-day paths all go through); folds
+further down stay, since they are part of the template's shape. The existing unit test that asserted
+`collapsed: true` on the copy now asserts `false`. Real graph (fresh copy, this build): `/template`
+→ "Meeting" shows `Objectives (What is to goal?):`, `Agenda:`, `Notes / Discussion:` under the new
+bullet, stored `collapsed: false`. Still not verified: what Logseq does.
 
 ---
 

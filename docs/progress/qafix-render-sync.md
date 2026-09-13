@@ -17,8 +17,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 | Q3 export trusts mirror_file over disk | B-262 | medium | fixed |
 | Q4 `tag:task` query finds nothing | B-263 | medium | fixed |
 | Q5 `$$…$$` display math | B-264 | low | fixed |
-| Q6 collapsed template copy | B-265 | low | next |
-| Q7 unpadded SCHEDULED dates | B-266 | low | queued |
+| Q6 collapsed template copy | B-265 | low | fixed |
+| Q7 unpadded SCHEDULED dates | B-266 | low | next |
 | Q8 page_merge dry-run text | B-267 | low | queued |
 | Q9 `javascript:` hrefs | B-268 | low | queued |
 
@@ -29,11 +29,12 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 - `2416e9e` B-261 title rename through `page.update` (`e2e/tests/page-rename.spec.ts` 2/2, `pages.spec.ts` 14/14)
 - `bd6ef6f` B-262 export rewrites files missing on disk (unit; real graph copy 952/952)
 - `a287309` B-263 derived Task tag in queries (`core/refs.ts#TASK_TAG`; unit + `e2e/tests/query-task-tag.spec.ts` 2/2; real graph 686)
-- B-264 `$$…$$` display math (core tokenizer + MathView + MathWidget + spec; unit + `e2e/tests/math-display.spec.ts` 2/2)
+- `cf5ae1c` B-264 `$$…$$` display math (core tokenizer + MathView + MathWidget + spec; unit + `e2e/tests/math-display.spec.ts` 2/2)
+- B-265 template roots inserted unfolded (`core/templates.ts#templateRoots`; unit + `e2e/tests/template-collapsed.spec.ts` 1/1, `templates.spec.ts` 8/8; real graph Meeting)
 
 ## In flight
 
-- Q6/B-265.
+- Q7/B-266.
 
 ## Decisions
 
@@ -41,6 +42,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
   untouched. First sweep after start is a full render (~200 ms on the real graph).
 - Scripts for real-graph checks: `<scratch>/serve.sh <name>` (fresh copy served on 6462) and
   `<scratch>/q1-real.mjs`. The sandbox refuses `bash $VAR/...`; call scripts by literal path.
+- e2e specs share one graph per run: `template-collapsed.spec.ts` deletes its library page in
+  `afterAll`, because `templates.spec.ts` asserts the exact template list Settings offers.
 - B-261: the title calls the server op (push → `page.update` → pull → navigate); an offline rename
   is refused with an alert rather than done locally without the link rewrite.
 
