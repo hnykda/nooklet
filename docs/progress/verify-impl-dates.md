@@ -19,6 +19,14 @@ Verifying the claims in `docs/progress/impl-dates.md` (B-96 picker, B-102 chips,
   - 390 px phone: picker 296 px wide, on screen. OK.
   - After a pick, Enter splits the block normally (popup claim released). OK.
 
+## Incident (read this)
+
+09:19:40 I ran `pnpm nooklet serve --help` in the worktree to read its flags. `--help` is ignored
+there, so it SERVED `~/.nooklet/default` (migrations applied, mirror rewritten) on port 6100 for
+~10 min until I killed it. Full measured diff and the CLI cause: B-146 in
+`docs/bugs-inbox/impl-dates.md`. Pre-incident DB copy: scratch `graph/graph.sqlite` (09:19:07).
+Nothing further was run against the default dir; every command below passes `--data`.
+
 ## Next
 
 1. Real graph copy: serve, open a journal with dates, pick/remove, then `nooklet verify`.

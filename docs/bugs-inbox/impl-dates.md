@@ -177,3 +177,29 @@ nothing. `-3000y` gave a negative day. Seen in e2e probe output: `C: props
 `RangeError` rather than format a day that is not on the calendar, so no caller can store one;
 the picker's arrows/PageUp/PageDown stop at the calendar's ends. All three tests failed before the
 fix (the component test also with two unhandled `RangeError`s).
+
+---
+
+### B-146 · `nooklet serve --help` ignores `--help` and serves the owner's real graph — migrating it and rewriting its mirror
+**Status:** open · **Severity:** high (data safety; every agent on this machine is told never to
+open `~/.nooklet/default`) · **Found:** 2026-09-13, verify-impl-dates — by doing it, by accident ·
+**Test:** none yet
+
+`pnpm nooklet serve --help`, run to read the flags, printed no usage: `cli-args.ts#parseArgs`
+turns `--help` into an ordinary flag nothing reads, `cli.ts` only prints usage for a top-level
+`help`/`--help`, and `serve` with no `--data` falls back to `$NOOKLET_DATA`, then
+`~/.nooklet/default`. It opened the owner's graph with `migrate: true` and the live mirror on, and
+listened on port 6100 until killed (~10 minutes later).
+
+What it changed in `~/.nooklet/default`, measured against a `sqlite3 .backup` taken 33 s before it
+started (09:19:07; server wrote from 09:19:40): `schema_migration` 1 → 3 rows (migrations "derive
+page_alias … (B-55)" and "add idempotency … (B-58)" applied), `page_alias` 0 → 3 rows, `setting`
++1 row (`refs.pipe_alias`), `mirror_file` 0 → 952 rows, and all 952 `journals/*.md` +
+`pages/*.md` files rewritten (mtime 09:19:41). `block`, `page`, `op`, `block_prop`, `page_prop`,
+`ref`, `device`, `token`, `changes` are byte-identical to the backup (row dumps hashed). The
+mirror is derived from the DB (never read back), so the rewrite loses nothing the DB holds; what
+the files said before is not recoverable here. The pre-incident DB copy was kept at
+`<verify scratch>/graph/graph.sqlite` (session scratch, not durable).
+
+Fix direction (not done — `cli.ts` is shared): `--help` / `-h` on any subcommand prints that
+command's usage and exits 0 before `open()`; arguably unknown flags should be an error for writers.
