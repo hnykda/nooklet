@@ -50,21 +50,62 @@ review doc only.
 - F5 / B-138 (fence classes): `highlight.ts#languageClass` (first word, `[\w+-]` only), 3 lines
   in tokens.tsx. `untrusted-content.test.tsx` 3 new cases (failed before); render unit 69/69; e2e
   untrusted-content+rendering+render 10/10.
+- F5 commit `dafa968`, F7 commit `8a1ccb8`.
+- F6 / B-138 (formula sizes) `87a75b4`: `maxSize: 20` in `math.ts`. The suggested CSS
+  (`inline-block; overflow:hidden`) NOT adopted — probe `tools/probes/inline-block-clip-baseline.mjs`
+  shows an 11 px baseline lift in Chromium and WebKit. `\kern` stays uncapped by KaTeX (e2e checks
+  it does not widen the page). `math.test.ts` with real KaTeX (failed before); e2e
+  untrusted-content+rendering+render 11/11.
+- F8 (cleanliness; commit "refactor(web): one POST path…"): `apiClient` calls `callOp` (no
+  second `post`/`createApiClient`), one `undoBatch` in `refactor-api.ts` (History and References
+  import it), FindReplaceView uses `describeError` (hint kept), headers rewritten. Tests
+  `data/api-client.test.ts` (3 network cases failed before) and `views/FindReplaceView.test.tsx`
+  (failed before); web unit 733/733; e2e views+references+replace+graph+history+link-unlinked
+  49/50 — the failure is `views.spec.ts:461` "opening the palette while editing and closing it
+  hands focus back to the editor", failing twice in a row; unrelated code path (palette focus),
+  being checked against `da85cfb` next.
+- F8 commit `3d73b13`. The palette-focus e2e failure (`views.spec.ts:461`) also fails at
+  `da85cfb` (checked with `git switch --detach da85cfb`, 1/1 failed; 3 failures in a row in all):
+  pre-existing, not caused here. No bug number left to log it under; reported to the coordinator
+  and in the review doc.
+- F9 (cleanliness; commit "refactor(web): page paths from one module…"): new
+  `apps/web/src/routes/page-path.ts` (no imports) holds `pageNameToPath`/`pathToPageName`/
+  `pageRoutePath`/`pageZoomRoutePath`/`historyRoutePath`; `navigateTarget.ts` keeps only
+  `goToTarget`; `hosts.ts#pagePath` deleted; Sidebar, hosts, CommandLayer, tokens.tsx (3 hrefs),
+  QueryFenceView and PageView build paths through it. A module with no imports so the renderer does
+  not pull in `data/store.ts`. `editor/render/page-hrefs.test.tsx` (4/4 failed before with
+  `%2F`); web unit 737/737; e2e navigation+pages+query+shelf+rendering+history+trash+refactor
+  52/52.
+- F9 commit `373c654`. F10 commit `b21352b`: the four stale comments (PageIcon CSP clause,
+  BlockTree highlighter "DEFERRED" + block-ref gap, tokens.tsx block-ref gap, appearance.ts loader)
+  rewritten after checking each claim against the code; the embed / `.vr-ref-new` / `list::
+  number` gaps are still real and still listed. No CSP added (see review doc).
+- B-139 (commit "fix(web): Alt+Enter on a ((block ref))…"): block case of `followLink` uses
+  `resolveBlockPageName`. `e2e/tests/follow-link.spec.ts` failed on the old build (stayed on the
+  source page), passes now; `hosts.test.ts` 9/9 (block case failed before); e2e
+  follow-link+untrusted-content+navigation 12/12.
+- B-139 commit `e2cd507`.
+- Final verification at `e2cd507`: `pnpm -r test` core 332/332, plugin-api 17/17, server 521/521,
+  web 739/739; typecheck clean; combined e2e over all 22 touched/affected specs 126/126 (the
+  palette-focus test that failed three times earlier passed here: flaky under load, also failed at
+  `da85cfb`).
+- Review doc `docs/review/2026-09-13-m7-rv-web-security.md` and probes
+  `tools/probes/javascript-href-sinks.mjs` / `katex-output-attributes.cjs` (both re-run; results in
+  their headers) committed last.
 
 ## In flight
 
-- nothing uncommitted.
+- Nothing. The brief is complete: all ten findings reproduced and fixed (F6's CSS half declined
+  with a probe), B-139 found and fixed, review doc written.
 
 ## Next steps, in order
 
-1. F6 (KaTeX maxSize + math.css containment; e2e math test from the full spec copy)
-3. F8 (api-client consolidation, one undoBatch, describeError in FindReplaceView)
-4. F9 (pageRoutePath everywhere)
-5. F10 (stale comments)
-6. B-139 if time: block-ref followLink (small, `hosts.ts`), with an e2e test
-7. Review doc (copy the reviewer's probes that settled facts into `tools/probes/`), progress final.
+1. Coordinator: merge `docs/bugs-inbox/rv-web-security.md` (B-135..B-139) into `docs/BUGS.md`.
+2. If `views.spec.ts:461` (palette focus) fails again, give it a bug number: it failed at
+   `da85cfb` too.
+3. Open follow-ups recorded in the review doc's "Not done": SPA CSP, `\kern` bound,
+   `SearchView#errorText`.
 
 ## How to resume
 
-`git log --oneline da85cfb..HEAD` shows what landed; each commit names its finding. Re-read this
-file's "In flight" and check `git status` for uncommitted work in the files it names.
+`git log --oneline da85cfb..HEAD` shows what landed; each commit names its finding.
