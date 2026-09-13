@@ -35,8 +35,9 @@ the old code.
 ---
 
 ### B-522 · With an active model whose host accepts connections but never answers, every semantic/hybrid search hangs
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, search-fallback (checking that
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, search-fallback (checking that
 B-520's `fallback` covers an unreachable host) · **Probe:** `tools/probes/search-embed-silent-host.ts`
+· **Test:** `packages/server/src/embeddings/query-embed-timeout.test.ts` (4)
 
 A refused port fails at once and now says "not reachable". A host that accepts the TCP connection
 and then says nothing — Ollama wedged while loading a model, a forwarded port to a stopped
@@ -44,6 +45,16 @@ container, a VPN route that drops packets — is different: the query embed's `f
 request's own abort signal, so the search waits on it. The probe's hybrid `search` was still
 pending after 30 s (undici's default header timeout is 300 s). In the Search view that is
 "Searching…" with no end and no reason — B-520's note never gets a result to render.
+
+**Fixed 2026-09-13.** `embedQueryForSearch` (`packages/server/src/embeddings/semantic-search.ts`)
+bounds the query embed with `QUERY_EMBED_TIMEOUT_MS` combined with the request's signal; a timeout
+is reported as "no answer within N s" — `provider_unreachable` when the host's model list also does
+not answer, `query_embedding_failed` when it does. After the fix the probe's search answers in
+17.5 s (15 s bound + the probe's 2.5 s) with `provider_unreachable`. The tests use a 300 ms bound
+against a silent socket and a host that lists the model but never embeds; run against the old
+code, those two hang past their 15 s test timeout and the constant's test fails (3 of 4 fail; the
+cancelled-by-caller test passes on both). The 15 s bound is sized against measured cold loads of
+bge-m3: whole semantic searches of 5.9 s, 4.2 s and 1.4 s at load average ~70 (0.08 s warm).
 
 ---
 

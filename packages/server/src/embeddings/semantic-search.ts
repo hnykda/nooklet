@@ -155,6 +155,18 @@ export type QueryEmbedding =
   | { vector?: undefined; fallback: SemanticFallback };
 
 /**
+ * How long a search waits for its query vector before answering with keyword results instead.
+ *
+ * Without a bound, a host that accepts the connection and never answers held every semantic and
+ * hybrid search for undici's 300 s header timeout — "Searching…" with no end (B-522). A warm
+ * model answers in milliseconds; the bound has to clear a COLD one, which Ollama loads into memory
+ * on the first request after its keep-alive lapses. Measured 2026-09-13 on an M4 Pro at load
+ * average ~70, bge-m3 unloaded first: whole semantic searches of 5.9 s, 4.2 s and 1.4 s cold,
+ * 0.08 s warm. 15 s leaves 2.5x the worst of those.
+ */
+export const QUERY_EMBED_TIMEOUT_MS = 15_000;
+
+/**
  * Embed the query text with the active model's provider, and on failure say why. Never throws.
  *
  * A failed embed is classified by asking the host what it has (`probeEmbeddingProvider`, one GET
@@ -167,15 +179,24 @@ export async function embedQueryForSearch(
   model: EmbeddingModelRow,
   query: string,
   signal?: AbortSignal,
+  opts: { timeoutMs?: number } = {},
 ): Promise<QueryEmbedding> {
+  const timeoutMs = opts.timeoutMs ?? QUERY_EMBED_TIMEOUT_MS;
+  const timeout = AbortSignal.timeout(timeoutMs);
   let failure: string;
+  // Read once, at the failure: `timeout` keeps ticking through the probe below and would later
+  // read as aborted for a failure that had nothing to do with it.
+  let timedOut = false;
   try {
     const provider = buildProviderForModel(driver, model);
-    const [vector] = await provider.embed([query], "query", signal);
+    const bounded = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const [vector] = await provider.embed([query], "query", bounded);
     if (vector) return { vector };
     failure = "the provider returned no vector";
   } catch (err) {
-    failure = messageOf(err);
+    timedOut = timeout.aborted && !signal?.aborted;
+    // An abort by our own bound reads "This operation was aborted" — true, and no help.
+    failure = timedOut ? `no answer within ${timeoutMs / 1000} s` : messageOf(err);
   }
 
   const settings = getEmbeddingSettings(driver);
@@ -198,7 +219,9 @@ export async function embedQueryForSearch(
     host: settings.host,
   });
   if (probe.reachable === false) {
-    const error = probe.error ?? failure;
+    // A host that let both calls time out is better described by the longer wait than by the
+    // probe's own generic abort message.
+    const error = timedOut ? failure : (probe.error ?? failure);
     return {
       fallback: {
         reason: "provider_unreachable",
