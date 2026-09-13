@@ -111,6 +111,19 @@ describe("openDatePicker (R38)", () => {
     expect(onPick).toHaveBeenCalledWith({ kind: "set", day: 20260916, time: null });
   });
 
+  it("a typed offset past the calendar's end is an error line, not a crash or a write (B-145)", () => {
+    const { onPick } = open();
+    type("+99999999d");
+    press("Enter");
+    expect(onPick).not.toHaveBeenCalled();
+    expect(document.querySelector(".dp-preview--error")?.textContent).toContain('"+99999999d"');
+    // Walking off the end with the keys stays on the last real day, too.
+    press("Backspace", { altKey: true }); // clears the whole line
+    type("9999-12-31");
+    press("ArrowRight");
+    expect(activeDay()).toBe(99991231);
+  });
+
   it("keeps the block's time unless one is typed, and 'none' clears", () => {
     const first = open({ current: { day: 20260920, time: "08:15" }, repeat: "1w" });
     press("ArrowDown");

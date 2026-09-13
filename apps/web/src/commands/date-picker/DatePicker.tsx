@@ -27,7 +27,12 @@
  * Mounted imperatively into `document.body` by `openDatePicker`, like `TemplatePicker`: a command
  * opens it, and a command has no JSX tree to render into.
  */
-import { formatJournalTitle, type JournalDay, journalDayToDate } from "@nooklet/core";
+import {
+  formatJournalTitle,
+  isValidJournalDay,
+  type JournalDay,
+  journalDayToDate,
+} from "@nooklet/core";
 import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 import { render } from "solid-js/web";
 import { claimPopupKeys } from "../popup-keys.js";
@@ -138,7 +143,11 @@ function DatePicker(props: DatePickerOptions & { close: () => void }) {
 
   function move(fn: (d: JournalDay) => JournalDay): void {
     absorb();
-    setBaseDay((d) => fn(d));
+    // Stop at the calendar's ends rather than walk into a day that cannot be stored (B-145).
+    setBaseDay((d) => {
+      const next = fn(d);
+      return isValidJournalDay(next) ? next : d;
+    });
   }
 
   function cancel(): void {

@@ -164,10 +164,11 @@ function parseDayExpression(s: string, today: JournalDay): JournalDay | string {
   const signed = SIGNED_REL_RE.exec(s);
   if (signed) {
     const n = Number(signed[2]) * (signed[1] === "-" ? -1 : 1);
-    return addUnits(today, n, signed[3] ? unitLetter(signed[3]) : "d");
+    return onCalendar(addUnits(today, n, signed[3] ? unitLetter(signed[3]) : "d"), s);
   }
   const unsigned = UNSIGNED_REL_RE.exec(s);
-  if (unsigned) return addUnits(today, Number(unsigned[1]), unitLetter(unsigned[2] as string));
+  if (unsigned)
+    return onCalendar(addUnits(today, Number(unsigned[1]), unitLetter(unsigned[2] as string)), s);
 
   const iso = ISO_RE.exec(s);
   if (iso) return realDay(Number(iso[1]), Number(iso[2]), Number(iso[3]), s);
@@ -215,6 +216,13 @@ function monthIndex(s: string): number | undefined {
 
 function unitLetter(unit: string): "d" | "w" | "m" | "y" {
   return unit[0] as "d" | "w" | "m" | "y";
+}
+
+/** An offset is the only input with no size limit: `+10000y` is YYYYYMMDD, which the stored
+ * `YYYY-MM-DD` would slice into `1202-60-91` (and the reducer's regex would take), and
+ * `+99999999d` is past what `Date` holds, a NaN day that threw in the picker's preview (B-145). */
+function onCalendar(day: JournalDay, raw: string): JournalDay | string {
+  return isValidJournalDay(day) ? day : `"${raw}" is too far away`;
 }
 
 function realDay(y: number, m: number, d: number, raw: string): JournalDay | string {
@@ -293,9 +301,12 @@ function firstOfMonth(day: JournalDay, monthOffset: number): JournalDay {
 
 // ── The stored value (ADR 011) ─────────────────────────────────────────────────────────────────
 
-/** `YYYYMMDD` + optional `HH:MM` → exactly `YYYY-MM-DD[ HH:MM]`, the only form the reducer takes. */
+/** `YYYYMMDD` + optional `HH:MM` → exactly `YYYY-MM-DD[ HH:MM]`, the only form the reducer takes.
+ * Throws on a day that is not on the calendar: the reducer checks only the digit pattern, so a
+ * wrong day formatted here would be stored as a real, wrong date (B-145). */
 export function formatStoredDate(day: JournalDay, time: string | null | undefined): string {
-  const s = String(day).padStart(8, "0");
+  if (!isValidJournalDay(day)) throw new RangeError(`not a calendar day: ${day}`);
+  const s = String(day);
   const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
   return time ? `${iso} ${time}` : iso;
 }

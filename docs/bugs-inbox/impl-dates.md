@@ -150,3 +150,30 @@ had one or two of these failures; with this branch's, 3 of 8 runs (counting one 
 had one, and the last 3 in a row were clean. A timed probe of the
 `QueryFenceView` import alone measured 0.9–3.7 s depending on machine load. Likely fix: a longer
 `waitFor` timeout on the first lazy render, and a per-test timeout on the first cold import.
+
+---
+
+### B-145 · The date picker stores a garbage date for `+10000y` and throws on every keystroke of `+99999999d`
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-dates` (a real browser against the production build) · **Tests:**
+`apps/web/src/commands/date-picker/parse.test.ts` "an offset that leaves the calendar is not a date
+— never a garbage or NaN day (B-145)" and "refuses to format a day that is not on the calendar…",
+`DatePicker.test.tsx` "a typed offset past the calendar's end is an error line, not a crash or a
+write (B-145)"
+
+Offsets were the one input with no size limit. `/scheduled`, `+10000y`, Enter: the preview said
+"Sun, Sep 13, 12026", and the server then held `scheduled:: 1202-60-91` — `formatStoredDate`
+sliced the nine-digit day `120260913` into four-two-two, and the reducer's `SCHEDULED_RE` checks
+only the digit pattern, so `scheduled_day` became `12026091`: no chip (the chip parser rejects
+it), but a due date in the year 1202 for the Tasks view and every `scheduled:<today` query.
+`+99999999d` goes past what `Date` holds: `addDays` returned NaN, `formatJournalTitle` threw
+`RangeError: Invalid time value` from the preview (two uncaught page errors while typing, the
+preview frozen on the last good value), and Enter closed the picker having silently written
+nothing. `-3000y` gave a negative day. Seen in e2e probe output: `C: props
+[{"scheduled":"1202-60-91"}]`, `B: errors ["RangeError: Invalid time value", …]`.
+
+**Fixed 2026-09-13.** `parse.ts` checks an offset's result with `isValidJournalDay` and says
+`"+10000y" is too far away` otherwise (`+7973y` still reaches 9999); `formatStoredDate` throws a
+`RangeError` rather than format a day that is not on the calendar, so no caller can store one;
+the picker's arrows/PageUp/PageDown stop at the calendar's ends. All three tests failed before the
+fix (the component test also with two unhandled `RangeError`s).

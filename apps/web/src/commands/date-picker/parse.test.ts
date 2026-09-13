@@ -69,6 +69,17 @@ describe("parseDateInput — relative", () => {
     expect(day("2 weeks")).toBe(20260927);
   });
 
+  it("an offset that leaves the calendar is not a date — never a garbage or NaN day (B-145)", () => {
+    // `+10000y` once wrote `scheduled:: 1202-60-91` (the reducer's regex takes any 4-2-2 digits),
+    // and `+99999999d` gave a NaN day that threw inside the picker's preview on every keystroke.
+    for (const input of ["+10000y", "+99999999d", "in 99999999999 days", "-3000y"]) {
+      const r = parseDateInput(input, SUN);
+      expect(r.kind, input).toBe("invalid");
+      expect(r.kind === "invalid" && r.message, input).toContain(`"${input}"`);
+    }
+    expect(day("+7973y")).toBe(99990913); // the last year a stored date can hold
+  });
+
   it("months clamp to the end of a shorter month", () => {
     expect(addMonths(20260131, 1)).toBe(20260228);
     expect(addMonths(20280131, 1)).toBe(20280229);
@@ -163,5 +174,10 @@ describe("stored value (ADR 011)", () => {
     expect(parseStoredDate("2026-09-05")).toEqual({ day: 20260905, time: null });
     expect(parseStoredDate("<2026-09-05 Sat>")).toBeUndefined();
     expect(parseStoredDate(null)).toBeUndefined();
+  });
+
+  it("refuses to format a day that is not on the calendar rather than write a wrong one (B-145)", () => {
+    expect(() => formatStoredDate(120260913, null)).toThrow(RangeError);
+    expect(() => formatStoredDate(Number.NaN, null)).toThrow(RangeError);
   });
 });
