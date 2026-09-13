@@ -136,3 +136,33 @@ three plugins listed, `page.wordcount` 200 with the right count, `page_wordcount
 tools, client half 200). The full Tauri app was not built; `tauri.conf.json` maps the whole
 `../sidecar` directory as a resource, so `plugins/` rides along by reading, not by a built `.app`.
 
+### B-333 · `packages/core`'s performance and sync property tests fail under heavy machine load
+**Status:** needs-repro · **Severity:** low · **Found:** 2026-09-13, m9 cleanup, final `pnpm -r
+test` · **Test:** the tests themselves
+
+With load average 62–84 on the shared machine, `pnpm -r test` stopped at `packages/core`, and a
+rerun of that package alone failed the same four: `src/tokens.test.ts` "stays far away from
+quadratic" (1,488 ms against its 500 ms budget) and three in `src/sync/sync.property.test.ts` —
+"dense adversarial moves on a small block pool…" (timed out at 30 s), "converges regardless of
+interleaving…" and "content and each prop key converge independently…" (5 s each). This branch
+changes nothing in `packages/core` (`git diff cf08d19 -- packages/core` is empty). Not rerun on a
+quiet machine; not investigated. A wall-clock budget and fixed per-test timeouts are the likely
+reason — the property tests' run counts, not their assertions, would be what to look at.
+
+### B-334 · `SearchView.test.tsx` fails under load: its first test imports the view cold
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9 cleanup, full `apps/web` run at
+load average ~70 · **Test:** `apps/web/src/views/SearchView.test.tsx` (the file itself)
+
+Two tests failed in one full run ("a task marker searches blocks with that marker…" and "shows a
+hint and does not search before anything is typed"); the failure output was not captured, and a
+second full run at load ~40 passed. Alone at load 46 the first test took 2,201 ms and the others
+2–311 ms: `renderSearch()` did `await import("./SearchView.js")` inside the test, so the first
+test paid the cold import within its 5 s — the B-144 pattern. This branch had just given
+`SearchView.tsx` two more imports (`describeError`, `routes/page-path.ts`), which can only have
+made that import heavier.
+
+**Fixed 2026-09-13.** The view is imported statically at the top of the test file, loaded while the
+file is collected; the first test then took 33 ms. **Test:** the file itself — believed fixed on
+the timing evidence, not on a reproduced failure. `JournalStreamView.test.tsx` imports its view
+the same way inside a helper; not seen failing, left as it is.
+

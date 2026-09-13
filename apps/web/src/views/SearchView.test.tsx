@@ -42,8 +42,13 @@ afterEach(() => {
   lastInput = undefined;
 });
 
+// Imported here, while the file is collected (no timeout runs), not inside the first test: that
+// cold import took 2.2 s of its 5 s alone at load average 46, and two tests failed in a full run at
+// load average 70 (B-334, the B-144 pattern). `vi.mock` above is hoisted, so the view still sees
+// the fake store.
+import { SearchView } from "./SearchView.js";
+
 async function renderSearch() {
-  const { SearchView } = await import("./SearchView.js");
   return render(() => (
     <Router>
       <Route path="*" component={SearchView} />
