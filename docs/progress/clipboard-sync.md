@@ -19,27 +19,25 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
 - B-233 — test fix: `e2e/tests/editing.spec.ts` counts rows relative to the start;
   `e2e/tests/a-fresh-journal.spec.ts` waits for the server to hold its two blocks. Cause: a race
   between the push debounce and the test's browser context closing (see inbox entry). Commit
-  "test(e2e): journal Enter tests no longer depend on a push race (B-233)".
+  `281059d`.
 
 - B-245 — `block.cutSelection`: new `apps/web/src/editor/selection-clipboard.ts` (+test), hookup in
   `BlockTree.tsx` (copy case now calls the shared function; new cut case), `keydown.ts` union,
   `commands/registrations/structural.ts` (Cmd/Ctrl+X), spec row + R31 paragraph, e2e test in
   `selection.spec.ts`. Unit web 1006/1006; e2e selection.spec 19/19; the new test fails with the
   registration removed. Logged B-300 (Backspace/Cmd+X in the page title act on a standing block
-  selection) in passing. Commit "feat(web): Cmd/Ctrl+X cuts a block selection (B-245)".
+  selection) in passing. Commit `f1c1851`.
 
 - B-247 measured (`tools/probes/replica-busy-window.mjs`, numbers in the inbox entry): even an
   idle-ish worker loses an edit reloaded 100–300 ms after typing; logged B-301 (an op durable in
-  the replica is never pushed after a reload until the next local write). Commit "docs(bugs):
-  measure the B-247 window; log B-301".
+  the replica is never pushed after a reload until the next local write). Commit `888b5e2`.
 
 - B-301 + B-247 fixed — `sync/sync-client.ts#pushIfPending` (connectLive + onOpen);
   `db/unapplied-ops.ts` (+test), `db/client.ts` hookup, `WorkerApi.replayLocalOps` in
   `worker-api.ts`/`db.worker.ts`/`worker-core.ts` (+test), `fake-worker.ts`,
   `db/client-unapplied.test.ts`, `e2e/tests/reload-durability.spec.ts`, proposal
   `docs/proposals/002-pending-edits-durability.md`. E2E reload-durability 15/15 (repeat 5);
-  attribution: journal disabled → B-247 tests 4/4 red. Commit "fix(web): edits survive a reload
-  before the replica wrote them (B-247), and an unpushed outbox is pushed at start (B-301)".
+  attribution: journal disabled → B-247 tests 4/4 red. Commit `d218e7d`.
   Unit: full web suite 1021/1021 (at load average ~20; at 65–72 it had 7 timeouts in
   `SearchView.test.tsx`, `page-title.test.ts`, `render-seams.test.tsx`, identical with the original
   `db/client.ts`). E2E a-fresh-journal + editing + reload-durability + selection: 27/27.
@@ -50,7 +48,14 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
   `nooklet verify` OK (20,466 ops). Probe server stopped. B-300 left unfixed with three candidate
   fixes written into its entry (each changes how keys resolve app-wide — owner/coordinator call).
   Logged B-302 (typing on a 201-block page blocks the worker 0.1–1.6 s per stretch, loaded
-  machine, needs-repro).
+  machine, needs-repro). Commit `2ef86e7`.
+
+- Full e2e (chromium, port 6402), in four chunks because one run exceeds a 10-minute foreground
+  call; each chunk led by `a-fresh-journal.spec.ts` so today's journal starts as in a full run
+  (`<scratch>/bin/e2e-chunk.sh <0..3>`): 120 passed + 1 skipped / 82 passed / 121 passed /
+  122 passed + 1 failed + 1 skipped. Unique tests: 442 passed, 1 failed, 2 skipped. The failure
+  was `views.spec.ts` "opening the palette while editing and closing it hands focus back to the
+  editor" (the known load-flaky B-161 test); `views.spec.ts` rerun alone: 29/29.
 
 ## 2. In flight
 
@@ -58,8 +63,13 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
 
 ## 3. Next steps
 
-1. Full e2e suite on port 6402 (a-fresh-journal now deterministically leaves 2 blocks in today's
-   journal; the unapplied-ops copy runs on every write). Record counts here and in the final report.
+Task complete on this branch. Left for outside it:
+
+1. Coordinator: fold `docs/bugs-inbox/clipboard-sync.md` into `docs/BUGS.md` (B-233, B-245, B-247
+   fixed; B-301 fixed; B-300 open; B-302 needs-repro).
+2. After merge: `node docs/wiki/tools/generate-shortcuts.mjs` (new Cmd/Ctrl+X row).
+3. Owner: proposal 002 — keep option B or schedule C; B-300's fix (three candidates in its entry).
+4. Unverified: WebKit/WKWebView and Capacitor behaviour of the unapplied-ops copy (proposal §4).
 
 ## 4. Decisions
 
@@ -77,4 +87,4 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
 
 - Real-graph copy: `<scratch>/graph/graph.sqlite` (sqlite3 .backup of the owner's graph, 952 pages,
   18,628 blocks, op max seq 20,411). Served by `<scratch>/bin/serve-real.sh` on port 16402 (log
-  `<scratch>/server.log`); kill with `lsof -ti :16402 | xargs kill` when done.
+  `<scratch>/server.log`); kill with `lsof -ti :16402 | xargs kill` when done (stopped).
