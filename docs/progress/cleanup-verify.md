@@ -31,10 +31,32 @@ Worktree `.claude/worktrees/wf_e473942f-106-10`, branch `m9/cleanup`, e2e port 6
   (spec 10/10); both fail with `pageNameToPath` mutated to `encodeURI` per segment (e2e 1/1
   failed, unit 1 failed), and the unit cases fail with whole-name `encodeURIComponent`.
 
+- Stale pointers: `App.tsx` / `PageRoute.tsx` still sent readers to `views/navigateTarget.ts` for
+  the path encoding, and `canonicalPageRoute.test.ts` mocked the store for an import that is gone
+  (fixed, `6c49cc6`).
+- More e2e on port 6405: search-filters, graph, diagnostics, settings, plugins, refactor, shelf,
+  embeds, query, query-task-tag, tagged-pages, tasks, page-rename, page-identity, connectivity,
+  views, rendering, render, untrusted-content, journal-agenda, history-later-edits, trash-conflict,
+  replace-stale, replace-unicode, references-cap, references-filters: 148 passed, 1 failed —
+  `views.spec.ts:461` (B-161): failed again alone at HEAD, and alone with `cf08d19`'s `apps/web`
+  and `e2e` swapped in (so not this branch). The other 43 specs: 104 passed + 1 skipped, and
+  162 passed + 1 skipped. With the 36 + 10 above, every spec file has run on this tree.
+- `packages/core` 393/393, `packages/plugin-api` 17/17 (load ~11). `nooklet verify` on the
+  real-graph copy after the sidecar served it: 20,411 ops replayed, OK.
+- Found in passing, logged (not caused by the branch, outside its brief): B-336 — a user's own
+  plugin in `<data>/plugins` cannot resolve `@nooklet/plugin-api`/`zod` in the sidecar (probe
+  `tools/probes/sidecar-user-plugin.mjs`, exits 1); B-337 — `build-sidecar.mjs` ships a stale
+  `apps/web/dist` if one exists.
+- Not logged, theoretical: `bundled.test.ts` and `built-ins.test.ts` both write the repo plugins'
+  `.nooklet-build/server.mjs` (esbuild `write: true`, not atomic) from separate vitest workers;
+  12 runs of the pair showed no torn read.
+
 ## In flight
 
-- nothing uncommitted after the test commit.
+- nothing uncommitted.
 
-## Next
+## Verdict
 
-- Full e2e halves if time allows; final verdict.
+Solid: the four parts do what the brief asked, verified in a browser, on a built sidecar and on the
+real-graph copy. This agent added tests (`3d24e77`) and comment fixes (`6c49cc6`), no code fixes.
+

@@ -181,3 +181,38 @@ stream). The same spec alone right after: 5/5. Same family as B-233 (specs shari
 on one server); nothing in this branch touches the journal views. Likely fix, as B-233 says: give
 these tests their own page, or wait for the outline instead of blurring the draft.
 
+
+### B-336 · In the desktop app a user's own plugin cannot import `@nooklet/plugin-api` or `zod`
+**Status:** open · **Severity:** low (as B-180) · **Found:** 2026-09-13, verifying B-180 on `m9/cleanup` ·
+**Test:** none; probe `tools/probes/sidecar-user-plugin.mjs` (exits 1 while this holds)
+
+B-180's fix ships the BUILT-IN plugins pre-bundled; a plugin the user drops into
+`<data>/plugins` still goes through the runtime loader, and in the sidecar that fails. The loader
+(`packages/server/src/plugins/bundler.ts#hostAliasMap`) resolves the host-provided specifiers
+(`@nooklet/plugin-api`, `@nooklet/core`, `zod`, `hono`) with `createRequire(import.meta.url)` —
+the server's own `node_modules`, which a bundled `server.mjs` does not have — so the alias map is
+empty and esbuild cannot resolve them. Reproduced with a built sidecar copied out of the repo and a
+five-line plugin shaped like `plugins/word-count` (a `defineOp` from `@nooklet/plugin-api`, a
+`z.object` from `zod`): the log says `plugin "hello" failed to activate: Build failed with 2
+errors: … Could not resolve "@nooklet/plugin-api" … Could not resolve "zod"`, and its op answers
+404. `nooklet serve` from the repo loads the same plugin. So every plugin written the documented
+way (ADR 007, docs/spec/api-and-plugin-types.md) is dead in the Mac app, although `main.rs` sets
+`ESBUILD_BINARY_PATH` precisely so user plugins can be bundled there. Not caused by `m9/cleanup`
+(the resolution path is unchanged) and outside its brief. Likely fix: ship the host-provided
+modules as files beside `server.mjs` (as `bundled.ts` does for the built-ins) and alias to those
+when `NOOKLET_BUNDLED_PLUGINS_DIR` is set — or bundle them into a `plugins/_host/` the loader
+points esbuild at.
+
+### B-337 · `build-sidecar.mjs` ships whatever `apps/web/dist` happens to hold
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, verifying B-180 on `m9/cleanup` (by
+reading, and by an e2e run that had just rebuilt `dist` from other sources) · **Test:** none
+
+Step 5 builds the web client only when `apps/web/dist/index.html` is missing, then copies `dist`
+into the sidecar. `dist` is rebuilt by every e2e run and every `vite build`, from whatever sources
+the checkout had then — during this verification it held a build of `cf08d19`'s client for a few
+minutes, while the server being bundled was HEAD's. A local `pnpm desktop:build` /
+`pnpm desktop:install` after switching branches (or after an e2e run on another tree state) ships
+that older client next to a newer server, with nothing to say so. CI starts from a fresh checkout,
+where `dist` is missing and gets built, so the release workflow is not affected. Likely fix: always
+run `pnpm --filter @nooklet/web build` in step 5 (Vite is quick), as `e2e/global-setup.ts` does for
+the same reason.
