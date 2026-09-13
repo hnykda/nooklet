@@ -55,3 +55,29 @@ test("a keyword search shows no fallback note", async ({ page }) => {
   await expect(page.locator(".search-summary")).toHaveText("1 result", { timeout: 15_000 });
   await expect(page.locator(".search-fallback")).toHaveCount(0);
 });
+
+test("closing Settings re-runs a search that had fallen back, so its note is not left stale (B-523)", async ({
+  page,
+}) => {
+  await seedPage(page, "Search Fallback Stale Hit", "- a numbat sentence");
+  await page.goto("/search");
+  await page.locator(".search-query-input").fill("numbat");
+  const note = page.locator(".search-fallback");
+  await expect(note).toBeVisible({ timeout: 15_000 });
+  test.skip(
+    (await note.getAttribute("data-reason")) === "sqlite_vec_unavailable",
+    "sqlite-vec did not load on this server",
+  );
+
+  await note.getByRole("button", { name: "Set up semantic search…" }).click();
+  await expect(page.locator(".set-panel")).toBeVisible();
+  // Whatever was changed in Settings, the note under it describes the server as it WAS. An e2e
+  // server cannot actually turn embeddings on (no Ollama in CI), so the evidence is the request.
+  const rerun = page.waitForRequest(
+    (r) => r.method() === "POST" && r.url().endsWith("/api/v1/search"),
+    { timeout: 5_000 },
+  );
+  await page.locator(".set-close").click();
+  await rerun;
+  await expect(note).toBeVisible();
+});

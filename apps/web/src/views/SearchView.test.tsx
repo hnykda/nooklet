@@ -30,8 +30,14 @@ const searchFn = vi.fn(
 
 const openEmbeddingsSettings = vi.fn();
 // The real panel module pulls in theme, appearance and template storage; the view only needs the
-// one function that opens it.
-vi.mock("./SettingsPanel.js", () => ({ openEmbeddingsSettings: () => openEmbeddingsSettings() }));
+// function that opens it and the signal that says whether it is open.
+const settingsState = vi.hoisted(() => ({ setOpen: (_open: boolean): void => {} }));
+vi.mock("./SettingsPanel.js", async () => {
+  const { createSignal } = await import("solid-js");
+  const [settingsOpen, setOpen] = createSignal(false);
+  settingsState.setOpen = setOpen;
+  return { openEmbeddingsSettings: () => openEmbeddingsSettings(), settingsOpen };
+});
 
 vi.mock("../data/store.js", () => ({
   useSearchResults: (inputAccessor: () => SearchInput | undefined) => {
@@ -196,6 +202,30 @@ describe("SearchView fallback note (B-520)", () => {
     await screen.findByText(/still being built \(8 of 9 embedded\)/);
     expect(searchFn.mock.calls.length).toBe(calls + 1);
     expect(lastInput?.query).toBe("pricing");
+  });
+
+  it("closing Settings re-runs a search that fell back, and only one that did (B-523)", async () => {
+    serverFallback = { reason: "not_configured", message: "…" };
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+    await screen.findByText(/semantic search is not set up/);
+    const calls = searchFn.mock.calls.length;
+
+    settingsState.setOpen(true);
+    serverFallback = { reason: "indexing", message: "…", indexed: 0, total: 9, errors: 0 };
+    settingsState.setOpen(false);
+    await screen.findByText(/still being built \(0 of 9 embedded\)/);
+    expect(searchFn.mock.calls.length).toBe(calls + 1);
+
+    // A result that did not fall back is not re-run by opening and closing Settings.
+    serverFallback = undefined;
+    fireEvent.click(screen.getByRole("button", { name: "keyword" }));
+    await screen.findByText("Projects/Aurora");
+    const keywordCalls = searchFn.mock.calls.length;
+    settingsState.setOpen(true);
+    settingsState.setOpen(false);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(searchFn.mock.calls.length).toBe(keywordCalls);
   });
 
   it("shows no note when the search ran in the mode asked for", async () => {

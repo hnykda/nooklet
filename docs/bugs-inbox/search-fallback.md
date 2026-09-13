@@ -31,3 +31,34 @@ client never sends `pages`, so this was agent-visible only.
 
 **Fixed 2026-09-13.** `packages/server/src/ops/search.ts` (the early return). The test fails on
 the old code.
+
+---
+
+### B-522 · With an active model whose host accepts connections but never answers, every semantic/hybrid search hangs
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, search-fallback (checking that
+B-520's `fallback` covers an unreachable host) · **Probe:** `tools/probes/search-embed-silent-host.ts`
+
+A refused port fails at once and now says "not reachable". A host that accepts the TCP connection
+and then says nothing — Ollama wedged while loading a model, a forwarded port to a stopped
+container, a VPN route that drops packets — is different: the query embed's `fetch` gets only the
+request's own abort signal, so the search waits on it. The probe's hybrid `search` was still
+pending after 30 s (undici's default header timeout is 300 s). In the Search view that is
+"Searching…" with no end and no reason — B-520's note never gets a result to render.
+
+---
+
+### B-523 · After turning semantic search on from the Search view's note, closing Settings leaves the note saying it is not set up
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, search-fallback (walking the owner's
+flow on a real-graph copy) · **Test:** `e2e/tests/search-fallback.spec.ts` › "closing Settings
+re-runs a search that had fallen back, so its note is not left stale (B-523)";
+`apps/web/src/views/SearchView.test.tsx` › "closing Settings re-runs a search that fell back, and
+only one that did (B-523)"
+
+Search → "Set up semantic search…" → Settings → "Test connection & enable" → close. The Search
+view underneath still shows the result it had before, so the note keeps saying "semantic search is
+not set up" until the query is edited — it reads as if enabling did nothing. The results resource
+is keyed only on the query and filters; nothing re-runs it when Settings closes.
+
+**Fixed 2026-09-13.** `SearchView.tsx` re-runs the search when `settingsOpen` goes from true to
+false and the result on screen had a `fallback`; a result that did not fall back is left alone.
+The e2e test failed before the fix (no `search` request within 5 s of closing Settings).
