@@ -172,12 +172,15 @@ test("a page created through the API appears in the open sidebar without a reloa
   await expect(page.locator(".vr-outliner").first()).toContainText("via api");
 });
 
-test("the sidebar's Pages list shows the most recently edited pages first", async ({ page }) => {
+test("the sidebar's Recent list shows the most recently edited pages first", async ({ page }) => {
   await page.goto("/journals");
   await openSidebar(page);
   await api(page, "page.create", { name: "Zz Pages Recent", markdown: "- just made" });
   await expect(page.locator(".app-sidebar")).toContainText("Zz Pages Recent", { timeout: 15_000 });
-  const section = page.locator(".app-sidebar .sidebar-section", { hasText: "Pages" });
+  // Headed "Recent" since B-222 (it was "Pages", under the nav link of the same name).
+  const section = page.locator(".app-sidebar .sidebar-section", {
+    has: page.locator("h2", { hasText: "Recent" }),
+  });
   await expect(section.locator("li").first()).toHaveText("Zz Pages Recent");
 });
 

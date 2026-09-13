@@ -77,6 +77,7 @@ import {
   createStore,
   pagePath,
 } from "./hosts.js";
+import { createPageActionsHost } from "./page-actions-host.js";
 import { openPageFind, pageFindAvailable } from "./page-find.js";
 import { createRefactorHost } from "./refactor-host.js";
 import { openOnShelf } from "./shelf.js";
@@ -329,6 +330,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       },
       open: (pageId) => navigation.openPage(pageId),
     },
+    pageActions: createPageActionsHost({ closePalette: () => palette.close() }),
   });
 
   const anyAutocomplete = createMemo(() => {

@@ -1,0 +1,114 @@
+/* The page title row's star and "…" menu (`PageActions.tsx`). The title input's bottom margin is
+   what spaces the row from the content, so the controls are nudged up by the same amount to sit
+   on the title's line rather than below its centre. */
+
+.page-actions {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin-bottom: var(--space-lg);
+}
+
+.page-actions-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.page-actions-button:hover,
+.page-actions-button:focus-visible,
+.page-actions-button[aria-expanded="true"] {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+/* The same colour the star in All Pages turns (`all-pages.css`), so a favourite looks like one
+   wherever it is shown. */
+.page-favorite-button.page-favorite-on {
+  color: var(--warn);
+}
+
+@media (pointer: coarse) {
+  .page-actions-button {
+    width: var(--touch);
+    height: var(--touch);
+  }
+}
+
+.page-actions-menu-anchor {
+  position: relative;
+}
+
+/* Same raised-surface recipe as the block menu (`app/context-menu.css`). Anchored to the trigger's
+   right edge so it never runs off a narrow screen. */
+.page-actions-menu {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  z-index: 60;
+  min-width: 14rem;
+  padding: var(--space-xs);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: var(--fg);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+}
+
+.page-actions-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-sm) var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.page-actions-item svg {
+  color: var(--muted);
+  flex: none;
+}
+
+.page-actions-item:hover,
+.page-actions-item:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+/* Out of flow, under the buttons: in flow it took its width from the title, and on a phone a
+   "Copied page as markdown" squeezed the page's own name down to a few letters. */
+.page-actions-notice {
+  position: absolute;
+  top: 100%;
+  right: var(--space-xs);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.page-actions-notice-error {
+  color: var(--danger);
+}

@@ -67,9 +67,11 @@ test("setting an icon from the title row shows it there, in All Pages, and in fa
     hasText: "Icon Rocket",
   });
   await expect(fav.locator(".page-icon")).toHaveText("🚀");
-  const recent = sidebar.locator(".sidebar-section", { hasText: "Pages" }).locator("a", {
-    hasText: "Icon Rocket",
-  });
+  const recent = sidebar
+    .locator(".sidebar-section", { has: page.locator("h2", { hasText: "Recent" }) })
+    .locator("a", {
+      hasText: "Icon Rocket",
+    });
   await expect(recent.locator(".page-icon")).toHaveText("🚀");
 });
 

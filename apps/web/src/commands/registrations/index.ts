@@ -9,6 +9,7 @@ import { createFormatCommands } from "./format.js";
 import { createInsertCommands } from "./insert.js";
 import { createNavCommands } from "./nav.js";
 import { createNumberedListCommands } from "./numbered-list.js";
+import { createPageActionCommands, type PageActionsHost } from "./page-actions.js";
 import { createPageFindCommands, type PageFindHost } from "./page-find.js";
 import { createRandomPageCommands, type RandomPageHost } from "./random-page.js";
 import { createRefactorCommands, type RefactorHost } from "./refactor.js";
@@ -33,6 +34,8 @@ export interface CoreCommandDeps {
   pageFind?: PageFindHost;
   /** `nav.randomPage` (audit §2 #18). Optional: no host, no command. */
   randomPage?: RandomPageHost;
+  /** Copy/export/print/favourite a page (B-220–B-222). Optional for the same reason. */
+  pageActions?: PageActionsHost;
 }
 
 /** Every command core registers at startup (E.1-E.6 of the spec). Structural `Block`-category
@@ -56,6 +59,7 @@ export function createCoreCommands(deps: CoreCommandDeps): Command[] {
     ...(deps.shelf ? createShelfCommands({ shelf: deps.shelf }) : []),
     ...(deps.pageFind ? createPageFindCommands({ pageFind: deps.pageFind }) : []),
     ...(deps.randomPage ? createRandomPageCommands({ randomPage: deps.randomPage }) : []),
+    ...(deps.pageActions ? createPageActionCommands({ pageActions: deps.pageActions }) : []),
   ];
 }
 

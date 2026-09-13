@@ -688,6 +688,10 @@ behavior exactly rather than special-casing mobile.
 | `app.toggleTheme` | Toggle theme | — | — | `true` |
 | `app.hideKeyboard` | Hide keyboard | — | — | `mobile && editorFocused` |
 | `edit.mergePage` | Merge this page into… | — | — | `true` |
+| `app.copyPageMarkdown` | Copy page as markdown | — | — | `true` |
+| `app.exportPageMarkdown` | Export page as markdown | — | — | `true` |
+| `app.printPage` | Print page | — | — | `true` |
+| `app.toggleFavorite` | Toggle favourite | — | — | `true` |
 
 **R51.** `edit.undo` / `edit.redo` operate the document-level history manager of ADR 006 / research
 04 §7 (a document-level history of inverse ops with 500 ms text coalescing — CM6's own
@@ -709,6 +713,23 @@ button, § Mobile) when `mobile`. `edit.mergePage` (ADR 020; `edit.`, because R2
 and an unknown one blanks the app — B-87) asks for a target page and merges the current page into
 it (`page.merge`: blocks moved, links rewritten, the old name kept as an alias). Off a page route it
 does nothing; `when` cannot see the route.
+
+**R52a.** Page actions (exposure audit §2 items 9, 10, 13). `app.copyPageMarkdown`,
+`app.exportPageMarkdown` and `app.toggleFavorite` act on `args.page` (a page name) when it is a
+non-empty string, else on the page the current route shows; off a page route they do nothing
+(`WhenContext` cannot see the route, so `when` stays `true`). The page title row's star and "…"
+menu invoke them through `exec` with `args.page` set. `app.exportPageMarkdown` hands the browser
+the page's markdown-mirror text exactly — the same renderer (`@nooklet/core` `sync/page-outline.ts`)
+over the local replica, `^id` suffixes included, named as the mirror names the file.
+`app.copyPageMarkdown` writes the same render with ids omitted, starting the clipboard write
+synchronously inside `run()` (WebKit rejects a clipboard write outside the user gesture).
+`app.toggleFavorite` flips the synced `favorite` page property. `app.printPage` opens the print
+dialog for whatever view is showing, after closing the palette; the print stylesheet prints only
+the content, and collapsed blocks render expanded between `beforeprint` and `afterprint` without
+writing anything. `app.copyPageMarkdown`, `app.exportPageMarkdown` and `app.printPage` are
+`remoteInvocable: false` — they act on the device (clipboard, downloads, print dialog), not the
+graph — so `ui_run` refuses them; `app.toggleFavorite` stays remote-invocable. The ids use the `app`
+area because R2's areas are closed.
 
 ### F. Slash menu
 

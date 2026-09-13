@@ -11,6 +11,7 @@ import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid
 import { useAgendaTasks } from "../data/agenda.js";
 import { describeError } from "../data/api-client.js";
 import { currentDay } from "../data/day-clock.js";
+import { isFavoriteValue } from "../data/page-export.js";
 import { renamePage } from "../data/page-rename.js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
 import { applyOp, usePageByName, usePageProperties } from "../data/store.js";
@@ -22,6 +23,7 @@ import { useCanonicalPageRoute } from "./canonicalPageRoute.js";
 import { JournalAgenda } from "./JournalAgenda.js";
 import { NamespaceChildren } from "./NamespaceChildren.js";
 import { goToTarget, pageNameToPath, pageRoutePath } from "./navigateTarget.js";
+import { PageActions } from "./PageActions.js";
 import { usePageFind } from "./PageFindBar.js";
 import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
@@ -189,6 +191,9 @@ export function PageView(props: PageViewProps): JSX.Element {
                   readOnly={locked()}
                   aria-label="Page title"
                 />
+                {/* Paper only (`styles/print.css`): an input cannot wrap, so a long name printed
+                    as one line clipped at the sheet's edge (B-227). */}
+                <h1 class="page-title-print">{titleDraft()}</h1>
               </Show>
               <Show when={locked()}>
                 <span class="page-readonly-badge" title={READ_ONLY_NOTICE}>
@@ -205,6 +210,7 @@ export function PageView(props: PageViewProps): JSX.Element {
               >
                 History
               </A>
+              <PageActions pageName={p().name} favorite={isFavoriteValue(properties().favorite)} />
             </div>
             <PageProperties pageId={p().id} properties={properties()} />
             <find.Bar scope={() => viewEl} />

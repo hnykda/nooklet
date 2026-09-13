@@ -60,6 +60,10 @@ export function subtreeIds(tree: EditorTree, id: BlockId): BlockId[] {
 export interface FlattenOptions {
   /** Render only this block's subtree, root row included (zoom-into-block, research 04 §3.9). */
   rootBlockId?: BlockId;
+  /** Walk into collapsed blocks too (their rows still say `collapsed`). Print only (B-221): a
+   * collapsed block's children are not in the DOM, so a printed page silently lost them. Never
+   * written back — collapse is synced state, and printing must not change it. */
+  expandAll?: boolean;
 }
 
 /** The page's (or zoom root's) blocks in visible reading order: depth-first, skipping the
@@ -72,7 +76,7 @@ export function flattenVisible(tree: EditorTree, opts: FlattenOptions = {}): Row
     const b = getBlock(tree, id);
     const kids = childrenIds(tree, id);
     rows.push({ id, depth, hasChildren: kids.length > 0, collapsed: b.collapsed });
-    if (!b.collapsed) for (const c of kids) visit(c, depth + 1);
+    if (!b.collapsed || opts.expandAll) for (const c of kids) visit(c, depth + 1);
   };
   if (opts.rootBlockId !== undefined) {
     // Tolerate a zoom root that is not in the tree instead of throwing through `getBlock`. It is
