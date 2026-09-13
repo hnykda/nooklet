@@ -61,3 +61,13 @@ passes the previous array on, so `<For>` has nothing to diff. The e2e test's mou
 the B-500 commit (`queryHits` 10, `referenceItems` 5, `dateChips` 5, `propRows` 5, `blockRefs` 10)
 and is `{}` after, Chromium and WebKit. Not changed: when a query result or a reference really does
 change, its lists are still rebuilt whole (they are keyed by object, not by block id).
+
+The per-row half, no DOM involved: every refresh also re-ran each outliner row's marker, priority,
+date-chip and property derivations, because `BlockTree`'s per-row `row`/`block` memos handed every
+`BlockRowView` a new object. Those memos now compare field by field (`editor/same-fields.ts`, one
+level into `properties`; anything uncomparable counts as a change). Measured on the real-graph copy
+(`tools/probes/refresh-render-count.mjs`): per-row re-derivations per refresh 252 → 1 on a 252-row
+page, and the synchronous tree update 3.3 → 2.2 ms (201 rows 2.9 → 1.5, 150 rows 2.1 → 1.1). Test:
+`apps/web/src/editor/same-fields.test.ts` (the comparator); the saving itself is measured, not
+asserted by a test. e2e editing/parity/selection/tasks/dates/block-properties/merge/redo/focus/
+journal-stream/embeds/page-find/read-only/context-menu + this spec: 156/156.

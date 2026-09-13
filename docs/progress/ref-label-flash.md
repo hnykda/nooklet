@@ -58,6 +58,11 @@ never `docs/BUGS.md`.
   dates, block-properties, shelf ×2, render, rendering) 66/66; web unit 1148/1148.
   Checked and not flashing: page title + icon, embed text, word count, sidebar (0 remounts).
 
+- Per-row re-runs cut: `editor/same-fields.ts` (+ unit test, 3) as `equals` on `BlockTree`'s
+  per-row `row`/`block` memos — a 7-line hunk inside the row `<For>`, nothing in the tree effect
+  (m11/remote-rewrite changes the effect). Web unit 1151/1151; e2e 156/156 across 16 editing-heavy
+  specs. Measured (rows "after + row equality" below).
+
 ## Measurements (per refresh, averages of 5)
 
 Real-graph copy (`<scratch>/graph`, backup of the owner's graph 2026-09-13 17:42), `nooklet serve`
@@ -88,13 +93,17 @@ is the same before and after. `contentView` stays at 1 (only the edited row re-r
 `treeEffect` at 1 in both builds. Unchanged by these fixes: `rowBlockRead`, `dateChips`,
 `propEntries` still run once per row per refresh, and the synchronous tree update
 (`setLocalBlocks` to the end of Solid's flush) is 1.3 / 2.9 / 3.3 ms on 90 / 201 / 252 rows, before
-and after alike.
+and after alike — addressed by the next change, below.
+
+After the row-memo equality (same probe, `<scratch>/after-rows.json`): `rowBlockRead`, `dateChips`,
+`propEntries` 1 per refresh on every page (was one per row); synchronous tree update 0.7 / 1.5 /
+1.1 / 2.2 ms on 90 / 201 / 150 / 252 rows (was 1.3 / 2.9 / 2.1 / 3.3); main-thread task ms 4.8 /
+10.0 / 5.5 / 6.1 (was 5.2 / 9.5 / 6.6 / 7.6 — Megapage within noise); OmnivoreSync 11.3 (11.2).
 
 ## In flight
 
-- Deciding on the per-row re-runs (`rowBlockRead`/`dateChips`/`propEntries` once per row per
-  refresh): an `equals` on `BlockTree`'s per-row `row`/`block` memos would stop them. Small hunk in
-  `BlockTree.tsx`, which other branches also change — its own commit, measured, or dropped.
+- Final checks: broader e2e, webkit spec, `nooklet verify` not needed (no sync/ops/schema touched),
+  inbox B-500 test list.
 
 ## How to resume
 
