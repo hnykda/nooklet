@@ -149,6 +149,12 @@ export function lookupBlockText(id: string): string | undefined {
   return shown;
 }
 
+/** `lookupBlockText` in the shape `RenderCtx.resolveBlockRef` (`editor/render/tokens.tsx`) takes. */
+export function resolveBlockRef(id: string): { content: string } | undefined {
+  const content = lookupBlockText(id);
+  return content === undefined ? undefined : { content };
+}
+
 /**
  * Some block changed (the change bus names tables, not ids): re-read the texts that are on
  * screen, keeping them shown until the answers land. Everything else is only marked stale.

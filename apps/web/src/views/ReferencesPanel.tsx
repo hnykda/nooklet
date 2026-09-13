@@ -33,8 +33,10 @@ import { normalizePageName } from "@nooklet/core";
 import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
 import { callOp, describeError } from "../data/api-client.js";
+import { resolveBlockRef } from "../data/block-ref-cache.js";
 import { displayRefName } from "../data/page-title.js";
 import { undoBatch } from "../data/refactor-api.js";
+import { sameJson } from "../data/same-json.js";
 import { useLinkedReferences } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
 import { InlineContent } from "../editor/InlineContent.js";
@@ -98,7 +100,13 @@ function ReferenceGroups(props: {
                     class="reference-item-jump"
                     onClick={() => props.onNavigate({ kind: "block", id: ref.id })}
                   >
-                    <InlineContent content={ref.text} onNavigate={props.onNavigate} />
+                    {/* With the resolver, a `((ref))` in the snippet reads as the block's text,
+                        as it does in the row it was written in (B-510). */}
+                    <InlineContent
+                      content={ref.text}
+                      onNavigate={props.onNavigate}
+                      resolveBlockRef={resolveBlockRef}
+                    />
                   </button>
                 </li>
               )}
@@ -236,7 +244,16 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   // Reading a Solid resource that has errored RE-THROWS the error, so every read below goes
   // through here. Without it the first `backlinks()` call threw during render and took the whole
   // panel down — including the error message it was supposed to be showing.
-  const data = createMemo(() => (backlinks.error !== undefined ? undefined : backlinks()));
+  //
+  // Compared by value: the panel re-asks on every change to the graph, and the same references in
+  // new objects made every group and row below rebuild (B-511).
+  const data = createMemo(
+    () => (backlinks.error !== undefined ? undefined : backlinks()),
+    undefined,
+    {
+      equals: sameJson,
+    },
+  );
 
   const allLinked = createMemo(() => data()?.linked ?? []);
   const candidates = createMemo(() => filterCandidates(allLinked(), pageKey()));

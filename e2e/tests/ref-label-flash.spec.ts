@@ -185,6 +185,7 @@ const MOUNTS: Record<string, string> = {
   referenceItems: ".page-view .reference-item",
   dateChips: ".page-view .vr-date",
   propRows: ".page-view .vr-prop",
+  sidebarItems: ".app-sidebar li",
 };
 
 interface RegionRecord {
@@ -246,9 +247,11 @@ async function recordRegions(page: Page, skipRow: string): Promise<void> {
   );
 }
 
-test("a refresh changes nothing on screen but the block that changed (B-500)", async ({ page }) => {
-  const RICH = "Flash Rich";
-  const REFERRER = "Flash Referrer";
+const RICH = "Flash Rich";
+const REFERRER = "Flash Referrer";
+
+/** A page with one of everything a refresh re-reads, and a page that links to it. */
+async function seedRich(page: Page): Promise<{ plain: { id: string; content: string } }> {
   const { alpha } = await seed(page);
   const existing = await readBlocks(page, RICH).catch(() => []);
   if (existing.length === 0) {
@@ -270,8 +273,29 @@ test("a refresh changes nothing on screen but the block that changed (B-500)", a
   }
   const plain = (await readBlocks(page, RICH)).find((b) => b.content.startsWith("plain v"));
   if (!plain) throw new Error("no plain block");
+  return { plain };
+}
 
+test("the references panel shows a block reference's text, not its id (B-510)", async ({
+  page,
+}) => {
+  await seedRich(page);
   await page.goto(pagePath(RICH));
+  const item = page.locator(".page-view .references-panel .reference-item", {
+    hasText: "mentions",
+  });
+  await expect(item.locator(".vr-block-ref")).toHaveText("target alpha");
+});
+
+test("a refresh changes nothing on screen but the block that changed, and rebuilds nothing else (B-500, B-511)", async ({
+  page,
+}) => {
+  const { plain } = await seedRich(page);
+  await page.goto(pagePath(RICH));
+  if ((await page.locator(".app-sidebar").count()) === 0) {
+    await page.locator("button[aria-label='Toggle sidebar']").click();
+  }
+  await expect(page.locator(".app-sidebar li").first()).toBeVisible();
   const view = page.locator(".page-view");
   await expect(view.locator(".vr-query-hit").first()).toBeVisible();
   await expect(view.locator(".vr-embed-item").first()).toContainText("target alpha");
@@ -299,4 +323,7 @@ test("a refresh changes nothing on screen but the block that changed (B-500)", a
   // placeholder, a "Loading…", an empty word count — whatever it flashed is in the message.
   expect(changed, JSON.stringify(r.mounts)).toEqual({});
   expect(r.callbacks).toBeGreaterThan(5);
+  // And nothing was thrown away and rebuilt with the same content (B-511): query results,
+  // reference rows, date chips, property rows, sidebar entries, ref labels, rows.
+  expect(r.mounts).toEqual({});
 });

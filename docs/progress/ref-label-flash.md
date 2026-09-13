@@ -47,6 +47,15 @@ never `docs/BUGS.md`.
   `data/block-ref-cache.test.ts` 8/8 (8/8 fail against the old file); e2e `ref-label-flash.spec.ts`
   3/3 chromium, 3/3 webkit; web unit 1146/1146; typecheck clean.
 
+- `158b893` B-500 fix committed.
+- Step 2b, B-510 + B-511: `data/same-json.ts` (`sameJson` memo equality, unit test 2) on
+  `DateChips` chips, `BlockProperties` entries, `QueryFenceView` latest, `ReferencesPanel` data;
+  `InlineContent` gets an optional `resolveBlockRef`, `ReferencesPanel` passes
+  `block-ref-cache.ts#resolveBlockRef`. e2e spec now 4 tests (B-510 test and the mount assertion
+  failed on `158b893`); 4/4 chromium, 4/4 webkit; related e2e (references ×3, query ×3, embeds,
+  dates, block-properties, shelf ×2, render, rendering) 66/66; web unit 1148/1148.
+  Checked and not flashing: page title + icon, embed text, word count, sidebar (0 remounts).
+
 ## Measurements (per refresh, averages of 5)
 
 | page (rows on screen) | build | resolver calls | ref queries | DOM records | elements created | snapshots with a flashed label |
@@ -61,8 +70,9 @@ Before, also per refresh on every page: `rowBlockRead`, `dateChips`, `propEntrie
 
 ## In flight
 
-- Step 2b: the other remounts found by the recorder (B-511): query hits, reference items, date
-  chips, property rows rebuilt with identical content on every refresh. Then the "after" run.
+- Step 3 "after" measurement, then decide on cutting per-row memo re-runs in `BlockTree` (each
+  refresh re-runs `row`/`block` memos for every row and pushes new objects into every
+  `BlockRowView`).
 
 ## How to resume
 

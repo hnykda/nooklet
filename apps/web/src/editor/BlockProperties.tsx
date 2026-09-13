@@ -12,7 +12,8 @@
  * content (`caret.ts`, `data-from`), and splitting that view in two would break it. In the owner's
  * graph 33 of ~400 blocks with a visible property have more than one line.
  */
-import { For, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
+import { sameJson } from "../data/same-json.js";
 import "./block-properties.css";
 import { InlineContent } from "./InlineContent.js";
 import type { NavigateTarget } from "./render/tokens.js";
@@ -61,7 +62,11 @@ export function BlockProperties(props: {
   /** A click that is not on a link inside a value: edit the block. */
   onActivate: () => void;
 }) {
-  const entries = () => visibleProperties(props.properties);
+  // A memo compared by value: the row gets a new properties object on every refresh, and a fresh
+  // array of the same pairs made `<For>` rebuild every property row each time (B-511).
+  const entries = createMemo(() => visibleProperties(props.properties), undefined, {
+    equals: sameJson,
+  });
   return (
     <Show when={entries().length > 0}>
       {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: the row's own `.vr-block-view` is the keyboard route into edit mode (Enter); this is a pointer shortcut onto the same action, not a second control. */}
