@@ -278,3 +278,36 @@ test("the global shortcuts still fire from the search box and from a settings fi
   await expect(page.locator(".cmd-palette")).toHaveCount(0);
   expect(await stored(page, name)).toEqual(SEEDED);
 });
+
+test("Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z on a focused select do not take back a block deletion behind Settings (B-452)", async ({
+  page,
+}, info) => {
+  const name = runName("Keys Undo From Select", info);
+  const outliner = await openEditing(page, name, SEED);
+  await page.keyboard.press("Escape");
+  await expect(outliner.locator(".vr-row-selected")).toHaveCount(1);
+  await page.keyboard.press("Backspace");
+  await expect.poll(() => stored(page, name)).toEqual(["kf two", "kf three"]);
+
+  // `edit.undo`/`edit.redo` are `when: true`, so hiding the outliner (R12b) did not stop them: from
+  // the focused select, Cmd/Ctrl+Z brought the deleted block back behind the panel.
+  await page.keyboard.press(`${MOD}+,`);
+  const select = page.locator("#set-journal-template");
+  await select.focus();
+  await expect(select).toBeFocused();
+  await page.keyboard.press(`${MOD}+z`);
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  await page.keyboard.press(`${MOD}+z`);
+  await page.waitForTimeout(700);
+  await expect(select).toBeFocused();
+  expect(await rowTexts(page, outliner)).toEqual(["kf two", "kf three"]);
+  expect(await stored(page, name)).toEqual(["kf two", "kf three"]);
+
+  // Out of the field, the outliner's undo still takes the deletion back.
+  await page.locator(".set-close").click();
+  await expect(select).toHaveCount(0);
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(SEEDED);
+  await expect(page.locator(".app-sync-indicator")).toHaveText("synced");
+  await expect.poll(() => stored(page, name)).toEqual(SEEDED);
+});

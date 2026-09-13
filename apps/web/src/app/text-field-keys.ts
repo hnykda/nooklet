@@ -91,10 +91,20 @@ export function isFieldOutsideOutliner(target: EventTarget | null): boolean {
   );
 }
 
-/** `true`: leave this keydown to the focused field; the command dispatcher must not see it. */
+/**
+ * `true`: leave this keydown to the focused field; the command dispatcher must not see it.
+ *
+ * Any field outside the outliner counts, not only a text one. R12b already hides the outliner from
+ * such a field, but `edit.undo`/`edit.redo` are `when: true`, so Mod+Z on a focused `<select>` (or
+ * a checkbox, a date input) still reached the outliner's history: from the Settings panel's
+ * journal-template select it took back a block deletion behind the panel (B-452). For every other
+ * editing key this changes nothing — no default binding of theirs matches with the outliner hidden.
+ */
 export function textFieldOwnsKey(
   e: KeyboardEventLike & { target: EventTarget | null },
   mac: boolean,
 ): boolean {
-  return isTextEditingKey(e, mac) && isOtherTextField(e.target);
+  return (
+    isTextEditingKey(e, mac) && (isOtherTextField(e.target) || isFieldOutsideOutliner(e.target))
+  );
 }

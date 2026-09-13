@@ -118,6 +118,12 @@ inputs, textareas and contenteditables only. Candidates: count `button`/`[role=b
 as fields for Enter and Space only; or end a standing selection when focus moves to a control
 outside the outliner.
 
+Links too, and reachable by keyboard alone (verifier, 2026-09-13, `tools/probes/keys-in-fields-verify.spec.ts`
+case F and A): with a block selected, Tab from the page title lands on the "History" link
+(`a.page-history-link`); Enter there ran `block.editSelected` (the block opened for editing, focus in
+`.cm-content`) and the link was not followed. So "click the title, Tab, Enter" opens a block instead
+of the page's history.
+
 ---
 
 ### B-451 · `review-reactivity.spec.ts`'s two "Retry recovers" tests time out: the Retry button detaches before the click
@@ -136,3 +142,34 @@ disabled (both) — so not caused by B-300's fix. Machine load average 65–106 
 checked: whether it also fails at `52e5d20` on an idle machine, and what refetches the view (a live
 sync poke or a focus refetch would both do it) — which decides whether the fix is in the test
 (click Retry OR accept a recovered view) or in the view.
+
+---
+
+### B-452 · Cmd/Ctrl+Z on a focused `<select>` outside the outliner takes back the outliner's last step
+
+**Status:** fixed 2026-09-13 (verifier of m11/keys-in-fields) · **Severity:** medium (a block
+deletion is silently undone on the server behind a modal) · **Found:** 2026-09-13, adversarial
+verification of B-300's fix (`tools/probes/keys-in-fields-verify.spec.ts`, case C) · **Test:**
+`e2e/tests/keys-in-fields.spec.ts` › "Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z on a focused select do not
+take back a block deletion behind Settings (B-452)"; `apps/web/src/app/text-field-keys.test.ts` ›
+"the default keymap, typed into a field outside the outliner (B-300)" › "…from a select or a
+checkbox too (B-452)"
+
+Select a block, Backspace (deleted on the server), open Settings (Cmd/Ctrl+,), focus the "Journal
+template" `<select>`, press Cmd+Z: the deleted block came back — stored `["kv one","kv two","kv
+three"]` again, focus still on the select. Pre-existing (the same at `52e5d20`), and exactly the
+class B-300 closes: "a key typed into a field outside the outliner never acts on its blocks" held
+for every key but these two. Cause: `edit.undo`/`edit.redo` are `when: true`, so R12b's hidden
+outliner does not stop them; R12a (`textFieldOwnsKey`) leaves Mod+Z to the field only for TEXT
+fields (`isOtherTextField`: text-type inputs, textarea, contenteditable); and
+`editor-host.ts#historyEditorHost` declines only for an `<input>`/`<textarea>` and only when no tree
+is active — a `<select>` is neither, and a standing selection makes a tree active anyway (so a
+focused checkbox or date input outside the outliner should do it too while a block is selected — by
+reading the code, not run: no such control sits beside a page's outliner to try it with).
+
+Fix: R12a's target test is `isOtherTextField || isFieldOutsideOutliner` — a text-editing key from
+any field outside the outliner is left to that field. For every key but Mod+Z / Mod+Shift+Z this
+changes nothing (R12b already resolved them against a context no binding of those keys matches;
+the unit test enumerates it). Not done in `historyEditorHost` instead: the palette runs its "Undo"
+row while its own input still has focus, so a focus test there would break that row whenever a
+tree is active.

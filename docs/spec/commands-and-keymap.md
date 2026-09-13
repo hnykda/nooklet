@@ -182,10 +182,13 @@ editor's surface — an `<input>` of a text type, a `<textarea>`, a contentedita
 `.cm-editor` (the palette's query, a page title, search) — is never dispatched when it is a
 text-editing key: Backspace, Delete, the arrows, Home, End, PageUp, PageDown (with any modifier,
 except Alt+Left/Right outside macOS, which are `nav.back`/`nav.forward`), and Mod+A/C/X/V/Z (Z with
-or without Shift). The field handles them natively. Every other key still dispatches from a text
-field (Escape, Enter, Tab, Mod+K and the other global shortcuts), subject to R12b. Without this,
-Backspace typed into the palette with blocks selected ran `block.deleteSelected`. As built:
-`apps/web/src/app/text-field-keys.ts`, called by `CommandLayer`'s global keydown listener.
+or without Shift). The field handles them natively. The same holds for any field R12b covers (a
+`<select>`, a checkbox or date input outside the outliner): there it matters only for Mod+Z and
+Mod+Shift+Z, which are `when: true` and so reached the outliner's history from a focused `<select>`
+(B-452). Every other key still dispatches from a text field (Escape, Enter, Tab, Mod+K and the other
+global shortcuts), subject to R12b. Without this, Backspace typed into the palette with blocks
+selected ran `block.deleteSelected`. As built: `apps/web/src/app/text-field-keys.ts`, called by
+`CommandLayer`'s global keydown listener.
 
 **R12b (fields outside the outliner, B-300).** A keydown whose target is an `<input>` (any type),
 `<textarea>`, `<select>` or contenteditable that is not inside `.vr-outliner` or `.cm-editor` (the

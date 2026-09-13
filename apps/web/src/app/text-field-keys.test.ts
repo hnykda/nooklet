@@ -216,6 +216,26 @@ describe("the default keymap, typed into a field outside the outliner (B-300)", 
     ]);
   });
 
+  it("runs the same from a select or a checkbox too — not the outliner's undo/redo (B-452)", () => {
+    const select = document.createElement("select");
+    const checkbox = Object.assign(document.createElement("input"), { type: "checkbox" });
+    document.body.append(select, checkbox);
+    const globals = [
+      "app.openSettings",
+      "app.toggleSidebar",
+      "nav.back",
+      "nav.forward",
+      "nav.journals",
+      "nav.switchPage",
+      "nav.todayJournal",
+      "palette.open",
+      "search.findInPage",
+      "search.open",
+    ];
+    expect(reachable(select)).toEqual(globals);
+    expect(reachable(checkbox)).toEqual(globals);
+  });
+
   it("while the same keys from the outliner still reach its commands", () => {
     const outliner = document.createElement("div");
     outliner.className = "vr-outliner";
