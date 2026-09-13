@@ -2,8 +2,43 @@
  * R48-R49: pure text-transformation logic for the slash-menu-only `Insert` commands, independent
  * of `EditorHost` so it's exhaustively unit-testable.
  */
-import { openingCodeFence, PROPERTY_LINE_RE } from "@nooklet/core";
+import {
+  contentOffsetToEditText,
+  joinBlockText,
+  openingCodeFence,
+  PROPERTY_LINE_RE,
+  splitBlockText,
+} from "@nooklet/core";
 import type { ReplaceRangeSpec } from "../hosts/editor-host.js";
+
+/**
+ * `transform` — written against a block's plain content — applied to the content part of its
+ * *editing text* only (B-153). Since B-101 the editor host's content is the editing text: content
+ * plus `key:: value` lines. A command that rewrites the whole block would otherwise take those
+ * lines with it: `/code` wrapped `list:: number` into the fence (where it is code, so the numbering
+ * was deleted on flush), `/query` made `owner:: Dan` the query, and `/h1` put the caret at the end
+ * of the buffer, the end of the last property line, so the next word typed went into its value.
+ * The property lines are written back in their canonical place (`joinBlockText`) and the caret is
+ * mapped from content into the new text. A text with no property lines is passed straight through.
+ */
+export function onContent(
+  text: string,
+  transform: (content: string) => ReplaceRangeSpec,
+): ReplaceRangeSpec {
+  const { content, properties } = splitBlockText(text);
+  if (Object.keys(properties).length === 0) return transform(text);
+  const r = transform(content);
+  const next = content.slice(0, r.from) + r.text + content.slice(r.to);
+  const rel = r.caretOffset ?? r.text.length;
+  const caret = r.from + (typeof rel === "number" ? rel : rel.head);
+  const joined = joinBlockText(next, properties);
+  return {
+    from: 0,
+    to: text.length,
+    text: joined,
+    caretOffset: contentOffsetToEditText(joined, caret),
+  };
+}
 
 const HEADING_MARKER_RE = /^#{1,6} /;
 

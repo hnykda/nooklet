@@ -11,6 +11,7 @@ import {
   insertQueryFence,
   insertTable,
   insertToday,
+  onContent,
   setHeading,
 } from "./insert-logic.js";
 
@@ -23,7 +24,7 @@ function headingCommand(id: string, title: string, level: 1 | 2 | 3) {
     when: "editorFocused",
     run() {
       const sel = editor.getSelection();
-      if (sel) editor.replaceRange(setHeading(sel.content, level));
+      if (sel) editor.replaceRange(onContent(sel.content, (c) => setHeading(c, level)));
     },
   });
 }
@@ -44,7 +45,7 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       when: "editorFocused",
       run() {
         const sel = editor.getSelection();
-        if (sel) editor.replaceRange(insertCodeFence(sel.content));
+        if (sel) editor.replaceRange(onContent(sel.content, insertCodeFence));
       },
     },
     {
@@ -55,7 +56,7 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       when: "editorFocused",
       run() {
         const sel = editor.getSelection();
-        if (sel) editor.replaceRange(insertQueryFence(sel.content));
+        if (sel) editor.replaceRange(onContent(sel.content, insertQueryFence));
       },
     },
     {

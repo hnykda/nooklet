@@ -16,6 +16,7 @@
  * The data and picker seams are injectable so the command's own test needs neither a database
  * nor a DOM; `createCoreCommands` passes nothing and gets the real ones.
  */
+import { splitBlockText } from "@nooklet/core";
 import {
   applyTemplateIntoBlock,
   findTemplateByName,
@@ -26,6 +27,7 @@ import {
 import { requestBlockFocus } from "../../editor/focus-request.js";
 import type { EditorHost, EditorSelection } from "../hosts/editor-host.js";
 import type { Command } from "../types.js";
+import { onContent } from "./insert-logic.js";
 
 export interface TemplateCommandDeps {
   editor: EditorHost;
@@ -81,12 +83,17 @@ export function createTemplateCommands(deps: TemplateCommandDeps): Command[] {
     // The editor keeps focus while the picker is open, so the live selection is the truth; the
     // one captured when the command started is the fallback for a host that lost it meanwhile.
     const at = editor.getSelection() ?? opened;
-    if (at.content.trim() === "") {
+    // "Empty" is about the block's text, not its editing buffer: an empty numbered item's buffer is
+    // `\nlist:: number`, which read as non-empty and sent the template in after it (B-154).
+    if (splitBlockText(at.content).content.trim() === "") {
       const result = await data.applyTemplateIntoBlock(template.id, at.blockId);
       if (!result) return;
       const latest = editor.getSelection();
       if (latest && latest.blockId === at.blockId) {
-        editor.replaceRange({ from: 0, to: latest.content.length, text: result.content });
+        // The text replaces the content only; the block's own property lines stay (B-153).
+        editor.replaceRange(
+          onContent(latest.content, (c) => ({ from: 0, to: c.length, text: result.content })),
+        );
       }
       return;
     }

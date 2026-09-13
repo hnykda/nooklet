@@ -76,6 +76,18 @@ describe("block.insertTemplate", () => {
     expect(focusBlock).toHaveBeenCalledWith("new-root");
   });
 
+  it("an empty block with properties still takes the template into itself (B-154)", async () => {
+    // The editor host's content is the editing text: an empty numbered item reads `\nlist:: number`.
+    const { editor, data, run } = setup({ content: "\nlist:: number" });
+    await run();
+    expect(data.applyTemplateIntoBlock).toHaveBeenCalledWith("tpl-daily", "b1");
+    expect(data.insertTemplateAfter).not.toHaveBeenCalled();
+    // The template's text replaces the (empty) text; the block stays numbered, caret after the text.
+    const text = "Daily plan for [[Sep 12th, 2026]]";
+    expect(editor.state?.content).toBe(`${text}\nlist:: number`);
+    expect(editor.state?.start).toBe(text.length);
+  });
+
   it("a whitespace-only bullet counts as empty", async () => {
     const { data, run } = setup({ content: "   " });
     await run();

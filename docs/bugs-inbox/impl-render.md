@@ -149,3 +149,41 @@ treated like `heading` — left out of `joinBlockText`, carried over untouched b
 still overrides one. The e2e test was red before the fix (the buffer read
 `title\nsummary:: line1\nline2`); unit: `block-text.test.ts` "properties whose line would not read
 back as themselves (B-152)", `editText.test.ts` "keeps a multi-line value out of the buffer".
+
+---
+
+### B-153 · `/code`, `/query` and `/h1`–`/h3` treat a block's property lines as its text
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-render` · **Test:** `e2e/tests/block-properties.spec.ts` "/code, /query and /h1 change the
+text and leave the properties alone (B-153)"
+
+Since B-101 the editor host's `getSelection().content` is the block's editing text, property lines
+included, and three commands transform that whole string (`insert-logic.ts`). Seen in the browser
+before the fix: `/code` on a numbered item stored `` ```\nnpm install \nlist:: number\n``` `` with
+no properties (the numbering was gone, its line was code); `/query` on a block with `owner:: Dan`
+stored `` ```query\nowner:: Dan\n``` ``; `/h1` on a numbered item left the caret at the end of the
+buffer — the end of the `list:: number` line — so the next word typed was stored as
+`list:: numbermore` and the item stopped being numbered.
+
+**Fixed 2026-09-13.** `commands/registrations/insert-logic.ts#onContent` splits the editing text,
+runs the command's transform on the content alone, writes the property lines back in their
+canonical place (`joinBlockText` — after the fence for a fenced block) and maps the caret from
+content into the result; `insert.ts` wraps the three commands in it. A text without property lines
+passes straight through. The e2e test was red before the fix (`list:: number` inside the fence, no
+properties); unit: `insert-logic.test.ts` "onContent (B-153)".
+
+### B-154 · `/template` in an empty block that has properties inserts the template after it
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, same verification · **Test:**
+`apps/web/src/commands/registrations/templates.test.ts` "an empty block with properties still takes
+the template into itself (B-154)"
+
+`templates.ts` decides "apply into this block" by `content.trim() === ""` on the editing text. An
+empty numbered item's buffer is `\nlist:: number`, so it counted as non-empty and the template's
+blocks went in after it, leaving an empty numbered bullet behind (browser: rows `1. first`, `2.`,
+`Standup`, …).
+
+**Fixed 2026-09-13.** The emptiness check reads the content part of the editing text
+(`splitBlockText`), and the template's text replaces that content through `onContent` (B-153), so
+the block keeps its own properties and the caret ends after the text. The unit test was red before
+the fix; in the browser the scratch check now gives rows `1. first`, `2. Standup`, `yesterday`,
+`today`.

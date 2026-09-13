@@ -239,3 +239,43 @@ test("a property value the buffer cannot show as one line survives editing the b
     .poll(() => readWithProps(page, name))
     .toEqual([{ content: "title!", properties: { summary: "line1\nline2", status: "draft" } }]);
 });
+
+test("/code, /query and /h1 change the text and leave the properties alone (B-153)", async ({
+  page,
+}) => {
+  // The editor host hands commands the editing text, property lines included. Before the fix
+  // `/code` wrapped `list:: number` into the fence, `/query` made `owner:: Dan` the query, and
+  // `/h1` left the caret at the end of the property line, so the next word became its value.
+  const slash = async (name: string, markdown: string, command: string, label: string) => {
+    await openEditing(page, name, markdown);
+    await page.keyboard.press(`${MOD}+Home`);
+    await page.keyboard.press("End");
+    await page.keyboard.type(` /${command}`);
+    await expect(page.locator(".cmd-popup .cmd-row--active")).toHaveText(label);
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".cmd-popup")).toHaveCount(0);
+  };
+
+  await slash("Props Code", "- npm install\n  list:: number", "code", "Code block");
+  await clickAway(page);
+  await expect
+    .poll(() => readWithProps(page, "Props Code"))
+    .toEqual([{ content: "```\nnpm install \n```", properties: { list: "number" } }]);
+
+  await slash("Props Query", "- open tasks\n  owner:: Dan", "query", "Query");
+  await clickAway(page);
+  await expect
+    .poll(() => readWithProps(page, "Props Query"))
+    .toEqual([{ content: "```query\nopen tasks\n```", properties: { owner: "Dan" } }]);
+
+  const outliner = await (async () => {
+    await slash("Props Heading", "- Title\n  list:: number", "h1", "Heading 1");
+    return page.locator(".vr-outliner").first();
+  })();
+  await page.keyboard.type("more");
+  await clickAway(page);
+  await expect
+    .poll(() => readWithProps(page, "Props Heading"))
+    .toEqual([{ content: "# Title more", properties: { list: "number" } }]);
+  await expect(outliner.locator(".vr-list-number")).toHaveText(["1."]);
+});
