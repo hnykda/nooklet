@@ -447,6 +447,19 @@ writes exactly `scheduled:: 2026-09-12` / `deadline:: 2026-09-14 14:00` — ISO 
 24-hour time, no weekday, no angle brackets, no timezone (ADR 011, verbatim format). No default
 keybinding: reached via the `/scheduled` / `/deadline` slash items or the palette.
 
+*As built (2026-09-13, B-96; `apps/web/src/commands/date-picker/`):* the grid, arrows,
+PageUp/PageDown (Shift: a year), Enter and Escape are as above. Where this rule has toggles, the
+picker has a typed line instead, so nothing needs the mouse: typing is not limited to digits but
+takes `tomorrow`, weekday names, `+3d`/`-2w`, `in 3 days`, `YYYY-M-D`, `D.M.[YYYY]`, `sep 20`, a
+trailing `H:MM` (the "Add time" field), `every 2w [from done]` / `no repeat` (the "Repeat"
+field), `no time`, and `none` to remove the date (`parse.ts` is the full list); the calendar
+follows as you type, an arrow folds the typed text in and moves from there, and Enter on text
+that is not a date says why instead of writing. The editor keeps focus throughout. Tab is
+claimed and does nothing; a Cmd/Ctrl shortcut closes the picker and runs as usual. Clearing the
+last remaining date also clears `repeat`. With a command argument (a date string, `null`, or
+`{date}`) both commands write without opening a picker (ADR 015 agents). A block's dates also
+show as chips on its row; clicking one opens this picker.
+
 **R39.** `task.setMarkerTodo/Doing/Waiting/Canceled` set `marker` to that literal value with no
 side effects beyond that (no `done` stamping — only reaching `DONE` triggers R35).
 `task.setMarkerDone` sets `marker` via R35 (so it is repeat-aware, unlike the other four).
