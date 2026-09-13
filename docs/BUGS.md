@@ -523,6 +523,20 @@ Trash, Keyboard shortcuts / Help, Diagnostics — next to the quiet sync icon an
 
 ---
 
+### B-550 · Linked references show a block as one line of plain inline text, not the block with its children
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, owner report ("linked references are not
+formatted as markdown — instead of it being nested as displayed when clicked, it's displayed as just
+free text") · **Test:** none yet
+
+`views/ReferencesPanel.tsx#ReferenceGroups` renders each reference as
+`<InlineContent content={ref.text}>` inside a button: inline tokens only, no block-level rendering
+(multi-line text, fences, properties) and none of the block's children, so a referencing block with a
+nested outline under it reads as a flat sentence. Logseq shows the referencing block rendered as in
+the outline, with its children nested (collapsible) and a breadcrumb of its parents. The read-only
+subtree renderer built for embeds (`editor/render/EmbedView.tsx`, `embedRows.ts`) already does most of this.
+
+---
+
 ## Fixed
 
 ### B-291 · Text composed in place (an IME's marked text, a dead-key accent) while the date picker is open goes into the block behind it
