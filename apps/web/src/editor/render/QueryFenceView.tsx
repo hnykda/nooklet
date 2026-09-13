@@ -47,7 +47,10 @@ function HitView(props: { block: QueryResultBlock; ctx: RenderCtx; depth: number
   };
   const content = createMemo(() => classifyBlockContent(props.block.content));
   return (
-    <li class="vr-query-hit" data-block-id={props.block.id} style={{ "--depth": props.depth }}>
+    // `data-query-hit-id`, never `data-block-id`: that attribute is how the shelf's reveal and the
+    // agent flash find a block's outliner ROW (`document.querySelector`, first match wins), and a
+    // query above its own results on the same page made them land on the result (B-211).
+    <li class="vr-query-hit" data-query-hit-id={props.block.id} style={{ "--depth": props.depth }}>
       {/* biome-ignore lint/a11y/useSemanticElements: a result row navigates to its block on click but hosts rendered rich content (links, checkboxes) that cannot live inside an <a>. */}
       <div
         class="vr-query-hit-row"

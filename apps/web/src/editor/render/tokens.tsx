@@ -516,6 +516,39 @@ export function InlineTokens(props: { tokens: Tok[]; ctx: RenderCtx }) {
   return <For each={props.tokens}>{(tok) => <InlineTokenView tok={tok} ctx={props.ctx} />}</For>;
 }
 
+/**
+ * A paragraph's or quote's lines, with a `<br>` at each newline between them (B-224).
+ * `classifyBlockContent` hands over one token array per line and no token for the newline itself —
+ * only `tokenizeContent`'s flat stream carries `br` tokens — so rendering the arrays back to back
+ * ran "first line" and "second line" together into "first linesecond line" in every outliner row.
+ *
+ * The `<br>` carries the newline's own offsets, like every other rendered node, so a click beside
+ * it resolves to a caret offset (`../caret.ts`). They are read from `ctx.source` rather than from
+ * the neighbouring tokens: an empty line has no tokens to measure from, and the source is the
+ * string these lines were classified from (the invariant `text` tokens already slice by).
+ */
+function Lines(props: { lines: Tok[][]; ctx: RenderCtx }) {
+  const breaks = createMemo(() => {
+    const at: number[] = [];
+    const source = props.ctx.source;
+    for (let i = source.indexOf("\n"); i !== -1; i = source.indexOf("\n", i + 1)) at.push(i);
+    return at;
+  });
+  const breakAt = (i: number): number => breaks()[i - 1] ?? 0;
+  return (
+    <For each={props.lines}>
+      {(line, i) => (
+        <>
+          <Show when={i() > 0}>
+            <br data-from={breakAt(i())} data-to={breakAt(i()) + 1} />
+          </Show>
+          <InlineTokens tokens={line} ctx={props.ctx} />
+        </>
+      )}
+    </For>
+  );
+}
+
 function alignStyle(a: Align): string | undefined {
   return a ? `text-align: ${a}` : undefined;
 }
@@ -531,7 +564,7 @@ export function BlockContentView(props: { content: BlockContent; ctx: RenderCtx 
           case "paragraph":
             return (
               <p class="vr-paragraph">
-                <For each={c.lines}>{(line) => <InlineTokens tokens={line} ctx={ctx} />}</For>
+                <Lines lines={c.lines} ctx={ctx} />
               </p>
             );
           case "heading": {
@@ -592,7 +625,7 @@ export function BlockContentView(props: { content: BlockContent; ctx: RenderCtx 
           case "quote":
             return (
               <blockquote class="vr-quote">
-                <For each={c.lines}>{(line) => <InlineTokens tokens={line} ctx={ctx} />}</For>
+                <Lines lines={c.lines} ctx={ctx} />
               </blockquote>
             );
           case "table":

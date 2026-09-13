@@ -180,12 +180,22 @@ describe("the ```query fence, rendered", () => {
       "Projects/Aurora",
       "Sep 10th, 2026",
     ]);
-    expect(container.querySelector('[data-block-id="blk1"] .vr-marker-TODO')).not.toBeNull();
-    expect(container.querySelector('[data-block-id="blk1"] .vr-priority-A')).not.toBeNull();
-    expect(container.querySelector('[data-block-id="blk1"] .vr-tag')?.textContent).toBe("#work");
-    expect(container.querySelector('[data-block-id="blk2"]')?.textContent).toContain("sub task");
+    expect(container.querySelector('[data-query-hit-id="blk1"] .vr-marker-TODO')).not.toBeNull();
+    expect(container.querySelector('[data-query-hit-id="blk1"] .vr-priority-A')).not.toBeNull();
+    expect(container.querySelector('[data-query-hit-id="blk1"] .vr-tag')?.textContent).toBe(
+      "#work",
+    );
+    expect(container.querySelector('[data-query-hit-id="blk2"]')?.textContent).toContain(
+      "sub task",
+    );
+    // B-211: a result must not look like the block's outliner row to a `[data-block-id]` lookup —
+    // a query above its own results on the same page made the shelf's reveal and the agent flash
+    // land on the result instead of the row.
+    expect(container.querySelector("[data-block-id]")).toBeNull();
 
-    const row = container.querySelector('[data-block-id="blk3"] .vr-query-hit-row') as HTMLElement;
+    const row = container.querySelector(
+      '[data-query-hit-id="blk3"] .vr-query-hit-row',
+    ) as HTMLElement;
     fireEvent.click(row);
     expect(onNavigate).toHaveBeenCalledWith({ kind: "block", id: "blk3" });
     expect(outer).not.toHaveBeenCalled();

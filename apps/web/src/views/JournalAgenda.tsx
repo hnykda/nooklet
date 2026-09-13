@@ -52,7 +52,9 @@ function EntryRow(props: { entry: AgendaEntry; onNavigate: (t: NavigateTarget) =
     props.onNavigate({ kind: "block", id: props.entry.task.id });
   };
   return (
-    <li class="journal-agenda-item" data-block-id={props.entry.task.id}>
+    // Not `data-block-id`: that names the task's outliner row, and on the journal stream Today's
+    // agenda comes before older days' rows, so a reveal or agent flash found this first (B-321).
+    <li class="journal-agenda-item" data-agenda-block-id={props.entry.task.id}>
       {/* biome-ignore lint/a11y/useSemanticElements: the row navigates on click but hosts rendered rich content (links) that cannot live inside an <a>. */}
       <div
         class="journal-agenda-row"

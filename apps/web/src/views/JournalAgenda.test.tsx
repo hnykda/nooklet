@@ -118,6 +118,13 @@ describe("JournalAgenda", () => {
     expect(container.querySelector(".journal-agenda-page")?.getAttribute("href")).toBe(
       "/page/Garden/Zahrada",
     );
+    // B-321: an agenda entry must not look like the task's outliner row to a
+    // `[data-block-id]` lookup — on the journal stream Today's agenda sits above older days'
+    // rows, so the shelf's reveal and the agent flash landed here instead.
+    expect(container.querySelector("[data-block-id]")).toBeNull();
+    expect(
+      (container.querySelector(".journal-agenda-item") as HTMLElement).dataset.agendaBlockId,
+    ).toBe("blk1");
   });
 
   it("a link inside a task goes where the link points, not to the task", () => {

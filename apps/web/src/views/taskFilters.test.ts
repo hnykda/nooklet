@@ -65,6 +65,7 @@ describe("filterTasks", () => {
       pageName: "Personal",
       marker: "TODO",
       content: "Buy milk",
+      scheduledDay: 20260915,
       dueDay: 20260915,
     }),
   ];
@@ -91,6 +92,45 @@ describe("filterTasks", () => {
   it("filters by a scheduled/deadline window, excluding tasks with no due date", () => {
     const result = filterTasks(tasks, { dueFrom: 20260901, dueTo: 20260930 });
     expect(result.map((t) => t.id)).toEqual(["t4"]);
+  });
+
+  // B-171: `due_day` is `coalesce(scheduled_day, deadline_day)`, so a window compared against it
+  // alone never saw the deadline of a task that is also scheduled.
+  describe("the due window looks at the scheduled date AND the deadline", () => {
+    const both = task({
+      id: "both",
+      pageId: "p",
+      pageName: "P",
+      scheduledDay: 20260901,
+      deadlineDay: 20260920,
+      dueDay: 20260901,
+    });
+    const deadlineOnly = task({
+      id: "deadline",
+      pageId: "p",
+      pageName: "P",
+      deadlineDay: 20260920,
+      dueDay: 20260920,
+    });
+    const ids = (filters: Parameters<typeof filterTasks>[1]) =>
+      filterTasks([both, deadlineOnly], filters).map((t) => t.id);
+
+    it("a deadline inside the window matches although the scheduled date is outside it", () => {
+      expect(ids({ dueFrom: 20260915, dueTo: 20260925 })).toEqual(["both", "deadline"]);
+    });
+
+    it("a scheduled date inside the window matches although the deadline is outside it", () => {
+      expect(ids({ dueFrom: 20260825, dueTo: 20260905 })).toEqual(["both"]);
+    });
+
+    it("one date must satisfy both bounds: dates either side of a window are not a match", () => {
+      expect(ids({ dueFrom: 20260905, dueTo: 20260915 })).toEqual([]);
+    });
+
+    it("an open-ended bound matches on either date", () => {
+      expect(ids({ dueFrom: 20260910 })).toEqual(["both", "deadline"]);
+      expect(ids({ dueTo: 20260901 })).toEqual(["both"]);
+    });
   });
 
   it("combines filters", () => {

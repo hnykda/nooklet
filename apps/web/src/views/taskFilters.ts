@@ -23,10 +23,31 @@ export interface TaskFilters {
   tag?: string;
   /** Matches the task's page itself or any of its namespace descendants. */
   namespace?: string;
-  /** Inclusive `due_day` (YYYYMMDD) window. A task with no scheduled/deadline date is excluded by
-   * either bound (it has nothing to compare). */
+  /** Inclusive YYYYMMDD window a task's scheduled date OR its deadline must fall in (see
+   * `inDueWindow`). A task with neither date is excluded by either bound — nothing to compare. */
   dueFrom?: number;
   dueTo?: number;
+}
+
+/**
+ * Whether the scheduled date or the deadline lies in `[from, to]` (either bound optional). One date
+ * has to satisfy both bounds: a task scheduled before a window with a deadline after it is not "due
+ * in" that window.
+ *
+ * Not `dueDay`: that column is `coalesce(scheduled_day, deadline_day)`, so a task scheduled
+ * 2026-09-01 with a deadline of 2026-09-20 carried only the 1st, and a 15th–25th window missed the
+ * deadline it was set to find (B-171). The journal agenda matches both columns for the same reason
+ * (`./agendaDay.ts`).
+ */
+export function inDueWindow(
+  task: Pick<TaskRow, "scheduledDay" | "deadlineDay">,
+  from: number | undefined,
+  to: number | undefined,
+): boolean {
+  if (from === undefined && to === undefined) return true;
+  return [task.scheduledDay, task.deadlineDay].some(
+    (day) => day !== null && (from === undefined || day >= from) && (to === undefined || day <= to),
+  );
 }
 
 export function filterTasks(tasks: readonly TaskRow[], filters: TaskFilters): TaskRow[] {
@@ -48,10 +69,7 @@ export function filterTasks(tasks: readonly TaskRow[], filters: TaskFilters): Ta
       if (pageKey !== wantedNamespace && !pageKey.startsWith(`${wantedNamespace}/`)) return false;
     }
 
-    if (filters.dueFrom !== undefined && (t.dueDay === null || t.dueDay < filters.dueFrom))
-      return false;
-    if (filters.dueTo !== undefined && (t.dueDay === null || t.dueDay > filters.dueTo))
-      return false;
+    if (!inDueWindow(t, filters.dueFrom, filters.dueTo)) return false;
 
     return true;
   });
