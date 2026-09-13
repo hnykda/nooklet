@@ -95,3 +95,14 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
 
 1. None on this brief. Open, logged, not done: B-400, B-401, B-404; the product question in B-403
    (keep older History pages when a refetched first page is identical) is the owner's.
+
+## 4. Adversarial verification (second agent, 2026-09-13)
+
+Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m10/tests-desktop-verify/`
+(`burn.sh N`/`unburn.sh`), e2e port 6402.
+
+- Done: B-333's new line-length ratio test failed 2 of 95 under 84 busy loops (8.16, 8.32 > 8) —
+  logged and fixed as B-405, commit `79d5f0b` (equal sub-quantum windows, least of 15, limit 2).
+- Next, in order: unit/typecheck/biome on HEAD; B-402's field check against every real plugin op;
+  sidecar build + probes + a user plugin importing `@nooklet/core`/`hono`; B-323 before/after in a
+  real browser; e2e specs under load with `--repeat-each`.
