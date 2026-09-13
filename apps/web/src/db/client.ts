@@ -9,6 +9,12 @@ import * as Comlink from "comlink";
 import { createSignal } from "solid-js";
 import { platform } from "../platform/index.js";
 import type { SyncStatus } from "../sync/types.js";
+import {
+  createUnappliedOpsJournal,
+  holdOwnerLock,
+  type OwnerLocks,
+  replayOrphanedBatches,
+} from "./unapplied-ops.js";
 import type { ChangeEvent, InitResult, WorkerApi, WorkerInitOptions } from "./worker-api.js";
 
 export type { ChangedTable, ChangeEvent, LifecycleKind } from "./worker-api.js";
@@ -25,6 +31,23 @@ const [storageState, setStorageState] = createSignal<
   { storage: InitResult["storage"]; error?: string } | undefined
 >(undefined);
 export const storageInfo = storageState;
+
+/** `localStorage`, or `undefined` where it is missing or throws on access (privacy modes). */
+function browserStorage(): Storage | undefined {
+  try {
+    return typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function browserLocks(): OwnerLocks | undefined {
+  return typeof navigator === "undefined" ? undefined : (navigator.locks as OwnerLocks | undefined);
+}
+
+/** Every write kept on the main thread until the worker has it (B-247, `./unapplied-ops.ts`). */
+const unapplied = createUnappliedOpsJournal({ storage: browserStorage() });
+holdOwnerLock(browserLocks(), unapplied.owner);
 
 function getWorker(): Comlink.Remote<WorkerApi> {
   if (!workerApi) {
@@ -47,12 +70,31 @@ export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
     for (const event of ["online", "offline", "visible", "hidden", "pause", "resume"] as const) {
       platform.lifecycle.on(event, () => void api.notifyLifecycle(event));
     }
+    // Writes an earlier page load handed to its worker and never saw applied. Posted right behind
+    // `init`, which the worker finishes (bootstrap included) before it runs anything else.
+    const replay = () =>
+      replayOrphanedBatches(unapplied, browserLocks(), (ops) => api.replayLocalOps(ops));
+    // Once more a little later: the page load a reload replaced releases its owner lock when the
+    // browser tears it down, and nothing promises that has happened by the time this one asks. In
+    // Chromium it had, in every run of `reload-durability.spec.ts`; other engines are unmeasured.
+    // Without this pass such a batch waits for the next start rather than being lost; it only
+    // shortens that wait.
+    void replay().then(() => setTimeout(() => void replay(), 5_000));
   }
   return initPromise;
 }
 
 export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
-  return getWorker().applyLocalOps(ops);
+  // The copy is written BEFORE the message is posted and synchronously, so an unload at any
+  // point after this line leaves the batch to be replayed (B-247).
+  const key = unapplied.record(ops);
+  const result = getWorker().applyLocalOps(ops);
+  // Kept when the call fails: whatever failed, the next start retries it rather than losing it.
+  void result.then(
+    () => unapplied.settle(key),
+    () => {},
+  );
+  return result;
 }
 
 /** Mint an HLC from the worker's single clock (see `worker-api.ts#nextHlc`). */

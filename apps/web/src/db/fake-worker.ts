@@ -50,6 +50,7 @@ export function createFakeWorker(): FakeWorker {
       nextHlc: async () => "0000000000000-0000-test",
       getDeviceId: async () => "test-device",
       applyLocalOps: async () => ({ results: [], applied: 0, noop: 0, rejected: 0 }),
+      replayLocalOps: async () => ({ replayed: 0, skipped: 0 }),
     },
   };
   return fake;

@@ -9,6 +9,7 @@
  */
 
 import { expect, test } from "@playwright/test";
+import { api, isoOffset } from "../helpers/index.js";
 
 test("Enter on a brand-new journal day continues into the next bullet", async ({ page }) => {
   await page.goto("/journals");
@@ -30,4 +31,18 @@ test("Enter on a brand-new journal day continues into the next bullet", async ({
   await expect(outliner.locator(".vr-row")).toHaveCount(2);
   await expect(outliner).toContainText("first thought");
   await expect(outliner).toContainText("second thought");
+
+  // And both reached the server before this test's browser context — and its replica — is thrown
+  // away. Without this wait, whether today's journal holds these two blocks for every later spec
+  // was a race against the push debounce, and a spec that assumed either outcome failed only
+  // sometimes (B-233). Waiting makes the shared state the same on every run.
+  await expect
+    .poll(async () => {
+      const read = await api<{ tree: { content: string }[] }>(page, "page.read", {
+        page: isoOffset(0),
+        format: "json",
+      }).catch(() => ({ tree: [] }));
+      return read.tree.map((n) => n.content);
+    })
+    .toEqual(["first thought", "second thought"]);
 });

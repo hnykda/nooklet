@@ -29,14 +29,7 @@
  * happens where the block lives.
  */
 import type { EditorView } from "@codemirror/view";
-import {
-  blockTextPayloads,
-  formatDayTime,
-  makeOp,
-  type Op,
-  type OutlineNode,
-  serializeOutline,
-} from "@nooklet/core";
+import { blockTextPayloads, formatDayTime, makeOp, type Op } from "@nooklet/core";
 import "./editor.css";
 import {
   createEffect,
@@ -107,9 +100,10 @@ import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
 import { createReadOnlyNotice } from "./ReadOnlyNotice.js";
 import { isReadOnlyValue, READ_ONLY_PROPERTY } from "./readOnly.js";
 import type { NavigateTarget } from "./render/tokens.js";
+import { cutToClipboard, selectionMarkdown } from "./selection-clipboard.js";
 import { createSurface, type Surface } from "./surface.js";
 import { cycleMarker, toggleDone } from "./task.js";
-import { buildEditorTree, childrenIds, flattenVisible, getBlock } from "./tree.js";
+import { buildEditorTree, childrenIds, flattenVisible } from "./tree.js";
 import type { BlockId, CaretSpec, Clock, EditableBlock, EditorTree, FocusChange } from "./types.js";
 import { focusAfterStep } from "./undo-focus.js";
 import { UnseenCreations } from "./unseen-creations.js";
@@ -203,6 +197,22 @@ export function BlockTree(props: {
   const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
   const deletedCache = new Map<string, EditableBlock>();
   const unseenCreations = new UnseenCreations();
+  /**
+   * The buffer of each block whose flushed text write the worker has not answered yet (B-303).
+   * The effect below also re-runs when editing ENDS, against the page tree it fetched before that
+   * flush — so without this, Escape put the last-fetched text back on screen until the write came
+   * back (12–20 ms idle, seconds behind a busy worker), and a Cut in that window copied the old
+   * text and deleted the block holding the new one. Held only until the answer: the worker runs
+   * messages in order, so any page tree that resolves after it was read after the write. A later
+   * local op on the block other than a move (undo, redo, a merge, a delete) drops the entry: the
+   * optimistic tree holds the newer state then, and the flushed buffer must not be put back over
+   * it. (Undo straight after Escape behaved the same in a probe with or without the drop; it is
+   * there by reasoning, not because a failure was seen.)
+   */
+  const unansweredText = new Map<BlockId, { content: string }>();
+  function supersedeUnansweredText(ops: readonly Op[]): void {
+    for (const op of ops) if (op.payload.kind !== "block.place") unansweredText.delete(op.entity);
+  }
 
   createEffect(() => {
     const data = treeResource();
@@ -210,6 +220,10 @@ export function BlockTree(props: {
     const editingBlockId = editingId();
     const flat = flattenBlockTreeNodes(data.blocks);
     unseenCreations.seen(flat.map((b) => b.id));
+    for (let i = 0; i < flat.length; i++) {
+      const written = unansweredText.get((flat[i] as EditableBlock).id);
+      if (written) flat[i] = withEditText(flat[i] as EditableBlock, written.content);
+    }
     if (editingBlockId && surface.currentId() === editingBlockId) {
       const live = surface.content();
       const idx = flat.findIndex((b) => b.id === editingBlockId);
@@ -462,6 +476,7 @@ export function BlockTree(props: {
   ): void {
     if (ops.length === 0) return;
     unseenCreations.note(ops);
+    supersedeUnansweredText(ops);
     setLocalBlocks((prev) => applyOptimistic(prev, ops as unknown as OptimisticOp[], deletedCache));
     history.record(ops, treeBefore, kind, before, after, blockId);
     void applyOps(ops);
@@ -523,7 +538,12 @@ export function BlockTree(props: {
       { id, caret: { offset: contentOffsetOf(content, headAfter) } },
       id,
     );
-    void applyOps(ops);
+    const written = { content };
+    unansweredText.set(id, written);
+    const answered = () => {
+      if (unansweredText.get(id) === written) unansweredText.delete(id);
+    };
+    void applyOps(ops).then(answered, answered);
   }
 
   function attachEditing(id: BlockId, caret: CaretSpec): void {
@@ -718,6 +738,7 @@ export function BlockTree(props: {
   function applyHistoryStep(res: UndoRedoResult | null): void {
     if (!res) return;
     unseenCreations.note(res.ops);
+    supersedeUnansweredText(res.ops);
     setLocalBlocks((prev) =>
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );
@@ -1130,38 +1151,21 @@ export function BlockTree(props: {
       case "block.selectAll":
         setSelection({ anchorId: sel.anchorId, focusId: sel.focusId, ids: visibleIds() });
         return;
-      case "block.copySelection": {
-        // R31: the selection as outline markdown, subtrees included, through the same serializer
-        // the mirror uses — so what you paste elsewhere is exactly what a page file would say.
-        // A block whose ancestor is also selected is already inside that ancestor's subtree.
-        const chosen = new Set(sel.ids);
-        const inSelectedAncestor = (id: BlockId): boolean => {
-          let cur = getBlock(tree, id).parentId;
-          while (cur !== null) {
-            if (chosen.has(cur)) return true;
-            cur = getBlock(tree, cur).parentId;
-          }
-          return false;
-        };
-        const toNode = (id: BlockId): OutlineNode => {
-          const b = getBlock(tree, id);
-          return {
-            content: b.content,
-            marker: b.marker,
-            priority: b.priority,
-            // Copied blocks keep their properties — a numbered list pasted elsewhere stays one.
-            properties: { ...b.properties },
-            collapsed: b.collapsed,
-            children: childrenIds(tree, id).map(toNode),
-          };
-        };
-        const roots = visibleIds().filter((id) => chosen.has(id) && !inSelectedAncestor(id));
-        const text = serializeOutline(
-          { properties: {}, blocks: roots.map(toNode) },
-          { ids: "none" },
-        );
+      case "block.copySelection":
         // Registered but never implemented (B-84): Cmd+C on a selection copied nothing at all.
-        void navigator.clipboard?.writeText(text);
+        void navigator.clipboard?.writeText(selectionMarkdown(tree, sel.ids, visibleIds()));
+        return;
+      case "block.cutSelection": {
+        // B-245: Copy's exact text, then Delete's exact ops as ONE commit, so one Cmd+Z undoes the
+        // whole cut. The delete waits for the clipboard write (see `cutToClipboard`), so it builds
+        // against the tree as it is then, keeping only blocks that still exist.
+        const text = selectionMarkdown(tree, sel.ids, visibleIds());
+        void cutToClipboard(text, navigator.clipboard, () => {
+          const now = editorTree();
+          const live = sel.ids.filter((id) => now.byId.has(id));
+          commit(deleteSelectedBlocks(now, live, clock).ops, now, "structure", null, null);
+          if (selection() === sel) setSelection(null);
+        });
         return;
       }
       case "block.deleteSelected": {

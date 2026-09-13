@@ -181,3 +181,25 @@ describe("WorkerDb schema idempotency", () => {
     expect(() => new WorkerDb({ driver, transport: new NoopTransport() })).not.toThrow();
   });
 });
+
+describe("WorkerDb.replayLocalOps (B-247)", () => {
+  it("applies and queues ops the replica never saw, and skips ones it already recorded", () => {
+    const driver = memoryDriver();
+    const db = new WorkerDb({ driver, transport: new NoopTransport() });
+    const landed = pageCreate(db, "Landed before the page went away");
+    db.applyLocalOps([landed]);
+    // The push went through: the outbox no longer holds it.
+    driver.run("DELETE FROM pending_op");
+    const lost = pageCreate(db, "Still queued when the page went away");
+
+    expect(db.replayLocalOps([landed, lost])).toEqual({ replayed: 1, skipped: 1 });
+    expect(db.query<{ name: string }>("SELECT name FROM page ORDER BY name")).toEqual([
+      { name: "Landed before the page went away" },
+      { name: "Still queued when the page went away" },
+    ]);
+    // Only the op that was really missing goes back out; the landed one is not pushed twice.
+    expect(db.query<{ id: string }>("SELECT id FROM pending_op")).toEqual([{ id: lost.id }]);
+
+    expect(db.replayLocalOps([landed, lost])).toEqual({ replayed: 0, skipped: 2 });
+  });
+});

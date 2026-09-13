@@ -201,6 +201,17 @@ export class WorkerDb {
     return this.sync.applyLocal(ops);
   }
 
+  /** See `WorkerApi.replayLocalOps`. The `op` table is the replica's record of every op id it
+   * has applied — the same check `@nooklet/core`'s `applyOps` makes — but `applyLocal` would
+   * still put an already-recorded op back into `pending_op` and push it again. */
+  replayLocalOps(ops: readonly Op[]): { replayed: number; skipped: number } {
+    const fresh = ops.filter(
+      (op) => this.driver.get("SELECT 1 AS x FROM op WHERE id = ?", [op.id]) === undefined,
+    );
+    if (fresh.length > 0) this.sync.applyLocal(fresh);
+    return { replayed: fresh.length, skipped: ops.length - fresh.length };
+  }
+
   getPageTree(pageId: string): PageTreeResult | undefined {
     const page = getPage(this.driver, pageId);
     if (!page) return undefined;

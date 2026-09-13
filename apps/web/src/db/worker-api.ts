@@ -60,6 +60,13 @@ export interface WorkerApi {
   applyLocalOps(ops: Op[]): Promise<ApplyOpsResult>;
 
   /**
+   * `applyLocalOps` for a batch an earlier page load handed over and may never have seen applied
+   * (`./unapplied-ops.ts`, B-247): ops whose id this replica has already recorded are skipped, so
+   * a batch that did land is not queued for push a second time.
+   */
+  replayLocalOps(ops: Op[]): Promise<{ replayed: number; skipped: number }>;
+
+  /**
    * Mint the next HLC for a local op, from the worker's single `SyncClient` clock. Main-thread
    * code MUST use this rather than constructing its own `Hlc`: an op's id is its HLC, so two
    * clock instances sharing this device's id (one per tab, say) can mint the same id twice, and

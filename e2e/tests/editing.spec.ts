@@ -73,6 +73,12 @@ test("Enter creates a second bullet and both keep their text", async ({ page }) 
   await openJournal(page);
 
   const outliner = page.locator(".vr-outliner").first();
+  // Today's journal is shared by every spec on the one e2e server, so how many rows it already has
+  // depends on which specs ran first and whether their pushes landed before their browser context
+  // closed (`a-fresh-journal.spec.ts` leaves two). An absolute "2" failed whenever that race went
+  // the other way (B-233); what this test is about is that Enter added exactly ONE row.
+  await expect(outliner.locator(".vr-row").first()).toBeVisible();
+  const rowsBefore = await outliner.locator(".vr-row").count();
   await outliner.locator(".vr-block-view").first().click();
   await page.keyboard.press("End");
   await page.keyboard.type(" first bullet", { delay: 20 });
@@ -82,7 +88,7 @@ test("Enter creates a second bullet and both keep their text", async ({ page }) 
   await page.locator("body").click({ position: { x: 5, y: 5 } });
   // Row count, not just substrings: `toContainText` on the container also passes when both
   // strings land in ONE block, which is exactly how "Enter does nothing" hid here before.
-  await expect(outliner.locator(".vr-row")).toHaveCount(2);
+  await expect(outliner.locator(".vr-row")).toHaveCount(rowsBefore + 1);
   await expect(outliner).toContainText("first bullet");
   await expect(outliner).toContainText("second bullet");
 
