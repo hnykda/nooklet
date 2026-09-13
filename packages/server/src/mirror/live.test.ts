@@ -218,6 +218,32 @@ describe("startLiveMirror", () => {
     }
   });
 
+  it("recreates, on start, a file deleted while the server was down (B-262)", () => {
+    const first = startLiveMirror(ctx, dataDir, { debounceMs: 10_000, log: () => {} });
+    const pageId = newId();
+    write([
+      op(pageId, { kind: "page.create", name: "Mirror Deleted", journalDay: null, createdAt: 1 }),
+      op(newId(), {
+        kind: "block.create",
+        place: { pageId, parentId: null, order: "a0" },
+        content: "keep me",
+        createdAt: 1,
+      }),
+    ]);
+    first.flush();
+    first.stop();
+    const file = join(dataDir, "pages", "Mirror Deleted.md");
+    rmSync(file);
+
+    const second = startLiveMirror(ctx, dataDir, { debounceMs: 10_000, log: () => {} });
+    try {
+      second.flush();
+      expect(readFileSync(file, "utf8")).toContain("keep me");
+    } finally {
+      second.stop();
+    }
+  });
+
   it("stops listening once stopped", async () => {
     const mirror = startLiveMirror(ctx, dataDir, { debounceMs: 10, log: () => {} });
     mirror.stop();

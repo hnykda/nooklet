@@ -402,3 +402,20 @@ describe("exportAll with sinceSeq (B-260)", () => {
     expect(readFileSync(join(dataDir, "pages", "Move To.md"), "utf8")).toContain("travels");
   });
 });
+
+describe("exportAll rebuilds missing files (B-262)", () => {
+  it("rewrites a page whose file is gone even though mirror_file says it is up to date", () => {
+    const pageId = createPage("Vanished File");
+    createBlock(pageId, "still in the database");
+    createPage("Still There");
+    expect(exportAll(ctx.driver, dataDir).exported).toBe(2);
+
+    // A database copied without its pages/, or a file deleted by hand: the row stays, the file
+    // does not.
+    const file = join(dataDir, pageFilePath({ name: "Vanished File", journalDay: null }));
+    rmSync(file);
+
+    expect(exportAll(ctx.driver, dataDir)).toEqual({ exported: 1, skipped: 1, deleted: 0 });
+    expect(readFileSync(file, "utf8")).toContain("still in the database");
+  });
+});

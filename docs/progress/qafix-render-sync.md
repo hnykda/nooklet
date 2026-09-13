@@ -14,8 +14,8 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 |---|---|---|---|
 | Q1 live mirror misses renames/moves/props | B-260 | high | fixed |
 | Q2 UI title rename skips link rewrite + alias | B-261 | high | fixed |
-| Q3 export trusts mirror_file over disk | B-262 | medium | next |
-| Q4 `tag:task` query finds nothing | B-263 | medium | queued |
+| Q3 export trusts mirror_file over disk | B-262 | medium | fixed |
+| Q4 `tag:task` query finds nothing | B-263 | medium | next |
 | Q5 `$$…$$` display math | B-264 | low | queued |
 | Q6 collapsed template copy | B-265 | low | queued |
 | Q7 unpadded SCHEDULED dates | B-266 | low | queued |
@@ -26,11 +26,12 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 
 - `693f000` inbox entries B-260..B-268 logged
 - `2577a3e` B-260 live mirror follows `changes` (unit + `e2e/tests/mirror-live.spec.ts` 3/3)
-- B-261 title rename through `page.update` (`e2e/tests/page-rename.spec.ts` 2/2, `pages.spec.ts` 14/14)
+- `2416e9e` B-261 title rename through `page.update` (`e2e/tests/page-rename.spec.ts` 2/2, `pages.spec.ts` 14/14)
+- B-262 export rewrites files missing on disk (unit; real graph copy 952/952)
 
 ## In flight
 
-- Q3/B-262.
+- Q4/B-263.
 
 ## Decisions
 

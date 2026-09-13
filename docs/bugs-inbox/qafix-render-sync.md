@@ -68,7 +68,10 @@ offline rename is refused rather than queued, since a local rename cannot rewrit
 ---
 
 ### B-262 · `nooklet export` skips pages whose `.md` file is missing
-**Status:** open · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q3) · **Test:** —
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA (Q3) · **Test:**
+`packages/server/src/mirror/export.test.ts` "rewrites a page whose file is gone even though
+mirror_file says it is up to date", `packages/server/src/mirror/live.test.ts` "recreates, on
+start, a file deleted while the server was down"
 
 Copy a served `graph.sqlite` into an empty directory and run `nooklet export --data <dir>`: it
 reports `"exported": 6, "skipped": 966` and `pages/` holds 5 files. After `DELETE FROM
@@ -76,6 +79,15 @@ mirror_file` the same command writes all 972. The bookkeeping rows travel with t
 export — the walk-away-with-it command — trusts them over the disk. The same holds for the live
 mirror: a mirror file deleted by hand, or a data directory restored without `pages/`, is never
 recreated.
+
+**Fixed 2026-09-13.** `exportPage` skipped the write when the `mirror_file` row's path and hash
+matched the render, without asking whether the file was still there. It now also requires
+`existsSync`. Real graph: a `.backup` copy of a served database (952 `mirror_file` rows, no
+`pages/`) now exports 952 pages into 127 `pages/` + 825 `journals/` files. The live mirror gets the
+same repair on start, because its first sweep renders every page (B-260); a file deleted by hand
+while the server runs comes back on that page's next change, not immediately — there is no watcher
+(ADR 002's watcher is still unbuilt). Only existence is checked, not the file's hash, so a file
+edited by hand is not overwritten until its page changes.
 
 ---
 

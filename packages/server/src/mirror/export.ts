@@ -26,7 +26,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   formatDayTime,
@@ -193,7 +193,7 @@ export function pageFilePath(page: { name: string; journalDay: number | null }):
 /**
  * Render + write one page's mirror file, skipping the write entirely when the rendered content
  * hash matches what `mirror_file` already recorded for this page (echo-suppression bookkeeping,
- * ADR 002). Writes atomically (`<path>.tmp-<random>` then `fs.rename`). If the page's file path
+ * ADR 002) and the file is still on disk. Writes atomically (`<path>.tmp-<random>` then `fs.rename`). If the page's file path
  * changed since the last export (a rename), the old file and its stale `mirror_file` row are
  * removed.
  */
@@ -208,11 +208,19 @@ export function exportPage(driver: SqlDriver, dataDir: string, pageId: string): 
     [pageId],
   );
 
-  if (existing && existing.path === relPath && existing.content_hash === contentHash) {
+  const absPath = join(dataDir, relPath);
+  // The row only says what we last wrote, not that it is still there (B-262): it travels with a
+  // copied or restored `graph.sqlite` while `pages/` does not, and a file can be deleted by hand.
+  // Trusting it alone made `nooklet export` of a copied database write 6 files out of 972.
+  if (
+    existing &&
+    existing.path === relPath &&
+    existing.content_hash === contentHash &&
+    existsSync(absPath)
+  ) {
     return { path: relPath, contentHash, changed: false };
   }
 
-  const absPath = join(dataDir, relPath);
   mkdirSync(dirname(absPath), { recursive: true });
   const tmpPath = join(dirname(absPath), `.${randomBytes(8).toString("hex")}.tmp`);
   writeFileSync(tmpPath, text, "utf8");
