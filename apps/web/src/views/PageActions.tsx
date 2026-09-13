@@ -25,7 +25,7 @@ import { createStore } from "../app/hosts.js";
 import { pageActionNotice } from "../app/page-actions.js";
 import { detectPlatformFromEnvironment, useCommands } from "../commands/index.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
-import { pageNameToPath } from "./navigateTarget.js";
+import { historyRoutePath } from "../routes/page-path.js";
 import { requestPageIconEdit } from "./page-icon-request.js";
 import "./page-actions.css";
 
@@ -148,7 +148,7 @@ export function PageActions(props: {
             <A
               role="menuitem"
               class="page-actions-item"
-              href={`/history/${pageNameToPath(props.pageName)}`}
+              href={historyRoutePath(props.pageName)}
               onClick={() => setMenuOpen(false)}
             >
               <History size={15} /> Page history

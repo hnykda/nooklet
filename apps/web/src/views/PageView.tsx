@@ -34,6 +34,7 @@ import { PageActions } from "./PageActions.js";
 import { usePageFind } from "./PageFindBar.js";
 import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
+import { PageTitleField } from "./PageTitleField.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
 
 export interface PageViewProps {
@@ -214,19 +215,15 @@ export function PageView(props: PageViewProps): JSX.Element {
             <div class="page-title-row">
               <PageIconEditor pageId={p().id} icon={properties().icon} />
               <Show when={!isJournal()} fallback={<h1 class="page-title-input">{title()}</h1>}>
-                <input
-                  class="page-title-input"
+                {/* A growing textarea, so a long name wraps instead of being cut (B-350). */}
+                <PageTitleField
                   value={titleDraft()}
-                  onInput={(e) => setTitleDraft(e.currentTarget.value)}
-                  onBlur={() => void commitTitle()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") e.currentTarget.blur();
-                  }}
                   readOnly={locked()}
-                  aria-label="Page title"
+                  onInput={setTitleDraft}
+                  onCommit={() => void commitTitle()}
                 />
-                {/* Paper only (`styles/print.css`): an input cannot wrap, so a long name printed
-                    as one line clipped at the sheet's edge (B-227). */}
+                {/* Paper only (`styles/print.css`): the field's height is measured at screen
+                    width, so a long name printed clipped at the sheet's edge (B-227). */}
                 <h1 class="page-title-print">{titleDraft()}</h1>
               </Show>
               <Show when={locked()}>

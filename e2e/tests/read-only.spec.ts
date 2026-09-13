@@ -45,7 +45,7 @@ test("a locked page renders but never enters edit mode, and says why", async ({ 
   const outliner = await openLocked(page, "Locked Basics");
   await expect(outliner.locator(".vr-row")).toHaveCount(3);
   await expect(page.locator(".page-readonly-badge")).toBeVisible();
-  await expect(page.locator("input.page-title-input")).toHaveAttribute("readonly", "");
+  await expect(page.locator("textarea.page-title-input")).toHaveAttribute("readonly", "");
 
   // Click into a block: no editor, a notice instead.
   await outliner.locator(".vr-row").nth(1).locator(".vr-block-view").click();

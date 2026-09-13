@@ -10,7 +10,7 @@
  * disabled: a menu of greyed-out items on a bullet with no children is noise.
  */
 
-import { createEffect, createMemo, For, type JSX, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
 import { useCommands } from "../commands/index.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
 import type { CommandContext } from "../commands/types.js";
@@ -18,6 +18,7 @@ import { matchesWhen } from "../commands/when/index.js";
 import "./context-menu.css";
 import { BlockTimestamps } from "./BlockTimestamps.js";
 import { blockMenuRequest, closeBlockMenu } from "./context-menu.js";
+import { placeMenu, usableViewport } from "./menu-placement.js";
 
 type ContextBase = Omit<CommandContext, "exec" | "args">;
 
@@ -108,6 +109,33 @@ export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.
     });
   });
 
+  // The menu's own rendered size, for `placeMenu` (B-351). Observed rather than read once: the
+  // timestamps footer arrives after the menu opens and makes it taller.
+  const [menuSize, setMenuSize] = createSignal<{ width: number; height: number } | null>(null);
+  createEffect(() => {
+    if (!blockMenuRequest()) return;
+    const el = menuEl;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      setMenuSize({ width: el.offsetWidth, height: el.offsetHeight });
+    });
+    observer.observe(el);
+    onCleanup(() => {
+      observer.disconnect();
+      setMenuSize(null);
+    });
+  });
+  const position = (req: {
+    x: number;
+    y: number;
+  }): { left: string; top: string; "max-height": string } => {
+    // Before the first measurement, the old estimate: the observer reports before that layout is
+    // painted, so this only shows where there is no ResizeObserver at all.
+    const size = menuSize() ?? { width: 220, height: 320 };
+    const at = placeMenu(req, size, usableViewport());
+    return { left: `${at.left}px`, top: `${at.top}px`, "max-height": `${at.maxHeight}px` };
+  };
+
   async function run(id: string): Promise<void> {
     const command = registry.get(id);
     closeBlockMenu();
@@ -122,11 +150,9 @@ export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.
           ref={menuEl}
           class="ctx-menu"
           role="menu"
-          // Clamped so a right-click near the right or bottom edge does not open off-screen.
-          style={{
-            left: `${Math.min(req().x, Math.max(0, window.innerWidth - 220))}px`,
-            top: `${Math.min(req().y, Math.max(0, window.innerHeight - 320))}px`,
-          }}
+          // Placed from its measured size so all of it is on screen (B-351) — a fixed guess at its
+          // height went stale when entries were added.
+          style={position(req())}
           onContextMenu={(e) => e.preventDefault()}
           // The whole menu, not only its items (B-71): a press on a separator or the padding moved
           // focus to <body> too, and since a press inside the menu does not dismiss it, the menu

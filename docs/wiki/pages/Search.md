@@ -3,7 +3,7 @@ summary:: Keyword search is always on; semantic search is optional, runs on a mo
 tags:: guide
 
 - ## Finding a page
-  - Cmd/Ctrl+O opens the page switcher: fuzzy match over page names and aliases, accent-insensitive (`č` matches `c`); a journal is found by `2026-09` and by `Sep 7th` alike. Cmd/Ctrl+K opens the command palette, which mixes pages and commands; type `>` first for commands only, `#` for tags.
+  - Cmd/Ctrl+O opens the page switcher: fuzzy match over page names and aliases, accent-insensitive (`č` matches `c`); a journal is found by `2026-09` and by `Sep 7th` alike. Cmd/Ctrl+K — or "Command palette", the first row of the sidebar, which is how a phone gets there — opens the command palette, which mixes pages and commands; type `>` first for commands only, `#` for tags.
 - ## Searching content
   - Cmd/Ctrl+Shift+F, or sidebar → Search, opens the search view (`/search`) with a mode toggle: **hybrid** (default), **keyword**, **semantic**. Each hit shows the block or page, a snippet with the match highlighted and a breadcrumb; clicking opens it.
   - Keyword search is SQLite FTS5 with diacritics removed, plus a trigram index for substring matches. The query language is a search box, not FTS5 syntax (B-53): words, `"quoted phrases"`, `-exclusions`, `prefix*`. `c++`, `e-mail` and `what's` are searched for, not parsed.

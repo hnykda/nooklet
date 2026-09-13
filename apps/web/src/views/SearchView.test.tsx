@@ -137,3 +137,19 @@ describe("SearchView", () => {
     expect(lastInput?.namespace).toBe("Projects");
   });
 });
+
+describe("SearchView filter order (B-355)", () => {
+  it("keeps Updated after and Updated before next to each other, as the one range they are", async () => {
+    const { container } = await renderSearch();
+    // A label's own words, without the option texts of the select inside it.
+    const names = [...container.querySelectorAll(".search-filters > label")].map((label) =>
+      [...label.childNodes]
+        .filter((n) => n.nodeType === Node.TEXT_NODE)
+        .map((n) => n.textContent?.trim() ?? "")
+        .join(""),
+    );
+    const after = names.indexOf("Updated after");
+    expect(after).toBeGreaterThanOrEqual(0);
+    expect(names[after + 1]).toBe("Updated before");
+  });
+});

@@ -118,7 +118,7 @@
       .journal-stream-toolbar,
       .vr-collapse-arrow,
       .vr-child-count,
-      input.page-title-input
+      textarea.page-title-input
     ) {
     /* biome-ignore lint/complexity/noImportantStyles: chrome must not print however a view styles its display — a `display: flex` on any of these, at any specificity, would put it on paper. */
     display: none !important;
@@ -155,8 +155,10 @@
     background-color: transparent;
   }
 
-  /* An `<input>` cannot wrap: a name longer than the sheet is wide printed clipped mid-word
-     (B-227). The input is hidden above and this heading, with the input's type, prints instead;
+  /* The on-screen title field could not wrap on paper: a name longer than the sheet is wide printed
+     clipped mid-word (B-227). It was an `<input>` then; it is a textarea sized at screen width now
+     (B-350), which is no better on a sheet of another width. It is hidden above and this heading,
+     with the field's type, prints instead;
      `anywhere` because imported names like `hls__The_Logic_of_…` have no spaces to break at. */
   html:root .page-title-print {
     display: block;

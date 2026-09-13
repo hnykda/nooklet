@@ -9,6 +9,7 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { describeError, type SearchHit, type SearchInput } from "../data/api-client.js";
+import { displayRefName } from "../data/page-title.js";
 import { useSearchResults } from "../data/store.js";
 import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
 import "./search-filters.css";
@@ -56,7 +57,11 @@ export function SearchView(): JSX.Element {
   // Reading an errored resource RE-THROWS. Every read below goes through this, or the first
   // failed request threw inside the loading branch's own `when`, the reactive computation died
   // with it, and "Searching…" stayed on screen forever — B-10's symptom, back for search (B-80).
-  const safeResults = () => (results.error === undefined ? results() : undefined);
+  // …and only while there IS a query. An emptied box runs no search, and a resource whose source
+  // goes undefined keeps its last value: the old summary and rows stayed under "Type to search.",
+  // and under any filter chosen next, which they did not satisfy (B-353).
+  const safeResults = () =>
+    input() !== undefined && results.error === undefined ? results() : undefined;
 
   function openHit(hit: SearchHit): void {
     navigate(hit.kind === "page" ? pageRoutePath(hit.page) : pageZoomRoutePath(hit.page, hit.id));
@@ -114,6 +119,16 @@ export function SearchView(): JSX.Element {
             onInput={(e) => setUpdatedAfter(e.currentTarget.value)}
           />
         </label>
+        {/* Straight after "Updated after": the two are one range, and the task filters that were
+            added between them left the halves ~430px apart on a phone (B-355). */}
+        <label>
+          Updated before
+          <input
+            type="date"
+            value={updatedBefore()}
+            onInput={(e) => setUpdatedBefore(e.currentTarget.value)}
+          />
+        </label>
         <label>
           Task
           <select
@@ -154,14 +169,6 @@ export function SearchView(): JSX.Element {
           />
           Journals only
         </label>
-        <label>
-          Updated before
-          <input
-            type="date"
-            value={updatedBefore()}
-            onInput={(e) => setUpdatedBefore(e.currentTarget.value)}
-          />
-        </label>
       </details>
 
       <Show when={input() === undefined}>
@@ -172,7 +179,7 @@ export function SearchView(): JSX.Element {
       </Show>
       {/* Without this, a failed request left "Searching…" on screen forever — which is exactly
           how a missing API token presented, and is indistinguishable from a slow server. */}
-      <Show when={!results.loading && results.error !== undefined}>
+      <Show when={input() !== undefined && !results.loading && results.error !== undefined}>
         <p class="search-error" role="alert">
           Search failed. {describeError(results.error)}{" "}
           <button type="button" class="search-retry" onClick={() => refetch()}>
@@ -195,7 +202,9 @@ export function SearchView(): JSX.Element {
                   <li class="search-result">
                     <button type="button" class="search-result-open" onClick={() => openHit(hit)}>
                       <div class="search-result-page">
-                        {hit.page}
+                        {/* A journal day in the reader's title format, not its ISO storage name
+                            (ADR 018, B-354). The hit carries only the name, so `displayRefName`. */}
+                        {displayRefName(hit.page)}
                         <Show when={hit.breadcrumb.length > 0}>
                           <span class="search-result-breadcrumb">
                             {" "}

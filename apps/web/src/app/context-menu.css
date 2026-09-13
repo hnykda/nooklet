@@ -12,6 +12,11 @@
   color: var(--fg);
   box-shadow: var(--shadow-md);
   font-size: var(--text-sm);
+  /* A window shorter than the menu (a phone held sideways) scrolls it rather than cutting off its
+     last entries (B-351). `BlockContextMenu.tsx` sets the exact `max-height` inline, less the
+     keyboard toolbar; this is the fallback before it does. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 .ctx-item {
