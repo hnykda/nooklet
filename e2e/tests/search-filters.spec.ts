@@ -48,14 +48,14 @@ test("the task filter finds blocks by marker, and journals only narrows to journ
 });
 
 test("pages only and blocks only choose what kind of hit comes back", async ({ page }) => {
-  await seedPage(page, "Quokka Habitat", "- quokka sightings on the island");
+  await seedPage(page, "Okapi Habitat", "- okapi sightings on the island");
 
-  await searchFor(page, "quokka");
+  await searchFor(page, "okapi");
   await expect(summary(page)).toHaveText("2 results");
 
   await page.locator(".search-filter-kind").selectOption("pages");
   await expect(summary(page)).toHaveText("1 result");
-  await expect(page.locator(".search-result-page")).toHaveText("Quokka Habitat");
+  await expect(page.locator(".search-result-page")).toHaveText("Okapi Habitat");
   await expect(page.locator(".search-result-snippet")).not.toContainText("sightings");
 
   await page.locator(".search-filter-kind").selectOption("blocks");

@@ -61,13 +61,30 @@ based on `da85cfb` (the worktree was created at an older commit, `41666ee`; the 
   `views/search-filters.css`, controls in `SearchView.tsx` (+ component test), `properties` in
   `data/api-client.ts`. E2E `search-filters.spec.ts` 2/2 with `views.spec.ts` (31 passed).
 
+- #11 hash `03cb6ef`.
+- Final verification (2026-09-13, HEAD `03cb6ef` + the search-filters word fix):
+  - `pnpm -r test`: core 332, 17, server 525, web 718 — all passing (1,592).
+  - `pnpm -r typecheck`: exit 0.
+  - `pnpm nooklet verify` on a fresh copy of the real graph: OK, 20,411 ops.
+  - Whole Chromium e2e suite in two halves on port 6409: first half 132 passed, 1 skipped; second
+    half 170 passed, 3 failed, 1 skipped. The three: `search-filters.spec.ts` "pages only…" (MY
+    bug — "quokka" is also used by `popups.spec.ts`; renamed to "okapi", then popups +
+    search-filters + shelf 50/50); `shelf.spec.ts` "Shift+click on a page link…" (passed on rerun);
+    `views.spec.ts` "opening the palette while editing and closing it hands focus back to the
+    editor" — fails in isolation on the BASE commit `da85cfb` too (checked on the extracted copy),
+    so pre-existing; not logged as a bug because this branch's numbers B-230..B-239 are used up —
+    reported to the coordinator instead.
+
 ## 2. In flight
 
-- Final verification pass (full unit suite, typecheck, `nooklet verify`, e2e of touched specs).
+- Nothing. All five items done.
 
 ## 3. Next steps, in order
 
-1. Final report: full unit suite, typecheck, e2e of every spec this branch touched.
+1. Nothing left in the brief. Open follow-ups this branch found (for whoever picks them up):
+   B-231 (context-menu padding blurs the editor), B-233 (editing.spec order coupling), B-235
+   (page.create drops markdown page properties), B-236 (page.update refuses journal properties),
+   the views.spec palette-focus failure above, and B-238's unmapped scheduled/deadline/done.
 
 ## 4. Decisions
 

@@ -187,7 +187,8 @@ and `done` (day number / time / epoch ms in their columns) are NOT mapped and st
 through `properties` — written into `docs/spec/mcp-tools.md` beside the op, not fixed. Tests that
 would have caught it: `packages/server/src/ops/search-filters.test.ts` (failed 2 of 3 before) and
 `e2e/tests/search-filters.spec.ts` (its marker test fails with "0 results" when the mapping is
-removed — checked).
+removed — checked). On a fresh copy of the owner's graph served by `nooklet serve`: keyword "a",
+blocks, `properties: {marker: "LATER"}` → 8 hits; with `journals_only` → 5.
 
 ---
 
