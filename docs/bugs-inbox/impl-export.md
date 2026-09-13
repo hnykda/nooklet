@@ -144,6 +144,12 @@ failures, so either `06fd859`/`da85cfb` or the machine's state since then change
 neither was checked. B-72's fix names this test. Nothing in `CommandPalette.tsx` restores focus
 explicitly, so whatever used to return it to the editor is worth finding first.
 
+**Note (adversarial verification, 2026-09-13):** order-dependent, not simply broken. On this branch
+at `14272fc` it **passed** inside a full `views.spec.ts` run (batch with page-export, pages,
+page-icons, phone, navigation, history: 72 passed) and **failed 3 of 3** run alone with
+`-g "hands focus back" --repeat-each=3`. The same test is already logged by other branches as
+B-161 (`impl-commands`), B-193 (`impl-editor`) and B-246 (`qafix-editor`) — merge as one entry.
+
 ---
 
 ### B-227 · A printed page's title is cut off after one line

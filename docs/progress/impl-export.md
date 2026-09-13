@@ -107,8 +107,19 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 (real-graph copy in `graph/`, PDFs/screenshots). Probe specs `e2e/tests/zz-*.spec.ts` are local
 only, never committed.
 
-- Reran: unit core 338 / server 17+521 / web 697 green; `page-export.spec.ts` 7/7.
+- Reran: unit core 338 / server 521 / web 697 (plus a 17-test package) green; `page-export.spec.ts` 7/7.
 - Found and fixed B-227 (`3bbeff0`): long page titles clipped on paper (the title is an input).
+- Found and fixed B-228 (`14272fc`): `ui_run` could run Copy/Export/Print in the person's window;
+  those three are now `remoteInvocable: false` (spec R52a updated).
+- Found and fixed B-229 (`0f48d56`): a double click on the star left the page favourited; toggles
+  now queue. B-226 annotated: passes in a full views.spec run, fails alone; duplicate of
+  B-161/B-193/B-246. All of B-220..B-229 are now used.
+- Real graph copy (fresh `.backup`): `nooklet export` with this branch's renderer skipped all 952
+  pages as hash-identical to the owner's recorded mirror hashes; after clearing `mirror_file`, the
+  probe with `PER_QUERY=15`: 65/65 exports byte-identical, 15/15 prints with every row; UI copy of
+  `OmnivoreSync` (1,759,043 chars) equals the mirror minus ids; `nooklet verify` OK (20,411 ops).
+- e2e batches on this branch: {page-export, pages, page-icons, views, phone, navigation, history}
+  72 passed; {editing, focus, selection, context-menu, popups, journals, shelf} 118 passed, 1 skipped.
 - Checked OK in Chromium: print while editing (focus + typing survive, nothing written); keyboard
   path through the "…" menu; journal page export name; namespaced Czech name with quotes via the
   palette; rename-then-star race; `favorite:: false` page; empty page copy; phone layout.
