@@ -208,3 +208,12 @@ Big batches stall the server (F8, plus one found in passing while measuring B-12
   rebuilds `path_ref` for each descendant: roughly subtree² full scans. Fix direction: collect the
   union of touched subtrees once per batch (live children via the index, tombstoned ones from one
   scan, as `subtree-page-repair.ts#childLookup` does), then rebuild each block's `path_ref` once.
+
+**`recordChanges` fixed 2026-09-13 (F8).** One `Map` from op id to result, built once. No unit
+test — a timing assertion is not a signal on a machine shared by a dozen agents, so this is
+believed fixed and measured instead: `tools/probes/apply-ops-batch-scaling.ts` times the lookup
+shapes side by side — at 16,000 ops, 1,364 ms of `find` against 2 ms of `Map` — and one
+`serverApplyOps` of N `block.text` ops (2k / 8k / 16k: 266 / 2,419 / 8,243 ms before, 239 / 2,256 /
+7,687 ms after, load average 5–13). The batch is still quadratic after this; the remaining cost is
+the reindex walk in the second bullet (every `block.text` reindexes its block's subtree through
+the unindexed `parent_id = ?` query — a full scan per block).

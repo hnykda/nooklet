@@ -25,8 +25,8 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 | F4 batch.undo / trash.restore report success on a rejected un-delete | medium | B-90 (existing) | fixed a6cd161 |
 | F5 verify replays rejected ops | medium | B-123 | fixed 79c1b70 |
 | F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | fixed 668c0d3 |
-| F7 query `ref` prefilter drops property-only refs | low | B-124 | fixed (see Done) |
-| F8 recordChanges O(n²) | low | note under B-85 (existing) | logged |
+| F7 query `ref` prefilter drops property-only refs | low | B-124 | fixed b035d86 |
+| F8 recordChanges O(n²) | low | note under B-85 (existing) | fixed (see Done); no unit test, probe |
 | F9 DataApi deletes: one timestamp per op | low | B-121 | logged |
 | F10 asset GC ignores history snapshots | low | B-91 (existing) | logged |
 | (found) cross-page move of a big subtree takes ~23 s: reindex walks unindexed | — | note under B-85 (existing), not fixed | logged |
@@ -59,12 +59,16 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 - F6 / B-86 follow-up — `668c0d3`: `ref-reindex.ts` rebuilds `ref` + subtree `path_ref` via the
   now-exported `reindexBlockAndSubtree`, finds candidates in both tables, new done-flag key so
   graphs that ran v1 re-run. Tests: 2 new in `ref-reindex.test.ts`.
-- F7 / B-124 — (this commit): `core/query.ts#termSql` `ref` clause covers `alias` and `#`/`[[` in
+- F7 / B-124 — `b035d86`: `core/query.ts#termSql` `ref` clause covers `alias` and `#`/`[[` in
   any property value. Test `core/src/query-prefilter-refs.test.ts`. Real graph: +55 blocks, 0 gaps.
+- F8 — (this commit): `recordChanges` uses a Map. Probe `tools/probes/apply-ops-batch-scaling.ts`
+  (16k ops: find 1,364 ms vs Map 2 ms; serverApplyOps 8.2 s → 7.7 s). Still quadratic: the reindex
+  walk (`subtreeIds`, unindexed `parent_id = ?`). Next: fix that as its own commit (decided: it is
+  the actual cause of F8's symptom), then F9.
 
 ## Next steps, in order
 
-F8, F9, F10, then the review doc.
+F8 reindex walk, F9, F10, then e2e (trash, refactor, history, remote-device), then the review doc.
 
 ## How to resume
 

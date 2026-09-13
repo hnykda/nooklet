@@ -371,8 +371,12 @@ function recordChanges(
   after: ReadonlyMap<string, PageChangeSnapshot | BlockChangeSnapshot | null>,
 ): void {
   const byEntity = new Map<string, { opIds: string[]; kind: string }>();
+  // One Map, not `results.find` per op: that was quadratic in the batch, and `graph.replace` sends
+  // up to 20,000 blocks through one call (16k ops: 1.3 s of lookups alone, F8 in
+  // docs/review/2026-09-13-m7-rv-server-sync.md, tools/probes/apply-ops-batch-scaling.ts).
+  const resultById = new Map(results.map((r) => [r.id, r]));
   for (const op of ops) {
-    const result = results.find((r) => r.id === op.id);
+    const result = resultById.get(op.id);
     if (!result || result.status === "rejected") continue;
     const entry = byEntity.get(op.entity) ?? { opIds: [], kind: op.payload.kind };
     entry.opIds.push(op.id);
