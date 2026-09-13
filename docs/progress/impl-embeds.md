@@ -80,3 +80,16 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
 ## How to resume
 
 Read this file, `git log --oneline da85cfb..m8/impl-embeds`, then continue at "In flight".
+
+## Adversarial verification (2026-09-13, second agent)
+
+Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-embeds-verify/`
+(graph copy in `graph/`, probes `probe-*.mjs` — run them from `e2e/` against a server on 6407).
+
+- Re-ran at `18b053d`: embed unit tests 25/25, `embeds.spec.ts` 10/10.
+- `65a1b8f` + `6812e1e`: **B-214 found and fixed** — typing anywhere on a page rebuilt its embeds
+  (placeholder flash, page jumps, unfolded rows fold). Fix in `BlockRowView.tsx` (string memo); e2e
+  test added, seen failing first. Web unit 709/709, web typecheck 0.
+- In flight: broader e2e on 6407 over the row change (render, rendering, editing, references,
+  tasks, query, shelf, selection, undo), then more probes (Czech/journal page embeds, large page
+  embed typing latency, undo of the host, keyboard on embedded rows).
