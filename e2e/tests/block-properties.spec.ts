@@ -95,6 +95,32 @@ test.describe("numbered lists (B-100)", () => {
   });
 });
 
+test("the Numbered list slash item numbers a block, and a second use stops it", async ({
+  page,
+}) => {
+  const outliner = await openEditing(page, "Props Numbered Slash", "- first\n- second");
+  await page.keyboard.type(" /numbered");
+  await expect(page.locator(".cmd-popup .cmd-row--active")).toHaveText("Numbered list");
+  await page.keyboard.press("Enter");
+  await clickAway(page);
+  await expect(outliner.locator(".vr-list-number")).toHaveText(["1."]);
+  await expect
+    .poll(async () => (await readWithProps(page, "Props Numbered Slash"))[0]?.properties)
+    .toEqual({ list: "number" });
+
+  await outliner.locator(".vr-block-view").first().click();
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" /numbered");
+  await expect(page.locator(".cmd-popup .cmd-row--active")).toHaveText("Numbered list");
+  await page.keyboard.press("Enter");
+  await clickAway(page);
+  await expect(outliner.locator(".vr-list-number")).toHaveCount(0);
+  await expect
+    .poll(async () => (await readWithProps(page, "Props Numbered Slash"))[0]?.properties)
+    .toEqual({});
+});
+
 test.describe("block properties (B-101)", () => {
   test("show as chips under the block, and as key:: value lines while it is edited", async ({
     page,

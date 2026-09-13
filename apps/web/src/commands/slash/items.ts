@@ -6,6 +6,7 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
   { label: "Heading 1", command: "block.setHeading1", keywords: ["h1", "title"] },
   { label: "Heading 2", command: "block.setHeading2", keywords: ["h2", "subtitle"] },
   { label: "Heading 3", command: "block.setHeading3", keywords: ["h3"] },
+  { label: "Numbered list", command: "block.toggleNumberedList", keywords: ["ordered", "1."] },
   { label: "Code block", command: "block.insertCodeFence", keywords: ["code", "fence", "```"] },
   { label: "Table", command: "block.insertTable", keywords: ["grid"] },
   { label: "Image", command: "block.insertImage", keywords: ["picture", "photo", "upload"] },

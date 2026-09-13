@@ -19,6 +19,23 @@ test would have caught it: before the fix a page seeded with `list:: number` blo
 `.vr-list-number` (the audit's runtime check, D6). Side effect: Cmd+C on selected blocks now copies
 their properties too (it wrote `properties: {}`).
 
+Real graph (copy of the owner's, 952 pages): `tools/probes/real-graph-properties.mjs` opened the six
+pages with the most numbered blocks plus three property-heavy ones in a real browser against
+`nooklet serve`, and compared every rendered row with the database — ordinals recomputed from
+`block_prop` and sibling order independently of the client, chips counted per block. 177 visible
+numbered rows (Claude code queue 55, zahradni-domek 43, 2026-01-11 31, 2025-04-06 21, Megapage
+21, a PDF-highlights page 6) and 70 rows with chips: 0 wrong. (OmnivoreSync's 357 numbered
+blocks sit under collapsed parents, so none were visible.) A property typed into a real block
+through the UI wrote exactly one
+`block.prop` op; `nooklet verify` afterwards: OK, 20,412 ops.
+
+Creating one in the UI: Enter in a numbered item continues the list (`commands.ts#splitBlock`), and
+a "Numbered list" command (slash item and palette, `commands/registrations/numbered-list.ts`)
+toggles `list:: number` — **Test:** `block-properties.spec.ts` "Enter at the end of a numbered
+item makes the next item numbered too", "the Numbered list slash item numbers a block, and a second
+use stops it"; `numbered-list.test.ts`. Not done: Enter on an *empty* numbered item does not end
+the list (Logseq does); `popups.spec.ts`'s slash order gained the item.
+
 ---
 
 ### B-101 (existing)

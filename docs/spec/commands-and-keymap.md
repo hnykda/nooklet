@@ -550,6 +550,7 @@ exist for the palette, the slash menu ("page ref" / "tag" items), and the mobile
 | `block.embedBlock` | Embed block | — | — | `editorFocused` |
 | `block.insertToday` | Today's date | — | — | `editorFocused` |
 | `block.insertProperty` | Property | — | — | `editorFocused` |
+| `block.toggleNumberedList` | Numbered list | — | — | `editorFocused` |
 | `block.openSlashMenu` | Open slash menu | — | — | `editorFocused && atLineStart` |
 
 **R48.** `block.setHeading1/2/3` prefix the block's content with `# `/`## `/`### ` (replacing any
@@ -560,7 +561,12 @@ block is empty, or wraps the current content in a fence if it is not. `block.ins
 a 2×2 GitHub-flavored-markdown table skeleton (header row + separator + one body row) as the
 block's content. `block.insertImage` opens the platform file picker (`platform.files.pick`,
 research 08 §6); the chosen file is uploaded as an asset and `![](<asset-url>)` is inserted,
-exactly mirroring the image-paste path of R33 case 3.
+exactly mirroring the image-paste path of R33 case 3. *As built (2026-09-13, B-99):* the picker is a
+hidden `<input type="file" accept="image/*">` (every target webview shows its native chooser for
+it, so no `platform.files.pick` host exists), the upload is `asset.upload` with the device token,
+and the markdown lands at the caret — or, if editing moved to another block during the upload, in
+the original block at the caret it had. `block.toggleNumberedList` adds a `list:: number` line to
+the block's editing text (markdown-grammar OUT-17, OUT-22a), or removes it if present.
 
 **R49.** `block.embedPage` inserts `{{embed [[Page]]}}` with the page name pre-filled from the
 current query (opening the same page-fuzzy-match affordance as `[[`, § F) if invoked with no
@@ -571,6 +577,10 @@ format (a `[[<journal title>]]` wikilink resolving to today's `journalDay`, per 
 property-key picker (fuzzy list of existing property-definition pages, plus "Create `<key>`") and
 inserts a `key:: ` line at the correct position (a contiguous property-line run at the very start
 or very end of the block's content — the parser's rule, research 04 §4.2 — never in the middle).
+*As built (2026-09-13, B-101):* no picker yet. The line goes under line 1 and any property lines
+already there (after the fence, for a block that opens with one); with no key given it is `:: `
+with the caret before it. The block's editing text is split into content and properties when the
+edit is written (markdown-grammar OUT-22a), so the line becomes a real property.
 
 **R50.** `block.openSlashMenu` inserts the literal character `/` at the caret and lets the normal
 slash-trigger matcher (§ F) pick it up — it exists solely so the mobile toolbar can offer a `/`
@@ -629,6 +639,7 @@ the block first.
 | Heading 1 | `block.setHeading1` | h1, title |
 | Heading 2 | `block.setHeading2` | h2, subtitle |
 | Heading 3 | `block.setHeading3` | h3 |
+| Numbered list | `block.toggleNumberedList` | ordered, 1. |
 | Code block | `block.insertCodeFence` | code, fence, ``` |
 | Table | `block.insertTable` | grid |
 | Image | `block.insertImage` | picture, photo, upload |
