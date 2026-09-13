@@ -449,6 +449,20 @@ editor tree when a tree shows the block, or serialize store-routed task commands
 ---
 
 
+### B-430 · The desktop app says "Couldn't reach the nooklet server — start it" when its own bundled server refused to start
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, the owner opening a desktop build
+from Sep 11 against a graph migrated since · **Test:** none yet
+
+The launcher page tells you to run `pnpm nooklet serve`, which is wrong advice for a self-contained
+app and hides the real reason. Reproduced by running the bundle's sidecar by hand against a copy of
+the graph: `nooklet: database schema version 6 is newer than this build supports (4); upgrade
+nooklet`, exit. `main.rs` inherits the child's stderr (nobody sees it from Finder), never checks
+whether the child exited, and `wait_until_ready` just times out into the generic page. Fix: keep
+the child's stderr tail, detect early exit, and show that message on the launcher page (with
+"update the app" for a schema-too-new exit); only say "start a server" when nothing was spawned.
+
+---
+
 ## Fixed
 
 ### B-291 · Text composed in place (an IME's marked text, a dead-key accent) while the date picker is open goes into the block behind it
