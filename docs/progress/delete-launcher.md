@@ -6,23 +6,37 @@ Branch `m11/delete-launcher` from `52e5d20`. Two owner-approved items:
 
 ## Done
 
-- probe `tools/probes/wkwebview-confirm.swift`: `confirm returned false after 0 ms`, `alert returned undefined` — B-491 in the inbox. Delete page therefore uses an in-page dialog, not `window.confirm`.
+- `5c064aa` probe `tools/probes/wkwebview-confirm.swift`: `confirm returned false after 0 ms`,
+  `alert returned undefined` in a WKWebView whose UI delegate lacks the panel methods (wry 0.55.1's
+  shape) — B-491 in the inbox. Delete page therefore uses an in-page dialog, not `window.confirm`.
+- (this commit) B-430 + B-490: launcher page moved to tracked `apps/desktop/launcher/`
+  (`index.html` + pure `status.js`), `frontendDist` → `../launcher`; `main.rs` pipes stderr,
+  `watch_startup`, `server_status` command; `serde` dep (+ `serde_json` dev). Tests: `cargo test`
+  6/6, `pnpm --filter @nooklet/desktop test` 4/4, `e2e/tests/desktop-launcher.spec.ts` 4/4.
 
-## Findings so far
+## Findings / decisions
 
-- `apps/desktop/dist/index.html` (Tauri's `frontendDist`, the launcher page) is NOT in git:
-  `.gitignore`'s `dist/` swallows it. It exists only in the owner's main checkout. A fresh
-  worktree's `cargo check` fails: "The `frontendDist` configuration is set to `"../dist"` but this
-  path doesn't exist" (seen 2026-09-13). Logged as B-490; fix = move it to a tracked
-  `apps/desktop/launcher/`.
-- `cargo check` also needs `apps/desktop/sidecar/` to exist (build output, gitignored): create an
-  empty one for checking. Use `CARGO_TARGET_DIR=<scratch>/target` to keep the worktree small.
-- wry 0.55.1's `WKUIDelegate` implements no `runJavaScriptConfirmPanel…` method, and WebKit then
-  treats `confirm()` as Cancel — so `window.confirm` may be always-false in the desktop app
-  (HistoryView's Undo/Restore would be dead there). Being probed (`tools/probes/`), not assumed.
-- Server `page.delete` refuses journal pages (`invalid`): PLAN §8 + ADR 018, the day is the
-  identity. The UI hides Delete on a journal page.
+- `apps/desktop/dist/index.html` was never in git (`.gitignore` `dist/`); a fresh worktree's
+  `cargo check` failed on `frontendDist` (B-490).
+- `cargo check` needs `apps/desktop/sidecar/` to exist: `mkdir -p apps/desktop/sidecar` (gitignored).
+  Use `CARGO_TARGET_DIR=<scratch>/target` to keep the worktree small. `rustfmt` is not installed
+  for the toolchain; not installed here, so main.rs is hand-formatted.
+- Server messages verified by running `nooklet serve` (`<scratch>/exit-messages.sh`): schema
+  `nooklet: database schema version 99 is newer than this build supports (6); upgrade nooklet`,
+  exit 1; port taken → Node's unhandled `Error: listen EADDRINUSE …` stack, exit 1.
+- Tauri 2.11.5 `webview/mod.rs`: app commands without an app manifest are allowed from local origins
+  (tauri://localhost, the launcher) and refused from remote ones (the server's http page).
+- Server `page.delete` refuses journal pages (`invalid`): PLAN §8 + ADR 018 (the day is the
+  identity; an emptied day just is not listed). The UI hides Delete on a journal page.
+- Port 6415 was in use by another worktree's e2e run once (wf_975bcd44-fae-5); waited, reran.
 
 ## Next steps
 
-1. Probe WKWebView confirm(). 2. Launcher moved + status IPC + tests. 3. Delete page.
+1. Delete page: `app/confirm-dialog.tsx` (in-page), `app.deletePage` command in
+   `commands/registrations/page-actions.ts` (+ host method, fake, unit tests), menu item in
+   `views/PageActions.tsx` (hidden on journals: `journal` prop from `PageView.tsx`), host in
+   `app/page-actions-host.ts` (forceSync → `page.delete` → forceSync → navigate `/journals`),
+   `navigate` dep in `CommandLayer.tsx`.
+2. `e2e/tests/page-delete.spec.ts`: delete → confirm → gone from All pages + search → Trash lists
+   → Restore → blocks back.
+3. Spec row in `docs/spec/commands-and-keymap.md`.

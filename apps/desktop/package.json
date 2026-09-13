@@ -7,7 +7,8 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "tauri": "tauri",
-    "sidecar": "node build-sidecar.mjs"
+    "sidecar": "node build-sidecar.mjs",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

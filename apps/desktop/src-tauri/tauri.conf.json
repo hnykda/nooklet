@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.nooklet.desktop",
   "build": {
-    "frontendDist": "../dist"
+    "frontendDist": "../launcher"
   },
   "app": {
     "windows": [],
