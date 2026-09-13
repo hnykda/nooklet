@@ -132,3 +132,21 @@ graph is re-imported (or someone runs a one-off fix; none written).
 **Test:** `packages/core/src/outline-org-dates.test.ts` (4 tests, all failed before the fix) and
 `packages/server/src/importer/logseq.test.ts` "imports SCHEDULED/DEADLINE written with one-digit
 month, day and hour (B-143)" (fails against the old parser — checked by restoring it).
+
+---
+
+### B-144 · Two web unit tests fail under load: the query fence's first render and `page-title`'s first test
+**Status:** needs-repro · **Severity:** low · **Found:** 2026-09-13, impl-dates · **Test:** the
+tests themselves
+
+On the shared machine, `pnpm -r test` and `apps/web` `vitest run` intermittently failed
+`src/editor/render/render-seams.test.tsx` "says what is wrong, and where, for a query that does
+not parse" (its `waitFor`, default 1 s, gives up before the lazy `QueryFenceView` import has
+resolved — the DOM dump shows the plain `<pre>` fallback) and `src/data/page-title.test.ts`
+"renders a journal by its day and an ordinary page by its name" (its first `vi.resetModules()` +
+`import()`; message not captured). Both pass alone, every time tried (4/4). Not caused by this
+branch: with `editor/BlockRowView.tsx` swapped back to `da85cfb`'s, 3 of 3 full `apps/web` runs
+had one or two of these failures; with this branch's, 3 of 8 runs (counting one `pnpm -r test`)
+had one, and the last 3 in a row were clean. A timed probe of the
+`QueryFenceView` import alone measured 0.9–3.7 s depending on machine load. Likely fix: a longer
+`waitFor` timeout on the first lazy render, and a per-test timeout on the first cold import.

@@ -25,21 +25,27 @@ was reset to `da85cfb` before any work). e2e port 6400. Scratch:
     B-96 fix, 3 lines).
   - `editor/date-chips.ts` (pure label/tone) + `editor/DateChips.tsx` + `date-chips.css`;
     `editor/BlockRowView.tsx` hookup (import + 7-line JSX).
-- (next commit) `e2e/tests/dates.spec.ts` 6 tests, `docs/bugs-inbox/impl-dates.md` (B-96,
-  B-102 fixed; B-140 new+fixed), this file.
+- `2438473` `e2e/tests/dates.spec.ts` (6 tests), inbox B-96/B-102/B-140, this file.
+- `476d52a` B-141 (stale error line in the picker, a Solid `<Match>` render-callback trap) +
+  picker width/wrap after a light/dark/400px screenshot review.
+- `5d728d6` B-142 logged (open): a picked date is not undoable; probe
+  `tools/probes/picked-date-undo.spec.ts`.
+- `2c5cb65` B-143 fixed in `packages/core/src/outline.ts`: Logseq's `SCHEDULED: <2023-2-17 Fri>`
+  (one-digit month/day/hour) was imported as text, losing 20 of the owner's 24 scheduled dates.
+  Tests: `packages/core/src/outline-org-dates.test.ts`, importer test in `logseq.test.ts`.
+  Grammar spec OUT-23 updated. Real import re-run: 24 scheduled (was 4), 0 leftovers, verify OK.
+- `d979ba5` spec R38 "as built" paragraph; `tools/probes/date-chips-real-graph.mjs` (19 chips
+  on the owner's 2023-02-17 journal, picker opens on that day, no errors).
 
 ## 2. In flight
 
-Nothing uncommitted beyond the commit above.
+Nothing uncommitted.
 
 ## 3. Next steps, in order
 
-1. Commit the e2e spec + inbox + progress.
-2. Docs: `docs/spec/commands-and-keymap.md` R38 — record what shipped vs the spec (typed
-   vocabulary instead of an "Add time"/"Repeat" toggle UI; Tab owned but unused; Cmd/Ctrl
-   shortcuts close the picker). Owner-facing, so keep it short.
-3. Run the wider e2e set once more after the last change; `pnpm -r test`.
-4. Report.
+1. Final: `pnpm -r test`; e2e dates + neighbours on 6400 (popups, tasks, selection, templates,
+   query, shelf, context-menu, phone, focus, editing, views, journals).
+2. Report.
 
 ## 4. Decisions (and why)
 
