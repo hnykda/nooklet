@@ -24,8 +24,8 @@ re-pointed at `da85cfb` before any work, as the brief requires.
 | F3 to_page / move_to_page / merge commit, then throw | medium | B-122 | fixed 05e0145 |
 | F4 batch.undo / trash.restore report success on a rejected un-delete | medium | B-90 (existing) | fixed a6cd161 |
 | F5 verify replays rejected ops | medium | B-123 | fixed 79c1b70 |
-| F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | fixed (see Done) |
-| F7 query `ref` prefilter drops property-only refs | low | B-124 | logged |
+| F6 B-86 migration leaves path_ref stale | low | B-86 (existing) | fixed 668c0d3 |
+| F7 query `ref` prefilter drops property-only refs | low | B-124 | fixed (see Done) |
 | F8 recordChanges O(n²) | low | note under B-85 (existing) | logged |
 | F9 DataApi deletes: one timestamp per op | low | B-121 | logged |
 | F10 asset GC ignores history snapshots | low | B-91 (existing) | logged |
@@ -56,13 +56,15 @@ re-pointed at `da85cfb` before any work, as the brief requires.
   `rejectedSkipped`. Tests `verify-rejected.test.ts` (2, fail before with 3 and 4 divergences).
   Note: `verify.ts` holds a literal NUL byte (the key separator in `keyOf`), so diff tools treat
   it as binary — pre-existing, left alone.
-- F6 / B-86 follow-up — (this commit): `ref-reindex.ts` rebuilds `ref` + subtree `path_ref` via the
+- F6 / B-86 follow-up — `668c0d3`: `ref-reindex.ts` rebuilds `ref` + subtree `path_ref` via the
   now-exported `reindexBlockAndSubtree`, finds candidates in both tables, new done-flag key so
   graphs that ran v1 re-run. Tests: 2 new in `ref-reindex.test.ts`.
+- F7 / B-124 — (this commit): `core/query.ts#termSql` `ref` clause covers `alias` and `#`/`[[` in
+  any property value. Test `core/src/query-prefilter-refs.test.ts`. Real graph: +55 blocks, 0 gaps.
 
 ## Next steps, in order
 
-F7, F8, F9, F10, then the review doc.
+F8, F9, F10, then the review doc.
 
 ## How to resume
 

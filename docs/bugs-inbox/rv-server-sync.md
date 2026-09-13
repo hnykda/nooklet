@@ -168,8 +168,9 @@ again on a graph whose first re-index fixed ref but left path_ref stale". The ow
 ---
 
 ### B-124 · A query for `[[X]]` misses blocks whose only reference to X is in a property
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, M7 server/sync review (F7) ·
-**Test:** —
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, M7 server/sync review (F7) ·
+**Test:** `packages/core/src/query-prefilter-refs.test.ts` "keeps blocks whose only reference is an
+alias:: item or a link in another property"
 
 The SQL prefilter for a `ref` term (`core/query.ts#termSql`) passes only blocks with `#` or `[[`
 in the content, or a `tags` property. `extractRefs` — which `matchQuery` and backlinks use — also
@@ -178,6 +179,15 @@ plain content shows in the day's backlinks but never in `ref:"2026-09-07"`; the 
 its own promise to return a superset. Probe: `related:: [[Foo]]` and `alias:: Foo` blocks match in
 JS, prefilter returns neither. The owner's graph has 55 live blocks whose only references are in
 properties (`date-saved`, `date-published`).
+
+**Fixed 2026-09-13.** The `ref` fragment's property clause now reads the way `extractRefs` does:
+a `tags` or `alias` row, or a `#`/`[[` in any property value. The test checks the prefilter is a
+superset of `matchQuery` over content-only, `related:: [[Foo]]`, `alias:: Foo` and
+`date-saved:: #Foo` blocks, and still excludes a block with no reference syntax; it fails before
+(only the content block passed). On the owner's graph copy the new clause admits exactly the 55
+blocks (84 page/tag `ref` rows) the old one dropped, and no live block with a non-`Task` `ref` row
+is excluded any more. (`Task`, derived from the marker server-side, is not something `extractRefs`
+sees either, so the two still agree there.)
 
 ---
 
