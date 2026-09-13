@@ -24,8 +24,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  journalDayToFileName,
-  pageNameToFileName,
+  pageMirrorOutline,
+  pageMirrorPath,
   type RenderedPage,
   readPageOutline,
   type SqlDriver,
@@ -95,61 +95,21 @@ export function renderPageToOutline(driver: SqlDriver, pageId: string): Rendered
 }
 
 /**
- * Longest file-name base, in UTF-8 bytes, that `pageFilePath` leaves alone. APFS and ext4 cap a
- * name at 255 bytes (NAME_MAX), NTFS at 255 UTF-16 units; a page name may be 512 characters, a
- * Czech letter is 2 bytes and an escaped character 3 (`%23`). Past the limit the rename failed
- * with ENAMETOOLONG on every mirror sweep (B-126). 200 leaves room for `.md` and the suffix.
- */
-const MAX_FILE_BASE_BYTES = 200;
-
-/** A page's file-name base, shortened past `MAX_FILE_BASE_BYTES` to a prefix plus
- * `~<8 hex of sha256(name)>`, so two long names sharing a prefix still get different files. The
- * mirror is one-way and `mirror_file` maps path to page, so nothing needs to decode it; the full
- * name travels inside the file as `title::` (see `exportPage`). */
-function pageFileBase(name: string): { base: string; shortened: boolean } {
-  const base = pageNameToFileName(name);
-  if (Buffer.byteLength(base, "utf8") <= MAX_FILE_BASE_BYTES) return { base, shortened: false };
-  const suffix = `~${sha256Hex(name).slice(0, 8)}`;
-  let kept = "";
-  let bytes = 0;
-  // `for…of` walks code points, so a surrogate pair or a 2-byte letter is never split.
-  for (const ch of base) {
-    const n = Buffer.byteLength(ch, "utf8");
-    if (bytes + n > MAX_FILE_BASE_BYTES - suffix.length) break;
-    kept += ch;
-    bytes += n;
-  }
-  // Nor is a `%XX` escape: a dangling `%` or `%2` would not decode back.
-  kept = kept.replace(/%[0-9A-F]?$/, "");
-  return { base: `${kept}${suffix}`, shortened: true };
-}
-
-/** Mirror-relative file path for a page (PLAN.md sec. 5). Forward-slash, relative to the data dir. */
-export function pageFilePath(page: { name: string; journalDay: number | null }): string {
-  if (page.journalDay !== null) return `journals/${journalDayToFileName(page.journalDay)}.md`;
-  return `pages/${pageFileBase(page.name).base}.md`;
-}
-
-/**
  * Render + write one page's mirror file, skipping the write entirely when the rendered content
  * hash matches what `mirror_file` already recorded for this page (echo-suppression bookkeeping,
  * ADR 002) and the file is still on disk. Writes atomically (`<path>.tmp-<random>` then `fs.rename`). If the page's file path
  * changed since the last export (a rename), the old file and its stale `mirror_file` row are
  * removed.
+ *
+ * The file's name (`pageMirrorPath`, shortened past NAME_MAX, B-126) and its `title::` for a
+ * shortened name (`pageMirrorOutline`) come from `@nooklet/core`, the same functions the web
+ * client's "Export page as markdown" uses: a server-only copy of them is how the download ended up
+ * named differently from the mirror file for a long name (B-368).
  */
 export function exportPage(driver: SqlDriver, dataDir: string, pageId: string): ExportResult {
   const rendered = renderPageToOutline(driver, pageId);
-  const relPath = pageFilePath(rendered);
-  // A shortened file name no longer says what the page is called. `title::` does, and it is what
-  // the Logseq importer reads a page's name from, so the mirror stays lossless.
-  if (
-    rendered.journalDay === null &&
-    rendered.parsed.properties.title === undefined &&
-    pageFileBase(rendered.name).shortened
-  ) {
-    rendered.parsed.properties = { title: rendered.name, ...rendered.parsed.properties };
-  }
-  const text = serializeOutline(rendered.parsed);
+  const relPath = pageMirrorPath(rendered);
+  const text = serializeOutline(pageMirrorOutline(rendered));
   const contentHash = sha256Hex(text);
 
   const existing = driver.get<{ path: string; content_hash: string }>(
@@ -296,7 +256,7 @@ export function exportAll(
 /**
  * Echo-suppression predicate (sql-schema.md rule 23): does `contentBuffer` match what we last
  * wrote to `filePath`? `filePath` must be in the same form stored in `mirror_file.path` (relative
- * to the mirror root, forward-slash separated, as produced by `pageFilePath`) — a future watcher
+ * to the mirror root, forward-slash separated, as produced by `pageMirrorPath`) — a future watcher
  * rooted at the data directory converts its absolute path via `path.relative` (and normalizes
  * backslashes on Windows) before calling this. Not wired into any live watcher here (see the
  * module header TODO); this is only the predicate such a watcher would call.

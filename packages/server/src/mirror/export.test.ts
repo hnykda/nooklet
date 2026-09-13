@@ -6,8 +6,12 @@ import {
   newId,
   type Priority,
   type Properties,
+  pageMirrorOutline,
+  pageMirrorPath,
   pageNameToFileName,
   parseOutline,
+  readPageOutline,
+  serializeOutline,
   type TaskMarker,
 } from "@nooklet/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -18,7 +22,6 @@ import {
   exportAll,
   exportPage,
   isOwnWrite,
-  pageFilePath,
   pagesTouchedSince,
   renderPageToOutline,
 } from "./export.js";
@@ -204,7 +207,7 @@ describe("renderPageToOutline / exportPage: basic round trip", () => {
     createBlock(pageId, "Journal entry");
 
     const expectedPath = `journals/${journalDayToFileName(day)}.md`;
-    expect(pageFilePath({ name: "2026-09-10", journalDay: day })).toBe(expectedPath);
+    expect(pageMirrorPath({ name: "2026-09-10", journalDay: day })).toBe(expectedPath);
 
     const result = exportPage(ctx.driver, dataDir, pageId);
     expect(result.path).toBe(expectedPath);
@@ -348,7 +351,7 @@ describe("exportAll", () => {
     expect(first.exported).toBe(2);
     expect(first.deleted).toBe(0);
 
-    const p1Path = join(dataDir, pageFilePath({ name: "Page One", journalDay: null }));
+    const p1Path = join(dataDir, pageMirrorPath({ name: "Page One", journalDay: null }));
     expect(existsSync(p1Path)).toBe(true);
 
     deletePage(p1);
@@ -412,7 +415,7 @@ describe("exportAll rebuilds missing files (B-262)", () => {
 
     // A database copied without its pages/, or a file deleted by hand: the row stays, the file
     // does not.
-    const file = join(dataDir, pageFilePath({ name: "Vanished File", journalDay: null }));
+    const file = join(dataDir, pageMirrorPath({ name: "Vanished File", journalDay: null }));
     rmSync(file);
 
     expect(exportAll(ctx.driver, dataDir)).toEqual({
@@ -455,7 +458,7 @@ describe("pages whose file cannot be written as named (B-126)", () => {
     const longFile = files.find((f) => f.startsWith("Pozn")) as string;
     expect(Buffer.byteLength(longFile, "utf8")).toBeLessThanOrEqual(255);
     expect(longFile).toMatch(/~[0-9a-f]{8}\.md$/);
-    expect(pageFilePath({ name: longName, journalDay: null })).toBe(`pages/${longFile}`);
+    expect(pageMirrorPath({ name: longName, journalDay: null })).toBe(`pages/${longFile}`);
     const text = readFileSync(join(dataDir, "pages", longFile), "utf8");
     expect(parseOutline(text).properties.title).toBe(longName);
 
@@ -465,13 +468,42 @@ describe("pages whose file cannot be written as named (B-126)", () => {
   });
 
   it("a short name is untouched, and two long names sharing a prefix get different files", () => {
-    expect(pageFilePath({ name: "Alpha", journalDay: null })).toBe("pages/Alpha.md");
-    const a = pageFilePath({ name: `${longName}A`, journalDay: null });
-    const b = pageFilePath({ name: `${longName}B`, journalDay: null });
+    expect(pageMirrorPath({ name: "Alpha", journalDay: null })).toBe("pages/Alpha.md");
+    const a = pageMirrorPath({ name: `${longName}A`, journalDay: null });
+    const b = pageMirrorPath({ name: `${longName}B`, journalDay: null });
     expect(a).not.toBe(b);
     // Never cut inside a %XX escape: 100 `#`s encode to 300 bytes of `%23`.
-    const hashes = pageFilePath({ name: "#".repeat(100), journalDay: null });
+    const hashes = pageMirrorPath({ name: "#".repeat(100), journalDay: null });
     expect(hashes).toMatch(/^pages\/(%23)+~[0-9a-f]{8}\.md$/);
+  });
+
+  it("the web export's file name and text are the mirror's, long names included (B-368)", () => {
+    // What `apps/web/src/data/page-export.ts` computes for "Export page as markdown", from the
+    // same core functions over the same rows.
+    const webExport = (pageId: string) => {
+      const rendered = readPageOutline(ctx.driver, pageId);
+      if (!rendered) throw new Error("no page");
+      const path = pageMirrorPath(rendered);
+      return { path, text: serializeOutline(pageMirrorOutline(rendered), { ids: "present" }) };
+    };
+    const long = createPage(longName, { properties: { type: "notes" } });
+    createBlock(long, "long");
+    const short = createPage("Krátká stránka", { properties: { type: "notes" } });
+    createBlock(short, "short");
+    const day = createPage("2026-09-13", { journalDay: 20260913 });
+    createBlock(day, "day");
+    expect(exportAll(ctx.driver, dataDir).failed).toEqual([]);
+
+    for (const id of [long, short, day]) {
+      const row = ctx.driver.get<{ path: string }>(
+        "SELECT path FROM mirror_file WHERE page_id = ?",
+        [id],
+      );
+      const web = webExport(id);
+      expect(web.path).toBe(row?.path);
+      expect(web.text).toBe(readFileSync(join(dataDir, web.path), "utf8"));
+    }
+    expect(webExport(long).text.startsWith(`title:: ${longName}\ntype:: notes\n`)).toBe(true);
   });
 
   it("one page that fails to write does not stop the others or the prune, and leaves no temp file", () => {

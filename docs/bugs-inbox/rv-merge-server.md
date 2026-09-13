@@ -113,3 +113,48 @@ keeps its new name, and the outline — the text an agent reads, and the MCP too
 `restored page "Plánování zahradních úprav"`. Likewise for a page deleted since: `restored page
 "Garden"` while Garden stays in the trash. The summary line names the before-image's name whenever
 the undo wrote any op for the page, whatever it left the name and tombstone as.
+
+---
+
+### B-368 · "Export page as markdown" names a long page's file differently from the mirror, and leaves out its title
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, merge review of server/core (F4) ·
+**Test:** `packages/core/src/sync/page-outline.test.ts` "shortens a name past NAME_MAX to a prefix
+and a hash, as the mirror names its file (B-368)", "puts the full name in title:: when, and only
+when, the file name was shortened (B-368)";
+`packages/server/src/mirror/export.test.ts` "the web export's file name and text are the mirror's,
+long names included (B-368)"; `e2e/tests/page-export.spec.ts` "Export of a page whose name is past
+NAME_MAX downloads the mirror's shortened file, title:: included (B-368)"
+
+For a page whose name is longer than the mirror's 200-byte file-name limit (B-126) — easy with
+`block.to_page`, which names a page after a block's first line — the web client's Export page as
+markdown suggests a file name of the full, unshortened name (352 bytes for a 300-character Czech
+name, past the 255-byte limit of APFS and ext4), while the server's mirror writes
+`…oznámky z porady o~30f11c5a.md` with a `title::` line carrying the full name. The download has
+no `title::`. `page-export.ts` promises the mirror's file "byte for byte", and core's
+`pageMirrorPath` says the download and the mirror "carry the same name"; for such a page neither
+is true, and a browser that cuts the over-long name leaves a file whose name no longer says what
+the page is called.
+
+Cause: the B-126 fix (security branch) shortened names in the server's own `pageFilePath` and
+injected `title::` in `exportPage`; the impl-export branch had made the server call core's
+`pageMirrorPath`. The merge kept the server's copy, so core's function — now used only by the web
+export — never learned the limit.
+
+**Fixed 2026-09-13.** One implementation, in core: `pageMirrorPath` shortens past 200 UTF-8 bytes
+(code-point-safe, never inside a `%XX` escape, as B-126 did) and the new `pageMirrorOutline` adds
+the leading `title::` for a shortened name. The server's `exportPage` and the web's
+`renderPageMarkdown` both call them; the server's private `pageFileBase`/`pageFilePath` are gone.
+The download gets `title::` (it is the mirror file); "Copy page as markdown" does not, having no
+file name to have lost the page's name from. The suffix hash changed from the first 8 hex of
+`sha256(name)` to 32-bit FNV-1a of the name's UTF-8 bytes, because core runs in the browser too,
+where the only SHA is async (`crypto.subtle`). A mirror file shortened under the old suffix is
+renamed on its next export by `exportPage`'s path-change cleanup; the owner's graph has none
+(`nooklet export` of a copy: 952 pages, `failed: []`, 0 shortened names, longest file name 114
+bytes). Tests that would have caught it: `core/src/sync/page-outline.test.ts` "shortens a name past
+NAME_MAX to a prefix and a hash, as the mirror names its file (B-368)" (failed at `cf08d19`: the
+path had no suffix) and "puts the full name in title:: when, and only when, the file name was
+shortened (B-368)"; `server/src/mirror/export.test.ts` "the web export's file name and text are the
+mirror's, long names included (B-368)"; `e2e/tests/page-export.spec.ts` "Export of a page whose
+name is past NAME_MAX downloads the mirror's shortened file, title:: included (B-368)" — at
+`cf08d19` Chromium suggested the full 345-byte name while the mirror wrote
+`…čtvrtlet~6d458ccb.md`.

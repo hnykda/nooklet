@@ -10,6 +10,7 @@ import { createNodeSqliteDriver } from "./node-sqlite-driver.js";
 import {
   buildPageOutline,
   PAGE_OUTLINE_SQL,
+  pageMirrorOutline,
   pageMirrorPath,
   readPageOutline,
 } from "./page-outline.js";
@@ -150,6 +151,60 @@ describe("pageMirrorPath", () => {
     );
     expect(pageMirrorPath({ name: "Projects/Aurora", journalDay: null })).toBe(
       "pages/Projects___Aurora.md",
+    );
+  });
+
+  // 300 characters of Czech: ~350 UTF-8 bytes, past the 255-byte file-name limit of APFS/ext4.
+  const longName = "Poznámky z porady o rozpočtu na příští čtvrtletí ".repeat(8).slice(0, 300);
+  const bytes = (s: string) => new TextEncoder().encode(s).length;
+  const base = (path: string) => path.slice(path.indexOf("/") + 1, -".md".length);
+
+  it("shortens a name past NAME_MAX to a prefix and a hash, as the mirror names its file (B-368)", () => {
+    const path = pageMirrorPath({ name: longName, journalDay: null });
+    expect(path).toMatch(/^pages\/Poznámky z porady.*~[0-9a-f]{8}\.md$/);
+    expect(bytes(base(path))).toBeLessThanOrEqual(200);
+    expect(bytes(base(path))).toBeGreaterThan(190); // cut close to the limit, not far short of it
+    // Stable, and two long names sharing the prefix still get different files.
+    expect(pageMirrorPath({ name: longName, journalDay: null })).toBe(path);
+    expect(pageMirrorPath({ name: `${longName}A`, journalDay: null })).not.toBe(
+      pageMirrorPath({ name: `${longName}B`, journalDay: null }),
+    );
+    // Never cut inside a %XX escape: 100 `#`s encode to 300 bytes of `%23`.
+    expect(pageMirrorPath({ name: "#".repeat(100), journalDay: null })).toMatch(
+      /^pages\/(%23)+~[0-9a-f]{8}\.md$/,
+    );
+    // Nor inside a surrogate pair.
+    const emoji = pageMirrorPath({ name: "😀".repeat(80), journalDay: null });
+    expect(base(emoji)).toMatch(/^(😀)+~[0-9a-f]{8}$/u);
+    // Exactly at the limit: left alone.
+    const at = "a".repeat(200);
+    expect(pageMirrorPath({ name: at, journalDay: null })).toBe(`pages/${at}.md`);
+  });
+
+  it("puts the full name in title:: when, and only when, the file name was shortened (B-368)", () => {
+    const rendered = (name: string, properties: Record<string, string> = {}) => ({
+      pageId: "p",
+      name,
+      journalDay: null,
+      parsed: { properties, blocks: [] },
+    });
+    expect(pageMirrorOutline(rendered(longName)).properties).toEqual({ title: longName });
+    expect(pageMirrorOutline(rendered(longName, { type: "x" })).properties).toEqual({
+      title: longName,
+      type: "x",
+    });
+    // title:: first, as the Logseq importer reads it, and never over one the page already has.
+    expect(Object.keys(pageMirrorOutline(rendered(longName, { type: "x" })).properties)[0]).toBe(
+      "title",
+    );
+    expect(pageMirrorOutline(rendered(longName, { title: "Own" })).properties).toEqual({
+      title: "Own",
+    });
+    const short = rendered("Short", { type: "x" });
+    expect(pageMirrorOutline(short)).toEqual(short.parsed);
+    // A journal's file is named by its date, never by its name.
+    expect(pageMirrorOutline({ ...rendered(longName), journalDay: 20260913 }).properties).toEqual(
+      {},
     );
   });
 });

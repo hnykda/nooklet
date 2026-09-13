@@ -14,7 +14,7 @@
  * the app's own — sees the DOM exactly as it is printed.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
@@ -112,6 +112,38 @@ test("Export as markdown downloads exactly the file the mirror wrote for the pag
   for (const line of blockLines) expect(line).toMatch(/ \^[0-9a-z]{14}$/);
   expect(downloaded.replace(/ \^[0-9a-z]{14}$/gm, "")).toBe(EXPECTED_COPY);
   await expect(page.locator(".page-actions-notice")).toHaveText("Exported Export Mirror Parity.md");
+});
+
+test("Export of a page whose name is past NAME_MAX downloads the mirror's shortened file, title:: included (B-368)", async ({
+  page,
+}) => {
+  // ~350 UTF-8 bytes: past the 255-byte file-name limit, so the mirror shortens the name (B-126).
+  const name =
+    `Export Long Name B368 ${"Poznámky z porady o rozpočtu na příští čtvrtletí ".repeat(8)}`
+      .slice(0, 300)
+      .trimEnd();
+  await seedExportPage(page, name);
+  await openPageView(page, name);
+
+  // The mirror's file for it, whatever its hash suffix: the only file with this prefix.
+  const pagesDir = join(dataDir(), "pages");
+  const mirrorName = () =>
+    existsSync(pagesDir)
+      ? readdirSync(pagesDir).find((f) => f.startsWith("Export Long Name B368 "))
+      : undefined;
+  await expect.poll(mirrorName, { timeout: 15_000 }).toMatch(/~[0-9a-f]{8}\.md$/);
+  const mirrorFile = join(pagesDir, mirrorName() as string);
+  expect(Buffer.byteLength(mirrorName() as string, "utf8")).toBeLessThanOrEqual(255);
+
+  await openPageMenu(page);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator(".page-actions-item", { hasText: "Export as markdown" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe(mirrorName());
+  const downloaded = readFileSync(await download.path(), "utf8");
+  expect(downloaded.startsWith(`title:: ${name}\ntype:: project\n`)).toBe(true);
+  await expect.poll(() => readFileSync(mirrorFile, "utf8"), { timeout: 15_000 }).toBe(downloaded);
 });
 
 test("Copy as markdown puts the page on the clipboard without ids, including a just-typed edit", async ({

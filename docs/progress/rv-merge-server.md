@@ -20,7 +20,7 @@ evidence, not tests. Every finding gets a real test in the repo.
 | F2 batch.undo name pre-check ignores keep_later_edits | low | B-366 | fixed d4f1335 |
 | F3 batch.undo name pre-check ignores aliases (B-256) | low | B-367 | fixed b36d2f2 |
 | (found) keep_later_edits undo's outline names the before-image name | low | B-369 | logged, open |
-| F4 core pageMirrorPath lacks NAME_MAX shortening | low | B-368 | todo |
+| F4 core pageMirrorPath lacks NAME_MAX shortening | low | B-368 | fixed (F4 commit) |
 
 ## Done
 
@@ -57,13 +57,25 @@ evidence, not tests. Every finding gets a real test in the repo.
 - e2e (port 6471): history-later-edits, history, trash-conflict, trash, mirror-live, replace,
   link-unlinked — 23 passed, 0 failed.
 
+- Probe commit `598ce78` (tools/probes/undo-names-real-graph.ts, B-369 logged).
+- F4 / B-368 — fix(core,server,web) commit "one mirror file name for the server and the web export":
+  core `pageMirrorPath` shortens past 200 bytes (FNV-1a suffix instead of sha256, since core runs
+  in the browser), new core `pageMirrorOutline` adds `title::`; server `exportPage` and web
+  `renderPageMarkdown` (download only, not copy) use both; server `pageFileBase`/`pageFilePath`
+  removed. Tests: core page-outline.test.ts (2 new, failed at base), server export.test.ts parity
+  test, e2e page-export.spec.ts long-name test (failed at base: Chromium suggested the 345-byte
+  name; mirror wrote `…~6d458ccb.md`). Unit: core 395/395, server 616/616, web 1000/1000 (first
+  runs had timeouts in plugins/host, built-ins, sync.property at load average 84; green on rerun
+  at ~40). typecheck clean. e2e page-export + mirror-live 13/13. Real graph copy: `nooklet export`
+  952 pages, failed [], 0 shortened names, longest 114 bytes.
+
 ## In flight
 
-- F4 / B-368: core `pageMirrorPath` NAME_MAX shortening.
+- Nothing. Next: optionally fix B-369 (small), then the review doc.
 
 ## Next steps
 
-1. F4 (core `pageMirrorPath` + server `pageFilePath` delegate; web page-export).
+1. B-369 (outline names the before-image name) — low, one line plus a test; optional.
 2. Review doc `docs/review/2026-09-13-rv-merge-server.md`, committed last.
 
 ## How to resume
