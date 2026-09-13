@@ -147,7 +147,8 @@ quadratic" (1,488 ms against its 500 ms budget) and three in `src/sync/sync.prop
 interleaving…" and "content and each prop key converge independently…" (5 s each). This branch
 changes nothing in `packages/core` (`git diff cf08d19 -- packages/core` is empty). Not rerun on a
 quiet machine; not investigated. A wall-clock budget and fixed per-test timeouts are the likely
-reason — the property tests' run counts, not their assertions, would be what to look at.
+reason — the property tests' run counts, not their assertions, would be what to look at. The same
+package passed 393/393 minutes later at load average 26.
 
 ### B-334 · `SearchView.test.tsx` fails under load: its first test imports the view cold
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9 cleanup, full `apps/web` run at
@@ -165,4 +166,18 @@ made that import heavier.
 file is collected; the first test then took 33 ms. **Test:** the file itself — believed fixed on
 the timing evidence, not on a reproduced failure. `JournalStreamView.test.tsx` imports its view
 the same way inside a helper; not seen failing, left as it is.
+
+### B-335 · `editing.spec.ts`'s `openJournal` can wait 30 s to blur a journal draft that has already become an outline
+**Status:** needs-repro · **Severity:** low (test harness) · **Found:** 2026-09-13, m9 cleanup, e2e
+run of the first 38 specs (alphabetical) on port 6405 at load average ~40 · **Test:** the spec
+itself
+
+"types a whole sentence into a bullet without editing dying" and "Enter creates a second bullet and
+both keep their text" failed with `locator.blur: Test timeout of 30000ms exceeded … waiting for
+locator('.vr-draft-input').first()` (`editing.spec.ts:29`): `openJournal` saw a virtual draft,
+`fill`ed it, and by the time it blurred, the draft had been swapped for the real outline (or was
+never the only journal day on screen — earlier specs leave other days in the shared server's
+stream). The same spec alone right after: 5/5. Same family as B-233 (specs sharing today's journal
+on one server); nothing in this branch touches the journal views. Likely fix, as B-233 says: give
+these tests their own page, or wait for the outline instead of blurring the draft.
 

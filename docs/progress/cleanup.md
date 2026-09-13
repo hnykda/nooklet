@@ -54,6 +54,16 @@ Brief, four parts:
   Tests: `plugins/bundled.test.ts` 2/2 (loaded as ordinary dirs from the read-only copy: 2/2 fail);
   probe `tools/probes/sidecar-plugins.mjs` before 0/4, after 4/4. Server unit 610/610; typecheck
   clean; e2e plugins+settings 15/15; `nooklet plugin list` in dev still lists the repo's three.
+- Part 4 commit `1327b8b`.
+- Final checks. `pnpm -r test` stopped at `packages/core` at load average 62–84: 4 timing tests
+  (tokens perf budget, three sync property timeouts), same 4 on a rerun, then 393/393 at load 26
+  — logged B-333 (core untouched here). `apps/web` full run at load ~70 failed 2 SearchView tests:
+  the B-144 cold-import pattern, fixed the same way as B-334 (`1cb1247`); web 1024/1024 at load
+  ~40. Server 610/610, plugin-api 17/17.
+- Full e2e in two halves on port 6405 (450 tests incl. the 9 new): 445 passed, 2 skipped, 3
+  failed — `views.spec.ts:461` (B-161, fails at `cf08d19` too), and two `editing.spec.ts` tests
+  blurring a journal draft that had become an outline (logged B-335, same family as B-233; the
+  spec alone right after: 5/5).
 
 ## In flight
 
@@ -61,7 +71,9 @@ Brief, four parts:
 
 ## Next steps, in order
 
-1. Final: `pnpm -r test` once, biome over touched files, progress + return.
+- Nothing left in the brief. For the coordinator: fold `docs/bugs-inbox/cleanup.md` (B-330..B-335,
+  B-144 and B-180 existing) into `docs/BUGS.md`; owner decision on shipping plugin client halves
+  in the sidecar (+12 MB, see Decisions).
 
 ## Decisions
 
