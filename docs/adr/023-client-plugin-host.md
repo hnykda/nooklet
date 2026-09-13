@@ -98,6 +98,16 @@ Two more facts shaped the fix:
   44 — though at that load plugin tests that bundle nothing heavy timed out too, so the 5 s is not
   all mermaid's.
 
+- mermaid takes the app theme when the first diagram loads it; toggling light/dark later leaves
+  already-initialised diagrams in the old theme until a reload.
+
+## Verified on the owner's graph
+
+2026-09-13, a `.backup` copy (952 pages) served on a production build: both of its mermaid
+diagrams (journals 2022-12-15 and 2023-01-07, Czech labels, the second under a collapsed block
+until expanded) render in light and dark Chromium, with no console warnings and no request leaving
+the origin; word count reads "232720 words" on its 961-block page within 0.4-0.6 s of opening.
+
 ## Still unverified
 
 - Bytes actually fetched for a first flowchart (mermaid lazy-loads per diagram type). Only

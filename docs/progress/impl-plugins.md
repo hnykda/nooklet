@@ -30,9 +30,19 @@ e2e on 6404 (Chromium): plugins 6/6; popups + render + rendering + templates + q
 diagnostics 77/77; editing + views + shelf + parity + a-fresh-journal + focus 82/83 — the one
 failure, views "opening the palette while editing…", also fails on `da85cfb` → B-182, not mine.
 
+- `66c2fee` ADR 023, spec §5, inbox (B-103 fixed, B-182), probes, plugins.spec.ts 6/6.
+- `b255b62` page events emitted `untrack`ed; plugin-api README points at what runs today.
+  Re-verified: typecheck clean; unit web 703/703, plugin-api 17/17, server 523/523; e2e plugins +
+  popups 49/49.
+- Real graph (`.backup` copy in scratch, served on 6404, `scratchpad/impl-plugins/real-graph-probe*.mjs`):
+  both owner mermaid diagrams render (light + dark, Czech labels, no console warnings, no
+  off-origin requests); word count "232720 words" on OmnivoreSync (961 blocks) in 0.4-0.6 s.
+  Observation, not filed: the graph also has Logseq `{{renderer code_diagram,mermaid}}` macros,
+  shown as unknown macros (macro renderers are not implemented by the host).
+
 ## 2. In flight
 
-Nothing uncommitted after the docs commit.
+Nothing uncommitted after the last commit.
 
 ## 3. Next steps, in order
 
