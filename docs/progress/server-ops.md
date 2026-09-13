@@ -25,6 +25,15 @@ B-310..B-319), never `docs/BUGS.md`.
 - `ba8aa99` B-172 — `outline-bridge.ts#parseSingleBlockGrammar(text, "flush"|"auto")`. Tests:
   `server/src/ops/outline-bridge.test.ts` (13), `server/src/ops/block-update-text.http.test.ts` (9).
   Server 630/630. Spec: mcp-tools.md §3.2 rule 10.
+- `d3e1672` B-236 — `page-update.ts` refuses only a real rename of a journal. Test:
+  `server/src/ops/page-update-journal.http.test.ts` (3). Server 633/633.
+- `51c1361` B-235 — `outline-bridge.ts#checkWriteMarkdown` / `prepareMarkdownInsert(…, "accept" |
+  "refuse")`; page.create applies the pre-block as `page.prop` ops (minted AFTER `page.create`: HLC
+  order), page.append/block.insert/page.create-append refuse it. Same commit: B-312 (logged + fixed:
+  page.append checked markdown after creating its page) and B-172's second cause (empty block with
+  only property lines read as a pre-block; sentinel first bullet). Test:
+  `server/src/ops/markdown-page-properties.http.test.ts` (12). Logged B-311 (web paste drops a
+  pre-block), not fixed. Server 647/647.
 
 ## In flight
 
@@ -32,13 +41,13 @@ B-310..B-319), never `docs/BUGS.md`.
 
 ## Next steps
 
-1. ~~B-151~~ done. 2. ~~B-172~~ done.
-3. B-236: `page-update.ts` — journal check only for a real rename. Test in `ops.http.test.ts`.
-4. B-235: page.create applies the markdown pre-block as page properties; page.append/block.insert
-   reject one with a hint.
-5. B-148: web `message-handler.ts` replies `command.result` with `error` when the run throws;
-   server `run-remote-command.ts` surfaces it as `invalid`. Tests both sides.
-6. `pnpm nooklet verify --data <scratch>/graph` with NOOKLET_DATA exported.
+1. B-148: web `apps/web/src/live/message-handler.ts` replies `command.result` with `error` when
+   `runCommand` throws; server `live/run-remote-command.ts` surfaces it as `invalid` (not a
+   timeout). Tests both sides (`message-handler.test.ts`, `live/ops.test.ts`), plus an e2e check if
+   cheap (ui_run with a bad date against a real window).
+2. `pnpm nooklet verify --data <scratch>/graph` with NOOKLET_DATA exported (after running the ops
+   against the copy?) — at least verify the copy before and after a few real block.update calls.
+3. e2e: specs that exercise block.update / page.create / page.append / ui_run.
 
 ## Decisions
 
