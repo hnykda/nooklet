@@ -70,3 +70,17 @@ same key. `target: "Sep 20th, 2026"` and `"20.09.2026"` now return the same link
 `"2026-09-20"`, and a block linking the day is no longer also listed as an unlinked mention of it.
 Test: `packages/server/src/ops/page-backlinks-missing-journal.http.test.ts` (2; both fail on the
 old code — "expected +0 to be 2", and the linking block in `unlinked`).
+
+---
+
+### B-370 (existing)
+
+**Fixed 2026-09-13.** `ops/batch-undo.ts` now orders the restore by page names before minting any
+op: a page whose ops claim a key (a rename back, or an un-delete) goes after the page of the same
+batch that holds that key now and gives it up (a page the batch created, deleted by the undo; or a
+page renamed away or sent back to the trash). Blocks keep batch order. Undoing "rename A to B +
+create a new A" and undoing that undo both answer 200; so does a chain (A to Archive, Draft to A).
+Two pages swapping names form a cycle no order solves: still 400 `page-key-collision`, nothing
+written — pinned by a test so a later change sees it. Test:
+`packages/server/src/ops/batch-undo-name-order.http.test.ts` (3; the first two fail on the old
+code with 400).

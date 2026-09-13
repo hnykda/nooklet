@@ -312,6 +312,50 @@ export const batchUndo = defineOp({
         }
       }
 
+      // B-370: core checks a page's key the moment its rename or un-delete op applies, so a name
+      // must be freed before it is claimed. In batch order it was not: a batch that renamed A to B
+      // and then created a new A was undone as "rename back to A" (rejected — the new A is live)
+      // before "delete the new A", and the whole undo answered 400. So each page whose ops claim a
+      // key goes after the page of this batch that holds that key now and gives it up. Blocks keep
+      // their order (core checks no page name for them). Two pages swapping names form a cycle no
+      // order solves; that stays a rejection with nothing written.
+      const keyOf = (name: string) => normalizePageName(name);
+      const claimOf = new Map<string, string>();
+      const freeingByKey = new Map<string, ChangeRow>();
+      for (const row of batchPageRows) {
+        const current = snapshotPage(ctx.db, row.entity_id);
+        if (!current) continue;
+        if (row.before_json === null) {
+          // Deleted by the undo unless changed since (then kept live, as the op builder does).
+          if (current.deleted_at === null && laterEdits(row).size === 0) {
+            freeingByKey.set(keyOf(current.name), row);
+          }
+          continue;
+        }
+        const plan = pagePlan(row);
+        if (!plan) continue;
+        const keyAfter = plan.deletedAfter === null ? keyOf(plan.nameAfter) : null;
+        if (current.deleted_at === null && keyOf(current.name) !== keyAfter) {
+          freeingByKey.set(keyOf(current.name), row);
+        }
+        const undeletes = plan.deletedAfter === null && !laterEdits(row).has("deleted");
+        if (plan.rename || undeletes) claimOf.set(row.entity_id, keyOf(plan.nameAfter));
+      }
+      const restoreOrder: ChangeRow[] = [];
+      const placed = new Set<string>();
+      const placing = new Set<string>();
+      const place = (row: ChangeRow): void => {
+        if (placed.has(row.entity_id) || placing.has(row.entity_id)) return;
+        placing.add(row.entity_id);
+        const claim = claimOf.get(row.entity_id);
+        const holder = claim === undefined ? undefined : freeingByKey.get(claim);
+        if (holder !== undefined && holder !== row) place(holder);
+        placing.delete(row.entity_id);
+        placed.add(row.entity_id);
+        restoreOrder.push(row);
+      };
+      for (const row of firstByEntity.values()) place(row);
+
       const ops: Op[] = [];
       const restored: string[] = [];
       const removed: string[] = [];
@@ -320,7 +364,7 @@ export const batchUndo = defineOp({
       const summaryLines: string[] = [];
       const now = Date.now();
 
-      for (const row of firstByEntity.values()) {
+      for (const row of restoreOrder) {
         const skip = laterEdits(row);
         if (row.entity_type === "page") {
           const pageId = row.entity_id;
