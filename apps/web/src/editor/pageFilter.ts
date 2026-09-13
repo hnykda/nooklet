@@ -27,6 +27,23 @@ export function foldForFind(text: string): string {
   return text.toLowerCase().normalize("NFD").replace(COMBINING_MARKS, "");
 }
 
+/**
+ * Folded text per block object. Folding a 1.7 MB page (the owner's biggest, 961 blocks) took
+ * 20-50 ms per call (`tools/probes/page-find-perf.ts`), and a call happens on every keystroke in
+ * the find bar. Block objects are rebuilt when the page refetches but not between keystrokes in
+ * the bar, so keying on the object makes typing a query cheap without ever serving stale text.
+ */
+const foldedContent = new WeakMap<object, string>();
+
+function foldedOf(block: { content: string }): string {
+  let f = foldedContent.get(block);
+  if (f === undefined) {
+    f = foldForFind(block.content);
+    foldedContent.set(block, f);
+  }
+  return f;
+}
+
 export interface FilterOptions {
   /** Search only this block's subtree (the zoom root), root included. */
   rootBlockId?: BlockId;
@@ -55,7 +72,7 @@ export function filterVisible(
   const visit = (id: BlockId, depth: number): Row[] | null => {
     const b = getBlock(tree, id);
     const kids = childrenIds(tree, id);
-    const isMatch = foldForFind(b.content).includes(q);
+    const isMatch = foldedOf(b).includes(q);
     // Pushed before the children are visited, so `matches` is in reading (pre-)order.
     if (isMatch) matches.push(id);
     const below: Row[] = [];
@@ -78,39 +95,100 @@ export function filterVisible(
   return { rows, matches };
 }
 
+/** Runs of non-ASCII characters. Everything outside them folds by `toLowerCase` alone, one unit
+ * for one unit, so only these runs need a per-character map. */
+const NON_ASCII_RUN = /[\u0080-\u{10ffff}]+/gu;
+
+interface Segment {
+  /** Offset of the segment in the folded string. */
+  folded: number;
+  /** Offset of the segment in the original string. */
+  original: number;
+  /** Per folded unit, its original `[start, end)`; absent for an ASCII segment (identity map). */
+  starts?: number[];
+  ends?: number[];
+}
+
 /**
  * `[start, end)` offsets into `text` of every non-overlapping occurrence of `query`, compared
  * folded. The offsets are in the ORIGINAL string even where folding changed its length ("é"
  * written as "e" + U+0301 folds to one unit and maps back to two), so they can build DOM ranges.
+ *
+ * Folding character by character is what makes that mapping exact, and it is slow: done for every
+ * character, the highlight pass over the owner's biggest page (1.7 MB) took 700-900 ms on every
+ * keystroke in the find bar (`tools/probes/page-find-perf.ts`). So only non-ASCII runs are folded
+ * per character; ASCII runs are lower-cased in one call and map by offset.
  */
 export function findRanges(text: string, query: string): Array<[number, number]> {
   const q = foldForFind(query.trim());
   if (q === "") return [];
-  // For every folded code unit, the original [start, end) it came from.
   let folded = "";
-  const starts: number[] = [];
-  const ends: number[] = [];
-  let i = 0;
-  for (const ch of text) {
-    const f = foldForFind(ch);
-    if (f === "" && ends.length > 0) {
-      // A lone combining mark folds to nothing; it belongs to the unit before it, so a highlight
-      // ending there does not split the grapheme.
-      ends[ends.length - 1] = i + ch.length;
+  const segments: Segment[] = [];
+  // A combining mark that folds to nothing extends the end of the unit before it — which may sit
+  // in the preceding ASCII segment — so a highlight ending there does not split the grapheme.
+  const extendedEnd = new Map<number, number>();
+
+  const ascii = (from: number, to: number): void => {
+    if (to <= from) return;
+    segments.push({ folded: folded.length, original: from });
+    folded += text.slice(from, to).toLowerCase();
+  };
+  let last = 0;
+  for (const run of text.matchAll(NON_ASCII_RUN)) {
+    const at = run.index;
+    ascii(last, at);
+    const starts: number[] = [];
+    const ends: number[] = [];
+    const segmentStart = folded.length;
+    let i = at;
+    let part = "";
+    for (const ch of run[0]) {
+      const f = foldForFind(ch);
+      if (f === "") {
+        if (ends.length > 0) ends[ends.length - 1] = i + ch.length;
+        else if (folded.length > 0) extendedEnd.set(folded.length - 1, i + ch.length);
+      }
+      for (let k = 0; k < f.length; k++) {
+        starts.push(i);
+        ends.push(i + ch.length);
+      }
+      part += f;
+      i += ch.length;
     }
-    for (let k = 0; k < f.length; k++) {
-      starts.push(i);
-      ends.push(i + ch.length);
+    if (part !== "") {
+      segments.push({ folded: segmentStart, original: at, starts, ends });
+      folded += part;
     }
-    folded += f;
-    i += ch.length;
+    last = at + run[0].length;
   }
+  ascii(last, text.length);
+
+  // Occurrences are found left to right, so the segment lookup only ever moves forward.
+  let cursor = 0;
+  const segmentAt = (pos: number): Segment => {
+    while (cursor + 1 < segments.length && (segments[cursor + 1] as Segment).folded <= pos) {
+      cursor++;
+    }
+    return segments[cursor] as Segment;
+  };
+  const originalStart = (pos: number): number => {
+    const seg = segmentAt(pos);
+    return seg.starts ? (seg.starts[pos - seg.folded] as number) : seg.original + pos - seg.folded;
+  };
+  const originalEnd = (pos: number): number => {
+    const extended = extendedEnd.get(pos);
+    if (extended !== undefined) return extended;
+    const seg = segmentAt(pos);
+    return seg.ends ? (seg.ends[pos - seg.folded] as number) : seg.original + pos - seg.folded + 1;
+  };
+
   const out: Array<[number, number]> = [];
   let from = 0;
   for (;;) {
     const at = folded.indexOf(q, from);
     if (at === -1) break;
-    out.push([starts[at] as number, ends[at + q.length - 1] as number]);
+    const start = originalStart(at);
+    out.push([start, originalEnd(at + q.length - 1)]);
     from = at + q.length;
   }
   return out;

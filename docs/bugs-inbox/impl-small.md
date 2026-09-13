@@ -67,6 +67,13 @@ editing an invisible row), `BlockRowView.tsx` (match/context classes), `PageView
 Tests that would have caught it: `e2e/tests/page-find.spec.ts` (6 tests; with `when: "true"` the
 "left to the browser" test fails, and without `requestEditingEnd` the two editing tests fail —
 both checked), `apps/web/src/editor/pageFilter.test.ts`, `apps/web/src/app/page-find.test.ts`.
+Measured on the owner's biggest page (`OmnivoreSync`: 961 blocks, 1.69 MB, graph copy of
+2026-09-13) with `tools/probes/page-find-perf.ts`: the first version folded text per character
+and took 21-51 ms per `filterVisible` call and 670-890 ms for the highlight pass's `findRanges` —
+per keystroke. After caching folded text per block object and folding only non-ASCII runs per
+character: 0.2-1.5 ms and 12-17 ms. Highlights are capped at 2,000 occurrences ("r" matches 78,604
+times there; spreading that many ranges into `new Highlight(...)` would overflow the argument
+limit); every matching block is still shown and counted.
 
 ---
 

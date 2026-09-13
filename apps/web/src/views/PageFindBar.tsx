@@ -42,31 +42,45 @@ function highlightsSupported(): boolean {
   return typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined";
 }
 
-/** Ranges over the text nodes of `root` for each `[start, end)` into its concatenated text. */
-function rangesIn(root: Element, spans: Array<[number, number]>): Range[] {
-  const nodes: Array<{ node: Text; start: number }> = [];
+/**
+ * At most this many occurrences are highlighted at once. A one-letter query on the owner's biggest
+ * page (1.7 MB) matches ~78,000 times; building that many ranges costs more than it shows, and
+ * spreading them into `new Highlight(...)` overflows the argument limit. Every matching BLOCK is
+ * still shown and counted — only the in-text marks stop. The current match is painted first.
+ */
+const MAX_HIGHLIGHTS = 2000;
+
+/** Ranges over the text nodes of `root` for each `[start, end)` into its concatenated text, in
+ * order, stopping after `limit`. `spans` must be sorted, as `findRanges` returns them. */
+function rangesIn(root: Element, spans: Array<[number, number]>, limit: number): Range[] {
+  const nodes: Array<{ node: Text; start: number; end: number }> = [];
   let length = 0;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const text = n as Text;
-    nodes.push({ node: text, start: length });
+    nodes.push({ node: text, start: length, end: length + text.data.length });
     length += text.data.length;
   }
+  // Spans are sorted, so the node pointer only moves forward: linear in nodes + spans.
+  let k = 0;
   const locate = (offset: number, isEnd: boolean): { node: Text; offset: number } | null => {
-    for (const entry of nodes) {
-      const end = entry.start + entry.node.data.length;
-      // An end offset that falls exactly on a node boundary belongs to the node it ends, a start
-      // offset to the node it begins — otherwise a match at a node edge became an empty range.
-      if (isEnd ? offset <= end : offset < end)
+    // An end offset exactly on a node boundary belongs to the node it ends, a start offset to the
+    // node it begins — otherwise a match at a node edge became an empty range.
+    while (k < nodes.length) {
+      const entry = nodes[k] as { node: Text; start: number; end: number };
+      if (isEnd ? offset <= entry.end : offset < entry.end) {
         return { node: entry.node, offset: offset - entry.start };
+      }
+      k++;
     }
     return null;
   };
   const out: Range[] = [];
   for (const [s, e] of spans) {
+    if (out.length >= limit) break;
     const a = locate(s, false);
     const b = locate(e, true);
-    if (!a || !b) continue;
+    if (!a || !b) break;
     const range = document.createRange();
     range.setStart(a.node, a.offset);
     range.setEnd(b.node, b.offset);
@@ -124,13 +138,16 @@ export function PageFindBar(props: {
     const cur: Range[] = [];
     if (root && active()) {
       const currentId = props.matches[index()];
-      for (const id of props.matches) {
+      const paintRow = (id: string, into: Range[]): void => {
+        const room = MAX_HIGHLIGHTS - all.length - cur.length;
+        if (room <= 0) return;
         // The row being edited has no rendered view — CodeMirror holds its text — and is skipped.
         const view = rowElement(root, id)?.querySelector(".vr-block-view");
-        if (!view) continue;
-        const ranges = rangesIn(view, findRanges(view.textContent ?? "", q));
-        (id === currentId ? cur : all).push(...ranges);
-      }
+        if (!view) return;
+        for (const r of rangesIn(view, findRanges(view.textContent ?? "", q), room)) into.push(r);
+      };
+      if (currentId !== undefined) paintRow(currentId, cur);
+      for (const id of props.matches) if (id !== currentId) paintRow(id, all);
     }
     CSS.highlights.set(HIGHLIGHT, new Highlight(...all));
     CSS.highlights.set(HIGHLIGHT_CURRENT, new Highlight(...cur));

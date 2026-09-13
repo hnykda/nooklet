@@ -113,6 +113,49 @@ describe("findRanges", () => {
     expect(findRanges("🌱 řeka", "reka")).toEqual([[3, 7]]);
   });
 
+  it("agrees with folding every character one by one (the slow, obviously right way)", () => {
+    // The shipped version only folds non-ASCII runs per character, for speed; this pins it to the
+    // naive definition across ASCII/non-ASCII boundaries, decomposed marks and astral characters.
+    const naive = (text: string, query: string): Array<[number, number]> => {
+      const q = foldForFind(query.trim());
+      let folded = "";
+      const starts: number[] = [];
+      const ends: number[] = [];
+      let i = 0;
+      for (const ch of text) {
+        const f = foldForFind(ch);
+        if (f === "" && ends.length > 0) ends[ends.length - 1] = i + ch.length;
+        for (let k = 0; k < f.length; k++) {
+          starts.push(i);
+          ends.push(i + ch.length);
+        }
+        folded += f;
+        i += ch.length;
+      }
+      const out: Array<[number, number]> = [];
+      for (let at = folded.indexOf(q); at !== -1; at = folded.indexOf(q, at + q.length)) {
+        out.push([starts[at] as number, ends[at + q.length - 1] as number]);
+      }
+      return out;
+    };
+    const texts = [
+      "Přečti si ŘEKU a pak reka, řeka!",
+      "caf\u00e9 CAFE\u0301 cafe\u0301\u0301 e\u0301",
+      "\u0301leading mark, then \u0158eka and R\u030ceka",
+      "🌱řeka🌱Reka 🌱",
+      "plain ascii text with the the the",
+      "Straße İstanbul ǅ 한국어 texts",
+    ];
+    const queries = ["reka", "e", "cafe", "the", "a", "🌱r", "istanbul", "t", "ka 🌱"];
+    for (const text of texts) {
+      for (const query of queries) {
+        expect(findRanges(text, query), `${JSON.stringify(text)} / ${query}`).toEqual(
+          naive(text, query),
+        );
+      }
+    }
+  });
+
   it("is empty for a blank query or no match", () => {
     expect(findRanges("anything", " ")).toEqual([]);
     expect(findRanges("anything", "zzz")).toEqual([]);
