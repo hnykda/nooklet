@@ -48,10 +48,38 @@ describe("BlockContentView — content kinds (markdown-grammar.md §2.7 / §4)",
     );
   });
 
-  it("quote -> <blockquote class=vr-quote>", () => {
+  // B-224: every outliner row renders through here, and the lines of a multi-line block ran
+  // together ("plain firstplain second") — `classifyBlockContent` gives one token array per line
+  // and nothing put the line break back between them. This test used to assert exactly that
+  // run-together text for a quote.
+  it("a multi-line paragraph keeps a <br> at each newline, with the newline's own offsets", () => {
+    const content = "Poznámka: **žluťoučký kůň**\nsecond line\n\nfourth";
+    const { container } = renderContent(content);
+    const p = container.querySelector("p.vr-paragraph") as HTMLElement;
+    const brs = [...p.querySelectorAll("br")];
+    expect(brs.map((br) => [br.dataset.from, br.dataset.to])).toEqual([
+      ["27", "28"],
+      ["39", "40"],
+      ["40", "41"],
+    ]);
+    for (const br of brs) expect(content[Number(br.dataset.from)]).toBe("\n");
+    // The break sits between the lines, not after them.
+    expect(p.firstElementChild?.tagName).not.toBe("BR");
+    expect(p.lastElementChild?.tagName).not.toBe("BR");
+    expect(p.textContent).toBe("Poznámka: žluťoučký kůňsecond linefourth");
+  });
+
+  it("quote -> <blockquote class=vr-quote>, one <br> between its lines", () => {
     const { container } = renderContent("> line one\n> line two");
-    const bq = container.querySelector("blockquote.vr-quote");
-    expect(bq?.textContent).toBe("line oneline two");
+    const bq = container.querySelector("blockquote.vr-quote") as HTMLElement;
+    expect(bq.textContent).toBe("line oneline two");
+    const brs = [...bq.querySelectorAll("br")];
+    expect(brs.map((br) => br.dataset.from)).toEqual(["10"]);
+  });
+
+  it("a single-line paragraph has no <br>", () => {
+    const { container } = renderContent("just one line");
+    expect(container.querySelector("br")).toBeNull();
   });
 
   it("table -> <table class=vr-table> with header/body/alignment", () => {
