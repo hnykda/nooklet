@@ -143,6 +143,10 @@ checked: whether it also fails at `52e5d20` on an idle machine, and what refetch
 sync poke or a focus refetch would both do it) — which decides whether the fix is in the test
 (click Retry OR accept a recovered view) or in the view.
 
+Load-dependent (verifier, 2026-09-13): on `bd843cc` both "Retry recovers" tests PASSED (288 ms and
+292 ms) inside a run of 30 spec files at load average ~25–56, the same port and machine. So the
+race needs a slow machine — consistent with the view refetching by itself before the click lands.
+
 ---
 
 ### B-452 · Cmd/Ctrl+Z on a focused `<select>` outside the outliner takes back the outliner's last step
@@ -173,3 +177,20 @@ changes nothing (R12b already resolved them against a context no binding of thos
 the unit test enumerates it). Not done in `historyEditorHost` instead: the palette runs its "Undo"
 row while its own input still has focus, so a focus test there would break that row whenever a
 tree is active.
+
+---
+
+### B-453 · `e2e/helpers#openJournal` fails in strict mode when today is virtual and another journal day is on screen
+
+**Status:** open · **Severity:** low (test harness; the app is fine) · **Found:** 2026-09-13,
+verifier of m11/keys-in-fields (a subset e2e run) · **Test:** —
+
+A run of `agent-ops appearance block-properties editing …` failed the three `editing.spec.ts` tests
+that call `openJournal` ("types a whole sentence…", "text survives blurring…", "Enter creates a
+second bullet…") with `strict mode violation: locator('.vr-draft-input').first().or(locator('.vr-outliner').first())
+resolved to 2 elements`. An earlier spec in that run had evidently written a journal day (probably
+`agent-ops.spec.ts`, whose header says it writes one 40 days back — which spec it was is not
+isolated), so the stream showed today's draft AND that day's outliner; `.or()` of two
+`.first()` locators is then two elements. `editing.spec.ts` alone: 5/5. The full suite hides it only
+because of what runs before `editing.spec` alphabetically. Fix belongs in the helper (e.g. scope both
+to `.journal-day-today`, or `.or(...).first()`), not in any spec.

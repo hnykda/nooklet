@@ -31,7 +31,15 @@ Bugs go to `docs/bugs-inbox/keys-in-fields.md` (B-450..B-459; B-452 used here).
   journal-day-start, dates, date-picker-type-ahead, page-rename, page-title-draft, search-cleared,
   search-filters, context-menu, page-icons) 164 passed, 1 skipped (context-menu fixme).
 
+- `bd843cc` fix B-452 + tests + probe + inbox + this file.
+- Web unit suite after the fix: 138 files, 1142/1142.
+- Every one of the 98 e2e spec files ran at least once on `bd843cc` (port 6411, Chromium), in five
+  runs (some files matched two filters and ran twice): 73 passed; 164 passed + 1 skipped
+  (context-menu fixme); 83 passed + 3 failed (`editing.spec` openJournal strict-mode — ordering, B-453;
+  alone 5/5); 105 passed + 1 failed (`journal-agenda` "finishing a task elsewhere…" live update, load;
+  alone 6/6); 124 passed + 1 skipped (storage WebKit-only). `review-reactivity` Retry tests passed at
+  load ~25–56 → evidence added to B-451 (load-dependent).
+- Inbox: B-450 link evidence, B-451 load evidence, B-452 fixed, B-453 (test helper) logged.
+
 ## Next steps
-1. Commit the fix + tests + inbox + probe + this file.
-2. Full web unit suite; remaining e2e spec files if time allows.
-3. Return verdict to the coordinator.
+1. Commit the inbox/progress update. Return verdict to the coordinator.
