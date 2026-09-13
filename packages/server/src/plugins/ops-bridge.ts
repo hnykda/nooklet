@@ -39,7 +39,18 @@ function isOpErrorShaped(
  * serve` — and the desktop app, which then never opened — exited at startup (B-402). Thrown from
  * `ctx.ops.register`, inside the plugin's `activate()`, this is that plugin's error instead.
  * (`render` is the registry's own check: it is required only when the op is exposed to MCP.)
+ * A REST alias (`expose.http` as an object) is checked too: mounting one reads its `method` and
+ * `path`, and either missing took the server down the same way (B-406).
  */
+/** `expose.http` is absent, a boolean, or an alias with a string `method` and `path`. */
+function isCompleteHttpAlias(expose: unknown): boolean {
+  if (typeof expose !== "object" || expose === null) return true;
+  const http = (expose as { http?: unknown }).http;
+  if (typeof http !== "object" || http === null) return true;
+  const alias = http as { method?: unknown; path?: unknown };
+  return typeof alias.method === "string" && typeof alias.path === "string";
+}
+
 function assertCompleteOpDef(def: PluginOpDef): void {
   const d = def as unknown as Record<string, unknown>;
   const isSchema = (v: unknown) =>
@@ -55,6 +66,9 @@ function assertCompleteOpDef(def: PluginOpDef): void {
     typeof d.annotations === "object" && d.annotations !== null ? null : "annotations",
     Array.isArray(d.scopes) ? null : "scopes",
     typeof d.handler === "function" ? null : "handler",
+    isCompleteHttpAlias(d.expose)
+      ? null
+      : "expose.http's method and path (a REST alias needs both)",
   ].filter((f): f is string => f !== null);
   if (missing.length > 0) {
     const name = typeof d.name === "string" ? `"${d.name}"` : "(unnamed)";

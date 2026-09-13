@@ -385,3 +385,27 @@ Nth character), both forms fail for N = 512, 1024, 2048 (new 3.45, 3.01, 2.67), 
 the limit in both (new 2.08-2.15 and once under 2; old 8.7-10.1 here, 6.2 in B-333's run). Proof:
 the committed test 30 of 30 under 84 loops (load average ≈ 105), and `packages/core` 399 of 399
 twice, niced, at the same load.
+
+---
+
+### B-406 · A plugin op whose REST alias lacks `method` or `path` still stops the whole server from starting
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, verification of m10/tests-desktop
+(B-402's fix) · **Test:** `packages/server/src/plugins/host.test.ts` "a REST alias missing its method
+or path is that plugin's error, and the server still starts (B-406)"
+
+B-402's check (`plugins/ops-bridge.ts#assertCompleteOpDef`) refuses an op missing a top-level
+required field, but mounting a REST alias reads two more that it does not check. With every
+top-level field present, `expose: { http: { method: "GET" } }` throws `TypeError: Cannot read
+properties of undefined (reading 'replace')` (`registry.ts#toHonoPath`) and `expose: { http: { path:
+"/x" } }` throws `… (reading 'toUpperCase')` (Hono's `app.on`), both from `mountHttp` outside any
+per-plugin guard — the plugin test harness's setup itself threw, as B-402's did before its fix. Same
+failure as B-402: `nooklet serve` and the desktop app exit at startup over one malformed plugin.
+(Checked alongside and fine: a method Hono does not know, a lower-case method, and `mcp: true`
+without `render`, which the registry already makes the plugin's error.)
+
+**Fixed 2026-09-13.** `assertCompleteOpDef` also requires a string `method` and `path` when
+`expose.http` is an object, and names `expose.http's method and path` as missing otherwise — the
+plugin's error, as for B-402. Test: the one above, two such plugins beside a working one; with the
+new check disabled it fails at setup with `TypeError: Cannot read properties of undefined (reading
+'toUpperCase')`, with it both are `error` and the working plugin's op answers 200. Server
+`src/plugins` 62 of 62.
