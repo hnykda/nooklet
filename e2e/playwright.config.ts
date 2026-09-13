@@ -56,11 +56,12 @@ export default defineConfig({
     // coverage would be for anyway. This keeps the engine exercised without pretending it is a
     // faithful stand-in. Also the specs for a bug reported from the Mac app only (B-42): focus
     // across a sync refresh with the `[[` popup open, and the focus log that records it there —
-    // an in-memory replica changes nothing about focus.
+    // an in-memory replica changes nothing about focus. And the caret across a move of the row
+    // being edited, which WebKit alone lost (B-501, B-502).
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
-      testMatch: /(storage|webkit-refresh-focus|focus-log)\.spec\.ts/,
+      testMatch: /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret)\.spec\.ts/,
     },
   ],
 });

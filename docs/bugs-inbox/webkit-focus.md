@@ -1,7 +1,7 @@
 # Bugs inbox — webkit-focus (M11, B-42 in WebKit on sync refresh)
 
 Entries in `docs/BUGS.md` format, to be folded in by the coordinator. New numbers B-501..B-509
-(B-501 used).
+(B-501 used by the branch; B-502 used by its verification).
 
 ---
 
@@ -66,6 +66,10 @@ branch), `e2e/tests/focus-log.spec.ts` (2, both projects), `apps/web/src/app/foc
 ---
 
 ### B-501 · In WebKit, Alt+Up/Down moves the block but the caret jumps to the start of it
+**Diagnosed 2026-09-13 (verification):** the same DOM-move mechanism as B-502 below; test
+`e2e/tests/edited-row-move-caret.spec.ts` "Alt+Up moves the block being edited without moving the
+caret (B-501)" fails in WebKit (caret 0), passes in Chromium.
+
 **Status:** needs-repro (in the desktop app) · **Severity:** low · **Found:** 2026-09-13,
 m11/webkit-focus, running `focus.spec.ts` in Playwright's WebKit · **Test:** `e2e/tests/focus.spec.ts`
 "Alt+Up/Down moves the block and keeps the editor in it (R22)" fails in WebKit (it runs only in
@@ -89,3 +93,36 @@ before an in-app navigation…"; `popups.spec.ts` "Table on an empty block…"),
 assertion after the reload or `goto` (lines 69, 98, 134, 382, 594). Playwright's WebKit has no OPFS
 in workers and runs the in-memory replica (B-43), whose queue of unpushed ops dies with
 the page — expected there, and why the webkit project does not run the suite. Not a bug by itself.
+
+---
+
+### B-502 · In WebKit, a refresh that moves the block being edited puts the caret at the start, with the `[[` popup left open
+**Status:** open · **Severity:** medium (the Mac app's engine; the next keystroke lands in the wrong
+place) · **Found:** 2026-09-13, verifying m11/webkit-focus (probe
+`tools/probes/refresh-focus-structural.spec.ts`) · **Test:**
+`e2e/tests/edited-row-move-caret.spec.ts` "another device moving the block you are typing a link
+into keeps the caret and the popup (B-502)" (chromium + webkit)
+
+Type `base testing [[dru` in a block so the `[[` popup is open. Another device (here an API
+`block.move`) moves that block above its sibling. After the pull: in Playwright's WebKit the editor
+still has focus but the caret is at offset 0, the popup is still showing, and the next key types at
+the START of the block (`gbase … testing [[dru`) and closes the popup. Chromium keeps the caret at
+the end and `g` completes `[[drug`. The verification's other structural refreshes (a block inserted
+above, siblings reordered around the edited one, the edited block indented, a child added above, a
+real second client editing the block below, typing straight through remote inserts) keep focus and
+caret in both engines.
+
+Mechanism, traced (probe `tools/probes/edited-row-move-mechanism.spec.ts`, which logs activeElement
+and the DOM selection around the native `insertBefore`, `selectionchange`, focus events and
+`focus()` calls): the keyed `<For>` moves the edited row's node; in BOTH engines `activeElement`
+becomes `<body>` and `BlockTree.tsx#refocusAfterReorder` calls `surface.focus()` in a microtask.
+Chromium fires `focusout` on the move, CM6's blur handler clears its cached DOM selection, and
+`view.focus()` writes the state's caret back (head 46 → 46). WebKit fires NO `focusout`: CM6 keeps
+the stale cache, its `updateSelection` compares the state with that cache, finds them equal and
+writes nothing, while WebKit's own focus has put the DOM caret at the start of the content; the
+`selectionchange` that follows is read into the state (head 44 → 0).
+
+Same cause as B-501 (Alt+Up/Down), which is the same DOM move made locally. Whether it is what the
+owner sees as B-42 is not established: the owner's report (pause mid-link, a refresh, focus gone)
+does not involve anything moving the block, and this leaves the editor focused rather than
+unfocused.
