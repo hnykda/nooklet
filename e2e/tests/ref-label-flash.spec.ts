@@ -10,7 +10,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { api, clickAway, editor, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import { api, clickAway, editor, MOD, pagePath, readBlocks, seedPage } from "../helpers/index.js";
 
 const TARGET = "Flash Target";
 const HOST = "Flash Host";
@@ -371,4 +371,169 @@ test("a label changes when its target's text does, and never passes through ((id
       new_str: "target alpha",
     }).catch(() => {});
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// The other side of stale-while-revalidate (verification of B-500's fix): a label kept on screen
+// must still move when its target really changes — typed fast on the same page (answers must never
+// step backwards), typed on another device, deleted and restored, changed while the label was not
+// mounted. Page names carry a per-run suffix, so a second run against the same server starts clean.
+// ---------------------------------------------------------------------------------------------
+
+const run = Date.now().toString(36);
+
+async function recordLabels(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __labels: string[][] };
+    const root = document.querySelector(".page-view") as HTMLElement;
+    const out: string[][] = [];
+    const take = () =>
+      out.push(
+        [...root.querySelectorAll(".vr-outliner .vr-block-ref")].map((r) => r.textContent ?? ""),
+      );
+    take();
+    new MutationObserver(take).observe(root, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+    w.__labels = out;
+  });
+}
+const labels = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __labels: string[][] }).__labels);
+
+/** A target page with the target block first, a filler, and a block quoting the target. Returns
+ * the target's id. */
+async function seedEdge(page: Page, name: string, targetText: string) {
+  await seedPage(page, name, `- ${targetText}\n- filler`);
+  const blocks = await readBlocks(page, name);
+  const target = blocks.find((b) => b.content.startsWith(targetText.split(" ")[0] as string));
+  if (blocks.length === 2) {
+    await api(page, "page.append", { page: name, markdown: `- quoting ((${target?.id}))` });
+  }
+  return target?.id as string;
+}
+
+test("typing fast into a referenced block on the same page: the label follows forward only", async ({
+  page,
+}) => {
+  await seedEdge(page, `Edge Same Page ${run}`, "edgy target");
+  await page.goto(pagePath(`Edge Same Page ${run}`));
+  const outliner = page.locator(".vr-outliner").first();
+  const label = outliner.locator(".vr-block-ref");
+  await expect(label).toHaveText("edgy target");
+  await recordLabels(page);
+
+  await outliner.locator(".vr-row").nth(0).locator(".vr-block-view").click();
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.press("End");
+  const suffix = " abcdefghijklmnopqrstuvwxyz0123456789";
+  await page.keyboard.type(suffix.slice(0, 20));
+  await page.keyboard.type(suffix.slice(20), { delay: 25 });
+  const final = `edgy target${suffix}`;
+  await expect
+    .poll(async () => (await readBlocks(page, `Edge Same Page ${run}`))[0]?.content)
+    .toBe(final);
+  await expect(label).toHaveText(final, { timeout: 15_000 });
+
+  const seen = (await labels(page)).map((l) => l[0] ?? "");
+  expect(seen.filter((l) => PLACEHOLDER.test(l))).toEqual([]);
+  // Every label shown is a prefix of the final text, and never shorter than one shown before it:
+  // an older answer overwriting a newer one would step backwards.
+  for (let i = 0; i < seen.length; i++) {
+    expect(final.startsWith(seen[i] as string), `snapshot ${i}: ${seen[i]}`).toBe(true);
+    if (i > 0)
+      expect((seen[i] as string).length).toBeGreaterThanOrEqual((seen[i - 1] as string).length);
+  }
+
+  // Undo the typing: the label goes back with it.
+  await clickAway(page);
+  await outliner.locator(".vr-row").nth(0).locator(".vr-block-view").click();
+  await expect(editor(page)).toBeFocused();
+  for (let i = 0; i < 6; i++) {
+    const now = (await readBlocks(page, `Edge Same Page ${run}`))[0]?.content;
+    if (now === "edgy target") break;
+    await page.keyboard.press(`${MOD}+z`);
+    await page.waitForTimeout(400);
+  }
+  await expect
+    .poll(async () => (await readBlocks(page, `Edge Same Page ${run}`))[0]?.content)
+    .toBe("edgy target");
+  await expect(label).toHaveText("edgy target", { timeout: 15_000 });
+});
+
+test("a deleted target shows ((id)) again, and restoring it resolves the label", async ({
+  page,
+}) => {
+  const id = await seedEdge(page, `Edge Doomed Target ${run}`, "doomed words");
+  await seedPage(page, `Edge Doomed Host ${run}`, `- host quoting ((${id}))\n- other`);
+  await page.goto(pagePath(`Edge Doomed Host ${run}`));
+  const label = page.locator(".vr-outliner").first().locator(".vr-block-ref");
+  await expect(label).toHaveText("doomed words");
+  await api(page, "block.delete", { id });
+  await expect(label).toHaveText(`((${id}))`, { timeout: 15_000 });
+  await api(page, "trash.restore", { id });
+  await expect(label).toHaveText("doomed words", { timeout: 15_000 });
+});
+
+test("a second device typing into a referenced block: the first device's label converges, never ((id))", async ({
+  page,
+  browser,
+}) => {
+  const id = await seedEdge(page, `Edge Remote Target ${run}`, "remote words");
+  await seedPage(page, `Edge Remote Host ${run}`, `- host quoting ((${id}))\n- other host row`);
+  await page.goto(pagePath(`Edge Remote Host ${run}`));
+  const label = page.locator(".vr-outliner").first().locator(".vr-block-ref");
+  await expect(label).toHaveText("remote words");
+  await recordLabels(page);
+
+  const origin = new URL(page.url()).origin;
+  const other = await browser.newContext({ baseURL: origin });
+  try {
+    const phone = await other.newPage();
+    await phone.goto(pagePath(`Edge Remote Target ${run}`));
+    const out = phone.locator(".vr-outliner").first();
+    await out.locator(".vr-row").nth(0).locator(".vr-block-view").click();
+    await expect(phone.locator(".cm-content")).toBeFocused();
+    await phone.keyboard.press("End");
+    await phone.keyboard.type(" from the phone", { delay: 40 });
+    await phone.locator("body").click({ position: { x: 5, y: 5 } });
+    const final = "remote words from the phone";
+    await expect
+      .poll(async () => (await readBlocks(page, `Edge Remote Target ${run}`))[0]?.content, {
+        timeout: 15_000,
+      })
+      .toBe(final);
+    await expect(label).toHaveText(final, { timeout: 15_000 });
+    const seen = (await labels(page)).map((l) => l[0] ?? "");
+    expect(seen.filter((l) => PLACEHOLDER.test(l))).toEqual([]);
+    for (let i = 1; i < seen.length; i++) {
+      expect((seen[i] as string).length).toBeGreaterThanOrEqual((seen[i - 1] as string).length);
+    }
+  } finally {
+    await other.close();
+  }
+});
+
+test("navigating away and back after the target changed shows the new text", async ({ page }) => {
+  const id = await seedEdge(page, `Edge Away Target ${run}`, "away words");
+  await seedPage(page, `Edge Away Host ${run}`, `- host quoting ((${id}))`);
+  await page.goto(pagePath(`Edge Away Host ${run}`));
+  const label = page.locator(".vr-outliner").first().locator(".vr-block-ref");
+  await expect(label).toHaveText("away words");
+  // Leave through the app (no reload: the cache survives).
+  await page.locator(".vr-outliner").first().locator(".vr-block-ref").click();
+  // A block ref jumps to the block itself (zoomed in); the host's label is unmounted meanwhile.
+  await expect(page).not.toHaveURL(/Edge%20Away%20Host/);
+  await expect(page.locator(".vr-outliner").first().locator(".vr-block-ref")).toHaveCount(0);
+  await api(page, "block.update", { id, old_str: "away words", new_str: "away words changed" });
+  await expect(page.locator(".vr-outliner").first()).toContainText("away words changed", {
+    timeout: 15_000,
+  });
+  await page.goBack();
+  await expect(page.locator(".vr-outliner").first().locator(".vr-block-ref")).toHaveText(
+    "away words changed",
+    { timeout: 15_000 },
+  );
 });

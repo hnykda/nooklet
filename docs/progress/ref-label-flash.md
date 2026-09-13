@@ -146,6 +146,37 @@ Nothing. Task complete; see "Not done" below.
   not WKWebView. The fix is engine-independent logic (a cache no longer emptied), and WebKit and
   Chromium recorded identical before/after behaviour.
 
+## Adversarial verification (2026-09-13, second agent)
+
+Scratch: `.../scratchpad/m11b/ref-label-flash-verify/`. No source defect found; one test commit.
+
+- HEAD `7f15c8a`: web unit 1151/1151, typecheck clean, spec 5/5 Chromium and 5/5 WebKit.
+- `52e5d20` client (`git checkout 52e5d20 -- apps/web/src`): spec 0/5 in both engines (pulls 25/30
+  snapshots flashed, typing 4/13, both engines).
+- Cause, re-proved: `52e5d20` client minus the `invalidateBlockRefs()` call → tests 1-2 pass (0/10,
+  0/9 flashed), test 5 fails with the stale "target alpha". Emptying the cache was the flash.
+- Real-graph copy (fresh backup), probe without counter patches, per refresh: `Ref Heavy` before
+  53 flashed / 3,237 records / 1,915 created / 24.5 task ms, after 0 / 4 / 3 / 4.9; `2022-12-16`
+  before 5 / 16 / 29.6, after 0 / 4 / 8.6. WebKit after: identical. Typing 35 chars plus 3 undos on
+  `2022-12-16`: 44 snapshots, 0 flashed, labels unchanged, both engines.
+- Added 4 tests to the spec (the kept label must still move): same-page fast typing never steps
+  backwards + undo; delete → `((id))` → `trash.restore` → text; a second browser context typing;
+  target changed while the label was unmounted. Chromium 27/27 with `--repeat-each=3`, WebKit
+  18/18 with `--repeat-each=2`. On `52e5d20` the typing and second-device tests fail; the
+  unmounted-label test fails against a mutant cache that re-reads only never-read ids.
+- Full Chromium e2e at HEAD (97 other specs, 7 batches): 556 passed, 2 skipped, 0 failed.
+- WebKit project (storage + this spec) 11/11. Typing 26 chars into the plain block of `Flash Rich`
+  (throwaway recorder spec, not kept): only the word count changed (17 → 22 words); no row, title,
+  embed, query, date chip, references panel or sidebar text changed, nothing remounted.
+- Read and found sound: generation stamps against the worker's FIFO (a change event is emitted
+  after commit, so a read sent at generation g sees every commit announced by g); watcher counts
+  balance because Solid runs a computation's cleanups before each re-run; `sameFields` has no
+  identity-dependent consumer (no in-place `EditableBlock` mutation anywhere, BlockRowView reads
+  fields only); `sameJson` inputs are plain JSON (no Map/Set/Date/functions). Cost of `sameJson`
+  on the largest real references panel (`TODO`, 100 referencing blocks from the real-graph copy,
+  grouped as `{page, refs:[{id,text}]}`, 69.7 KB of JSON): 0.14 ms per compare in Node 26 (an
+  approximation of the browser; the panel's real payload may carry more fields).
+
 ## How to resume
 
 `git log --oneline 52e5d20..` shows what landed. Before each commit: biome check on the files,

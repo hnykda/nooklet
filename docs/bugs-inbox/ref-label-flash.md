@@ -27,6 +27,22 @@ records every DOM state with a MutationObserver and fails on any snapshot holdin
 Real-graph numbers (per refresh, 150-row page with 50 refs): 2,550 resolver calls → 0, 50 queries
 → 1, 3,206 DOM mutation records → 4 — `docs/progress/ref-label-flash.md` › Measurements.
 
+**Verified independently 2026-09-13** (adversarial pass, same branch). Cause re-proved without the
+author's trace: the `52e5d20` client with only the `invalidateBlockRefs()` call removed from
+`data/store.ts` shows no placeholder in any snapshot (pulls 0 of 10, typing 0 of 9) but never
+updates a label whose target changed — so emptying the cache was the flash. The four failing tests
+above fail on `52e5d20` in Chromium and WebKit (25 of 30 and 4 of 13 snapshots, both engines) and
+pass at HEAD. Real-graph copy, `tools/probes/refresh-render-count.mjs` without counter patches: `Ref
+Heavy` 53 flashed snapshots / 3,237 records / 1,915 elements per refresh before, 0 / 4 / 3 after
+(2022-12-16: 5 / 16 / 29.6 → 0 / 4 / 8.6), after identical in WebKit. The other side of
+stale-while-revalidate — a kept label must still move when its target really changes — now has
+tests in `e2e/tests/ref-label-flash.spec.ts`: "typing fast into a referenced block on the same
+page: the label follows forward only" and "a second device typing into a referenced block: the
+first device's label converges, never ((id))" (both fail on `52e5d20`), "a deleted target shows
+((id)) again, and restoring it resolves the label" and "navigating away and back after the target
+changed shows the new text" (guards; the latter fails against a cache that skips re-reading ids
+nobody was watching).
+
 ---
 
 ### B-510 · The references panel shows `((id))` for every block reference, never the block's text
