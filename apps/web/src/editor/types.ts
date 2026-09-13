@@ -10,7 +10,7 @@
  * (`docs/spec/commands-and-keymap.md`) needs to reason about. `BlockTree.tsx` builds one from the
  * live data seam; tests build one by hand.
  */
-import type { TaskMarker } from "@nooklet/core";
+import type { Properties, TaskMarker } from "@nooklet/core";
 
 export type BlockId = string;
 
@@ -31,10 +31,11 @@ export interface EditableBlock {
   repeat: string | null;
   /** Epoch ms, or null. */
   doneAt: number | null;
-  /** `list:: number` (markdown-grammar OUT-17). Not yet exposed by the M2 data seam (`BlockRow`
-   * has no generic-property projection) — always `false` until that lands; kept as a field (not
-   * hard-coded in `tree.ts`) so `numbering.ts` and its tests are already correct for when it is. */
-  listNumber: boolean;
+  /** Generic `block_prop` properties (`BlockTreeNode.properties`): `list:: number` (OUT-17, read by
+   * `numbering.ts#isNumbered`), `author:: …`, and so on — never the reserved keys above. While a
+   * block is edited, the editable ones are written into the buffer as `key:: value` lines and split
+   * back out on flush (`@nooklet/core`'s `block-text.ts`). */
+  properties: Readonly<Properties>;
 }
 
 /** An immutable snapshot of one page's (or subtree's) blocks, indexed for O(1) parent/child/order

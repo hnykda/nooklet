@@ -413,6 +413,7 @@ const SLASH_ORDER = [
   "Heading 1",
   "Heading 2",
   "Heading 3",
+  "Numbered list",
   "Code block",
   "Table",
   "Image",

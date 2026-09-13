@@ -44,6 +44,27 @@ export interface UndoRedoResult {
   focus: FocusChange | null;
 }
 
+/** The field a recipe writes: text, one property key, placement, or a tombstone. */
+function fieldOf(r: OpRecipe): string {
+  const p = r.payload;
+  return `${r.entity}|${p.kind}|${p.kind === "block.prop" ? p.key : ""}`;
+}
+
+/**
+ * Two coalesced transactions' recipes as one: for each field, the `latest` recipe (a forward list —
+ * redo lands on the final state) or the `earliest` (an inverse list — undo goes back to before the
+ * whole burst). Fields only one side touched are kept either way.
+ */
+function mergeRecipes(a: OpRecipe[], b: OpRecipe[], keep: "latest" | "earliest"): OpRecipe[] {
+  const out = new Map<string, OpRecipe>();
+  for (const r of a) out.set(fieldOf(r), r);
+  for (const r of b) {
+    const field = fieldOf(r);
+    if (keep === "latest" || !out.has(field)) out.set(field, r);
+  }
+  return [...out.values()];
+}
+
 function mint(recipes: OpRecipe[], clock: Clock): Op[] {
   return recipes.map((r) => makeOp(clock.next(), clock.device, r.entity, r.payload));
 }
@@ -80,7 +101,12 @@ export class EditHistory {
       last.blockId === tx.blockId &&
       tx.at < this.captureUntil;
     if (canMerge && last) {
-      last.forward = tx.forward;
+      // Merged per field, not replaced wholesale. With bare `block.text` transactions the two were
+      // the same thing; since B-101 a flush can also carry `block.prop` ops for property lines, and
+      // a later flush only carries the fields IT changed — replacing would make redo drop the
+      // property written earlier in the burst, and undo would never remove it.
+      last.forward = mergeRecipes(last.forward, tx.forward, "latest");
+      last.inverse = mergeRecipes(last.inverse, tx.inverse, "earliest");
       last.after = tx.after;
     } else {
       this.undoStack.push(tx);

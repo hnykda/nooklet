@@ -19,7 +19,7 @@
  * The data and picker seams are injectable so the command's own test needs neither a database
  * nor a DOM; `createCoreCommands` passes nothing and gets the real ones.
  */
-import type { Op } from "@nooklet/core";
+import { type Op, splitBlockText } from "@nooklet/core";
 import { applyOps } from "../../data/store.js";
 import {
   findTemplateByName,
@@ -92,7 +92,9 @@ export function createTemplateCommands(deps: TemplateCommandDeps): Command[] {
     // The editor keeps focus while the picker is open, so the live selection is the truth; the
     // one captured when the command started is the fallback for a host that lost it meanwhile.
     const at = editor.getSelection() ?? opened;
-    if (at.content.trim() === "") {
+    // "Empty" is about the block's text, not its editing buffer: an empty numbered item's buffer is
+    // `\nlist:: number`, which read as non-empty and sent the template in after it (B-154).
+    if (splitBlockText(at.content).content.trim() === "") {
       const built = await data.templateIntoBlockOps(template.id, at.blockId);
       if (!built) return;
       // The caret ends the inserted text only if it is still in that bullet: focus that moved on

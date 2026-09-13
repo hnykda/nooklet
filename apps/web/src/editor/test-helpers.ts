@@ -21,7 +21,7 @@ export function makeBlock(
     deadline: null,
     repeat: null,
     doneAt: null,
-    listNumber: false,
+    properties: {},
     ...overrides,
   };
 }

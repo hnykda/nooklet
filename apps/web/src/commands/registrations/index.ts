@@ -8,6 +8,7 @@ import type { DatePickerHost } from "./date-picker-host.js";
 import { createFormatCommands } from "./format.js";
 import { createInsertCommands } from "./insert.js";
 import { createNavCommands } from "./nav.js";
+import { createNumberedListCommands } from "./numbered-list.js";
 import { createRefactorCommands, type RefactorHost } from "./refactor.js";
 import { createShelfCommands, type ShelfHost } from "./shelf.js";
 import { createStructuralCommands } from "./structural.js";
@@ -42,6 +43,7 @@ export function createCoreCommands(deps: CoreCommandDeps): Command[] {
     }),
     ...createFormatCommands({ editor: deps.editor }),
     ...createInsertCommands({ editor: deps.editor, now: deps.now }),
+    ...createNumberedListCommands({ editor: deps.editor }),
     ...createTemplateCommands({ editor: deps.editor }),
     ...createAppCommands({ app: deps.app }),
     ...(deps.refactor ? createRefactorCommands({ refactor: deps.refactor }) : []),

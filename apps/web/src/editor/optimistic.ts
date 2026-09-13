@@ -12,6 +12,7 @@
  * content/marker/etc. it had, since those never changed by being deleted. `BlockTree.tsx` feeds
  * every block this function is about to drop into the cache first.
  */
+import { RESERVED_BLOCK_PROPS } from "@nooklet/core";
 import type { EditableBlock } from "./types.js";
 
 export interface OptimisticOp {
@@ -24,11 +25,37 @@ export interface OptimisticOp {
         marker?: EditableBlock["marker"];
         priority?: EditableBlock["priority"];
         collapsed?: boolean;
+        properties?: Readonly<Record<string, string>>;
       }
     | { kind: "block.place"; place: { parentId: string | null; order: string } }
     | { kind: "block.text"; content: string }
     | { kind: "block.prop"; key: string; value: string | null }
     | { kind: "block.delete"; deletedAt: number | null };
+}
+
+/** The generic bag after one `block.prop` (`null` removes the key, like a `block_prop` tombstone).
+ * Modelled here since B-101: a property typed into the buffer is a `block.prop` op, and an undo of
+ * it that only changed the database left the editor showing the old line. */
+function withGenericProp(
+  props: EditableBlock["properties"],
+  key: string,
+  value: string | null,
+): EditableBlock["properties"] {
+  if (value === null) {
+    if (!Object.hasOwn(props, key)) return props;
+    const { [key]: _removed, ...rest } = props;
+    return rest;
+  }
+  return props[key] === value ? props : { ...props, [key]: value };
+}
+
+/** A `block.create`'s generic properties — reserved keys travel in the same bag on the wire but
+ * are columns (`RESERVED_BLOCK_PROPS`), not properties. */
+function genericProps(
+  props: Readonly<Record<string, string>> | undefined,
+): EditableBlock["properties"] {
+  if (!props) return {};
+  return Object.fromEntries(Object.entries(props).filter(([k]) => !RESERVED_BLOCK_PROPS.has(k)));
 }
 
 function withProp(b: EditableBlock, key: string, value: string | null): EditableBlock {
@@ -48,7 +75,7 @@ function withProp(b: EditableBlock, key: string, value: string | null): Editable
     case "done":
       return { ...b, doneAt: value ? Date.parse(value) : null };
     default:
-      return b; // generic block_prop keys are not modeled client-side in this milestone
+      return { ...b, properties: withGenericProp(b.properties, key, value) };
   }
 }
 
@@ -74,7 +101,7 @@ export function applyOptimistic(
           deadline: null,
           repeat: null,
           doneAt: null,
-          listNumber: false,
+          properties: genericProps(p.properties),
         });
         break;
       case "block.place": {

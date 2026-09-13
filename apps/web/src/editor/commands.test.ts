@@ -77,6 +77,22 @@ describe("splitBlock (R16)", () => {
     expect(ops).toHaveLength(1);
     expect(ops[0]?.payload).toMatchObject({ kind: "block.create", content: "" });
   });
+
+  it("Enter in a numbered item makes the next sibling numbered too (B-100), not a first child", () => {
+    const [a, b] = o(2);
+    const [a1] = o(1);
+    const numbered = { list: "number", note: "not copied" };
+    const t = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "one", properties: numbered }),
+      makeBlock({ id: "B", order: b as string, content: "parent", properties: numbered }),
+      makeBlock({ id: "B1", parentId: "B", order: a1 as string, content: "child" }),
+    );
+    const sibling = splitBlock(t, "A", 3, makeFakeClock(), 1000).ops[0]?.payload;
+    expect(sibling).toMatchObject({ kind: "block.create", properties: { list: "number" } });
+    expect(sibling?.kind === "block.create" && sibling.properties).toEqual({ list: "number" });
+    const child = splitBlock(t, "B", 6, makeFakeClock(), 1000).ops[0]?.payload;
+    expect(child?.kind === "block.create" && child.properties).toBeUndefined();
+  });
 });
 
 describe("indentBlock (R18)", () => {
@@ -341,6 +357,15 @@ describe("duplicateBlock (R32)", () => {
     expect(rootCreate?.payload).toMatchObject({ content: "todo item", marker: "TODO" });
     expect(focus.id).toBe(rootCreate?.entity);
     expect(focus.caret).toEqual({ offset: "todo item".length });
+  });
+
+  it("copies generic properties with the block", () => {
+    const [a] = o(1);
+    const t = buildTree(
+      makeBlock({ id: "A", order: a as string, content: "x", properties: { list: "number" } }),
+    );
+    const create = duplicateBlock(t, "A", makeFakeClock(), 9000).ops[0]?.payload;
+    expect(create).toMatchObject({ kind: "block.create", properties: { list: "number" } });
   });
 
   it("copies scheduled/repeat/done as block.prop ops (task state is not cleared)", () => {

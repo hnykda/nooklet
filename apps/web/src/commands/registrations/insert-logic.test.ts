@@ -7,6 +7,7 @@ import {
   insertQueryFence,
   insertTable,
   insertToday,
+  onContent,
   setHeading,
 } from "./insert-logic.js";
 
@@ -69,6 +70,12 @@ describe("insertToday (R49)", () => {
 });
 
 describe("insertProperty (R49)", () => {
+  const apply = (content: string, key?: string) => {
+    const r = insertProperty(content, key);
+    const text = content.slice(0, r.from) + r.text + content.slice(r.to);
+    return { text, caret: r.from + (r.caretOffset as number) };
+  };
+
   it("appends key:: on a new line when the block already has content", () => {
     const result = insertProperty("Some text", "status");
     expect(result.text).toBe("\nstatus:: ");
@@ -83,6 +90,21 @@ describe("insertProperty (R49)", () => {
   it("does not double a trailing newline", () => {
     const result = insertProperty("line1\n", "status");
     expect(result.text).toBe("status:: ");
+    expect(result.from).toBe(6);
+  });
+
+  it("goes under line 1 and the properties already there, not below the paragraph (B-101)", () => {
+    expect(apply("title\na:: 1\nbody text", "b").text).toBe("title\na:: 1\nb:: \nbody text");
+  });
+
+  it("goes after a fence a block opens with, never inside it", () => {
+    expect(apply("```js\ncode\n```", "lang").text).toBe("```js\ncode\n```\nlang:: ");
+  });
+
+  it("with no key, leaves `:: ` and the caret where the key is typed", () => {
+    const { text, caret } = apply("start here");
+    expect(text).toBe("start here\n:: ");
+    expect(text.slice(caret)).toBe(":: ");
   });
 });
 
@@ -100,5 +122,55 @@ describe("insertQueryFence (M7, ADR 011)", () => {
     const r = insertQueryFence("TODO #work ");
     expect(r.text).toBe("```query\nTODO #work\n```");
     expect(r).toMatchObject({ from: 0, to: 11, caretOffset: "```query\nTODO #work".length });
+  });
+});
+
+describe("onContent (B-153): whole-block commands leave property lines alone", () => {
+  const apply = (text: string, spec: ReturnType<typeof onContent>) => {
+    const out = text.slice(0, spec.from) + spec.text + text.slice(spec.to);
+    return { text: out, caret: spec.from + (spec.caretOffset as number) };
+  };
+
+  it("/code wraps the text, and the numbering stays a property after the fence", () => {
+    const text = "npm install\nlist:: number";
+    const { text: out, caret } = apply(text, onContent(text, insertCodeFence));
+    expect(out).toBe("```\nnpm install\n```\nlist:: number");
+    expect(out.slice(0, caret)).toBe("```\nnpm install\n```");
+  });
+
+  it("/code in an empty numbered item puts the caret on the fence's middle line", () => {
+    const text = "\nlist:: number";
+    const { text: out, caret } = apply(text, onContent(text, insertCodeFence));
+    expect(out).toBe("```\n\n```\nlist:: number");
+    expect(caret).toBe(4);
+  });
+
+  it("/query takes only the text as the query", () => {
+    const text = "TODO #work\nowner:: Dan";
+    const { text: out, caret } = apply(text, onContent(text, insertQueryFence));
+    expect(out).toBe("```query\nTODO #work\n```\nowner:: Dan");
+    expect(out.slice(0, caret)).toBe("```query\nTODO #work");
+  });
+
+  it("/h1 leaves the caret at the end of the title, not of the last property line", () => {
+    const text = "Title\nlist:: number\nbody";
+    const { text: out, caret } = apply(
+      text,
+      onContent(text, (c) => setHeading(c, 1)),
+    );
+    expect(out).toBe("# Title\nlist:: number\nbody");
+    expect(out.slice(caret)).toBe("");
+    // Content-wise the caret is at the end of the content, which is the end of `body`.
+    const single = "Title\nlist:: number";
+    const r = apply(
+      single,
+      onContent(single, (c) => setHeading(c, 1)),
+    );
+    expect(r.text).toBe("# Title\nlist:: number");
+    expect(r.text.slice(0, r.caret)).toBe("# Title");
+  });
+
+  it("is the command itself for a block without properties", () => {
+    expect(onContent("plain", insertCodeFence)).toEqual(insertCodeFence("plain"));
   });
 });

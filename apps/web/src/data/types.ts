@@ -1,6 +1,11 @@
-import type { BlockRow, PageRow } from "@nooklet/core";
+import type { BlockRow, PageRow, Properties } from "@nooklet/core";
 
 export interface BlockTreeNode extends BlockRow {
+  /** The block's generic `block_prop` rows with a value (`list:: number`, `author:: …`) — never the
+   * reserved keys, which are `BlockRow` columns. Core's `BlockRow` does not carry these (the server
+   * shares that type and reads properties its own way), so the client tree adds them: without
+   * them numbered lists could not render and property chips had nothing to show (B-100, B-101). */
+  properties: Readonly<Properties>;
   children: BlockTreeNode[];
 }
 

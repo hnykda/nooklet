@@ -194,6 +194,23 @@ conventions glossary — not added there because this task may only touch this f
   `repeat:: <n><unit>` or `repeat:: <n><unit> from done`, `unit ∈ {d, w, m, y}` (ADR 011). This
   grammar does not validate these shapes beyond parsing them as ordinary property strings; a
   malformed value is preserved verbatim (never dropped, never rejected).
+- **OUT-22a. Editing text** (added 2026-09-13, B-101; `packages/core/src/block-text.ts`). While a
+  block is edited, the editor's buffer is the block's *editing text*: `content` with the block's
+  properties written as `key:: value` lines — line 1, then the property lines in key order, then
+  the rest of the content (a content that opens with a fence takes them after the closed fence, or
+  before line 1 if the fence never closes; an empty content keeps an empty line 1). When the edit
+  is written, the text is split back with this grammar's own line rules: every line outside a
+  fence that matches OUT-18, key normalized per OUT-19, is a property wherever it sits (the
+  parser's behaviour, not only the contiguous run after line 1), and the write is one `block.text`
+  when the content moved plus one `block.prop` per property added, changed or removed — diffed
+  against the block as it was when the edit began. Unlike `parseOutline`, nothing is trimmed (a
+  trailing space is the next keystroke). **Not** split out, so they stay ordinary content text in
+  the buffer exactly as before: the reserved keys (`id collapsed marker priority scheduled deadline
+  repeat done`) and `heading` — the scheduling keys are validated columns, and half-typed dates
+  would be rejected on every typing pause; they get their own UI. Also never written into the
+  buffer: a property whose `key:: value` line would not read back as exactly that key and value —
+  a value with a line break or surrounding whitespace, which `block.update` accepts (B-152). Such a
+  property is not in the text, so the edit neither rewrites nor deletes it.
 
 ### 2.5 Logseq import tolerance: SCHEDULED/DEADLINE/LOGBOOK, `heading::`, headings without a bullet
 

@@ -28,10 +28,9 @@ export interface OpRecipe {
 
 /** The `block.prop` value `key` held on `block` (used as the inverse's `value`). Every reserved
  * key this editor writes (`collapsed`/`marker`/`priority`/`scheduled`/`deadline`/`repeat`/`done`)
- * has a dedicated `EditableBlock` field; an unrecognized key (a future generic `block_prop`
- * write this editor doesn't model yet) has no recoverable "before" value, so it inverts to
- * `null` — better than throwing, since undo should never crash the editor, but callers should not
- * introduce new `block.prop` keys here without adding the matching case below. */
+ * has a dedicated `EditableBlock` field; every other key is a generic property, read from
+ * `block.properties` (B-101: property lines typed into the buffer are `block.prop` ops, and
+ * inverting them to `null` made undo delete a property it should have restored). */
 function propValueBefore(block: EditableBlock | undefined, key: string): string | null {
   if (!block) return null;
   switch (key) {
@@ -50,7 +49,7 @@ function propValueBefore(block: EditableBlock | undefined, key: string): string 
     case "done":
       return block.doneAt !== null ? formatDoneIso(block.doneAt) : null;
     default:
-      return null;
+      return block.properties[key] ?? null;
   }
 }
 

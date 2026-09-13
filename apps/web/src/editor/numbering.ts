@@ -5,24 +5,28 @@
  * stored), recomputed at render time from sibling order, so it is a plain, DOM-free function over
  * a list of siblings in order.
  *
- * NOTE (data-seam gap, not a bug here): `list:: number` lives in the generic `block_prop` bag,
- * which `@nooklet/core`'s `BlockRow`/`getPageTree` do not yet project to the client (only the
- * reserved columns — marker/priority/collapsed/scheduled/deadline/repeat/done — are exposed,
- * per markdown-grammar's Open issue 6: "list is NOT reserved"). `EditableBlock.listNumber`
- * (`types.ts`) is threaded through end to end and this function is fully correct against it, but
- * until the data seam exposes generic block properties, `BlockTree.tsx` has no source to populate
- * it from and every block renders as `listNumber: false`.
+ * `list:: number` lives in the generic `block_prop` bag ("list is NOT reserved"). For a long time
+ * nothing projected that bag to the client, so `BlockTree.tsx` hard-coded "not numbered" and 700
+ * numbered lines in the owner's graph rendered as plain bullets (B-100). The worker's page tree
+ * now carries `properties`, and `isNumbered` below reads it.
  */
+import type { EditableBlock } from "./types.js";
 
-/** Ordinals for one sibling group, in order. `siblingIds[i]` is numbered iff `isNumbered(i)`. */
+/** OUT-17: only the value `number` means anything in v1; other `list` values are kept verbatim
+ * for future list styles but render as ordinary bullets. */
+export function isNumbered(block: Pick<EditableBlock, "properties"> | undefined): boolean {
+  return block?.properties.list === "number";
+}
+
+/** Ordinals for one sibling group, in order. `siblingIds[i]` is numbered iff `numbered(id)`. */
 export function deriveNumbering(
   siblingIds: readonly string[],
-  isNumbered: (id: string) => boolean,
+  numbered: (id: string) => boolean,
 ): ReadonlyMap<string, number> {
   const out = new Map<string, number>();
   let run = 0;
   for (const id of siblingIds) {
-    if (isNumbered(id)) {
+    if (numbered(id)) {
       run += 1;
       out.set(id, run);
     } else {

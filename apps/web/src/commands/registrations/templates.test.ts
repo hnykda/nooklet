@@ -116,6 +116,14 @@ describe("block.insertTemplate", () => {
     expect(into.data.applyOps).toHaveBeenCalledWith(into.intoOps);
   });
 
+  it("an empty block with properties still takes the template into itself (B-154)", async () => {
+    // The editor host's content is the editing text: an empty numbered item reads `\nlist:: number`.
+    const { data, run } = setup({ content: "\nlist:: number" });
+    await run();
+    expect(data.templateIntoBlockOps).toHaveBeenCalledWith("tpl-daily", "b1");
+    expect(data.templateAfterOps).not.toHaveBeenCalled();
+  });
+
   it("a whitespace-only bullet counts as empty", async () => {
     const { data, run } = setup({ content: "   " });
     await run();

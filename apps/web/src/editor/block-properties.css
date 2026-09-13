@@ -1,0 +1,39 @@
+/* Property chips under a block's rendered content (`BlockProperties.tsx`, B-101). Quiet on purpose:
+   metadata you glance at, set in the muted ink and one step down in size, so a page of highlights
+   with `author`/`site` on every block still reads as a page of highlights. */
+
+.vr-block-props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs) var(--space-md);
+  margin-top: var(--space-2xs);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--muted);
+  cursor: text;
+}
+
+.vr-prop {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.vr-prop-key {
+  flex: none;
+  font-weight: var(--weight-medium);
+}
+
+.vr-prop-key::after {
+  content: ":";
+}
+
+.vr-prop-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-soft);
+}

@@ -11,6 +11,7 @@ import {
   insertQueryFence,
   insertTable,
   insertToday,
+  onContent,
   setHeading,
 } from "./insert-logic.js";
 
@@ -23,7 +24,7 @@ function headingCommand(id: string, title: string, level: 1 | 2 | 3) {
     when: "editorFocused",
     run() {
       const sel = editor.getSelection();
-      if (sel) editor.replaceRange(setHeading(sel.content, level));
+      if (sel) editor.replaceRange(onContent(sel.content, (c) => setHeading(c, level)));
     },
   });
 }
@@ -44,7 +45,7 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       when: "editorFocused",
       run() {
         const sel = editor.getSelection();
-        if (sel) editor.replaceRange(insertCodeFence(sel.content));
+        if (sel) editor.replaceRange(onContent(sel.content, insertCodeFence));
       },
     },
     {
@@ -55,7 +56,7 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       when: "editorFocused",
       run() {
         const sel = editor.getSelection();
-        if (sel) editor.replaceRange(insertQueryFence(sel.content));
+        if (sel) editor.replaceRange(onContent(sel.content, insertQueryFence));
       },
     },
     {
@@ -128,11 +129,12 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       when: "editorFocused",
       // A real implementation opens a fuzzy key picker ("existing property-definition pages, plus
       // 'Create <key>'") before inserting; `ctx.args` lets a caller that already resolved a key
-      // (e.g. the picker UI) skip straight to insertion. Defaults to an empty key placeholder.
+      // (e.g. the picker UI) skip straight to insertion. Without one the line is `:: ` with the
+      // caret where the key goes (`insertProperty` explains why not a `key` placeholder).
       run(ctx) {
         const sel = editor.getSelection();
         if (!sel) return;
-        const key = typeof ctx.args === "string" && ctx.args ? ctx.args : "key";
+        const key = typeof ctx.args === "string" ? ctx.args : "";
         editor.replaceRange(insertProperty(sel.content, key));
       },
     },

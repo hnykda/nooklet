@@ -23,13 +23,19 @@
  * change" later. See the package summary for the actual 1.7 MB-page measurement.
  *
  * Known data-seam gaps (not bugs in this file): no page-existence index (`.vr-ref-new` never
- * renders), `{{embed}}` renders a placeholder rather than a live tree, and `list:: number` is not
- * yet projected by `BlockRow` (numbering is wired end-to-end but always empty) — all three are
- * called out where they bite in `render/tokens.tsx`/`numbering.ts`. `((block refs))` do render
- * their target's text: `BlockRowView` passes `resolveBlockRef` from `data/block-ref-cache.ts`.
+ * renders), and `{{embed}}` renders a placeholder rather than a live tree — called out where it
+ * bites in `render/tokens.tsx`. `((block refs))` do render their target's text: `BlockRowView`
+ * passes `resolveBlockRef` from `data/block-ref-cache.ts`.
  */
 import type { EditorView } from "@codemirror/view";
-import { formatDayTime, makeOp, type Op, type OutlineNode, serializeOutline } from "@nooklet/core";
+import {
+  blockTextPayloads,
+  formatDayTime,
+  makeOp,
+  type Op,
+  type OutlineNode,
+  serializeOutline,
+} from "@nooklet/core";
 import "./editor.css";
 import {
   createEffect,
@@ -70,12 +76,20 @@ import {
   setCollapsed,
   splitBlock,
 } from "./commands.js";
+import {
+  caretInEditText,
+  contentOffsetOf,
+  editTextMatches,
+  editTextOf,
+  withEditText,
+} from "./editText.js";
 import { prepareExternalBatch } from "./external-batch.js";
 import { blockFocusRequest, clearBlockFocusRequest } from "./focus-request.js";
 import { EditHistory } from "./history.js";
+import { insertAt, pickImageFile } from "./imagePicker.js";
 import { type DispatchCtx, type KeyDescriptor, resolveCommand } from "./keydown.js";
 import { linkAtCaret } from "./linkAtCaret.js";
-import { deriveNumbering } from "./numbering.js";
+import { deriveNumbering, isNumbered } from "./numbering.js";
 import { applyOptimistic, type OptimisticOp } from "./optimistic.js";
 import { registerOutline } from "./outline-registry.js";
 import { pasteMarkdownAsTree, uploadImageAsset } from "./paste.js";
@@ -109,8 +123,8 @@ function toEditableBlock(row: BlockTreeNode): EditableBlock {
     deadline,
     repeat: row.repeat,
     doneAt: row.doneAt,
-    // Not yet exposed by the data seam (`numbering.ts`'s doc comment) — always false for now.
-    listNumber: false,
+    // Generic properties, projected by the worker (B-100): `list:: number`, property chips.
+    properties: row.properties,
   };
 }
 
@@ -179,7 +193,9 @@ export function BlockTree(props: {
         // disagrees", and doing that here reverted a split mid-keystroke (found fixing B-66).
         // Local operations that change this block's text — undo, redo, a merge — update the
         // editor themselves at commit time (`commit`), where there is nothing to guess.
-        flat[idx] = { ...(flat[idx] as EditableBlock), content: live };
+        // The buffer holds property lines too (B-101), so it is split back into content and
+        // properties rather than copied into `content`.
+        flat[idx] = withEditText(flat[idx] as EditableBlock, live);
       } else if (unseenCreations.has(editingBlockId)) {
         // The block being edited is not in this query result yet — it was just created
         // optimistically (Enter for a new sibling) and the write has not committed by the time
@@ -188,7 +204,7 @@ export function BlockTree(props: {
         // Enter followed by "second bullet" landing as "cond bullet". Keep the local row and let
         // the next refetch, which will contain it, take over.
         const local = untrack(localBlocks).find((b) => b.id === editingBlockId);
-        if (local) flat.push({ ...local, content: live });
+        if (local) flat.push(withEditText(local, live));
       } else {
         // The block being edited was in the database and no longer is on this page: deleted or
         // moved away by another device, an agent, or a server-side refactor. Keeping its row (what
@@ -271,7 +287,7 @@ export function BlockTree(props: {
     const t = editorTree();
     const out = new Map<BlockId, number>();
     for (const ids of t.childrenOf.values()) {
-      const derived = deriveNumbering(ids, (id) => t.byId.get(id)?.listNumber ?? false);
+      const derived = deriveNumbering(ids, (id) => isNumbered(t.byId.get(id)));
       for (const [id, n] of derived) out.set(id, n);
     }
     return out;
@@ -364,8 +380,12 @@ export function BlockTree(props: {
   function syncSurfaceFromTree(): void {
     const cur = editingId();
     if (cur === null || surface.currentId() !== cur || pendingEdit !== null) return;
-    const next = untrack(editorTree).byId.get(cur)?.content;
-    if (next !== undefined && next !== surface.content()) surface.replaceContent(cur, next);
+    const block = untrack(editorTree).byId.get(cur);
+    // Compared as content + properties, not as text: the buffer may list property lines in another
+    // order, or anywhere below line 1, and rewriting it for that would jump the caret mid-edit.
+    if (block && !editTextMatches(block, surface.content())) {
+      surface.replaceContent(cur, editTextOf(block));
+    }
   }
 
   function flushPendingEdit(): void {
@@ -382,20 +402,30 @@ export function BlockTree(props: {
     // typed was silently thrown away. Absent from the snapshot is not "unchanged": fall back to
     // the live tree, and only skip when the content genuinely has not moved.
     const before = treeBefore.byId.get(id) ?? editorTree().byId.get(id);
-    if (before && before.content === content) return;
+    // `content` here is the whole buffer: the block's text plus its `key:: value` lines. What gets
+    // written is the difference from `before` — a `block.text` if the text moved, one `block.prop`
+    // per property line added, changed or removed (B-101). Writing the buffer verbatim is what made
+    // `/property` (and any typed property line) land in the text, where nothing reads it as one.
+    const payloads = blockTextPayloads(before ?? { content: "", properties: {} }, content);
+    if (before && payloads.length === 0) return;
     const clock = clockSig();
     if (!clock) return;
+    const ops =
+      payloads.length > 0
+        ? payloads.map((p) => makeOp(clock.next(), clock.device, id, p))
+        : [makeOp(clock.next(), clock.device, id, { kind: "block.text", content })];
+    // Carets in history are content offsets, like every other `CaretSpec` in this file; they are
+    // mapped back into the buffer when the surface re-attaches (`caretInEditText`).
     const headAfter = surface.currentId() === id ? surface.head() : content.length;
-    const op = makeOp(clock.next(), clock.device, id, { kind: "block.text", content });
     history.record(
-      [op],
+      ops,
       treeBefore,
       "text",
       { id, caret: { offset: headBefore } },
-      { id, caret: { offset: headAfter } },
+      { id, caret: { offset: contentOffsetOf(content, headAfter) } },
       id,
     );
-    void applyOps([op]);
+    void applyOps(ops);
   }
 
   function attachEditing(id: BlockId, caret: CaretSpec): void {
@@ -406,9 +436,21 @@ export function BlockTree(props: {
     setEditingId(id);
   }
 
+  /** A content-relative caret for block `id`, as an offset into its buffer. */
+  function bufferCaret(id: BlockId, caret: CaretSpec): CaretSpec {
+    const block = editorTree().byId.get(id);
+    return block ? caretInEditText(block, caret) : caret;
+  }
+
   function surfaceHostRef(el: HTMLDivElement, forId: BlockId): void {
     const block = editorTree().byId.get(forId);
-    surface.attach(el, forId, block?.content ?? "", pendingCaret);
+    // The buffer is the block's editing text — content plus its property lines — and the caret,
+    // computed against content by whoever asked for this block, is moved to match (B-101).
+    if (!block) {
+      surface.attach(el, forId, "", pendingCaret);
+      return;
+    }
+    surface.attach(el, forId, editTextOf(block), caretInEditText(block, pendingCaret));
   }
 
   // Shared by the keyboard dispatch below AND the mobile gestures (swipe-to-indent/outdent,
@@ -472,7 +514,7 @@ export function BlockTree(props: {
     const treeBefore = editorTree();
     const curId = editingId();
     const before: FocusChange | null = curId
-      ? { id: curId, caret: { offset: surface.head() } }
+      ? { id: curId, caret: { offset: contentOffsetOf(surface.content(), surface.head()) } }
       : null;
     commit(res.ops, treeBefore, "structure", before, res.focus ?? before);
     if (!res.focus) return;
@@ -537,7 +579,7 @@ export function BlockTree(props: {
     } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
-      surface.setCaret(res.focus.caret);
+      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
       refocusAfterReorder(res.focus.id);
     } else {
       attachEditing(res.focus.id, res.focus.caret);
@@ -562,7 +604,7 @@ export function BlockTree(props: {
     } else if (res.focus.id === editingId() && surface.currentId() === res.focus.id) {
       // Already editing that block: `attachEditing` would be a no-op (same id, no re-render), so
       // the buffer was synced above and only the caret is left to place.
-      surface.setCaret(res.focus.caret);
+      surface.setCaret(bufferCaret(res.focus.id, res.focus.caret));
       refocusAfterReorder(res.focus.id);
     } else {
       attachEditing(res.focus.id, res.focus.caret);
@@ -600,7 +642,15 @@ export function BlockTree(props: {
     const tree = editorTree();
     switch (cmd) {
       case "block.split":
-        runStructural(splitBlock(tree, id, view.state.selection.main.head, clock));
+        // The caret is in the buffer, which may hold property lines; the split divides content.
+        runStructural(
+          splitBlock(
+            tree,
+            id,
+            contentOffsetOf(view.state.doc.toString(), view.state.selection.main.head),
+            clock,
+          ),
+        );
         return true;
       case "block.newline":
         // R17: a newline inside the block. Not "return false and let CM6 insert it": the global
@@ -733,28 +783,58 @@ export function BlockTree(props: {
 
   function onTextChange(id: BlockId, content: string): void {
     if (!pendingEdit || pendingEdit.id !== id) {
-      pendingEdit = { id, content, treeBefore: editorTree(), headBefore: surface.head() };
+      pendingEdit = {
+        id,
+        content,
+        treeBefore: editorTree(),
+        headBefore: contentOffsetOf(content, surface.head()),
+      };
     } else {
       pendingEdit.content = content;
     }
-    setLocalBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, content } : b)));
+    // `content` is the buffer: split it, so the tree keeps content and properties apart (B-101).
+    setLocalBlocks((prev) => prev.map((b) => (b.id === id ? withEditText(b, content) : b)));
     if (flushTimer !== undefined) clearTimeout(flushTimer);
     flushTimer = setTimeout(flushPendingEdit, 500);
   }
 
-  async function handleImagePaste(view: EditorView, file: File): Promise<void> {
+  /**
+   * Upload an image (paste, `/image`) and put its markdown into block `id`. The upload takes a
+   * network round trip, and the editor may have moved on by the time it lands: it used to dispatch
+   * into whatever block the single surface was attached to THEN, so clicking another block while a
+   * paste uploaded put the picture there. Still on `id`: insert at the live caret. Moved on: write
+   * it into `id`'s content at the caret it had when the insert was asked for.
+   */
+  async function insertUploadedImage(id: BlockId, file: File): Promise<void> {
+    const askedAt =
+      surface.currentId() === id ? contentOffsetOf(surface.content(), surface.head()) : 0;
     try {
       const asset = await uploadImageAsset(file);
-      const head = view.state.selection.main.head;
-      view.dispatch({ changes: { from: head, to: head, insert: asset.markdown } });
+      const view = surface.view();
+      if (view && surface.currentId() === id) {
+        const head = view.state.selection.main.head;
+        view.dispatch({ changes: { from: head, to: head, insert: asset.markdown } });
+        return;
+      }
+      const clock = clockSig();
+      const block = editorTree().byId.get(id);
+      if (!clock || !block) return;
+      const content = insertAt(block.content, askedAt, asset.markdown);
+      commitOne(makeOp(clock.next(), clock.device, id, { kind: "block.text", content }));
     } catch (err) {
-      // R33: "the paste is not applied" — satisfied by not dispatching above. A user-visible
+      // R33: "the paste is not applied" — satisfied by not inserting above. A user-visible
       // error notification is app-chrome this package does not own; logged for now.
-      console.error("nooklet: image paste upload failed", err);
+      console.error("nooklet: image upload failed", err);
     }
   }
 
-  function onPaste(id: BlockId, event: ClipboardEvent, view: EditorView): boolean {
+  /** `/image` (B-99): the platform's own file chooser, then the same upload-and-insert as paste. */
+  async function insertImageFromPicker(id: BlockId): Promise<void> {
+    const file = await pickImageFile();
+    if (file) await insertUploadedImage(id, file);
+  }
+
+  function onPaste(id: BlockId, event: ClipboardEvent, _view: EditorView): boolean {
     const clipboard = event.clipboardData;
     if (!clipboard) return false;
     const imageItem = [...clipboard.items].find((it) => it.type.startsWith("image/"));
@@ -762,7 +842,7 @@ export function BlockTree(props: {
       const file = imageItem.getAsFile();
       if (file) {
         event.preventDefault();
-        void handleImagePaste(view, file);
+        void insertUploadedImage(id, file);
         return true;
       }
     }
@@ -819,6 +899,11 @@ export function BlockTree(props: {
       surface.setCaret(typeof caret === "number" ? { offset: caret } : { offset: caret.head });
     },
     runStructural: (id, commandId, _ctx) => {
+      // `/image` (B-99) was delegated here and fell through `runCommand`'s default: no chooser.
+      if (commandId === "block.insertImage") {
+        if (id) void insertImageFromPicker(id as BlockId);
+        return;
+      }
       const view = surface.view();
       const cmd = commandId as ReturnType<typeof resolveCommand>;
       if (view && id) {
@@ -931,7 +1016,8 @@ export function BlockTree(props: {
             content: b.content,
             marker: b.marker,
             priority: b.priority,
-            properties: {},
+            // Copied blocks keep their properties — a numbered list pasted elsewhere stays one.
+            properties: { ...b.properties },
             collapsed: b.collapsed,
             children: childrenIds(tree, id).map(toNode),
           };
