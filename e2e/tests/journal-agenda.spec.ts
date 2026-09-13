@@ -1,8 +1,9 @@
 /**
  * A journal day's "Scheduled and deadline" section (PLAN.md §8), against the real server and the
- * production build: today lists open tasks scheduled or due today plus overdue ones; any other
- * day lists what is scheduled or due that day; grouped by page; a click goes to the task or the
- * page; nothing at all when a day has nothing; follows the graph without a reload.
+ * production build: today lists open tasks scheduled or due today plus overdue ones, the overdue
+ * past ten behind "Show all N overdue"; any other day lists what is scheduled or due that day;
+ * dated blocks that are not tasks on their exact day only; grouped by page; a click goes to the task
+ * or the page; nothing at all when a day has nothing; follows the graph without a reload.
  *
  * Every task text carries a per-spec tag (`agx`) because the suite shares one server: other specs
  * create tasks of their own, and today's section may legitimately list some of them. Assertions
@@ -43,6 +44,25 @@ function todayAgenda(page: Page): Locator {
   return page.locator(".journal-day-today .journal-agenda");
 }
 
+/** Other specs on this server may leave overdue tasks of their own; open the full list so an
+ * assertion about this spec's rows does not depend on how many there are. */
+async function showAllOverdue(agenda: Locator): Promise<void> {
+  const toggle = agenda.locator(".journal-agenda-more");
+  if ((await toggle.count()) > 0 && (await toggle.getAttribute("aria-expanded")) === "false") {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  }
+}
+
+/** Rows listed only for being overdue: every date on them is an overdue one. */
+function overdueOnlyRows(agenda: Locator): Locator {
+  const page = agenda.page();
+  return agenda.locator(".journal-agenda-item", {
+    has: page.locator(".journal-agenda-date-overdue"),
+    hasNot: page.locator(".journal-agenda-date:not(.journal-agenda-date-overdue)"),
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await seed(page);
 });
@@ -54,6 +74,7 @@ test("today lists what is scheduled or due today plus overdue, grouped by page",
   const agenda = todayAgenda(page);
   await expect(agenda).toBeVisible();
   await expect(agenda.locator(".journal-agenda-title")).toHaveText("Scheduled and deadline");
+  await showAllOverdue(agenda);
 
   const project = agenda.locator(".journal-agenda-group", {
     has: page.locator(".journal-agenda-page", { hasText: PROJECT }),
@@ -168,4 +189,99 @@ test("finishing a task elsewhere takes it off today's list without a reload", as
 
   await api(page, "block.update", { id: block?.id, properties: { marker: "DONE" } });
   await expect(row).toHaveCount(0);
+});
+
+test("a dated block that is not a task is listed on its own day, with a bullet, never as overdue", async ({
+  page,
+}) => {
+  const longAgo = isoOffset(-47);
+  await seedPage(
+    page,
+    "Agenda Notes",
+    [
+      `- agx note for today\n  scheduled:: ${isoOffset(0)}`,
+      `- agx note long ago\n  deadline:: ${longAgo}`,
+    ].join("\n"),
+  );
+
+  await page.goto("/journals");
+  const agenda = todayAgenda(page);
+  await showAllOverdue(agenda);
+  const note = agenda.locator(".journal-agenda-item", { hasText: "agx note for today" });
+  await expect(note).toHaveCount(1);
+  await expect(note.locator(".journal-agenda-bullet")).toBeVisible();
+  await expect(note.locator(".vr-marker")).toHaveCount(0);
+  await expect(note.locator(".journal-agenda-date")).toHaveText("Scheduled");
+  // Its deadline passed 47 days ago, but a note has nothing to finish: not overdue under today.
+  await expect(agenda).not.toContainText("agx note long ago");
+
+  // On its own day it is listed, and not called overdue there.
+  await page.goto(pagePath(longAgo));
+  const onItsDay = page.locator(".journal-agenda");
+  await expect(onItsDay.locator(".journal-agenda-item")).toHaveText([/agx note long ago/]);
+  await expect(onItsDay.locator(".journal-agenda-date-overdue")).toHaveCount(0);
+  await expect(onItsDay.locator(".journal-agenda-bullet")).toHaveCount(1);
+});
+
+test("today holds overdue tasks past ten behind 'Show all N overdue', and the count follows the graph", async ({
+  page,
+}) => {
+  // Twelve tasks overdue by more than three months: older than anything another spec leaves, so
+  // they lead the list. Closed again at the end — later specs count open tasks.
+  const BACKLOG = "Agenda Backlog";
+  await seedPage(
+    page,
+    BACKLOG,
+    Array.from(
+      { length: 12 },
+      (_, i) =>
+        `- TODO agx backlog ${String(i + 1).padStart(2, "0")}\n  deadline:: ${isoOffset(-111 + i)}`,
+    ).join("\n"),
+  );
+  const backlog = await readBlocks(page, BACKLOG);
+  try {
+    await page.goto("/journals");
+    const agenda = todayAgenda(page);
+    const toggle = agenda.locator(".journal-agenda-more");
+    await expect(toggle).toHaveText(/^Show all \d+ overdue$/);
+    const total = Number((await toggle.textContent())?.match(/\d+/)?.[0]);
+    expect(total).toBeGreaterThanOrEqual(12);
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    // Ten overdue rows, and they are the oldest: backlog 01..10, in order.
+    await expect(overdueOnlyRows(agenda)).toHaveCount(10);
+    const group = agenda.locator(".journal-agenda-group", {
+      has: page.locator(".journal-agenda-page", { hasText: BACKLOG }),
+    });
+    const tenFirst = Array.from(
+      { length: 10 },
+      (_, i) => new RegExp(`agx backlog ${String(i + 1).padStart(2, "0")}`),
+    );
+    await expect(group.locator(".journal-agenda-item")).toHaveText(tenFirst);
+    // Something due today is never held back (the seed in beforeEach).
+    await expect(agenda).toContainText("agx due today");
+
+    await toggle.click();
+    await expect(toggle).toHaveText("Show fewer overdue");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(overdueOnlyRows(agenda)).toHaveCount(total);
+    await expect(group.locator(".journal-agenda-item")).toHaveText([
+      ...tenFirst,
+      /agx backlog 11/,
+      /agx backlog 12/,
+    ]);
+
+    // Finishing one elsewhere: one fewer, without a reload, and the list stays open.
+    await api(page, "block.update", { id: backlog[0]?.id, properties: { marker: "DONE" } });
+    await expect(overdueOnlyRows(agenda)).toHaveCount(total - 1);
+    await expect(group.locator(".journal-agenda-item")).toHaveCount(11);
+
+    await toggle.click();
+    await expect(toggle).toHaveText(`Show all ${total - 1} overdue`);
+    await expect(overdueOnlyRows(agenda)).toHaveCount(10);
+  } finally {
+    for (const b of backlog) {
+      await api(page, "block.update", { id: b.id, properties: { marker: "DONE" } });
+    }
+  }
 });
