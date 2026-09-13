@@ -142,3 +142,20 @@ checked the call's `{ kind, id }` against a mock, so it passed.
 before falling back to its own `props.pageId`. The e2e test failed before (card text above) and
 passes after; `embed.test.tsx`'s Shift+click case now asserts the page id too.
 
+---
+
+### B-216 · A web link inside an embedded row does not open; the click goes to the block instead
+**Status:** open · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-embeds` on a copy of the owner's graph · **Test:** `e2e/tests/embeds.spec.ts` "a web link
+inside an embedded row opens the link, not the block (B-216)"
+
+The owner's 2024-09-29 embed carries a row that is just a Mattermost URL. Clicking that link on its
+own page (2024-09-26, zoomed to the block) opens it in a new tab; clicking the same link inside the
+embed opened no tab and navigated the app to `/page/2024-09-26?block=…` (probe
+`impl-embeds-verify/probe-extlink.mjs`, external requests fulfilled locally). `EmbedRow`'s row
+handler calls `preventDefault()` on every click that bubbles up to it, which cancels an `<a
+href target=_blank>`'s own navigation; only `[[page]]` links survived, because `NavLink` stops the
+click first. Enter on a focused link inside a row had the same fate through the row's `keydown`.
+The query fence's result rows (`QueryFenceView.tsx#HitView`) have the identical handler, so their
+links are presumably dead too — not reproduced, not fixed here.
+
