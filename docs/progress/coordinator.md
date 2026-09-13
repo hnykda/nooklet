@@ -52,21 +52,27 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
 4. Publish-a-graph (2–3 days per the audit) — the wiki is the first candidate. Owner's call.
 5. `changes-since.ts`: classify asset rows beyond "uploaded" (GC deletions, dedupe touches).
 
-## M9 run — 2026-09-13 10:45 (in flight)
+## M9 run — 2026-09-13, done and integrated
 
-Workflow `wf_e473942f-106` (script under
-`~/.claude/projects/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/workflows/scripts/m9-open-bugs-merge-review-qa-*.js`;
-resume with `resumeFromRunId`). Base `cf08d19`. Branches `m9/<slug>`; bug inboxes as in M8; every
-agent told to `export NOOKLET_DATA=<scratch>` before any nooklet command.
+Workflow `wf_e473942f-106`: 22 agents, 0 errors. Six bug-area branches each verified adversarially
+(5 fixed-up, 1 solid); two QA explorers on the M8 features (6 + 6 findings, all handled); two
+reviewers of the M8 merge resolutions (5 web + 4 server findings, all confirmed and fixed). All ten
+`m9/*` branches merged into main (`…` through `0aabb86`); inbox folded (`1cc25b1`).
 
-| Track | Slugs | Ports | Bug numbers |
-|---|---|---|---|
-| Open bugs → verify | undo (B-142/162/191/194), focus (B-161/195/231/147/203), server-ops (B-172/151/235/236/148), render-views (B-224/211/225/200/171), clipboard-sync (B-245/233/247), cleanup (redo 3d73b13 + 373c654, B-144, B-180) | 6400–6405 | B-280–339 |
-| QA of M8 features on the real graph → fix | qa-m8-editor, qa-m8-views (incl. 390px) | serve 6450–6451, fix 6460–6461 | B-340–359 |
-| Review of the M8 merge resolutions → refute → fix | rv-merge-web, rv-merge-server | 6470–6471 | B-360–369 |
+Integration choices: B-225 was built twice (render-views: `page-icon-request.ts` + `page-actions.css`;
+qafix-m8-views: a signal in `PageIcon.tsx` + "Change icon"). Kept render-views'; re-applied
+qafix-m8-views' `PageTitleField` (B-350) in `PageView.tsx` by hand. `PageActions` history link now
+uses `routes/page-path.ts#historyRoutePath` (cleanup removed `navigateTarget#pageNameToPath`).
 
-Not in scope (owner decisions): B-42 repro, B-192, plugin precache, SCHEDULED repair, agenda scope,
-date-picker toggles. Integration afterwards: same procedure as M8.
+Numbers on the merged tree: unit core 398, plugin-api 17, server 667, web 1,126 — green.
+Full Chromium e2e: **524 passed, 0 failed, 2 skipped** (7.3 min). `verify` on a fresh copy of the
+live graph: OK. 24 bugs open.
+
+Owner decisions added by this run: B-194 (undo skips steps on blocks that left the page — reversible
+in two lines), B-300 (how a standing block selection and a focused text field share keys), B-291
+(IME composition while the date picker is open — needs the picker to own focus), B-342 (typed
+property-shaped lines vs real properties in the mirror), cleanup's +12 MB mermaid client bundle in
+the desktop sidecar.
 
 ## M8 run — 2026-09-13, done and integrated
 
