@@ -84,6 +84,24 @@ Updated after every meaningful step. If you are reading this after a restart, co
 - `docs: PLAN §8, wiki Journals/Tasks, ADR 011 deferred list — the Scheduled and deadline
   section exists; midnight staleness fixed`.
 
+- Final verification at `051a22f`: `pnpm -r typecheck` exit 0; biome clean on every file this
+  branch touched; web unit 78 files / 715 tests passed; e2e (port 6403) journal-agenda,
+  journal-stream-editing, journals, a-fresh-journal, templates, phone, focus, editing, pages,
+  navigation, render, query, tasks, views — 134 passed, 1 failed (`views.spec.ts:461`, B-173,
+  fails identically on a clean `da85cfb` build). `nooklet verify` not run: no op, sync or schema
+  code changed.
+
+## For the coordinator
+
+- Fold `docs/bugs-inbox/impl-journal.md` into `docs/BUGS.md`: B-94 fixed, B-170 fixed, B-174
+  fixed (high — editing any earlier stream day was broken), B-171 open (Tasks view due window),
+  B-172 open (server `block.update` old_str/new_str on blocks with property lines — affects
+  agents), B-173 needs-repro (palette focus e2e red on `da85cfb`).
+- Owner decisions: (1) marker-less blocks with a date are not listed (tasks only); (2) no cap on
+  the overdue list — a neglected graph lists every overdue task under Today.
+- Shared-file touch: `JournalStreamView.tsx` (day-keyed `<For>`, agenda hookups, reactive today)
+  and `PageView.tsx` (agenda section + `journalDay`); everything else is new modules.
+
 ## Performance (2026-09-13, machine load average 17-45, 5 warm runs each, medians)
 
 Probe: `tools/probes/journal-agenda-perf.mjs`, port 6403, headless Chromium, persistent profile
