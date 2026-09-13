@@ -44,8 +44,9 @@ test("a start cut short while the OPFS pool was being created does not leave the
   const outliner = page.locator(".vr-outliner").first();
   await expect(outliner).toContainText("still here");
   // On OPFS, not quietly on the in-memory fallback: the fix is that the pool is usable, not that
-  // something else took over.
-  await expect(page.locator(".app-sync-indicator")).toHaveText(/synced|syncing/);
+  // something else took over. Anchored: "synced via another tab" is an in-memory follower (B-81)
+  // and an unanchored /synced/ let it pass.
+  await expect(page.locator(".app-sync-indicator")).toHaveText(/^(synced|syncing \(\d+\))$/);
 
   // And it writes: the rollback journal is exactly the file there was no room for.
   await outliner.locator(".vr-block-view").first().click();

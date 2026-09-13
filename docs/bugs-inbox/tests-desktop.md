@@ -126,7 +126,9 @@ one-file pool is fatal. (2) A browser the OLD client already broke recovers on t
 restarted between an unfixed and a fixed client build: unfixed, `SAH pool is full. Cannot create file
 /nooklet.sqlite3-journal`, nothing rendered, the one file now the database's (4096 bytes); fixed,
 same profile, the page rendered, `synced`, an edit survived a reload and reached the server, and the
-pool held six files.
+pool held six files. One tightening to the test: its storage check was `/synced|syncing/`, which
+"synced via another tab" — an in-memory follower, the very fallback the comment rules out — also
+matched; now anchored, `/^(synced|syncing \(\d+\))$/` (3 of 3).
 
 ---
 
