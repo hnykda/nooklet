@@ -210,3 +210,14 @@ Cause: `BlockTree.tsx`'s tree effect reads `editingId()` tracked, so ending an e
 against the page tree fetched BEFORE `flushPendingEdit`'s write; without the editing overlay, that
 stale read replaces the optimistic text in `localBlocks` until the refetch after the write lands.
 `selectionMarkdown` reads that tree. Copy (B-84) had the same stale window but no loss.
+
+**Fixed 2026-09-13 (verify pass).** `BlockTree.tsx` keeps the buffer of each flushed text write
+until the worker answers it (`unansweredText`) and lays it over whatever page tree the effect
+re-runs with; the worker answers in message order, so a tree that resolves after the answer was
+read after the write and needs no overlay. A later local op on the block other than a move (undo,
+redo, merge, delete) drops the entry. Test: `e2e/tests/selection.spec.ts` "Cmd/Ctrl+X straight
+after typing cuts the text as typed, while the replica is still busy (B-303)" — red before the fix
+(the selected row itself read `jedna`, not `jedna – přidáno`), green after; it also checks the
+property line reaches the clipboard and that one undo brings the typed text back on the server.
+Not covered: the effect re-running between the answer and the refetch that follows it (one query
+round trip) still shows the old text — only if editing changes in exactly that window.

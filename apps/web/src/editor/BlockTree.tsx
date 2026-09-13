@@ -194,6 +194,22 @@ export function BlockTree(props: {
   const [localBlocks, setLocalBlocks] = createSignal<EditableBlock[]>([]);
   const deletedCache = new Map<string, EditableBlock>();
   const unseenCreations = new UnseenCreations();
+  /**
+   * The buffer of each block whose flushed text write the worker has not answered yet (B-303).
+   * The effect below also re-runs when editing ENDS, against the page tree it fetched before that
+   * flush — so without this, Escape put the last-fetched text back on screen until the write came
+   * back (12–20 ms idle, seconds behind a busy worker), and a Cut in that window copied the old
+   * text and deleted the block holding the new one. Held only until the answer: the worker runs
+   * messages in order, so any page tree that resolves after it was read after the write. A later
+   * local op on the block other than a move (undo, redo, a merge, a delete) drops the entry: the
+   * optimistic tree holds the newer state then, and the flushed buffer must not be put back over
+   * it. (Undo straight after Escape behaved the same in a probe with or without the drop; it is
+   * there by reasoning, not because a failure was seen.)
+   */
+  const unansweredText = new Map<BlockId, { content: string }>();
+  function supersedeUnansweredText(ops: readonly Op[]): void {
+    for (const op of ops) if (op.payload.kind !== "block.place") unansweredText.delete(op.entity);
+  }
 
   createEffect(() => {
     const data = treeResource();
@@ -201,6 +217,10 @@ export function BlockTree(props: {
     const editingBlockId = editingId();
     const flat = flattenBlockTreeNodes(data.blocks);
     unseenCreations.seen(flat.map((b) => b.id));
+    for (let i = 0; i < flat.length; i++) {
+      const written = unansweredText.get((flat[i] as EditableBlock).id);
+      if (written) flat[i] = withEditText(flat[i] as EditableBlock, written.content);
+    }
     if (editingBlockId && surface.currentId() === editingBlockId) {
       const live = surface.content();
       const idx = flat.findIndex((b) => b.id === editingBlockId);
@@ -450,6 +470,7 @@ export function BlockTree(props: {
   ): void {
     if (ops.length === 0) return;
     unseenCreations.note(ops);
+    supersedeUnansweredText(ops);
     setLocalBlocks((prev) => applyOptimistic(prev, ops as unknown as OptimisticOp[], deletedCache));
     history.record(ops, treeBefore, kind, before, after, blockId);
     void applyOps(ops);
@@ -511,7 +532,12 @@ export function BlockTree(props: {
       { id, caret: { offset: contentOffsetOf(content, headAfter) } },
       id,
     );
-    void applyOps(ops);
+    const written = { content };
+    unansweredText.set(id, written);
+    const answered = () => {
+      if (unansweredText.get(id) === written) unansweredText.delete(id);
+    };
+    void applyOps(ops).then(answered, answered);
   }
 
   function attachEditing(id: BlockId, caret: CaretSpec): void {
@@ -663,6 +689,7 @@ export function BlockTree(props: {
     const res = history.undo(clock);
     if (!res) return;
     unseenCreations.note(res.ops);
+    supersedeUnansweredText(res.ops);
     setLocalBlocks((prev) =>
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );
@@ -688,6 +715,7 @@ export function BlockTree(props: {
     const res = history.redo(clock);
     if (!res) return;
     unseenCreations.note(res.ops);
+    supersedeUnansweredText(res.ops);
     setLocalBlocks((prev) =>
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );

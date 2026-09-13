@@ -172,6 +172,45 @@ test("Cmd/Ctrl+X cuts the selection as markdown, and one undo brings it all back
     .toEqual(["parent", "child", "other", "keep"]);
 });
 
+test("Cmd/Ctrl+X straight after typing cuts the text as typed, while the replica is still busy (B-303)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const name = "Sel Cut Just Typed B303";
+  const outliner = await openEditing(page, name, "- jedna\n  stav:: nový\n- dva");
+  // Let the page's own load settle, then hold the replica's worker the way a big graph does
+  // (a search, a sync, B-302): the typed text's write, and the refetch that shows it, wait.
+  await page.waitForTimeout(800);
+  const worker = page.workers().find((w) => w.url().includes("db.worker"));
+  if (!worker) throw new Error("no db worker");
+  const busy = worker.evaluate(() => {
+    const end = Date.now() + 1_500;
+    while (Date.now() < end) {
+      // nothing else runs on this thread until the loop ends
+    }
+  });
+  await page.keyboard.type(" – přidáno", { delay: 15 });
+  await page.keyboard.press("Escape");
+  expect(await selectedTexts(page, outliner)).toEqual(["jedna – přidáno"]);
+  await page.keyboard.press(`${MOD}+x`);
+
+  // The clipboard holds what was on screen, typed words and property line included. Ending the
+  // edit used to put the last-fetched text back into the tree until the write came back, so a
+  // cut in that window copied "jedna" and deleted the block holding "jedna – přidáno".
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toMatch(/^- jedna – přidáno\n\s+stav:: nový\s*$/);
+  await busy;
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["dva"]);
+  await page.keyboard.press(`${MOD}+z`);
+  await expect
+    .poll(async () => (await readBlocks(page, name)).map((b) => b.content))
+    .toEqual(["jedna – přidáno", "dva"]);
+});
+
 test("Alt+Down moves the selected block and keeps it selected (R22)", async ({ page }) => {
   const outliner = await openEditing(page, "Sel Move", "- one\n- two");
   await clickRow(page, outliner, 0);
