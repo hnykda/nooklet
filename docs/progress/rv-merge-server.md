@@ -19,7 +19,7 @@ evidence, not tests. Every finding gets a real test in the repo.
 | F1 live mirror never retries a failed page (B-126 x B-260) | medium | B-365 | fixed 2677236 |
 | F2 batch.undo name pre-check ignores keep_later_edits | low | B-366 | fixed d4f1335 |
 | F3 batch.undo name pre-check ignores aliases (B-256) | low | B-367 | fixed b36d2f2 |
-| (found) keep_later_edits undo's outline names the before-image name | low | B-369 | fixed (B-369 commit) |
+| (found) keep_later_edits undo's outline names the before-image name | low | B-369 | fixed fee493a |
 | F4 core pageMirrorPath lacks NAME_MAX shortening | low | B-368 | fixed aa866c3 |
 
 ## Done
@@ -69,20 +69,31 @@ evidence, not tests. Every finding gets a real test in the repo.
   at ~40). typecheck clean. e2e page-export + mirror-live 13/13. Real graph copy: `nooklet export`
   952 pages, failed [], 0 shortened names, longest 114 bytes.
 
-- B-369 — fix(ops) commit "batch.undo's outline names a page as the undo leaves it": summary
+- B-369 — `fee493a`: summary
   line uses `pagePlan`'s `nameAfter`, `(in the trash)` when `deletedAfter`. Test in
   `batch-undo-later-edits.http.test.ts` (failed before). Server 617/617, typecheck clean.
 
+- Final checks on the finished tree: core 395/395, server 617/617, web 1000/1000, typecheck
+  clean, biome clean on all changed files; e2e (port 6471) history-later-edits, history,
+  trash-conflict, trash, page-export, mirror-live, replace, link-unlinked, undo-redo,
+  template-undo — 42 passed; real-graph probe rerun on a fresh copy (all as expected, outline now
+  names the kept name / "(in the trash)") and `nooklet verify` OK (20,808 ops).
+- Found, not fixed (no number left): `batch.undo` of one batch that renamed A to B and created a
+  new A answers 400 (rename minted before the new A's delete). Scratch probe
+  `undo-rename-and-recreate.probe.test.ts`. Recorded in the review doc and the inbox.
+- Review doc — docs(review) commit, the last one.
+
 ## In flight
 
-- Nothing.
+- Nothing. Branch complete.
 
 ## Next steps
 
-1. Review doc `docs/review/2026-09-13-rv-merge-server.md`, committed last.
+1. Coordinator: fold `docs/bugs-inbox/rv-merge-server.md` into BUGS.md; number the unnumbered
+   rename-and-recreate undo entry.
 
 ## How to resume
 
 `git log --oneline cf08d19..m9/rv-merge-server` shows what landed; the table above says which
-finding is next. Before each commit: `pnpm exec biome check --write <files>`, `pnpm -r typecheck`,
+finding is next (all done as of the review doc commit). Before each commit: `pnpm exec biome check --write <files>`, `pnpm -r typecheck`,
 unit tests of touched packages.

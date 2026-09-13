@@ -163,6 +163,18 @@ NAME_MAX to a prefix and a hash, as the mirror names its file (B-368)" (failed a
 path had no suffix) and "puts the full name in title:: when, and only when, the file name was
 shortened (B-368)"; `server/src/mirror/export.test.ts` "the web export's file name and text are the
 mirror's, long names included (B-368)"; `e2e/tests/page-export.spec.ts` "Export of a page whose
-name is past NAME_MAX downloads the mirror's shortened file, title:: included (B-368)" — at
-`cf08d19` Chromium suggested the full 345-byte name while the mirror wrote
-`…čtvrtlet~6d458ccb.md`.
+name is past NAME_MAX downloads the mirror's shortened file, title:: included (B-368)" — with the
+three source files at their pre-fix versions Chromium suggested the full 345-byte name while the
+mirror wrote `…čtvrtlet~6d458ccb.md`.
+
+---
+
+### (needs a number) · Undo of a batch that renamed a page and created a new one under its old name fails
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, while fixing B-366 · **Test:** none
+(scratch probe only)
+
+Not fixed here, for the coordinator (no number left in this branch's range): `batch.undo` cannot
+reverse a single batch that renamed page A to B and then created a new A (`batch` op or a plugin) —
+it writes the rename back before deleting the new A, core rejects the rename, and the call answers
+400 with nothing written. Reproduced on this branch with a scratch probe; see
+`docs/review/2026-09-13-rv-merge-server.md`, "Found while fixing".
