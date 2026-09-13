@@ -46,7 +46,9 @@ Two sources feed it, and the distinction is the point:
   anything: the page either has a journal day or it does not.
 
 `page.backlinks` gains a `tagged_pages` group, so asking about `Journal` or `Person` returns the
-pages carrying that tag next to the blocks that link to it.
+pages carrying that tag next to the blocks that link to it. *(Not built as of 2026-09-13: neither
+the op nor the References panel lists tagged pages; `page.list({tag})` over the `page_tag` index
+is the only way to ask. Logged in BUGS.md as an open gap.)*
 
 ## Why not the alternatives
 

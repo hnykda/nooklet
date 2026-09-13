@@ -11,8 +11,11 @@ Date: 2026-09-10 (revised the same day after the API/MCP research). Status: acce
 - Block ids appear in markdown as an Obsidian-style ` ^id` suffix on the block's first line,
   both in the mirror files and in the API/MCP outline serialization.
 - Logseq UUIDs (`id::` properties, `((uuid))` refs, `{{embed ((uuid))}}`) are mapped to new ids
-  at import time and all references are rewritten; the mapping is kept in an import table so a
-  re-import of the same graph is idempotent.
+  at import time and all references are rewritten. *(As built, 2026-09-13: the mapping lives in
+  memory for the one import; there is no import table. A second import into the same data dir is
+  safe but not an update: every page whose name exists is skipped with a `page-key-collision`
+  warning, so nothing is duplicated and nothing changed in Logseq since arrives — verified by
+  importing `docs/wiki` twice: 21 pages, 422 blocks after both runs.)*
 - Device ids stay 8 hex characters (they are part of the HLC string); op ids are HLC strings.
 - Sibling order is a fractional-index string (`fractional-indexing`), stored per block. No
   linked lists (Logseq's `left` pointer caused corruption bugs; Logseq DB also moved to

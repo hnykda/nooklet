@@ -2,6 +2,12 @@
 
 Date: 2026-09-11. Status: accepted. Supersedes the desktop half of ADR 005.
 
+> **Amended 2026-09-13.** v1 shipped with the server bundled after all. `apps/desktop/src-tauri/src/main.rs`
+> starts `sidecar/node server.mjs` on 6100 from the app's resource dir (`build-sidecar.mjs`
+> assembles node, the server, the web build, `vec0` and `esbuild`), unless a server already answers
+> there. "Not bundled in v1" below records the decision as it was made; the rest — loopback URL,
+> one client one build, no bundled web assets — still holds and is why bundling was additive.
+
 ## Decision
 
 - The desktop app is a **Tauri 2** shell. Electron is not used.

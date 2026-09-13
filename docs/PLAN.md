@@ -166,13 +166,17 @@ Our outline format: page properties as `key:: value` lines at the top; one `- ` 
 block; two-space indentation; continuation lines indented to the content column; block property
 lines after the first line; the block id appended to the first line as ` ^id` (Obsidian's block
 id syntax; if the first line opens a code fence, the id sits alone on the first line and the
-fence starts on the next). Every block carries its id, so a file edit becomes a per-block diff
-and never a page replace. Echo suppression by content hash prevents ping-pong with the watcher.
+fence starts on the next). Every block carries its id, so a file edit *could* become a per-block
+diff rather than a page replace — but that direction is not built (as of 2026-09-13): nothing
+watches `pages/`, and the `chokidar` dependency nobody imported is gone. The mirror is DB → files
+only; edits go through the app or the API. A watcher with content-hash echo suppression is the
+design if it is ever wanted; it is not a milestone.
 
 Import targets the Logseq file graph specifically (ADR 012), not the newer Logseq DB version's
 one-way markdown export: tabs or spaces, `id::`/`collapsed::`, pre-block page properties, YAML
 front matter, triple-lowbar and legacy file names, `title::` override, journals by file name,
-`config.edn`, `NOW/LATER` mapped to `TODO/DOING`, numbered blocks, dangling block refs repaired,
+`config.edn`, `NOW`/`LATER` kept as markers of their own (they are the owner's workflow, see
+§Usage above — not mapped to `TODO`/`DOING`), numbered blocks, dangling block refs repaired,
 duplicate ids repaired. The parser is generically liberal enough that it also happens to round-trip
 the DB mirror's export format losslessly, but the importer's directory/config handling, tests, and
 maintenance commitment are scoped to the file graph only.

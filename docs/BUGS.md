@@ -233,6 +233,16 @@ pull, or navigation fixes it. A timer that bumps the version at local midnight (
 ---
 
 
+### B-111 · ADR 017's `tagged_pages` group was never built
+**Status:** open · **Severity:** low · **Found:** 2026-09-12, wiki workstream (doc-vs-code drift) ·
+**Test:** none yet
+
+ADR 017 says `page.backlinks` gains a `tagged_pages` group so that `Person` or `Journal` lists the
+pages carrying that tag. Neither the op nor the References panel does; the `page_tag` index exists
+and `page.list({tag})` reads it, so the gap is the op output and one panel section.
+
+---
+
 ## Fixed
 
 ### B-86 · `[[Page|label]]` links are indexed under the key `page|label` and never resolve

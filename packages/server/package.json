@@ -21,7 +21,6 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "@nooklet/core": "workspace:*",
     "@nooklet/plugin-api": "workspace:*",
-    "chokidar": "^5.0.0",
     "esbuild": "^0.28.2",
     "hono": "^4.13.7",
     "sqlite-vec": "^0.1.9",

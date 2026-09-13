@@ -314,10 +314,14 @@ Streamable HTTP to the local server:
 }
 ```
 
-`nooklet mcp --stdio` is `@modelcontextprotocol/client` talking to `/mcp` under the hood (or
-equivalently `npx mcp-remote@0.8.6 http://127.0.0.1:6100/mcp --header "Authorization: Bearer …"`
-as a fallback); it forwards `tools/list`/`tools/call` 1:1 and writes its own logs to stderr only
-(stdout is the protocol channel). A one-click `.mcpb` bundle (manifest + `nooklet mcp --stdio` as
+*As built (2026-09-13):* `nooklet mcp --stdio` does not go over HTTP. It opens the graph's
+database itself (`cli.ts` → `mcp/stdio.ts#startStdioBridge` with a server context and the same op
+registry) and serves the same tools over stdio, writing its own logs to stderr only (stdout is the
+protocol channel). `NOOKLET_URL` in the example above is therefore unused; `--data` / `NOOKLET_DATA`
+choose the graph. Two consequences: it works with no server running, and while one *is* running
+both processes write the same SQLite file (WAL, so safe, but connected clients learn of the
+bridge's writes on their next pull rather than by poke). `npx mcp-remote@0.8.6
+http://127.0.0.1:6100/mcp --header "Authorization: Bearer …"` remains the HTTP route. A one-click `.mcpb` bundle (manifest + `nooklet mcp --stdio` as
 the `node` server type, `user_config.token` marked `sensitive` for OS-keychain storage) is the
 planned distribution for non-technical setup; not required for v1.
 
