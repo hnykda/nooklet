@@ -72,7 +72,7 @@ test("Delete page from the … menu: asked, gone from All pages and search, in t
     `"${name}" and its 3 blocks will be moved to the Trash. You can restore them from there.`,
   );
   await expect(dialog).toContainText(
-    "1 reference to this page will point at a page that doesn't exist until it is restored.",
+    "Links to it from other pages will point at a page that doesn't exist until it is restored.",
   );
   await dialog.getByRole("button", { name: "Delete page" }).click();
 
@@ -131,6 +131,7 @@ test("Cancel, Escape and the backdrop delete nothing; from the palette, Enter co
 
   await runFromPalette(page, "Delete page");
   await expect(dialog).toContainText(`"${name}" and its 1 block will be moved to the Trash.`);
+  await expect(dialog).not.toContainText("Links to it");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 

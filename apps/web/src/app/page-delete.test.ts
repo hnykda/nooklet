@@ -109,14 +109,17 @@ describe("pageDeleteConfirmation", () => {
     expect(c.destructive).toBe(true);
   });
 
-  it("counts in the singular, leaves out blocks a page does not have, and warns about links", () => {
+  it("counts blocks in the singular, leaves out blocks a page does not have, and warns about links", () => {
+    const links =
+      "Links to it from other pages will point at a page that doesn't exist until it is restored.";
     expect(pageDeleteConfirmation("P", { blocks: 1, backlinks: 1 }).message).toEqual([
       '"P" and its 1 block will be moved to the Trash. You can restore them from there.',
-      "1 reference to this page will point at a page that doesn't exist until it is restored.",
+      links,
     ]);
-    expect(pageDeleteConfirmation("P", { blocks: 0, backlinks: 4 }).message).toEqual([
-      '"P" will be moved to the Trash. You can restore it from there.',
-      "4 references to this page will point at a page that doesn't exist until it is restored.",
-    ]);
+    // B-492: `backlinks` is not a link count (98 for three links on the owner's graph), so the
+    // dialog never prints it.
+    const many = pageDeleteConfirmation("P", { blocks: 0, backlinks: 98 }).message;
+    expect(many).toEqual(['"P" will be moved to the Trash. You can restore it from there.', links]);
+    expect(many.join(" ")).not.toContain("98");
   });
 });

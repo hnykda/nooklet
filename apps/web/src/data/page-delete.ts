@@ -41,7 +41,8 @@ export async function findPageToDelete(name: string): Promise<PageToDelete | und
 export interface PageDeletePreview {
   /** Blocks that go to the Trash with the page. */
   blocks: number;
-  /** References to the page that will point at nothing until it is restored. */
+  /** The server's `backlinks_affected`: above zero means some block on another page links here.
+   * NOT a count of links — it counts the blocks beneath a linking block as well (B-492). */
   backlinks: number;
 }
 

@@ -35,8 +35,15 @@ Branch `m11/delete-launcher` from `52e5d20`. Two owner-approved items:
 - Tauri 2.11.5 `webview/mod.rs`: app commands without an app manifest are allowed from local origins
   (tauri://localhost, the launcher) and refused from remote ones (the server's http page).
 - Server `page.delete` refuses journal pages (`invalid`): PLAN §8 + ADR 018 (the day is the
-  identity; an emptied day just is not listed). The UI hides Delete on a journal page.
+  identity). The UI hides Delete on a journal page.
 - Port 6415 was in use by another worktree's e2e run once (wf_975bcd44-fae-5); waited, reran.
+- **Incident, ~17:52 2026-09-13:** my real-graph script started a server on 6416 without checking
+  the port; another agent's nooklet server (a real-graph copy — it had "Balení", 23 rows) already
+  listened there, so my server died with EADDRINUSE and my Playwright probe drove THEIR server (it
+  only opened a page and the "…" menu; the Delete item was not in their build, so nothing was
+  written). Then the script's `pkill -f -- "--port 6416"` killed their server. Nothing listens on
+  6416 since. Reported to the coordinator. Scripts now refuse a busy port, check the listener's
+  command line names my data dir, and kill by PID only.
 
 - Decisions: delete goes through the server op (one instant for trash.restore, attribution,
   journal guard) like `page-rename.ts`; the dialog focuses the destructive button (undoable via

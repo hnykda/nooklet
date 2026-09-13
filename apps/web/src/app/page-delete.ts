@@ -8,8 +8,8 @@
  * has nothing to mean, and the server's `page.delete` answers `invalid` for one. The title row
  * does not offer Delete on a journal at all; this is the palette's path to the same answer.
  *
- * The confirmation quotes the server's dry run (blocks going with the page, links left dangling),
- * so what it promises is what the op will do.
+ * The confirmation quotes the server's dry run (how many blocks go with the page, whether links
+ * will dangle), so what it promises is what the op will do.
  */
 
 import { describeError } from "../data/api-client.js";
@@ -43,10 +43,12 @@ export function pageDeleteConfirmation(name: string, preview: PageDeletePreview)
       preview.blocks > 0 ? "them" : "it"
     } from there.`,
   ];
+  // No number: the dry run's `backlinks_affected` counts every block UNDER a linking block too
+  // (`path_ref`) — 98 for a page three blocks link to on the owner's graph (B-492). Any count above
+  // zero does mean at least one real link on another page, which is all this sentence claims.
   if (preview.backlinks > 0) {
     message.push(
-      `${plural(preview.backlinks, "reference")} to this page will point at a page that doesn't ` +
-        "exist until it is restored.",
+      "Links to it from other pages will point at a page that doesn't exist until it is restored.",
     );
   }
   return {

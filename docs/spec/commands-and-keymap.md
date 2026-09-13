@@ -774,8 +774,9 @@ item on a journal. Otherwise it closes the palette, pushes pending writes, and r
 with `dry_run: true` for the numbers the confirmation quotes: an in-page dialog (never
 `window.confirm`, which the desktop app's webview answers with Cancel unseen — B-491) titled
 `Delete "<name>"?`, saying `"<name>" and its N blocks will be moved to the Trash. You can restore
-them from there.`, plus — when references point at the page — `N references to this page will point
-at a page that doesn't exist until it is restored.`. Its buttons are Cancel and a destructive
+them from there.`, plus — when blocks on other pages link to it — `Links to it from other pages will
+point at a page that doesn't exist until it is restored.` (no number: the dry run's
+`backlinks_affected` also counts blocks beneath a linking block, B-492). Its buttons are Cancel and a destructive
 "Delete page", which has focus; Escape or a click on the backdrop cancels. Confirmed, it runs
 `page.delete` for real (one server batch, so `trash.restore` brings the blocks back with the page),
 pulls, and navigates to `/journals`. A refused dry run or delete is shown on the title row and

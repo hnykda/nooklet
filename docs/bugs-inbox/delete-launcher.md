@@ -75,3 +75,18 @@ output; `dist` invited exactly this) and pointing `frontendDist` there; `cargo c
 `cargo test` pass in this worktree. The stale untracked `apps/desktop/dist/` in the main checkout is
 now unused and can be deleted. `cargo check` also needs `apps/desktop/sidecar/` to exist — that one
 IS build output (`pnpm --filter @nooklet/desktop run sidecar`), so a bare `mkdir` is enough to check.
+
+---
+
+### B-492 · `page.delete`'s `backlinks_affected` counts every block under a linking block, not the links
+**Status:** open · **Severity:** low · **Found:** 2026-09-13, delete-launcher (Delete page on a copy
+of the owner's graph) · **Test:** none yet
+
+`ops/resolve.ts#backlinkCount` counts `path_ref` rows from other pages, and `path_ref` holds a row
+for every descendant of a block that references the page. On a copy of the owner's graph, page
+"Balení": 3 blocks on 3 pages link to it (`ref`), and `page.delete {dry_run: true}` reports
+`backlinks_affected: 98`. The MCP spec (§4.3.16) documents the field only by example
+(`"backlinks_affected": 3`), and an agent reading 98 would reasonably tell the person "98 links
+will break". `backlinkCount` has other callers, so the fix (count `ref` rows, or distinct linking
+blocks) should be checked against each of them; not changed here. The web app's Delete page dialog
+does not print the number for this reason (`apps/web/src/app/page-delete.ts`).
