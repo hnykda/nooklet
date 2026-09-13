@@ -83,6 +83,13 @@ and B-470 (line 1's head is read by shape). `TODOS are words` is fine. Whether t
 typed leading `TODO ` as text or as the marker is not checked here. Owner's graph copy: 0 such
 blocks today.
 
+Found by mirror-escape-verify: OUT-23a adds a small aggravation to this shape. The serializer decides
+where a fence opens from the text's line 1 (`TODO ```js` opens none), the parser from line 1 with
+its head taken off (it opens one), so a `k:: v` line under it is escaped by one and read verbatim by
+the other: plain text `TODO ```js` / `k:: v` / ```` ``` ```` comes back a TODO task with `k\:: v` in its
+code (base: `k:: v`). The same for a task whose line 1 is `  ```js` (leading spaces, which the head
+split trims). Both shapes were already lossy (marker, leading spaces); owner's graph copy: 0.
+
 ---
 
 ### B-472 · A text line `foo:: bar` in a block becomes a real property the first time the block is edited in the app
