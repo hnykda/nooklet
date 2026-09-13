@@ -190,3 +190,22 @@ answers `not_permitted` without calling the host. `app.toggleFavorite` is unchan
 property, which an agent may set like any other. The named test runs the real registrations through
 the real `runRemoteCommand` and failed before the flags (`app.copyPageMarkdown: expected
 { when_result: 'ran' }`). R52a in `docs/spec/commands-and-keymap.md` says so.
+
+---
+
+### B-229 · Double-clicking the favourite star leaves the page favourited
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
+`m8/impl-export` · **Test:** `e2e/tests/page-export.spec.ts` "double-clicking the star toggles twice
+and leaves the page as it was"
+
+Two toggles in quick succession should cancel out; they do not. `app/page-actions.ts#togglePageFavorite`
+reads the stored `favorite` value, then writes its opposite through the worker. The second click's
+read runs before the first click's write has landed, so both read "not a favourite" and both write
+`true`. Measured (Chromium, production build): `dblclick()` on `.page-favorite-button` ends with
+`aria-pressed="true"` and `page.read` reporting `favorite: "true"`.
+
+**Fixed 2026-09-13.** `togglePageFavorite` queues behind the toggle in flight (one module-level
+promise chain; a rejected toggle does not block later ones), so the second read sees the first
+write. The named test failed before the change (the star still pressed after `dblclick()`) and
+passes after. The All Pages star (`views/AllPagesView.tsx`) toggles from its rendered state instead
+and was not changed or measured here.

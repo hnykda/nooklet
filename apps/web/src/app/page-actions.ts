@@ -111,12 +111,22 @@ export async function exportPageMarkdown(page: PageIdSource): Promise<boolean> {
   return true;
 }
 
+/** The toggle in flight, if any. Toggles run one after another, never interleaved: each one reads the
+ * stored value and writes its opposite, and two interleaved (a double click on the star) both read
+ * the value from before either write and both wrote `true` — two clicks, still a favourite (B-229). */
+let favoriteQueue: Promise<unknown> = Promise.resolve();
+
 /** Flip the page's synced `favorite` property; resolves to the new state (`undefined`: no page). */
-export async function togglePageFavorite(page: PageIdSource): Promise<boolean | undefined> {
-  const id = await page;
-  if (id === undefined) return undefined;
-  const next = !(await isPageFavorite(id));
-  await setPageFavorite(id, next);
-  announce(next ? "Added to favourites" : "Removed from favourites");
-  return next;
+export function togglePageFavorite(page: PageIdSource): Promise<boolean | undefined> {
+  const run = favoriteQueue.then(async () => {
+    const id = await page;
+    if (id === undefined) return undefined;
+    const next = !(await isPageFavorite(id));
+    await setPageFavorite(id, next);
+    announce(next ? "Added to favourites" : "Removed from favourites");
+    return next;
+  });
+  // A failed toggle must not wedge every later one behind a rejected promise.
+  favoriteQueue = run.catch(() => {});
+  return run;
 }

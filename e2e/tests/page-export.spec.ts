@@ -311,6 +311,24 @@ test("the star in the title row favourites and unfavourites the page, and the si
   await expect(favourites.locator("a", { hasText: name })).toHaveCount(0);
 });
 
+// B-229: each toggle read the stored value and wrote its opposite, so the second click of a double
+// click read the value from before the first click's write landed, and both wrote "true".
+test("double-clicking the star toggles twice and leaves the page as it was", async ({ page }) => {
+  const name = "Star Double Click";
+  await seedPage(page, name, "- s");
+  await openPageView(page, name);
+  const star = page.locator(".page-favorite-button");
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+
+  await star.dblclick();
+  await expect(page.locator(".page-actions-notice")).toHaveText("Removed from favourites");
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+  const read = await api<{ page: { properties?: Record<string, string> } }>(page, "page.read", {
+    page: name,
+  });
+  expect(read.page.properties?.favorite).toBeUndefined();
+});
+
 test("Toggle favourite from the palette stars the routed page; the sidebar's recent list reads Recent", async ({
   page,
 }) => {
