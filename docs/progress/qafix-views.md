@@ -13,7 +13,7 @@ name conflict is a UI dead end (medium); Q6 trash restore ignores aliases (low).
 
 - Q1 (B-250) `bd68e87` — Replace all from live fields, gated on a preview of exactly those fields.
   `e2e/tests/replace-stale.spec.ts` (2 tests, both failed before).
-- Q2 (B-251) — `batch.undo` `keep_later_edits` + `ignore_batches` (per-field, `ops/later-edits.ts`),
+- Q2 (B-251) `f0d2f77` — `batch.undo` `keep_later_edits` + `ignore_batches` (per-field, `ops/later-edits.ts`),
   `kept` in the result; History Undo/Restore use them and name kept pages
   (`views/keptEdits.ts`). Tests: `e2e/tests/history-later-edits.spec.ts` (2, both failed before),
   `packages/server/src/ops/batch-undo-later-edits.http.test.ts` (6), `keptEdits.test.ts` (4).
@@ -22,13 +22,19 @@ name conflict is a UI dead end (medium); Q6 trash restore ignores aliases (low).
   §4.3.17 + ADR 022 amendment. Found in passing: B-252 (`old_str` fails on blocks with
   properties) — logged, not fixed.
 
+- Q3 (B-253) — client follows `page.backlinks` cursor (500/page, cap 5000); server
+  `unlinked_limit` (default 50, panel 500) + `unlinked_truncated` + `linked_total`; panel renders
+  200 rows + "Show more" (`views/referenceWindow.ts`). Tests: `e2e/tests/references-cap.spec.ts`
+  (failed before: 200 vs 205), `page-backlinks-totals.http.test.ts` (3), `referenceWindow.test.ts`
+  (4). Real graph: CAMP 836/189, @Alex 756/465 match the API.
+
 ## In flight
 
-- Q3: starting — `apps/web/src/data/api-client.ts` backlinks limit 200, `ReferencesPanel.tsx`.
+- Q4: starting — `packages/server/src/ops/block-to-page.ts` page name from first line.
 
 ## Next, in order
 
-Q3 → Q4 → Q5 → Q6.
+Q4 → Q5 → Q6.
 
 ## How to resume
 

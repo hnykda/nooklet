@@ -14,14 +14,25 @@ export const pageBacklinks = defineOp({
   description:
     "Lists blocks that reference a page or block: [[page]] links, #tags, ((block refs)), and - if " +
     "include_unlinked - plain-text mentions of the page's name that are not already a link. Each " +
-    "item has the referencing block's id, page, and text. Paginated. Use this before renaming or " +
-    "deleting a page to see what points at it.",
+    "item has the referencing block's id, page, and text. Linked references are paginated " +
+    "(linked_total counts them all); unlinked mentions are not - up to unlinked_limit are " +
+    "returned, with unlinked_truncated saying whether there are more. Use this before renaming " +
+    "or deleting a page to see what points at it.",
   input: z
     .object({
       target: z
         .union([PageRef, BlockId])
         .describe("Page name/date/alias, a page id, or a block id"),
       include_unlinked: z.boolean().default(false),
+      unlinked_limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .default(50)
+        .describe(
+          "Max unlinked mentions to return (500 is also what one mentions_link call rewrites)",
+        ),
       limit: Limit,
       cursor: Cursor.optional(),
     })
@@ -31,7 +42,12 @@ export const pageBacklinks = defineOp({
     linked: z.array(
       z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() }),
     ),
+    linked_total: z.number().int().describe("Linked references across all pages of results"),
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
+    unlinked_truncated: z
+      .boolean()
+      .default(false)
+      .describe("More unlinked mentions exist than unlinked_limit returned"),
     cursor: z.string().optional(),
   }),
   annotations: {
@@ -73,7 +89,11 @@ export const pageBacklinks = defineOp({
          ORDER BY b.updated_at DESC`,
         [...keys, asPage.id],
       );
-      if (input.include_unlinked) unlinkedRows = unlinkedMentionRows(driver, asPage, 50);
+      // One more than asked for, so the answer can say whether it stopped short (B-253: the
+      // panel showed a silent 50 while Link all rewrote 187).
+      if (input.include_unlinked) {
+        unlinkedRows = unlinkedMentionRows(driver, asPage, input.unlinked_limit + 1);
+      }
     } else {
       const asBlock = await ctx.data.blocks.get(input.target);
       if (asBlock) {
@@ -113,8 +133,8 @@ export const pageBacklinks = defineOp({
                FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
                WHERE block_fts MATCH ? AND b.deleted_at IS NULL
                  AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key = ?)
-               LIMIT 50`,
-              [ftsQuery, key],
+               LIMIT ?`,
+              [ftsQuery, key, input.unlinked_limit + 1],
             );
           }
         }
@@ -122,6 +142,7 @@ export const pageBacklinks = defineOp({
     }
 
     const hasMore = linkedRows.length > offset + input.limit;
+    const unlinkedTruncated = unlinkedRows.length > input.unlinked_limit;
 
     return {
       target: targetWire,
@@ -131,11 +152,13 @@ export const pageBacklinks = defineOp({
         text: (r.content.split("\n")[0] ?? "").trim(),
         updated_at: new Date(r.updated_at).toISOString(),
       })),
-      unlinked: unlinkedRows.map((r) => ({
+      linked_total: linkedRows.length,
+      unlinked: unlinkedRows.slice(0, input.unlinked_limit).map((r) => ({
         id: r.block_id,
         page: pageWireNameById(driver, r.page_id),
         text: (r.content.split("\n")[0] ?? "").trim(),
       })),
+      unlinked_truncated: unlinkedTruncated,
       cursor: hasMore ? Buffer.from(String(offset + input.limit)).toString("base64") : undefined,
     };
   },

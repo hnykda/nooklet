@@ -803,8 +803,10 @@ is never returned as an error — that case degrades silently to `mode_used: 'ke
 
 **Description**: "Lists blocks that reference a page or block: `[[page]]` links, `#tags`,
 `((block refs))`, and — if `include_unlinked` — plain-text mentions of the page's name that are
-not already a link. Each item has the referencing block's id, page, and text. Paginated. Use this
-before renaming or deleting a page to see what points at it."
+not already a link. Each item has the referencing block's id, page, and text. Linked references
+are paginated (`linked_total` counts them all); unlinked mentions are not — up to `unlinked_limit`
+are returned, with `unlinked_truncated` saying whether there are more. Use this before renaming or
+deleting a page to see what points at it."
 
 ```ts
 export const pageBacklinks = defineOp({
@@ -812,12 +814,15 @@ export const pageBacklinks = defineOp({
   input: z.object({
     target: z.union([PageRef, BlockId]).describe('Page name/date/alias, a page id, or a block id'),
     include_unlinked: z.boolean().default(false),
+    unlinked_limit: z.number().int().min(1).max(500).default(50), // B-253; 500 = one mentions_link call
     limit: Limit, cursor: Cursor.optional(),
   }).strict(),
   output: z.object({
     target: z.string(),
     linked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() })),
+    linked_total: z.number().int(),          // across every page of results
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
+    unlinked_truncated: z.boolean().default(false),
     cursor: z.string().optional(),
   }),
   annotations: { readOnlyHint: true, idempotentHint: true }, scopes: ['read'],
@@ -841,9 +846,11 @@ export const pageBacklinks = defineOp({
   "linked": [
     { "id": "1k7f3qc4d8ktv6", "page": "2026-09-10", "text": "Reviewed [[Projects/Aurora]] launch checklist with the team", "updated_at": "2026-09-10T08:00:00.000Z" }
   ],
+  "linked_total": 1,
   "unlinked": [
     { "id": "1k7f3qc59mgxr4", "page": "Vendors/Acme Supply", "text": "Quoted pricing for the Aurora launch" }
-  ]
+  ],
+  "unlinked_truncated": false
 }
 ```
 

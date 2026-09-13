@@ -68,3 +68,29 @@ from the property lines, and `parseSingleBlockGrammar` re-parses the replaced te
 `- two, edited later\nstatus:: draft`, where the unindented property line is a second block.
 Agents editing any block with properties (every DONE task, 700 on the owner's graph) by
 `old_str` hit this.
+
+---
+
+### B-253 · The references panel showed the first 200 linked and 50 unlinked references as if that were all
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, exploratory QA on the real graph
+(finding Q3) · **Test:** `e2e/tests/references-cap.spec.ts`,
+`packages/server/src/ops/page-backlinks-totals.http.test.ts`
+
+On `/page/CAMP` the linked heading said 200 (`page.backlinks` paged to the end: 836; "task" 1074,
+"@Alex" 816) and the unlinked heading said 50, yet Link all reported "Linked 187 mention(s); left 2
+alone". The filter's options and counts came from the first 200 rows only, so a filter could say
+"No references match" while matches sat further down. No truncation indicator, no load-more.
+
+Cause: the client asked `page.backlinks` for `limit: 200` and never followed `cursor`; the server
+capped unlinked mentions at 50 with nothing in the response saying so, while `mentions.link`
+works on up to 500.
+
+**Fixed 2026-09-13.** The client follows the cursor (500 per request, up to 5,000 linked
+references, with the heading saying "5000+" beyond that). `page.backlinks` takes
+`unlinked_limit` (default 50, so agents' payloads are unchanged; the panel asks for 500, the same
+ceiling `mentions.link` rewrites) and reports `unlinked_truncated` and `linked_total`. Counts and
+filters cover everything fetched; the panel renders 200 rows at a time with a "Show more" button,
+since every row re-renders when the graph changes. `e2e/tests/references-cap.spec.ts` — failed
+before on the heading (200, expected 205); `packages/server/src/ops/page-backlinks-totals.http.test.ts`.
+Real graph copy: CAMP heading 836 (API paged: 836), unlinked 189 = the 187 Link all would link +
+2 it skips; @Alex 756 / 465; 200 rows rendered with "Show 200 more"; no console errors.
