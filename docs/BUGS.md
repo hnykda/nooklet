@@ -834,19 +834,103 @@ independent of anything else in this session's iOS/mobile/desktop work.
 
 ---
 
+### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
+**Status:** open, cause found (2026-10-03), not fixed — not B-585 · **Severity:** unclear until the
+third-device question below is settled
+
+```
+AssertionError: expected [ { table: 'page', …(2) }, …(1) ] to deeply equal []
+- []
++ [
++   { "key": { "id": "1m2kcpq6nmw48w" }, "kind": "missing-in-rebuild", "table": "page" },
++   { "key": { "id": "1m2kcpq6nmw48x" }, "kind": "missing-in-rebuild", "table": "block" },
++ ]
+```
+
+Confirmed pre-existing in the same accumulated-but-uncommitted tree B-585 already covers (`git
+stash` back to `629f572`, this test passes cleanly there) — not caused by ADR 025 / B-586, whose
+code this test never touches (no `bootstrap.ts`/`GraphSwitcher.tsx` import). Given the scenario
+(server-side "page of a name whose earlier page was deleted" + B-443's "never revive an unclaimed
+tombstone" logic, right next to B-568's ref-page work this session already touched), this may share
+B-585's upstream cause or may be a distinct correctness bug in the same area — not narrowed down,
+only reproduced and confirmed real. Deliberately not investigated further here, same reasoning as
+B-585: different subsystem than the multi-graph work in flight, flagged rather than silently
+expanding scope. Whoever picks this up should start from `verifyRebuildParity`'s own divergence
+report (`apps/web/src/sync/e2e.test.ts` imports it) — a `missing-in-rebuild` on both `page` and
+`block` for what looks like device A's own newly-created page/block suggests the SERVER's replay of
+the op log loses them, not that A's own local state is wrong (the test's own `live(driverA)` vs.
+`live(s)` comparison a few lines above passes).
+
+**Cause (2026-10-03):** flaky, not deterministic — 3 of 8 runs of `src/sync/e2e.test.ts` failed
+after B-585's fix, and it was caught on "pull first" too. Op log from a failing run: the
+reference rule's `page.delete` of "Ghost Name" is seq 5 with HLC `…:09.838Z-0002-00000000`; device
+A's own `page.create` of "Ghost Name" is seq 6 with HLC `…:09.838Z-0000-562db010` — minted in
+the same millisecond, before A had heard of seq 5, so it has the smaller HLC. Live, the server
+applied them in seq order (name free, A's page lands). `verifyRebuildParity` replays in one
+`applyOps` call, and core's `applyOps` sorts by HLC, so the create runs while the ghost is live and
+is rejected `page-key-collision` → A's page and block `missing-in-rebuild`. Reproduced
+deterministically by `tools/probes/b587-hlc-order-name-collision.ts`. Not related to B-585: the
+test drives `SyncClient` directly, no client page minting involved. The real problem is that a
+name collision is order-dependent while HLC order can disagree with the server's causal (seq)
+order. Unverified: whether a third device pulling those ops in one batch diverges the same way —
+if so this is a convergence bug, not just a verify false alarm. Fix options (not chosen): the
+server re-stamps or rejects an op whose HLC is behind ops it already applied on the same name;
+or replay/pull apply in seq order rather than HLC order.
+
+### B-592 · The B-382 e2e test's precondition ("a link to a page that does not exist") cannot hold since ADR 024
+**Status:** open · **Severity:** low (test only; B-382's fix itself is not shown broken) ·
+**Found:** 2026-10-03, triaging the full e2e run · **Test:** `e2e/tests/autocomplete-inside-link.spec.ts`
+"Enter on New page inside a link to a page that does not exist keeps the whole link (B-382)" is the
+failing test
+
+Fails every time, alone or with neighbours:
+`Expected substring: "New page" / Received string: "Walkin Unmade Page"` at the
+`.cmd-row--active` check — the popup offers the real page, so there is no "New page" row to press.
+The test seeds `- alpha [[Walkin Unmade Page]] omega` through `page.create`; since ADR 024
+(`c162820`, after B-382's `dc86f5b`) `serverApplyOps` mints every referenced page in the same
+transaction, so "Walkin Unmade Page" exists before the browser opens. **Not B-585:** checked out
+`629f572` (no `local-ref-pages.ts` at all) in a worktree and ran the spec with `--repeat-each 3` —
+the same test failed 3/3 with the same received string, the other six passed. Earlier green runs
+(e.g. `f2b21b0`'s "634 passed") are unexplained — presumably the "pages list not loaded yet" race
+the B-382 entry mentions, which used to leave "New page" as the only row. To fix the test (not
+done here): it needs a link whose page does not exist, which ADR 024 forbids for anything written
+through the server — e.g. type the link in the browser with the page list known not to contain it,
+or assert the B-382 guarantee (Enter leaves the whole link) for whichever row is active.
+
+### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
+**Status:** open, not investigated · **Severity:** low (test only) · **Found:** 2026-10-03, while
+running B-581's probe with neighbours · **Test:** the test itself
+
+Run as `autocomplete-busy-replica, autocomplete-inside-link, autocomplete, connectivity,
+desktop-page-creation-probe, journal-draft-sync` it failed with `locator.click: Test timeout of
+30000ms exceeded … waiting for locator('.vr-outliner').first().locator('.vr-block-view').first()`.
+It branches on `draft.isVisible()` immediately after `goto("/journals")` — the same "draft may be
+swapped for the real outliner once the snapshot lands" race B-335 fixed in `openJournal` — and
+`.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
+`openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
+
+### B-594 · The Diagnostics panel does not close on Escape
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, while fixing B-591 · **Test:** none
+
+Every other overlay (HelpMenu, the confirm dialog, the context menu) closes on Escape. The
+Diagnostics panel (`views/DiagnosticsPanel.tsx`) closes only on a backdrop click or its Close
+button, so a keyboard user has to tab to Close.
+
+### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
+**Status:** open (decided 2026-10-03: mimic Logseq, an editable empty journal) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
+**Test:** none yet
+
+Opening a not-yet-created journal day's page (today's heading before today has a block, or any date
+link) shows the generic "This page doesn't exist yet / Create" view instead of the journal stream's
+draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
+
+## Fixed
+
 ### B-585 · B-568's client-side ref-page creation loses keystrokes / mints junk pages / times out restoring — found via a full e2e run, not yet fixed
-**Status:** open, root cause narrowed but not pinned down · **Severity:** high (silent data loss —
-a keystroke typed right after certain edits is dropped, not just cosmetic) · **Found:** 2026-09-15,
-while verifying ADR 025 (multi-graph hosting) with a full, whole-suite `pnpm exec playwright test`
-run — five pre-existing e2e specs failed that this session's multi-graph work never touches:
-`ref-pages.spec.ts` ("editing an existing link one character at a time leaves no junk pages",
-"deleting the only link removes the empty page it made", "what an offline device typed into a
-linked page survives another device removing the link", B-445), `remote-rewrite.spec.ts`
-("Turn into page on the row being edited: the editor shows the link, typing continues after it"),
-and `page-delete.spec.ts` ("Delete page from the … menu: ... Restore brings its blocks back" —
-found in a later pass than the first four; same signature, restoring a page times out waiting for
-its blocks to reappear in ~11s where the baseline does it in ~1s). **Test:** all five already exist
-and already fail — this entry is the diagnosis, not a new test.
+**Status:** fixed (2026-10-03, `7784d54`) · **Severity:** high (silent data loss) ·
+**Test:** the four e2e specs (ref-pages.spec.ts:123, :171, :280; remote-rewrite.spec.ts:344) — now
+pass, --repeat-each 3; plus `data/store-apply-ops.test.ts` and `db/worker-core.test.ts`
+"WorkerDb.applyLocalOps: pages a write references (B-568, B-585)"
 
 **Confirmed NOT caused by this session's multi-graph work** (ADR 025, B-562 through B-584): `git
 stash`-ed the entire working tree back to the last commit (`629f572`, before B-568's client-side
@@ -900,86 +984,28 @@ changes at all. Flagging rather than silently expanding scope, per this repo's o
 the e2e specs named above already catch it; whoever fixes it should confirm all of them pass, in
 isolation AND as part of a full suite run, before considering this closed.
 
-### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
-**Status:** open, not investigated · **Severity:** unclear (this is a data-integrity check
-disagreeing with itself, not a symptom a real user would see directly — but `verifyRebuildParity`
-existing at all is because rebuild/live disagreement is the single scariest class of bug this repo
-has) · **Found:** 2026-09-15, `pnpm -r test` run while wrapping up B-586 · **Test:**
-`apps/web/src/sync/e2e.test.ts` → `sync e2e: real SyncClient <-> real @nooklet/server app, over
-app.request()` → `"a page of a name whose earlier page the server deleted stays this device's page,
-push first"` (the "pull first" sibling of the same `for` loop passes).
+**Real cause (2026-10-03): two, not one, and the "added latency" theory was half right.** Settled
+by two experiments. (A) Keep `store.ts#applyOps`'s planning with every await, but drop the ops it
+minted: all three ref-pages tests pass, remote-rewrite:344 still fails — so the junk pages were the
+minted `page.create` ops themselves. They carry this device's real id, and the server's junk
+cleanup only ever reclaims `REFERENCE_DEVICE_ID` pages, so on a synced device every intermediate
+name of a slowly-typed link ("… F", "… Fi", "… Fin", "… Fina" — the failing run's list) and every
+page of a deleted link became permanent (B-579, but on every device instead of only local-only
+ones). (B) Skip the await for batches that reference nothing: remote-rewrite:344 passes 3/3.
+`refactor-host.tsx#write()` does `flushTyping(); await forceSync()`; with an `await` in front of
+`db/client.ts#applyOps`, the forceSync message reached the worker first, so the push carried the
+block without " kickoff" and the server turned "Probe start" into the page. It also delayed
+B-247's crash-safe copy of the batch, and let any batch naming a page be overtaken by a later one.
+page-delete.spec.ts passed on fd779f4 before the fix; not reproduced.
 
-```
-AssertionError: expected [ { table: 'page', …(2) }, …(1) ] to deeply equal []
-- []
-+ [
-+   { "key": { "id": "1m2kcpq6nmw48w" }, "kind": "missing-in-rebuild", "table": "page" },
-+   { "key": { "id": "1m2kcpq6nmw48x" }, "kind": "missing-in-rebuild", "table": "block" },
-+ ]
-```
-
-Confirmed pre-existing in the same accumulated-but-uncommitted tree B-585 already covers (`git
-stash` back to `629f572`, this test passes cleanly there) — not caused by ADR 025 / B-586, whose
-code this test never touches (no `bootstrap.ts`/`GraphSwitcher.tsx` import). Given the scenario
-(server-side "page of a name whose earlier page was deleted" + B-443's "never revive an unclaimed
-tombstone" logic, right next to B-568's ref-page work this session already touched), this may share
-B-585's upstream cause or may be a distinct correctness bug in the same area — not narrowed down,
-only reproduced and confirmed real. Deliberately not investigated further here, same reasoning as
-B-585: different subsystem than the multi-graph work in flight, flagged rather than silently
-expanding scope. Whoever picks this up should start from `verifyRebuildParity`'s own divergence
-report (`apps/web/src/sync/e2e.test.ts` imports it) — a `missing-in-rebuild` on both `page` and
-`block` for what looks like device A's own newly-created page/block suggests the SERVER's replay of
-the op log loses them, not that A's own local state is wrong (the test's own `live(driverA)` vs.
-`live(s)` comparison a few lines above passes).
-
-### B-592 · The B-382 e2e test's precondition ("a link to a page that does not exist") cannot hold since ADR 024
-**Status:** open · **Severity:** low (test only; B-382's fix itself is not shown broken) ·
-**Found:** 2026-10-03, triaging the full e2e run · **Test:** `e2e/tests/autocomplete-inside-link.spec.ts`
-"Enter on New page inside a link to a page that does not exist keeps the whole link (B-382)" is the
-failing test
-
-Fails every time, alone or with neighbours:
-`Expected substring: "New page" / Received string: "Walkin Unmade Page"` at the
-`.cmd-row--active` check — the popup offers the real page, so there is no "New page" row to press.
-The test seeds `- alpha [[Walkin Unmade Page]] omega` through `page.create`; since ADR 024
-(`c162820`, after B-382's `dc86f5b`) `serverApplyOps` mints every referenced page in the same
-transaction, so "Walkin Unmade Page" exists before the browser opens. **Not B-585:** checked out
-`629f572` (no `local-ref-pages.ts` at all) in a worktree and ran the spec with `--repeat-each 3` —
-the same test failed 3/3 with the same received string, the other six passed. Earlier green runs
-(e.g. `f2b21b0`'s "634 passed") are unexplained — presumably the "pages list not loaded yet" race
-the B-382 entry mentions, which used to leave "New page" as the only row. To fix the test (not
-done here): it needs a link whose page does not exist, which ADR 024 forbids for anything written
-through the server — e.g. type the link in the browser with the page list known not to contain it,
-or assert the B-382 guarantee (Enter leaves the whole link) for whichever row is active.
-
-### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
-**Status:** open, not investigated · **Severity:** low (test only) · **Found:** 2026-10-03, while
-running B-581's probe with neighbours · **Test:** the test itself
-
-Run as `autocomplete-busy-replica, autocomplete-inside-link, autocomplete, connectivity,
-desktop-page-creation-probe, journal-draft-sync` it failed with `locator.click: Test timeout of
-30000ms exceeded … waiting for locator('.vr-outliner').first().locator('.vr-block-view').first()`.
-It branches on `draft.isVisible()` immediately after `goto("/journals")` — the same "draft may be
-swapped for the real outliner once the snapshot lands" race B-335 fixed in `openJournal` — and
-`.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
-`openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
-
-### B-594 · The Diagnostics panel does not close on Escape
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, while fixing B-591 · **Test:** none
-
-Every other overlay (HelpMenu, the confirm dialog, the context menu) closes on Escape. The
-Diagnostics panel (`views/DiagnosticsPanel.tsx`) closes only on a backdrop click or its Close
-button, so a keyboard user has to tab to Close.
-
-### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
-**Status:** open (decided 2026-10-03: mimic Logseq, an editable empty journal) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
-**Test:** none yet
-
-Opening a not-yet-created journal day's page (today's heading before today has a block, or any date
-link) shows the generic "This page doesn't exist yet / Create" view instead of the journal stream's
-draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
-
-## Fixed
+**Fix:** planning runs synchronously inside the worker (`WorkerDb.applyLocalOps`, and
+`replayLocalOps`), same batch/transaction as before; `store.ts#applyOps` posts at once again.
+It runs only when `WorkerDbOptions.localReferencePages` — set by `db.worker.ts` when no server
+will see this session's writes (no sync base URL, Capacitor "Just this device"; or no token, the
+web/desktop "Just this device"). A synced device leaves minting to the server, as ADR 024 says.
+**Consequence to note:** a synced device that is offline no longer gets the page locally until it
+syncs (the pre-B-568 behaviour); B-568's reported case (no server) is unchanged —
+local-page-creation.spec.ts passes.
 
 ### B-596 · Linked-references heading counted every block, not Logseq's number
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-13 (B-550's open question); owner

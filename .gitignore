@@ -27,3 +27,4 @@ apps/desktop/sidecar/
 # source. `dist/` above swallowed it, so a clean checkout could not compile the desktop app at all
 # ("frontendDist … doesn't exist") and the page existed only on one machine (B-530).
 !apps/desktop/dist/
+.claude/worktrees/
