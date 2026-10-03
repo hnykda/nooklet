@@ -767,17 +767,6 @@ match on this run's block. Not changed here: outside this branch's specs.
 
 ---
 
-### B-560 · Journal date headings are not clickable
-**Status:** open (to-do from the owner) · **Severity:** low · **Found:** 2026-09-13, owner request ·
-**Test:** none yet
-
-"Clicking on the date in journal should make it focus on the page with the date, i.e. headings with
-dates should be clickable." In the journal stream each day's heading (`.journal-day-title`) is plain
-text; clicking it should open that day's page (`/page/<ISO date>`), as Logseq does.
-
----
-
-
 ### B-561 · `search-fallback.spec.ts` "a keyword search shows no fallback note" fails in a full run, passes alone
 **Status:** open (test order) · **Severity:** low · **Found:** 2026-09-13, the coordinator's two
 final full Chromium runs on the merged tree · **Test:** the spec itself
@@ -999,7 +988,32 @@ Every other overlay (HelpMenu, the confirm dialog, the context menu) closes on E
 Diagnostics panel (`views/DiagnosticsPanel.tsx`) closes only on a backdrop click or its Close
 button, so a keyboard user has to tab to Close.
 
+### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
+**Status:** open (decided 2026-10-03: mimic Logseq, an editable empty journal) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
+**Test:** none yet
+
+Opening a not-yet-created journal day's page (today's heading before today has a block, or any date
+link) shows the generic "This page doesn't exist yet / Create" view instead of the journal stream's
+draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
+
 ## Fixed
+
+### B-560 · Journal date headings are not clickable
+**Status:** fixed (2026-10-03) · **Severity:** low · **Found:** 2026-09-13, owner request ·
+**Test:** `apps/web/src/views/JournalStreamView.test.tsx` "links every day heading to that day's
+page, under the graph prefix too (B-560)" (failed before the fix); `e2e/tests/journal-heading-link.spec.ts`
+(3 tests, incl. keyboard and a non-default `/g/<slug>` graph).
+
+"Clicking on the date in journal should make it focus on the page with the date, i.e. headings with
+dates should be clickable." In the journal stream each day's heading (`.journal-day-title`) is plain
+text; clicking it should open that day's page (`/page/<ISO date>`), as Logseq does.
+
+---
+
+**Fixed 2026-10-03** (`9f41585`): each day heading's text is a router `<A>` to
+`pageRoutePath(isoJournalName(day))` (`JournalStreamView.tsx#DayTitleLink`): upcoming, today (also
+while virtual), pinned and earlier days. Styled as the heading (`.journal-day-link`: inherited
+colour, underline on hover only). Found along the way: B-595.
 
 ### B-591 · `biome check .` is not clean on `main`: five a11y lint errors in three files
 **Status:** fixed · **Severity:** low (lint only) · **Found:** 2026-10-03, coordinator cleanup pass ·
