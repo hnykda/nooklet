@@ -892,6 +892,90 @@ page is correct. Probe: `indent-render.mjs journal fast 0`.
 **Repro:** delete a page from Page actions. The server log shows
 `OpError: no page named "…"` at `plugins/word-count … countPage`, and the browser logs a 500.
 
+### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
+**Status:** open, reproduced · **Severity:** high (data goes into the wrong graph, which ADR 025 forbids) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: `tools/probes/sweep-devices/local-then-server.probe.ts` with `SWEEP_LT_FAST=1 SWEEP_LT_SETTLE_MS=0`.
+On an emulated Capacitor shell:
+1. "Just this device", type a note in today's journal.
+2. Relaunch at once, then "Just this device" again.
+3. Within ~3 s, Switch graph → Add a graph → Sync with a server → `<server>/g/<id>` + token.
+
+The note shows up in that server graph, and the server API returns it. This happened in 1 of 4
+runs, plus the first exploratory run against `default`. Suspected cause, from the code:
+`db/client.ts`'s unapplied-ops journal (`nooklet.unapplied-ops.v1:*`) is not keyed by graph entry.
+A batch still held at the relaunch (seen in localStorage at that moment) replays into whichever
+graph the next page load opens. A second suspect, same class, not seen to fire:
+`db/capacitor-checkpoint.ts` uses one fixed `CHECKPOINT_PATH` for every graph entry, and restores it
+into any graph's empty replica. The same orphan replay presumably applies to web/desktop graph
+switching right after an edit (not tested).
+
+### B-612 · Capacitor local-only graph disappears from the list once a server graph is added
+**Status:** open · **Severity:** high · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: as above, at any timing. "Just this device" creates no `nooklet.graphs` entry (`App.tsx` only
+sets `skipped`), so after a server graph is added the switcher lists only "Remote graph". The
+local-only replica, which uses the un-namespaced OPFS file, can no longer be reached. The relaunch
+goes straight into the server graph.
+
+### B-613 · Revoked or invalid stored token shows as "Offline", forever, with no way to re-pair
+**Status:** open · **Severity:** medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: `edges.probe.ts`. Join with a device token, `nooklet token revoke <id>`, reload, edit. The
+indicator says "Offline — changes are kept and sent when back online" for 20 s+ and the edit never
+reaches the server. The connect screen is not offered, because the entry still has a token. With a
+memory replica the page reads "This page doesn't exist yet. Create …". A 401 on push is reported as
+`offline` (`sync-client.ts` catch → `state: "offline"`).
+
+### B-614 · Sync indicator stays "Synced" while the server is down
+**Status:** open · **Severity:** medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: `edges.probe.ts`. Synced client, stop the server, don't type: "Synced" at 1/3/5/10/20/30 s,
+with and without a proxy. The live WebSocket's `close` only schedules a reconnect
+(`http-transport.ts`) and never changes the status. Only a failed push or pull does.
+
+### B-615 · Plain-http non-loopback origin: token accepted, then a blank white page with no explanation
+**Status:** open · **Severity:** medium (B-27 is the cause; this is the silent failure mode) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: `insecure-context.probe.ts` (`serve.sh <dir> 6311 <LAN-IP>`, open `http://<LAN-IP>:6311/`,
+paste a valid token). Errors: `crypto.randomUUID is not a function` (`data/bootstrap.ts`,
+`live/window-id.ts`, `app/hosts.ts`) and `navigator.locks` undefined. ConnectView could detect
+`!isSecureContext` and say why. The same blank page is expected in the desktop app pointed at a
+plain-http remote.
+
+### B-616 · Behind a same-host reverse proxy, the app shell 403s with an MCP "Invalid Host" JSON-RPC error
+**Status:** open · **Severity:** medium (deployment trap) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: `serve.sh <dir> 6311` (bound 127.0.0.1, no `--allow-host`), then
+`node host-proxy.mjs 6312 6311` (forwards `Host: nooklet.sweep.test`).
+`curl 127.0.0.1:6312/g/default/` → 403 `{"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid Host: nooklet.sweep.test"}}`,
+while `/api/session` returns 200. The cause is `mountMcp`'s `"/"` sub-app guard
+(`createMcpHonoApp({host})` auto-enables localhost Host validation). The workaround is
+`--allow-host <name>`, but the CLI only suggests it for non-loopback binds.
+
+### B-617 · Plugin "word-count" fails to activate for every graph after the first
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: `nooklet serve` with two graphs, then hit `/g/<second>/…`. The server log shows
+`[plugins] plugin "word-count" failed to activate: op "page.wordcount" is already registered`. The
+op registry looks process-global across graph contexts.
+
+### B-618 · Graph switcher labels are generic and can't be told apart
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: two-clients 1c. Entries read "This graph" and "Remote graph" rather than the server's graph
+label or slug. In the desktop picker, two graphs on one server both have the title `127.0.0.1:6311`
+and differ only in the subtitle URL. Adding the bare server address (no `/g/<slug>`) for a graph
+already listed creates a duplicate entry with its own replica (two-clients 1d). The add form gives
+no hint that `/g/<slug>` is expected, and nothing uses `GET /graphs` to offer a choice.
+
+### B-619 · Local-only draft-journal write can be lost on an immediate relaunch
+**Status:** open, intermittent (1 of 3 at 0 ms; 0 of 1 with a 5 s settle) · **Severity:** low–medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+
+Repro: `local-then-server.probe.ts` with `SWEEP_LT_SETTLE_MS=0`: fill today's draft, Enter, Escape,
+reload at once. One run showed the note momentarily, then an empty day. Possibly B-247 territory,
+not narrowed down.
+
 ## Fixed
 
 ### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated

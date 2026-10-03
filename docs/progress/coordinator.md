@@ -29,7 +29,7 @@ runs the full e2e suite on the merged tree.
 | refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
 | empty-journal | B-595, **merged** (`6ddfc77`); B-605 deferred | 6309 |
 | sweep-core | **done**: basic loop works; B-606..B-610 → `docs/review/2026-10-03-sweep-core.md` | 6310 |
-| sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
+| sweep-devices | **done**; B-611..B-619 → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
 | b587 | B-587, real divergence, **merged** (`0cb4a62`, ADR 026) | 6314 |
 | b491 | B-491, **merged** (`f3a0d78`) | 6315 |
