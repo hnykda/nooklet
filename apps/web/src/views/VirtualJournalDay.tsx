@@ -70,6 +70,15 @@ interface Prepared {
   size: number;
 }
 
+/**
+ * A line typed in the draft, with the outline depth Tab and Shift+Tab gave it while the draft still
+ * held the keys (B-609). Depth 0 is a top-level block of the day.
+ */
+export interface DraftLine {
+  text: string;
+  depth: number;
+}
+
 /** Ops a day with `lines` typed lines takes: the page, the template's blocks, one per line. */
 function opsNeeded(template: Prepared["template"], lines: number): number {
   return 1 + (template?.count ?? 0) + lines;
@@ -80,9 +89,14 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   // The batch that started the day, which the day's tree is drawn from before its first fetch.
   let startOps: readonly Op[] = [];
   const [draft, setDraft] = createSignal("");
+  // The depth of the line in the textarea. Tab and Shift+Tab change it while the draft still holds
+  // the keys; see `onTab`.
+  const [draftDepth, setDraftDepth] = createSignal(0);
   // Lines Enter has closed that are not written yet. Only non-empty while a commit waits for
-  // `prepare` (a busy replica), or after a failed write put them back.
-  const [closed, setClosed] = createSignal<readonly string[]>([]);
+  // `prepare` (a busy replica, or simply a type-ahead burst faster than the worker's round trips),
+  // or after a failed write put them back.
+  const [closed, setClosed] = createSignal<readonly DraftLine[]>([]);
+  const allLines = (): DraftLine[] => [...closed(), { text: draft(), depth: draftDepth() }];
   const [error, setError] = createSignal<string | undefined>(undefined);
 
   let textarea: HTMLTextAreaElement | undefined;
@@ -95,7 +109,10 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
     disposed = true;
     // A commit waiting on the worker reads the draft when it resumes, and writes it.
     if (committing || pageId() !== undefined) return;
-    const text = [...closed(), draft()].filter((line) => line !== "").join("\n");
+    const text = allLines()
+      .map((line) => line.text)
+      .filter((line) => line !== "")
+      .join("\n");
     // Cleanup runs before Solid removes the textarea, so it still holds the caret if it had it.
     if (text !== "") void keepUncommittedDraft(text, document.activeElement === textarea);
   });
@@ -151,9 +168,43 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   /** Enter: close the typed line and open the next one, the way an outliner row does. */
   function onEnter(): void {
     if (draft() === "" && closed().length === 0) return;
-    setClosed((lines) => [...lines, draft()]);
+    setClosed(allLines());
     setDraft("");
+    // The new row starts where the one Enter closed was, as in the outliner.
     void commit();
+  }
+
+  /**
+   * Tab / Shift+Tab while the draft still holds the keys (B-609). Enter commits at once when
+   * `prepare` has answered, but a burst typed straight after focusing — `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ with
+   * no delay, or a phone keyboard delivering a batch — arrives before the worker's two round trips
+   * do, so the commit waits and these keys land here. The textarea used to let Tab do the browser
+   * default: focus jumped to the next focusable thing on the page (the help button), the Enter
+   * after it pressed that button, the text after it was typed into nothing, and the day was written
+   * flat with lines missing. So Tab is the outliner's Tab here too: it nests the line under the
+   * one above (one level deeper at most, never the first line), and the commit writes that tree.
+   */
+  function onTab(outdent: boolean): void {
+    const above = closed().at(-1);
+    if (outdent) setDraftDepth((d) => Math.max(0, d - 1));
+    else if (above) setDraftDepth((d) => Math.min(d + 1, above.depth + 1));
+  }
+
+  /**
+   * Backspace at the start of the line: join it to the line above, the way the outliner's
+   * Backspace merges a row into its predecessor. Only reachable while lines are waiting for the
+   * commit, and without it an Enter typed by mistake in a burst would be written as an empty block.
+   */
+  function onBackspaceAtStart(): boolean {
+    const above = closed().at(-1);
+    if (!above || !textarea) return false;
+    const rest = draft();
+    setClosed((lines) => lines.slice(0, -1));
+    setDraftDepth(above.depth);
+    setDraft(above.text + rest);
+    textarea.value = above.text + rest;
+    textarea.setSelectionRange(above.text.length, above.text.length);
+    return true;
   }
 
   /**
@@ -179,7 +230,7 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
       }
       prepared = undefined; // spent: its HLCs are about to be used
 
-      const lines = [...closed(), draft()];
+      const lines = allLines();
       const newPageId = newId();
       const { ops, lastBlockId } = dayOps(prep, newPageId, lines);
       // Posted now, before the tree below exists and can post anything of its own.
@@ -196,15 +247,17 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
       await written;
       setClosed([]);
       setDraft("");
+      setDraftDepth(0);
     } catch (err) {
       // The write is one transaction (`SyncClient.applyLocal`), so a failure anywhere means nothing
       // was written: the tree just shown is for a page that does not exist. Put the typed lines
       // back — the empty row Enter opened goes back to being the end of the line before it — drop
       // the caret request for a block that was never created, and say why (B-131).
-      const lines = [...closed(), draft()];
-      if (lines.length > 1 && lines.at(-1) === "") lines.pop();
+      const lines = allLines();
+      if (lines.length > 1 && lines.at(-1)?.text === "") lines.pop();
       setClosed(lines.slice(0, -1));
-      setDraft(lines.at(-1) ?? "");
+      setDraft(lines.at(-1)?.text ?? "");
+      setDraftDepth(lines.at(-1)?.depth ?? 0);
       if (focusId && blockFocusRequest() === focusId) clearBlockFocusRequest();
       if (pageId() !== undefined) {
         setPageId(undefined);
@@ -225,7 +278,7 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   function dayOps(
     prep: Prepared,
     newPageId: string,
-    lines: readonly string[],
+    lines: readonly DraftLine[],
   ): { ops: Op[]; lastBlockId: string } {
     const { clock, template } = prep;
     const mint = (entity: string, payload: OpPayload): Op =>
@@ -245,14 +298,26 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
       ops.push(...inserted.ops);
       order = inserted.lastOrder;
     }
+    // `open[d]` is the latest block at depth `d` and the last order among its children: the
+    // parent a line at depth `d + 1` goes under, and where among its children it goes. Depths are
+    // kept valid by `onTab` (never more than one deeper than the line above), and clamped here too
+    // so a bad depth can only flatten a line, never orphan it.
+    const open: Array<{ id: string | null; lastChildOrder: string | null }> = [
+      { id: null, lastChildOrder: order },
+    ];
     let lastBlockId = "";
-    for (const content of lines) {
+    for (const { text: content, depth: wanted } of lines) {
+      const depth = Math.min(wanted, open.length - 1);
+      const parent = open[depth] as { id: string | null; lastChildOrder: string | null };
       lastBlockId = newId();
-      order = orderBetween(order, null);
+      const blockOrder = orderBetween(parent.lastChildOrder, null);
+      parent.lastChildOrder = blockOrder;
+      open.length = depth + 1;
+      open.push({ id: lastBlockId, lastChildOrder: null });
       ops.push(
         mint(lastBlockId, {
           kind: "block.create",
-          place: { pageId: newPageId, parentId: null, order },
+          place: { pageId: newPageId, parentId: parent.id, order: blockOrder },
           content,
           createdAt: now,
         }),
@@ -273,19 +338,19 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
         <div class="vr-draft">
           <For each={closed()}>
             {(line) => (
-              <div class="vr-row vr-row-draft">
+              <div class="vr-row vr-row-draft" style={{ "--depth": line.depth }}>
                 <span class="vr-bullet-wrap" aria-hidden="true">
                   <span class="vr-bullet">
                     <span class="vr-bullet-dot" />
                   </span>
                 </span>
                 <div class="vr-row-main">
-                  <div class="vr-content vr-draft-line">{line}</div>
+                  <div class="vr-content vr-draft-line">{line.text}</div>
                 </div>
               </div>
             )}
           </For>
-          <div class="vr-row vr-row-draft">
+          <div class="vr-row vr-row-draft" style={{ "--depth": draftDepth() }}>
             <span class="vr-bullet-wrap" aria-hidden="true">
               <span class="vr-bullet">
                 <span class="vr-bullet-dot" />
@@ -303,9 +368,21 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
                   onInput={(e) => setDraft(e.currentTarget.value)}
                   onBlur={() => !disposed && void commit()}
                   onKeyDown={(e) => {
+                    if (e.isComposing) return;
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       onEnter();
+                    } else if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                      // Never the browser's focus move: the keys after it would go elsewhere.
+                      e.preventDefault();
+                      onTab(e.shiftKey);
+                    } else if (
+                      e.key === "Backspace" &&
+                      e.currentTarget.selectionStart === 0 &&
+                      e.currentTarget.selectionEnd === 0 &&
+                      onBackspaceAtStart()
+                    ) {
+                      e.preventDefault();
                     }
                   }}
                 />

@@ -351,6 +351,21 @@ export function BlockTree(props: {
         });
       }
     }
+    // Every other block this tab created that no fetch has returned yet stays too, as it is in the
+    // local tree (B-609). This effect re-runs when `editingId` changes — every Enter — against the
+    // LAST fetch, which cannot have the blocks created since. Keeping only the edited one, as the
+    // branch above does, dropped the rest: on a page that started empty, Enter twice left the
+    // tree holding nothing but the new row, the rows on screen flickered down to that one, and the
+    // Tab typed next had no sibling above to nest under, so it did nothing — a zero-delay
+    // `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ reached the server flat. A real deletion of such a block elsewhere is
+    // the window `./unseen-creations.ts` already leaves open: until the first fetch has it.
+    const fetchedIds = new Set(flat.map((b) => b.id));
+    for (const local of untrack(localBlocks)) {
+      if (!fetchedIds.has(local.id) && unseenCreations.has(local.id)) {
+        fetchedIds.add(local.id);
+        flat.push(local);
+      }
+    }
     // A refetch reorders the edited row too. One that READ before an Alt+Up/Down (or its undo)
     // and RESOLVED after it puts the old order back for a frame, and the next one restores the
     // new order: two DOM moves, each blurring the editor, with nothing to refocus it. Traced
