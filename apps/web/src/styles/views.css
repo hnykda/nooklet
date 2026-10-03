@@ -213,6 +213,19 @@
   color: var(--fg-soft);
 }
 
+/* B-560: the date opens that day's page, but it is still the heading — same colour as the
+   heading it sits in (accent for Today), no link blue, underline only when pointed at. Focus uses
+   the global ring. */
+.journal-day-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.journal-day-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .journal-stream-sentinel {
   height: 1px;
 }

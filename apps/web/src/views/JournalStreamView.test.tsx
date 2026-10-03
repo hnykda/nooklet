@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { todayJournalDay } from "@nooklet/core";
+import { isoJournalName, todayJournalDay } from "@nooklet/core";
 import { Route, Router } from "@solidjs/router";
-import { cleanup, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearPinnedJournalDay, pinJournalDay } from "../app/journal-nav.js";
@@ -78,10 +78,10 @@ afterEach(() => {
   clearPinnedJournalDay();
 });
 
-async function renderStream() {
+async function renderStream(base?: string) {
   const { JournalStreamView } = await import("./JournalStreamView.js");
   return render(() => (
-    <Router>
+    <Router base={base}>
       <Route path="*" component={JournalStreamView} />
     </Router>
   ));
@@ -321,5 +321,69 @@ describe("JournalStreamView", () => {
     expect(
       screen.getAllByTestId("block-tree").filter((el) => el.textContent === `block-tree:p-${sun}`),
     ).toHaveLength(1);
+  });
+  it("links every day heading to that day's page, under the graph prefix too (B-560)", async () => {
+    // A `/g/<slug>` base, as ADR 025's same-path graphs mount the app: the link must carry it
+    // exactly once (the router adds it; `rawAnchorHref` on top would double it, B-586).
+    window.history.replaceState(null, "", "/g/work/journals");
+    const page = (id: string, day: number) => ({
+      id,
+      graphId: "default",
+      name: isoJournalName(day),
+      key: isoJournalName(day),
+      journalDay: day,
+      createdAt: 0,
+      updatedAt: 0,
+      deletedAt: null,
+      nameHlc: "",
+      deletedHlc: null,
+    });
+    const upcoming = today + 1; // never parsed as a date, only rendered through isoJournalName
+    const earlier = 20260909;
+    const pinnedDay = 20260801;
+    usePinnedJournalDay.mockImplementation((...args: unknown[]) => {
+      const pinned = args[0] as () => number | undefined;
+      return Object.assign(
+        (): JournalDayEntry | undefined => {
+          const d = pinned();
+          return d === undefined ? undefined : { day: d, page: page(`p-${d}`, d), blocks: [] };
+        },
+        { loading: false, error: undefined },
+      );
+    });
+    streamValue = [
+      { day: upcoming, page: page("p-up", upcoming), blocks: [] },
+      // Today virtual: no page yet, and its heading must link all the same.
+      { day: today, page: null, blocks: [] },
+      { day: earlier, page: page("p-909", earlier), blocks: [] },
+    ];
+    await renderStream("/g/work");
+    pinJournalDay(pinnedDay, today);
+
+    const hrefOf = (region: string) =>
+      screen
+        .getByRole("region", { name: region })
+        .querySelector("h2.journal-day-title a")
+        ?.getAttribute("href");
+    const sections = screen.getAllByRole("region");
+    const links = sections.map((s) => s.querySelector("h2.journal-day-title a"));
+    expect(links.every((a) => a !== null)).toBe(true);
+    expect(hrefOf("Today")).toBe(`/g/work/page/${isoJournalName(today)}`);
+    expect(hrefOf("Jumped-to day")).toBe(`/g/work/page/${isoJournalName(pinnedDay)}`);
+    const hrefs = links.map((a) => a?.getAttribute("href"));
+    expect(hrefs).toContain(`/g/work/page/${isoJournalName(upcoming)}`);
+    expect(hrefs).toContain(`/g/work/page/${isoJournalName(earlier)}`);
+    // The pinned heading's "Back to stream" button stays a button, outside the link.
+    expect(screen.getByRole("button", { name: "Back to stream" }).closest("a")).toBeNull();
+
+    // A plain click goes through the router (no reload) and lands on the day's page.
+    const todayLink = screen
+      .getByRole("region", { name: "Today" })
+      .querySelector("h2.journal-day-title a") as HTMLAnchorElement;
+    fireEvent.click(todayLink);
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/g/work/page/${isoJournalName(today)}`),
+    );
+    window.history.replaceState(null, "", "/");
   });
 });
