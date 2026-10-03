@@ -219,14 +219,17 @@ test("a journal day opened from the calendar becomes a real journal page once ty
   await expect(pinned).toHaveCount(0);
 });
 
-test("creating a journal-titled page from the missing-page view makes a journal, not an ordinary page", async ({
+test("writing into a journal-titled page that does not exist makes a journal, not an ordinary page", async ({
   page,
 }) => {
   const future = isoOffset(400);
   await page.goto(pagePath(future));
-  await expect(page.locator(".page-view-missing")).toBeVisible();
-  await page.locator(".page-view-missing button").click();
+  // B-595: a date with no page is the journal draft, not the missing-page view's Create button.
+  const draft = page.locator(".page-view-draft .vr-draft-input");
+  await expect(draft).toBeVisible();
   await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  await draft.fill("a journal, not a page");
+  await draft.blur();
   // B-23 closed this hole in the API; the UI must not reopen it.
   await expect.poll(() => pageKind(page, future)).toBe("journal");
 });

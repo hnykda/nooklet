@@ -13,7 +13,7 @@ import {
   parseJournalTitle,
 } from "@nooklet/core";
 import { A, useNavigate } from "@solidjs/router";
-import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
+import { type Accessor, createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { useAgendaTasks } from "../data/agenda.js";
 import { describeError } from "../data/api-client.js";
 import { currentDay } from "../data/day-clock.js";
@@ -36,6 +36,7 @@ import { PageIconEditor } from "./PageIcon.js";
 import { PageProperties } from "./PageProperties.js";
 import { PageTitleField } from "./PageTitleField.js";
 import { ReferencesPanel } from "./ReferencesPanel.js";
+import { VirtualJournalDay } from "./VirtualJournalDay.js";
 
 export interface PageViewProps {
   name: Accessor<string>;
@@ -108,6 +109,29 @@ export function PageView(props: PageViewProps): JSX.Element {
   });
   const missing = (): boolean =>
     page() === null && !renaming() && (!page.loading || settledName() === props.name());
+
+  /**
+   * B-595: a journal day with no page yet opens as an editable empty day — the journal stream's
+   * own draft (`VirtualJournalDay`), where typing creates the page and its first block — not as
+   * "doesn't exist yet / Create". Logseq does the same (docs/progress/empty-journal.md). Nothing is
+   * written by viewing: the draft writes only once something is typed, so opening a date link
+   * leaves no empty page behind (ADR 024 keeps journal days out of reference-minting for exactly
+   * that reason, and B-579 is what a page made by merely looking would cost).
+   *
+   * Once the draft has written the day it stays, and renders the day's tree itself: switching to
+   * the page branch's own `BlockTree` as soon as the page resolves would unmount the editor the
+   * caret has just gone into, losing keys typed during the swap (B-411, same as the stream).
+   * Only for a whole day — the zoom route (`?block=`) has nothing to draft into.
+   */
+  // The day whose draft has written it — a day, not a flag, so it cannot leak into the next date
+  // the route names before that date's lookup has said whether it exists.
+  const [startedDay, setStartedDay] = createSignal<number | null>(null);
+  const draftDay = (): number | null => {
+    if (blockId()) return null;
+    const day = parseJournalTitle(props.name());
+    if (day === null) return null;
+    return startedDay() === day || missing() ? day : null;
+  };
 
   async function commitTitle(): Promise<void> {
     const p = page();
@@ -183,7 +207,7 @@ export function PageView(props: PageViewProps): JSX.Element {
         <p class="page-view-loading">Loading…</p>
       </Show>
 
-      <Show when={missing()}>
+      <Show when={missing() && draftDay() === null}>
         <div class="page-view-missing">
           <h1>{displayRefName(props.name())}</h1>
           <p>This page doesn't exist yet.</p>
@@ -206,66 +230,129 @@ export function PageView(props: PageViewProps): JSX.Element {
         </Show>
       </Show>
 
-      <Show when={page()}>
-        {(p) => (
-          <>
-            {/* `.page-title-input` zeroes its own margins, so the heading and the input occupy
-                the same space — moving between a journal and an ordinary page does not shift the
-                content below. */}
-            <div class="page-title-row">
-              <PageIconEditor pageId={p().id} icon={properties().icon} />
-              <Show when={!isJournal()} fallback={<h1 class="page-title-input">{title()}</h1>}>
-                {/* A growing textarea, so a long name wraps instead of being cut (B-350). */}
-                <PageTitleField
-                  value={titleDraft()}
-                  readOnly={locked()}
-                  onInput={setTitleDraft}
-                  onCommit={() => void commitTitle()}
-                />
-                {/* Paper only (`styles/print.css`): the field's height is measured at screen
-                    width, so a long name printed clipped at the sheet's edge (B-227). */}
-                <h1 class="page-title-print">{titleDraft()}</h1>
-              </Show>
-              <Show when={locked()}>
-                <span class="page-readonly-badge" title={READ_ONLY_NOTICE}>
-                  Read-only
-                </span>
-              </Show>
-              {/* ADR 022: the page's timeline lives at `/history/<name>` (a splat under `/page/`
-                  would read "/history" as part of the name). Muted until the row is hovered, like
-                  the empty icon slot — a control every page has but few visits need. */}
-              <A
-                class="page-history-link"
-                href={historyRoutePath(p().name)}
-                aria-label="Page history"
-              >
-                History
-              </A>
-              <PageActions
-                pageId={p().id}
-                pageName={p().name}
-                favorite={isFavoriteValue(properties().favorite)}
-                icon={properties().icon}
-                journal={isJournal()}
-              />
-            </div>
-            <PageProperties pageId={p().id} properties={properties()} />
-            <find.Bar scope={() => viewEl} />
-            <BlockTree
-              pageId={p().id}
-              rootBlockId={blockId()}
-              onNavigate={onNavigate}
-              filter={find.filter()}
-              onFilterMatches={find.onMatches}
-            />
+      {/* Not keyed on the page: a day started from its draft (B-595) goes from "no page" to
+          "page" here, and everything below — above all the draft's own tree — must stay mounted.
+          The wrapper element is load-bearing: as a bare fragment, the header growing from one
+          node to three made Solid reconcile the whole sibling list and MOVE the draft's node,
+          and moving a node blurs the editor inside it — the caret was gone right after Enter
+          (seen in e2e/tests/empty-journal-page.spec.ts). Inside one element each section has
+          its own insertion marker and changes alone. */}
+      <Show when={page() || draftDay() !== null}>
+        <div class="page-view-body">
+          <Show
+            when={page()}
+            fallback={
+              <div class="page-title-row">
+                <h1 class="page-title-input">{displayRefName(props.name())}</h1>
+              </div>
+            }
+          >
+            {(p) => (
+              <>
+                {/* `.page-title-input` zeroes its own margins, so the heading and the input occupy
+                  the same space — moving between a journal and an ordinary page does not shift
+                  the content below. */}
+                <div class="page-title-row">
+                  <PageIconEditor pageId={p().id} icon={properties().icon} />
+                  <Show when={!isJournal()} fallback={<h1 class="page-title-input">{title()}</h1>}>
+                    {/* A growing textarea, so a long name wraps instead of being cut (B-350). */}
+                    <PageTitleField
+                      value={titleDraft()}
+                      readOnly={locked()}
+                      onInput={setTitleDraft}
+                      onCommit={() => void commitTitle()}
+                    />
+                    {/* Paper only (`styles/print.css`): the field's height is measured at screen
+                      width, so a long name printed clipped at the sheet's edge (B-227). */}
+                    <h1 class="page-title-print">{titleDraft()}</h1>
+                  </Show>
+                  <Show when={locked()}>
+                    <span class="page-readonly-badge" title={READ_ONLY_NOTICE}>
+                      Read-only
+                    </span>
+                  </Show>
+                  {/* ADR 022: the page's timeline lives at `/history/<name>` (a splat under
+                    `/page/` would read "/history" as part of the name). Muted until the row is
+                    hovered, like the empty icon slot — a control every page has but few visits
+                    need. */}
+                  <A
+                    class="page-history-link"
+                    href={historyRoutePath(p().name)}
+                    aria-label="Page history"
+                  >
+                    History
+                  </A>
+                  <PageActions
+                    pageId={p().id}
+                    pageName={p().name}
+                    favorite={isFavoriteValue(properties().favorite)}
+                    icon={properties().icon}
+                    journal={isJournal()}
+                  />
+                </div>
+                <PageProperties pageId={p().id} properties={properties()} />
+                <find.Bar scope={() => viewEl} />
+              </>
+            )}
+          </Show>
 
-            {agendaSection()}
-            <Show when={!blockId()}>
-              <NamespaceChildren name={p().name} onNavigate={onNavigate} />
-              <ReferencesPanel target={p().name} onNavigate={onNavigate} />
+          <Show
+            when={draftDay()}
+            keyed
+            fallback={
+              <Show when={page()}>
+                {(p) => (
+                  <BlockTree
+                    pageId={p().id}
+                    rootBlockId={blockId()}
+                    onNavigate={onNavigate}
+                    filter={find.filter()}
+                    onFilterMatches={find.onMatches}
+                  />
+                )}
+              </Show>
+            }
+          >
+            {(day) => {
+              // Leaving the draft (another route) forgets the day: coming back to it later must
+              // find its page through the normal branch. A remounted draft has no page of its own,
+              // and typing into it would make a second page for a day that already has one.
+              onCleanup(() => setStartedDay(null));
+              return (
+                <div class="page-view-draft">
+                  <VirtualJournalDay
+                    day={day}
+                    onNavigate={onNavigate}
+                    onStarted={(s) => setStartedDay(s ? day : null)}
+                  />
+                </div>
+              );
+            }}
+          </Show>
+
+          {agendaSection()}
+          <Show when={!blockId()}>
+            {/* Before the day has a page: references under the canonical name, no unlinked half
+              ("Link all" needs the page) — as the missing view above does. */}
+            <Show
+              when={page()}
+              fallback={
+                <ReferencesPanel
+                  target={canonicalRefName(props.name())}
+                  onNavigate={onNavigate}
+                  unlinked={false}
+                />
+              }
+            >
+              {(p) => (
+                <>
+                  <NamespaceChildren name={p().name} onNavigate={onNavigate} />
+                  <ReferencesPanel target={p().name} onNavigate={onNavigate} />
+                </>
+              )}
             </Show>
-          </>
-        )}
+          </Show>
+        </div>
       </Show>
     </div>
   );
