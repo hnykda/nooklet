@@ -41,7 +41,7 @@ runs the full e2e suite on the merged tree.
 | connection-states | B-613 revoked token, B-614 indicator, B-615 insecure context page, B-618 labels | 6340-6344 |
 (B-617 → tasks-workflow; B-616 + runbook localhost fix → pairing.)
 | e2e-green | B-623 page-find/random-page red, B-624, B-593, B-561 flakes; full suite twice | 6350-6354 |
-| server-search | owner request: local-first search, enriched by the server's hybrid (embedding) search when connected (owner agreed the local-first design 2026-10-03; Ollama multilingual model preferred over a third-party API) | 6345-6349 |
+| server-search | local-first search + server semantic enrich, **merged** (`3844838`, `ba58947`) | 6345-6349 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### Incidents 2026-10-03 (so they are not repeated)
