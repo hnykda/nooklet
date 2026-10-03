@@ -46,7 +46,7 @@ test("Open a random page jumps to another page with content, never a journal day
     expect(name, "a random jump landed on a page route").not.toBeNull();
     expect(name).not.toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(name).not.toBe("Random Empty");
-    await expect(page.locator(".page-view > .vr-outliner .vr-row").first()).toBeVisible();
+    await expect(page.locator(".page-view-body > .vr-outliner .vr-row").first()).toBeVisible();
   }
 });
 
@@ -56,5 +56,5 @@ test("from a view that is not a page, it still lands on a page", async ({ page }
   await expect(page.locator(".app-topbar")).toBeVisible();
   await runFromPalette(page, "Open a random page");
   await expect.poll(() => currentPageName(page)).not.toBeNull();
-  await expect(page.locator(".page-view > .vr-outliner .vr-row").first()).toBeVisible();
+  await expect(page.locator(".page-view-body > .vr-outliner .vr-row").first()).toBeVisible();
 });

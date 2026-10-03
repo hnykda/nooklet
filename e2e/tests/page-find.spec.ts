@@ -45,6 +45,14 @@ async function highlightSizes(page: Page): Promise<{ all: number; current: numbe
   }));
 }
 
+/** A page name of this run's own. The tests below edit their page, and `seedPage` returns an
+ * existing page as it is, so under `--repeat-each` (or a retry) the second run found the first
+ * run's edits instead of its seed and failed. */
+function runName(base: string): string {
+  const info = test.info();
+  return `${base} ${info.repeatEachIndex}-${info.retry}`;
+}
+
 const NESTED = [
   "- Zahrada",
   "  - řeka a most",
@@ -135,7 +143,8 @@ test("from the editor: keys typed into the bar never reach the block, and Escape
 test("a match can be edited while the filter stays, and typing it out of matching keeps its row", async ({
   page,
 }) => {
-  const outliner = await openPage(page, "Find Then Edit", "- keep me\n- other\n- keep too");
+  const name = runName("Find Then Edit");
+  const outliner = await openPage(page, name, "- keep me\n- other\n- keep too");
   await openFind(page);
   await page.keyboard.type("keep");
   await expect(outliner.locator(".vr-row")).toHaveCount(2);
@@ -156,7 +165,7 @@ test("a match can be edited while the filter stays, and typing it out of matchin
     await input(page).evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]),
   ).toEqual([0, 4]);
   await expect
-    .poll(async () => (await readBlocks(page, "Find Then Edit"))[0]?.content)
+    .poll(async () => (await readBlocks(page, name))[0]?.content)
     .toBe("changed");
   // The edited block no longer matches and is no longer being edited, so it drops out.
   await expect.poll(() => rowTexts(page, outliner)).toEqual(["keep too"]);
@@ -219,7 +228,7 @@ test("under a filter, Backspace and Delete join a block with its neighbour on th
   // Merging uses reading order. With the filter's rows as that order, the "previous row" of a
   // match can be many hidden blocks away, and Backspace moved its text above blocks it never
   // touched: this page became "keep mekeep too" / "hidden one" / "hidden two" (probe, 2026-09-13).
-  const name = "Find Merge Neighbours";
+  const name = runName("Find Merge Neighbours");
   const outliner = await openPage(page, name, "- keep me\n- hidden one\n- hidden two\n- keep too");
   await openFind(page);
   await page.keyboard.type("keep");
@@ -276,7 +285,7 @@ test("Escape puts the caret back in the same place in a block that shows a prope
   // The editor shows `list:: number` as line 2 of the block (B-101). The caret saved on open was an
   // offset into that buffer, and Escape put it back as if it were an offset into the text — the
   // property line's length further along.
-  const name = "Find Property Caret";
+  const name = runName("Find Property Caret");
   const outliner = await openPage(page, name, "- first line\n  list:: number\n  second line here");
   await outliner.locator(".vr-block-view").first().click();
   await expect(editor(page)).toBeFocused();

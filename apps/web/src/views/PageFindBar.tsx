@@ -96,7 +96,7 @@ function rowElement(outliner: Element, id: string): Element | null {
 export function PageFindBar(props: {
   /** Matching block ids in reading order, from `BlockTree`'s `onFilterMatches`. */
   matches: readonly string[];
-  /** The page view's root: the outline is its direct `.vr-outliner` child. */
+  /** The page view's root: the outline is the `.vr-outliner` directly inside its `.page-view-body`. */
   scope: () => HTMLElement | undefined;
 }): JSX.Element {
   let input: HTMLInputElement | undefined;
@@ -106,8 +106,12 @@ export function PageFindBar(props: {
     props.matches.length === 0 ? -1 : Math.min(current(), props.matches.length - 1),
   );
 
+  // The page's own outline, not a references panel's outliners further down. Pinned to the exact
+  // nesting: when B-595 wrapped the page's sections in `.page-view-body`, the old
+  // `:scope > .vr-outliner` silently matched nothing, and find lost its highlights and its
+  // scroll-to-match while still filtering rows (B-623; `e2e/tests/page-find.spec.ts`).
   const outliner = (): Element | null =>
-    props.scope()?.querySelector(":scope > .vr-outliner") ?? null;
+    props.scope()?.querySelector(":scope > .page-view-body > .vr-outliner") ?? null;
 
   // Focus and select on open and on every repeated Cmd/Ctrl+F. The rAF is a backstop: the same
   // flush that opens the bar detaches the editor (`requestEditingEnd`), and a focused element that
