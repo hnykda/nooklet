@@ -12,8 +12,11 @@ same-origin stand-in for the Capacitor shell). Probes for this work are in `tool
 - [x] Reproduced B-612 (probe `sweep-devices/local-then-server.probe.ts`, 1/1 runs: switcher lists
       only "Remote graph" after adding a server graph).
 - [x] B-619 narrowed down, cause confirmed (below).
-- [ ] B-611: cause confirmed with a deterministic test (in flight).
-- [ ] Fixes, tests, migration, verification, Simulator run.
+- [x] B-611: cause confirmed with a deterministic test (red on `38e17a6`: the server graph got
+      2 hits, the page and the block, from a seeded unscoped batch).
+- [x] Fixes + migration + tests: `c58ede4`, `3e3c1c5`.
+- [x] Required e2e specs, `pnpm -r test`, typecheck, biome (results below).
+- [ ] Headless Simulator run of the real app (next).
 
 ## B-619: cause (confirmed)
 
