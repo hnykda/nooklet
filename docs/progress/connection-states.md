@@ -14,12 +14,19 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   ("Offline — …" label, dot still `synced`) and the server-down test ("Synced" with the proxy
   down); the blip test is a guard, green both before and after. Green after, `--repeat-each=2`.
 
+- B-615: `index.html` now loads `src/entry.ts`, which checks `isSecureContext` +
+  `crypto.randomUUID` + `navigator.locks` and renders `src/insecure-context.ts`'s plain-DOM page
+  (why, plus Tailscale serve / HTTPS / localhost or SSH tunnel) instead of dynamically importing
+  `main.tsx`. e2e `insecure-context.spec.ts`: red on 38e17a6 (blank white page, screenshot), green
+  after. Capacitor: not re-probed (no Simulator allowed); relies on the recorded Simulator probe
+  (`docs/progress/real-device-test.md`: `isSecureContext=true`) and on the real app booting there,
+  which it cannot do without `crypto.randomUUID`.
+
 ## In flight
 - nothing
 
 ## Next steps
-1. B-615 (insecure-context page before anything else runs)
-2. B-618 (labels from graph.overview, dedupe by resolved URL, /g/<slug> hint, GET /graphs list,
+1. B-618 (labels from graph.overview, dedupe by resolved URL, /g/<slug> hint, GET /graphs list,
    desktop picker)
 3. Full verification run; format the pre-existing biome errors in `tools/probes/sweep-*`.
 
@@ -52,3 +59,12 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   (guard). Fix: WS close → 1.5 s grace → probe `pull()`; failure → `offline`; reconnect → pull →
   `idle`. Each failed reconnect re-probes, so recovery is noticed even without the socket. Not
   verified against a real killed server (the e2e uses a TCP proxy that stops listening).
+- **B-615** → `fixed` · **Test:** `e2e/tests/insecure-context.spec.ts` (red on 38e17a6: blank
+  page), `insecure-context.test.ts`. Fix: `src/entry.ts` gates before `main.tsx` is imported (its
+  imports are what throw) and shows why plus the three fixes. The capability check (randomUUID,
+  locks) decides alongside `isSecureContext`. Capacitor `capacitor://localhost` = secure context per
+  the recorded Simulator probe (`tools/probes/capacitor-network/`, `docs/progress/real-device-test.md`);
+  not re-probed here. Desktop app pointed at a plain-http remote: expected to land on the same page
+  (same build), not run.
+- Noticed, not fixed (e2e harness): a `route.fetch` carrying a foreign `Origin` header got 403 from
+  the per-graph app — same family as the sweep's "same-host reverse proxy 403" entry.
