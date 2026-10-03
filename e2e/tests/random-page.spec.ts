@@ -7,7 +7,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { api, isoOffset, MOD, pagePath, seedPage } from "../helpers/index.js";
+import { api, graphBase, isoOffset, MOD, pagePath, seedPage } from "../helpers/index.js";
 
 async function runFromPalette(page: Page, title: string): Promise<void> {
   await page.keyboard.press(`${MOD}+k`);
@@ -22,7 +22,8 @@ async function runFromPalette(page: Page, title: string): Promise<void> {
 }
 
 function currentPageName(page: Page): string | null {
-  const path = new URL(page.url()).pathname;
+  // ADR 025: strip this page's own /g/<slug> prefix before matching /page/....
+  const path = new URL(page.url()).pathname.slice(graphBase(page).length);
   return path.startsWith("/page/") ? decodeURIComponent(path.slice("/page/".length)) : null;
 }
 

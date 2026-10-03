@@ -23,7 +23,7 @@ test("the sidebar is a drawer over the content and closes again", async ({ page 
   expect(box?.x).toBe(0);
   expect(box?.width ?? 0).toBeLessThan(390);
   expect(await sidebar.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
-  await sidebar.locator(".sidebar-nav a[href='/pages']").click();
+  await sidebar.locator(".sidebar-nav a[href$='/pages']").click();
   await expect(page).toHaveURL(/\/pages$/);
   // The open drawer covers the toggle button, so close it with the command's key. The app
   // resolves `Mod` from the (iPhone) user agent, so this is Cmd whatever the host OS.
@@ -80,4 +80,24 @@ test("the toolbar's indent, outdent, [[ and undo buttons run their commands", as
 
   await toolbar.locator("button[aria-label='edit.undo']").click();
   await expect(editor(page)).toHaveText("second");
+});
+
+// B-565: the settings panel is tall enough (Appearance/Search/Templates/Plugins/About) to exceed
+// an iPhone 13's 844px viewport height; `.set-backdrop` (not `.set-panel`) is the scroll container,
+// so scrolling into the panel's content used to carry the header — and its only close button —
+// off-screen with it, with no sticky header to keep it reachable.
+test("the settings panel's close button stays reachable after scrolling on a phone screen", async ({
+  page,
+}) => {
+  await page.goto("/journals");
+  await page.locator(".help-fab").click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  const panel = page.locator(".set-panel");
+  await expect(panel).toBeVisible();
+
+  await page.locator(".set-backdrop").evaluate((el) => el.scrollBy(0, 700));
+  const close = page.getByRole("button", { name: "Close" });
+  await expect(close).toBeInViewport();
+  await close.click();
+  await expect(panel).toHaveCount(0);
 });

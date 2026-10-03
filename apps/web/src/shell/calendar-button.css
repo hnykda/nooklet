@@ -1,0 +1,64 @@
+/* B-583: mirrors `live/live.css`'s `.vr-live-badge-wrap`/`.vr-live-popover` shape exactly — the
+   button is an ordinary `.app-icon-button` (`../styles/shell.css`) so it matches the sync cloud and
+   the consent badge beside it in size, colour and hover. */
+
+.calendar-button-wrap {
+  position: relative;
+  display: flex;
+}
+
+.calendar-button-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  /* Anchored left, not right (unlike `live/live.css`'s `.vr-live-popover`, which mirrors this):
+     the calendar icon sits near the LEFT of the top bar (`shell/AppShell.tsx`, before the sync
+     indicator and consent badge), not the far right — a right-anchored popover overflowed off
+     the left edge of the viewport entirely, caught only by the real-browser e2e test (B-583). */
+  left: 0;
+  z-index: 60;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-sm);
+}
+
+/* B-583: a compact size for the popover — the full-size `.calendar` (`styles/views.css`) stays as
+   it was for anywhere the extra room is welcome; this only shrinks it inside a small top-bar
+   dropdown, where a 36px-tall grid would make the popover taller than most journal content. */
+.calendar-compact {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  width: 240px;
+}
+
+.calendar-compact .calendar-day {
+  min-height: 28px;
+  font-size: var(--text-xs);
+}
+
+/* A small dot under the day number — the same "something is here" signal `.vr-live-dot`/the sync
+   cloud's own corner dot already use elsewhere in this bar, not a new visual language. */
+.calendar-day-has-content {
+  position: relative;
+}
+
+.calendar-day-has-content::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Only the selected cell has a filled `--accent` background (`styles/views.css`) — `.calendar-
+   day-today` alone stays transparent, so its dot needs no contrast override. */
+.calendar-day-selected.calendar-day-has-content::after {
+  background: var(--accent-contrast);
+}

@@ -13,7 +13,7 @@
 
 import { createSignal, type JSX } from "solid-js";
 import { describeError } from "../data/api-client.js";
-import { rememberGraphId } from "../data/bootstrap.js";
+import { rememberActiveGraphInstanceId } from "../data/bootstrap.js";
 import "./connect.css";
 
 export function GraphMismatchView(props: { graphId: string }): JSX.Element {
@@ -28,7 +28,7 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
       for await (const name of (root as unknown as { keys(): AsyncIterable<string> }).keys()) {
         await root.removeEntry(name, { recursive: true }).catch(() => undefined);
       }
-      rememberGraphId(props.graphId);
+      rememberActiveGraphInstanceId(props.graphId);
       location.reload();
     } catch (err) {
       setBusy(false);

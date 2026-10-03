@@ -14,12 +14,30 @@ import { expect, type Page, test } from "@playwright/test";
 import { api, MOD, openEditing, pagePath, readBlocks, seedPage } from "../helpers/index.js";
 
 const LEAF = "NSPath Area/Leaf Page";
-const LEAF_PATH = pagePath(LEAF); // "/page/NSPath%20Area/Leaf%20Page"
+const LEAF_PATH = pagePath(LEAF); // "/page/NSPath%20Area/Leaf%20Page" — app-relative, see graphBase()
 
-/** Every `href` on screen that points into the app's page or history routes. */
+/**
+ * This page's own `/g/<slug>` prefix (ADR 025) — read from the CURRENT page rather than a fixed
+ * constant, since it is not known until the app has actually loaded and been redirected once.
+ * Mirrors `apps/web/src/data/bootstrap.ts#samePathGraphPrefix`'s exact regex: every href/URL this
+ * file compares against `pagePath(...)`'s app-relative output legitimately carries this prefix
+ * now, the same way it does for a real visitor.
+ */
+function graphBase(page: Page): string {
+  const m = /^\/g\/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?=\/|$)/.exec(new URL(page.url()).pathname);
+  return m?.[0] ?? "";
+}
+
+function withBase(page: Page, appRelativePath: string): string {
+  return `${graphBase(page)}${appRelativePath}`;
+}
+
+/** Every `href` on screen that points into the app's page or history routes. `*=`, not `^=`: a
+ * real href now legitimately starts with this page's own `/g/<slug>` prefix, not `/page/`/
+ * `/history/` directly — matching the substring is what stays correct either way. */
 async function appHrefs(page: Page): Promise<string[]> {
   return page
-    .locator("a[href^='/page/'], a[href^='/history/']")
+    .locator("a[href*='/page/'], a[href*='/history/']")
     .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
 }
 
@@ -29,7 +47,8 @@ async function expectNoEncodedSlash(page: Page): Promise<void> {
 }
 
 async function expectAtLeaf(page: Page): Promise<void> {
-  await expect(page).toHaveURL((url) => url.pathname === LEAF_PATH);
+  const expected = withBase(page, LEAF_PATH);
+  await expect(page).toHaveURL((url) => url.pathname === expected);
   await expect(page.locator(".page-title-input")).toHaveValue(LEAF);
 }
 
@@ -52,15 +71,16 @@ test("rendered links to a namespaced page carry its path: link, tag, label, quer
     ].join("\n"),
   );
   await page.goto(pagePath("NSPath Links"));
+  const expectedLeafHref = withBase(page, LEAF_PATH);
   const outliner = page.locator(".vr-outliner").first();
-  await expect(outliner.locator(".vr-query-page a")).toHaveAttribute("href", LEAF_PATH);
-  await expect(outliner.locator(".vr-embed-source")).toHaveAttribute("href", LEAF_PATH);
-  await expect(outliner.locator("a.vr-tag")).toHaveAttribute("href", LEAF_PATH);
+  await expect(outliner.locator(".vr-query-page a")).toHaveAttribute("href", expectedLeafHref);
+  await expect(outliner.locator(".vr-embed-source")).toHaveAttribute("href", expectedLeafHref);
+  await expect(outliner.locator("a.vr-tag")).toHaveAttribute("href", expectedLeafHref);
   // The plain link and the labelled one (and the embed's own content links, if any).
   const refs = outliner.locator("a.vr-page-ref:not(.vr-embed-source):not(.vr-query-page a)");
   expect(await refs.count()).toBeGreaterThanOrEqual(2);
   for (const href of await refs.evaluateAll((els) => els.map((e) => e.getAttribute("href")))) {
-    expect(href).toBe(LEAF_PATH);
+    expect(href).toBe(expectedLeafHref);
   }
   await expectNoEncodedSlash(page);
 
@@ -112,7 +132,9 @@ test("a linked reference from a namespaced page opens it at its path", async ({ 
   await expect(group).toBeVisible({ timeout: 15_000 });
   await expectNoEncodedSlash(page);
   await group.click();
-  await expect(page).toHaveURL((url) => url.pathname === pagePath("NSPath Refs/Source Page"));
+  await expect(page).toHaveURL(
+    (url) => url.pathname === withBase(page, pagePath("NSPath Refs/Source Page")),
+  );
   await expectNoEncodedSlash(page);
 });
 
@@ -131,7 +153,9 @@ test("a tagged namespaced page opens at its path", async ({ page }) => {
   const link = page.locator(".tagged-page-link", { hasText: "Member Page" });
   await expect(link).toBeVisible({ timeout: 15_000 });
   await link.click();
-  await expect(page).toHaveURL((url) => url.pathname === pagePath("NSPath Tagged/Member Page"));
+  await expect(page).toHaveURL(
+    (url) => url.pathname === withBase(page, pagePath("NSPath Tagged/Member Page")),
+  );
   await expectNoEncodedSlash(page);
 });
 
@@ -154,7 +178,9 @@ test("the trash links a namespaced page, and its restore notice opens it at its 
   await expect(page.locator(".trash-notice")).toContainText("Whole Page");
   await expectNoEncodedSlash(page);
   await page.locator(".trash-notice-link").click();
-  await expect(page).toHaveURL((url) => url.pathname === pagePath("NSPath Trash/Whole Page"));
+  await expect(page).toHaveURL(
+    (url) => url.pathname === withBase(page, pagePath("NSPath Trash/Whole Page")),
+  );
   await expectNoEncodedSlash(page);
 });
 
@@ -162,11 +188,11 @@ test("a namespaced page's history links back to the page at its path", async ({ 
   await page.goto(LEAF_PATH);
   await expect(page.locator(".page-history-link")).toHaveAttribute(
     "href",
-    `/history/${LEAF.split("/").map(encodeURIComponent).join("/")}`,
+    withBase(page, `/history/${LEAF.split("/").map(encodeURIComponent).join("/")}`),
   );
   await page.locator(".page-history-link").click();
   await expect(page.locator(".history-view h1")).toHaveText("History");
-  await expect(page.locator(".history-back")).toHaveAttribute("href", LEAF_PATH);
+  await expect(page.locator(".history-back")).toHaveAttribute("href", withBase(page, LEAF_PATH));
   await expectNoEncodedSlash(page);
   await page.locator(".history-back").click();
   await expectAtLeaf(page);
@@ -179,7 +205,7 @@ test("search, all pages and tasks open a namespaced page at its path", async ({ 
   const hit = page.locator(".search-result", { hasText: "on the leaf" }).first();
   await expect(hit).toBeVisible({ timeout: 15_000 });
   await hit.click();
-  await expect(page).toHaveURL((url) => url.pathname === LEAF_PATH);
+  await expect(page).toHaveURL((url) => url.pathname === withBase(page, LEAF_PATH));
   await expectNoEncodedSlash(page);
 
   await page.goto("/pages");
@@ -210,7 +236,7 @@ test("a copied link to a namespaced page opens it, whatever the name holds: Czec
   const links = page.locator(".vr-outliner").first().locator("a.vr-page-ref");
   await expect(links).toHaveCount(names.length);
   const hrefs = await links.evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-  expect(hrefs).toEqual(names.map(pagePath));
+  expect(hrefs).toEqual(names.map((n) => withBase(page, pagePath(n))));
 
   for (const [i, name] of names.entries()) {
     const href = hrefs[i] ?? "";

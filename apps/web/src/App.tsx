@@ -15,7 +15,8 @@ import "./styles/views.css";
 import { Navigate, Route, Router, type RouteSectionProps } from "@solidjs/router";
 import { createSignal, type JSX, Show } from "solid-js";
 import { CommandLayer } from "./app/CommandLayer.js";
-import { bootstrapConfig } from "./data/bootstrap.js";
+import { bootstrapConfig, samePathGraphPrefix } from "./data/bootstrap.js";
+import { platform } from "./platform/index.js";
 import { CaptureRoute } from "./routes/CaptureRoute.js";
 import { GraphRoute } from "./routes/GraphRoute.js";
 import { JournalsRoute } from "./routes/JournalsRoute.js";
@@ -30,8 +31,18 @@ import { GraphMismatchView } from "./views/GraphMismatchView.js";
 import { HistoryRoute } from "./views/HistoryView.js";
 import { TrashView } from "./views/TrashView.js";
 
+/** Hidden on Capacitor for now (owner's call, `docs/BUGS.md` "Graph hidden on Capacitor"): `/graph`
+ * is entirely server-dependent (`graph.links`) and arguably not a natural phone surface regardless.
+ * A direct/deep link still redirects rather than rendering a page nothing links to anymore. */
+function GraphOrRedirect(): JSX.Element {
+  if (platform.name === "capacitor") return <Navigate href="/journals" />;
+  return <GraphRoute />;
+}
+
 function RouterRoot(routeProps: RouteSectionProps): JSX.Element {
-  if (routeProps.location.pathname === "/capture") return <>{routeProps.children}</>;
+  // `.endsWith`, not `===`: robust either way to whether the router's `location.pathname` is
+  // base-relative or the raw browser path (ADR 025 — the app can be served under `/g/<slug>`).
+  if (routeProps.location.pathname.endsWith("/capture")) return <>{routeProps.children}</>;
   // CommandLayer sits inside the Router (it needs `useNavigate`) but outside the routes, so the
   // palette, slash menu, autocomplete popups and mobile toolbar are mounted exactly once and
   // survive navigation.
@@ -49,8 +60,10 @@ export function App() {
   // handed a token by the server and never see this.
   const config = bootstrapConfig();
   const [skipped, setSkipped] = createSignal(false);
-  // `/capture` is deliberately exempt: quick capture must open instantly and writes locally.
-  const isCapture = (): boolean => globalThis.location?.pathname === "/capture";
+  // `/capture` is deliberately exempt: quick capture must open instantly and writes locally. Ends
+  // with rather than equals: this runs before `<Router>` exists to strip its own `base` (below),
+  // so the raw pathname may still carry a `/g/<slug>` prefix.
+  const isCapture = (): boolean => Boolean(globalThis.location?.pathname?.endsWith("/capture"));
 
   // Checked before anything else: a graph mismatch makes every other screen quietly lie, so
   // there is no point rendering them.
@@ -63,7 +76,11 @@ export function App() {
       when={config.token !== null || skipped() || isCapture()}
       fallback={<ConnectView reason={config.reason} onSkip={() => setSkipped(true)} />}
     >
-      <Router root={RouterRoot}>
+      {/* ADR 025: routes below are defined app-relative ("/journals", not "/g/default/journals");
+          `base` is what lets the router match/generate them correctly wherever this page actually
+          loaded from. `samePathGraphPrefix()`, not `apiBaseUrl()`/`activeGraph()` — see its own
+          doc comment for why those are the wrong source (can be a different origin entirely). */}
+      <Router base={samePathGraphPrefix() ?? ""} root={RouterRoot}>
         <Route path="/" component={() => <Navigate href="/journals" />} />
         <Route path="/journal/today" component={() => <Navigate href="/journals" />} />
         <Route path="/journals" component={JournalsRoute} />
@@ -71,7 +88,7 @@ export function App() {
         <Route path="/page/*name" component={PageRoute} />
         <Route path="/search" component={SearchRoute} />
         <Route path="/tasks" component={TasksRoute} />
-        <Route path="/graph" component={GraphRoute} />
+        <Route path="/graph" component={GraphOrRedirect} />
         <Route path="/replace" component={FindReplaceView} />
         {/* M7 item 8 (ADR 022): the trash, and a page's history at `/history/*name` — not under
             `/page/*name`, whose splat would swallow "/history" as part of the page name. */}

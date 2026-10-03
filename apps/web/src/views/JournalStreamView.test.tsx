@@ -2,9 +2,10 @@
 
 import { todayJournalDay } from "@nooklet/core";
 import { Route, Router } from "@solidjs/router";
-import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { cleanup, render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearPinnedJournalDay, pinJournalDay } from "../app/journal-nav.js";
 import type { JournalDayEntry } from "../data/types.js";
 
 // Derived, never hardcoded: the virtual-today row is by definition whatever day it is *now*, so a
@@ -72,6 +73,9 @@ afterEach(() => {
   setClockDay(today);
   useAgendaTasks.mockClear();
   usePinnedJournalDay.mockImplementation(noPin);
+  // journal-nav.ts is a real module-level singleton (B-583), not per-test local state — left
+  // pinned, a day from one test would leak into the next.
+  clearPinnedJournalDay();
 });
 
 async function renderStream() {
@@ -303,9 +307,9 @@ describe("JournalStreamView", () => {
     ];
     await renderStream();
 
-    // Late on Saturday, jump to Sunday from the calendar.
-    fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
-    fireEvent.click(screen.getByRole("button", { name: "13" }));
+    // Late on Saturday, jump to Sunday — the calendar itself is `shell/CalendarButton.test.tsx`'s
+    // subject now (B-583); this view only reacts to the shared pin it writes.
+    pinJournalDay(sun, sat);
     expect(screen.getByRole("region", { name: "Jumped-to day" })).toBeTruthy();
 
     // Midnight: Sunday is Today now.

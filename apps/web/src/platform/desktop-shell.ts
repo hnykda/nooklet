@@ -6,8 +6,10 @@
  * - `window.__NOOKLET_DESKTOP__` (`shell_script`), defined before any page script runs — so "am I
  *   inside the desktop app?" is a synchronous read, never a guess from the user agent;
  * - a `nooklet:desktop-menu` event on `window` when a native menu item the client owns is chosen
- *   (`on_menu`): Settings… and Help → Keyboard Shortcuts (B-533). Reload, Documentation and
- *   Report a Bug are the shell's own and never arrive here.
+ *   (`on_menu`): Settings… and Help → Keyboard Shortcuts (B-533). Reload, Documentation, Report a
+ *   Bug and Switch Server… are the shell's own and never arrive here — the last one is how a
+ *   running app reaches the standalone-vs-remote-server picker again (`../../launcher/`); it quits
+ *   the app rather than sending the client anything, since the client cannot act on it anyway.
  *
  * Deliberately not part of `Platform` (`./types.ts`): that adapter is web vs Capacitor, and the
  * desktop app is the web platform — same storage, same service worker — with a menu bar attached.

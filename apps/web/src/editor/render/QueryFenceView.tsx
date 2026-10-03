@@ -20,7 +20,7 @@ import {
   useQueryResults,
 } from "../../data/queries.js";
 import { sameJson } from "../../data/same-json.js";
-import { pageRoutePath } from "../../routes/page-path.js";
+import { pageRoutePath, rawAnchorHref } from "../../routes/page-path.js";
 import { MARKER_GLYPH } from "../BlockRowView.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
 import "./query.css";
@@ -106,7 +106,8 @@ function GroupView(props: { group: QueryPageGroup; ctx: RenderCtx }) {
     <section class="vr-query-group" data-page-id={props.group.pageId}>
       <h4 class="vr-query-page">
         <a
-          href={pageRoutePath(props.group.pageName)}
+          // ADR 025: a raw `<a>`, outside `@solidjs/router` — see `rawAnchorHref`'s doc comment.
+          href={rawAnchorHref(pageRoutePath(props.group.pageName))}
           class="vr-page-ref"
           onClick={(e) => {
             if (!props.ctx.onNavigate) return;

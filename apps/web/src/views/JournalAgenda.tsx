@@ -18,7 +18,7 @@ import { displayPageName, journalTitleFormat } from "../data/page-title.js";
 import type { NavigateTarget } from "../data/types.js";
 import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { InlineContent } from "../editor/InlineContent.js";
-import { pageRoutePath } from "../routes/page-path.js";
+import { pageRoutePath, rawAnchorHref } from "../routes/page-path.js";
 import {
   type AgendaDate,
   type AgendaEntry,
@@ -181,7 +181,8 @@ export function JournalAgenda(props: JournalAgendaProps): JSX.Element {
               <div class="journal-agenda-group" data-page-id={pageId}>
                 <a
                   class="journal-agenda-page"
-                  href={pageRoutePath(heading().name)}
+                  // ADR 025: a raw `<a>`, outside `@solidjs/router` — see `rawAnchorHref`'s doc.
+                  href={rawAnchorHref(pageRoutePath(heading().name))}
                   onClick={(e) => {
                     e.preventDefault();
                     props.onNavigate({ kind: "page", name: heading().name });

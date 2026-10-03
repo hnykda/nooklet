@@ -8,7 +8,13 @@
  */
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, For, type JSX, on, Show } from "solid-js";
-import { describeError, type SearchHit, type SearchInput } from "../data/api-client.js";
+import {
+  ApiError,
+  describeError,
+  NO_SYNC_TARGET_CODE,
+  type SearchHit,
+  type SearchInput,
+} from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { useSearchResults } from "../data/store.js";
 import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
@@ -193,9 +199,27 @@ export function SearchView(): JSX.Element {
       <Show when={results.loading && safeResults() === undefined}>
         <p class="search-loading">Searching…</p>
       </Show>
+      {/* B-577: no sync target at all means there was never a server to ask — calm, not alarming,
+          and no point offering Retry for a condition that never resolves on its own. */}
+      <Show
+        when={
+          input() !== undefined &&
+          results.error instanceof ApiError &&
+          results.error.code === NO_SYNC_TARGET_CODE
+        }
+      >
+        <p class="search-loading">Search needs a server — not available in local-only mode.</p>
+      </Show>
       {/* Without this, a failed request left "Searching…" on screen forever — which is exactly
           how a missing API token presented, and is indistinguishable from a slow server. */}
-      <Show when={input() !== undefined && !results.loading && results.error !== undefined}>
+      <Show
+        when={
+          input() !== undefined &&
+          !results.loading &&
+          results.error !== undefined &&
+          !(results.error instanceof ApiError && results.error.code === NO_SYNC_TARGET_CODE)
+        }
+      >
         <p class="search-error" role="alert">
           Search failed. {describeError(results.error)}{" "}
           <button type="button" class="search-retry" onClick={() => refetch()}>

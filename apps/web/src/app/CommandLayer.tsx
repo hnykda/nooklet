@@ -49,7 +49,7 @@ import {
   SlashMenu,
   useCommands,
 } from "../commands/index.js";
-import { apiBaseUrl, authToken } from "../data/bootstrap.js";
+import { apiBaseUrl, appRelativePathname, authToken } from "../data/bootstrap.js";
 import { listRandomPageCandidates } from "../data/random-page.js";
 import { applyOp, resolvePageName } from "../data/store.js";
 import { forceSync, initDb } from "../db/client.js";
@@ -173,7 +173,8 @@ function LiveConnection(props: { getContext: () => ContextBase; editor: EditorHo
           zoomRootBlockId: new URLSearchParams(location.search).get("block"),
           panels: {
             sidebarOpen: document.body.classList.contains("sidebar-open"),
-            activeView: location.pathname.split("/")[1] || "journals",
+            // ADR 025: strip this page's own /g/<slug> prefix before reading the view segment.
+            activeView: appRelativePathname(location.pathname).split("/")[1] || "journals",
             dialogOpen: null,
           },
         });
@@ -336,7 +337,8 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     randomPage: {
       candidates: listRandomPageCandidates,
       currentPageName: () => {
-        const path = window.location.pathname;
+        // ADR 025: strip this page's own /g/<slug> prefix before matching /page/....
+        const path = appRelativePathname(window.location.pathname);
         return path.startsWith("/page/") ? pathToPageName(path.slice("/page/".length)) : null;
       },
       open: (pageId) => navigation.openPage(pageId),

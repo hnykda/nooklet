@@ -788,7 +788,929 @@ spec uses, the same way B-356/B-243's specs were made order-proof.
 
 ---
 
+### B-570 · `sync/e2e.test.ts` "…pull first" is flaky — order-independent, fails in isolation too
+**Status:** open · **Severity:** low (test only) · **Found:** 2026-09-14, coordinator noticed while
+re-verifying B-569 · **Test:** the test itself
+
+Unrelated to anything touched this session (`src/sync/e2e.test.ts`, "a page of a name whose earlier
+page the server deleted stays this device's page, pull first"). Run alone, repeatedly: 3/5 pass, 2/5
+fail with `AssertionError: expected [ { table: 'page', …(2) }, …(1) ] to deeply equal []` — looks
+like a notify/change-event list that is not always empty by the time the assertion runs, i.e. a race
+in the test's own timing/ordering assumptions rather than test order (ruled out by failing alone).
+Not investigated further — noticed in passing, not fixed.
+
+---
+
+### B-579 · A page B-568's client-side creation makes is never auto-cleaned if the reference is later removed
+**Status:** open, deliberately deferred — see `data/local-ref-pages.ts`'s header · **Severity:**
+low · **Found:** 2026-09-15, coordinator, while implementing B-568
+
+`ref-pages.ts`'s server-side junk-cleanup only reclaims a page whose every applied op came from the
+reserved `REFERENCE_DEVICE_ID` sentinel. B-568's client-side equivalent deliberately does not use
+that id (using it would violate the invariant that no real device can produce it — see B-568's
+entry) — a client-created page is owned by this device's own real id, indistinguishable from one
+the owner typed on purpose. So if the reference that prompted it is later edited away before this
+device ever syncs, the page stays, empty, forever — the local-only mirror of the "junk a link edited
+one character at a time leaves behind" problem `ref-pages.ts`'s header already names, just with no
+cleanup mechanism on this side. Not solved here: doing so means either a client-side equivalent of
+the server's unclaimed-page detection (a real, separate piece of work) or changing what "unclaimed"
+means server-side to also recognize a client-origin page nobody has written into — both bigger
+decisions than B-568's own scope, and lower priority given it is a small amount of clutter, not
+data loss or a wrong reading of anything.
+
+---
+
+### B-581 · A direct cold navigation to a page with zero blocks hangs on "Loading…" forever
+**Status:** open · **Severity:** high · **Found:** 2026-09-15, found while investigating B-568 on
+desktop, independently reproduced by the coordinator in isolation (`Zero-block page, cold nav —
+stuck on 'Loading…': true`) · **Test:** `e2e/tests/desktop-page-creation-probe.spec.ts`'s second
+test reproduces it reliably **only when run alone** — sharing today's journal state with the file's
+first test currently makes its own setup fail before it ever reaches the actual repro (confirmed:
+running the full file back-to-back fails at `.journal-day-today .vr-draft-input` not being found,
+not at the thing being tested); run with `-g "cold navigation"` or give it its own page/day to fix
+properly.
+
+`page.goto()` to a page's URL directly — a deep link, browser back/forward, or simply the first time
+anyone ever opens a freshly-referenced page — is a full cold client bootstrap (fresh worker, fresh
+driver open), unlike navigating there via an in-app `<A>` click from a page already loaded. A page
+snapshot captured at the moment of the hang showed the shelf/header had already resolved ("0 blocks
+on <page>" — so the page itself loaded, the local replica knows it exists) while the block-tree
+content area stayed on "Loading…" indefinitely. Any page with zero blocks hits this on its first
+cold load, regardless of how it came to exist — B-568's client-side creation, the server's own
+`ref-pages.ts`, or a page created any other way that happens to have no content yet all produce
+exactly this state. Likely `usePageTree`/`BlockTree`'s handling of the zero-block case specifically
+during a worker's cold start — not investigated past the repro; a real, separate, high-value fix,
+independent of anything else in this session's iOS/mobile/desktop work.
+
+---
+
+### B-585 · B-568's client-side ref-page creation loses keystrokes / mints junk pages / times out restoring — found via a full e2e run, not yet fixed
+**Status:** open, root cause narrowed but not pinned down · **Severity:** high (silent data loss —
+a keystroke typed right after certain edits is dropped, not just cosmetic) · **Found:** 2026-09-15,
+while verifying ADR 025 (multi-graph hosting) with a full, whole-suite `pnpm exec playwright test`
+run — five pre-existing e2e specs failed that this session's multi-graph work never touches:
+`ref-pages.spec.ts` ("editing an existing link one character at a time leaves no junk pages",
+"deleting the only link removes the empty page it made", "what an offline device typed into a
+linked page survives another device removing the link", B-445), `remote-rewrite.spec.ts`
+("Turn into page on the row being edited: the editor shows the link, typing continues after it"),
+and `page-delete.spec.ts` ("Delete page from the … menu: ... Restore brings its blocks back" —
+found in a later pass than the first four; same signature, restoring a page times out waiting for
+its blocks to reappear in ~11s where the baseline does it in ~1s). **Test:** all five already exist
+and already fail — this entry is the diagnosis, not a new test.
+
+**Confirmed NOT caused by this session's multi-graph work** (ADR 025, B-562 through B-584): `git
+stash`-ed the entire working tree back to the last commit (`629f572`, before B-568's client-side
+ref-page creation existed at all) and ran these tests in isolation — all passed cleanly (the
+`page-delete.spec.ts` case specifically: ~1s, vs. an ~11s timeout on the current tree). Restored the
+stash (all work intact) and re-ran the same tests in isolation against the current tree — all still
+fail, unrelated to test order (ran alone, not as part of the full suite). So this is a real,
+standing defect in B-568's own work (`apps/web/src/data/local-ref-pages.ts` + its integration into
+`data/store.ts#applyOps`), sitting uncommitted in the tree since earlier this session, never caught
+because nothing ran these specific specs against the full accumulated changes until this
+multi-graph verification pass did.
+
+**Root cause, narrowed but not confirmed to the exact line:** `store.ts#applyOps` now calls
+`planLocalReferencedPages` — which, whenever the batch's content contains ANY `[[ref]]`/`#tag`
+(the common case for these failing tests, not the "references nothing" fast path the module's own
+header describes) — awaits a worker round-trip (`pageExists`) and, for each missing name, another
+(`workerNextHlc` inside `mint`) before `applyOps` calls `workerApplyOps` at all. This is new
+latency `applyOps` never had before B-568 (previously closer to a single worker call). The
+"editing one character at a time" case makes this concrete: while `flushPendingEdit()`
+(`BlockTree.tsx`)'s own ~500ms debounce is unrelated to and not broken by this, EVERY intermediate
+substring of a link being retyped (`"...F"`, `"...Fi"`, `"...Fin"`, ...) is a syntactically complete
+`[[...]]` reference to a page that does not exist yet — so once ANY one of these debounced flushes
+does land mid-edit (a real Playwright `keyboard.type()` run can be slower than 500ms per
+character, or the test may be asserting on an intermediate state), `planLocalReferencedPages` mints
+a real page for it, which is the literal junk-page symptom. Separately, `remote-rewrite.spec.ts`'s
+lost-keystroke symptom ("[[Probe start]]" instead of "[[Probe start kickoff]]" after typing
+continues right after a "Turn into page" command) looks like the SAME added latency landing in a
+timing-sensitive window in `BlockTree.tsx`'s `commit()` (used for structural ops, calls
+`void applyOps(ops)` un-awaited, then `syncSurfaceFromTree()`) or the `unansweredText`/
+`textVersions`/HLC-based reconciliation `createEffect` (lines ~262-300) that exists specifically to
+stop a stale refetch from clobbering live typing (B-66/B-192) — plausible that the now-slower
+`applyOps` resolves later than before, landing in a window that reconciliation logic was not built
+to expect, but this was not confirmed against the actual code path before time was spent instead
+writing this diagnosis up. `page-delete.spec.ts`'s restore-from-trash case (found in a second pass)
+fits the same pattern — restoring a page recreates it and its blocks, the same
+`applyOps`/local-ref-pages-adjacent path, now slow enough that the test's normal poll window reads
+as a hang rather than the ~1s the baseline takes. All three symptoms share the same upstream cause
+(added async latency in a path that used to be fast, landing in timing-sensitive editor/UI code
+that was not written expecting it); whether the FIX is "make the common case in
+`local-ref-pages.ts` avoid the round-trip" or "make the editor's debounce/reconciliation robust to
+a slower `applyOps`" is an open question for whoever picks this up.
+
+**Deliberately not fixed in this session's multi-graph pass**: different subsystem (client-side
+ref-page creation + CodeMirror/editor debounce interaction), pre-existing in the uncommitted tree
+from earlier this session's B-568 work, not touched by ADR 025's server routing/storage/client-list
+changes at all. Flagging rather than silently expanding scope, per this repo's own convention —
+the e2e specs named above already catch it; whoever fixes it should confirm all of them pass, in
+isolation AND as part of a full suite run, before considering this closed.
+
+### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
+**Status:** open, not investigated · **Severity:** unclear (this is a data-integrity check
+disagreeing with itself, not a symptom a real user would see directly — but `verifyRebuildParity`
+existing at all is because rebuild/live disagreement is the single scariest class of bug this repo
+has) · **Found:** 2026-09-15, `pnpm -r test` run while wrapping up B-586 · **Test:**
+`apps/web/src/sync/e2e.test.ts` → `sync e2e: real SyncClient <-> real @nooklet/server app, over
+app.request()` → `"a page of a name whose earlier page the server deleted stays this device's page,
+push first"` (the "pull first" sibling of the same `for` loop passes).
+
+```
+AssertionError: expected [ { table: 'page', …(2) }, …(1) ] to deeply equal []
+- []
++ [
++   { "key": { "id": "1m2kcpq6nmw48w" }, "kind": "missing-in-rebuild", "table": "page" },
++   { "key": { "id": "1m2kcpq6nmw48x" }, "kind": "missing-in-rebuild", "table": "block" },
++ ]
+```
+
+Confirmed pre-existing in the same accumulated-but-uncommitted tree B-585 already covers (`git
+stash` back to `629f572`, this test passes cleanly there) — not caused by ADR 025 / B-586, whose
+code this test never touches (no `bootstrap.ts`/`GraphSwitcher.tsx` import). Given the scenario
+(server-side "page of a name whose earlier page was deleted" + B-443's "never revive an unclaimed
+tombstone" logic, right next to B-568's ref-page work this session already touched), this may share
+B-585's upstream cause or may be a distinct correctness bug in the same area — not narrowed down,
+only reproduced and confirmed real. Deliberately not investigated further here, same reasoning as
+B-585: different subsystem than the multi-graph work in flight, flagged rather than silently
+expanding scope. Whoever picks this up should start from `verifyRebuildParity`'s own divergence
+report (`apps/web/src/sync/e2e.test.ts` imports it) — a `missing-in-rebuild` on both `page` and
+`block` for what looks like device A's own newly-created page/block suggests the SERVER's replay of
+the op log loses them, not that A's own local state is wrong (the test's own `live(driverA)` vs.
+`live(s)` comparison a few lines above passes).
+
+### B-591 · `biome check .` is not clean on `main`: five a11y lint errors in three files
+**Status:** open · **Severity:** low (lint only) · **Found:** 2026-10-03, coordinator cleanup pass ·
+**Test:** `pnpm exec biome check . --diagnostic-level=error` is the test
+
+`pnpm exec biome check .` exits 1 on `629f572` (checked in a clean worktree of that commit, not just
+the dirty tree): `BlockContextMenu.tsx:165` (`useSemanticElements` on the `role="separator"` div),
+`BlockRowView.tsx:131` (`noStaticElementInteractions` on the row), and three in
+`DiagnosticsPanel.tsx`'s backdrop, whose `biome-ignore` comment sits one line too low (biome also
+reports it as an unused suppression). `HelpMenu.tsx:130,190` carries suppressions biome calls unused.
+Earlier "biome clean" claims in progress files were per-package or per-file runs, not the whole
+repo. The same pass removed the other four errors — formatter noise in generated files — by
+excluding `apps/desktop/src-tauri/gen` and `apps/web/ios` in `biome.json`.
+
 ## Fixed
+
+### B-590 · Two calendar tests (unit and e2e) fail on the 3rd of every month
+**Status:** fixed · **Severity:** low (test only) · **Found:** 2026-10-03, full `pnpm -r test` on
+that date · **Test:** `apps/web/src/shell/CalendarButton.test.tsx` (the two tests themselves)
+
+The test picked "day 3 of the current month" as a day that is never special, and commented that it
+held "regardless of what now is". But picking Today deliberately clears the pin
+(`app/journal-nav.ts#pinJournalDay`), so on any 3rd both "picking a day pins it…" and "does not
+navigate away…" saw `undefined` instead of the day. Fixed by choosing day 4 when today is day 3.
+Verified by running the file on 2026-10-03, where it had failed: 6/6 pass.
+
+Sibling in e2e, same date: `e2e/tests/views.spec.ts` "the calendar popover marks days that have
+journal content, and leaves others plain (B-583)" asserted day 3 was plain, but on a shared e2e
+server other specs write journal days at offsets 0..12 from today, so on the 3rd it had content
+(failed in the 2026-10-03 full run). The test now looks up a day of the month with no content via
+`page.read` before asserting. Passes alone and after `journal-agenda.spec.ts`; not yet re-confirmed
+inside a full-suite run on a 3rd.
+
+### B-589 · `pnpm nooklet serve` crashes the whole process on an ordinary client disconnect during a WebSocket upgrade
+**Status:** fixed · **Test:** `tools/probes/upgrade-socket-error.mjs` (isolates the
+exact mechanism; `--fix` flag toggles the patch) · **Severity:** critical (the entire server dies —
+every client, every graph it hosts — from one ordinary client-side disconnect, not misbehavior) ·
+**Reported:** 2026-09-16, owner, verbatim, with the crash log: "and then open the app the serve
+crashes?"
+
+```
+node:events:505
+    throw er; // Unhandled 'error' event
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+```
+
+Root cause: `@hono/node-server@2.1.1`'s own `setupWebSocket()` (the code behind `serve()`'s
+`websocket` option, which `packages/server/src/cli.ts`'s `serve` case uses for `/g/<id>/sync/live`
+and `/g/<id>/ui/live`) registers `server.on("upgrade", async (request, socket, head) => { ... })`
+— it `await`s the app's own `fetch` callback (our auth + multi-graph dispatch, ADR 025; genuinely
+slow the first time a graph is resolved) BEFORE calling `wss.handleUpgrade()`, and never attaches a
+`socket.on("error", ...)` listener for the whole time that is in flight. A client that resets the
+TCP connection during that window — a page navigating away mid-handshake, a reconnect loop
+superseding its own earlier attempt, nothing exotic — fires an unhandled `'error'` event on the raw
+socket, which Node treats as fatal with no listener: the entire process dies, taking down every
+client's connection to every graph the server hosts, not just the one that disconnected.
+
+Confirmed the exact mechanism, not just a plausible-sounding theory: isolated
+`@hono/node-server`'s precise `server.on("upgrade", ...)` pattern in a minimal standalone server
+(`tools/probes/upgrade-socket-error.mjs`) and reproduced the IDENTICAL stack trace on demand by
+resetting a real TCP connection mid-handshake. Also read `@hono/node-server`'s own source directly
+(`node_modules/.pnpm/@hono+node-server@2.1.1.../dist/index.mjs`, `setupWebSocket`) and confirmed it
+never calls `socket.on("error", ...)` anywhere in that function. Attempting to force the crash
+against the REAL server (raw-socket race probes, 200+ concurrent connect-then-reset attempts
+against both warm and cold graphs, a real Chromium browser abruptly closed mid-navigation, and the
+real compiled desktop app pointed at a scratch instance) did NOT reliably reproduce it on demand —
+the real app's async window is apparently narrow enough that only one ambient occurrence (this
+session's own scratch server, coinciding with an already-running desktop dev session on the same
+port) was actually caught in the act — but the isolated repro proves the mechanism is real and
+exact, independent of how hard it is to force in practice, and the fix is unconditionally safe
+regardless of the precise trigger.
+
+Fix: a SECOND `'upgrade'` listener, registered on the same `http.Server` `serve()` returns (`cli.ts`
+now captures it instead of discarding the return value), that attaches `socket.on("error", () =>
+{})` on every upgrade attempt. Verified this still closes the gap even though it is registered
+*after* `@hono/node-server`'s own listener: Node's `EventEmitter` calls listeners synchronously in
+registration order for one `emit()`, and an async listener only yields control at its first
+`await` — so the second (synchronous) listener always runs before the first listener's async
+continuation can ever resume, regardless of how long that continuation's work takes. Confirmed via
+the same probe (`--fix` flag) that the identical scenario now survives, and confirmed a normal WS
+connection through the real server still opens, exchanges messages, and closes cleanly with the fix
+in place — this isn't just "swallow all upgrade errors," it targets exactly the pre-handshake gap
+the vulnerability lives in.
+
+### B-588 · Desktop picker (local/server switch) made the owner manually quit and reopen the app every time
+**Status:** fixed · **Test:** `e2e/tests/desktop-launcher.spec.ts` (B-584's regression
+case, exercises the same `restart_app` path) · **Severity:** low (annoying, not broken — the app
+worked, it just made the owner do a manual step it could do itself) · **Reported:** 2026-09-16,
+owner, verbatim: "why is there this 'nooklet will quit now' after selection of local mode or server
+mode. Can we not do it? super annoying."
+
+Every confirmation in the desktop picker (`apps/desktop/launcher/index.html`) — picking a graph,
+adding a server — and `Switch Server…` from the menu bar ended with `quit_app`, a plain
+`app.exit(0)`: real, necessary (which server to spawn/connect to is decided once, at process start),
+but the owner then had to go find the dock icon and reopen the app themselves every time.
+
+Fix: `quit_app` renamed `restart_app`, now calling Tauri's `AppHandle::request_restart()` instead of
+`exit(0)` — the app relaunches itself; the owner never has to. `request_restart()` (not the noreturn
+`restart()`) is the version documented as reliable from any thread, and it still delivers
+`RunEvent::Exit` first, so a spawned local server child is still killed cleanly before the restart,
+same as the old quit did. Used both by the picker (`finishAndRestart`, renamed from `finishAndQuit`)
+and by `MENU_SWITCH_SERVER`, so neither path needs a manual reopen any more. The "Saved" message
+changed from "nooklet will quit now. Open it again to use this setting." to "Saved — restarting
+nooklet to apply it…", so the window closing and reappearing reads as expected rather than
+perplexing.
+
+**Found in passing**: `e2e/tests/desktop-launcher.spec.ts`'s B-584 regression test had gone stale
+during the M6 list-based picker rewrite (`docs/progress/multi-graph-hosting.md`'s M6 section) — it
+still injected the pre-M6 `remoteUrl` shape and clicked `#choice-local`, an id that rewrite removed,
+and stubbed the now-gone `set_remote_server`. Never re-run against the M6 tree until fixing this.
+Updated alongside this change; full detail in the progress doc.
+
+**Verified for real**: `cargo test` (11) and the e2e spec (5) both green; then, since no test proves
+an OS process actually restarts, a real devtest `.app` (custom probe page via a `frontendDist`
+override, never touching the real launcher) called `restart_app` repeatedly and confirmed via `ps`
+that each call produced a genuinely new process with a new PID while the old one cleanly exited.
+Full method in the progress doc's M6 follow-up section.
+
+**Follow-up, same conversation**: owner, immediately after — "I also ideally want some kind of a
+'periodic check' on a page with selection of mode in case some server becomes available again."
+When the picker shows because the ACTIVE entry stopped answering (not `forcePicker`/"Use a
+different server…" — a deliberately-opened picker is never auto-navigated out from under a choice
+being made), `launcher/index.html` now re-checks that address every 3s in the background
+(`scheduleRecheck`/`stopRecheck`, independent of the `loop()`/`loopStopped` machinery that exists to
+REACH the picker, not leave it) and, the moment it answers, shows "‹address› is back —
+reconnecting…" and navigates there on its own — no click needed. Verified for real, not just by
+reading the code: a devtest `.app` pointed at a port nothing was listening on yet (confirmed the
+picker's error state, no navigation); started a throwaway HTTP server on that exact port a few
+seconds later; confirmed, with zero manual interaction, the app navigated there within one recheck
+interval — proven the same way the M6 injection contract was earlier, by having that page report
+back what `window.__NOOKLET_DESKTOP__` actually contained.
+
+### B-586 · Switching to a same-origin graph under a different `/g/<slug>` prefix updates the data source but never the URL, leaving the router and every generated link pointed at the OLD graph
+**Status:** fixed · **Test:** `e2e/tests/graph-switcher.spec.ts` (both cases; failed
+against the pre-fix code with the exact URL mismatch below, passes now) · **Severity:** high (any
+link click, share, or bookmark after this happens silently serves the WRONG graph's content, or a
+404) · **Found:** 2026-09-15, writing `e2e/tests/graph-switcher.spec.ts` (M5's own verification step
+for ADR 025) — the very first real run of "add an existing remote graph" against a second
+same-origin graph failed immediately:
+```
+Expected pattern: /\/g\/gs-second\//
+Received string:  "http://127.0.0.1:6389/g/default/journals"
+```
+
+`shell/GraphSwitcher.tsx`'s `switchTo`/`addServer`/`submitPromote` and `views/ConnectView.tsx`'s
+`connect` all finish by calling `location.reload()` — which reloads whatever path the browser is
+currently on. That is correct when the new graph lives on a different ORIGIN entirely (Capacitor,
+where `apiBaseUrl()` returns an absolute URL and the page itself never had a `/g/<slug>` prefix to
+begin with), but wrong whenever the new graph is same-origin with a DIFFERENT slug than the one the
+page is currently rendered under — the situation any web/desktop user hits the moment they add or
+switch to a second graph on the same server. `data/bootstrap.ts#apiBaseUrl()` correctly resolves to
+the new entry's `baseUrl` (so the API calls a reload's `initBootstrap()` makes DO reach the right
+graph), but `App.tsx`'s `<Router base={samePathGraphPrefix() ?? ""}>` reads the prefix off
+`location.pathname`, which a bare reload never changes — so the app ends up fetching graph B's data
+while the router, the address bar, and every `rawAnchorHref()`-generated link stay stamped with
+graph A's `/g/<slug>` prefix. The very next full navigation (a link click, a bookmark, a shared URL)
+goes to `/g/<A>/...` and the server's own routing (`packages/server/src/graphs/mount.ts`) genuinely
+serves graph A, not B — not a display glitch, a real wrong-graph response.
+
+Fix: a shared `graphEntryUrl(entry, location)` helper in `data/bootstrap.ts` builds the correct
+destination (the entry's own `baseUrl` — absolute or `/g/<slug>` — plus the CURRENT app-relative
+path, via `appRelativePathname(location.pathname)`, plus `location.search`/`hash`);
+`GraphSwitcher.tsx`'s three post-mutation call sites (`switchTo`/`addServer`/`submitPromote`, plus
+`addLocalOnly` for consistency) go through a new `goToActiveGraph()` that navigates there
+(`location.assign`, a real navigation, so a same-URL case still reloads exactly like the old
+`location.reload()` did) instead of blindly reloading in place. `ConnectView.tsx` needed no
+equivalent change — it only ever pairs a token to the graph the page is ALREADY serving (web) or
+sets an absolute Capacitor `baseUrl` with no path prefix involved either way, so it can never
+introduce the same-origin-different-slug mismatch this bug is about. `GraphSwitcher.test.tsx`
+updated to mock `location.assign` instead of `location.reload` and assert the destination URL, not
+just that a reload happened. `e2e/tests/graph-switcher.spec.ts` is the regression test — it failed
+against the pre-fix code with the exact URL mismatch above.
+
+**Found in passing, NOT itself a real bug:** the promote test also failed the first time it was
+attempted for an unrelated reason — its own seeding technique (a bare `kind: "local"` entry injected
+directly into `nooklet.graphs`, simulating Capacitor's "Just this device" from a plain web
+browser) sat on a page still served from `/g/default/...`, so `apiBaseUrl()`'s fallback to
+`samePathGraphPrefix()` silently resolved `/api/session` against graph "default" and stamped
+its `graphInstanceId` onto the entry — read as a genuine mismatch once promote later pointed the
+same entry at the real, different-identity `gs-promoted` graph, and `GraphMismatchView` rendered
+instead of the journal. Confirmed this can't happen for a real user: it requires a `kind:"local"`
+entry with no `baseUrl` viewed from a page that DOES have a `/g/<slug>` prefix, which only Capacitor
+can produce that entry shape for, and Capacitor pages never have such a prefix
+(`samePathGraphPrefix()`'s own doc comment). Fixed in the test itself (mocks `/api/session` during
+the local-only phase, unrouted before promoting — see the comment in
+`e2e/tests/graph-switcher.spec.ts`), not in application code.
+
+### B-584 · Picking "Just this device" from the desktop picker, after "Switch Server…", hung forever on "Starting nooklet…"
+**Status:** fixed · **Severity:** high (app becomes unusable — no way back into a
+local graph from the picker without force-quitting) · **Found:** 2026-09-15, owner report,
+verbatim: "ok, seems to work, but when i click on just this device, it just shows 'nooklet is
+starting' and never starts." · **Test:** `e2e/tests/desktop-launcher.spec.ts` (new case, below).
+
+`main.rs`'s `setup()` decides once, at process start, whether to spawn the bundled server. When
+`show_picker` is true (the one-shot sentinel `MENU_SWITCH_SERVER` leaves for the next launch, see
+`picker_sentinel_path`), it deliberately takes the "nothing local to spawn" branch and never calls
+`spawn_server` — `ServerProcess.status` sits at its unused `Starting` default all launch, per that
+branch's own comment ("nobody asks it anything in this branch"). The launcher
+(`apps/desktop/launcher/index.html`) shows the picker outright in that case (`forcePicker`).
+
+The `choice-local` ("Just this device") handler only relaunched the app (`finishAndQuit`, which
+quits so the next launch starts clean) when `remoteUrl` was set — i.e. when switching *away from* a
+configured remote server. It treated every other case, including "already local, re-confirmed
+local from the forced picker," as a no-op (`cancelPicker()`, resume polling in place). But nothing
+was running to poll: this launch never spawned a server, so `server_status` answers `Starting`
+forever and the launcher's own poll loop (300ms while "starting") spins with no way to ever leave
+that state — exactly the reported hang. (Coming from remote mode did work, because that path always
+relaunched via `finishAndQuit`, which happens to land on a normal, spawning launch next time.)
+
+Fix: `choice-local`'s no-relaunch fast path now requires `!forcePicker` too, not just `!remoteUrl` —
+`forcePicker` is precisely "this launch skipped spawning," so any launch reached via `Switch
+Server…` must quit and relaunch on "Just this device" regardless of whether a `remoteUrl` was
+previously configured, to reach a normal launch that actually spawns the local server.
+`e2e/tests/desktop-launcher.spec.ts` gained a case with `forcePicker: true`, `remoteUrl: null`,
+`server_status` stubbed to stay at `starting` forever, and `quit_app` stubbed to record whether it
+was called: clicking "Just this device" now calls `quit_app` (proving the relaunch path was taken)
+instead of leaving the page polling a status that will never change. Confirmed the test fails
+against the pre-fix handler (times out waiting for `quit_app`) and passes after.
+
+**Found in passing while writing that test:** `desktop-launcher.spec.ts`'s three pre-existing
+`page.locator("h1")` assertions had silently gone strict-mode-ambiguous — the standalone-vs-remote
+picker markup (added earlier this session, B-563/remote mode) put two more `<h1>` elements in the
+DOM (`hidden` on an ancestor, but still present and still matched by a plain CSS locator), and this
+spec was never re-run against that change until now. All three broke with the picker markup in
+place, unrelated to B-584 itself. Fixed by scoping them to `#title` (the status page's own
+heading), the only one of the three `<h1>`s with an id.
+
+### B-583 · The journal calendar was a full-width inline toggle at the top of the stream, not the small top-bar popover PLAN.md's UI called for
+**Status:** fixed · **Severity:** low (cosmetic/IA, not data-affecting) ·
+**Found:** 2026-09-15, owner report, verbatim: "calendar selector should be smaller, should be icon
+at the top bar next to cloud. and should open a small popup ideally distinguishing dates for which
+there is something in their journal pages." · **Test:** `shell/CalendarButton.test.tsx` (new,
+6 cases: trigger shape, Escape-to-close, content-day marking, live range on month paging, pin+jump
+navigation from elsewhere, no navigation when already on `/journals`); `views/JournalStreamView.test.tsx`'s
+B-177 case updated to pin through the shared signal directly instead of clicking now-removed UI;
+e2e — `e2e/tests/views.spec.ts` (month nav + close, content-marking, both new), plus
+`pages.spec.ts`, `templates.spec.ts` and `journal-day-start.spec.ts`'s own `calendarPick` helpers
+updated to click the new trigger — all run for real against `nooklet serve` and passing.
+
+The calendar used to be `JournalStreamView.tsx`'s own inline "Calendar"/"Hide calendar" toggle
+button, opening a full-size grid inline at the top of the stream — taking a full row of vertical
+space even when closed, and only reachable from `/journals` itself. It also had no way to tell,
+before clicking through, which days actually had something written on them.
+
+Fix: moved the trigger into the top bar as a small icon (`shell/CalendarButton.tsx`), placed next
+to `SyncIndicator` per the owner's own words, mirroring `live/ConsentBadge.tsx`'s icon+anchored-
+popover shape rather than a full modal — a calendar is a quick jump, not a destination. The old
+inline toggle+grid was removed entirely from `JournalStreamView.tsx` rather than kept alongside the
+new one: a calendar reachable in two places, one of them a whole row of space in the stream, was
+worse than one clear entry point, consistent with this codebase's existing avoid-redundant-surfaces
+stance (`PaletteButton.tsx`). Since the trigger is no longer a child of `JournalStreamView`, picking
+a day now writes to a new shared module-singleton signal (`app/journal-nav.ts`, same pattern as
+`live/consent.ts`) instead of local component state, and — new behavior the old inline placement
+never needed — jumps to `/journals` first if invoked from elsewhere (`useLocation`/`useNavigate`).
+
+Which days have content is a new `data/store.ts` hook, `useJournalDaysWithContent(firstDay,
+lastDay)`, bounded to the popover's own visible month (not scanning the whole graph): pages with a
+`journal_day` in range that have at least one non-deleted block. `views/Calendar.tsx` grew
+`daysWithContent`/`compact`/`onMonthChange` props to render the dot and the smaller size without
+forking the component.
+
+**e2e caught a real, visible bug unit tests couldn't:** the popover's CSS positioned it `right: 0`
+of its own wrapper (copied from `live/live.css`'s `.vr-live-popover`, whose icon sits at the *far
+right* of the top bar). The calendar icon sits near the *left* of the top bar instead (before the
+sync indicator), so a right-anchored popover overflowed entirely off the left edge of the viewport
+— every day cell before roughly the 20th of the month, and both month-nav buttons, were outside the
+visible page and unclickable. `views.spec.ts`'s month-navigation test failed with Playwright's
+"element is outside of the viewport" on the very first real run; a screenshot confirmed the popover
+was clipped at x=0. Fixed by anchoring `left: 0` instead. This would not have been caught by the
+component test suite (jsdom has no real layout/viewport).
+
+**Note:** per the task this was executed under, no commit was made — the working tree has these
+changes staged as edits only (`apps/web/src/shell/CalendarButton.tsx` and `calendar-button.css`
+new; `views/Calendar.tsx`, `AppShell.tsx`, `JournalStreamView.tsx`, `JournalStreamView.test.tsx`,
+`data/store.ts`, `styles/views.css` modified; `app/journal-nav.ts` new; the four e2e spec files
+above modified). Whoever commits this should keep this entry's Status as `fixed` once it lands.
+
+### B-582 · The very first worker call after page load could lose a startup race and throw, silently breaking whatever depended on it
+**Status:** fixed · **Severity:** high (app-wide — any first-render worker call, not just the
+sidebar) · **Found:** 2026-09-15, owner report: "clicking on the sidebar icon in desktop app doesnt
+open the sidebar" — reproduced independently in a plain browser (not Tauri-specific), root-caused,
+fixed, and verified fixed, all against the real client · **Test:**
+`e2e/tests/worker-init-race.spec.ts` (reproduces the exact failure mode against a real Worker/
+Comlink boundary — confirmed failing before the fix, passing after) plus an updated
+`db/client-unapplied.test.ts` case for the now-correct call ordering.
+
+`db/client.ts`'s worker-backed functions (`query`, `getPageTree`, `getJournalStream`, `nextHlc`,
+`getDeviceId`, `applyOps`, `getSyncStatus`, `forceSync`) called `getWorker()` directly — which only
+lazily creates the `Worker`/Comlink proxy, saying nothing about whether `WorkerApi.init()` had
+actually been dispatched to it yet. `main.tsx` calls `initDb(...)` and renders `<App/>` in the same
+tick without awaiting it, so the app's very first render always raced its own resources against
+`init()` completing — a race `init()` used to win by luck. Option C's `readCheckpoint()` step
+(`docs/proposals/004-capacitor-storage-durability.md`, earlier this session) added one more
+microtask hop before `api.init(...)` is even dispatched, enough to make the race reliably lose:
+`db.worker.ts`'s `requireRetry()` throws `WorkerApi.init() must be called before any other method`
+for any call that arrives first, an uncaught error that silently prevents Solid from rendering
+whatever depended on it — which is why this looked like "the sidebar button does nothing" rather
+than an obviously worker-wide failure; `Sidebar.tsx`'s data happened to be what the owner's repro
+hit, but any first-render worker call was equally affected. Diagnosed directly (a Playwright probe
+with console/page-error capture — `body has sidebar-open class: true` but `aside.app-sidebar count:
+0` and three `WorkerApi.init()...` page errors), not guessed.
+
+Fix: a `readyWorker()` helper (`db/client.ts`) that awaits `initDb()` — idempotent, so this always
+awaits the one real init `main.tsx` already kicked off, never starts a second one — before every
+worker call. `applyOps` keeps its unapplied-ops write (B-247) synchronous and *before* this await,
+unchanged; only the worker dispatch itself now waits.
+
+---
+
+### B-580 · `pnpm desktop` silently serves a stale sidecar bundle, with zero warning
+**Status:** fixed · **Severity:** high (caused real, extended debugging confusion this session) ·
+**Found:** 2026-09-15, coordinator — the owner reported B-568's fix "not working" and an old
+(pre-B-540) text-pill consent badge on the desktop app; both were explained entirely by
+`apps/desktop/sidecar/web/` being **two days stale** (dated Sep 13), never rebuilt during this whole
+session's work · **Test:** none yet (a build-pipeline gap, not application logic)
+
+The desktop Tauri app does not read `apps/web/dist` directly — `main.rs#spawn_server` launches the
+sidecar from `apps/desktop/sidecar/`, a separate copy `build-sidecar.mjs` assembles (`web/` among
+several other pieces: `server.mjs`, a bundled `node`, `vec0.dylib`, `esbuild`, built-in plugins).
+`desktop:build` (root `package.json`) runs `pnpm --filter @nooklet/desktop run sidecar` before
+`tauri build`, so a full production build always picks up fresh source — but plain `pnpm desktop`
+(`tauri dev`, what this session's own instructions recommended for iterating) does **not**, and
+nothing about the running app hints that its `web/` is stale; it just quietly serves whatever was
+last assembled, however old. `apps/web/dist` being rebuilt (the ordinary web/PWA/iOS build step used
+throughout this session) has no effect on it at all — two entirely separate staleness traps stacked
+on each other is what actually produced the confusion.
+
+Fix: `desktop` (root `package.json`) now runs the sidecar step first too, matching `desktop:build`'s
+already-correct pattern — `dev` no longer has a cheaper, staler path than `build`.
+
+---
+
+### B-578 · Graph hidden on Capacitor for now
+**Status:** done (product decision, not a bug) · **Severity:** — · **Found:** 2026-09-15, owner,
+after seeing B-577's Graph error: "also graph showing some nonsense? (not sure we need it on the
+ios)", then "hide the graph for now" · **Test:** verified by rebuild + Simulator boot
+
+The Graph nav item (`shell/Sidebar.tsx`) and the `/graph` route (`App.tsx`) are hidden/redirected
+(to `/journals`) whenever `platform.name === "capacitor"` — not conditional on sync mode, a direct
+"hide it on iOS" per the owner's own phrasing. `graph.links` is entirely server-dependent regardless
+of sync target, and arguably isn't a natural phone surface either way. B-577's fix still applies
+everywhere `callOp` is reachable, in case this decision is revisited.
+
+---
+
+### B-577 · Server-dependent views show a raw, alarming error instead of calm "needs a server" messaging in local-only mode
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-15, two owner screenshots on the same
+Simulator session: the References panel showing "Couldn't load references. Retry" in red under a
+freshly-typed `[[ref]]`, and the Graph view showing a raw red error line containing
+`capacitor://localhost` over an empty graph box. · **Test:** `data/api-client.test.ts` ("B-577:
+callOp fails fast with no fetch at all when there is no sync target", 5 cases across every
+`apiClient`/`undoBatch` op), `views/SearchView.test.tsx` (1 new case) — 1348/1348 full suite passing.
+
+The third occurrence of the exact pattern B-571 already fixed once for the sync indicator/
+Diagnostics: a feature that genuinely needs the server (`data/api-client.ts`'s own doc comment lists
+`search`, `page.backlinks`, `graph.links` as "the read ops the local replica cannot answer on its
+own") fails in local-only mode — correctly, there's nothing to reach — but the failure renders as a
+raw, technical, alarming error (`ReferencesPanel.tsx`'s "Couldn't load references", `GraphView.tsx`
+surfacing the fetch's own `capacitor://localhost` URL in the message) rather than calm, expected
+messaging. B-571 fixed this for exactly two places (the sync indicator, Diagnostics) by checking
+`data/bootstrap.ts#hasSyncTarget()` at each call site — doing that again per-surface for References,
+Graph, Search, and whatever else calls through `data/api-client.ts#callOp` doesn't scale and *will*
+miss one (this entry exists because it already did, twice).
+
+Fixed at the source: `data/api-client.ts#callOp` now checks `hasSyncTarget()` and, when false,
+throws a dedicated `ApiError` (`NO_SYNC_TARGET_CODE = "no_sync_target"`) before ever attempting the
+fetch — no more `capacitor://localhost` leaking into user-facing text, since the fetch never
+happens. `ReferencesPanel.tsx`, `GraphView.tsx`, and `SearchView.tsx` (found while searching for
+other affected surfaces, exactly as expected — confirmation the fix belongs at this layer, not
+scope creep) all render a calm, muted message on that specific code instead of their alarming
+failure state, leaving the real-failure path (a configured server that's actually unreachable)
+unchanged. **Not yet covered**: `SettingsPanel.tsx`'s three `callOp`-backed resources (embeddings
+status, diagnostics/about, templates) will now also throw the same fast-fail error but weren't given
+calm rendering in this pass — same pattern, deliberately left for a follow-up rather than expanding
+this one further.
+
+---
+
+### B-576 · Sidebar drawer cannot be closed by tapping outside it
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-15, owner report: "also it cannot be
+closed by clicking outside of it" · **Test:** none — the tap-to-close interaction itself needs a
+real device/simulator tap, which nothing in this environment can automate (same limitation as this
+session's other on-device-only findings); verified only that the build still boots correctly
+
+Every other overlay in this app — Settings (`set-backdrop`), Diagnostics (`diag-backdrop`), the help
+menu (`help-backdrop`) — is a backdrop `<div>` with `onClick={onClose}` wrapping the panel. The
+sidebar has no equivalent: `shell/AppShell.tsx` renders `<Sidebar />` directly, and it's shown/hidden
+by toggling a `sidebar-open` class on `<body>` (`Sidebar.tsx`'s own header comment), not by mounting/
+unmounting behind a dismissible backdrop. On desktop this is invisible — the sidebar sits in-flow,
+squeezing the content, so there's no "outside" to tap. On phone (`position: fixed`, overlaying
+content per B-575's same media query) it's a real, expected drawer interaction that's simply missing.
+Fix: add a backdrop element for the phone-width case (or a document-level click-outside listener
+while `sidebar-open`), following the existing `*-backdrop` pattern rather than inventing a new one.
+
+---
+
+### B-575 · Sidebar drawer has no safe-area padding on phone — content sits under the status bar / Dynamic Island
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-15, owner screenshot on the Capacitor
+iOS Simulator: the sidebar's first row ("Command palette") renders partly behind the status bar
+time and the Dynamic Island. · **Test:** verified by rebuild + Simulator boot (screenshot); no
+automated test (a phone-width CSS regression, same category as B-562, which also has none)
+
+Same class of bug as B-562 (`ConnectView`), fixed earlier this session, but a different component
+that was missed: `shell/sidebar.css`'s phone-width rule (`@media (max-width: 44rem)`) makes
+`.app-sidebar` `position: fixed; inset: 0 auto 0 0` — pinned to the physical top of the screen — with
+no `env(safe-area-inset-top)`/`--sat` in its padding. `styles/shell.css` already defines `--sat` on
+`:root` (the same token B-562's fix used), so it's available here too; `sidebar.css` just isn't using
+it in the phone-width block. Fix: add `var(--sat)` to `.app-sidebar`'s top padding/inset, phone-width
+rule only — the desktop layout (in-flow, not fixed) doesn't have this problem and shouldn't change.
+
+---
+
+### B-574 · `ResumeRetry` stays armed after a successful call, wider masking window than documented
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-15, coordinator reviewing B-573's
+`reopen-on-resume.ts` before reporting it done · **Test:** `reopen-on-resume.test.ts`, "a successful
+call after resume disarms it — a later unrelated failure does not reopen"
+
+The file's own doc comment claims the retry "disarms itself the moment either a retry is attempted
+or a call succeeds without needing one" — only the first half was implemented. `armed` was set back
+to `false` inside the catch/retry path but never on a plain successful call, so after one `resume`
+event it stayed `true` indefinitely until *some* call eventually failed — at which point an entirely
+unrelated bug, possibly much later, would get one spurious reopen-and-retry cycle before propagating
+(not silently swallowed forever, since a second failure still propagates per the existing "disarms
+after one retry" test, but a real error gets an unnecessary detour and confused diagnostics). Fix:
+reset `armed = false` on the successful path too, matching the doc comment exactly.
+
+---
+
+### B-573 · "Just this device" storage has no eviction backstop — `docs/PLAN.md`'s iOS mitigation assumed a server always exists
+**Status:** fixed (for automatic eviction and the documented backgrounding failure; user-initiated
+clearing and app uninstall are explicitly out of scope — the owner's own call: "user initiated
+clearing is totally fine of course, that's their mistake. same on uninstall... it's fine") ·
+**Severity:** high · **Found:** 2026-09-14, coordinator, answering an owner question about whether
+local-only mode persists durably · **Test:** `db/reopen-on-resume.test.ts` (7 cases, after B-574),
+`db/sqlite-wasm-driver.test.ts` (3 cases), `db/capacitor-checkpoint.test.ts` (6 cases) — the actual
+backgrounding scenario cannot be verified without a real device/simulator background cycle, which
+nothing in this environment can automate; a rebuild+boot was verified not to break startup with the
+new code and dependency, but B itself (reopen-on-resume) needs an owner-driven manual test.
+
+The iOS Capacitor build's storage today is the same as the PWA's — SQLite-WASM over OPFS
+(`opfs-sahpool`), real on-disk persistence, not memory — see `platform/capacitor.ts`'s trailing doc
+comment for why native SQLite isn't wired up yet. `docs/PLAN.md`'s risk table has always carried
+"iOS storage eviction" with mitigation *"Server is truth; outbox flushed within seconds; snapshot
+re-bootstrap"* — which assumes a server exists to re-bootstrap from. B-563 (this session) made
+"never configure a server" a first-class, supported, encouraged choice on the very first screen a
+new device sees. For that device, if iOS ever evicts its local storage under disk pressure — a real
+iOS behavior, not hypothetical — there is nothing to recover from; the notes are simply gone. Related
+to B-571 (the UI should at least be honest that this mode has no backup) and to the multi-graph
+proposal this session also started (`docs/proposals/003-independently-started-graphs.md`) — both are
+the same underlying theme: local-only was added as a UX choice without revisiting the durability
+assumptions the rest of the design was built on. Also turned out to be a smaller, more specific
+problem than "eventual eviction": PowerSync's own report says OPFS access handles close every time a
+Capacitor app backgrounds, not just under rare disk pressure — see
+`docs/proposals/004-capacitor-storage-durability.md` for the option analysis and a recommendation
+(reopen-on-resume + a native-filesystem backstop, short of the full async-driver rewrite).
+
+Implemented (Options A–C of that proposal), 2026-09-15:
+- **A**: `platform/capacitor.ts`'s `persist()`/`persisted()`/`estimate()` now call the real
+  `navigator.storage` APIs (were hardcoded no-ops), same implementation as `platform/web.ts`.
+- **B**: `db/reopen-on-resume.ts` — a generic one-retry-after-`resume` wrapper (`ResumeRetry<T>`),
+  wired into every `db.worker.ts` API method in place of the old bare `requireDb()`. Armed by
+  `notifyLifecycle("resume")`, disarmed after one retry attempt either way, so a real second failure
+  propagates rather than looping. Fully unit-tested with fakes; the actual OPFS-closes-on-
+  backgrounding trigger itself is unverified outside a real device.
+- **C**: `db/capacitor-checkpoint.ts` (new `@capacitor/filesystem@8.1.3` dependency) — a debounced
+  (60s after a write, immediate on `pause`) export of the live SQLite bytes
+  (`sqlite3.capi.sqlite3_js_db_export`, exposed via a new `WorkerApi.exportSnapshot()`) to native
+  app-sandbox storage, and a restore path on startup (`sqlite-wasm-driver.ts`'s
+  `shouldRestoreCheckpoint`: only into a pool with nothing under the replica's filename yet — never
+  over an existing replica, and app uninstall wipes the checkpoint too, so this combination can only
+  mean genuine automatic eviction, per the owner's explicit scoping above). Verified: full rebuild +
+  simulator boot with the new plugin bundled does not break startup (screenshotted). Not verified:
+  an actual eviction-then-restore cycle, which needs a real device.
+
+---
+
+### B-572 · The app randomly pinch-zooms on its own, cutting off parts of the UI
+**Status:** fixed (believed — the specific mechanism is addressed, but the actual "does the random
+zoom stop happening" needs the owner's own device use to confirm, same as this session's other
+gesture/backgrounding-dependent fixes) · **Severity:** medium · **Found:** 2026-09-14, owner feedback
+on the Capacitor iOS build: "it somehow weirdly zooms in/out putting some parts of the app out of the
+focus." · **Test:** none — a real-device gesture-timing bug, not something a unit or component test
+can exercise; verified only by confirming the build still boots after the change (Simulator
+rebuild+screenshot) and by reading `editor/gestures/` to confirm no conflict (below).
+
+`apps/web/index.html`'s viewport meta tag is `width=device-width, initial-scale=1, viewport-fit=cover,
+interactive-widget=resizes-content` — no `maximum-scale=1`/`user-scalable=no`, and no global
+`touch-action` CSS constraining it either. That leaves WebKit's own pinch-zoom AND double-tap-to-zoom
+gestures live over the whole app; a real device log captured earlier this session while a normal tap
+landed showed WebKit's own gesture recognizer explicitly evaluating a double-tap-driven zoom on an
+ordinary tap ("Potential tap may cause significant zoom. Wait." / "Single tap identified. Request
+details on potential zoom.", `com.apple.WebKit:ViewGestures`) — consistent with two taps landing
+close together in time/position (not unreasonable during normal use) being misread as the start of a
+zoom gesture, not a deliberate pinch.
+
+Fixed with `touch-action: manipulation` on `html, body` (`styles/shell.css`) rather than the viewport
+meta's `user-scalable=no`: `manipulation` specifically disables the double-tap-zoom heuristic while
+leaving real pinch-zoom available, unlike `user-scalable=no`, which would also take away zoom as an
+accessibility tool for low-vision users (a real WCAG 1.4.4/1.4.10 concern, not a hypothetical one) —
+the evidence points at double-tap misfiring specifically, not a deliberate pinch, so this is the
+narrower fix for the actual mechanism. Confirmed no conflict with `editor/gestures/` (`swipeAttach.ts`
+sets `.vr-row` to `touch-action: pan-y`, `longPressDragAttach.ts` sets `.vr-bullet-wrap` to `none`):
+both declare their own explicit value, which wins over the new `html, body` rule for touches starting
+on those elements — only surfaces with no rule of their own (most of the app's static chrome) are
+newly affected, which is exactly the gap that let the bug happen.
+
+---
+
+### B-571 · The sync indicator has no "local only" state — it either says nothing is wrong or looks broken
+**Status:** fixed · **Severity:** medium · **Found:** 2026-09-14, owner feedback after using the
+Capacitor iOS build in "Just this device" mode (B-563): "the sync icon showing even though it's in
+local-only mode (maybe could show some local only version). + I want the icon on the desktop and web
+app too, not just 'synced'" and "when clicking the sync icon, it shows a lot of red text as 'not
+connected' etc. but that's expected, maybe we should show 'runs in local mode' or something?" ·
+**Test:** `sync-indicator-state.test.ts` (3 new cases: `local` derivation, priority under
+`memory`/`follower`, its `syncLabel` copy). No component test for `DiagnosticsPanel.tsx` — none
+existed before this fix either; verified by reading the render logic and a Simulator rebuild that
+the app still boots, not by exercising the panel itself (no tap automation available).
+
+`shell/sync-indicator-state.ts#SyncView` has exactly these states: `starting`, `synced`, `pending`,
+`offline`, `error`, `memory`, `follower` — no state means "this device was never configured to sync
+at all," which is a real, deliberate, permanent condition (B-563's whole point) rather than a
+transient one like `offline`. `deriveSyncView` falls through to `offline`/`error` for it today, so
+the indicator (`shell/SyncIndicator.tsx`, mounted unconditionally in `shell/AppShell.tsx` — already
+shown on every platform, not mobile-only, so "I want the icon on desktop and web too" is really "I
+want the fix to apply everywhere," which it will since this file is platform-agnostic) shows
+whatever `offline`/`error` shows, and `views/DiagnosticsPanel.tsx`'s "Sync" row (`s().state` printed
+raw in red via `<Status ok={state !== "offline" && state !== "error"}>`) and its "Backend" row
+("Could not reach the API: …", `diag-bad`, `role="alert"`) both read as active failures — alarming
+and wrong for a mode where not reaching a server is the deliberately chosen, correct state, not an
+error. Fixed: a `local` `SyncView` (`shell/sync-indicator-state.ts`, recognized via `data/
+bootstrap.ts#hasSyncTarget()` — B-567 landed that exact signal concurrently this session, reused
+rather than re-derived), a calm hollow-ring icon for it (`sync-indicator.css`, plain `--muted`, not
+`--danger`/`--ok`/`--dot-pending`) and label ("Local only — not syncing to any server"), and
+`DiagnosticsPanel.tsx`'s Sync row and Backend section both read calmly ("local only — not configured
+to sync" / "This device isn't configured to sync, so there's no server to check") instead of
+reporting `offline`/`error` — and the Backend section's `system.diagnostics` fetch is now
+source-gated to never even fire in this mode, rather than firing a doomed request and softening its
+error after the fact. A real error on a device that *does* have a server configured still shows the
+real alarm styling, unchanged. Applies on every platform (the indicator was already mounted
+everywhere, not mobile-only), so "I want the icon on desktop and web too" is satisfied by the same
+fix. Not fixed here, noticed while touching the file: the "Credentials" row has the identical
+"reads as an error, is actually expected" problem in this same mode — separate, narrower, not in
+this bug's original scope, worth its own entry if it bothers anyone.
+
+---
+
+### B-569 · "Just this device" still stuck on "Loading…" after B-566's timeout fix — a different, permanent failure, not a hang
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-14, owner re-test on the Capacitor iOS
+Simulator build after B-566 landed: "i clicked it" / "and still see loading" · **Test:**
+`db/worker-core.test.ts`, describe block "WorkerDb.start (B-569)" (2 cases).
+
+B-566 assumed (and its Chromium-based e2e repro showed) a *hung* `/sync/*` request. On the real
+Simulator it was still broken after that fix shipped, which meant the real cause was something
+else. Diagnosed by instrumenting the app itself (temporary on-screen debug log, since neither Xcode
+nor the system log surfaces this WKWebView's JS console) and screenshotting a fresh launch: the
+real failure is a **synchronous throw**, not a hang — `sync-client.ts#bootstrap()`'s
+`transport.snapshot()` and `http-transport.ts#connectLive`'s `wsUrl()` both throw `SyntaxError: The
+string did not match the expected pattern.` near-instantly, because resolving a relative `URL()`
+against this dedicated Worker's own `self.location` does not behave the way it does on web/PWA when
+the worker is loaded from Capacitor's `capacitor://` scheme. `WorkerDb.start()`
+(`db/worker-core.ts`) only wrapped `bootstrap()` in `try/catch` — the uncaught throw from
+`connectLive()` right after it made `start()` itself reject, which permanently poisons
+`db.worker.ts`'s cached `dbPromise`: every later worker RPC (`getPageTree`, `getJournalStream`, the
+sidebar's `useAllPages`/`useFavoritePages` queries) rejects too, forever, for the life of that
+worker — and with no `ErrorBoundary` anywhere in the app (B-400), the UI just freezes on whatever it
+rendered first, the "Loading…" placeholder. B-566's timeout fix was still correct and worth
+keeping (a genuine hang is a real, separate risk), it just wasn't *this* bug.
+
+Fix: wrap `connectLive()` (and `pull()`'s kickoff) in `WorkerDb.start()` with the same tolerance
+`bootstrap()` already had, and guard `connect()`'s own `new WebSocket(wsUrl())` call in
+`http-transport.ts` too, since reconnect attempts call it again from inside a `setTimeout` where an
+uncaught throw would otherwise become an unhandled worker error. Not yet re-verified on the real
+Simulator after this specific fix (owner interaction needed) — verified so far by a unit test that
+reproduces the exact exception (`DOMException("The string did not match the expected pattern.",
+"SyntaxError")`) thrown from a fake transport's `connectLive()`/`snapshot()`, proving `start()` now
+resolves regardless.
+
+---
+
+### B-568 · Typing `[[a new page]]` in a bullet does not create the page — confirmed still broken, real cause found
+**Status:** fixed for `[[page]]`/`#tag`/`#[[multi word]]` refs and the `Task` tag from a freshly
+created marked block, plus namespace ancestors — the owner explicitly chose client-side creation
+over the calmer-failure alternative ("of course I want client side creation to[o]") · **Severity:**
+high · **Found:** 2026-09-14, owner report, then independently reproduced by the owner on the
+current build (screenshot: typed `[[something]]`, clicked it, landed on "This page doesn't exist
+yet. `Create \"something\"`") · **Test:** `data/local-ref-pages.test.ts` (10 cases, pure — no
+worker/DB/HLC needed, `pageExists`/`mint` injected), `e2e/tests/local-page-creation.spec.ts` (the
+real bar: no server configured at all, type `[[Local Only New Page]]`, click the rendered link,
+land on a real page, not "doesn't exist yet") — both new, both pass; full `pnpm --filter
+@nooklet/web test` (1358) and `typecheck` clean.
+
+Fix: `data/local-ref-pages.ts`, a scoped client-side mirror of `packages/server/src/ref-pages.ts`'s
+`planReferencedPages` — that mechanism is genuinely server-only (its own doc comment: "Only the
+server decides... Clients never create a page implicitly"), so this is a parallel client-side
+equivalent, not a workaround. Reuses `@nooklet/core`'s already-portable `extractRefs`,
+`namespaceAncestors`, `normalizePageName`, `canonicalRefName`, `parseJournalTitle` — no new core
+exports needed, no duplicated extraction logic. Wired into `data/store.ts#applyOps`, the one
+function every client write already goes through: before handing a batch to the worker, it scans
+any `block.text`/`block.create` payloads for references, checks each (plus namespace ancestors, in
+`A` → `A/B` order) against the local `page` table, and prepends a `page.create` for anything
+missing — into the SAME batch, so it lands in one worker transaction alongside the edit that named
+it. Uses this device's own real id, never `REFERENCE_DEVICE_ID` (`ref-pages.ts`'s reserved
+sentinel — spoofing it would violate the invariant that no real device can produce it). Convergence
+once this device syncs: the client's own `page.create` op travels the normal `pending_op` outbox
+alongside the edit, so by the time the server's `planReferencedPages` looks at the reference it
+already resolves, and does not mint a competing one — verified by reading `ref-pages.ts`/
+`apply-ops.ts`, not just assumed.
+
+**Deliberately deferred, not silently missing**: refs inside property values (`tags::` etc.) and
+the `Task` tag from a `block.prop` marker change on an already-existing block (only a freshly
+created marked block is covered) — both server-only for now, same shape of gap, lower priority than
+the reported case. See B-579 for the other deliberate gap (junk-cleanup).
+
+The "likely resolved by B-566/B-569" theory this entry carried earlier was wrong; the owner's
+re-test on the current build (after B-566/B-567/B-569 all landed) reproduces it cleanly. Real cause,
+confirmed by reading `packages/server/src/ref-pages.ts`'s own doc comment: **"Only the server
+decides... Clients never create a page implicitly."** Page auto-creation (ADR 024) is a
+`serverApplyOps`-only mechanism — it runs after a batch reaches the server, and every device learns
+of the new page only by syncing the correction back. A device in "Just this device" mode (B-563) has
+no server at all, so no batch it writes can ever reach `planReferencedPages` — this was never going
+to work for a local-only device, by the architecture's own design, not a bug that regressed. The
+same root cause explains the screenshot's second symptom, "Couldn't load references": backlinks are
+also a server-only read (`data/api-client.ts`'s own doc comment: "the read ops the local replica
+cannot answer on its own") — see B-577, which is the same underlying gap surfacing on three
+different screens.
+
+**This is a scope decision, not a bug fix**, and is the owner's call: (a) implement page creation
+client-side too (a real feature — locally apply an optimistic `page.create` the moment a reference
+resolves to nothing, reconciled against the server's own version once/if this device ever syncs —
+touches `packages/core`/`applyOps`, meaningfully bigger, and raises the same identity-collision
+questions `docs/proposals/003-independently-started-graphs.md` already flagged for two independently
+-started histories), or (b) accept it as a documented limitation of local-only mode and make the
+failure calm and honest instead of surprising — which the existing "This page doesn't exist yet —
+Create" screen mostly already is; what's missing is explaining *why* typing the reference alone
+wasn't enough, so the click-through isn't a surprise. (b) is a small, consistent extension of B-577's
+fix; (a) is real, separate feature work.
+
+---
+
+### B-567 · A device with no configured server (B-563's "Just this device") pays a 10s timeout on every cold start, not just the first
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-14, reading `db/worker-core.ts#start()`/
+`sync/sync-client.ts#isBootstrapped()` while verifying B-566's fix · **Test:**
+`db/worker-core.test.ts`, describe block "WorkerDb.start (B-567)" (2 cases: skips
+bootstrap/connectLive/pull with no target, still attempts them with one).
+
+B-566's timeout stopped the hang from being infinite, but for exactly the audience B-563's "Just
+this device" choice exists for — a client that will never have a server configured — it did not
+stop the wait from recurring: `WorkerDb.start()` calls `SyncClient.bootstrap()` whenever
+`!isBootstrapped()`, and a device with nothing to reach fails every time, so the flag never gets set,
+so every cold start repeated the same 10s wait.
+
+Fix: `db/worker-api.ts#WorkerInitOptions.syncBaseUrl`'s own doc comment already said "omit to run
+local-only" — nothing honored that contract. `data/bootstrap.ts` gained `hasSyncTarget()` (same
+origin is always real on web/PWA/desktop; under Capacitor, only a real `storedServerUrl()` counts).
+`main.tsx` now omits `syncBaseUrl` entirely when `hasSyncTarget()` is false, instead of passing
+`apiBaseUrl()`'s `""`. `db.worker.ts#openDb` derives `hasSyncTarget: opts.syncBaseUrl !== undefined`
+and passes it to a new `WorkerDbOptions.hasSyncTarget` (default `true`, so every existing caller/test
+is unaffected); `WorkerDb.start()` returns immediately when it's `false`, skipping
+bootstrap/connectLive/pull entirely rather than attempting and timing out against a target known not
+to exist. A device with a real but currently-unreachable server still retries exactly as before —
+this only short-circuits the provably-nothing-to-reach case.
+
+---
+
+### B-566 · A hung `/sync/*` or `/api/v1/*` request left the outliner, sidebar and every worker-backed view on "Loading…" forever
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-14, owner report after choosing "Just
+this device" on the Capacitor iOS build: "the bullet point shows loading, and diagnostic page also
+shows errors, and sidebar doesn't load, overall bad." · **Test:** `e2e/tests/sync-timeout.spec.ts`
+("a hung sync backend times out instead of stalling the outliner forever") — reproduces the stuck
+`.vr-draft-pending` state by forcing `/sync/*` to hang in an ordinary Chromium session (no Capacitor
+needed to prove the fix), then asserts it clears within the new timeout.
+
+One root cause behind all three symptoms, not three bugs: `db.worker.ts#openDb` awaits
+`WorkerDb.start()` before `dbPromise` resolves, and `db/worker-api.ts`'s `requireDb()` — which
+EVERY worker RPC (`getPageTree`, `getJournalStream`, the plain `query()` the sidebar's
+`useAllPages`/`useFavoritePages` go through) awaits — never resolves until it does. `start()`
+already wraps `SyncClient.bootstrap()` in a `try/catch` so a *failed* bootstrap falls back to an
+empty local replica (by design), but nothing bounded a bootstrap/pull/push that never resolves at
+all — only fails fast. A real server always answers, even with a 401, which is why this never
+showed up against `pnpm nooklet serve`. A Capacitor build with no server configured is the one
+environment where it reliably does: a relative fetch resolves against `capacitor://localhost`,
+which has no route for `/sync/*` and, unlike a real server, doesn't have to answer at all. Every
+worker-backed view was stuck on "Loading…"/its pending placeholder as a result — the journal's
+`vr-draft-pending` bullet, the sidebar's page list, everything. Diagnostics *showing an error*
+("Could not reach the API") in this same scenario is separately verified as correct, not a bug —
+`views/DiagnosticsPanel.tsx:115-117` already renders that state clearly; it just isn't the same
+failure as the other two.
+
+Fix: bound every one of this client's own `fetch` calls with `AbortSignal.timeout(10_000)` — the
+three places that had none: `sync/http-transport.ts` (`push`/`pull`/`snapshot`, `SYNC_TIMEOUT_MS`),
+`data/api-client.ts#callOp` (`API_TIMEOUT_MS`; the same class of bug in the sibling path
+`search`/`page.backlinks`/`system.diagnostics` all use), and `data/bootstrap.ts#initBootstrap`
+(`SESSION_TIMEOUT_MS`) — the most severe of the three, since `main.tsx` awaits it before anything
+renders at all, so a hang there is a blank screen forever, not just a stuck bullet.
+
+---
+
+### B-565 · Settings panel's close button scrolls off-screen and becomes unreachable on a phone
+**Status:** fixed · **Severity:** high · **Found:** 2026-09-14, owner report on the Capacitor iOS
+build: "setting window somehow takes over everything in that small viewport and cant be even
+exited." · **Test:** `e2e/tests/phone.spec.ts`, "the settings panel's close button stays reachable
+after scrolling on a phone screen" — reproduced first (`toBeInViewport` failed, "viewport ratio 0"),
+confirmed fixed after (passes, plus the rest of `settings.spec.ts`/`phone.spec.ts`, 14/14).
+
+`.set-backdrop` (`settings.css`), not `.set-panel`, is the scroll container (`overflow-y: auto`);
+`.set-header` (holding the only close control, `aria-label="Close"`) is a plain flow element inside
+`.set-panel`, not `position: sticky`. The panel's real content (Appearance, Search & embeddings,
+Templates, Plugins, About) is taller than a phone viewport (confirmed: exceeds an iPhone 13's 844px),
+so scrolling into it — which a phone user must do to reach most of the panel at all — carries the
+header, and the only way out, off the top of the screen with it. The backdrop's own click-to-close
+does not rescue this: on a narrow viewport `.set-panel`'s `width: min(38rem, 100%)` leaves only a
+sliver of backdrop at the sides, easy to miss and easy to read as "there is no way out" exactly as
+reported. No keyboard Escape path either (the file's own comment says so: "the close button is the
+keyboard path out" — fine on desktop, a dead end on a device with no keyboard). Fix: make
+`.set-header` sticky within `.set-panel` with an opaque background so it never leaves the viewport
+while its own content scrolls underneath it.
+
+---
+
+### B-564 · Keyboard-shortcuts list shown in the `?` help menu on touch/mobile, where there is no keyboard
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-14, owner feedback while looking at the
+Capacitor iOS build: "probably shouldn't have keyboard shortcuts on the mobile app too in the help
+menu." · **Test:** `HelpMenu.test.tsx` (new file, 2 cases).
+
+`shell/HelpMenu.tsx`'s `?` menu always lists "Keyboard shortcuts" regardless of platform. On a
+touch-primary device with no hardware keyboard the whole dialog is dead weight — every row lists a
+key combination nothing can press. `commands/keymap/platform.ts#detectPlatformFromEnvironment()`
+already exposes `mobile` (touch-primary, ios/android) for exactly this kind of decision elsewhere in
+the app. Fix: hide the "Keyboard shortcuts" menu item (and by extension the dialog, since nothing
+else opens it on the client side — the desktop native menu's own `Keyboard Shortcuts` item is
+unaffected, it is never mobile) when `mobile` is true.
+
+---
+
+### B-563 · `ConnectView` reads as "syncing is mandatory"
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-14, owner feedback after seeing the real
+screen on the iOS Simulator: "it also says that the device needs server's address and token, but it
+should be optional, i.e. maybe some screen where the user can choose from 'I don't have a Nooklet
+server to sync this device with' and 'I do have a server' and only the second option would go
+there." · **Test:** `ConnectView.test.tsx`, describe block "B-563: choice screen precedes the form
+whenever a skip path exists" (4 cases) — also confirmed visually on the iOS Simulator.
+
+Skipping sync already worked (`onSkip` → "Continue without syncing"), but it was a second button
+sitting next to the required-looking address/token fields, which read as "fill this out" rather
+than "here are two equally valid choices." Fix: when a skip path exists, show an upfront choice
+screen (just this device / sync with a server, one icon each — `Smartphone`/`Server` from the
+already-installed `lucide-solid`) before the form; only picking "sync with a server" reveals the
+address/token fields. No behavior change when there is no skip path (nothing to choose between).
+
+---
+
+### B-562 · `ConnectView`'s heading is obscured by the status bar / Dynamic Island in the Capacitor iOS shell
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-14, first-ever launch of the generated
+`apps/web/ios/` project in iOS Simulator (iPhone 17, iOS 26.5) · **Test:** none — verified only by
+re-screenshotting the same Simulator run before/after; not covered by any automated suite (Playwright
+drives Chromium, not a built Capacitor shell), so "fixed" here means "believed fixed" per this file's
+own convention.
+
+`ConnectView.tsx` renders outside `AppShell` (it's `App.tsx`'s `<Show>` fallback, shown before the
+`Router`/`AppShell` tree mounts), so it never gets whatever safe-area handling normal routes get.
+`connect.css`'s `.connect` rule pads with `clamp(2rem, 6vw, 4.5rem)` and no `env(safe-area-inset-*)`
+component — on a device with a Dynamic Island/notch, the `<h1>Connect this device</h1>` heading
+renders partly underneath it. Screenshot evidence: first Simulator launch, "Connect this device"
+reads as "Connect t[obscured]e" with the status bar's time and the Dynamic Island pill overlapping
+the text. `styles/shell.css` already defines `--sat`/`--sab`/`--sal`/`--sar` (`env(safe-area-inset-*,
+0px)`) on `:root`, so they're available here despite `AppShell` not being mounted — `connect.css`
+just isn't using them. Fix: add `var(--sat)` to `.connect`'s top padding.
+
+---
 
 ### B-541 · In the desktop app the top bar's controls sit under the macOS window buttons, so Settings, Graph and the sidebar are unreachable
 **Status:** fixed · **Severity:** high ·
@@ -5899,10 +6821,6 @@ preview not to be loading, so the button is disabled from the edit until the mat
 screen. Reproduced first in a real browser: fill "wombat", wait for its preview, fill "numbat" and
 click at once — the unfixed page wrote "the wombat smiles"; with the fix Playwright's click waits
 for the button to re-enable and "the numbat smiles" is written.
-
----
-
-## Found in passing — needs a number from the coordinator
 
 ---
 

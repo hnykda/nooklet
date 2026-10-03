@@ -174,7 +174,7 @@ test("says so when the graph request fails", async ({ page }) => {
 test("the sidebar links to it", async ({ page }) => {
   await page.goto("/journals");
   await page.locator("button[aria-label='Toggle sidebar']").click();
-  await page.locator(".app-sidebar .sidebar-nav a[href='/graph']").click();
+  await page.locator(".app-sidebar .sidebar-nav a[href$='/graph']").click();
   await expect(page).toHaveURL(/\/graph/);
   await expect(page.locator(".graph-header h1")).toContainText("Graph");
 });

@@ -85,6 +85,12 @@ body.sidebar-open .app-shell-body {
   min-height: 0;
 }
 
+/* B-576: hidden by default (desktop's in-flow sidebar has no "outside" to tap) — only enabled
+   inside the phone-width media query below, where the sidebar becomes a fixed overlay. */
+.sidebar-backdrop {
+  display: none;
+}
+
 @media (max-width: 44rem) {
   /* On a phone the sidebar covers the content instead of squeezing it. */
   .app-sidebar {
@@ -96,5 +102,20 @@ body.sidebar-open .app-shell-body {
     background: var(--surface-1);
     border-right: 1px solid var(--hairline);
     box-shadow: var(--shadow-lg);
+    /* B-575: fixed to the physical top of the screen, so it needs its own safe-area inset — the
+       in-flow desktop layout above never needed one. */
+    padding-top: calc(var(--space-lg) + var(--sat));
+  }
+
+  /* B-576: the sidebar had no way to dismiss it by tapping outside, unlike every other overlay in
+     this app (`set-backdrop`/`diag-backdrop`/`help-backdrop`). Only meaningful once `.app-sidebar`
+     becomes a fixed overlay (this same breakpoint) — on desktop it's in-flow, and there is no
+     "outside" to tap, so the rule below is scoped to this media query alone. */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: var(--scrim, rgb(0 0 0 / 35%));
   }
 }

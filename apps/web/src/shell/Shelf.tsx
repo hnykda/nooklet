@@ -141,7 +141,11 @@ const POLL_ATTEMPTS = 15; // ~1.5s, enough for a route change to render
  */
 function revealOnPage(navigate: (path: string) => void, pageName: string, blockId: string): void {
   const target = pageRoutePath(pageName);
-  if (decodeURIComponent(window.location.pathname) !== decodeURIComponent(target)) {
+  // `.endsWith`, not `===`: `target` is app-relative ("/page/..."), but `location.pathname` may
+  // carry this page's own `/g/<slug>` prefix (ADR 025) that `navigate()` — router-aware — adds
+  // back on its own. Comparing for exact equality here made this ALWAYS look like a different
+  // page and fire a redundant navigate on every click, even when already on the right one.
+  if (!decodeURIComponent(window.location.pathname).endsWith(decodeURIComponent(target))) {
     navigate(target);
   }
   let attempts = 0;

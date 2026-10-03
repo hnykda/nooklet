@@ -40,7 +40,7 @@ test("after visiting Trash, an open page still picks up a write made elsewhere (
   // In-app navigation, never `goto`: a reload re-wires every listener and hides the defect, which
   // lived exactly as long as the tab did.
   await openSidebar(page);
-  await page.locator(".app-sidebar .sidebar-nav a[href='/trash']").click();
+  await page.locator(".app-sidebar .sidebar-nav a[href$='/trash']").click();
   await expect(page.locator(".trash-view h1")).toContainText("Trash");
   await page.goBack();
   await expect(page.locator(".vr-outliner").first()).toContainText("before trash");

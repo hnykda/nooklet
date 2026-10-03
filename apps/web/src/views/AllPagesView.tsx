@@ -11,7 +11,7 @@ import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { displayPageName } from "../data/page-title.js";
 import { setPageFavorite, useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
 import type { NavigateTarget } from "../data/types.js";
-import { pageRoutePath } from "../routes/page-path.js";
+import { pageRoutePath, rawAnchorHref } from "../routes/page-path.js";
 import { PageIconBadge } from "./PageIcon.js";
 import "./all-pages.css";
 
@@ -91,7 +91,9 @@ export function AllPagesView(_props: { onNavigate?: (t: NavigateTarget) => void 
               >
                 {favoriteIds().has(page.id) ? "★" : "☆"}
               </button>
-              <a class="all-pages-name" href={pageRoutePath(page.name)}>
+              {/* ADR 025: a raw `<a>` (plain browser navigation, no onClick override) — see
+                  `rawAnchorHref`'s doc comment for why this one needs the prefix itself. */}
+              <a class="all-pages-name" href={rawAnchorHref(pageRoutePath(page.name))}>
                 <PageIconBadge icon={icons().get(page.id)} />
                 {displayPageName(page)}
               </a>

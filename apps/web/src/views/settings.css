@@ -29,7 +29,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
+  /* B-565: `.set-backdrop`, not `.set-panel`, is the scroll container, and the panel's content is
+     taller than a phone viewport — without this, scrolling into it (unavoidable on a phone, most
+     of the panel is otherwise unreachable) carries the only close control off-screen with it.
+     Negative margin + matching padding pulls the header flush to `.set-panel`'s edges (so the
+     sticky background spans full width) while keeping the original visual spacing. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: -1rem -1.25rem 0.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface-1, #fff);
+  border-radius: var(--radius-xl, 0.75rem) var(--radius-xl, 0.75rem) 0 0;
 }
 
 .set-header h2 {

@@ -37,9 +37,12 @@ async function openSidebar(page: Page): Promise<void> {
   await expect(sidebar).toBeVisible();
 }
 
-test("a typed [[Parent/Nested]] link, clicked, offers to create the page, and the parent then lists it", async ({
+test("a typed [[Parent/Nested]] link, clicked, has already created the page, and the parent lists it", async ({
   page,
 }) => {
+  // B-568: client-side page auto-creation mints the reference locally the moment it's typed —
+  // no "doesn't exist yet, click Create" detour anymore. This test used to assert that detour;
+  // now it asserts the better behavior it was replaced by.
   const outliner = await openEditing(page, "Pages Parent", "- root\n- other");
   await page.keyboard.type(" see [[Pages Parent/Nested]]");
   // Render the first row (the link is only clickable in the rendered view).
@@ -47,8 +50,6 @@ test("a typed [[Parent/Nested]] link, clicked, offers to create the page, and th
   await outliner.locator(".vr-page-ref", { hasText: "Pages Parent/Nested" }).click();
 
   await expect(page).toHaveURL(/\/page\/Pages%20Parent\/Nested$/);
-  await expect(page.locator(".page-view-missing")).toContainText("doesn't exist yet");
-  await page.locator(".page-view-missing button").click();
   await expect(page.locator(".page-view-missing")).toHaveCount(0);
   await expect.poll(() => pageKind(page, "Pages Parent/Nested")).toBe("page");
 
@@ -152,7 +153,7 @@ test("Cmd/Ctrl+K Create makes the page and All Pages shows it without a reload",
   await expect.poll(() => pageKind(page, "Pages Palette Made")).toBe("page");
 
   await openSidebar(page);
-  await page.locator(".app-sidebar .sidebar-nav a[href='/pages']").click();
+  await page.locator(".app-sidebar .sidebar-nav a[href$='/pages']").click();
   await page.locator(".all-pages-filter").fill("Pages Palette Made");
   await expect(page.locator(".all-pages-row")).toHaveCount(1);
 });
@@ -190,7 +191,8 @@ test("a journal day opened from the calendar becomes a real journal page once ty
   page,
 }) => {
   await page.goto("/journals");
-  await page.locator(".journal-calendar-toggle").click();
+  // B-583: the trigger is now a top-bar icon (accessible name "Calendar"), not an inline toggle.
+  await page.getByRole("button", { name: "Calendar", exact: true }).click();
   const calendar = page.locator(".calendar");
   await expect(calendar).toBeVisible();
   // Two months back, the 2nd: far enough from the offsets other specs write to that this day is

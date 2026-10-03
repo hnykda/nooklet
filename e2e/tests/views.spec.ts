@@ -25,10 +25,16 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.locator(".set-panel")).toBeVisible();
 }
 
-/** Click day `iso` in the journal calendar, paging back from the current month as needed. */
+/** B-583: the trigger is a top-bar icon (next to the sync indicator), not an inline toggle — its
+ * accessible name is "Calendar" and it opens a small popover holding the same `.calendar` grid. */
+function calendarTrigger(page: Page) {
+  return page.getByRole("button", { name: "Calendar", exact: true });
+}
+
+/** Click day `iso` in the journal calendar popover, paging back from the current month as needed. */
 async function calendarPick(page: Page, iso: string): Promise<void> {
-  await page.locator(".journal-calendar-toggle").click();
-  const calendar = page.locator(".calendar");
+  await calendarTrigger(page).click();
+  const calendar = page.locator(".calendar-button-popover .calendar");
   await expect(calendar).toBeVisible();
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
   const now = new Date();
@@ -60,12 +66,13 @@ test("the calendar jumps to an existing past day and Back to stream removes the 
   await expect(page.locator(".journal-day", { hasText: "eleven days ago" })).toHaveCount(1);
 });
 
-test("the calendar's month navigation changes the label and Hide calendar closes it", async ({
+test("the calendar's month navigation changes the label and clicking the icon again closes it (B-583)", async ({
   page,
 }) => {
   await page.goto("/journals");
-  await page.locator(".journal-calendar-toggle").click();
-  const calendar = page.locator(".calendar");
+  const trigger = calendarTrigger(page);
+  await trigger.click();
+  const calendar = page.locator(".calendar-button-popover .calendar");
   const label = calendar.locator(".calendar-month-label");
   const start = await label.textContent();
   await calendar.locator("button[aria-label='Previous month']").click();
@@ -73,8 +80,39 @@ test("the calendar's month navigation changes the label and Hide calendar closes
   await calendar.locator("button[aria-label='Next month']").click();
   await expect(label).toHaveText(start ?? "");
   await expect(calendar.locator(".calendar-day-today")).toHaveCount(1);
-  await page.locator(".journal-calendar-toggle", { hasText: "Hide calendar" }).click();
+  await trigger.click();
   await expect(calendar).toHaveCount(0);
+});
+
+test("the calendar popover marks days that have journal content, and leaves others plain (B-583)", async ({
+  page,
+}) => {
+  // Day 1 of the currently-displayed month (the popover opens on today's month, per
+  // `shell/CalendarButton.tsx`), so no paging is needed. The plain day is *looked up*, not fixed:
+  // other specs on this shared server write journal days at offsets 0..12 from today, so a
+  // hardcoded "day 3" carried content whenever today was the 3rd (B-590's sibling).
+  const now = new Date();
+  const iso = (day: number) =>
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  await api(page, "page.append", { page: iso(1), markdown: "- b583 content marker" });
+  let plainDay = 0;
+  for (let d = 2; d <= 28 && plainDay === 0; d++) {
+    const read = await api<{ text: string }>(page, "page.read", { page: iso(d) }).catch(() => null);
+    if (read === null || read.text.trim() === "") plainDay = d;
+  }
+  expect(plainDay, "some day 2..28 of this month has no journal content").toBeGreaterThan(0);
+  await page.goto("/journals");
+
+  await calendarTrigger(page).click();
+  const calendar = page.locator(".calendar-button-popover .calendar");
+  await expect(calendar).toBeVisible();
+
+  await expect(calendar.locator(".calendar-day", { hasText: /^1$/ })).toHaveClass(
+    /calendar-day-has-content/,
+  );
+  await expect(
+    calendar.locator(".calendar-day", { hasText: new RegExp(`^${plainDay}$`) }),
+  ).not.toHaveClass(/calendar-day-has-content/);
 });
 
 test("changing the journal date format re-titles every journal day immediately", async ({
@@ -405,7 +443,10 @@ test("the sidebar toggles with Cmd/Ctrl+\\ and its links reach every view", asyn
     ["/graph", /\/graph$/],
     ["/journals", /\/journals$/],
   ] as const) {
-    await sidebar.locator(`.sidebar-nav a[href='${href}']`).click();
+    // $=, not =: ADR 025's router `base` (e.g. "/g/default") is a real, legitimate prefix on
+    // every generated href now, not a bug to route around — matching the suffix is what stays
+    // correct whether or not the app is served under one.
+    await sidebar.locator(`.sidebar-nav a[href$='${href}']`).click();
     await expect(page).toHaveURL(expected);
   }
   await page.keyboard.press(`${MOD}+\\`);

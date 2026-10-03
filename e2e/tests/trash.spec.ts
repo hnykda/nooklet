@@ -23,7 +23,7 @@ async function openSidebar(page: Page): Promise<void> {
 test("the sidebar has a Trash entry, and the view is honest about retention", async ({ page }) => {
   await page.goto("/journals");
   await openSidebar(page);
-  await page.locator(".app-sidebar .sidebar-nav a[href='/trash']").click();
+  await page.locator(".app-sidebar .sidebar-nav a[href$='/trash']").click();
   await expect(page).toHaveURL(/\/trash$/);
   await expect(page.locator(".trash-view h1")).toContainText("Trash");
   await expect(page.locator(".trash-note")).toContainText("Nothing expires");

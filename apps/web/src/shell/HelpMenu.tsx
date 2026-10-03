@@ -30,6 +30,7 @@ import {
   Show,
 } from "solid-js";
 import { useCommands } from "../commands/index.js";
+import { detectPlatformFromEnvironment } from "../commands/keymap/platform.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
 import { openSettings } from "../views/SettingsPanel.js";
 import "./help-menu.css";
@@ -56,6 +57,10 @@ interface Shortcut {
 export function HelpMenu(): JSX.Element {
   const { registry, bindings } = useCommands();
   const [open, setOpen] = createSignal(false);
+  // B-564: a touch-primary device has no keyboard to press any of these with — the whole dialog
+  // is dead weight there, not just unhelpful. A plain read: the shell this build runs in cannot
+  // change mid-session, same reasoning as `ConnectView.tsx`'s `showServerField`.
+  const showKeyboardShortcuts = !detectPlatformFromEnvironment().mobile;
 
   const shortcuts = createMemo<Shortcut[]>(() => {
     const byCommand = new Map<string, string>();
@@ -138,16 +143,18 @@ export function HelpMenu(): JSX.Element {
             >
               <Settings size={15} /> Settings
             </button>
-            <button
-              type="button"
-              class="help-item"
-              onClick={() => {
-                setShowKeys(true);
-                setOpen(false);
-              }}
-            >
-              <Keyboard size={15} /> Keyboard shortcuts
-            </button>
+            <Show when={showKeyboardShortcuts}>
+              <button
+                type="button"
+                class="help-item"
+                onClick={() => {
+                  setShowKeys(true);
+                  setOpen(false);
+                }}
+              >
+                <Keyboard size={15} /> Keyboard shortcuts
+              </button>
+            </Show>
             <a class="help-item" href={`${REPO}#readme`} target="_blank" rel="noreferrer">
               <ScrollText size={15} /> Documentation
             </a>

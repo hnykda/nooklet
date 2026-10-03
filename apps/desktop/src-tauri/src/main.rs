@@ -19,6 +19,14 @@
 //!   server at all, and the page advised running `pnpm nooklet serve` — wrong for a self-contained
 //!   app, and silent about the actual reason. The child's stderr is now piped, its tail kept, and
 //!   its exit noticed; the launcher (`../launcher/`) turns that into words.
+//! - **Remote-client mode is a config, not a second architecture.** `DesktopConfig` lets this Mac
+//!   remember MULTIPLE servers it can point at instead of spawning its own (ADR 025) — the same
+//!   client-replica role the phone's Capacitor build has, now a list instead of one slot, so
+//!   switching between two remembered servers (or back to this Mac) never forgets the others.
+//!   Nothing here or in `apps/web` needed to change for that beyond deciding whether to spawn: the
+//!   window still just loads the active entry's own page, so the existing paste-a-token
+//!   `ConnectView` handles auth exactly as it does for any non-loopback device already.
+//!   `MENU_SWITCH_SERVER` is how a running app reaches the picker again.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -30,7 +38,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
@@ -330,18 +338,239 @@ fn graph_dir(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Erro
     Ok(app.path().home_dir()?.join(".nooklet").join("default"))
 }
 
+/// Remote-client mode (ADR 025, extending the BUILD item "solve the desktop"): this Mac can either
+/// be its own nooklet server (the default above — self-contained, works offline because there is
+/// nothing to reach) OR a client replica of a server the user already runs elsewhere, exactly the
+/// role the phone's Capacitor build has — and, unlike the single-slot model this replaces, it can
+/// REMEMBER more than one such server and switch between them without forgetting the others. There
+/// is still no server-to-server sync: nooklet is one canonical server plus N client replicas, so
+/// making a remote entry active means this Mac's OWN standalone graph (or whichever OTHER remote
+/// entry was active) is no longer read while it is active — a fresh replica of that graph starts
+/// under its own origin's storage partition instead (different origins never share OPFS, so nothing
+/// is silently deleted, but nothing is merged either).
+///
+/// One entry is never stored here at all: "This Mac" itself (`active_graph_id: None`), since there
+/// is nothing to configure about it — `graph_dir`/`spawn_server` above already know how to run it,
+/// and it can never be removed.
+///
+/// Deliberately just a URL per entry, no token: the window ends up showing that URL's own page, so
+/// the existing paste-a-token `ConnectView` (`apps/web/src/views/ConnectView.tsx`) handles auth
+/// itself inside that origin exactly as it already does for any non-loopback device — the client
+/// needed ZERO changes for this, because a real `https://` origin is not the Capacitor problem
+/// (`capacitor://localhost` can never be a real server's origin; this window navigating to a real
+/// URL already can be, the same way a browser tab can).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RemoteGraph {
+    /// Opaque, stable, derived from the (normalized) URL — see `graph_id_for_url`. Never shown.
+    id: String,
+    url: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct DesktopConfig {
+    #[serde(default)]
+    remote_graphs: Vec<RemoteGraph>,
+    /// `None` = "This Mac." `Some(id)` must name an entry in `remote_graphs`; a stale id (the entry
+    /// was removed by hand-editing the file) is treated as `None` rather than erroring — same
+    /// "never fail startup over a config file" rule this whole module follows.
+    #[serde(default)]
+    active_graph_id: Option<String>,
+}
+
+impl DesktopConfig {
+    /// The active entry's address, or `None` for "This Mac."
+    fn active_url(&self) -> Option<&str> {
+        let id = self.active_graph_id.as_deref()?;
+        self.remote_graphs.iter().find(|g| g.id == id).map(|g| g.url.as_str())
+    }
+}
+
+/// A stable, opaque id for a remote graph, derived from its (already-normalized) URL: re-adding an
+/// address that is already known resolves to the SAME entry rather than creating a duplicate — the
+/// same dedupe `apps/web/src/data/bootstrap.ts#setConnectedGraphToken`'s Capacitor path already
+/// gives the web client for the equivalent case.
+fn graph_id_for_url(url: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut hasher);
+    format!("g{:016x}", hasher.finish())
+}
+
+fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(app.path().app_config_dir()?.join("desktop.json"))
+}
+
+/// Missing, unreadable, or unparseable all mean the same thing: standalone, the default — this
+/// must never fail startup over a config file, which is a convenience, not a dependency.
+fn read_config(app: &tauri::AppHandle) -> DesktopConfig {
+    config_path(app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| parse_config(&s))
+        .unwrap_or_default()
+}
+
+/// Old shape (pre-ADR-025): `{"remote_url": "https://..." | null}`. New: `{"remote_graphs": [...],
+/// "active_graph_id": "..." | null}`. The two are told apart by the `remote_url` key alone — the
+/// new shape never writes one — so an old file reads as an equivalent one-entry (or empty) list;
+/// nothing is rewritten to disk until the next real save, same as every other read-tolerates-old
+/// migration in this repo (`packages/server/src/graphs/migrate-legacy-layout.ts`'s own pattern).
+fn parse_config(text: &str) -> DesktopConfig {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return DesktopConfig::default();
+    };
+    match value.get("remote_url") {
+        Some(old_url) => migrate_remote_url(old_url.as_str()),
+        None => serde_json::from_value(value).unwrap_or_default(),
+    }
+}
+
+/// Re-normalizes rather than trusting the old value verbatim: it was always normalized by the old
+/// `set_remote_server` before being written, but this file can also be hand-edited, and an invalid
+/// address here must fall back to "This Mac" rather than fail startup, same as `read_config`'s rule.
+fn migrate_remote_url(url: Option<&str>) -> DesktopConfig {
+    match normalize_remote_url(url.unwrap_or_default()) {
+        Ok(Some(url)) => {
+            let entry = RemoteGraph { id: graph_id_for_url(&url), url };
+            let active_graph_id = Some(entry.id.clone());
+            DesktopConfig { remote_graphs: vec![entry], active_graph_id }
+        }
+        _ => DesktopConfig::default(),
+    }
+}
+
+fn write_config(app: &tauri::AppHandle, config: &DesktopConfig) -> Result<(), String> {
+    let path = config_path(app).map_err(|e| e.to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+/// Where "Switch Server…" (`MENU_SWITCH_SERVER`) leaves a note for the next launch to show the
+/// picker immediately, before attempting anything — see `on_menu` and its doc comment for why a
+/// relaunch, not a live re-navigation, is how mode changes take effect.
+fn picker_sentinel_path(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(app.path().app_config_dir()?.join("show_picker_once"))
+}
+
+/// True if the sentinel was there (and removes it either way it existed — one-shot, like a flag
+/// day: if this fails to delete, showing the picker one extra launch is a nothing burger, but
+/// showing it forever because deletion silently never happens would not be).
+fn consume_picker_sentinel(app: &tauri::AppHandle) -> bool {
+    let Ok(path) = picker_sentinel_path(app) else {
+        return false;
+    };
+    let existed = path.exists();
+    if existed {
+        let _ = std::fs::remove_file(&path);
+    }
+    existed
+}
+
+/// An empty/blank address normalizes to `None` (never valid for `add_graph`, which rejects it
+/// itself — this alone still returns `Ok(None)` because `normalize_remote_url("")` is also how a
+/// hand-edited config's empty string is tolerated on the migration path); a non-empty one must be
+/// `http(s)://` — validated here, not just in the launcher page, since the config file can also be
+/// hand-edited. A pure function so it is testable without a live `AppHandle`; the launcher's own
+/// `parseServerUrl`-equivalent check exists only so a bad address fails before a round trip, not as
+/// the real gate — this one is.
+fn normalize_remote_url(raw: &str) -> Result<Option<String>, String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        Ok(None)
+    } else if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        Err("Include http:// or https://".into())
+    } else {
+        Ok(Some(trimmed.to_string()))
+    }
+}
+
+/// Remembers a server (adding it, or resolving to the existing entry if this address is already
+/// known — see `graph_id_for_url`). Does not make it active: the launcher's picker does that as a
+/// separate `set_active_graph` call, so "add" and "switch to" stay two single-purpose commands
+/// rather than one that silently does both. Persists only — like `remove_graph`/`set_active_graph`
+/// below, it takes effect at the NEXT launch (the spawn-or-not decision only happens once, at
+/// process start — see `setup()`).
+#[tauri::command]
+fn add_graph(app: tauri::AppHandle, url: String) -> Result<RemoteGraph, String> {
+    let normalized = normalize_remote_url(&url)?;
+    let url = normalized.ok_or_else(|| "Enter your server's address.".to_string())?;
+    let mut config = read_config(&app);
+    let entry = match config.remote_graphs.iter().find(|g| g.url == url) {
+        Some(existing) => existing.clone(),
+        None => {
+            let entry = RemoteGraph { id: graph_id_for_url(&url), url };
+            config.remote_graphs.push(entry.clone());
+            entry
+        }
+    };
+    write_config(&app, &config)?;
+    Ok(entry)
+}
+
+/// Forgets a remembered server. Never removes "This Mac" — that entry is not stored here at all
+/// (`active_graph_id: None`), so there is nothing for this command to target it with. Removing the
+/// currently active entry falls back to "This Mac" for the NEXT launch, the same way
+/// `apps/web/src/data/bootstrap.ts#removeGraph` clears the active pointer when the removed entry
+/// was the active one.
+#[tauri::command]
+fn remove_graph(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let mut config = read_config(&app);
+    config.remote_graphs.retain(|g| g.id != id);
+    if config.active_graph_id.as_deref() == Some(id.as_str()) {
+        config.active_graph_id = None;
+    }
+    write_config(&app, &config)
+}
+
+/// Persists which remembered graph should be active from the NEXT launch — `id: None` for "This
+/// Mac." Rejects an id that names no known entry rather than silently falling back, since here
+/// (unlike `read_config`'s tolerance for a stale ON-DISK id) the launcher just asked for one by id
+/// and deserves to know if that failed.
+#[tauri::command]
+fn set_active_graph(app: tauri::AppHandle, id: Option<String>) -> Result<(), String> {
+    let mut config = read_config(&app);
+    if let Some(id) = &id {
+        if !config.remote_graphs.iter().any(|g| &g.id == id) {
+            return Err("That graph is not in the list any more.".into());
+        }
+    }
+    config.active_graph_id = id;
+    write_config(&app, &config)
+}
+
+/// Applies a picker choice by restarting the app, instead of asking the owner to quit and reopen
+/// it themselves — a real complaint ("why is there this 'nooklet will quit now'... super
+/// annoying", 2026-09-16). `request_restart` (not `exit(0)`, and not the noreturn `restart()`)
+/// is Tauri's own reliable-from-any-thread path: it still delivers `RunEvent::Exit` first — this
+/// app's `run()` closure needs that to kill a spawned local server child — and only then relaunches
+/// the same binary with the same env, which is how a spawned local server correctly stays gone (or
+/// comes back) across the switch. Also used by `MENU_SWITCH_SERVER` below, for the same reason.
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.request_restart();
+}
+
 /// Runs before any page script in every document the window loads — the launcher and the server's
 /// client alike, whatever their origin. It is how a page learns it is inside this shell; the
 /// launcher (`../dist/index.html`) reads which port to wait for from it, so `NOOKLET_PORT` moves
-/// the launcher too.
+/// the launcher too. `graphs`/`activeGraphId`/`forcePicker` are read by the same launcher to render
+/// its picker and decide whether to auto-connect locally, auto-connect to the active remote entry,
+/// or show the picker outright — "This Mac" itself is not one of `graphs` (see `RemoteGraph`'s own
+/// doc comment), so the launcher's JS synthesizes that row itself for `activeGraphId: null`.
 ///
 /// A flag we inject rather than sniffing Tauri's own globals: `__TAURI_INTERNALS__` is an
 /// implementation detail of Tauri's IPC, not a statement about this app.
-fn shell_script() -> String {
+fn shell_script(config: &DesktopConfig, force_picker: bool) -> String {
     format!(
-        "Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{:?},port:{}}})}});",
+        "Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{:?},port:{},graphs:{},activeGraphId:{},forcePicker:{}}})}});",
         std::env::consts::OS,
-        port()
+        port(),
+        serde_json::to_string(&config.remote_graphs).unwrap_or_else(|_| "[]".to_string()),
+        serde_json::to_string(&config.active_graph_id).unwrap_or_else(|_| "null".to_string()),
+        force_picker
     )
 }
 
@@ -354,6 +583,11 @@ const MENU_SHORTCUTS: &str = "shortcuts";
 const MENU_RELOAD: &str = "reload";
 const MENU_DOCS: &str = "docs";
 const MENU_REPORT_BUG: &str = "report-bug";
+/// Reopens the launcher's picker screen (standalone vs. a remote server) on the NEXT launch — an
+/// automatic restart, not a manual quit-and-reopen (`restart_app`'s doc comment) — see
+/// `on_menu`'s handling and `picker_sentinel_path`'s doc comment for why this restarts rather
+/// than re-navigating the live window.
+const MENU_SWITCH_SERVER: &str = "switch-server";
 
 /// The macOS menu bar (B-533). Tauri's default had nothing that reaches the app: no Settings…, no
 /// Reload, an empty Help. A custom menu REPLACES that default, so everything else in it is carried
@@ -385,6 +619,7 @@ fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri
             &P::about(app, None, Some(about))?,
             &P::separator(app)?,
             &item(MENU_SETTINGS, "Settings…", Some("CmdOrCtrl+,"))?,
+            &item(MENU_SWITCH_SERVER, "Switch Server…", None)?,
             &P::separator(app)?,
             &P::services(app, None)?,
             &P::separator(app)?,
@@ -441,7 +676,7 @@ fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri
     Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window, &help])
 }
 
-fn on_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) {
+fn on_menu(app: &tauri::AppHandle, id: &str) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -457,6 +692,22 @@ fn on_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) {
         }
         MENU_DOCS => open_in_browser(&format!("{REPO}#readme")),
         MENU_REPORT_BUG => open_in_browser(&format!("{REPO}/issues/new?template=bug_report.yml")),
+        // The window may currently be showing the local server's page or a remote one — either
+        // way there is no clean, cross-platform live re-navigation back to the bundled launcher
+        // origin worth the risk here, and the spawn-or-not decision only happens once at process
+        // start anyway. So: leave a one-shot note for next launch (`picker_sentinel_path`) and
+        // restart (`restart_app`'s own doc comment on why `request_restart`, not `exit`) — the
+        // launcher shows the picker immediately on the way back up, before it tries to connect to
+        // anything, with no manual reopen needed.
+        MENU_SWITCH_SERVER => {
+            if let Ok(path) = picker_sentinel_path(app) {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(path, b"");
+            }
+            app.request_restart();
+        }
         _ => {}
     }
 }
@@ -496,16 +747,33 @@ fn main() {
             status: Mutex::new(ServerStatus::Starting),
             stderr: Arc::new(StderrTail::default()),
         })
-        .invoke_handler(tauri::generate_handler![server_status])
+        .invoke_handler(tauri::generate_handler![
+            server_status,
+            add_graph,
+            remove_graph,
+            set_active_graph,
+            restart_app
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
             let resource_dir = app.path().resource_dir()?;
             let data_dir = graph_dir(&handle)?;
             let server = app.state::<ServerProcess>();
 
-            // Reuse a server that is already running before starting a second one on the same
-            // database.
-            if nooklet_is_listening() {
+            // `Switch Server…` (`MENU_SWITCH_SERVER`) leaves this to mean "show the picker before
+            // trying anything," for exactly one launch.
+            let show_picker = consume_picker_sentinel(&handle);
+            let config = read_config(&handle);
+
+            if show_picker || config.active_url().is_some() {
+                // Remote-client mode, or the user is mid-way through choosing it: this Mac is not
+                // the source of truth here, so there is nothing local to spawn — `ServerProcess`
+                // stays at its unused `Starting` default, which is fine, nobody asks it anything
+                // in this branch (the launcher only calls `server_status` when neither of these is
+                // true, see `../launcher/index.html`).
+            } else if nooklet_is_listening() {
+                // Reuse a server that is already running before starting a second one on the same
+                // database.
                 *server.status.lock().unwrap() = ServerStatus::External;
             } else {
                 match spawn_server(&resource_dir, &data_dir, server.stderr.clone()) {
@@ -533,14 +801,17 @@ fn main() {
 
             // The window opens on the launcher, which polls and redirects the moment the server
             // answers — so the app shows something immediately rather than a white rectangle,
-            // whether startup takes 200 ms or the server never comes up at all.
+            // whether startup takes 200 ms or the server never comes up at all. Same launcher for
+            // remote mode: it reads `graphs`/`activeGraphId`/`forcePicker` off `shell_script` below
+            // and either tries the active entry's address instead of the local one, or shows the
+            // picker outright.
             WebviewWindowBuilder::new(&handle, "main", WebviewUrl::default())
                 .title("nooklet")
                 .inner_size(1100.0, 800.0)
                 .min_inner_size(480.0, 400.0)
                 .title_bar_style(tauri::TitleBarStyle::Transparent)
                 .hidden_title(true)
-                .initialization_script(shell_script())
+                .initialization_script(shell_script(&config, show_picker))
                 // A link that asks for a new window — every `target="_blank"` link in a note, the
                 // help menu's, `window.open` — did NOTHING: WKWebView asks the UI delegate for a
                 // window, and wry answers "none" unless a handler is set (B-534). The system
@@ -735,11 +1006,96 @@ mod tests {
     }
 
     #[test]
+    fn normalize_remote_url_requires_a_scheme_and_strips_trailing_slashes() {
+        assert_eq!(normalize_remote_url(""), Ok(None));
+        assert_eq!(normalize_remote_url("   "), Ok(None));
+        assert_eq!(
+            normalize_remote_url("https://nooklet.example.com/"),
+            Ok(Some("https://nooklet.example.com".to_string()))
+        );
+        assert_eq!(
+            normalize_remote_url("  http://192.168.1.5:6100  "),
+            Ok(Some("http://192.168.1.5:6100".to_string()))
+        );
+        assert!(normalize_remote_url("nooklet.example.com").is_err());
+        assert!(normalize_remote_url("ftp://nooklet.example.com").is_err());
+    }
+
+    #[test]
     fn the_watch_ends_when_the_app_has_taken_the_child_away() {
         let tail = StderrTail::default();
         let child: Mutex<Option<Child>> = Mutex::new(None);
         let status = Mutex::new(ServerStatus::Starting);
         watch_startup(&child, &tail, &status, || false, Duration::ZERO);
         assert_eq!(*status.lock().unwrap(), ServerStatus::Starting);
+    }
+
+    #[test]
+    fn graph_id_for_url_is_stable_and_distinct() {
+        assert_eq!(
+            graph_id_for_url("https://nooklet.example.com"),
+            graph_id_for_url("https://nooklet.example.com")
+        );
+        assert_ne!(graph_id_for_url("https://a.example.com"), graph_id_for_url("https://b.example.com"));
+    }
+
+    #[test]
+    fn active_url_resolves_the_active_entry_and_falls_back_for_an_unknown_id() {
+        let a = RemoteGraph { id: "a".into(), url: "https://a.example.com".into() };
+        let b = RemoteGraph { id: "b".into(), url: "https://b.example.com".into() };
+        let config = DesktopConfig {
+            remote_graphs: vec![a, b],
+            active_graph_id: Some("b".to_string()),
+        };
+        assert_eq!(config.active_url(), Some("https://b.example.com"));
+
+        // "This Mac" — the default.
+        assert_eq!(DesktopConfig::default().active_url(), None);
+
+        // A stale id (the entry it named was removed by hand-editing the file) reads as local
+        // rather than erroring — `read_config`'s own "never fail startup over a config file" rule.
+        let stale = DesktopConfig { remote_graphs: vec![], active_graph_id: Some("gone".into()) };
+        assert_eq!(stale.active_url(), None);
+    }
+
+    #[test]
+    fn parse_config_reads_the_current_shape() {
+        let config = parse_config(
+            r#"{"remote_graphs":[{"id":"g1","url":"https://a.example.com"}],"active_graph_id":"g1"}"#,
+        );
+        assert_eq!(config.remote_graphs.len(), 1);
+        assert_eq!(config.remote_graphs[0].url, "https://a.example.com");
+        assert_eq!(config.active_graph_id, Some("g1".to_string()));
+
+        // Missing keys (a fresh config dir's file wouldn't exist at all, but a hand-crafted `{}`
+        // is still worth tolerating) default to "This Mac", nothing remembered.
+        let empty = parse_config("{}");
+        assert!(empty.remote_graphs.is_empty());
+        assert_eq!(empty.active_graph_id, None);
+
+        // Garbage never panics or fails startup.
+        assert!(parse_config("not json").remote_graphs.is_empty());
+    }
+
+    #[test]
+    fn parse_config_migrates_the_old_single_remote_url_shape() {
+        // Old shape, a real remote address configured: becomes a one-entry list, active.
+        let migrated = parse_config(r#"{"remote_url":"https://nooklet.example.com/"}"#);
+        assert_eq!(migrated.remote_graphs.len(), 1);
+        // Trailing slash stripped by the same normalization a fresh `add_graph` would apply.
+        assert_eq!(migrated.remote_graphs[0].url, "https://nooklet.example.com");
+        assert_eq!(migrated.active_graph_id, Some(migrated.remote_graphs[0].id.clone()));
+        // Re-migrating the SAME address is stable: same derived id both times, matching the dedupe
+        // `add_graph` gives a re-typed address.
+        assert_eq!(
+            migrated.remote_graphs[0].id,
+            parse_config(r#"{"remote_url":"https://nooklet.example.com"}"#).remote_graphs[0].id
+        );
+
+        // Old shape, standalone (the common case — most installs never configured remote mode):
+        // migrates to nothing remembered, same as a fresh install.
+        let standalone = parse_config(r#"{"remote_url":null}"#);
+        assert!(standalone.remote_graphs.is_empty());
+        assert_eq!(standalone.active_graph_id, None);
     }
 }

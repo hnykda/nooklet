@@ -160,11 +160,6 @@
    Journal stream + calendar
 --------------------------------------------------------------------------------------------- */
 
-.journal-stream-toolbar {
-  margin-bottom: var(--space-lg);
-}
-
-.journal-calendar-toggle,
 .page-view-back,
 .journal-day-unpin {
   min-height: 30px;
@@ -181,7 +176,6 @@
     color var(--dur-fast) var(--ease);
 }
 
-.journal-calendar-toggle:hover,
 .page-view-back:hover,
 .journal-day-unpin:hover {
   background: var(--surface-2);

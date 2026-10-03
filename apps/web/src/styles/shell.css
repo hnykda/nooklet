@@ -318,6 +318,17 @@ body {
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
+  /* B-572: a fixed app shell (this rule already `overflow: hidden`s the page itself) has no
+     legitimate reason to be page-zoomed, and a real device log this session caught WebKit's own
+     gesture recognizer evaluating a double-tap-zoom on an ordinary single tap ("Potential tap may
+     cause significant zoom"). `manipulation` (not `pan-x pan-y`) specifically disables that
+     double-tap-zoom heuristic while leaving real pinch-zoom available — unlike the viewport meta's
+     `user-scalable=no`, this doesn't take away zoom as an accessibility tool for low-vision users,
+     it only stops an accidental two-taps-close-together from being misread as the start of one.
+     Elements with their own explicit `touch-action` (`.vr-row`'s `pan-y`, `.vr-bullet-wrap`'s
+     `none`, editor.css's others) are unaffected — this only reaches surfaces with no rule of
+     their own, which is exactly the gap that let it happen. */
+  touch-action: manipulation;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);

@@ -1,0 +1,254 @@
+// @vitest-environment jsdom
+/**
+ * ADR 025: the graph list as a top-bar icon+popover, mirroring `CalendarButton.test.tsx`'s shape
+ * for the same kind of control. Covers the client-only parts of all three legal moves (switch,
+ * rename, remove; "just this device"; the add-a-server and promote forms' wiring to `fetch` and
+ * the graph list) — not `connect-graph.ts`'s own request-shaping, which has no test of its own yet
+ * but is exercised here through real (mocked) `fetch` calls, and not the server's own `/graphs`
+ * behavior, which `packages/server/src/graphs/mount.test.ts` already covers.
+ */
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  activeGraph,
+  addGraph,
+  listGraphs,
+  resetBootstrapForTests,
+  setActiveGraphId,
+} from "../data/bootstrap.js";
+
+const fakePlatform = vi.hoisted(() => ({ name: "web" as "web" | "capacitor" }));
+vi.mock("../platform/index.js", () => ({ platform: fakePlatform }));
+
+import { GraphSwitcher } from "./GraphSwitcher.js";
+
+const fetchMock = vi.fn<typeof fetch>();
+vi.stubGlobal("fetch", fetchMock);
+
+function ok(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** jsdom's `Location.prototype.assign` is not configurable — replace `location` wholesale, same as
+ * `ConnectView.test.tsx`. B-586: `GraphSwitcher` navigates via `location.assign` (not `.reload`) so
+ * that switching to a same-origin graph under a different `/g/<slug>` actually lands there, rather
+ * than reloading whatever path the browser happened to be on. */
+function mockAssign(): ReturnType<typeof vi.fn> {
+  const assign = vi.fn();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...window.location, assign },
+  });
+  return assign;
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  resetBootstrapForTests();
+  fakePlatform.name = "web";
+  fetchMock.mockReset();
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+function openSwitcher(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Switch graph" }));
+}
+
+describe("GraphSwitcher", () => {
+  it("is an icon-only top-bar button, closed until clicked, empty list when nothing is stored", () => {
+    render(() => <GraphSwitcher />);
+    const button = screen.getByRole("button", { name: "Switch graph" });
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("dialog", { name: "Switch graph" })).toBeTruthy();
+  });
+
+  it("lists every graph, marking the active one, and switching to a different one navigates to it", () => {
+    addGraph({ id: "a", label: "Graph A", kind: "remote", baseUrl: "/g/a" });
+    addGraph({ id: "b", label: "Graph B", kind: "remote", baseUrl: "/g/b" });
+    setActiveGraphId("a");
+    const assign = mockAssign();
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+
+    expect(screen.getByText("Graph A")).toBeTruthy();
+    expect(screen.getByText("Graph B")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Graph B"));
+    expect(activeGraph()?.id).toBe("b");
+    // B-586: navigates to the NEW graph's own prefix, not just a reload of the current path.
+    expect(assign).toHaveBeenCalledWith("/g/b/");
+  });
+
+  it("clicking the already-active graph just closes the popover — no navigation", () => {
+    addGraph({ id: "a", label: "Graph A", kind: "remote", baseUrl: "/g/a" });
+    setActiveGraphId("a");
+    const assign = mockAssign();
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+
+    fireEvent.click(screen.getByText("Graph A"));
+    expect(assign).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("renames a graph in place", () => {
+    addGraph({ id: "a", label: "Old Name", kind: "remote", baseUrl: "/g/a" });
+    setActiveGraphId("a");
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename Old Name" }));
+    const input = screen.getByDisplayValue("Old Name");
+    fireEvent.input(input, { target: { value: "New Name" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText("New Name")).toBeTruthy();
+    expect(listGraphs().find((g) => g.id === "a")?.label).toBe("New Name");
+  });
+
+  it("removes a non-active graph after a confirm step, but offers no remove action on the active one", () => {
+    addGraph({ id: "a", label: "Graph A", kind: "remote", baseUrl: "/g/a" });
+    addGraph({ id: "b", label: "Graph B", kind: "remote", baseUrl: "/g/b" });
+    setActiveGraphId("a");
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+
+    expect(screen.queryByRole("button", { name: "Remove Graph A" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Graph B" }));
+    expect(screen.getByText("Remove")).toBeTruthy();
+    fireEvent.click(screen.getByText("Remove"));
+
+    expect(listGraphs().map((g) => g.id)).toEqual(["a"]);
+  });
+
+  it("web/desktop: 'Add a graph' goes straight to the server form, no local-only choice", () => {
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByText("Add a graph"));
+
+    expect(screen.getByLabelText("Server address")).toBeTruthy();
+    expect(screen.queryByText("Just this device")).toBeNull();
+  });
+
+  it("Capacitor: 'Add a graph' shows the just-this-device vs sync-with-a-server choice first", () => {
+    fakePlatform.name = "capacitor";
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByText("Add a graph"));
+
+    expect(screen.getByText("Just this device")).toBeTruthy();
+    expect(screen.getByText("Sync with a server")).toBeTruthy();
+  });
+
+  it("Capacitor: 'Just this device' adds a bare local-only entry and reloads", () => {
+    fakePlatform.name = "capacitor";
+    const assign = mockAssign();
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByText("Add a graph"));
+    fireEvent.click(screen.getByText("Just this device"));
+
+    expect(assign).toHaveBeenCalledOnce();
+    const entry = listGraphs()[0];
+    expect(entry?.kind).toBe("local");
+    expect(entry?.baseUrl).toBeUndefined();
+    expect(activeGraph()?.id).toBe(entry?.id);
+  });
+
+  it("add-a-server form: verifies against the typed address, adds a new entry, and navigates there", async () => {
+    fetchMock.mockResolvedValueOnce(ok({}));
+    const assign = mockAssign();
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByText("Add a graph"));
+
+    fireEvent.input(screen.getByLabelText("Server address"), {
+      target: { value: "https://nooklet.example.com" },
+    });
+    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    // B-586: the new graph's own server address, not wherever the browser happened to be.
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("https://nooklet.example.com/"));
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("https://nooklet.example.com/api/v1/graph.overview");
+    expect(listGraphs().some((g) => g.baseUrl === "https://nooklet.example.com")).toBe(true);
+  });
+
+  it("add-a-server form: a rejected token shows the same message ConnectView uses, and adds nothing", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByText("Add a graph"));
+    fireEvent.input(screen.getByLabelText("Server address"), {
+      target: { value: "https://nooklet.example.com" },
+    });
+    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await screen.findByText(/rejected/);
+    expect(listGraphs()).toEqual([]);
+  });
+
+  it("promote is offered only on a genuinely local-only entry (no baseUrl), not one already server-backed", () => {
+    addGraph({ id: "local", label: "Local Only", kind: "local" });
+    addGraph({ id: "remote", label: "Already Remote", kind: "remote", baseUrl: "/g/remote" });
+    setActiveGraphId("local");
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+
+    expect(screen.getByRole("button", { name: "Add a server for Local Only" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add a server for Already Remote" })).toBeNull();
+  });
+
+  it("promote form: creates the graph with the root token, points the SAME entry at it, and navigates there", async () => {
+    addGraph({ id: "local", label: "Local Only", kind: "local" });
+    setActiveGraphId("local");
+    fetchMock.mockResolvedValueOnce(
+      ok({ id: "promoted", label: "promoted", token: "nk_new_token", graphId: "physical-id" }),
+    );
+    const assign = mockAssign();
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add a server for Local Only" }));
+    fireEvent.input(screen.getByLabelText("Server address"), {
+      target: { value: "https://home.example.com" },
+    });
+    fireEvent.input(screen.getByLabelText("New graph id"), { target: { value: "promoted" } });
+    fireEvent.input(screen.getByLabelText("Root token"), {
+      target: { value: "nkroot_abc" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    // B-586: the newly created graph's own address, not the local-only entry's old (nonexistent)
+    // location.
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("https://home.example.com/g/promoted/"),
+    );
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("https://home.example.com/graphs");
+    expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+      "Bearer nkroot_abc",
+    );
+    // Same entry id, not a new one — the whole point is this device's existing local content
+    // reconnects to the newly created graph, not that it gets a second, empty entry.
+    expect(listGraphs()).toHaveLength(1);
+    const entry = listGraphs()[0];
+    expect(entry?.id).toBe("local");
+    expect(entry?.kind).toBe("remote");
+    expect(entry?.baseUrl).toBe("https://home.example.com/g/promoted");
+    expect(entry?.token).toBe("nk_new_token");
+  });
+});

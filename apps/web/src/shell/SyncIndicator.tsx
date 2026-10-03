@@ -14,6 +14,7 @@
 // One file per icon, not the `lucide-solid` barrel (B-140).
 import Cloud from "lucide-solid/icons/cloud";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { hasSyncTarget } from "../data/bootstrap.js";
 import { useSyncStatus } from "../data/store.js";
 import { storageInfo } from "../db/client.js";
 import { openDiagnostics } from "../views/DiagnosticsPanel.js";
@@ -27,7 +28,10 @@ import "./sync-indicator.css";
 
 export function SyncIndicator() {
   const status = useSyncStatus();
-  const view = createMemo(() => deriveSyncView(storageInfo()?.storage, status()));
+  // A plain read, not a signal: whether this device has a sync target cannot change mid-session
+  // (same reasoning as `ConnectView.tsx`'s `showServerField`).
+  const target = hasSyncTarget();
+  const view = createMemo(() => deriveSyncView(storageInfo()?.storage, status(), target));
   const [shown, setShown] = createSignal<SyncView>("starting");
   const quiet = createQuietView(setShown);
   createEffect(() => quiet.update(view()));

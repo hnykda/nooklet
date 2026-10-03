@@ -37,7 +37,7 @@
 import { normalizePageName } from "@nooklet/core";
 import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import { callOp, describeError } from "../data/api-client.js";
+import { ApiError, callOp, describeError, NO_SYNC_TARGET_CODE } from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { undoBatch } from "../data/refactor-api.js";
 import { useReferenceListTrees } from "../data/reference-trees.js";
@@ -267,7 +267,14 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   // `loading` is also true on every refetch (the panel re-asks whenever the graph changes), so a
   // spinner keyed on it alone would flash on every edit. Only show one when there is nothing yet.
   const firstLoad = createMemo(() => backlinks.loading && data() === undefined);
-  const failed = createMemo(() => !backlinks.loading && backlinks.error !== undefined);
+  // B-577: a device with no sync target was never going to reach `page.backlinks` — that is not
+  // the same failure as a real, currently-unreachable server, and reads calmly instead of alarming.
+  const noSyncTarget = createMemo(
+    () => backlinks.error instanceof ApiError && backlinks.error.code === NO_SYNC_TARGET_CODE,
+  );
+  const failed = createMemo(
+    () => !backlinks.loading && backlinks.error !== undefined && !noSyncTarget(),
+  );
 
   // "Link all": one `mentions.link` call, then the result stays on screen with its undo until
   // the next page. The status line lives OUTSIDE the unlinked section because a successful link
@@ -335,10 +342,16 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
   );
 
   return (
-    <Show when={firstLoad() || failed() || hasAnything()}>
+    <Show when={firstLoad() || failed() || noSyncTarget() || hasAnything()}>
       <div class="references-panel">
         <Show when={firstLoad()}>
           <p class="references-loading">Loading references…</p>
+        </Show>
+
+        <Show when={noSyncTarget()}>
+          <p class="references-loading">
+            References need a server — not available in local-only mode.
+          </p>
         </Show>
 
         <Show when={failed()}>

@@ -6,7 +6,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { api, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import { api, pagePath, readBlocks, seedPage, withBase } from "../helpers/index.js";
 
 function historyPath(name: string): string {
   return `/history/${name.split("/").map(encodeURIComponent).join("/")}`;
@@ -121,7 +121,8 @@ test("the page title row links to the page's history, including namespaced names
   await page.goto(pagePath("History Link/Child"));
   // Revealed on hover like the empty icon slot; the link is in the DOM regardless.
   const link = page.locator(".page-history-link");
-  await expect(link).toHaveAttribute("href", historyPath("History Link/Child"));
+  // <A>, not a raw <a> — its real href carries this page's own /g/<slug> prefix (ADR 025).
+  await expect(link).toHaveAttribute("href", withBase(page, historyPath("History Link/Child")));
   await link.click();
   await expect(page.locator(".history-view h1")).toHaveText("History");
   await expect(page.locator(".history-back")).toContainText("History Link/Child");

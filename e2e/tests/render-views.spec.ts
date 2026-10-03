@@ -9,7 +9,15 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { api, isoOffset, openPage, pagePath, readBlocks, seedPage } from "../helpers/index.js";
+import {
+  api,
+  isoOffset,
+  openPage,
+  pagePath,
+  readBlocks,
+  seedPage,
+  withBase,
+} from "../helpers/index.js";
 
 test("a multi-line block renders each line on its own line (B-224)", async ({ page }) => {
   const outliner = await openPage(
@@ -77,7 +85,7 @@ test("on a desktop the title row keeps History and the icon slot behind hover; t
   await page.getByRole("button", { name: "Page actions" }).click();
   await expect(page.getByRole("menuitem", { name: "Page history" })).toHaveAttribute(
     "href",
-    "/history/RV%20Desktop%20Title%20Row",
+    withBase(page, "/history/RV%20Desktop%20Title%20Row"),
   );
   await page.getByRole("menuitem", { name: "Add icon" }).click();
   await expect(page.locator(".page-actions-menu")).toHaveCount(0);

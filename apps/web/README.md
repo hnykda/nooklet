@@ -152,27 +152,55 @@ main thread for Capacitor builds — both cross-cutting changes out of this mile
 then, a Capacitor build keeps using the existing `db/sqlite-wasm-driver.ts` (`opfs-sahpool`), which
 research/08 §2.1 confirms already runs inside a Capacitor WKWebView.
 
-**What a human must run** (no Xcode/Android Studio/CocoaPods/JDK exist in this environment, so
-none of the following was run or verified here):
+**iOS: done as of 2026-09-14** (this environment has `xcodebuild` from the Command Line Tools but
+no full `Xcode.app` — confirmed with `xcode-select -p` → `/Library/Developer/CommandLineTools`, and
+`xcodebuild ... -showBuildSettings` on the generated project failing with "requires Xcode" — so
+everything below the CLI layer is genuinely unverified, not just unattempted):
 
-1. `cd apps/web && pnpm build` to produce `dist/`.
-2. `npx cap add ios` and/or `npx cap add android` — generates the native Xcode/Gradle projects
-   (`ios/`, `android/`) from `capacitor.config.ts`. These are real, editable native projects
-   Capacitor's own convention says to commit once generated; they do not exist in this repo yet.
-3. Deep links (`nooklet://...`, research/08 §4) need manual native-file edits `capacitor.config.ts`
-   cannot express: iOS — add a `CFBundleURLTypes` entry with scheme `nooklet` to `ios/App/App/
-   Info.plist`; Android — add `<intent-filter><action android:name="android.intent.action.VIEW"/>
-   <category android:name="android.intent.category.DEFAULT"/><category android:name=
-   "android.intent.category.BROWSABLE"/><data android:scheme="nooklet"/></intent-filter>` to the
-   main activity in `android/app/src/main/AndroidManifest.xml`.
-4. Share-sheet *receiving* (Android `ACTION_SEND`, iOS Share Extension + App Group) needs either
-   the `send-intent` plugin wired into the generated native projects or hand-written native code —
-   research/08 §4; not attempted here (it is native-project work, not `platform/` code).
-5. `npx cap sync` after any web build or config change, then open/build in Xcode / Android Studio
-   (`npx cap open ios` / `npx cap open android`) to actually run on a simulator/device or submit to
-   a store.
-6. App icons/launch screens, signing, and the privacy manifest Capacitor ships by default (research
-   §2.1: "budget 1–2 days the first time").
+1. `npx cap add ios` (run from `apps/web/`) generated `apps/web/ios/` — a real Xcode project
+   (`App.xcodeproj`), committed per Capacitor's own convention (its `.gitignore` already excludes
+   `App/App/public` [the copied web build], `App/build`, `App/Pods`, `DerivedData`, `xcuserdata`,
+   and the generated `capacitor.config.json`/`config.xml`). Capacitor 8 wires native dependencies
+   through Swift Package Manager, not CocoaPods (`ios/App/CapApp-SPM/Package.swift`, listing all 6
+   `@capacitor/*`/`@capacitor-community/*` plugins) — so `cap add ios` needed no CocoaPods/`pod`
+   install step at all, only Ruby's absence would have mattered and didn't come up. `Package.swift`
+   points at plugin sources inside `node_modules/.pnpm/...` (pnpm's content-addressable layout);
+   `npx cap sync ios` rewrites it, so it self-heals after any dependency change — don't hand-edit it.
+2. Deep link scheme: `ios/App/App/Info.plist` now has a `CFBundleURLTypes` entry for `nooklet://`
+   (`CFBundleURLName: sh.nooklet.app`, matching `capacitor.config.ts`'s `appId`). `cap sync` does
+   not touch `Info.plist`/`AppDelegate.swift`/etc., so this survives repeated syncs.
+3. **Server address, so a packaged build can actually sync (closed 2026-09-14)**: every API/sync
+   call was a *relative* fetch (`data/bootstrap.ts#apiBaseUrl`, `data/api-client.ts`,
+   `sync/http-transport.ts`), which only ever resolves against the page's own origin — correct for
+   a browser tab (the address bar's origin IS the server) but meaningless under Capacitor, whose
+   WKWebView origin is the fixed `capacitor://localhost` scheme. `ConnectView.tsx` now shows a
+   "Server address" field before the token field, but only when `platform.name === "capacitor"`
+   (web/PWA is unchanged — still same-origin, no field); the address is verified live (same
+   `graph.overview` check the token gets) before either is stored, in `data/bootstrap.ts`'s new
+   `storedServerUrl`/`setStoredServerUrl` (localStorage key `nooklet.serverUrl`), which `apiBaseUrl()`
+   now checks before falling back to the build-time `VITE_API_BASE_URL`/`VITE_SYNC_BASE_URL`/
+   same-origin chain. `sync/http-transport.ts`'s WebSocket URL already derived correctly from
+   `baseUrl` rather than `location`, so no change was needed there. Covered by
+   `data/bootstrap.test.ts` and `views/ConnectView.test.tsx`; **not** verified against a real
+   server from a real device/simulator — nothing here can be, without one.
+4. Root `package.json` scripts: `pnpm ios:sync` (build `apps/web`, then `cap sync ios` — verified to
+   run clean end to end from the repo root) and `pnpm ios:open` (`cap open ios`, i.e. launch Xcode —
+   **unverified**, since `open`-ing an `.xcodeproj` needs `Xcode.app` registered as its handler,
+   which this environment doesn't have). `pnpm ios` runs both.
+5. **Not done here, needs a Mac with full Xcode installed**: opening the project, resolving the SPM
+   packages, building, and running on a simulator or device — the entire point of an "app" is
+   unverified past what the CLI can generate. Also pending: app icons/launch screens (Capacitor's
+   placeholder `AppIcon.appiconset`/`Splash.imageset` are committed as-is — same "1–2 days the first
+   time" budget research/08 §2.1 flags), signing, and the privacy manifest Capacitor ships by
+   default.
+6. Share-sheet *receiving* (a Share Extension + App Group) needs either the `send-intent` plugin
+   wired into `ios/` or hand-written native code — research/08 §4; not attempted, this is real
+   native-project work, not a CLI step.
+7. **Android not started**: no `npx cap add android` run, no `android/` directory, no `@capacitor/
+   android` dependency. Same shape of work as above (`AndroidManifest.xml` intent-filter for the
+   `nooklet://` scheme, icons, signing, plus its own server-address entry point — the new field in
+   `ConnectView.tsx` is gated on `platform.name === "capacitor"`, which is also true on Android, so
+   it already covers this once the Android project exists) once picked up.
 
 ## What's stubbed for other agents
 
@@ -232,12 +260,14 @@ Nothing here can be unit-tested in Node; each is structured so the surrounding l
    actually appearing in Android's share sheet / long-press app icon menu (Chrome/WebAPK only,
    research/08 §1.4 — Safari ignores both, harmlessly), and offline behavior end-to-end through a
    real service worker.
-10. **M5 Capacitor** (`capacitor.config.ts`, `platform/capacitor.ts`): none of it can run without
-    Xcode/Android Studio, which do not exist in this environment — see the dedicated "what a human
-    must run" section above for the full list (native project generation, deep-link manifest/plist
-    edits, share extension, `npx cap sync`/`open`, store submission). The adapter code itself
-    typechecks against the real `@capacitor/*` type packages (installed as real dependencies, not
-    stubbed) but every plugin call inside it is exercised for the first time on a real device.
+10. **M5 Capacitor** (`capacitor.config.ts`, `platform/capacitor.ts`, `ios/`): the native iOS
+    project now exists and `cap add`/`cap sync` are verified to run clean (see the dedicated
+    "what a human must run" section above), but nothing past the CLI layer can run without full
+    Xcode, which this environment doesn't have — no build, no simulator launch, no plugin call ever
+    actually reaching the native bridge. The adapter code itself typechecks against the real
+    `@capacitor/*` type packages (installed as real dependencies, not stubbed) but every plugin call
+    inside it is exercised for the first time on a real device. Android has no generated project yet
+    at all.
 
 ## Scripts
 

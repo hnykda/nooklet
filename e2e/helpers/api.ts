@@ -60,6 +60,24 @@ export function pagePath(name: string): string {
   return `/page/${name.split("/").map(encodeURIComponent).join("/")}`;
 }
 
+/**
+ * This page's own `/g/<slug>` prefix (ADR 025) — read from the CURRENT page rather than a fixed
+ * constant, since it is not known until the app has actually loaded and been redirected once.
+ * Mirrors `apps/web/src/data/bootstrap.ts#samePathGraphPrefix`'s exact regex: a real rendered
+ * href/URL for an app-relative path (`pagePath(...)`, `/trash`, `/assets/<id>`, ...) legitimately
+ * carries this prefix, the same way it does for a real visitor.
+ */
+export function graphBase(page: Page): string {
+  const m = /^\/g\/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?=\/|$)/.exec(new URL(page.url()).pathname);
+  return m?.[0] ?? "";
+}
+
+/** `graphBase(page) + appRelativePath` — an app-relative path (`pagePath(...)`, `/history/...`,
+ * `/assets/<id>`, ...) turned into the real address the app would render or navigate to. */
+export function withBase(page: Page, appRelativePath: string): string {
+  return `${graphBase(page)}${appRelativePath}`;
+}
+
 /** `page.read`'s JSON tree, flattened to `{id, content}` in reading order — for tests that need a
  * real block id (block references, zoom routes). */
 export async function readBlocks(

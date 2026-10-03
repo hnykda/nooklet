@@ -13,7 +13,7 @@ import { useLocation, useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import { type EditorHost, useCommands } from "../commands/index.js";
 import { contributeSlashItem } from "../commands/slash/contributed.js";
-import { apiBaseUrl, authToken } from "../data/bootstrap.js";
+import { apiBaseUrl, appRelativePathname, authToken } from "../data/bootstrap.js";
 import { loadPage } from "../data/plugin-lookups.js";
 import { blockAfterOps } from "../data/plugin-writes.js";
 import { applyOps, resolvePageName, serverCaughtUpVersion, stampedFor } from "../data/store.js";
@@ -60,7 +60,8 @@ export function ClientPlugins(props: { editor: EditorHost; mobile: boolean }): n
   onCleanup(() => void host.stop());
 
   const routePageName = createMemo(() => {
-    const match = /^\/page\/(.+)$/.exec(location.pathname);
+    // ADR 025: `location.pathname` may carry this page's own `/g/<slug>` prefix.
+    const match = /^\/page\/(.+)$/.exec(appRelativePathname(location.pathname));
     return match?.[1] ? pathToPageName(match[1]) : null;
   });
 

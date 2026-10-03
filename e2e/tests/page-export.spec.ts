@@ -102,7 +102,8 @@ test("Export as markdown downloads exactly the file the mirror wrote for the pag
   const downloaded = readFileSync(await download.path(), "utf8");
 
   // The server writes the mirror ~500 ms after the last commit; wait for it rather than guess.
-  const mirrorFile = join(dataDir(), "pages", "Export Mirror Parity.md");
+  // ADR 025: the mirror lives under this graph's own subdirectory now.
+  const mirrorFile = join(dataDir(), "graphs", "default", "pages", "Export Mirror Parity.md");
   await expect.poll(() => existsSync(mirrorFile), { timeout: 15_000 }).toBe(true);
   await expect.poll(() => readFileSync(mirrorFile, "utf8"), { timeout: 15_000 }).toBe(downloaded);
 
@@ -126,7 +127,7 @@ test("Export of a page whose name is past NAME_MAX downloads the mirror's shorte
   await openPageView(page, name);
 
   // The mirror's file for it, whatever its hash suffix: the only file with this prefix.
-  const pagesDir = join(dataDir(), "pages");
+  const pagesDir = join(dataDir(), "graphs", "default", "pages");
   const mirrorName = () =>
     existsSync(pagesDir)
       ? readdirSync(pagesDir).find((f) => f.startsWith("Export Long Name B368 "))

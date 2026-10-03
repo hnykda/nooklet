@@ -9,6 +9,7 @@
  */
 
 import { expect, test } from "@playwright/test";
+import { graphBase } from "../helpers/index.js";
 
 test("a loopback browser is handed a token and never sees the connect screen", async ({ page }) => {
   await page.goto("/journals");
@@ -36,11 +37,19 @@ test("a device with no token gets the connect screen, and pairing works", async 
       body: JSON.stringify({ token: null, reason: "non_loopback_host" }),
     }),
   );
-  await page.evaluate(() => localStorage.removeItem("nooklet.deviceToken"));
+  // ADR 025: credentials live in the graph list now (`nooklet.graphs`/`nooklet.activeGraphId`),
+  // not the single `nooklet.deviceToken` key this used to clear.
+  await page.evaluate(() => {
+    localStorage.removeItem("nooklet.graphs");
+    localStorage.removeItem("nooklet.activeGraphId");
+  });
   await page.goto("/journals");
 
   const connect = page.locator(".connect");
   await expect(connect).toBeVisible();
+  // B-563: a skip path exists here (App.tsx always passes one), so the choice screen renders
+  // first — "Sync with a server" reveals the actual token form this test exercises.
+  await connect.getByRole("button", { name: /Sync with a server/s }).click();
   await expect(connect).toContainText("nooklet token create");
   // It must explain WHY, not just refuse.
   await expect(connect).toContainText("same machine as the server");
@@ -55,7 +64,15 @@ test("a device with no token gets the connect screen, and pairing works", async 
   await connect.locator('button[type="submit"]').click();
 
   await expect(page.locator(".connect")).toHaveCount(0, { timeout: 15_000 });
-  const stored = await page.evaluate(() => localStorage.getItem("nooklet.deviceToken"));
+  // ADR 025: the token now lives on the active entry in the graph list, not a single flat key.
+  const stored = await page.evaluate(() => {
+    const graphs = JSON.parse(localStorage.getItem("nooklet.graphs") ?? "[]") as Array<{
+      id: string;
+      token?: string;
+    }>;
+    const activeId = localStorage.getItem("nooklet.activeGraphId");
+    return graphs.find((g) => g.id === activeId)?.token;
+  });
   expect(stored).toBe(adminToken);
   // And it is genuinely usable: the app booted with the stored token while `/api/session`
   // continued to refuse one.
@@ -92,7 +109,25 @@ test("a paired remote device can read the graph it was given access to", async (
       body: JSON.stringify({ token: null, reason: "non_loopback_host" }),
     }),
   );
-  await page.evaluate((t) => localStorage.setItem("nooklet.deviceToken", t as string), token);
+  // ADR 025: simulate an already-paired device by seeding a graph-list entry directly, the same
+  // shape `setConnectedGraphToken` (`data/bootstrap.ts`) would have written. `baseUrl` MUST be a
+  // real, concrete value here — `hasSyncTarget()` reads `entry.baseUrl` directly, unlike
+  // `apiBaseUrl()`'s own fallback chain, so an entry with none reads as "no sync target at all"
+  // and the worker never even tries to pull, which is exactly what this test used to (silently)
+  // hit before this was fixed.
+  const base = graphBase(page);
+  await page.evaluate(
+    ([t, b]) => {
+      localStorage.setItem(
+        "nooklet.graphs",
+        JSON.stringify([
+          { id: "e2e-remote", label: "Remote", kind: "remote", token: t, baseUrl: b },
+        ]),
+      );
+      localStorage.setItem("nooklet.activeGraphId", "e2e-remote");
+    },
+    [token, base] as const,
+  );
 
   await page.goto("/page/Shared%20From%20Desktop");
   await expect(page.locator(".connect")).toHaveCount(0);

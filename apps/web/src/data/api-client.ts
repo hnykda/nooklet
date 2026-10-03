@@ -16,7 +16,7 @@
  * that arrives after this module loads is still seen.
  */
 
-import { apiBaseUrl, authToken } from "./bootstrap.js";
+import { apiBaseUrl, authToken, hasSyncTarget } from "./bootstrap.js";
 
 export interface SearchHit {
   kind: "block" | "page";
@@ -185,13 +185,29 @@ async function unwrap<TOut>(res: Response): Promise<TOut> {
  * which is where `embeddings.configure` puts "Ollama isn't running" and "pull that model first".
  * Render one with `describeError` so the hint is not lost.
  */
+/** B-564: matches `sync/http-transport.ts`'s `SYNC_TIMEOUT_MS` — same failure class (a request
+ * that never resolves, rather than fails fast, leaves whatever resource awaits it on "Loading…"
+ * forever), same fix. A server that answers, even with an error, is not what this bounds. */
+const API_TIMEOUT_MS = 10_000;
+
+/** B-577: every caller of `callOp` needs a server — search, references, the graph, diagnostics,
+ * the rest — so a device with no sync target at all (Capacitor's "Just this device", B-563) would
+ * otherwise hit a real, alarming network failure on every one of these, one panel at a time, each
+ * inventing its own "is this actually broken, or just not configured" detection. Fail fast with one
+ * recognizable code instead, so every caller can share one calm render branch. */
+export const NO_SYNC_TARGET_CODE = "no_sync_target";
+
 export async function callOp<TOut>(name: string, body: unknown): Promise<TOut> {
+  if (!hasSyncTarget()) {
+    throw new ApiError(NO_SYNC_TARGET_CODE, "This device isn't configured to sync with a server.");
+  }
   let res: Response;
   try {
     res = await fetch(`${apiBaseUrl()}/api/v1/${name}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
   } catch (err) {
     throw new ApiError(

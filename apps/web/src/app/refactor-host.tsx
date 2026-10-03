@@ -19,6 +19,7 @@ import { rememberFocus } from "../commands/focus-return.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
 import type { RefactorHost } from "../commands/registrations/refactor.js";
 import { describeError } from "../data/api-client.js";
+import { appRelativePathname } from "../data/bootstrap.js";
 import { refactorApi } from "../data/refactor-api.js";
 import { useAllPages } from "../data/store.js";
 import { forceSync } from "../db/client.js";
@@ -26,10 +27,12 @@ import { flushTyping } from "../editor/outline-registry.js";
 import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { fuzzyFindPages } from "../views/pageSearch.js";
 
-/** `/page/Projects/Aurora` -> `Projects/Aurora`; anything else -> `null`. */
+/** `/page/Projects/Aurora` (optionally `/g/<slug>/page/Projects/Aurora`, ADR 025 — every caller
+ * here passes the RAW `window.location.pathname`) -> `Projects/Aurora`; anything else -> `null`. */
 export function currentPageNameFromPath(pathname: string): string | null {
-  if (!pathname.startsWith("/page/")) return null;
-  const rest = pathname.slice("/page/".length);
+  const appRelative = appRelativePathname(pathname);
+  if (!appRelative.startsWith("/page/")) return null;
+  const rest = appRelative.slice("/page/".length);
   return rest === "" ? null : pathToPageName(rest);
 }
 

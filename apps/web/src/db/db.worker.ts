@@ -25,11 +25,22 @@ import type { Op } from "@nooklet/core";
 import * as Comlink from "comlink";
 import { createHttpTransport } from "../sync/http-transport.js";
 import type { SyncStatus } from "../sync/types.js";
+import { createResumeRetry, type ResumeRetry } from "./reopen-on-resume.js";
 import { openSqliteWasmDriver } from "./sqlite-wasm-driver.js";
 import type { ChangeEvent, InitResult, WorkerApi, WorkerInitOptions } from "./worker-api.js";
 import { WorkerDb } from "./worker-core.js";
 
 const LEADER_LOCK_NAME = "nooklet-db-writer";
+
+/** ADR 025: the lock (and, in `openDb` below, the OPFS filename) must be namespaced per graph-list
+ * entry, not just per origin — two graphs behind one origin (a desktop app that also points at a
+ * remote graph) would otherwise contend for the same lock despite being entirely unrelated SQLite
+ * files, leaving one of them a permanent, pointless "follower" of a graph it has nothing to do
+ * with. Omitted `graphEntryId` (every pre-ADR-025 caller, every existing test) keeps today's bare
+ * lock name — one graph, one lock, unchanged. */
+function leaderLockName(graphEntryId: string | undefined): string {
+  return graphEntryId ? `${LEADER_LOCK_NAME}:${graphEntryId}` : LEADER_LOCK_NAME;
+}
 
 /**
  * Take the writer lock if nobody holds it, and say so. The original version waited on the lock
@@ -39,9 +50,9 @@ const LEADER_LOCK_NAME = "nooklet-db-writer";
  * server, works normally, and reaches the leader through sync. If the leader closes, a reload
  * makes this tab the leader; taking over live would mean swapping storage under an open session.
  */
-function tryBecomeLeader(): Promise<boolean> {
+function tryBecomeLeader(graphEntryId: string | undefined): Promise<boolean> {
   return new Promise((resolve) => {
-    void navigator.locks.request(LEADER_LOCK_NAME, { ifAvailable: true }, (lock) => {
+    void navigator.locks.request(leaderLockName(graphEntryId), { ifAvailable: true }, (lock) => {
       if (!lock) {
         resolve(false);
         return;
@@ -75,13 +86,23 @@ interface OpenedDb {
   db: WorkerDb;
   storage: InitResult["storage"];
   storageError?: string;
+  /** Only meaningful for the leader (a follower's replica is in-memory, nothing to export) —
+   * Option C's checkpoint read side (`api.exportSnapshot`). */
+  exportBytes?: () => Uint8Array;
 }
 
-let dbPromise: Promise<OpenedDb> | undefined;
-
 async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
-  const leader = await tryBecomeLeader();
-  const opened = await openSqliteWasmDriver(undefined, { memory: !leader });
+  const leader = await tryBecomeLeader(opts.graphEntryId);
+  // Same reasoning as `leaderLockName` above: `undefined` keeps `openSqliteWasmDriver`'s own
+  // unnamespaced default filename, exactly pre-ADR-025 behavior, for every caller that doesn't
+  // pass a `graphEntryId`.
+  const filename = opts.graphEntryId ? `/nooklet-${opts.graphEntryId}.sqlite3` : undefined;
+  const opened = await openSqliteWasmDriver(filename, {
+    memory: !leader,
+    // A follower's driver is already forced to memory above, so restoring here would be pointless
+    // (and `openSqliteWasmDriver` never reaches the pool code on that path anyway).
+    restoreBytes: leader ? opts.restoreBytes : undefined,
+  });
   const { driver } = opened;
   const storage: OpenedDb["storage"] = leader ? opened.storage : "follower";
   const storageError = leader ? opened.storageError : "another tab of this graph holds the lock";
@@ -92,58 +113,72 @@ async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
   const db = new WorkerDb({
     driver,
     transport,
+    // B-567: `syncBaseUrl` omitted (not just empty) is `WorkerInitOptions`'s own documented way to
+    // say "no target at all" — `main.tsx` now honors it. The transport object still gets built
+    // above either way (constructing it is cheap and side-effect-free); what changes is whether
+    // `WorkerDb.start()` ever calls it.
+    hasSyncTarget: opts.syncBaseUrl !== undefined,
     onChange: (e) => safeCall(changeListener, e),
     onSyncStatus: (s) => safeCall(statusListener, s),
   });
   await db.start();
-  return { db, storage, storageError };
+  return { db, storage, storageError, exportBytes: leader ? opened.exportBytes : undefined };
 }
 
-function requireDb(): Promise<WorkerDb> {
-  if (!dbPromise) throw new Error("WorkerApi.init() must be called before any other method");
-  return dbPromise.then((o) => o.db);
+/**
+ * B (docs/proposals/004): `retry.call(fn)` replaces the old bare `requireDb().then(db => db.fn())`
+ * for every method below — a query that fails after a `resume` event gets one reopen-and-retry
+ * against a fresh `openDb()` (research/08 §1.3's OPFS-closes-on-background failure) instead of
+ * propagating and leaving the app stuck, the same tolerance B-569 already gave the sync layer.
+ * `initOpts` is remembered so a reopen can use the exact options `init()` was first called with.
+ */
+let retry: ResumeRetry<OpenedDb> | undefined;
+let initOpts: WorkerInitOptions | undefined;
+
+function requireRetry(): ResumeRetry<OpenedDb> {
+  if (!retry) throw new Error("WorkerApi.init() must be called before any other method");
+  return retry;
 }
 
 const api: WorkerApi = {
   async init(opts) {
-    if (!dbPromise) dbPromise = openDb(opts);
-    const { db, storage, storageError } = await dbPromise;
+    if (!retry) {
+      initOpts = opts;
+      retry = createResumeRetry(
+        () => openDb(opts),
+        () => openDb(initOpts as WorkerInitOptions),
+      );
+    }
+    const { db, storage, storageError } = await retry.current();
     return { deviceId: db.getDeviceId(), storage, storageError };
   },
 
   async nextHlc() {
-    const db = await requireDb();
-    return db.nextHlc();
+    return requireRetry().call((o) => o.db.nextHlc());
   },
 
   async getDeviceId() {
-    const db = await requireDb();
-    return db.getDeviceId();
+    return requireRetry().call((o) => o.db.getDeviceId());
   },
 
   async applyLocalOps(ops: Op[]) {
-    const db = await requireDb();
-    return db.applyLocalOps(ops);
+    return requireRetry().call((o) => o.db.applyLocalOps(ops));
   },
 
   async replayLocalOps(ops: Op[]) {
-    const db = await requireDb();
-    return db.replayLocalOps(ops);
+    return requireRetry().call((o) => o.db.replayLocalOps(ops));
   },
 
   async getPageTree(pageId: string) {
-    const db = await requireDb();
-    return db.getPageTree(pageId);
+    return requireRetry().call((o) => o.db.getPageTree(pageId));
   },
 
   async getJournalStream(opts) {
-    const db = await requireDb();
-    return db.getJournalStream(opts);
+    return requireRetry().call((o) => o.db.getJournalStream(opts));
   },
 
   async query(sql: string, params: unknown[] = []) {
-    const db = await requireDb();
-    return db.query(sql, params);
+    return requireRetry().call((o) => o.db.query(sql, params));
   },
 
   async onChange(cb) {
@@ -158,18 +193,22 @@ const api: WorkerApi = {
   },
 
   async getSyncStatus() {
-    const db = await requireDb();
-    return db.getSyncStatus();
+    return requireRetry().call((o) => o.db.getSyncStatus());
   },
 
   async notifyLifecycle(kind) {
-    const db = await requireDb();
-    db.notifyLifecycle(kind);
+    // Arm the retry BEFORE the call below can itself hit the stale connection.
+    if (kind === "resume") requireRetry().onResume();
+    return requireRetry().call((o) => o.db.notifyLifecycle(kind));
   },
 
   async forceSync() {
-    const db = await requireDb();
-    await db.forceSync();
+    await requireRetry().call((o) => o.db.forceSync());
+  },
+
+  async exportSnapshot() {
+    const o = await requireRetry().current();
+    return o.exportBytes?.();
   },
 };
 

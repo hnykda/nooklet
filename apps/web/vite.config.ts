@@ -33,11 +33,16 @@ export default defineConfig({
         clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,svg,woff2,wasm}"],
         maximumFileSizeToCacheInBytes: 6_000_000,
-        navigateFallbackDenylist: [/^\/(api|sync)\//],
+        // `(\/g\/[^/]+)?` (ADR 025): a graph is served at `/g/<slug>/...`, not bare root, so an
+        // API/sync/asset request carries that prefix too — matching only the bare form left these
+        // patterns unable to recognize a single real request once a graph existed, silently
+        // letting the SW's default navigate-fallback/precache handling see them instead of the
+        // NetworkOnly/CacheFirst rules below.
+        navigateFallbackDenylist: [/^(\/g\/[^/]+)?\/(api|sync)\//],
         runtimeCaching: [
-          { urlPattern: /^\/(api|sync)\//, handler: "NetworkOnly" },
+          { urlPattern: /^(\/g\/[^/]+)?\/(api|sync)\//, handler: "NetworkOnly" },
           {
-            urlPattern: /^\/assets\//,
+            urlPattern: /^(\/g\/[^/]+)?\/assets\//,
             handler: "CacheFirst",
             options: {
               cacheName: "assets",

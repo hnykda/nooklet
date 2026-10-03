@@ -21,7 +21,7 @@ import {
   setFocusLogEnabled,
 } from "../app/focus-log.js";
 import { callOp, describeError } from "../data/api-client.js";
-import { apiBaseUrl, bootstrapConfig } from "../data/bootstrap.js";
+import { apiBaseUrl, bootstrapConfig, hasSyncTarget } from "../data/bootstrap.js";
 import { useSyncStatus } from "../data/store.js";
 import "./diagnostics.css";
 
@@ -60,7 +60,15 @@ function Status(props: { ok: boolean; children: JSX.Element }): JSX.Element {
 
 export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
   const sync = useSyncStatus();
-  const [backend, { refetch }] = createResource(fetchDiagnostics);
+  // B-571: a device with no sync target has nothing to reach at all — `system.diagnostics` would
+  // just fail with a network error every time, which is not the same thing as a real backend
+  // problem. Source-gated so the fetch never fires rather than firing a doomed request and
+  // softening its error after the fact.
+  const target = hasSyncTarget();
+  const [backend, { refetch }] = createResource(
+    () => (target ? true : undefined),
+    fetchDiagnostics,
+  );
   const config = bootstrapConfig();
   // Reading an errored resource re-throws, so every read goes through this.
   const data = () => (backend.error !== undefined ? undefined : backend());
@@ -95,24 +103,34 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
             </Show>
           </Row>
           <Row label="Sync">
-            <Show when={sync()} fallback={<span class="diag-muted">starting…</span>}>
-              {(s) => (
-                <Status ok={s().state !== "offline" && s().state !== "error"}>
-                  {s().state}
-                  {s().pendingCount > 0 ? ` · ${s().pendingCount} queued` : ""}
-                  {s().lastError ? ` · ${s().lastError}` : ""}
-                </Status>
-              )}
+            <Show
+              when={target}
+              fallback={<Status ok={true}>local only — not configured to sync</Status>}
+            >
+              <Show when={sync()} fallback={<span class="diag-muted">starting…</span>}>
+                {(s) => (
+                  <Status ok={s().state !== "offline" && s().state !== "error"}>
+                    {s().state}
+                    {s().pendingCount > 0 ? ` · ${s().pendingCount} queued` : ""}
+                    {s().lastError ? ` · ${s().lastError}` : ""}
+                  </Status>
+                )}
+              </Show>
             </Show>
           </Row>
         </section>
 
         <section>
           <h3>Backend</h3>
-          <Show when={backend.loading && data() === undefined}>
+          <Show when={!target}>
+            <p class="diag-muted">
+              This device isn't configured to sync, so there's no server to check.
+            </p>
+          </Show>
+          <Show when={target && backend.loading && data() === undefined}>
             <p class="diag-muted">Checking…</p>
           </Show>
-          <Show when={backend.error !== undefined}>
+          <Show when={target && backend.error !== undefined}>
             <p class="diag-bad" role="alert">
               Could not reach the API: {describeError(backend.error)}
             </p>
@@ -153,9 +171,11 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
               </>
             )}
           </Show>
-          <button type="button" class="diag-refresh" onClick={() => refetch()}>
-            Refresh
-          </button>
+          <Show when={target}>
+            <button type="button" class="diag-refresh" onClick={() => refetch()}>
+              Refresh
+            </button>
+          </Show>
         </section>
 
         <FocusLogSection />

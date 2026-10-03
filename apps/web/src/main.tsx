@@ -1,7 +1,13 @@
 import { render } from "solid-js/web";
 import { App } from "./App.js";
 import { initFocusLog } from "./app/focus-log.js";
-import { apiBaseUrl, authToken, initBootstrap } from "./data/bootstrap.js";
+import {
+  activeGraph,
+  apiBaseUrl,
+  authToken,
+  hasSyncTarget,
+  initBootstrap,
+} from "./data/bootstrap.js";
 import { suggestJournalTitleFormat } from "./data/page-title.js";
 import { initDb } from "./db/client.js";
 import { registerServiceWorker } from "./sw/register.js";
@@ -20,7 +26,17 @@ const bootstrap = await initBootstrap();
 // otherwise in settings (ADR 018).
 suggestJournalTitleFormat(bootstrap.journalTitleFormat);
 
-void initDb({ syncBaseUrl: apiBaseUrl(), token: authToken() });
+// B-567: omit syncBaseUrl entirely (rather than passing "") when there is no real sync target —
+// `WorkerInitOptions.syncBaseUrl`'s own doc comment already says omitting it means "run local-only",
+// which `WorkerDb.start()` uses to skip bootstrap/connectLive/pull rather than pay B-566's timeout
+// on every cold start for a device that will never have anything to reach.
+void initDb({
+  syncBaseUrl: hasSyncTarget() ? apiBaseUrl() : undefined,
+  token: authToken(),
+  // ADR 025: namespaces this worker's OPFS filename and leader-election lock so a future second
+  // active graph behind this origin never contends with this one for either.
+  graphEntryId: activeGraph()?.id,
+});
 
 registerServiceWorker();
 

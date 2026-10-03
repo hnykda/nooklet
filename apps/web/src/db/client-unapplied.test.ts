@@ -72,6 +72,10 @@ describe("db/client.ts keeps every write until the worker has it (B-247)", () =>
     const copies = [...store.values()].map((v) => (JSON.parse(v) as { ops: Op[] }).ops);
     expect(copies).toEqual([[op]]);
 
+    // B-582: `applyOps` now awaits the worker being ready before calling `applyLocalOps` (the fix
+    // for a startup race), so unlike the synchronous record above, the worker call itself lands a
+    // tick later — wait for it rather than assuming `answer` is already assigned.
+    await vi.waitFor(() => expect(apply).toHaveBeenCalled());
     answer();
     await result;
     await settle();

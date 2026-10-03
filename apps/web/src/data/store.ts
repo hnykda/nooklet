@@ -20,6 +20,7 @@
 import {
   type ApplyOpsResult,
   makeOp,
+  newId,
   normalizePageName,
   type Op,
   type OpPayload,
@@ -59,6 +60,7 @@ import {
   type SearchResult,
 } from "./api-client.js";
 import { invalidateBlockRefs } from "./block-ref-cache.js";
+import { planLocalReferencedPages } from "./local-ref-pages.js";
 import { type AliasCandidate, findPageByAlias } from "./page-alias.js";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult, TaskRow } from "./types.js";
 
@@ -208,12 +210,60 @@ export function usePinnedJournalDay(
   return resource;
 }
 
+/** B-583: which days in `[firstDay, lastDay]` (inclusive `YYYYMMDD` integers) have a real journal
+ * page with at least one live block — what `shell/CalendarButton.tsx`'s popover marks so a reader
+ * can tell an empty day from one worth opening before clicking through. Deliberately bounded to a
+ * caller-given range (one visible month) rather than scanning every journal page ever written. */
+export function useJournalDaysWithContent(
+  firstDay: Accessor<number>,
+  lastDay: Accessor<number>,
+): Resource<Set<number>> {
+  ensureWired();
+  const [resource] = createResource(
+    () => stamped({ first: firstDay(), last: lastDay() }, ["page", "block"]),
+    async ({ value: { first, last } }) => {
+      const rows = await queryAs<{ journal_day: number }>(
+        `SELECT p.journal_day AS journal_day FROM page p
+         WHERE p.journal_day BETWEEN ? AND ? AND p.deleted_at IS NULL
+           AND EXISTS (SELECT 1 FROM block b WHERE b.page_id = p.id AND b.deleted_at IS NULL)`,
+        [first, last],
+      );
+      return new Set(rows.map((r) => r.journal_day));
+    },
+  );
+  return resource;
+}
+
 // ---------------------------------------------------------------------------------------------
 // "Apply these ops"
 // ---------------------------------------------------------------------------------------------
 
-export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
-  return workerApplyOps(ops);
+/** B-568: a page a batch newly references must exist locally too, not just once this device
+ * syncs (`ref-pages.ts` is server-only) — see `local-ref-pages.ts`'s header for the full design.
+ * Minted ops are prepended so ancestors/the referenced page land before the edit that names them,
+ * in the SAME call to `workerApplyOps` (one worker transaction, matching `serverApplyOps`'s "in
+ * the same transaction" for the equivalent server-side ops). */
+export async function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
+  const extra = await planLocalReferencedPages(
+    ops,
+    async (key) => {
+      const rows = await queryAs<{ id: string }>(
+        "SELECT id FROM page WHERE key = ? AND deleted_at IS NULL LIMIT 1",
+        [key],
+      );
+      return rows.length > 0;
+    },
+    async (name) => {
+      const [hlc, device] = await Promise.all([workerNextHlc(), getLocalDeviceId()]);
+      return makeOp(hlc, device, newId(), {
+        kind: "page.create",
+        name,
+        journalDay: null,
+        createdAt: Date.now(),
+      });
+    },
+  );
+  return workerApplyOps(extra.length > 0 ? [...extra, ...ops] : ops);
 }
 
 // ---------------------------------------------------------------------------------------------

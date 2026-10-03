@@ -68,3 +68,11 @@
   --sync-dot: var(--sync-cutout);
   --sync-ring: color-mix(in srgb, var(--ok) 70%, var(--surface-sunken));
 }
+
+/* B-571: a deliberate, permanent choice (B-563's "Just this device"), not a failure — plain
+   `--muted` rather than any `--danger`/`--ok`/`--dot-pending` mix, so it never reads as a status
+   worth worrying about. */
+.app-sync-indicator[data-state="local"] {
+  --sync-dot: var(--sync-cutout);
+  --sync-ring: var(--muted);
+}

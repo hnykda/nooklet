@@ -1,5 +1,8 @@
 /**
- * Where the client gets its own credentials.
+ * Where the client gets its own credentials, and which graph it talks to (ADR 025: a server hosts
+ * N graphs under `/g/<id>/`, and this device holds a LIST of graphs — not one fixed server — even
+ * though only one is ever "active"/rendered at a time; M5 is what builds the switcher UI on top of
+ * this file's storage, this file is the data model alone).
  *
  * When the server serves this build (`packages/server/src/http/web-client.ts`), it injects
  * `window.__NOOKLET__` into the shell with a token minted for this process — but only for a
@@ -14,32 +17,204 @@
  * *why* there is no token instead of just showing "disconnected".
  */
 
-/**
- * Where a device token is kept when the server did not inject one — i.e. any client that is not
- * on loopback: a phone, a laptop, anything reaching a self-hosted server over a LAN, a tailnet or
- * the internet. Per device and per browser by design; it is a credential, and it never syncs.
- */
-const TOKEN_STORAGE_KEY = "nooklet.deviceToken";
+import { platform } from "../platform/index.js";
 
-export function storedToken(): string | undefined {
+/**
+ * One graph this device knows about. `id` is a LOCAL, device-generated id (not the server's own
+ * routing slug in the `/g/<id>/` URL) — two entries could in principle point at graphs that happen
+ * to share a slug on different hosts, so this device needs its own, independent identity for "the
+ * thing shown as row 3 in the switcher."
+ */
+export interface GraphListEntry {
+  id: string;
+  label: string;
+  /** Informational (M5's UI), not load-bearing here: whether this graph has a real server behind
+   * it (`baseUrl` set) or is a bare local-only replica (no `baseUrl` — Capacitor only; web/desktop
+   * always has a real origin behind it, see `samePathGraphPrefix()` below). */
+  kind: "local" | "remote";
+  /** Absolute (Capacitor pointed at a real server) or origin-relative (web/desktop, same origin —
+   * e.g. `/g/default`) — always already includes the `/g/<slug>` prefix, so every existing
+   * `${apiBaseUrl()}/api/v1/...`-shaped call site needs no change. Absent for a local-only entry. */
+  baseUrl?: string;
+  token?: string;
+  /** The physical `graphInstanceId()` last seen for this entry (`../graph-identity.ts` on the
+   * server) — mismatch detection, now per entry instead of one global key, since two entries can
+   * legitimately hold different graphs. */
+  graphInstanceId?: string;
+}
+
+const GRAPHS_KEY = "nooklet.graphs";
+const ACTIVE_GRAPH_KEY = "nooklet.activeGraphId";
+
+function readGraphs(): GraphListEntry[] {
   try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY) ?? undefined;
+    const raw = localStorage.getItem(GRAPHS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as GraphListEntry[]) : [];
   } catch {
-    return undefined; // private mode / storage disabled
+    return []; // private mode / storage disabled / corrupt JSON
   }
 }
 
-/** Persist (or clear) this device's token. The caller reloads: the sync worker is handed its
- * token once at startup (`db/client.ts#initDb`), so changing it mid-session would leave the
- * already-running transport on the old credential. */
-export function setStoredToken(token: string | null): void {
+function writeGraphs(list: GraphListEntry[]): void {
   try {
-    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    else localStorage.removeItem(TOKEN_STORAGE_KEY);
-    cached = undefined;
+    localStorage.setItem(GRAPHS_KEY, JSON.stringify(list));
   } catch {
-    // Non-fatal: the token simply will not survive a reload.
+    // Non-fatal: the list simply will not survive a reload.
   }
+}
+
+export function listGraphs(): GraphListEntry[] {
+  return readGraphs();
+}
+
+export function activeGraphId(): string | undefined {
+  try {
+    return localStorage.getItem(ACTIVE_GRAPH_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function setActiveGraphId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(ACTIVE_GRAPH_KEY, id);
+    else localStorage.removeItem(ACTIVE_GRAPH_KEY);
+  } catch {
+    // Non-fatal: falls back to "no active graph" next load.
+  }
+}
+
+export function activeGraph(): GraphListEntry | undefined {
+  const id = activeGraphId();
+  return id ? readGraphs().find((g) => g.id === id) : undefined;
+}
+
+/** Adds a new entry, or replaces the existing one with the same `id` — the one write primitive
+ * every other list mutation in this file goes through. */
+export function addGraph(entry: GraphListEntry): void {
+  writeGraphs([...readGraphs().filter((g) => g.id !== entry.id), entry]);
+}
+
+export function updateGraph(id: string, patch: Partial<Omit<GraphListEntry, "id">>): void {
+  writeGraphs(readGraphs().map((g) => (g.id === id ? { ...g, ...patch } : g)));
+}
+
+export function removeGraph(id: string): void {
+  writeGraphs(readGraphs().filter((g) => g.id !== id));
+  if (activeGraphId() === id) setActiveGraphId(null);
+}
+
+/** `GraphMismatchView.tsx`, after the owner has discarded the stale local replica and confirmed
+ * this device should now be a fresh copy of `graphId`: adopts it as the active entry's identity so
+ * the next load doesn't flag the very state this screen just resolved as a mismatch again. */
+export function rememberActiveGraphInstanceId(graphId: string): void {
+  const entry = activeGraph();
+  if (entry) updateGraph(entry.id, { graphInstanceId: graphId });
+}
+
+function newGraphEntryId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `graph-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * This page's own `/g/<slug>` prefix, when it is actually being served that way — the zero-config
+ * fallback for a first launch with no graph list yet, extending pre-ADR-025's "empty string means
+ * same origin" magic by one path segment. Never matches under Capacitor
+ * (`capacitor://localhost/index.html` has no such prefix), so this needs no separate platform
+ * check — it simply never fires there, exactly like the old bare-origin default never applied.
+ *
+ * Also `App.tsx`'s ONLY correct source for `<Router base>`: the router's base must match where
+ * THIS PAGE was loaded from, never `apiBaseUrl()`/`activeGraph()?.baseUrl` — under Capacitor those
+ * can be a different ORIGIN entirely (the remote graph's), which has nothing to do with where the
+ * bundled static app itself is served from (`capacitor://localhost`, always base-less).
+ */
+const GRAPH_PATH_PREFIX_RE = /^\/g\/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?=\/|$)/;
+
+export function samePathGraphPrefix(): string | undefined {
+  if (typeof location === "undefined") return undefined;
+  return GRAPH_PATH_PREFIX_RE.exec(location.pathname)?.[0];
+}
+
+/**
+ * Strips a leading `/g/<slug>` (ADR 025) off a RAW pathname — `window.location.pathname`, or
+ * anything else that isn't already router-relative — so app-relative parsing (`currentPageName`-
+ * style helpers matching `/page/...`, `CommandLayer`'s `activeView` detection, ...) doesn't need
+ * to duplicate this regex at every call site. A no-op on a path with no such prefix, so it's safe
+ * to apply even where the caller doesn't know whether one is present.
+ */
+export function appRelativePathname(pathname: string): string {
+  return pathname.replace(GRAPH_PATH_PREFIX_RE, "");
+}
+
+/**
+ * B-586: where switching TO `entry` should actually navigate, not just reload in place. A plain
+ * `location.reload()` only works when the new graph shares the page's current `/g/<slug>` prefix
+ * (or there is no prefix at all, i.e. Capacitor) — reloading after switching to a DIFFERENT
+ * same-origin slug leaves `location.pathname` (and so `samePathGraphPrefix()`/`<Router base>`, and
+ * every `rawAnchorHref()` link generated afterward) stamped with the OLD graph's prefix forever,
+ * while `apiBaseUrl()` quietly serves the new one — the next link click or bookmark then hits the
+ * wrong graph for real, not just cosmetically. `entry.baseUrl` already carries the right prefix
+ * (absolute for Capacitor, `/g/<slug>` for web/desktop — see `GraphListEntry` above); a local-only
+ * entry (no `baseUrl`) has nothing to change, so this falls back to the current path unmodified.
+ */
+export function graphEntryUrl(entry: GraphListEntry, currentLocation: Location): string {
+  const appPath = appRelativePathname(currentLocation.pathname);
+  const prefix = entry.baseUrl ?? samePathGraphPrefix() ?? "";
+  return `${prefix}${appPath}${currentLocation.search}${currentLocation.hash}`;
+}
+
+/**
+ * Where a device token is kept when the server did not inject one — i.e. any client that is not
+ * on loopback: a phone, a laptop, anything reaching a self-hosted server over a LAN, a tailnet or
+ * the internet. Applied to the CURRENTLY ACTIVE graph entry (or, on web/desktop with no entry
+ * chosen yet, synthesizes one from this page's own `/g/<slug>` origin) — see `ConnectView.tsx`'s
+ * `connect()`, the only caller. Not exported as a raw setter any more: which entry a token belongs
+ * to matters now that there can be more than one, so callers go through this rather than a bare
+ * `localStorage` key.
+ */
+export function setConnectedGraphToken(remoteBaseUrl: string | null, token: string): void {
+  if (remoteBaseUrl === null) {
+    // Web/desktop path (`ConnectView.tsx`'s `showServerField` is false): apply the token to
+    // whatever graph this page is already serving from.
+    const entry = activeGraph();
+    if (entry) {
+      updateGraph(entry.id, { token });
+      return;
+    }
+    const id = newGraphEntryId();
+    addGraph({ id, label: "This graph", kind: "local", baseUrl: samePathGraphPrefix(), token });
+    setActiveGraphId(id);
+    return;
+  }
+  // Capacitor path: `remoteBaseUrl` is the full address the owner typed in.
+  const existing = readGraphs().find((g) => g.baseUrl === remoteBaseUrl);
+  const id = existing?.id ?? newGraphEntryId();
+  addGraph({
+    id,
+    label: existing?.label ?? "Remote graph",
+    kind: "remote",
+    baseUrl: remoteBaseUrl,
+    token,
+    graphInstanceId: existing?.graphInstanceId,
+  });
+  setActiveGraphId(id);
+}
+
+/**
+ * ADR 025 move 1 — "new local-only graph": adds a genuinely bare entry (no `baseUrl` at all) and
+ * makes it active. Meaningful only where "no server at all" is a real state to begin with —
+ * Capacitor's B-563 "Just this device" — since web/desktop are always served BY some origin
+ * (`hasSyncTarget()`'s own doc comment). `shell/GraphSwitcher.tsx` is the only caller, and only
+ * offers this action under Capacitor.
+ */
+export function createLocalOnlyGraph(label: string): void {
+  const id = newGraphEntryId();
+  addGraph({ id, label, kind: "local" });
+  setActiveGraphId(id);
 }
 
 export interface BootstrapConfig {
@@ -65,25 +240,6 @@ export interface BootstrapConfig {
    * reader has already made.
    */
   journalTitleFormat?: string;
-}
-
-/** The graph this device's replica belongs to. */
-const GRAPH_KEY = "nooklet.graphId";
-
-export function knownGraphId(): string | undefined {
-  try {
-    return localStorage.getItem(GRAPH_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function rememberGraphId(id: string): void {
-  try {
-    localStorage.setItem(GRAPH_KEY, id);
-  } catch {
-    // Private mode: the check simply will not fire next time.
-  }
 }
 
 interface InjectedWindow {
@@ -113,11 +269,25 @@ let cached: BootstrapConfig | undefined;
  *
  * Falls back to whatever is available locally (a stored device token, the injected value, the dev
  * env var) when the request fails, so a genuinely offline launch still opens the local replica.
+ *
+ * B-564: `main.tsx` awaits this before anything renders, so a request that hangs rather than
+ * fails fast would leave the app on a blank screen forever, not just this file's own fallback —
+ * bounded for the same reason `sync/http-transport.ts`'s `SYNC_TIMEOUT_MS` and `api-client.ts`'s
+ * `API_TIMEOUT_MS` are.
+ *
+ * ADR 025: also where a fresh device with no graph list yet gets one — on a successful response
+ * with no active entry, this page's own graph (web/desktop: this origin's `/g/<slug>`; Capacitor:
+ * never, since `apiBaseUrl()` has nothing to fetch until `ConnectView.tsx` sets one) is registered
+ * and made active, the same zero-config experience the old bare-origin default gave for free.
  */
+const SESSION_TIMEOUT_MS = 10_000;
+
 export async function initBootstrap(): Promise<BootstrapConfig> {
+  const base = apiBaseUrl();
   try {
-    const res = await fetch(`${apiBaseUrl()}/api/session`, {
+    const res = await fetch(`${base}/api/session`, {
       headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
     });
     if (res.ok) {
       const body = (await res.json()) as {
@@ -126,19 +296,40 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
         graphId?: string;
         journalTitleFormat?: string;
       };
+      const physicalGraphId = body.graphId;
+      let entry = activeGraph();
       // A stored device token wins only when the server offers none: on loopback the server mints
       // a fresh token per process, and a token stored by an earlier run would be stale.
-      const token = body.token ?? storedToken() ?? import.meta.env.VITE_NOOKLET_TOKEN ?? null;
-      const graphId = body.graphId;
-      const known = knownGraphId();
-      // A first run has nothing to compare against, so adopt whatever the server says. Only a
-      // CHANGE is a mismatch.
-      if (graphId && !known) rememberGraphId(graphId);
+      const token = body.token ?? entry?.token ?? import.meta.env.VITE_NOOKLET_TOKEN ?? null;
+      if (!entry && base) {
+        // First launch with no list yet: adopt this page's own graph, exactly as the pre-ADR-025
+        // bare-origin default did.
+        const id = newGraphEntryId();
+        entry = {
+          id,
+          label: "This graph",
+          kind: platform.name === "capacitor" ? "remote" : "local",
+          baseUrl: base,
+          token: token ?? undefined,
+          graphInstanceId: physicalGraphId,
+        };
+        addGraph(entry);
+        setActiveGraphId(id);
+      } else if (entry) {
+        const patch: Partial<GraphListEntry> = {};
+        if (token && token !== entry.token) patch.token = token;
+        // A first run has nothing to compare against, so adopt whatever the server says. Only a
+        // CHANGE from an already-known value is a mismatch.
+        if (physicalGraphId && !entry.graphInstanceId) patch.graphInstanceId = physicalGraphId;
+        if (Object.keys(patch).length > 0) updateGraph(entry.id, patch);
+      }
       cached = {
         token,
         reason: token ? undefined : (body.reason ?? "no_token_available"),
-        graphId,
-        graphMismatch: Boolean(graphId && known && known !== graphId),
+        graphId: physicalGraphId,
+        graphMismatch: Boolean(
+          physicalGraphId && entry?.graphInstanceId && entry.graphInstanceId !== physicalGraphId,
+        ),
         journalTitleFormat: body.journalTitleFormat,
       };
       return cached;
@@ -153,13 +344,13 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
 export function bootstrapConfig(): BootstrapConfig {
   if (cached) return cached;
   const w = injected();
-  // The env vars are the development path and a deliberate escape hatch: they let you point a
-  // Vite dev server at a running backend, and they let a LAN/tailnet user supply the token the
-  // server refused to inject.
+  // The env var is the development path and a deliberate escape hatch: it lets a LAN/tailnet user
+  // supply the token the server refused to inject.
   const envToken = import.meta.env.VITE_NOOKLET_TOKEN;
   // Injected first: on loopback the server mints a fresh token per process, so a token stored by
-  // an earlier run would be stale. Stored second, which is the path every remote device takes.
-  const token = w?.token ?? storedToken() ?? envToken ?? null;
+  // an earlier run would be stale. The active entry's token second, which is the path every
+  // remote device takes.
+  const token = w?.token ?? activeGraph()?.token ?? envToken ?? null;
   cached = {
     token,
     reason: token ? undefined : (w?.reason ?? "no_token_available"),
@@ -171,12 +362,36 @@ export function authToken(): string | undefined {
   return bootstrapConfig().token ?? undefined;
 }
 
-/**
- * Base URL for the API and sync endpoints. Empty string means "same origin", which is the case
- * whenever the server serves the client — and it is why nothing needs configuring in that setup.
- */
+/** The active graph's own base URL, falling through to this page's own `/g/<slug>` prefix (no
+ * active entry chosen yet — the state `initBootstrap()` resolves on its very first call), then the
+ * build-time dev env vars, then same-origin with no prefix at all (nothing configured anywhere,
+ * e.g. Capacitor before `ConnectView.tsx` has ever run). */
 export function apiBaseUrl(): string {
-  return import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_SYNC_BASE_URL ?? "";
+  const entry = activeGraph();
+  return (
+    (entry ? entry.baseUrl : undefined) ??
+    samePathGraphPrefix() ??
+    import.meta.env.VITE_API_BASE_URL ??
+    import.meta.env.VITE_SYNC_BASE_URL ??
+    ""
+  );
+}
+
+/**
+ * B-567: whether there is a real sync target at all, distinct from `apiBaseUrl()`'s own contract
+ * of "empty string means same origin." On web/PWA/desktop, same-origin is always a real target —
+ * the browser's own address bar already is the server, and a fresh device auto-registers it (see
+ * `initBootstrap()`) the moment it's confirmed reachable. Under Capacitor, nothing is a real
+ * target until an entry with a real `baseUrl` exists (B-563's "Just this device" adds none at
+ * all). `main.tsx` uses this to decide whether to pass `initDb`'s `syncBaseUrl` at all —
+ * `db/worker-api.ts#WorkerInitOptions.syncBaseUrl`'s own doc comment already says "omit to run
+ * local-only", a contract nothing used to honor, which is why a device with nothing to reach paid
+ * B-566's timeout on every single cold start rather than once.
+ */
+export function hasSyncTarget(): boolean {
+  const entry = activeGraph();
+  if (entry) return Boolean(entry.baseUrl);
+  return platform.name !== "capacitor";
 }
 
 /** Test seam: reset the memoised config. */

@@ -29,8 +29,19 @@ const ORIGIN = "http://localhost:6419";
 const APP_SERVER = "http://127.0.0.1:6100";
 
 /** Open the launcher with `status` as the app's answer; the app's server refuses connections until
- * `serverAnswers` is called. */
-async function openLauncher(page: Page, status: unknown | "no-tauri") {
+ * `serverAnswers` is called. `desktop` fills `window.__NOOKLET_DESKTOP__` (what `shell_script` in
+ * `main.rs` injects, ADR 025 M6: a `graphs`/`activeGraphId` list, not a single `remoteUrl`) —
+ * omitted by default, matching every existing case, which is always a normal (no remote entries,
+ * non-forced-picker) launch. */
+async function openLauncher(
+  page: Page,
+  status: unknown | "no-tauri",
+  desktop?: {
+    forcePicker?: boolean;
+    graphs?: Array<{ id: string; url: string }>;
+    activeGraphId?: string | null;
+  },
+) {
   let answering = false;
   await page.route(`${ORIGIN}/**`, (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -42,16 +53,42 @@ async function openLauncher(page: Page, status: unknown | "no-tauri") {
       : route.abort("connectionrefused"),
   );
   if (status !== "no-tauri") {
-    await page.addInitScript((initial) => {
-      const w = window as unknown as { __status: unknown; __TAURI_INTERNALS__: unknown };
-      w.__status = initial;
-      w.__TAURI_INTERNALS__ = {
-        invoke: async (cmd: string) => {
-          if (cmd !== "server_status") throw new Error(`unexpected command ${cmd}`);
-          return w.__status;
-        },
-      };
-    }, status);
+    await page.addInitScript(
+      ([initial, desktopInit]) => {
+        const w = window as unknown as {
+          __status: unknown;
+          __invoked: string[];
+          __TAURI_INTERNALS__: unknown;
+          __NOOKLET_DESKTOP__?: unknown;
+        };
+        w.__status = initial;
+        w.__invoked = [];
+        if (desktopInit) {
+          const init = desktopInit as {
+            graphs?: Array<{ id: string; url: string }>;
+            activeGraphId?: string | null;
+            forcePicker?: boolean;
+          };
+          w.__NOOKLET_DESKTOP__ = Object.freeze({
+            platform: "macos",
+            port: 6100,
+            graphs: init.graphs ?? [],
+            activeGraphId: init.activeGraphId ?? null,
+            forcePicker: Boolean(init.forcePicker),
+          });
+        }
+        w.__TAURI_INTERNALS__ = {
+          invoke: async (cmd: string) => {
+            w.__invoked.push(cmd);
+            if (cmd === "server_status") return w.__status;
+            if (cmd === "add_graph" || cmd === "remove_graph") return null;
+            if (cmd === "set_active_graph" || cmd === "restart_app") return null;
+            throw new Error(`unexpected command ${cmd}`);
+          },
+        };
+      },
+      [status, desktop ?? null] as const,
+    );
   }
   await page.goto(`${ORIGIN}/`);
   return {
@@ -62,6 +99,7 @@ async function openLauncher(page: Page, status: unknown | "no-tauri") {
       page.evaluate((s) => {
         (window as unknown as { __status: unknown }).__status = s;
       }, next),
+    invoked: () => page.evaluate(() => (window as unknown as { __invoked: string[] }).__invoked),
   };
 }
 
@@ -69,7 +107,7 @@ test("a bundled server that refused a newer graph: the page says to update the a
   page,
 }) => {
   await openLauncher(page, fixtures.schema_too_new);
-  await expect(page.locator("h1")).toHaveText("This graph needs a newer version of nooklet");
+  await expect(page.locator("#title")).toHaveText("This graph needs a newer version of nooklet");
   await expect(page.locator("#message")).toContainText("Update the app");
   await expect(page.locator("#detail")).toHaveText(
     "nooklet: database schema version 6 is newer than this build supports (4); upgrade nooklet",
@@ -83,7 +121,7 @@ test("nothing spawned — the server the app was sharing went away: start it, th
   page,
 }) => {
   await openLauncher(page, fixtures.external);
-  await expect(page.locator("h1")).toHaveText("Couldn't reach the nooklet server");
+  await expect(page.locator("#title")).toHaveText("Couldn't reach the nooklet server");
   await expect(page.getByText("pnpm nooklet serve")).toBeVisible();
   await expect(page.locator("#problem")).toBeHidden();
 });
@@ -106,10 +144,38 @@ test("while the app's server starts the page says so, and opens nooklet once it 
 
   // A slow start that then fails is reported as the failure, on the same page, with no reload.
   await launcher.setStatus(fixtures.port_in_use);
-  await expect(page.locator("h1")).toHaveText("nooklet's port is taken");
+  await expect(page.locator("#title")).toHaveText("nooklet's port is taken");
   await expect(page.locator("#detail")).toContainText("EADDRINUSE");
 
   await launcher.setStatus(fixtures.ready);
   launcher.serverAnswers();
   await expect(page).toHaveURL(`${APP_SERVER}/`, { timeout: 10_000 });
+});
+
+test("B-584: re-picking 'This Mac' from a forced picker restarts, rather than polling a server that was never spawned", async ({
+  page,
+}) => {
+  // `forcePicker: true` with `activeGraphId: null` is exactly what `Switch Server…` produces when
+  // the app was already local: `main.rs`'s `setup()` skips `spawn_server` for this whole launch, so
+  // `server_status` sits at `starting` no matter how long the page waits — there is nothing here
+  // that will ever become `ready`.
+  const launcher = await openLauncher(page, fixtures.starting, {
+    forcePicker: true,
+    activeGraphId: null,
+  });
+
+  // The forced picker is shown outright, not the "Connecting…" status.
+  await expect(page.locator("#picker")).toBeVisible();
+  await expect(page.locator("#status")).toBeHidden();
+
+  await page.getByRole("button", { name: /This Mac/ }).click();
+  await expect(page.getByText(/Saved.*restarting/i)).toBeVisible();
+
+  // The only way out of a launch that never spawned a server is a restart — confirm the page
+  // actually asked the app to restart, rather than silently resuming a poll loop with nothing to
+  // poll (B-584's original bug) or leaving the owner to quit and reopen it by hand (the 2026-09-16
+  // "super annoying" follow-up this same mechanism now also fixes).
+  await expect.poll(() => launcher.invoked()).toContain("restart_app");
+  // And it never reappeared as a stuck "Starting nooklet…" — the pre-fix behavior.
+  await expect(page.locator("#status")).toBeHidden();
 });

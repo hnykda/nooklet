@@ -32,12 +32,25 @@ interface Sqlite3Db {
   changes(): number;
   selectValue(sql: string, bind?: unknown[]): unknown;
   close(): void;
+  /** The raw `sqlite3*` C pointer — needed only for `capi.sqlite3_js_db_export` (Option C's
+   * checkpoint export), verified against the installed `@sqlite.org/sqlite-wasm` source (it is
+   * what the library's own internal export helper passes to that call). */
+  pointer: number;
 }
 
 interface Sqlite3OpfsSAHPoolUtil {
   OpfsSAHPoolDb: new (filename: string) => Sqlite3Db;
   /** Grow the pool to at least `min` files; resolves to the capacity. */
   reserveMinimumCapacity(min: number): Promise<number>;
+  /** Filenames currently associated with a slot in the pool — used to tell "a fresh pool, nothing
+   * under this name yet" from "an existing replica" before deciding whether to restore a checkpoint
+   * (Option C: restoring over live data would be wrong; restoring into a pool with nothing under
+   * this name at all is exactly the post-eviction case it exists for). */
+  getFileNames(): string[];
+  /** Write a full SQLite file's bytes into a pool slot under `name`, before that name is ever
+   * opened with `OpfsSAHPoolDb` — sqlite-wasm's own supported import path (validates the file
+   * header itself), verified against the installed package source. Synchronous. */
+  importDb(name: string, bytes: Uint8Array): number;
 }
 
 /**
@@ -51,11 +64,31 @@ interface Sqlite3Namespace {
   installOpfsSAHPoolVfs(opts: { name?: string }): Promise<Sqlite3OpfsSAHPoolUtil>;
   /** The plain OO1 API; `new DB()` with no filename is an in-memory database. */
   oo1: { DB: new (filename?: string) => Sqlite3Db };
+  /** The C API surface, for the one call Option C's checkpoint needs directly — verified against
+   * the installed package source (`sqlite3.capi.sqlite3_js_db_export`). */
+  capi: { sqlite3_js_db_export(pDb: number, schema?: number): Uint8Array };
 }
 
 type Sqlite3InitModuleFn = (opts?: Record<string, unknown>) => Promise<Sqlite3Namespace>;
 
 const sqlite3InitModule = sqlite3InitModuleRaw as unknown as Sqlite3InitModuleFn;
+
+/**
+ * Pure decision for Option C's restore step, pulled out so it is unit-testable without real
+ * OPFS/WASM (unlike the rest of this file — see its header): restore only into a pool with nothing
+ * under `filename` yet. An existing file means an ordinary replica that must never be overwritten
+ * by a possibly-stale checkpoint; nothing under the name at all is exactly the post-eviction case
+ * a checkpoint exists to recover from, and app uninstall (which the owner explicitly ruled out of
+ * scope) wipes the checkpoint along with everything else in the sandbox, so it can never produce
+ * this combination by itself.
+ */
+export function shouldRestoreCheckpoint(
+  existingFileNames: readonly string[],
+  filename: string,
+  hasCheckpoint: boolean,
+): boolean {
+  return hasCheckpoint && !existingFileNames.includes(filename);
+}
 
 /** Wrap a sahpool `OpfsSAHPoolDb` (or any object satisfying `Sqlite3Db`, e.g. a fake in a future
  * browser-run test) as a `@nooklet/core` `SqlDriver`. */
@@ -149,6 +182,15 @@ export interface OpenedSqliteWasm {
   storage: "opfs" | "memory";
   /** Why OPFS was unavailable, when it was. */
   storageError?: string;
+  /** Raw SQLite file bytes for Option C's periodic native-filesystem checkpoint — `undefined` when
+   * `storage` is `"memory"` (nothing durable to export). Reads live state on every call rather than
+   * caching, so a caller can call it right before writing a checkpoint and get the current data. */
+  exportBytes?: () => Uint8Array;
+  /** Whether a checkpoint (`opts.restoreBytes`) was actually used to seed this replica — distinct
+   * from `storage === "opfs"`, which is also true for an ordinary existing replica that needed no
+   * restore. Lets a caller log/verify the restore path was taken, not just assume it from the
+   * inputs it passed in. */
+  restored: boolean;
 }
 
 /**
@@ -162,15 +204,24 @@ export interface OpenedSqliteWasm {
  * without OPFS-in-workers (Playwright's WebKit, some privacy modes, some embedded webviews) now
  * gets a working app whose local copy simply does not persist; with sync configured, the server
  * still has everything, so the loss is a re-bootstrap on the next load, not data.
+ *
+ * `opts.restoreBytes` (Option C, docs/proposals/004-capacitor-storage-durability.md): only used
+ * when the pool has nothing under `filename` yet (`poolUtil.getFileNames()`) — an ordinary existing
+ * replica must never be overwritten by a possibly-stale checkpoint, but a pool with nothing under
+ * this name at all is exactly the post-eviction case a checkpoint exists to recover from. Restoring
+ * happens via `poolUtil.importDb`, sqlite-wasm's own supported path, BEFORE `OpfsSAHPoolDb` ever
+ * opens the name — the constructor is what actually associates/opens a pool slot, so this must run
+ * first, not as a patch-up after.
  */
 export async function openSqliteWasmDriver(
   filename = "/nooklet.sqlite3",
-  opts: { memory?: boolean } = {},
+  opts: { memory?: boolean; restoreBytes?: Uint8Array } = {},
 ): Promise<OpenedSqliteWasm> {
   const sqlite3 = await sqlite3InitModule();
   let db: Sqlite3Db;
   let storage: OpenedSqliteWasm["storage"] = "opfs";
   let storageError: string | undefined;
+  let restored = false;
   try {
     // A follower tab (B-81) asks for memory outright: sahpool allows one connection per file, and
     // the leader tab holds it.
@@ -183,6 +234,10 @@ export async function openSqliteWasmDriver(
     // schema's first CREATE failed with SQLITE_CANTOPEN, and the app sat on "Loading…" on every
     // start after — the pool lives in OPFS. `e2e/tests/opfs-pool.spec.ts` builds that state.
     await poolUtil.reserveMinimumCapacity(MIN_POOL_CAPACITY);
+    if (shouldRestoreCheckpoint(poolUtil.getFileNames(), filename, Boolean(opts.restoreBytes))) {
+      poolUtil.importDb(filename, opts.restoreBytes as Uint8Array);
+      restored = true;
+    }
     db = new poolUtil.OpfsSAHPoolDb(filename);
   } catch (err) {
     storage = "memory";
@@ -201,5 +256,13 @@ export async function openSqliteWasmDriver(
   driver.exec("PRAGMA foreign_keys = ON");
   driver.exec("PRAGMA cache_size = -8000");
   driver.exec("PRAGMA temp_store = MEMORY");
-  return { driver, close: () => db.close(), storage, storageError };
+  return {
+    driver,
+    close: () => db.close(),
+    storage,
+    storageError,
+    restored,
+    exportBytes:
+      storage === "opfs" ? () => sqlite3.capi.sqlite3_js_db_export(db.pointer) : undefined,
+  };
 }

@@ -1,0 +1,257 @@
+/* ADR 025: mirrors `./calendar-button.css`'s shape — an ordinary `.app-icon-button` plus a
+   left-anchored popover (B-583's lesson: this icon sits left-of-center in the top bar, a
+   right-anchored popover overflows off the viewport entirely). */
+
+.graph-switcher-wrap {
+  position: relative;
+  display: flex;
+}
+
+.graph-switcher-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: 260px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-sm);
+}
+
+.graph-switcher-list {
+  list-style: none;
+  margin: 0 0 var(--space-sm);
+  padding: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.graph-switcher-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+}
+
+.graph-switcher-row:hover {
+  background: var(--surface-2);
+}
+
+.graph-switcher-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-switcher-row.active .graph-switcher-name {
+  font-weight: var(--weight-semibold);
+  color: var(--accent);
+}
+
+.graph-switcher-rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 2px var(--space-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  color: var(--fg);
+}
+
+.graph-switcher-row-actions {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.graph-switcher-icon-action {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.graph-switcher-icon-action:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.graph-switcher-confirm {
+  display: flex;
+  gap: var(--space-xs);
+  flex: none;
+}
+
+.graph-switcher-confirm button {
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  cursor: pointer;
+}
+
+.graph-switcher-confirm button:first-child {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.graph-switcher-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg-soft);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.graph-switcher-add:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.graph-switcher-back {
+  display: block;
+  margin: 0 0 var(--space-sm);
+  padding: 0;
+  border: none;
+  background: none;
+  text-decoration: underline;
+  opacity: 0.7;
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.graph-switcher-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.graph-switcher-choice-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-switcher-choice-option:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.graph-switcher-choice-option strong {
+  display: block;
+  font-size: var(--text-sm);
+}
+
+.graph-switcher-choice-option p {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.graph-switcher-promote-lede {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: var(--leading-normal);
+}
+
+.graph-switcher-promote-lede code {
+  font-family: var(--font-mono);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  padding: 0.1em 0.3em;
+}
+
+.graph-switcher-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-sm);
+}
+
+.graph-switcher-field span {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--fg);
+}
+
+.graph-switcher-field input {
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--surface-1);
+  color: var(--fg);
+}
+
+.graph-switcher-error {
+  margin: 0 0 var(--space-sm);
+  color: var(--danger);
+  font-size: var(--text-xs);
+}
+
+.graph-switcher-popover form button[type="submit"] {
+  width: 100%;
+  min-height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.graph-switcher-popover form button[type="submit"]:hover {
+  background: var(--accent-strong);
+}
+
+.graph-switcher-popover form button[type="submit"][disabled] {
+  opacity: 0.5;
+  cursor: default;
+}

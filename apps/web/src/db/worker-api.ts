@@ -37,6 +37,17 @@ export interface WorkerInitOptions {
    */
   token?: string;
   getToken?: () => string | undefined;
+  /** Option C (docs/proposals/004-capacitor-storage-durability.md): a prior checkpoint's raw
+   * SQLite bytes, restored only if the OPFS pool has nothing under this replica's filename yet —
+   * see `sqlite-wasm-driver.ts#openSqliteWasmDriver`'s doc for why that condition, not a caller
+   * heuristic, is what decides it. `Uint8Array` survives Comlink's structured clone fine. */
+  restoreBytes?: Uint8Array;
+  /** ADR 025: which of this device's graph-list entries this worker is for — namespaces the OPFS
+   * pool filename and the leader-election web lock so two graphs behind one origin (a desktop app
+   * pointed at a remote graph, say) never fight over either. Omitted (single-graph callers, and
+   * every existing test) falls back to `sqlite-wasm-driver.ts`'s own unnamespaced default, exactly
+   * pre-ADR-025 behavior. */
+  graphEntryId?: string;
 }
 
 export interface InitResult {
@@ -109,4 +120,9 @@ export interface WorkerApi {
 
   /** Force an immediate push+pull, bypassing the debounce (e.g. a manual "sync now" affordance). */
   forceSync(): Promise<void>;
+
+  /** Option C: this replica's current SQLite bytes, for `client.ts` to checkpoint to
+   * `@capacitor/filesystem` — `undefined` when there is nothing durable to export (`"memory"`/
+   * `"follower"` storage). Reads live state on every call; not cached here or in the worker. */
+  exportSnapshot(): Promise<Uint8Array | undefined>;
 }

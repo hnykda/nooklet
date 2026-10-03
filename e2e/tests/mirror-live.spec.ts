@@ -19,7 +19,9 @@ function dataDir(): string {
   return state.dataDir;
 }
 
-const pageFile = (name: string) => join(dataDir(), "pages", `${name}.md`);
+// ADR 025: the mirror lives under this graph's own subdirectory now, not the base data dir
+// directly — the e2e server's zero-config "default" graph, same as everywhere else in this suite.
+const pageFile = (name: string) => join(dataDir(), "graphs", "default", "pages", `${name}.md`);
 const readMirror = (name: string) =>
   existsSync(pageFile(name)) ? readFileSync(pageFile(name), "utf8") : "";
 

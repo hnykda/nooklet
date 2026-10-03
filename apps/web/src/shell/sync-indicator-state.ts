@@ -23,7 +23,11 @@ export type SyncView =
   /** No local copy at all: OPFS was unavailable, the replica is in memory (B-43). */
   | "memory"
   /** Another tab of this graph holds the local copy (B-81). */
-  | "follower";
+  | "follower"
+  /** B-571: never configured to sync at all (B-563's "Just this device") — a deliberate, permanent
+   * choice, not a transient failure. Without this, `offline`/`error` were the only fallback, which
+   * reads as "something is broken" for a device that is working exactly as chosen. */
+  | "local";
 
 /** Roughly how long a routine edit takes to reach the server, with margin. Below this, pending is
  * noise; above it, something is actually slow or stuck. */
@@ -36,11 +40,17 @@ const WAITS: ReadonlySet<SyncView> = new Set<SyncView>(["pending", "offline", "e
 export function deriveSyncView(
   storage: "opfs" | "memory" | "follower" | undefined,
   status: SyncStatus | undefined,
+  hasSyncTarget: boolean,
 ): SyncView {
   // Storage first: "synced" would be true and still the wrong thing to say about a session whose
-  // local copy evaporates on reload (B-43).
+  // local copy evaporates on reload (B-43). Takes priority over `local` too — a device with no
+  // sync target AND no durable local copy has the more severe problem.
   if (storage === "memory") return "memory";
   if (storage === "follower") return "follower";
+  // B-571: checked before the sync-client states below, since without a target `status` settles
+  // into `offline`/`error` (B-566/B-569's graceful-failure path) — accurate to the transport, but
+  // wrong as a user-facing message for a state the device was deliberately put into.
+  if (!hasSyncTarget) return "local";
   if (!status || status.state === "bootstrapping") return "starting";
   if (status.state === "offline") return "offline";
   if (status.state === "error") return "error";
@@ -65,6 +75,8 @@ export function syncLabel(view: SyncView, pendingCount: number): string {
       return "Not saved locally — this browser can't keep a copy on this device";
     case "follower":
       return "Synced via another tab — that tab keeps the local copy";
+    case "local":
+      return "Local only — not syncing to any server";
   }
 }
 

@@ -1,9 +1,11 @@
 /**
  * The journal stream (BUILD item 1; PLAN.md §8): today always at the top (virtual until it has a
- * block, `VirtualJournalDay.tsx`), then earlier non-empty days below, infinite-scrolling, plus a
- * calendar to jump to any day. This is the default route (`/journals`) and, per research/08 §3,
- * the primary phone surface — kept usable one-handed: the calendar is collapsed by default, "load
- * more" happens automatically near the bottom of the scroll (no precise tapping required).
+ * block, `VirtualJournalDay.tsx`), then earlier non-empty days below, infinite-scrolling. This is
+ * the default route (`/journals`) and, per research/08 §3, the primary phone surface.
+ *
+ * B-583: the calendar used to be an inline toggle+grid at the top of this view; it now lives in
+ * the top bar (`shell/CalendarButton.tsx`), so picking a day writes to `app/journal-nav.ts`'s
+ * shared signal instead of local state — this view just reads it.
  */
 import { formatJournalTitle } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
@@ -18,12 +20,12 @@ import {
   Show,
   untrack,
 } from "solid-js";
+import { clearPinnedJournalDay, pinnedJournalDay } from "../app/journal-nav.js";
 import { useAgendaTasks } from "../data/agenda.js";
 import { journalTitleFormat } from "../data/page-title.js";
 import { useJournalStream, usePinnedJournalDay } from "../data/store.js";
 import type { JournalDayEntry, NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
-import { Calendar } from "./Calendar.js";
 import { JournalAgenda } from "./JournalAgenda.js";
 import { JournalDayOutline } from "./JournalDayOutline.js";
 import { goToTarget } from "./navigateTarget.js";
@@ -46,14 +48,15 @@ export function JournalStreamView(): JSX.Element {
   // Follows the local day, so a tab left open overnight moves on to the new day (B-170).
   const today = createStreamToday(() => root);
   const [maxDays, setMaxDays] = createSignal(INITIAL_MAX_DAYS);
-  const [calendarOpen, setCalendarOpen] = createSignal(false);
-  const [pinnedDay, setPinnedDay] = createSignal<number | undefined>(undefined);
+  // B-583: the day picked from `shell/CalendarButton.tsx`'s top-bar popover — shared state, since
+  // the trigger is no longer a child of this view (`app/journal-nav.ts`).
+  const pinnedDay = pinnedJournalDay;
 
   // A pin is "a day other than Today" (the calendar never pins today itself), but Today moves at
   // midnight: a day pinned late the evening before would then be rendered twice — two editable
   // outlines of one page, one above the other (B-177). Once Today catches up, the pin is spent.
   createEffect(() => {
-    if (untrack(pinnedDay) === today()) setPinnedDay(undefined);
+    if (untrack(pinnedDay) === today()) clearPinnedJournalDay();
   });
 
   const stream = useJournalStream(() => ({ today: today(), maxDays: maxDays() }));
@@ -111,25 +114,6 @@ export function JournalStreamView(): JSX.Element {
 
   return (
     <div class="journal-stream" ref={root}>
-      <div class="journal-stream-toolbar">
-        <button
-          type="button"
-          class="journal-calendar-toggle"
-          onClick={() => setCalendarOpen((v) => !v)}
-        >
-          {calendarOpen() ? "Hide calendar" : "Calendar"}
-        </button>
-      </div>
-      <Show when={calendarOpen()}>
-        <Calendar
-          selected={pinnedDay() ?? today()}
-          onSelect={(day) => {
-            setPinnedDay(day === today() ? undefined : day);
-            setCalendarOpen(false);
-          }}
-        />
-      </Show>
-
       <For each={laterDays()}>
         {(day) => (
           <section class="journal-day journal-day-upcoming" aria-label={dayTitle(day)}>
@@ -156,7 +140,7 @@ export function JournalStreamView(): JSX.Element {
         <section class="journal-day journal-day-pinned" aria-label="Jumped-to day">
           <h2 class="journal-day-title">
             {dayTitle(pinnedDay() as number)}
-            <button type="button" class="journal-day-unpin" onClick={() => setPinnedDay(undefined)}>
+            <button type="button" class="journal-day-unpin" onClick={() => clearPinnedJournalDay()}>
               Back to stream
             </button>
           </h2>

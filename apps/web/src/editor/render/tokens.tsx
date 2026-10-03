@@ -50,7 +50,7 @@ import {
   Show,
   Suspense,
 } from "solid-js";
-import { pageRoutePath } from "../../routes/page-path.js";
+import { pageRoutePath, rawAnchorHref } from "../../routes/page-path.js";
 import { assetUrl } from "./asset-url.js";
 import { canHighlight, highlightCode, highlightSync, languageClass } from "./highlight.js";
 import { loadMath, renderTexSync } from "./math.js";
@@ -212,8 +212,13 @@ function NavLink(props: {
   children: unknown;
 }) {
   return (
+    // ADR 025: a raw `<a>`, not `<A>` — `@solidjs/router`'s own base-prepending never runs for it,
+    // so this is the one place along this whole click path that must add the prefix itself (see
+    // `rawAnchorHref`'s own doc comment). The click handler below navigates via `props.onNavigate`
+    // regardless of this attribute; this is what makes the ATTRIBUTE — what you'd copy, bookmark,
+    // middle-click — correct too.
     <a
-      href={props.href}
+      href={rawAnchorHref(props.href)}
       class={props.class}
       data-from={props.from}
       data-to={props.to}

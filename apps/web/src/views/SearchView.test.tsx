@@ -3,7 +3,13 @@ import { Route, Router } from "@solidjs/router";
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { createResource } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SearchFallback, SearchInput, SearchResult } from "../data/api-client.js";
+import {
+  ApiError,
+  NO_SYNC_TARGET_CODE,
+  type SearchFallback,
+  type SearchInput,
+  type SearchResult,
+} from "../data/api-client.js";
 
 let lastInput: SearchInput | undefined;
 /** When set, the fake server answers every non-keyword search with a keyword fallback and this. */
@@ -123,6 +129,20 @@ describe("SearchView", () => {
     expect(mark?.textContent).toBe("pricing");
     expect(lastInput?.query).toBe("pricing");
     expect(lastInput?.mode).toBe("hybrid");
+  });
+
+  it("B-577: shows a calm message, not an alarming error, when there is no sync target", async () => {
+    searchFn.mockRejectedValueOnce(
+      new ApiError(NO_SYNC_TARGET_CODE, "This device isn't configured to sync with a server."),
+    );
+    await renderSearch();
+    fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pricing" } });
+
+    expect(
+      await screen.findByText("Search needs a server — not available in local-only mode."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Search failed\./)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("defaults to hybrid mode and switches mode on toggle, re-running the search", async () => {

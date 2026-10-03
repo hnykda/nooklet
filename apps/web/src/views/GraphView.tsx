@@ -27,10 +27,16 @@
 
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
-import { describeError, type GraphEdge, type GraphNode } from "../data/api-client.js";
+import {
+  ApiError,
+  describeError,
+  type GraphEdge,
+  type GraphNode,
+  NO_SYNC_TARGET_CODE,
+} from "../data/api-client.js";
 import { displayRefName } from "../data/page-title.js";
 import { useGraphLinks } from "../data/store.js";
-import { pageRoutePath } from "../routes/page-path.js";
+import { pageRoutePath, rawAnchorHref } from "../routes/page-path.js";
 import "./graph.css";
 
 // ---------------------------------------------------------------------------------------------
@@ -621,7 +627,16 @@ export function GraphView(): JSX.Element {
       <Show when={graph.loading && data() === undefined}>
         <p class="graph-status">Loading the link graph…</p>
       </Show>
-      <Show when={graph.error !== undefined}>
+      {/* B-577: no sync target at all means there was never a server to ask — calm, not alarming. */}
+      <Show when={graph.error instanceof ApiError && graph.error.code === NO_SYNC_TARGET_CODE}>
+        <p class="graph-status">The graph needs a server — not available in local-only mode.</p>
+      </Show>
+      <Show
+        when={
+          graph.error !== undefined &&
+          !(graph.error instanceof ApiError && graph.error.code === NO_SYNC_TARGET_CODE)
+        }
+      >
         <p class="graph-status graph-error" role="alert">
           Couldn't load the graph: {describeError(graph.error)}
         </p>
@@ -668,7 +683,9 @@ export function GraphView(): JSX.Element {
                 onCleanup(() => anchors.delete(node.id));
               }}
             >
-              <a href={pageRoutePath(node.name)}>{displayRefName(node.name)}</a>
+              {/* ADR 025: a raw `<a>` (plain browser navigation, no onClick override) — see
+                  `rawAnchorHref`'s doc comment for why this one needs the prefix itself. */}
+              <a href={rawAnchorHref(pageRoutePath(node.name))}>{displayRefName(node.name)}</a>
             </li>
           )}
         </For>

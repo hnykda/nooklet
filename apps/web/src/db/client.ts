@@ -9,6 +9,7 @@ import * as Comlink from "comlink";
 import { createSignal } from "solid-js";
 import { platform } from "../platform/index.js";
 import type { SyncStatus } from "../sync/types.js";
+import { createCheckpointScheduler, readCheckpoint } from "./capacitor-checkpoint.js";
 import {
   createUnappliedOpsJournal,
   holdOwnerLock,
@@ -63,12 +64,26 @@ function getWorker(): Comlink.Remote<WorkerApi> {
 export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
   if (!initPromise) {
     const api = getWorker();
-    initPromise = api.init(opts).then((r) => {
-      setStorageState({ storage: r.storage, error: r.storageError });
-      return r;
-    });
+    // Option C (docs/proposals/004): only on Capacitor — web/PWA/desktop's OPFS never needs a
+    // native-filesystem backstop. `readCheckpoint()` itself never fetches `@capacitor/filesystem`
+    // outside Capacitor (lazy import inside it, same pattern as `platform/capacitor.ts`), and
+    // resolves `undefined` on "no checkpoint yet" (every first run) as much as on a real read
+    // failure — either way `init()` below proceeds with no restore.
+    const restoreBytes: Promise<Uint8Array | undefined> =
+      platform.name === "capacitor" ? readCheckpoint() : Promise.resolve(undefined);
+    initPromise = restoreBytes
+      .then((bytes) => api.init({ ...opts, restoreBytes: bytes }))
+      .then((r) => {
+        setStorageState({ storage: r.storage, error: r.storageError });
+        return r;
+      });
     for (const event of ["online", "offline", "visible", "hidden", "pause", "resume"] as const) {
       platform.lifecycle.on(event, () => void api.notifyLifecycle(event));
+    }
+    if (platform.name === "capacitor") {
+      const scheduler = createCheckpointScheduler(() => api.exportSnapshot());
+      onChange(() => scheduler.onChange());
+      platform.lifecycle.on("pause", () => scheduler.onPause());
     }
     // Writes an earlier page load handed to its worker and never saw applied. Posted right behind
     // `init`, which the worker finishes (bootstrap included) before it runs anything else.
@@ -84,11 +99,33 @@ export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
   return initPromise;
 }
 
-export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
+/**
+ * B-582: `getWorker()` alone only lazily creates the `Worker`/Comlink proxy — it says nothing
+ * about whether `WorkerApi.init()` has actually been dispatched and applied yet. `main.tsx` calls
+ * `initDb(...)` and renders `<App/>` in the same tick without awaiting it, so every function below
+ * used to call `getWorker().xyz(...)` directly and race the very first render's resources against
+ * `init()` — a race `init()` was winning by luck until Option C's `readCheckpoint()` step
+ * (`initDb` above) added one more microtask hop before `api.init(...)` is even dispatched, which
+ * was enough to make it lose reliably (`WorkerApi.init() must be called before any other method`,
+ * thrown from every worker call a first render made — `Sidebar.tsx`'s data among them, which is
+ * why the symptom looked like "the sidebar doesn't open" rather than an obviously worker-wide
+ * failure). `initDb()` is idempotent (`if (!initPromise)`) and by the time anything below is ever
+ * called, `main.tsx` has already run its own `initDb(opts)` line — synchronously, before `<App/>`
+ * ever renders — so awaiting it here with no args always resolves the SAME real init, never starts
+ * a second, wrongly-configured one.
+ */
+async function readyWorker(): Promise<Comlink.Remote<WorkerApi>> {
+  await initDb();
+  return getWorker();
+}
+
+export async function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
   // The copy is written BEFORE the message is posted and synchronously, so an unload at any
-  // point after this line leaves the batch to be replayed (B-247).
+  // point after this line leaves the batch to be replayed (B-247). Deliberately before the
+  // `readyWorker()` await below, not after — this must stay true regardless of init timing.
   const key = unapplied.record(ops);
-  const result = getWorker().applyLocalOps(ops);
+  const worker = await readyWorker();
+  const result = worker.applyLocalOps(ops);
   // Kept when the call fails: whatever failed, the next start retries it rather than losing it.
   void result.then(
     () => unapplied.settle(key),
@@ -98,17 +135,20 @@ export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
 }
 
 /** Mint an HLC from the worker's single clock (see `worker-api.ts#nextHlc`). */
-export function nextHlc(): Promise<string> {
-  return getWorker().nextHlc();
+export async function nextHlc(): Promise<string> {
+  return (await readyWorker()).nextHlc();
 }
 
 /** This replica's device id, to pair with `nextHlc()`. */
-export function getDeviceId(): Promise<string> {
-  return getWorker().getDeviceId();
+export async function getDeviceId(): Promise<string> {
+  return (await readyWorker()).getDeviceId();
 }
 
-export function query(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
-  return getWorker().query(sql, params);
+export async function query(
+  sql: string,
+  params: unknown[] = [],
+): Promise<Record<string, unknown>[]> {
+  return (await readyWorker()).query(sql, params);
 }
 
 /** Type-narrowing convenience for callers of `query()` that know their row shape — see
@@ -117,20 +157,20 @@ export async function queryAs<T>(sql: string, params: unknown[] = []): Promise<T
   return (await query(sql, params)) as unknown as T[];
 }
 
-export function getPageTree(pageId: string) {
-  return getWorker().getPageTree(pageId);
+export async function getPageTree(pageId: string) {
+  return (await readyWorker()).getPageTree(pageId);
 }
 
-export function getJournalStream(opts: Parameters<WorkerApi["getJournalStream"]>[0]) {
-  return getWorker().getJournalStream(opts);
+export async function getJournalStream(opts: Parameters<WorkerApi["getJournalStream"]>[0]) {
+  return (await readyWorker()).getJournalStream(opts);
 }
 
-export function getSyncStatus(): Promise<SyncStatus> {
-  return getWorker().getSyncStatus();
+export async function getSyncStatus(): Promise<SyncStatus> {
+  return (await readyWorker()).getSyncStatus();
 }
 
-export function forceSync(): Promise<void> {
-  return getWorker().forceSync();
+export async function forceSync(): Promise<void> {
+  return (await readyWorker()).forceSync();
 }
 
 // ---------------------------------------------------------------------------------------------

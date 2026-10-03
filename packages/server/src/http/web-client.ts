@@ -87,6 +87,24 @@ function bodyOf(path: string): ReadableStream {
   return Readable.toWeb(createReadStream(path)) as ReadableStream;
 }
 
+/**
+ * Serves one file out of a built web client directory directly (no SPA fallback, no bootstrap
+ * injection) — `null` if it doesn't exist. For `graphs/mount.ts`'s outer, graph-less app: a
+ * service worker script (and the few files it needs — its own workbox runtime chunk, the web
+ * manifest) can never be reached through the per-graph `/g/<id>/` apps this file's own
+ * `mountWebClient` serves the SAME files from, because **a service worker registration is
+ * rejected outright if its script response is the result of a redirect** — and every OTHER path
+ * on the outer app deliberately redirects to a graph (ADR 025's `app.all("*", ...)` fallback).
+ * These specific, known, graph-agnostic build artifacts need one unredirected route of their own.
+ */
+export async function serveStaticFile(dir: string, pathname: string): Promise<Response | null> {
+  const file = await resolveFile(resolve(dir), pathname);
+  if (!file) return null;
+  return new Response(bodyOf(file), {
+    headers: { "content-type": contentType(file), "cache-control": cacheControl(pathname) },
+  });
+}
+
 export interface WebClientOptions {
   /** Absolute path to the built client (the directory containing `index.html`). */
   dir: string;

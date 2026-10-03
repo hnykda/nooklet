@@ -11,19 +11,22 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { openEditing, openPage } from "../helpers/index.js";
+import { openEditing, openPage, withBase } from "../helpers/index.js";
 
 test("Alt+Enter on an asset link opens the asset from the server root, not below the page route", async ({
   page,
   baseURL,
 }) => {
   // A namespaced page: the route is two segments deep, so a relative href would land on
-  // /page/Untrusted/assets/… — the shape B-51 fixed for rendered links.
+  // /page/Untrusted/assets/… — the shape B-51 fixed for rendered links. "The server root" is now
+  // this graph's own root (ADR 025 — `/g/default/`), not necessarily the bare origin.
   await openEditing(page, "Untrusted/Asset Link", "- [spec](../assets/rv-sec-spec.pdf)");
   const popup = page.context().waitForEvent("page");
   await page.keyboard.press("Alt+Enter");
   const opened = await popup;
-  await expect.poll(() => opened.url()).toBe(`${baseURL}/assets/rv-sec-spec.pdf`);
+  await expect
+    .poll(() => opened.url())
+    .toBe(`${baseURL}${withBase(page, "/assets/rv-sec-spec.pdf")}`);
   await opened.close();
 });
 

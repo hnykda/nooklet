@@ -229,7 +229,8 @@ test("a day started in the app begins with the journal template, the typed text 
   page,
 }) => {
   await page.goto("/journals");
-  await page.locator(".journal-calendar-toggle").click();
+  // B-583: the trigger is now a top-bar icon (accessible name "Calendar"), not an inline toggle.
+  await page.getByRole("button", { name: "Calendar", exact: true }).click();
   const calendar = page.locator(".calendar");
   // Two months ahead, the 15th: a day no other spec touches and that certainly has no page.
   await calendar.getByRole("button", { name: "Next month" }).click();

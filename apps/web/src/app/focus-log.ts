@@ -35,6 +35,7 @@
  */
 
 import { createSignal } from "solid-js";
+import { appRelativePathname } from "../data/bootstrap.js";
 
 const FLAG_KEY = "nooklet.debug.focusLog";
 const PREVIOUS_KEY = "nooklet.debug.focusLog.previous";
@@ -162,8 +163,11 @@ export function focusLogText(): string {
     "nooklet focus log",
     `recorded ${new Date().toISOString()}`,
     typeof navigator === "undefined" ? "" : `userAgent ${navigator.userAgent}`,
-    // The route kind only (`page`, `journals`): the rest of the path is a page name.
-    typeof location === "undefined" ? "" : `view ${location.pathname.split("/")[1] || "journals"}`,
+    // The route kind only (`page`, `journals`): the rest of the path is a page name. ADR 025:
+    // strip this page's own /g/<slug> prefix first, or this always reads "g".
+    typeof location === "undefined"
+      ? ""
+      : `view ${appRelativePathname(location.pathname).split("/")[1] || "journals"}`,
     `entries ${entries.length} (max ${MAX_ENTRIES})`,
   ].filter(Boolean);
   const parts = [header.join("\n")];

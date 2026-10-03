@@ -11,12 +11,32 @@ export interface CalendarProps {
   /** Highlighted as "selected" (e.g. the day currently at the top of the stream); optional. */
   selected?: number;
   onSelect: (day: number) => void;
+  /** B-583: days (as `YYYYMMDD` integers) that have at least one live block — marked with a small
+   * dot so a reader can tell an empty day from one worth opening before clicking through. Omit to
+   * render with no dots at all (a resource that hasn't answered yet, say), not a broken state. */
+  daysWithContent?: Set<number>;
+  /** B-583: the compact size used in `shell/CalendarButton.tsx`'s top-bar popover — smaller cells,
+   * tighter padding. The full-size grid stays available for anywhere the extra room is welcome. */
+  compact?: boolean;
+  /** Called whenever the visible month changes (paging with ‹ ›), so a caller sourcing
+   * `daysWithContent` for "the visible month" knows when to refetch. */
+  onMonthChange?: (monthAnchor: number) => void;
 }
 
 const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 function startOfMonth(day: number): number {
   return Math.floor(day / 100) * 100 + 1;
+}
+
+/** B-583: the first/last `YYYYMMDD` of the month containing `monthAnchor` — exported so a caller
+ * sourcing `daysWithContent` (`shell/CalendarButton.tsx`) can ask for exactly the visible month,
+ * without duplicating this arithmetic. */
+export function monthRange(monthAnchor: number): [first: number, last: number] {
+  const first = journalDayToDate(startOfMonth(monthAnchor));
+  const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const last = dateToJournalDay(new Date(first.getFullYear(), first.getMonth(), daysInMonth));
+  return [startOfMonth(monthAnchor), last];
 }
 
 function addMonths(day: number, delta: number): number {
@@ -51,14 +71,22 @@ export function Calendar(props: CalendarProps): JSX.Element {
     }),
   );
 
+  function changeMonth(delta: number): void {
+    setMonthAnchor((m) => {
+      const next = addMonths(m, delta);
+      props.onMonthChange?.(next);
+      return next;
+    });
+  }
+
   return (
-    <div class="calendar">
+    <div class="calendar" classList={{ "calendar-compact": props.compact }}>
       <div class="calendar-header">
         <button
           type="button"
           class="calendar-nav"
           aria-label="Previous month"
-          onClick={() => setMonthAnchor((m) => addMonths(m, -1))}
+          onClick={() => changeMonth(-1)}
         >
           ‹
         </button>
@@ -67,7 +95,7 @@ export function Calendar(props: CalendarProps): JSX.Element {
           type="button"
           class="calendar-nav"
           aria-label="Next month"
-          onClick={() => setMonthAnchor((m) => addMonths(m, 1))}
+          onClick={() => changeMonth(1)}
         >
           ›
         </button>
@@ -85,6 +113,8 @@ export function Calendar(props: CalendarProps): JSX.Element {
                 "calendar-day-empty": day === null,
                 "calendar-day-today": day === today,
                 "calendar-day-selected": day !== null && day === props.selected,
+                "calendar-day-has-content":
+                  day !== null && (props.daysWithContent?.has(day) ?? false),
               }}
               disabled={day === null}
               onClick={() => day !== null && props.onSelect(day)}

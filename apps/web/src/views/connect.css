@@ -5,7 +5,10 @@
 .connect {
   max-width: 34rem;
   margin: 0 auto;
-  padding: clamp(2rem, 6vw, 4.5rem) var(--space-2xl);
+  /* This view renders before `AppShell` mounts (`App.tsx`'s no-token fallback), so it never gets
+     the shell's own safe-area handling — B-562: without `--sat` here, the heading sits partly
+     under the status bar / Dynamic Island on a notched device (e.g. the Capacitor iOS shell). */
+  padding: calc(clamp(2rem, 6vw, 4.5rem) + var(--sat)) var(--space-2xl) clamp(2rem, 6vw, 4.5rem);
   line-height: var(--leading-loose);
   color: var(--fg-soft);
 }
@@ -130,4 +133,79 @@
   margin: var(--space-2xl) 0 0;
   font-size: var(--text-sm);
   color: var(--muted);
+}
+
+/* B-563's choice screen: "just this device" vs "sync with a server", shown before the form. */
+.connect-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  margin-top: var(--space-xl);
+}
+
+.connect-choice-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xl);
+  padding: var(--space-xl);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.connect-choice-option:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.connect-choice-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+.connect-choice-option:hover .connect-choice-icon {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.connect-choice-text h2 {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--fg);
+}
+
+.connect-choice-text p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.connect-back {
+  margin: 0 0 var(--space-lg);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.connect-back:hover {
+  color: var(--fg);
 }

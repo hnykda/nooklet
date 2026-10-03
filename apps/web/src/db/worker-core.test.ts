@@ -216,3 +216,72 @@ describe("WorkerDb.replayLocalOps (B-247)", () => {
     expect(db.replayLocalOps([landed, lost])).toEqual({ replayed: 0, skipped: 2 });
   });
 });
+
+/**
+ * B-569, found on the Capacitor iOS shell with no server configured: `wsUrl()`
+ * (`sync/http-transport.ts`) throws synchronously when it can't resolve a relative URL against
+ * this worker's own `self.location` — a Capacitor-scheme-worker quirk, not a network failure.
+ * `WorkerDb.start()` only wrapped `bootstrap()` in try/catch; an uncaught throw from
+ * `connectLive()` right after it made `start()` itself reject, which permanently poisons
+ * `db.worker.ts`'s cached `dbPromise` — every later worker RPC (`getPageTree`,
+ * `getJournalStream`, the sidebar's queries) would reject forever, and with no `ErrorBoundary`
+ * anywhere in the app the UI just froze on its first "Loading…" placeholder (B-400's shape).
+ */
+describe("WorkerDb.start (B-569)", () => {
+  it("resolves even when the transport's connectLive() throws synchronously", async () => {
+    class ThrowingConnectTransport extends NoopTransport {
+      override connectLive(): () => void {
+        throw new DOMException("The string did not match the expected pattern.", "SyntaxError");
+      }
+    }
+    const db = new WorkerDb({ driver: memoryDriver(), transport: new ThrowingConnectTransport() });
+    await expect(db.start()).resolves.toBeUndefined();
+  });
+
+  it("resolves even when both bootstrap() and connectLive() fail", async () => {
+    class AllFailingTransport extends NoopTransport {
+      override async snapshot(): Promise<SnapshotResponse> {
+        throw new Error("network error");
+      }
+      override connectLive(): () => void {
+        throw new DOMException("The string did not match the expected pattern.", "SyntaxError");
+      }
+    }
+    const db = new WorkerDb({ driver: memoryDriver(), transport: new AllFailingTransport() });
+    await expect(db.start()).resolves.toBeUndefined();
+  });
+});
+
+describe("WorkerDb.start (B-567)", () => {
+  class TrackingTransport extends NoopTransport {
+    calls: string[] = [];
+    override async snapshot(): Promise<SnapshotResponse> {
+      this.calls.push("snapshot");
+      return super.snapshot();
+    }
+    override async pull(deviceId: string, since: number): Promise<PullResponse> {
+      this.calls.push("pull");
+      return super.pull(deviceId, since);
+    }
+    override connectLive(deviceId: string, handlers: SyncLiveHandlers): () => void {
+      this.calls.push("connectLive");
+      return super.connectLive(deviceId, handlers);
+    }
+  }
+
+  it("with hasSyncTarget: false, skips bootstrap/connectLive/pull entirely", async () => {
+    const transport = new TrackingTransport();
+    const db = new WorkerDb({ driver: memoryDriver(), transport, hasSyncTarget: false });
+    await db.start();
+    expect(transport.calls).toEqual([]);
+  });
+
+  it("with hasSyncTarget: true (the default), still attempts them, even against a target that will fail", async () => {
+    const transport = new TrackingTransport();
+    const db = new WorkerDb({ driver: memoryDriver(), transport });
+    await db.start();
+    expect(transport.calls).toContain("snapshot");
+    expect(transport.calls).toContain("connectLive");
+    expect(transport.calls).toContain("pull");
+  });
+});

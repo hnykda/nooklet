@@ -15,6 +15,7 @@ import { CalendarDays, CircleCheck, FileText, Network, Search, Star, Trash2 } fr
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { displayPageName } from "../data/page-title.js";
 import { useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
+import { platform } from "../platform/index.js";
 import { pageRoutePath } from "../routes/page-path.js";
 import { PageIconBadge } from "../views/PageIcon.js";
 import { PaletteButton } from "./PaletteButton.js";
@@ -54,6 +55,14 @@ export function Sidebar(): JSX.Element {
 
   return (
     <Show when={open()}>
+      {/* B-576: tapping outside the sidebar closes it — only reachable on the phone-width overlay
+          layout (`sidebar.css`), a no-op div on desktop where the sidebar sits in-flow. */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop-dismiss; the sidebar itself is not a child of this element, so nothing needs to stop propagation. */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Escape isn't a documented way to close the sidebar (unlike the modal overlays); the toggle button remains the keyboard path. */}
+      <div
+        class="sidebar-backdrop"
+        onClick={() => document.body.classList.remove("sidebar-open")}
+      />
       <aside class="app-sidebar" aria-label="Sidebar">
         <nav class="sidebar-nav">
           {/* The palette by pointer — the only way to it on a phone (B-352). */}
@@ -70,9 +79,11 @@ export function Sidebar(): JSX.Element {
           <A href="/search">
             <Search size={15} /> Search
           </A>
-          <A href="/graph">
-            <Network size={15} /> Graph
-          </A>
+          <Show when={platform.name !== "capacitor"}>
+            <A href="/graph">
+              <Network size={15} /> Graph
+            </A>
+          </Show>
           <A href="/trash">
             <Trash2 size={15} /> Trash
           </A>

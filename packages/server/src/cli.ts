@@ -7,7 +7,9 @@
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
  *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] [--ui-control] |
- *                   list | revoke <id>  (--ui-control grants ADR 015's live-UI-control capability)
+ *                   list | revoke <id> | root  (--ui-control grants ADR 015's live-UI-control
+ *                   capability; `root` prints this data dir's root token — ADR 025, `/graphs` —
+ *                   minting one if it does not exist yet; ignores --graph, it is not per-graph)
  *   nooklet embed   status | run | model <name> [--provider ollama|openai-compat] [--host <url>]
  *                   M3/ADR 010 embeddings: index status, drain the queue now, or switch models.
  *   nooklet backup  [--out <path>] [--data <dir>]    consistent VACUUM INTO snapshot + assets/,
@@ -23,8 +25,12 @@
  *                   old import left in block text into real dates, one undoable batch
  *                   (./repair-org-dates.ts); a dry run that writes nothing unless --apply
  *
- * `--data` defaults to $NOOKLET_DATA, then ~/.nooklet/default. The database lives at
- * <data>/graph.sqlite and the mirror at <data>/{pages,journals}/ (00-conventions.md, Storage).
+ * `--data` defaults to $NOOKLET_DATA, then ~/.nooklet/default. One process can host several graphs
+ * (ADR 025): each graph's database lives at <data>/graphs/<id>/graph.sqlite and its mirror at
+ * <data>/graphs/<id>/{pages,journals}/. Every command except `serve` operates on exactly one graph,
+ * chosen with `--graph <id>` (default "default") — `serve` hosts every graph under <data>/graphs/
+ * at once, routed by `/g/<id>/`. A pre-ADR-025 flat `<data>/graph.sqlite` is folded into
+ * `<data>/graphs/default/` automatically, once, the first time any command touches that data dir.
  */
 
 import { existsSync } from "node:fs";
@@ -33,7 +39,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
-import { createServerContext, type ServerContext } from "./apply-ops.js";
+import type { ServerContext } from "./apply-ops.js";
+import { ensureRootToken } from "./auth/root-token.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
 import { createBackup, restoreBackup } from "./backup/index.js";
 import {
@@ -47,7 +54,6 @@ import {
   RESTORE_FLAGS,
   wantsHelp,
 } from "./cli-args.js";
-import { openDb } from "./db.js";
 import {
   activateModel,
   buildProviderForModel,
@@ -62,19 +68,21 @@ import {
   setEmbeddingSettings,
 } from "./embeddings/index.js";
 import { runGc } from "./gc.js";
+import { migrateLegacyLayoutIfNeeded } from "./graphs/migrate-legacy-layout.js";
+import { createMultiGraphApp } from "./graphs/mount.js";
+import { type BaseServerConfig, openGraph } from "./graphs/open-graph.js";
+import { graphDir } from "./graphs/paths.js";
+import { pluginDirsFor } from "./graphs/plugin-dirs.js";
+import { GraphRegistry } from "./graphs/registry.js";
 import { isLoopbackName } from "./http/app.js";
 import { importLogseqGraph } from "./importer/logseq.js";
-import { migrateJournalNames } from "./journal-names.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
 import { startLiveMirror } from "./mirror/live.js";
 import { buildRegistry } from "./ops/index.js";
 import type { ServerConfig } from "./ops/registry.js";
-import { createAppWithPlugins } from "./plugins/bootstrap.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
-import { migrateReferencedPages } from "./ref-pages-migration.js";
-import { reindexPipeAliasRefs } from "./ref-reindex.js";
 import { applyOrgDateRepair, formatOrgDateReport, planOrgDateRepair } from "./repair-org-dates.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
 
@@ -83,6 +91,34 @@ function dataDir(args: Args): string {
   if (typeof flag === "string") return resolve(flag);
   if (process.env.NOOKLET_DATA) return resolve(process.env.NOOKLET_DATA);
   return join(homedir(), ".nooklet", "default");
+}
+
+/** Which graph a single-graph command (`import`, `export`, `token`, ...) operates on (ADR 025) —
+ * `--graph <id>`, defaulting to `"default"` so an existing single-graph install keeps working with
+ * no flag at all. `serve` doesn't use this: it hosts every graph in `<dataDir>/graphs/` at once. */
+function graphIdFlag(args: Args): string {
+  const flag = args.flags.get("graph");
+  return typeof flag === "string" ? flag : "default";
+}
+
+function baseServerConfig(args: Args): BaseServerConfig {
+  const portFlag = args.flags.get("port");
+  const hostFlag = args.flags.get("host");
+  const allowFlag = args.flags.get("allow-host");
+  return {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    port: typeof portFlag === "string" ? Number(portFlag) : 6100,
+    mirror: { enabled: args.flags.get("mirror") !== false },
+    host: typeof hostFlag === "string" ? hostFlag : "127.0.0.1",
+    // Comma-separated rather than repeatable, because `parseArgs` keeps one value per flag.
+    allowedHosts:
+      typeof allowFlag === "string"
+        ? allowFlag
+            .split(",")
+            .map((h) => h.trim())
+            .filter(Boolean)
+        : undefined,
+  };
 }
 
 /**
@@ -124,49 +160,8 @@ interface OpenOptions {
 
 function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config: ServerConfig } {
   const dir = dataDir(args);
-  const ctx = createServerContext(openDb({ path: join(dir, "graph.sqlite") }));
-  if (opts.migrate) {
-    const journals = migrateJournalNames(ctx);
-    reindexPipeAliasRefs(ctx);
-    // After both: ISO journal keys and `[[Target|label]]` keys must be right before "which
-    // references resolve to nothing" can be answered (ADR 024).
-    const referenced = migrateReferencedPages(ctx);
-    if (referenced.created > 0) {
-      process.stderr.write(
-        `nooklet: created ${referenced.created} pages the graph references (ADR 024) in ${referenced.durationMs} ms\n`,
-      );
-    }
-    if (journals.renamed > 0) {
-      process.stderr.write(`nooklet: gave ${journals.renamed} journal pages their ISO names\n`);
-    }
-    for (const name of journals.collided) {
-      process.stderr.write(
-        `nooklet: left journal page "${name}" alone — another page already owns that ISO name\n`,
-      );
-    }
-  }
-  const portFlag = args.flags.get("port");
-  const hostFlag = args.flags.get("host");
-  const allowFlag = args.flags.get("allow-host");
-  return {
-    ctx,
-    config: {
-      dataDir: dir,
-      graphId: "default",
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      port: typeof portFlag === "string" ? Number(portFlag) : 6100,
-      mirror: { enabled: args.flags.get("mirror") !== false },
-      host: typeof hostFlag === "string" ? hostFlag : "127.0.0.1",
-      // Comma-separated rather than repeatable, because `parseArgs` keeps one value per flag.
-      allowedHosts:
-        typeof allowFlag === "string"
-          ? allowFlag
-              .split(",")
-              .map((h) => h.trim())
-              .filter(Boolean)
-          : undefined,
-    },
-  };
+  migrateLegacyLayoutIfNeeded(dir);
+  return openGraph(dir, graphIdFlag(args), baseServerConfig(args), { migrate: opts.migrate });
 }
 
 /**
@@ -177,23 +172,6 @@ function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config:
  * directory. A build with neither — no `plugins/` three levels above it — silently finds none,
  * which is how the desktop app shipped without them (B-180).
  */
-function pluginDirsFor(config: ServerConfig): { dirs: string[]; bundled: string[] } {
-  const graphPlugins = join(config.dataDir, "plugins");
-  // The desktop sidecar's built-ins, bundled at build time: `apps/desktop/build-sidecar.mjs` points
-  // this at the `plugins/` beside its `server.mjs`. The repo's `plugins/` below are sources, which
-  // a bundled server cannot build — it has no `node_modules` to resolve their imports in.
-  const bundled = process.env.NOOKLET_BUNDLED_PLUGINS_DIR;
-  if (bundled) return { dirs: [graphPlugins], bundled: [resolve(bundled)] };
-  const repoRootPlugins = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "..",
-    "plugins",
-  );
-  return { dirs: [graphPlugins, repoRootPlugins], bundled: [] };
-}
-
 function die(message: string): never {
   process.stderr.write(`nooklet: ${message}\n`);
   process.exit(1);
@@ -219,6 +197,7 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
   nooklet token list
   nooklet token revoke <token-id>
+  nooklet token root
   nooklet embed status
   nooklet embed run
   nooklet embed model <name> [--provider ollama|openai-compat] [--host <url>]
@@ -247,78 +226,132 @@ async function main(): Promise<void> {
 
   switch (cmd) {
     case "serve": {
-      const { ctx, config } = open(args, { migrate: true });
-      // ADR 002's continuous mirror — the half that never existed (B-95): pages/ and journals/
-      // followed commits only when someone ran `nooklet export`. `--no-mirror` turns it off.
-      if (config.mirror.enabled) startLiveMirror(ctx, config.dataDir);
-
-      // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a scratch
-      // database on every start and diff it against the live state tables." Dev-only (the replay
-      // + diff cost is fine at hobby-graph scale but not something to pay on every production
-      // boot) and never fatal — a divergence is exactly the regression this exists to surface, not
-      // a reason to refuse to serve.
-      if (process.env.NODE_ENV !== "production") {
-        const report = verifyRebuildParity(ctx.driver);
-        process.stderr.write(`${formatVerifyReport(report)}\n`);
-      }
-
-      const registry = buildRegistry();
+      const dir = dataDir(args);
+      migrateLegacyLayoutIfNeeded(dir);
+      const baseConfig = baseServerConfig(args);
       const webClientDir = resolveWebClientDir(args.flags.get("web"));
-      const { app } = await createAppWithPlugins({
-        serverCtx: ctx,
-        registry,
-        config,
-        pluginDirs: pluginDirsFor(config).dirs,
-        bundledPluginDirs: pluginDirsFor(config).bundled,
+
+      // One indexer per graph this process ends up opening (ADR 025 — a graph is opened lazily,
+      // the first time something asks for it, not necessarily at boot), so shutdown can stop all
+      // of them, not just whichever graph happened to be first.
+      const indexers = new Map<string, EmbeddingIndexer>();
+      const registry = new GraphRegistry(dir, {
+        registry: buildRegistry(),
+        baseConfig,
         webClientDir,
+        migrate: true,
+        onOpen: async (handle) => {
+          // ADR 002's continuous mirror — the half that never existed (B-95): pages/ and
+          // journals/ followed commits only when someone ran `nooklet export`. `--no-mirror`
+          // turns it off, for every graph this process hosts.
+          if (handle.config.mirror.enabled) startLiveMirror(handle.ctx, handle.config.dataDir);
+
+          // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a
+          // scratch database on every start and diff it against the live state tables." Dev-only
+          // (the replay + diff cost is fine at hobby-graph scale but not something to pay on
+          // every production boot) and never fatal — a divergence is exactly the regression this
+          // exists to surface, not a reason to refuse to serve.
+          if (process.env.NODE_ENV !== "production") {
+            const report = verifyRebuildParity(handle.ctx.driver);
+            process.stderr.write(`[${handle.id}] ${formatVerifyReport(report)}\n`);
+          }
+
+          // M3/ADR 010: drain embed_dirty on an interval, in-process, per graph. Network calls
+          // (the only slow part) are awaited, so this never blocks the event loop's handling of
+          // concurrent requests.
+          const indexer = new EmbeddingIndexer({
+            driver: handle.ctx.driver,
+            providerFor: (model) => buildProviderForModel(handle.ctx.driver, model),
+            log: (message) =>
+              process.stderr.write(`nooklet: [${handle.id}] embedding indexer: ${message}\n`),
+          });
+          indexer.start();
+          indexers.set(handle.id, indexer);
+        },
       });
+
+      const { token: rootToken, created: rootTokenCreated } = ensureRootToken(dir);
+      if (rootTokenCreated) {
+        process.stderr.write(
+          `nooklet: minted a root token for /graphs (list/create graphs on this server) — keep ` +
+            `this secret. Run "nooklet token root" to see it again later:\n  ${rootToken}\n`,
+        );
+      }
+      const app = createMultiGraphApp({ dataDir: dir, registry, rootToken, webClientDir });
+
+      // A brand-new data dir has no graphs at all yet — before ADR 025 `nooklet serve` always had
+      // exactly one, created implicitly on first run, and that zero-config experience matters more
+      // for the common case (one person, one graph) than the purity of "creation is always an
+      // explicit /graphs call." So: a data dir with no graphs at all gets a "default" one now.
+      if ((await registry.list()).length === 0) await registry.create("default");
+
+      // Fail fast for the common case (one graph, "default"): open it now, before this process
+      // ever claims to be serving, exactly as the pre-ADR-025 single-graph `open()` did. Any
+      // OTHER graph stays lazy — added later, opened on first request, no restart needed.
+      if (existsSync(graphDir(dir, "default"))) await registry.resolve("default");
+
       // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
       // adapter's `serve()` call — `upgradeWebSocket` (used by that route) only handles the Hono
       // side of the handshake; `@hono/node-server` needs a `{ noServer: true }` WebSocketServer
       // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs.
       const wss = new WebSocketServer({ noServer: true });
-      // M3/ADR 010: drain embed_dirty on an interval, in-process. Network calls (the only slow
-      // part) are awaited, so this never blocks the event loop's handling of concurrent requests.
-      const indexer = new EmbeddingIndexer({
-        driver: ctx.driver,
-        providerFor: (model) => buildProviderForModel(ctx.driver, model),
-        log: (message) => process.stderr.write(`nooklet: embedding indexer: ${message}\n`),
-      });
-      indexer.start();
       const shutdown = (): void => {
-        indexer.stop();
+        for (const indexer of indexers.values()) indexer.stop();
         process.exit(0);
       };
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
-      // Loopback by default (see ServerConfig.host): reaching this graph from another machine has
-      // to be something you asked for.
-      const hostname = config.host ?? "127.0.0.1";
+      // Loopback by default (see ServerConfig.host): reaching this server from another machine
+      // has to be something you asked for.
+      const hostname = baseConfig.host ?? "127.0.0.1";
       const exposed = !isLoopbackName(hostname);
-      if (exposed && !config.allowedHosts?.length) {
+      if (exposed && !baseConfig.allowedHosts?.length) {
         process.stderr.write(
           `nooklet: bound to ${hostname} with no --allow-host, so ONLY requests addressed to\n` +
             `  localhost are accepted — reaching this server by its LAN IP or tailnet name will\n` +
             `  return 403. Pass e.g. --allow-host 192.168.1.5,my-machine.local to allow it.\n`,
         );
       }
-      serve(
-        { fetch: app.fetch, port: config.port, hostname, websocket: { server: wss } },
+      // `@hono/node-server@2.1.1`'s own `setupWebSocket()` (its `dist/index.mjs`, the code behind
+      // `serve()`'s `websocket` option) registers an `'upgrade'` handler that awaits OUR fetch
+      // callback (auth, graph routing/resolution — genuinely slow the first time a graph is
+      // touched) before ever calling `wss.handleUpgrade()`, and attaches NO `'error'` listener to
+      // the raw socket for the whole time it is doing that. A client that resets the TCP
+      // connection during that window (a page navigating away mid-handshake, a reconnect loop
+      // superseding its own in-flight attempt — real, ordinary client behavior, not misbehavior)
+      // fires an unhandled `'error'` event and crashes the ENTIRE process — verified against the
+      // exact ECONNRESET/`emitErrorCloseNT` stack an owner hit in real use by isolating the same
+      // pattern in a standalone repro (`tools/probes/upgrade-socket-error.mjs`) and by reading
+      // `@hono/node-server`'s own source (its `setupWebSocket`, `server.on("upgrade", ...)`, never
+      // calls `socket.on("error", ...)` at all). Fix: a SECOND `'upgrade'` listener on the same
+      // server, registered after `serve()` returns — Node's `EventEmitter` runs listeners
+      // synchronously in registration order for one `emit()`, and an async listener only yields at
+      // its first `await`, so this one is already attached before hono's async gap can ever open,
+      // regardless of how long that gap turns out to be. No new capability needed: a reset socket
+      // during an abandoned upgrade has nothing left to do anyway, so swallowing its `'error'` is
+      // correct, not just convenient — the alternative is the whole server dying instead.
+      const server = serve(
+        { fetch: app.fetch, port: baseConfig.port, hostname, websocket: { server: wss } },
         (info) => {
           const shown = exposed ? hostname : "127.0.0.1";
+          const base = `http://${shown}:${info.port}`;
           process.stdout.write(
-            `nooklet serving ${config.dataDir}\n` +
-              `  http  http://${shown}:${info.port}/api/v1\n` +
-              `  mcp   http://${shown}:${info.port}/mcp\n` +
-              `  spec  http://${shown}:${info.port}/openapi.json\n` +
-              `  sync  ws://${shown}:${info.port}/sync/live\n` +
-              `  live  ws://${shown}:${info.port}/ui/live\n` +
+            `nooklet serving ${dir}\n` +
+              `  graphs ${base}/graphs\n` +
+              `  http   ${base}/g/<id>/api/v1\n` +
+              `  mcp    ${base}/g/<id>/mcp\n` +
+              `  spec   ${base}/g/<id>/openapi.json\n` +
+              `  sync   ws://${shown}:${info.port}/g/<id>/sync/live\n` +
+              `  live   ws://${shown}:${info.port}/g/<id>/ui/live\n` +
               (webClientDir
-                ? `  app   http://${shown}:${info.port}/  (serving ${webClientDir})\n`
-                : `  app   not served — build it (pnpm --filter @nooklet/web build) or pass --web <dir>\n`),
+                ? `  app    ${base}/g/<id>/  (serving ${webClientDir})\n`
+                : `  app    not served — build it (pnpm --filter @nooklet/web build) or pass --web <dir>\n`),
           );
         },
       );
+      server.on("upgrade", (_request, socket) => {
+        socket.on("error", () => {});
+      });
       return;
     }
 
@@ -355,6 +388,15 @@ async function main(): Promise<void> {
 
     case "token": {
       const sub = args._[1];
+      // Deliberately does NOT call open(args): the root token lives at <dataDir>/root.token,
+      // outside every graph's own database (ADR 025) — printing it should not need to open, or
+      // even create, any graph at all.
+      if (sub === "root") {
+        const dir = dataDir(args);
+        const { token } = ensureRootToken(dir);
+        process.stdout.write(`${token}\n`);
+        return;
+      }
       const { ctx } = open(args);
       if (sub === "create") {
         const label = args.flags.get("label");
@@ -408,7 +450,7 @@ async function main(): Promise<void> {
         process.stdout.write(`revoked ${id}\n`);
         return;
       }
-      die(`unknown token subcommand "${sub ?? ""}" (expected create, list, or revoke)`);
+      die(`unknown token subcommand "${sub ?? ""}" (expected create, list, revoke, or root)`);
       return;
     }
 
@@ -547,7 +589,7 @@ async function main(): Promise<void> {
     case "plugin": {
       const sub = args._[1];
       const { ctx, config } = open(args);
-      const plugins = pluginDirsFor(config);
+      const plugins = pluginDirsFor(config.dataDir);
       const { found, errors } = discoverPlugins([...plugins.dirs, ...plugins.bundled]);
       for (const d of found) ensurePluginRow(ctx.driver, d.id, d.version, ctx.hlc.next());
 
@@ -621,7 +663,9 @@ async function main(): Promise<void> {
       });
       // Deliberately does NOT call open(args): that would create/initialize a fresh database at
       // the target data dir before restoreBackup ever gets to run its own refuse-to-clobber check.
-      const dir = dataDir(args);
+      // Targets this graph's own subdirectory (ADR 025) so a restored archive lands exactly where
+      // `serve`/`open()` will look for it — migrateLegacyLayoutIfNeeded never needs to touch it.
+      const dir = graphDir(dataDir(args), graphIdFlag(args));
       const result = restoreBackup(resolve(archivePath), { dataDir: dir, force });
       process.stdout.write(
         `restored ${result.filesRestored} file(s) into ${dir} ` +

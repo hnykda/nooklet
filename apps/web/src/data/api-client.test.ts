@@ -6,18 +6,23 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const syncTarget = vi.hoisted(() => ({ has: true }));
 vi.mock("./bootstrap.js", () => ({
   apiBaseUrl: () => "http://api.test:6100",
   authToken: () => "device-token",
+  hasSyncTarget: () => syncTarget.has,
 }));
 
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal("fetch", fetchMock);
 
-import { ApiError, apiClient, describeError } from "./api-client.js";
+import { ApiError, apiClient, describeError, NO_SYNC_TARGET_CODE } from "./api-client.js";
 import { undoBatch } from "./refactor-api.js";
 
-afterEach(() => fetchMock.mockReset());
+afterEach(() => {
+  fetchMock.mockReset();
+  syncTarget.has = true;
+});
 
 const calls = [
   ["search", () => apiClient.search({ query: "pricing" })],
@@ -51,6 +56,23 @@ describe("apiClient and undoBatch call the server through callOp (B-330)", () =>
     );
     // A server rejection keeps its hint.
     expect(describeError(err)).toBe("no pair");
+  });
+});
+
+describe("B-577: callOp fails fast with no fetch at all when there is no sync target", () => {
+  it.each(calls)("%s never calls fetch, and throws the recognizable code", async (_, call) => {
+    syncTarget.has = false;
+    const err = await call().catch((e: unknown) => e);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe(NO_SYNC_TARGET_CODE);
+  });
+
+  it("still calls fetch normally when a sync target is configured", async () => {
+    syncTarget.has = true;
+    fetchMock.mockResolvedValueOnce(reply({ hits: [], mode_used: "hybrid" }));
+    await apiClient.search({ query: "pricing" });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
 

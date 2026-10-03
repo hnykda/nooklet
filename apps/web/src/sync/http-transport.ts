@@ -31,6 +31,21 @@ function authHeaders(getToken?: () => string | undefined): HeadersInit {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * B-564: none of `push`/`pull`/`snapshot` used to bound how long they'd wait. A server that
+ * answers — even with a 401 — fails fast and `SyncClient.bootstrap()`'s `try/catch` (`worker-
+ * core.ts`) falls back to an empty local replica exactly as designed. A request that never
+ * resolves defeats that entirely: `db.start()` awaits `bootstrap()` before returning, and every
+ * worker RPC (`getPageTree`, `getJournalStream`, `query` — so the outliner, the sidebar, all of
+ * it) awaits the same `dbPromise`, so ALL of them hung forever, not just sync. This is exactly
+ * what a Capacitor build with no server configured produces: a relative fetch resolves against
+ * `capacitor://localhost`, which has no route for `/sync/*` and can leave the request pending
+ * rather than answering with a fast error the way a real HTTP server always does (verified in
+ * `e2e/tests/sync-timeout.spec.ts` by forcing `**\/sync/**` to hang forever in an otherwise
+ * ordinary browser session — same "Loading…" stuck bullet, same stalled sync indicator).
+ */
+const SYNC_TIMEOUT_MS = 10_000;
+
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`sync request failed: ${res.status} ${res.statusText}`);
   return (await res.json()) as T;
@@ -45,6 +60,7 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders(opts.getToken) },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
       });
       return asJson<PushResponse>(res);
     },
@@ -54,12 +70,18 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
       url.searchParams.set("device_id", deviceId);
       url.searchParams.set("since", String(since));
       url.searchParams.set("limit", String(limit));
-      const res = await fetch(url, { headers: authHeaders(opts.getToken) });
+      const res = await fetch(url, {
+        headers: authHeaders(opts.getToken),
+        signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
+      });
       return asJson<PullResponse>(res);
     },
 
     async snapshot(): Promise<SnapshotResponse> {
-      const res = await fetch(`${base}/sync/snapshot`, { headers: authHeaders(opts.getToken) });
+      const res = await fetch(`${base}/sync/snapshot`, {
+        headers: authHeaders(opts.getToken),
+        signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
+      });
       return asJson<SnapshotResponse>(res);
     },
 
@@ -77,7 +99,24 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
 
       const connect = () => {
         if (closedByCaller) return;
-        socket = new WebSocket(wsUrl());
+        // B-569: constructing the URL (`wsUrl()`) or the socket itself can throw synchronously —
+        // resolving a relative URL against this worker's own `self.location` does not behave the
+        // way it does on web/PWA in the Capacitor iOS shell with no server configured. `connect()`
+        // runs both from `WorkerDb.start()` (now guarded there too) and from every reconnect
+        // attempt below via `setTimeout`, where an uncaught throw would otherwise become an
+        // unhandled worker error rather than the retry loop it should just be.
+        try {
+          socket = new WebSocket(wsUrl());
+        } catch {
+          // `scheduleReconnect` below is defined inside this same function and not yet
+          // initialized the first time `connect()` runs, so its two lines are repeated here
+          // rather than called — the two must stay in sync if either changes.
+          if (!closedByCaller) {
+            retryTimer = setTimeout(connect, retryDelayMs);
+            retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
+          }
+          return;
+        }
         socket.addEventListener("open", () => {
           retryDelayMs = 1000;
           // Auth + device identity travel in the WS handshake's first *message*, not the URL or

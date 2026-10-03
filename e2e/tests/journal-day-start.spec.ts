@@ -14,9 +14,10 @@
 import { expect, type Page, test } from "@playwright/test";
 import { api, isoOffset, pagePath, readBlocks } from "../helpers/index.js";
 
-/** Click day `iso` in the journal calendar, paging back from the current month as needed. */
+/** Click day `iso` in the journal calendar, paging back from the current month as needed. B-583:
+ * the trigger is now a top-bar icon (accessible name "Calendar"), not an inline toggle. */
 async function calendarPick(page: Page, iso: string): Promise<void> {
-  await page.locator(".journal-calendar-toggle").click();
+  await page.getByRole("button", { name: "Calendar", exact: true }).click();
   const calendar = page.locator(".calendar");
   await expect(calendar).toBeVisible();
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];

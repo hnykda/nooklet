@@ -17,18 +17,35 @@ const status = (s: Partial<SyncStatus>): SyncStatus => ({
 
 describe("deriveSyncView", () => {
   it("says where the replica lives before anything about sync (B-43, B-81)", () => {
-    expect(deriveSyncView("memory", status({ pendingCount: 3 }))).toBe("memory");
-    expect(deriveSyncView("follower", status({ state: "offline" }))).toBe("follower");
+    expect(deriveSyncView("memory", status({ pendingCount: 3 }), true)).toBe("memory");
+    expect(deriveSyncView("follower", status({ state: "offline" }), true)).toBe("follower");
   });
 
   it("maps the sync client's states", () => {
-    expect(deriveSyncView("opfs", undefined)).toBe("starting");
-    expect(deriveSyncView("opfs", status({ state: "bootstrapping" }))).toBe("starting");
-    expect(deriveSyncView("opfs", status({ state: "offline", pendingCount: 2 }))).toBe("offline");
-    expect(deriveSyncView("opfs", status({ state: "error" }))).toBe("error");
-    expect(deriveSyncView("opfs", status({ state: "pushing", pendingCount: 1 }))).toBe("pending");
-    expect(deriveSyncView("opfs", status({ state: "pulling" }))).toBe("synced");
-    expect(deriveSyncView(undefined, status({}))).toBe("synced");
+    expect(deriveSyncView("opfs", undefined, true)).toBe("starting");
+    expect(deriveSyncView("opfs", status({ state: "bootstrapping" }), true)).toBe("starting");
+    expect(deriveSyncView("opfs", status({ state: "offline", pendingCount: 2 }), true)).toBe(
+      "offline",
+    );
+    expect(deriveSyncView("opfs", status({ state: "error" }), true)).toBe("error");
+    expect(deriveSyncView("opfs", status({ state: "pushing", pendingCount: 1 }), true)).toBe(
+      "pending",
+    );
+    expect(deriveSyncView("opfs", status({ state: "pulling" }), true)).toBe("synced");
+    expect(deriveSyncView(undefined, status({}), true)).toBe("synced");
+  });
+
+  it("B-571: no sync target at all is its own calm state, not offline/error", () => {
+    // Exactly the shape B-566/B-569's graceful-failure path produces for a device with nothing to
+    // reach: `status` settles into `offline`/`error`, which must not leak through as the shown view.
+    expect(deriveSyncView("opfs", status({ state: "offline" }), false)).toBe("local");
+    expect(deriveSyncView("opfs", status({ state: "error" }), false)).toBe("local");
+    expect(deriveSyncView("opfs", undefined, false)).toBe("local");
+  });
+
+  it("B-571: storage facts still take priority over 'local' — the more severe problem wins", () => {
+    expect(deriveSyncView("memory", status({}), false)).toBe("memory");
+    expect(deriveSyncView("follower", status({}), false)).toBe("follower");
   });
 });
 
@@ -38,6 +55,10 @@ describe("syncLabel", () => {
     expect(syncLabel("pending", 3)).toBe("3 changes waiting to sync");
     expect(syncLabel("synced", 0)).toBe("Synced");
     expect(syncLabel("offline", 2)).toBe("Offline — changes are kept and sent when back online");
+  });
+
+  it("B-571: 'local' reads as a deliberate choice, not a failure", () => {
+    expect(syncLabel("local", 0)).toBe("Local only — not syncing to any server");
   });
 });
 

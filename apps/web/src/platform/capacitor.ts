@@ -236,24 +236,39 @@ function onLifecycle(event: LifecycleEvent, cb: () => void): () => void {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Storage: native SQLite (once wired — see the trailing doc comment) has no browser storage quota
-// or eviction to report (research §2.1: "no quota, no eviction"), so there is nothing meaningful
-// to request or measure here. Every method is a documented, always-successful no-op rather than
-// delegating to `navigator.storage` (which governs the WebView's own IndexedDB/OPFS quota, not
-// the native SQLite file this platform is meant to use).
+// Storage (docs/proposals/004-capacitor-storage-durability.md, Option A): this used to be a
+// hardcoded no-op under the assumption native SQLite would land first, making `navigator.storage`
+// irrelevant (it governs the WebView's own OPFS quota, not a native SQLite file). It hasn't landed
+// — a Capacitor build still runs OPFS (`../db/sqlite-wasm-driver.ts`) — so that assumption made
+// this the one API that actually protects against *automatic* eviction never being called at all.
+// Same implementation as `./web.ts`: `navigator.storage` is a standard Web API, still present
+// inside a Capacitor WKWebView.
 // ---------------------------------------------------------------------------------------------
 
 export const capacitorPlatform: Platform = {
   name: "capacitor",
   storage: {
     async persist() {
-      return true;
+      try {
+        return (await navigator.storage?.persist?.()) ?? false;
+      } catch {
+        return false;
+      }
     },
     async persisted() {
-      return true;
+      try {
+        return (await navigator.storage?.persisted?.()) ?? false;
+      } catch {
+        return false;
+      }
     },
     async estimate() {
-      return undefined;
+      try {
+        const e = await navigator.storage?.estimate?.();
+        return e ? { usage: e.usage ?? 0, quota: e.quota ?? 0 } : undefined;
+      } catch {
+        return undefined;
+      }
     },
   },
   haptics: { impact, selection, notify },
@@ -287,11 +302,12 @@ export const capacitorPlatform: Platform = {
  * Until one lands, a Capacitor build should keep using the existing
  * `../db/sqlite-wasm-driver.ts` (`opfs-sahpool`), which research/08 §2.1 confirms already runs
  * inside a Capacitor WKWebView: "no COOP/COEP needed — a custom-scheme handler cannot provide
- * cross-origin isolation, so the SharedArrayBuffer-based `opfs` VFS is out [anyway]." The one
- * mitigation worth doing without the larger change above — reopening the sahpool connection if a
- * query ever fails after the app resumes from background (the PowerSync report this file's intro
- * cites) — is also left as follow-up: it needs `../db/db.worker.ts` to catch a specific native
- * error and re-run `openSqliteWasmDriver()`, which touches the worker/leader-election code other
- * agents may be relying on staying stable this milestone, not `platform/`. See
+ * cross-origin isolation, so the SharedArrayBuffer-based `opfs` VFS is out [anyway]." What IS done,
+ * short of that larger change (docs/proposals/004-capacitor-storage-durability.md, Options A–C):
+ * the real `persist()` call above, `../db/reopen-on-resume.ts` (reopens the sahpool connection
+ * after the app resumes from background, the PowerSync failure this file's intro cites), and a
+ * periodic checkpoint to `@capacitor/filesystem` as a backstop outside OPFS entirely, wired from
+ * `../db/client.ts` (main-thread only — like `@capacitor-community/sqlite`, `@capacitor/filesystem`
+ * needs `window`, which the dedicated Worker `db.worker.ts` runs in does not have). See
  * `apps/web/README.md`'s Capacitor section for the human-facing version of this note.
  */

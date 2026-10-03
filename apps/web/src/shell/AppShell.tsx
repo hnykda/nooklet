@@ -22,6 +22,8 @@ import {
   SettingsPanel,
   settingsOpen,
 } from "../views/SettingsPanel.js";
+import { CalendarButton } from "./CalendarButton.js";
+import { GraphSwitcher } from "./GraphSwitcher.js";
 import { HelpMenu, openShortcuts } from "./HelpMenu.js";
 import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
@@ -72,6 +74,11 @@ export function AppShell(props: { children?: JSX.Element }) {
             <ChevronRight size={17} />
           </button>
         </div>
+        {/* B-583: "next to cloud" — the owner's own words for the sync indicator beside it. */}
+        <CalendarButton />
+        {/* ADR 025: "which graph" and "is it synced" are the same question asked two ways — kept
+            adjacent, same reasoning as the calendar/sync pairing above. */}
+        <GraphSwitcher />
         <SyncIndicator />
         <PluginStatusItems />
         <ConsentBadge />

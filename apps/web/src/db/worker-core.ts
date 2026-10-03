@@ -116,6 +116,14 @@ const ALL_TABLES: ChangedTable[] = ["page", "block", "block_prop", "page_prop"];
 export interface WorkerDbOptions {
   driver: SqlDriver;
   transport: SyncTransport;
+  /** B-567: whether `transport` actually points anywhere. Defaults to `true` (every existing
+   * caller/test already assumes a real or at-least-attempted target) so only `db.worker.ts` — the
+   * one place that knows whether `WorkerInitOptions.syncBaseUrl` was genuinely omitted — needs to
+   * opt out. When `false`, `start()` skips bootstrap/connectLive/pull entirely rather than
+   * attempting (and, since B-566, timing out) against a target that is known not to exist, on
+   * every single cold start for a device that will never have one — see
+   * `docs/proposals/004-capacitor-storage-durability.md`'s sibling problem statement. */
+  hasSyncTarget?: boolean;
   onChange?: (e: ChangeEvent) => void;
   onSyncStatus?: (s: SyncStatus) => void;
 }
@@ -123,11 +131,13 @@ export interface WorkerDbOptions {
 export class WorkerDb {
   readonly driver: SqlDriver;
   readonly sync: SyncClient;
+  private readonly hasSyncTarget: boolean;
   private onChangeCb: ((e: ChangeEvent) => void) | undefined;
 
   constructor(opts: WorkerDbOptions) {
     this.driver = opts.driver;
     ensureSchema(this.driver);
+    this.hasSyncTarget = opts.hasSyncTarget ?? true;
     this.onChangeCb = opts.onChange;
     this.sync = new SyncClient({
       driver: this.driver,
@@ -141,8 +151,28 @@ export class WorkerDb {
 
   /** Bootstrap-if-needed, then start the live poke and an initial pull. Call once at startup;
    * safe to call even offline (bootstrap/pull failures just leave the client in "offline"
-   * status — see `SyncClient`). */
+   * status — see `SyncClient`).
+   *
+   * B-569: `connectLive()` used to be called unguarded. It normally only ever registers a
+   * `WebSocket` and returns, but its URL construction (`http-transport.ts#wsUrl`) throws
+   * synchronously if resolving `/sync/live` against this worker's own `self.location` fails —
+   * which it does in the Capacitor iOS shell with no server configured (`self.location` inside a
+   * dedicated Worker loaded from the `capacitor://` scheme does not resolve a relative `URL()`
+   * the way it does on web/PWA). An uncaught throw here rejects `start()`, which rejects the
+   * cached `dbPromise` in `db.worker.ts#openDb` PERMANENTLY — every later `requireDb()` call
+   * (`getPageTree`, `getJournalStream`, `query`: the outliner, the sidebar, everything) rejects
+   * too, for the rest of this worker's life, and with no `ErrorBoundary` anywhere in the app
+   * (B-400) the UI just freezes on whatever it rendered first — the "Loading…" placeholder.
+   * `bootstrap()`'s failure was always tolerated this way; `connectLive()`/`pull()`'s needs to be
+   * too, for the same reason: nothing here may be allowed to leave `start()` unable to resolve.
+   *
+   * B-567: none of the three calls below are even attempted when `hasSyncTarget` is `false` — a
+   * failed `bootstrap()` never marks `isBootstrapped()`, so without this a device with definitively
+   * nothing to reach would retry (and, since B-566, time out) on every cold start, not just the
+   * first. A device that merely can't reach a *configured* target right now still retries exactly
+   * as before; this only skips the attempt when there is provably no target at all. */
   async start(): Promise<void> {
+    if (!this.hasSyncTarget) return;
     if (!this.sync.isBootstrapped()) {
       try {
         await this.sync.bootstrap();
@@ -152,8 +182,13 @@ export class WorkerDb {
         // push once online. A real "am I usable yet" gate is a views-agent UI concern.
       }
     }
-    this.sync.connectLive();
-    void this.sync.pull();
+    try {
+      this.sync.connectLive();
+    } catch {
+      // Same tolerance as bootstrap() above — a live connection is a nicety, not a precondition
+      // for local usability, and the whole point of this method is that it cannot fail to return.
+    }
+    void this.sync.pull().catch(() => {});
   }
 
   onChange(cb: (e: ChangeEvent) => void): void {
