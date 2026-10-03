@@ -826,15 +826,6 @@ it means generalising `VirtualJournalDay` into a page draft that writes nothing 
 Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
 parity for names nothing links to; revisit if it bites in daily use.
 
-### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** low. At 60 ms/key the result is correct, but rows flicker for about 1.1 s, showing
-`["","ccc"]`.
-**Repro:** today is empty. Click today and type `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ with no delay. The server
-gets `aaa`,`bbb`,`ccc`, all at depth 0, instead of `bbb` indented. The same burst on an ordinary
-page is correct. Probe: `indent-render.mjs journal fast 0`.
-
 ### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
 **Status:** open, reproduced · **Severity:** high (data goes into the wrong graph, which ADR 025 forbids) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
 
@@ -914,7 +905,44 @@ another plugin throwing `OpError` from rpc would 500 the same way.
 
 Run without `--data` it would create a stray legacy database beside `graphs/`. Dev-only: `nooklet mcp --stdio` goes through `cli.ts`.
 
+### B-623 · `page-find.spec.ts` and `random-page.spec.ts` fail on every run
+**Status:** open, not investigated · **Severity:** unknown (test or real regression) · **Found:** 2026-10-03, b609 agent's full e2e run · **Test:** the specs themselves
+
+On `4c28fad`, also alone (not order-dependent): `page-find.spec.ts` "Cmd/Ctrl+F narrows the
+outline…" and "Enter and Shift+Enter step through the matches"; `random-page.spec.ts` "Open a random
+page jumps to another page…" and "from a view that is not a page…". Same failures with B-609's files
+reset.
+
+### B-624 · `page-delete.spec.ts` is flaky under `--repeat-each=2`
+**Status:** open, not investigated · **Severity:** low (test, so far) · **Found:** 2026-10-03, b609 agent · **Test:** the spec itself
+
+"Delete page from the … menu…" and "from the palette mid-typing…" fail intermittently on `4c28fad`.
+`autocomplete-inside-link.spec.ts` (the B-382/B-592 test) was flaky the same way.
+
 ## Fixed
+
+### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
+**Status:** fixed (2026-10-03, `319d1e8`, `e65638a`) · **Severity:** low · **Test:** `e2e/tests/journal-draft-burst.spec.ts`
+(3 tests; red before), `apps/web/src/views/VirtualJournalDay.test.tsx` "keeps Tab and Shift+Tab typed
+while the replica has not answered…" and "Backspace at the start of an empty waiting line…"
+
+**Severity:** low. At 60 ms/key the result is correct, but rows flicker for about 1.1 s, showing
+`["","ccc"]`.
+**Repro:** today is empty. Click today and type `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ with no delay. The server
+gets `aaa`,`bbb`,`ccc`, all at depth 0, instead of `bbb` indented. The same burst on an ordinary
+page is correct. Probe: `indent-render.mjs journal fast 0`.
+
+**Fixed 2026-10-03.** Two causes. (1) The sweep's case is today with a page but no blocks (`BlockTree`): its page-tree
+effect re-runs on every Enter (it tracks `editingId`) against the last fetch, and kept only the
+edited block among this tab's unfetched creations — the block above vanished, so Tab had nothing to
+nest under, and the rows flickered down to the edited one. Now every unfetched creation is kept.
+(2) The draft (no page at all; `/journals` today, `/page/<date>`): a burst beats `prepare()`, so the
+keys stay in the textarea (B-411) — where Tab moved focus to the Help button, Enter pressed it, and
+`ccc` was lost. Tab/Shift+Tab now nest draft lines and the day is written as that tree. (3) The
+flicker: the same effect re-ran on every Enter, and a fetch read before a Tab and answered after it
+put the old place back. The effect now runs on fetches only, and moves/deletes are held until the
+worker answers them (as text already was, B-303). Real-graph copy, 60 ms/key: the Tab showed undone
+for 0.3-0.6 s in 4/7 runs before, 0/12 after. See `docs/progress/b609.md`.
 
 ### B-621 · After a deep link's reload, `App.getLaunchUrl()` re-delivered the same link, so the pairing confirm screen kept coming back
 **Status:** fixed (2026-10-03, `fb31593`) · **Severity:** medium · **Found:** 2026-10-03, pairing agent on the Simulator · **Test:** `platform/launch-url.test.ts`; probe `tools/probes/pairing-link-ui/`
