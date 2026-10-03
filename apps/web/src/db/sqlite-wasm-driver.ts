@@ -61,7 +61,11 @@ interface Sqlite3OpfsSAHPoolUtil {
 const MIN_POOL_CAPACITY = 6;
 
 interface Sqlite3Namespace {
-  installOpfsSAHPoolVfs(opts: { name?: string }): Promise<Sqlite3OpfsSAHPoolUtil>;
+  installOpfsSAHPoolVfs(opts: {
+    name?: string;
+    /** Without it, a failed install is cached and every later call rejects with the same error. */
+    forceReinitIfPreviouslyFailed?: boolean;
+  }): Promise<Sqlite3OpfsSAHPoolUtil>;
   /** The plain OO1 API; `new DB()` with no filename is an in-memory database. */
   oo1: { DB: new (filename?: string) => Sqlite3Db };
   /** The C API surface, for the one call Option C's checkpoint needs directly — verified against
@@ -88,6 +92,36 @@ export function shouldRestoreCheckpoint(
   hasCheckpoint: boolean,
 ): boolean {
   return hasCheckpoint && !existingFileNames.includes(filename);
+}
+
+/**
+ * How long to keep trying for the pool's files while another context still holds them. The pool is
+ * ONE set of OPFS files shared by every graph on the device (each graph is a name inside it), and
+ * the install takes a sync access handle on every one of them. The page load a graph switch or a
+ * reload replaces still holds those handles for a moment while its worker is torn down; the
+ * per-graph writer lock (`db.worker.ts`) does not cover that, since a different graph's lock has a
+ * different name. The install then failed with `NoModificationAllowedError` and the new page ran on
+ * an in-memory database: everything written in a local-only graph just switched to was gone at the
+ * next reload. Seen in `e2e/tests/local-graphs.spec.ts` right after "Add a graph".
+ */
+const POOL_BUSY_RETRY_MS = 5_000;
+
+async function installPool(sqlite3: Sqlite3Namespace): Promise<Sqlite3OpfsSAHPoolUtil> {
+  const deadline = Date.now() + POOL_BUSY_RETRY_MS;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await sqlite3.installOpfsSAHPoolVfs({
+        name: "nooklet-opfs-sahpool",
+        forceReinitIfPreviouslyFailed: attempt > 0,
+      });
+    } catch (err) {
+      // Only "someone else holds a handle" is worth waiting for; a browser without OPFS in
+      // workers (B-43) fails at once, as before.
+      const busy = err instanceof Error && err.name === "NoModificationAllowedError";
+      if (!busy || Date.now() >= deadline) throw err;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
 }
 
 /**
@@ -270,7 +304,7 @@ export async function openSqliteWasmDriver(
     // A follower tab (B-81) asks for memory outright: sahpool allows one connection per file, and
     // the leader tab holds it.
     if (opts.memory) throw new Error("memory requested by the caller");
-    const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: "nooklet-opfs-sahpool" });
+    const poolUtil = await installPool(sqlite3);
     // Topped up on EVERY start, not left to the install (B-323). sqlite-wasm fills the pool only
     // when it finds it empty, one file at a time and asynchronously, so a first start torn down
     // part-way (a reload or navigation in its first tenth of a second) leaves one to five files and
