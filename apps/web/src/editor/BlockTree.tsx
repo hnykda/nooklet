@@ -247,6 +247,28 @@ export function BlockTree(props: {
   function supersedeUnansweredText(ops: readonly Op[]): void {
     for (const op of ops) if (op.payload.kind !== "block.place") unansweredText.delete(op.entity);
   }
+  /**
+   * Moves and deletes this tree wrote that the worker has not answered yet: re-applied over every
+   * fetch until it has, for the same reason `unansweredText` is (B-609). A fetch posted before a
+   * write and answered after it is real on a busy replica — on the owner's graph the journal
+   * stream's other days queue page-tree reads ahead of the write, and a burst's Tab was undone on
+   * screen for up to 1.1 s by a read that predates it. Once the write is answered, any fetch that
+   * resolves later was read after it (the worker answers in order). Creations need no entry: they
+   * are kept from the local tree until a fetch has them (`unseenCreations`).
+   */
+  const unansweredStructure = new Set<Op>();
+  /** Write `ops` (already applied to the local tree), holding their moves and deletes over fetches
+   * until the worker answers. */
+  function postStructure(ops: readonly Op[]): void {
+    const structural = ops.filter(
+      (op) => op.payload.kind === "block.place" || op.payload.kind === "block.delete",
+    );
+    for (const op of structural) unansweredStructure.add(op);
+    const answered = (): void => {
+      for (const op of structural) unansweredStructure.delete(op);
+    };
+    void applyOps(ops as Op[]).then(answered, answered);
+  }
   /** Which fetched texts are newer than anything this tree showed or wrote (B-192). */
   const textVersions = new TextVersions();
   textVersions.noteWrites(props.initialOps ?? []);
@@ -273,7 +295,14 @@ export function BlockTree(props: {
   createEffect(() => {
     const data = treeResource();
     if (!data) return;
-    const editingBlockId = editingId();
+    // Untracked: this effect is about a FETCH arriving, and must not re-run when editing merely
+    // moves. It used to (every Enter, every click into another row), and each re-run rebuilt the
+    // local tree from the last fetch — older than everything typed since — throwing away the
+    // optimistic state: a block's text written after that fetch showed blank, a Tab's indent
+    // showed undone, a just-created block vanished, until the next fetch put them back (B-609,
+    // 0.3-1.2 s on the real graph). Unless the re-run had a newer fetch, there was nothing in it to
+    // take. B-303's `unansweredText` was a patch over the same re-run for the edited block.
+    const editingBlockId = untrack(editingId);
     const contentHlcs = new Map<BlockId, string>();
     const flat = flattenBlockTreeNodes(data.blocks, contentHlcs);
     absorbFetchedHlcs(contentHlcs.values());
@@ -366,17 +395,25 @@ export function BlockTree(props: {
         flat.push(local);
       }
     }
+    const shown =
+      unansweredStructure.size === 0
+        ? flat
+        : applyOptimistic(
+            flat,
+            [...unansweredStructure] as unknown as OptimisticOp[],
+            deletedCache,
+          );
     // A refetch reorders the edited row too. One that READ before an Alt+Up/Down (or its undo)
     // and RESOLVED after it puts the old order back for a frame, and the next one restores the
     // new order: two DOM moves, each blurring the editor, with nothing to refocus it. Traced
     // 10-40 ms after an undo, where a keystroke typed in that window was lost (B-242).
     const hadFocus = editingBlockId !== null && surface.view()?.hasFocus === true;
-    setLocalBlocks(flat);
+    setLocalBlocks(shown);
     const takeText = takeIntoEditor;
     if (takeText !== null && editingBlockId !== null) {
       untrack(() => takeRemoteText(editingBlockId, takeText));
     }
-    if (hadFocus && editingBlockId !== null) refocusAfterReorder(editingBlockId);
+    if (hadFocus && editingBlockId !== null) untrack(() => refocusAfterReorder(editingBlockId));
   });
   // An offer is about the block being edited; once editing moves on, the buffer was flushed and
   // what it wrote is the answer.
@@ -636,7 +673,7 @@ export function BlockTree(props: {
     supersedeUnansweredText(ops);
     setLocalBlocks((prev) => applyOptimistic(prev, ops as unknown as OptimisticOp[], deletedCache));
     history.record(ops, treeBefore, kind, before, after, blockId);
-    void applyOps(ops);
+    postStructure(ops);
     syncSurfaceFromTree();
   }
 
@@ -980,7 +1017,7 @@ export function BlockTree(props: {
     setLocalBlocks((prev) =>
       applyOptimistic(prev, res.ops as unknown as OptimisticOp[], deletedCache),
     );
-    void applyOps(res.ops);
+    postStructure(res.ops);
     syncSurfaceFromTree();
     // Rows as they are AFTER the step (B-162, B-194: `./undo-focus.ts`).
     const next = focusAfterStep(res.focus, editingId(), (id) => untrack(rowById).has(id));
