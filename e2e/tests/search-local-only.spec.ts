@@ -29,8 +29,10 @@ test("with no server configured, search answers from the device and says so", as
     );
     localStorage.setItem("nooklet.activeGraphId", "search-local");
   });
+  // An active local graph opens straight into its replica since the local-graphs work (B-612);
+  // this used to stop at ConnectView and need "Just this device" first.
   await page.goto("/journals");
-  await page.getByRole("button", { name: /Just this device/s }).click();
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "local");
 
   const draft = page.locator(".journal-day-today .vr-draft-input").first();
   await expect(draft).toBeVisible();
