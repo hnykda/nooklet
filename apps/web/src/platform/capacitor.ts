@@ -17,6 +17,7 @@
  * and what it would actually take.
  */
 import { applyInset, type KeyboardStyleTarget } from "./keyboard.js";
+import { claimLaunchUrl, markUrlHandled } from "./launch-url.js";
 import type { KeyboardHandle, LifecycleEvent, Platform } from "./types.js";
 
 let keyboardModule: Promise<typeof import("@capacitor/keyboard")> | undefined;
@@ -164,7 +165,10 @@ function onOpen(cb: (url: string) => void): () => void {
 
   void (async () => {
     const { App } = await appPlugin();
-    const handle = await App.addListener("appUrlOpen", (e) => notifyOnce(e.url));
+    const handle = await App.addListener("appUrlOpen", (e) => {
+      markUrlHandled(e.url, globalThis.sessionStorage);
+      notifyOnce(e.url);
+    });
     if (stopped) {
       void handle.remove();
       return;
@@ -173,8 +177,12 @@ function onOpen(cb: (url: string) => void): () => void {
     // Cold start: the listener above misses the URL the process was launched with, so it must
     // also be checked explicitly (research §4's `App.getLaunchUrl()` call, right after
     // `addListener` so a URL that arrives between the two is never dropped).
+    // `claimLaunchUrl`/`markUrlHandled`: `getLaunchUrl()` is really "last opened URL" and
+    // outlives a page reload (see `launch-url.ts`).
     const launch = await App.getLaunchUrl();
-    if (launch?.url) notifyOnce(launch.url);
+    if (launch?.url && claimLaunchUrl(launch.url, globalThis.sessionStorage)) {
+      notifyOnce(launch.url);
+    }
   })();
 
   return () => {

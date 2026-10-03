@@ -58,6 +58,9 @@ describe("PairingLinkPrompt (B-603)", () => {
     deepLink.cb?.(LINK);
     await screen.findByRole("dialog");
     expect(screen.getByText("Connect to this server?")).toBeTruthy();
+    // Only the pairing wording: no "needs a token to reach <this page's host>" (seen on the
+    // Simulator as "…reach localhost", which is not the server being confirmed).
+    expect(screen.queryByText(/needs a token to reach/)).toBeNull();
     expect(screen.getByTestId("pairing-server").textContent).toBe("http://192.168.1.5:6100");
     expect((screen.getByLabelText("Server address") as HTMLInputElement).value).toBe(
       "http://192.168.1.5:6100",

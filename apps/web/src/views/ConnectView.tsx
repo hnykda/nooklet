@@ -150,21 +150,21 @@ export function ConnectView(props: {
             </>
           )}
         </Show>
-        <Show
-          when={showServerField && !props.prefill}
-          fallback={
+        <Show when={!props.prefill}>
+          <Show
+            when={showServerField}
+            fallback={
+              <p class="connect-lede">
+                This device needs a token to reach <code>{location.host}</code>. Create one on the
+                machine running nooklet:
+              </p>
+            }
+          >
             <p class="connect-lede">
-              This device needs a token to reach <code>{location.host}</code>. Create one on the
+              This device needs your nooklet server's address and a token. Create the token on the
               machine running nooklet:
             </p>
-          }
-        >
-          <p class="connect-lede">
-            This device needs your nooklet server's address and a token. Create the token on the
-            machine running nooklet:
-          </p>
-        </Show>
-        <Show when={!props.prefill}>
+          </Show>
           <pre class="connect-cmd">nooklet token create --label phone --scope write --sync</pre>
           <p class="connect-note">The token is shown once. Paste it here.</p>
         </Show>
