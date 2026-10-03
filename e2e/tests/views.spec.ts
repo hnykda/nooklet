@@ -243,7 +243,12 @@ test("hybrid search says so when it fell back to keyword", async ({ page }) => {
   await expect(page.locator(".search-result", { hasText: "Views Search Fallback" })).toHaveCount(1);
 });
 
-test("a failed search shows an error with Retry, and Retry recovers", async ({ page }) => {
+// Since local-first search (`3844838`) a failing server no longer fails the search: this device's
+// own index answers, and one line says what happened to the server's half. The old form of this
+// test waited for a "Search failed" error with Retry, which that design removed on purpose.
+test("a failed server search still shows this device's hits, says so, and a new query asks again", async ({
+  page,
+}) => {
   await seedPage(page, "Views Search Retry", "- recoverable pangolin");
   let fail = true;
   await page.route("**/api/v1/search", (route) =>
@@ -251,16 +256,23 @@ test("a failed search shows an error with Retry, and Retry recovers", async ({ p
   );
   await page.goto("/search");
   await page.locator(".search-query-input").fill("pangolin");
-  const error = page.locator(".search-error");
-  await expect(error).toBeVisible({ timeout: 15_000 });
-  await expect(error).toContainText("Search failed");
-  await expect(page.locator(".search-loading")).toHaveCount(0);
-
-  fail = false;
-  await error.locator(".search-retry").click();
   await expect(page.locator(".search-result", { hasText: "Views Search Retry" })).toHaveCount(1, {
     timeout: 15_000,
   });
+  const source = page.locator(".search-source");
+  await expect(source).toContainText("the server's semantic search failed");
+  await expect(page.locator(".search-error")).toHaveCount(0);
+  await expect(page.locator(".search-loading")).toHaveCount(0);
+
+  fail = false;
+  await page.locator(".search-query-input").fill("recoverable pangolin");
+  await expect(page.locator(".search-result", { hasText: "Views Search Retry" })).toHaveCount(1, {
+    timeout: 15_000,
+  });
+  // This time the server answers: the e2e graph has no embedding model, so it says why it fell
+  // back to keyword, and the "failed" line is gone.
+  await expect(page.locator(".search-fallback")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".search-source", { hasText: "failed" })).toHaveCount(0);
 });
 
 // ── All Pages ────────────────────────────────────────────────────────────────────────────────────
