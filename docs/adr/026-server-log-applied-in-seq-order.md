@@ -20,8 +20,13 @@ rejects only clocks running *ahead*, so this is a legal device), real server, re
 On `c897962`:
 
 - **C** (bootstrapped before the delete, then one incremental pull carrying the delete and A's
-  ops) and **D** (one pull of the whole log) **diverged**: A's page and block missing, for good —
-  nothing ever re-sends them.
+  ops) **diverged**: A's page and block missing, no live "Ghost Name" at all — for good, nothing
+  ever re-sends them.
+- **D** (one pull of the whole log) **diverged** more mildly: with a 5 s lag A's create sorts
+  before even the old page's create, so D holds A's page and block but not the old page's
+  tombstone (that create met A's live page and was refused). With the same-millisecond shape of
+  the original failure — A's HLC between the old page's create and delete — a full pull loses A's
+  page the way C does (`tools/probes/b587-hlc-order-name-collision.ts`).
 - A, B (live: learns each op from its own push response or a pull of one push) and E (snapshot
   afterwards) matched the server.
 

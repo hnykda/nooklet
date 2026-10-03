@@ -495,8 +495,8 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
    * run ahead). Every replica must end where the server is, however it learns the ops: B is live
    * and pulls them one push at a time, C bootstrapped before and pulls the delete and A's ops in
    * one batch, D pulls the whole log in one batch, E bootstraps afterwards. Before ADR 026 a
-   * one-batch pull re-sorted by HLC, met A's create while the old page was still live, and
-   * dropped A's page and block (C and D diverged, and `verify` reported both missing).
+   * one-batch pull re-sorted by HLC: C met A's create while the old page was still live and lost
+   * A's page and block; D applied A's create before the old page's and lost that tombstone.
    */
   it("a page created under a name the server freed, with an HLC older than the freeing op, converges on every replica (B-587)", async () => {
     const s = server.serverCtx.driver;
