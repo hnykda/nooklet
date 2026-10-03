@@ -34,7 +34,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
@@ -79,7 +79,6 @@ import {
   GraphSelectionError,
   openGraphForCommand,
 } from "./graphs/registry.js";
-import { isLoopbackName } from "./http/app.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { importLogseqGraph } from "./importer/logseq.js";
 import { startStdioBridge } from "./mcp/stdio.js";
@@ -90,6 +89,7 @@ import type { ServerConfig } from "./ops/registry.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
 import { applyOrgDateRepair, formatOrgDateReport, planOrgDateRepair } from "./repair-org-dates.js";
+import { formatServeBanner } from "./serve-banner.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
 
 function dataDir(args: Args): string {
@@ -323,14 +323,6 @@ async function main(): Promise<void> {
       // Loopback by default (see ServerConfig.host): reaching this server from another machine
       // has to be something you asked for.
       const hostname = baseConfig.host ?? "127.0.0.1";
-      const exposed = !isLoopbackName(hostname);
-      if (exposed && !baseConfig.allowedHosts?.length) {
-        process.stderr.write(
-          `nooklet: bound to ${hostname} with no --allow-host, so ONLY requests addressed to\n` +
-            `  localhost are accepted — reaching this server by its LAN IP or tailnet name will\n` +
-            `  return 403. Pass e.g. --allow-host 192.168.1.5,my-machine.local to allow it.\n`,
-        );
-      }
       // B-589 (a client reset mid-upgrade crashed the process) is handled by
       // `guardUpgradeSockets` below, at `'connection'` time. It must NOT be a second `'upgrade'`
       // listener: @hono/node-server only answers a failed upgrade when it is the sole one (B-602).
@@ -338,20 +330,18 @@ async function main(): Promise<void> {
       const server = serve(
         { fetch: app.fetch, port: baseConfig.port, hostname, websocket: { server: wss } },
         (info) => {
-          const shown = exposed ? hostname : "127.0.0.1";
-          const base = `http://${shown}:${info.port}`;
-          process.stdout.write(
-            `nooklet serving ${dir}\n` +
-              `  graphs ${base}/graphs\n` +
-              `  http   ${base}/g/<id>/api/v1\n` +
-              `  mcp    ${base}/g/<id>/mcp\n` +
-              `  spec   ${base}/g/<id>/openapi.json\n` +
-              `  sync   ws://${shown}:${info.port}/g/<id>/sync/live\n` +
-              `  live   ws://${shown}:${info.port}/g/<id>/ui/live\n` +
-              (webClientDir
-                ? `  app    ${base}/g/<id>/  (serving ${webClientDir})\n`
-                : `  app    not served — build it (pnpm --filter @nooklet/web build) or pass --web <dir>\n`),
-          );
+          // B-604: a wildcard bind lists the LAN addresses to use, and which still need
+          // --allow-host (`serve-banner.ts`).
+          const banner = formatServeBanner({
+            dataDir: dir,
+            host: hostname,
+            port: info.port,
+            allowedHosts: baseConfig.allowedHosts,
+            webClientDir,
+            interfaces: networkInterfaces(),
+          });
+          process.stdout.write(banner.stdout);
+          if (banner.stderr) process.stderr.write(banner.stderr);
         },
       );
       guardUpgradeSockets(server);
