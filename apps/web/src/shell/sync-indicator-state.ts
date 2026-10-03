@@ -27,7 +27,10 @@ export type SyncView =
   /** B-571: never configured to sync at all (B-563's "Just this device") — a deliberate, permanent
    * choice, not a transient failure. Without this, `offline`/`error` were the only fallback, which
    * reads as "something is broken" for a device that is working exactly as chosen. */
-  | "local";
+  | "local"
+  /** B-613: the server refused this device's token (revoked, or never valid). Not `offline`:
+   * waiting never fixes it, and edits pile up locally until someone re-pairs. */
+  | "unauthorized";
 
 /** Roughly how long a routine edit takes to reach the server, with margin. Below this, pending is
  * noise; above it, something is actually slow or stuck. */
@@ -42,6 +45,10 @@ export function deriveSyncView(
   status: SyncStatus | undefined,
   hasSyncTarget: boolean,
 ): SyncView {
+  // B-613: before storage, too — a refused token is the one state here only the reader can fix,
+  // and a memory replica (WebKit) with a revoked token used to read as an empty graph with nothing
+  // saying why.
+  if (status?.state === "unauthorized") return "unauthorized";
   // Storage first: "synced" would be true and still the wrong thing to say about a session whose
   // local copy evaporates on reload (B-43). Takes priority over `local` too — a device with no
   // sync target AND no durable local copy has the more severe problem.
@@ -77,6 +84,8 @@ export function syncLabel(view: SyncView, pendingCount: number): string {
       return "Synced via another tab — that tab keeps the local copy";
     case "local":
       return "Local only — not syncing to any server";
+    case "unauthorized":
+      return "Token rejected — changes stay on this device until you enter a new token";
   }
 }
 

@@ -38,8 +38,9 @@ runs the full e2e suite on the merged tree.
 | tasks-workflow | B-608, B-610, B-617, **merged** (`69e9e99`, `de59bf8`); empty graph defaults to `now` | 6325-6329 |
 | b609 | B-609, **merged** (`319d1e8`, `e65638a`) | 6330-6334 |
 | local-graphs | B-611, B-612, B-619 + 2 more, **merged** (`c58ede4`, `3e3c1c5`); B-631 open (discard deletes all) | 6335-6339 |
-| connection-states | B-613 revoked token, B-614 indicator, B-615 insecure context page, B-618 labels | 6340-6344 |
+| connection-states | B-613, B-614, B-615, B-618 + B-632, **merged** (`b96e6e2`) | 6340-6344 |
 (B-617 → tasks-workflow; B-616 + runbook localhost fix → pairing.)
+| b631 | B-631: discard deletes only the mismatched graph's replica | 6355-6359 |
 | e2e-green | B-623 page-find/random-page red, B-624, B-593, B-561 flakes; full suite twice | 6350-6354 |
 | server-search | local-first search + server semantic enrich, **merged** (`3844838`, `ba58947`) | 6345-6349 |
 If cut off: `git worktree list` shows the branches; read each progress file.

@@ -135,6 +135,28 @@
   color: var(--muted);
 }
 
+/* B-615: the ways out of an insecure context (`../insecure-context.ts`). */
+.connect-fixes {
+  margin: 0 0 var(--space-xl);
+  padding-left: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.connect-fixes strong {
+  color: var(--fg);
+}
+
+.connect-fixes code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  overflow-wrap: anywhere;
+}
+
 /* B-563's choice screen: "just this device" vs "sync with a server", shown before the form. */
 .connect-choice {
   display: flex;

@@ -10,13 +10,15 @@
  * it stays deliberately thin — it only shapes HTTP/WS calls to match `./types.ts`.
  */
 
-import type {
-  PullResponse,
-  PushRequestBody,
-  PushResponse,
-  SnapshotResponse,
-  SyncLiveHandlers,
-  SyncTransport,
+import {
+  LIVE_AUTH_REJECTED_CODES,
+  type PullResponse,
+  type PushRequestBody,
+  type PushResponse,
+  type SnapshotResponse,
+  SyncAuthError,
+  type SyncLiveHandlers,
+  type SyncTransport,
 } from "./types.js";
 
 export interface HttpTransportOptions {
@@ -47,6 +49,7 @@ function authHeaders(getToken?: () => string | undefined): HeadersInit {
 const SYNC_TIMEOUT_MS = 10_000;
 
 async function asJson<T>(res: Response): Promise<T> {
+  if (res.status === 401 || res.status === 403) throw new SyncAuthError(res.status);
   if (!res.ok) throw new Error(`sync request failed: ${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
@@ -111,6 +114,7 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
           // `scheduleReconnect` below is defined inside this same function and not yet
           // initialized the first time `connect()` runs, so its two lines are repeated here
           // rather than called — the two must stay in sync if either changes.
+          handlers.onClose?.(1006);
           if (!closedByCaller) {
             retryTimer = setTimeout(connect, retryDelayMs);
             retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
@@ -140,7 +144,13 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
           retryTimer = setTimeout(connect, retryDelayMs);
           retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
         };
-        socket.addEventListener("close", scheduleReconnect);
+        socket.addEventListener("close", (ev) => {
+          handlers.onClose?.(ev.code);
+          // The server refused the token: retrying every 30 s cannot change its answer, and the
+          // only fix (re-pairing) reloads the page and builds a fresh transport anyway.
+          if (LIVE_AUTH_REJECTED_CODES.has(ev.code)) return;
+          scheduleReconnect();
+        });
         socket.addEventListener("error", () => socket?.close());
       };
       connect();

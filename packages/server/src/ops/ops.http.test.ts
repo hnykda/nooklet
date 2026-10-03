@@ -1,5 +1,7 @@
+import { writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import { newId } from "@nooklet/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { serverApplyOps } from "../apply-ops.js";
@@ -53,6 +55,17 @@ describe("graph.overview", () => {
     expect(status).toBe(200);
     expect(json.counts).toEqual({ pages: 0, journals: 0, blocks: 0 });
     expect(typeof json.seq).toBe("number");
+  });
+
+  it("B-618: names the graph — its slug, and the label from graph.json (slug without one)", async () => {
+    const before = await post(s.app, "/api/v1/graph.overview", s.readToken, {});
+    expect(before.json.graph).toEqual({ id: "default", label: "default" });
+    writeFileSync(
+      join(s.config.dataDir, "graph.json"),
+      JSON.stringify({ id: "default", label: "Home notes", createdAt: 0 }),
+    );
+    const after = await post(s.app, "/api/v1/graph.overview", s.readToken, {});
+    expect(after.json.graph).toEqual({ id: "default", label: "Home notes" });
   });
 
   it("rejects unknown fields (invalid)", async () => {

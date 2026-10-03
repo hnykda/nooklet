@@ -279,32 +279,81 @@ export function graphEntryUrl(entry: GraphListEntry, currentLocation: Location):
  * to matters now that there can be more than one, so callers go through this rather than a bare
  * `localStorage` key.
  */
-export function setConnectedGraphToken(remoteBaseUrl: string | null, token: string): void {
+export function setConnectedGraphToken(
+  remoteBaseUrl: string | null,
+  token: string,
+  serverLabel?: string,
+): void {
   if (remoteBaseUrl === null) {
     // Web/desktop path (`ConnectView.tsx`'s `showServerField` is false): apply the token to
     // whatever graph this page is already serving from.
     const entry = activeGraph();
     if (entry) {
-      updateGraph(entry.id, { token });
+      updateGraph(entry.id, { token, ...labelPatch(entry.label, serverLabel) });
       return;
     }
     const id = newGraphEntryId();
-    addGraph({ id, label: "This graph", kind: "local", baseUrl: samePathGraphPrefix(), token });
+    addGraph({
+      id,
+      label: serverLabel ?? "This graph",
+      kind: "local",
+      baseUrl: samePathGraphPrefix(),
+      token,
+    });
     setActiveGraphId(id);
     return;
   }
-  // Capacitor path: `remoteBaseUrl` is the full address the owner typed in.
-  const existing = readGraphs().find((g) => g.baseUrl === remoteBaseUrl);
+  // `remoteBaseUrl` is the full address the owner typed in (Capacitor's connect screen, or the
+  // switcher's "Add a graph" anywhere). B-618: matched by the graph it RESOLVES to, not the string
+  // — the same-origin entry is stored as `/g/default` and the typed address is absolute, so an
+  // exact compare added the graph this page is already showing a second time, with its own empty
+  // replica. The existing entry keeps its own `baseUrl` form (same-origin stays relative).
+  const existing = findGraphByAddress(remoteBaseUrl);
   const id = existing?.id ?? newGraphEntryId();
   addGraph({
     id,
-    label: existing?.label ?? "Remote graph",
-    kind: "remote",
-    baseUrl: remoteBaseUrl,
+    label: existing
+      ? (labelPatch(existing.label, serverLabel).label ?? existing.label)
+      : (serverLabel ?? "Remote graph"),
+    kind: existing?.kind ?? "remote",
+    baseUrl: existing?.baseUrl ?? remoteBaseUrl,
     token,
     graphInstanceId: existing?.graphInstanceId,
   });
   setActiveGraphId(id);
+}
+
+/**
+ * B-618: the labels this file hands out when it knows nothing better. Every graph used to be one
+ * of these, so a switcher with two graphs read "This graph" and "Remote graph". A label still equal
+ * to one of them was never chosen by anyone, and the server's own label may replace it; a label the
+ * owner typed (rename) never is.
+ */
+const PLACEHOLDER_LABELS: ReadonlySet<string> = new Set(["This graph", "Remote graph"]);
+
+export function isPlaceholderGraphLabel(label: string): boolean {
+  return PLACEHOLDER_LABELS.has(label);
+}
+
+function labelPatch(current: string, serverLabel: string | undefined): { label?: string } {
+  return serverLabel && isPlaceholderGraphLabel(current) ? { label: serverLabel } : {};
+}
+
+/** `baseUrl` as an absolute URL without a trailing slash — same-origin entries (`/g/default`)
+ * resolved against this page — so two spellings of one graph compare equal. */
+export function resolvedGraphAddress(baseUrl: string | undefined): string | undefined {
+  if (baseUrl === undefined) return undefined;
+  try {
+    const origin = typeof location === "undefined" ? undefined : location.origin;
+    return new URL(baseUrl, origin).toString().replace(/\/+$/, "");
+  } catch {
+    return baseUrl.replace(/\/+$/, "");
+  }
+}
+
+export function findGraphByAddress(baseUrl: string): GraphListEntry | undefined {
+  const wanted = resolvedGraphAddress(baseUrl);
+  return readGraphs().find((g) => g.baseUrl && resolvedGraphAddress(g.baseUrl) === wanted);
 }
 
 /**

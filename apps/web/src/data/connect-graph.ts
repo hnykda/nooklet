@@ -6,9 +6,40 @@
  * needs) already imports FROM `bootstrap.ts`.
  */
 import { describeError } from "./api-client.js";
-import { setConnectedGraphToken } from "./bootstrap.js";
+import { samePathGraphPrefix, setConnectedGraphToken } from "./bootstrap.js";
 
 export type ConnectResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * B-613: everything the re-pair screen (`ConnectView.tsx`'s `repair` prop) needs to put a new token
+ * on an EXISTING entry rather than create one. `connectBase` is what `connectToGraph` gets: `null`
+ * for a same-origin entry (web/desktop, `baseUrl` like `/g/default`), which updates the active
+ * entry in place; the absolute address for a Capacitor entry, which `setConnectedGraphToken`
+ * matches back to the same entry. Either way the entry keeps its id, so its local replica (keyed
+ * by that id) and its unpushed `pending_op` rows are the ones that sync once the token works.
+ */
+export interface RepairTarget {
+  connectBase: string | null;
+  /** Shown read-only: the address is the entry's, not something to change while re-pairing. */
+  displayUrl: string;
+  /** Where to ask `/api/session` whether this browser would simply be handed a new token. */
+  sessionBase: string;
+  /** The `/g/<slug>` the entry points at, for the `nooklet token create --graph` hint. */
+  graphSlug?: string;
+}
+
+export function repairTargetFor(baseUrl: string | undefined, origin: string): RepairTarget {
+  const graphSlug = graphSlugOf(baseUrl);
+  if (baseUrl && /^https?:\/\//i.test(baseUrl)) {
+    return { connectBase: baseUrl, displayUrl: baseUrl, sessionBase: baseUrl, graphSlug };
+  }
+  return {
+    connectBase: null,
+    displayUrl: `${origin}${baseUrl ?? ""}`,
+    sessionBase: baseUrl ?? "",
+    graphSlug,
+  };
+}
 
 /** `baseUrl: null` means "this page's own origin" (the non-Capacitor path — see
  * `setConnectedGraphToken`'s own doc comment for why that is a distinct case, not just an empty
@@ -19,7 +50,9 @@ export async function connectToGraph(
   token: string,
 ): Promise<ConnectResult> {
   const baseUrl = typedBaseUrl === null ? null : graphBaseUrl(typedBaseUrl);
-  const base = baseUrl ?? "";
+  // Same-origin: verify against THIS page's graph. A bare "" resolved to the server's bare-origin
+  // redirect, i.e. always the default graph, so on `/g/work` a valid `work` token was "rejected".
+  const base = baseUrl ?? samePathGraphPrefix() ?? "";
   try {
     const res = await fetch(`${base}/api/v1/graph.overview`, {
       method: "POST",
@@ -35,8 +68,13 @@ export async function connectToGraph(
     if (!res.ok) {
       return { ok: false, error: `Server returned ${res.status}. Is this the right address?` };
     }
+    // B-618: the graph's own label names the entry, rather than "This graph"/"Remote graph".
+    const overview = (await res.json().catch(() => undefined)) as
+      | { graph?: { label?: unknown } }
+      | undefined;
+    const label = typeof overview?.graph?.label === "string" ? overview.graph.label : undefined;
     // Only remembered once the server has actually answered — a bad address/token must not stick.
-    setConnectedGraphToken(baseUrl, token);
+    setConnectedGraphToken(baseUrl, token, label);
     return { ok: true };
   } catch (err) {
     return {
@@ -182,5 +220,83 @@ export async function createGraphOnServer(
     return { ok: true, baseUrl: `${serverUrl}/g/${body.id}`, token: body.token };
   } catch (err) {
     return { ok: false, error: `Could not reach ${serverUrl}: ${describeError(err)}` };
+  }
+}
+
+/**
+ * B-618: the label the server has for the graph at `baseUrl`, via the same graph-scoped
+ * `graph.overview` the connect flow verifies with (so any token that can sync can name its graph;
+ * `GET /graphs` needs the root token). `undefined` on any failure — callers fall back to the slug.
+ */
+export async function fetchGraphLabel(baseUrl: string, token: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${baseUrl}/api/v1/graph.overview`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: "{}",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return undefined;
+    const body = (await res.json()) as { graph?: { label?: unknown } };
+    return typeof body.graph?.label === "string" ? body.graph.label : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The `/g/<slug>` an address points at, if any. */
+export function graphSlugOf(baseUrl: string | undefined): string | undefined {
+  return baseUrl ? /\/g\/([a-z0-9-]+)\/?$/.exec(baseUrl)?.[1] : undefined;
+}
+
+/** The server an address belongs to: the address with any trailing `/g/<slug>` removed (a reverse
+ * proxy's own subpath, if there is one, is kept). */
+export function serverRootOf(url: string): string {
+  return url.replace(/\/+$/, "").replace(/\/g\/[a-z0-9-]+$/, "");
+}
+
+export interface ServerGraph {
+  id: string;
+  label: string;
+  /** The address to add it by: `<server root>/g/<id>`. */
+  url: string;
+}
+
+export type ListGraphsResult = { ok: true; graphs: ServerGraph[] } | { ok: false; error: string };
+
+/**
+ * B-618: the graphs a server hosts, for the switcher's add form to offer. `GET /graphs` is gated
+ * by the server's ROOT token (ADR 025) — a device token cannot list, and says so readably.
+ */
+export async function listServerGraphs(typedUrl: string, token: string): Promise<ListGraphsResult> {
+  const root = serverRootOf(typedUrl);
+  try {
+    const res = await fetch(`${root}/graphs`, {
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        error:
+          "Listing a server's graphs needs its root token (run `nooklet token root` there). A device token can only open the graph it was made for.",
+      };
+    }
+    if (!res.ok) return { ok: false, error: `Server returned ${res.status}.` };
+    const body = (await res.json()) as { graphs?: Array<{ id?: unknown; label?: unknown }> };
+    const graphs = (body.graphs ?? []).flatMap((g) =>
+      typeof g.id === "string"
+        ? [
+            {
+              id: g.id,
+              label: typeof g.label === "string" && g.label ? g.label : g.id,
+              url: `${root}/g/${g.id}`,
+            },
+          ]
+        : [],
+    );
+    return { ok: true, graphs };
+  } catch (err) {
+    return { ok: false, error: `Could not reach ${root}: ${describeError(err)}` };
   }
 }
