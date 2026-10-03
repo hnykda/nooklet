@@ -957,3 +957,45 @@ describe("rebuild", () => {
     expect(count?.n).toBe(1);
   });
 });
+
+describe('order: "seq" (ADR 026, B-587)', () => {
+  // The B-587 log: a page of "Ghost" created and deleted, then device A's create of "Ghost" —
+  // logged after the delete (seq order) but minted before A heard of it (smaller HLC).
+  const ghost = "ghostpage00001";
+  const mine = "minepage000001";
+  const log = (): Op[] => [
+    makeOp(hlcAt(BASE + 1, DEV_B), DEV_B, ghost, {
+      kind: "page.create",
+      name: "Ghost",
+      journalDay: null,
+      createdAt: BASE,
+    }),
+    makeOp(hlcAt(BASE + 2, DEV_B), DEV_B, ghost, { kind: "page.delete", deletedAt: BASE + 2 }),
+    makeOp(hlcAt(BASE + 2, DEV_A), DEV_A, mine, {
+      kind: "page.create",
+      name: "Ghost",
+      journalDay: null,
+      createdAt: BASE + 2,
+    }),
+  ];
+  const liveGhost = () =>
+    driver.get<{ id: string }>("SELECT id FROM page WHERE key = 'ghost' AND deleted_at IS NULL")
+      ?.id;
+
+  it("applies the batch as given, so the create meets the name already freed", () => {
+    const res = applyOps(driver, log(), { order: "seq" });
+    expect(res.rejected).toBe(0);
+    expect(liveGhost()).toBe(mine);
+  });
+
+  it("the default re-sorts by HLC and decides the collision the other way (why seq exists)", () => {
+    const res = applyOps(driver, log());
+    expect(res.results.find((r) => r.entity === mine)?.reason).toBe("page-key-collision");
+    expect(liveGhost()).toBeUndefined();
+  });
+
+  it("rebuild passes the order through", () => {
+    rebuild(driver, log(), { order: "seq" });
+    expect(liveGhost()).toBe(mine);
+  });
+});

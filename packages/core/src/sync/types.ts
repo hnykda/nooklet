@@ -94,6 +94,24 @@ export interface AppliedOpResult {
   reason?: ApplyReason;
 }
 
+/**
+ * Options for `applyOps`/`rebuild` (ADR 026).
+ *
+ * `order: "hlc"` (the default) sorts the batch by HLC: the canonical order when there is no
+ * arbiter — a device applying its own ops, or the serverless property tests.
+ *
+ * `order: "seq"` applies the ops exactly as given, which the caller promises is the home server's
+ * `seq` order — the order the server actually applied them in. Use it for every batch that comes
+ * out of the server's op log (a `/sync/pull` page, a push response's corrections, `verify`'s
+ * replay). A name collision (`page-key-collision`) or a cycle check depends on the state an op
+ * meets, and HLC order can disagree with `seq` order: an op minted before its device heard of an
+ * older-seq op carries the smaller HLC (B-587). Re-sorting such a batch by HLC re-decides what the
+ * server already decided, and can decide it differently.
+ */
+export interface ApplyOpsOptions {
+  order?: "hlc" | "seq";
+}
+
 export interface ApplyOpsResult {
   results: AppliedOpResult[];
   applied: number;

@@ -10,7 +10,7 @@
  * `callOp`. `../source-guards.test.ts` keeps new views from growing a formatter of their own.
  */
 import { Route, Router } from "@solidjs/router";
-import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
 import { createResource } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SearchInput, SearchResult } from "../data/api-client.js";
@@ -92,7 +92,6 @@ describe("server failures keep their address and hint (B-330)", () => {
   });
 
   it("History's Undo shows the server's hint when the undo is refused", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     fake.callOp = async (name) => {
       if (name === "batch.undo") {
         throw new ApiError("conflict", "batch b1 was already undone", "undo its undo instead");
@@ -120,6 +119,9 @@ describe("server failures keep their address and hint (B-330)", () => {
       </Router>
     ));
     fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    // The in-page confirm (B-491); its own "Undo" is the confirm button.
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Undo" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("batch b1 was already undone undo its undo instead");
   });

@@ -153,9 +153,17 @@ function makeReplicaDriver(): SqlDriver {
   return driver;
 }
 
-function makeReplicaClient(app: Hono, token: string): { driver: SqlDriver; client: SyncClient } {
+function makeReplicaClient(
+  app: Hono,
+  token: string,
+  opts: { now?: () => number } = {},
+): { driver: SqlDriver; client: SyncClient } {
   const driver = makeReplicaDriver();
-  const client = new SyncClient({ driver, transport: makeInProcessTransport(app, token) });
+  const client = new SyncClient({
+    driver,
+    transport: makeInProcessTransport(app, token),
+    now: opts.now,
+  });
   client.init();
   return { driver, client };
 }
@@ -479,6 +487,117 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
       expect(verifyRebuildParity(s).divergences).toEqual([]);
     });
   }
+
+  /**
+   * B-587, made deterministic: the server applies device A's `page.create` of "Ghost Name" AFTER
+   * its own `page.delete` of the old page of that name (seq order), but A's op carries the SMALLER
+   * HLC — A's clock runs 5 s behind and A had not pulled yet (ADR 003 rejects only clocks that
+   * run ahead). Every replica must end where the server is, however it learns the ops: B is live
+   * and pulls them one push at a time, C bootstrapped before and pulls the delete and A's ops in
+   * one batch, D pulls the whole log in one batch, E bootstraps afterwards. Before ADR 026 a
+   * one-batch pull re-sorted by HLC: C met A's create while the old page was still live and lost
+   * A's page and block; D applied A's create before the old page's and lost that tombstone.
+   */
+  it("a page created under a name the server freed, with an HLC older than the freeing op, converges on every replica (B-587)", async () => {
+    const s = server.serverCtx.driver;
+    const { driver: driverB, client: clientB } = makeReplicaClient(server.app, server.token);
+    const home = newId();
+    const line = newId();
+    clientB.applyLocal([
+      makeOp(clientB.nextHlc(), clientB.getDeviceId(), home, {
+        kind: "page.create",
+        name: "Home B",
+        journalDay: null,
+        createdAt: Date.now(),
+      }),
+      makeOp(clientB.nextHlc(), clientB.getDeviceId(), line, {
+        kind: "block.create",
+        place: { pageId: home, parentId: null, order: "a0" },
+        content: "[[Ghost Name]]",
+        createdAt: Date.now(),
+      }),
+    ]);
+    await clientB.flush();
+
+    const { driver: driverC, client: clientC } = makeReplicaClient(server.app, server.token);
+    await clientC.bootstrap();
+    expect(
+      driverC.all("SELECT id FROM page WHERE key = 'ghost name' AND deleted_at IS NULL"),
+    ).toHaveLength(1);
+    const { driver: driverD, client: clientD } = makeReplicaClient(server.app, server.token);
+
+    clientB.applyLocal([
+      makeOp(clientB.nextHlc(), clientB.getDeviceId(), line, {
+        kind: "block.text",
+        content: "no link any more",
+      }),
+    ]);
+    await clientB.flush();
+    const freed = s.get<{ hlc: string }>(
+      "SELECT hlc FROM op WHERE kind = 'page.delete' AND device_id = 'refpages'",
+    );
+    expect(freed).toBeDefined();
+
+    const { driver: driverA, client: clientA } = makeReplicaClient(server.app, server.token, {
+      now: () => Date.now() - 5_000,
+    });
+    const mine = newId();
+    const block = newId();
+    const createOp = makeOp(clientA.nextHlc(), clientA.getDeviceId(), mine, {
+      kind: "page.create",
+      name: "Ghost Name",
+      journalDay: null,
+      createdAt: Date.now(),
+    });
+    clientA.applyLocal([
+      createOp,
+      makeOp(clientA.nextHlc(), clientA.getDeviceId(), block, {
+        kind: "block.create",
+        place: { pageId: mine, parentId: null, order: "a0" },
+        content: "mine",
+        createdAt: Date.now(),
+      }),
+    ]);
+    // The B-587 shape, asserted rather than hoped for: older HLC, later seq.
+    expect(createOp.hlc < (freed?.hlc as string)).toBe(true);
+    await clientA.flush();
+    expect(s.all("SELECT id FROM page WHERE key = 'ghost name' AND deleted_at IS NULL")).toEqual([
+      { id: mine },
+    ]);
+
+    await clientA.pull();
+    await clientB.pull();
+    await clientC.pull();
+    await clientD.pull();
+    const { driver: driverE, client: clientE } = makeReplicaClient(server.app, server.token);
+    await clientE.bootstrap();
+
+    const liveOnly = (d: SqlDriver) => ({
+      ...dumpState(d),
+      pages: d.all("SELECT * FROM page WHERE deleted_at IS NULL ORDER BY id"),
+    });
+    // A never holds the old page's tombstone: its create met A's live page (B-443, open), so A is
+    // compared on live rows only; every other replica byte for byte.
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const diverged = [
+      ...(same(liveOnly(driverA), liveOnly(s)) ? [] : ["A"]),
+      ...(
+        [
+          ["B", driverB],
+          ["C", driverC],
+          ["D", driverD],
+          ["E", driverE],
+        ] as const
+      )
+        .filter(([, d]) => !same(dumpState(d), dumpState(s)))
+        .map(([name]) => name),
+    ];
+    expect(diverged).toEqual([]);
+    expect(driverD.get("SELECT page_id FROM block WHERE id = ?", [block])).toEqual({
+      page_id: mine,
+    });
+    expect(verifyRebuildParity(s).divergences).toEqual([]);
+  });
 
   /**
    * B-445: device A, offline, types into a page a link made (ADR 024) while device B edits that

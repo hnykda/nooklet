@@ -55,12 +55,15 @@ test("a title rename onto an existing page's name is refused and the title goes 
 }) => {
   await seedPage(page, "Rename UI Taken", "- already here");
   await openPage(page, "Rename UI Clash", "- mine");
-  page.once("dialog", (d) => void d.dismiss());
   const title = page.locator(".page-title-input");
   await title.fill("Rename UI Taken");
   await title.press("Enter");
 
   await expect(title).toHaveValue("Rename UI Clash");
+  // Said on the title row, not in `window.alert` — which the desktop webview never shows (B-491).
+  const notice = page.locator(".page-actions-notice-error");
+  await expect(notice).toHaveAttribute("role", "alert");
+  await expect(notice).toContainText("Rename failed:");
   await expect(page).toHaveURL(/Rename%20UI%20Clash/);
   expect(await resolvedName(page, "Rename UI Clash")).toBe("Rename UI Clash");
   expect((await readBlocks(page, "Rename UI Taken")).map((b) => b.content)).toEqual([

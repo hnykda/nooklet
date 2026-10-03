@@ -23,6 +23,7 @@
 
 import { A, useParams } from "@solidjs/router";
 import { type Accessor, createSignal, For, type JSX, Show } from "solid-js";
+import { confirmDialog } from "../app/confirm-dialog.js";
 import { describeError } from "../data/api-client.js";
 import {
   type HistoryBatch,
@@ -162,10 +163,16 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
   const title = () => displayRefName(props.name());
 
   async function undoOne(batch: HistoryBatch): Promise<void> {
-    const ok = window.confirm(
-      `Undo this change to "${title()}"?\n\n${batch.summary}\n\n` +
+    // In-page, not `window.confirm`: the desktop app's webview answers that with Cancel unseen,
+    // so Undo silently did nothing there (B-491).
+    const ok = await confirmDialog({
+      title: `Undo this change to "${title()}"?`,
+      message: [
+        batch.summary,
         "Anything edited again since, here or on another page, is left as it is.",
-    );
+      ],
+      confirmLabel: "Undo",
+    });
     if (!ok) return;
     setBusy(batch.batchId);
     setError(null);
@@ -186,13 +193,16 @@ export function HistoryView(props: { name: Accessor<string> }): JSX.Element {
     const newer = history.batches().slice(0, index);
     if (newer.length === 0) return;
     const n = newer.length;
-    const ok = window.confirm(
-      `Restore "${title()}" as it was after this change?\n\n` +
+    const ok = await confirmDialog({
+      title: `Restore "${title()}" as it was after this change?`,
+      message: [
         `This undoes the ${n} newer change${n === 1 ? "" : "s"} above it, newest first. ` +
-        "A change that also touched other pages is undone there too, except where something " +
-        "was edited again since: later edits, on any page, are left as they are. " +
+          "A change that also touched other pages is undone there too, except where something " +
+          "was edited again since: later edits, on any page, are left as they are.",
         "The undos are themselves recorded, so you can undo them in turn.",
-    );
+      ],
+      confirmLabel: "Restore",
+    });
     if (!ok) return;
     setBusy(history.batches()[index]?.batchId ?? "restore");
     setError(null);

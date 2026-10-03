@@ -28,10 +28,12 @@ runs the full e2e suite on the merged tree.
 | real-device-test | runbook + CORS, bare-address, proxy-token fixes, deploy/ drafts, **merged** (`ee8c54c`) | 6307 |
 | refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
 | empty-journal | B-595, **merged** (`6ddfc77`); B-605 deferred | 6309 |
-| sweep-core | readiness sweep: daily-use loop on a copy of the real graph → `docs/review/2026-10-03-sweep-core.md` | 6310 |
+| sweep-core | **done**: basic loop works; B-606..B-610 → `docs/review/2026-10-03-sweep-core.md` | 6310 |
 | sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
-| b587 | B-587: does HLC-vs-seq order diverge a third device? fix | 6314 |
+| b587 | B-587, real divergence, **merged** (`0cb4a62`, ADR 026) | 6314 |
+| b491 | B-491, **merged** (`f3a0d78`) | 6315 |
+| pairing | D3 `--no-loopback-token`, B-602, B-604, B-603 `nooklet://connect` link | 6316-6319 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### State of `main`
@@ -70,6 +72,11 @@ If cut off: `git worktree list` shows the branches; read each progress file.
 ### The 2026-09-13 to-dos: none started (audited 2026-10-03)
 B-560 (date headings open the day), the B-541 "⋯" top-right menu, B-380 option (c), mermaid out of
 the precache plus a single sidecar copy, the references heading count. The order below still stands.
+
+### Owner decisions pending for the real test (from `docs/progress/real-device-test.md`)
+D1 **answered 2026-10-03: the owner's Mac** (runbook option L, LAN) for the first test; homeserver later; D2 homeserver
+details (namespace, hostname, volume size, memory limit, image build trigger). D3 decided by the
+coordinator: add `--no-loopback-token` (agent pairing). D4 is checked by runbook step H6.
 
 ### Owner decisions (answered 2026-10-03)
 B-534: keep the allowlist, no `zotero://`. B-450: mimic Logseq. B-472: deferred ("no for now").
