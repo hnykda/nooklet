@@ -21,12 +21,13 @@ runs the full e2e suite on the merged tree.
 |---|---|---|
 | b585 | B-585 fix, re-check B-587 | 6301 |
 | keys-small | B-450 (mimic Logseq), B-594, B-592 | 6302 |
-| journal-headings | B-560 | 6303 |
+| journal-headings | B-560, **merged** (`9f41585`) | 6303 |
 | top-menu | the "⋯" top-right menu (B-541 follow-up) | 6304 |
 | tag-autocomplete | B-380 option (c) | 6305 |
 | mermaid-lazy | mermaid out of precache, single sidecar copy | 6306 |
 | real-device-test | readiness and runbook for the Mac + own server + physical iPhone test | 6307 |
 | refs-count | references heading counts the way Logseq does | 6308 |
+| empty-journal | B-595, an editable empty journal day like Logseq | 6309 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### State of `main`
