@@ -5,8 +5,40 @@ server search landed). Ports 6350-6354 (`NOOKLET_E2E_PORT=6350`). Not merged to 
 
 ## Status
 
-Done: `cfc863b` (B-623), `9bd…`/`eaa3b8c` (flake fixes; see `git log`). In flight: the two full
-runs (results below once in).
+Done: `cfc863b` (B-623), `eaa3b8c` and before (flake fixes), the `views.spec` search test,
+`65b2460` (search-local-only), `19c5941` (shelf). Main merged up to `885543b`. In flight: the two
+final full runs on the merged tree (see "Full runs").
+
+## Full runs
+
+- Run 1 (main d27d56a + server search): 726 passed, 1 failed (views.spec:246, a stale search
+  test, fixed below), 2 skipped, of 729.
+- Run on the `885543b` merge (742 tests): 737 passed, 3 failed, 2 skipped. The failures were
+  search-local-only (stale, fixed), the views.spec shelf test (app regression, fixed), and
+  untrusted-content Alt+Enter ("Loading…" forever). The last one happened while I had a second
+  e2e run going on port 6351 in the same checkout. Both runs rebuild `apps/web/dist`, and a later
+  contaminated run showed the server answering `web_client_missing`. That makes it contamination,
+  not a finding: it passed when run alone.
+  **Never run two e2e suites in one checkout at once, even on different ports.**
+- Final runs: below.
+
+## Stale after today's merges (found in the full runs)
+
+- `views.spec.ts` "a failed search shows an error with Retry": since `3844838` (local-first
+  search), a failing server shows this device's hits plus a "server's semantic search failed"
+  line. There is no error and no Retry any more. I rewrote the test to that contract (5/5).
+- `search-local-only.spec.ts`: since `c58ede4`/B-612, an active `kind: "local"` entry opens
+  straight into its replica. The test waited 30 s for ConnectView's "Just this device". It is
+  red on main too. It now waits for the local sync state (5/5).
+
+## App regression: the shelf is lost on the first reload (`c58ede4`)
+
+`apps/web/src/app/shelf.ts` fixed its sessionStorage key from `activeGraphId()` at module load.
+On a tab's first load, bootstrap has not adopted a graph yet, so the shelf was written under
+`nooklet.shelf.state:~` and the next load (with an id) read nothing. `views.spec.ts` "a shelf
+card's crumb…" was red 2/2 without the fix and passes 5/5 with it. The fix: an id-less key is
+re-resolved until bootstrap sets one, then stays fixed for the rest of the page load. Test:
+`apps/web/src/app/shelf.test.ts` (red before).
 
 ## Findings
 
@@ -82,3 +114,10 @@ seedPage reason); repeat 0 is green. Not fixed — logged below.
   `34c8d3e`. Fixed: pinned `todo` in Settings.
 - NEW (low, test): `popups.spec.ts` is not `--repeat-each`-safe (fixed page names edited by the
   tests: lines 103, 223, 313, 578, 608, 619 fail on repeats 1-4). Open.
+- NEW, fixed (low, real): the block shelf made on a tab's first load was gone after a reload
+  (`c58ede4`). Fix `19c5941`. Tests: `apps/web/src/app/shelf.test.ts`, and the e2e shelf-crumb
+  test in `views.spec.ts`.
+- NEW, fixed (test): the `views.spec.ts` search-failure test has been stale since `3844838`, and
+  `search-local-only.spec.ts` since `c58ede4` (red on main).
+- NEW (process): concurrent e2e runs in one checkout share `apps/web/dist`. One run's build breaks
+  the other's server (`web_client_missing`), and separate ports do not isolate them.
