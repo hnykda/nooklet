@@ -282,32 +282,6 @@ the tree's root, or navigate out of the zoom. Probe: `e2e/tests/zz-ekv-probe.spe
 
 ---
 
-### B-450 · With a block selection standing, Enter on a focused button opens the block instead of pressing the button
-**Owner decision 2026-10-03:** mimic Logseq. Being implemented (see `docs/progress/keys-small.md`).
-
-**Status:** open (decided: mimic Logseq) · **Severity:** low · **Found:**
-2026-09-13, keys-in-fields (checking what B-300's fix leaves out) · **Test:** — (probe:
-`tools/probes/keys-in-fields-selection.spec.ts`, "on a focused button")
-
-Select a block (Escape), focus a button outside the outliner (`.help-fab`, focused with
-`locator.focus()`; whether a mouse click leaves a button focused differs by engine — not checked),
-press Enter: the button is not activated (help menu stays shut) and the
-selected block opens for editing — `block.editSelected` matches in the capture-phase dispatcher and
-prevents the default. Space does activate the button (nothing binds Space). Backspace on the focused
-button deletes the selected block on the server — arguably intended (the selection is still what the
-keyboard acts on), which is why this is a decision, not a bug fix: B-300's option (c) named
-inputs, textareas and contenteditables only. Candidates: count `button`/`[role=button]`/`a[href]`
-as fields for Enter and Space only; or end a standing selection when focus moves to a control
-outside the outliner.
-
-Links too, and reachable by keyboard alone (verifier, 2026-09-13, `tools/probes/keys-in-fields-verify.spec.ts`
-case F and A): with a block selected, Tab from the page title lands on the "History" link
-(`a.page-history-link`); Enter there ran `block.editSelected` (the block opened for editing, focus in
-`.cm-content`) and the link was not followed. So "click the title, Tab, Enter" opens a block instead
-of the page's history.
-
----
-
 ### B-451 · `review-reactivity.spec.ts`'s two "Retry recovers" tests time out: the Retry button detaches before the click
 
 **Status:** open (cause not traced) · **Severity:** low (test; the view itself ends up loaded) ·
@@ -877,11 +851,43 @@ if so this is a convergence bug, not just a verify false alarm. Fix options (not
 server re-stamps or rejects an op whose HLC is behind ops it already applied on the same name;
 or replay/pull apply in seq order rather than HLC order.
 
+### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
+**Status:** open, not investigated · **Severity:** low (test only) · **Found:** 2026-10-03, while
+running B-581's probe with neighbours · **Test:** the test itself
+
+Run as `autocomplete-busy-replica, autocomplete-inside-link, autocomplete, connectivity,
+desktop-page-creation-probe, journal-draft-sync` it failed with `locator.click: Test timeout of
+30000ms exceeded … waiting for locator('.vr-outliner').first().locator('.vr-block-view').first()`.
+It branches on `draft.isVisible()` immediately after `goto("/journals")` — the same "draft may be
+swapped for the real outliner once the snapshot lands" race B-335 fixed in `openJournal` — and
+`.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
+`openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
+
+### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
+**Status:** open (decided 2026-10-03: mimic Logseq, an editable empty journal) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
+**Test:** none yet
+
+Opening a not-yet-created journal day's page (today's heading before today has a block, or any date
+link) shows the generic "This page doesn't exist yet / Create" view instead of the journal stream's
+draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
+
+### B-597 · Inside a `[[link]]` naming another page's alias, the popup offers "New page" for the alias name, and Enter creates a page with that name
+**Status:** open, not investigated · **Severity:** low · **Found:** 2026-10-03, keys-small (B-592)
+· **Test:** —
+
+`Walkin Alias Holder` has `alias:: Walkin Unmade Page`; a block says `[[Walkin Unmade Page]]`.
+Walking the caret into the link opens the `[[` popup, which lists `New page "Walkin Unmade Page"`
+— `AutocompletePopup.tsx` checks `hasExact` (and `rowKeepingClosedLink`) against page titles only,
+not aliases. Pressing Enter on it created a page "Walkin Unmade Page" (seen in `page.list` during
+the B-592 rework, before that assertion was dropped from the test), so the alias now has a
+same-named page competing with it. Expected, probably: the alias holder is the row that keeps the
+link, and no "New page" for a name an alias answers. What the server does with a page whose key
+equals another page's alias (link resolution afterwards) was not checked.
+
+## Fixed
+
 ### B-592 · The B-382 e2e test's precondition ("a link to a page that does not exist") cannot hold since ADR 024
-**Status:** open · **Severity:** low (test only; B-382's fix itself is not shown broken) ·
-**Found:** 2026-10-03, triaging the full e2e run · **Test:** `e2e/tests/autocomplete-inside-link.spec.ts`
-"Enter on New page inside a link to a page that does not exist keeps the whole link (B-382)" is the
-failing test
+**Status:** fixed (`4c233f1`) · **Severity:** low (test only) · **Test:** the reworked test itself
 
 Fails every time, alone or with neighbours:
 `Expected substring: "New page" / Received string: "Walkin Unmade Page"` at the
@@ -897,34 +903,73 @@ done here): it needs a link whose page does not exist, which ADR 024 forbids for
 through the server — e.g. type the link in the browser with the page list known not to contain it,
 or assert the B-382 guarantee (Enter leaves the whole link) for whichever row is active.
 
-### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
-**Status:** open, not investigated · **Severity:** low (test only) · **Found:** 2026-10-03, while
-running B-581's probe with neighbours · **Test:** the test itself
-
-Run as `autocomplete-busy-replica, autocomplete-inside-link, autocomplete, connectivity,
-desktop-page-creation-probe, journal-draft-sync` it failed with `locator.click: Test timeout of
-30000ms exceeded … waiting for locator('.vr-outliner').first().locator('.vr-block-view').first()`.
-It branches on `draft.isVisible()` immediately after `goto("/journals")` — the same "draft may be
-swapped for the real outliner once the snapshot lands" race B-335 fixed in `openJournal` — and
-`.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
-`openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
+**Fixed 2026-10-03.** Trashing the page after seeding does not restore the precondition — a
+still-referenced page is minted again (`ref-pages.ts`: "Deleting a page that is still referenced
+cannot make it go away"), checked: `page.list` still had it. The one stored state where a link's
+page does not exist is a link naming another page's alias (`ref-pages.ts` deletes "unclaimed
+pages whose name an alias now answers for"), and the popup's "New page" check compares titles
+only, so the row is offered there. The test now seeds "Walkin Alias Holder" with
+`alias:: Walkin Unmade Page`, asserts the row reads `New page "Walkin Unmade Page"` (the whole
+link — B-382's fix), walks to it if ranking put another row first, presses Enter, and checks the
+link is whole and no "Walkin Unm" page exists. Red with B-382's `createName` fix reverted
+(no row with the whole name), green with it. If "New page" stops being offered for an alias name
+(see the new entry below), this test needs another missing-page state.
 
 ### B-594 · The Diagnostics panel does not close on Escape
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, while fixing B-591 · **Test:** none
+**Status:** fixed (`4c233f1`) · **Severity:** low · **Found:** 2026-10-03, while fixing B-591 ·
+**Test:** e2e/tests/diagnostics.spec.ts "closes on Escape, like every other overlay (B-594)"
 
 Every other overlay (HelpMenu, the confirm dialog, the context menu) closes on Escape. The
 Diagnostics panel (`views/DiagnosticsPanel.tsx`) closes only on a backdrop click or its Close
 button, so a keyboard user has to tab to Close.
 
-### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
-**Status:** open (decided 2026-10-03: mimic Logseq, an editable empty journal) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
-**Test:** none yet
+**Fixed 2026-10-03.** `DiagnosticsPanel.tsx` handles Escape as `HelpMenu` does: a `document`
+keydown listener (focus on the panel or the page) plus a `claimPopupKeys` claim, so an editor
+still focused underneath does not read the same Escape as "leave editing" (B-72). The test closes
+it once with focus on its Close button and once with nothing focused. Not tested: Escape with a
+block editor focused underneath (opening the panel takes a click, which ends editing).
 
-Opening a not-yet-created journal day's page (today's heading before today has a block, or any date
-link) shows the generic "This page doesn't exist yet / Create" view instead of the journal stream's
-draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
+### B-450 · With a block selection standing, Enter on a focused button opens the block instead of pressing the button
+**Owner decision 2026-10-03:** mimic Logseq. Being implemented (see `docs/progress/keys-small.md`).
 
-## Fixed
+**Status:** fixed (`4c233f1`) · **Severity:** low · **Found:** 2026-09-13, keys-in-fields · **Test:**
+e2e/tests/keys-in-fields.spec.ts "Enter on a button focused outside the outline presses it, not
+the selected block (B-450)" and "click the title, Tab to the History link, Enter follows the link
+with a block selected (B-450)"
+
+Select a block (Escape), focus a button outside the outliner (`.help-fab`, focused with
+`locator.focus()`; whether a mouse click leaves a button focused differs by engine — not checked),
+press Enter: the button is not activated (help menu stays shut) and the
+selected block opens for editing — `block.editSelected` matches in the capture-phase dispatcher and
+prevents the default. Space does activate the button (nothing binds Space). Backspace on the focused
+button deletes the selected block on the server — arguably intended (the selection is still what the
+keyboard acts on), which is why this is a decision, not a bug fix: B-300's option (c) named
+inputs, textareas and contenteditables only. Candidates: count `button`/`[role=button]`/`a[href]`
+as fields for Enter and Space only; or end a standing selection when focus moves to a control
+outside the outliner.
+
+Links too, and reachable by keyboard alone (verifier, 2026-09-13, `tools/probes/keys-in-fields-verify.spec.ts`
+case F and A): with a block selected, Tab from the page title lands on the "History" link
+(`a.page-history-link`); Enter there ran `block.editSelected` (the block opened for editing, focus in
+`.cm-content`) and the link was not followed. So "click the title, Tab, Enter" opens a block instead
+of the page's history.
+
+---
+
+**Fixed 2026-10-03 (owner decision: mimic Logseq).** What Logseq does, read from its source
+(`docs/progress/keys-small.md` has the files and quotes): a window `pointerdown` listener
+(`components/container.cljs#hide-context-menu-and-clear-selection`) clears the block selection
+unless Shift/Meta is held or the target is an input/textarea, a block or `[data-keep-selection]`;
+no focus listener clears it, but Tab is a global shortcut key there that indents the selection, so
+keyboard focus never walks out of a selection to a button. `BlockTree.tsx` now (1) copies the
+pointer rule, with the chrome that already keeps an editing session alive as the
+`data-keep-selection` equivalent, and (2) ends the selection on `focusin` to a button or link
+outside the outline — needed because here a field owns Tab (B-300), so "click title, Tab" reaches
+the History link with the selection standing, a state Logseq does not produce. Effect: Enter and
+Space press the focused control, Backspace there deletes nothing. A click into a text field still
+keeps the selection (Logseq's `util/input?` exemption; B-300's tests rely on it). Both e2e tests
+were red with the new effect disabled. Unverified: WebKit; Logseq's Tab-indents-selection is read
+from its keymap, not run.
 
 ### B-585 · B-568's client-side ref-page creation loses keystrokes / mints junk pages / times out restoring — found via a full e2e run, not yet fixed
 **Status:** fixed (2026-10-03, `7784d54`) · **Severity:** high (silent data loss) ·
