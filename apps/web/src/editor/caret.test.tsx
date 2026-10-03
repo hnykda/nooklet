@@ -61,3 +61,51 @@ describe("resolveClickOffset", () => {
     expect(resolveClickOffset(container, 0, 0)).toBeNull();
   });
 });
+
+/** The text node whose text is `text`. */
+function textNode(container: HTMLElement, text: string): Node {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.textContent === text) return n;
+  throw new Error(`no text node "${text}"`);
+}
+
+describe("resolveClickOffset at a line's edges (B-606)", () => {
+  it("the end of a trailing link's text is after its `]]`", () => {
+    const content = "plain text [[Balení]]";
+    const container = renderBlock(content);
+    hit(textNode(container, "Balení"), 6);
+    expect(resolveClickOffset(container, 0, 0)).toBe(content.length);
+  });
+
+  it("the end of a trailing bold is after its closing `**`", () => {
+    const content = "text **bold**";
+    const container = renderBlock(content);
+    hit(textNode(container, "bold"), 4);
+    expect(resolveClickOffset(container, 0, 0)).toBe(content.length);
+  });
+
+  it("the start of a leading link is before its `[[`", () => {
+    const container = renderBlock("[[Lead]] words");
+    hit(textNode(container, "Lead"), 0);
+    expect(resolveClickOffset(container, 0, 0)).toBe(0);
+  });
+
+  it("a character inside a link counts from after the `[[`", () => {
+    const container = renderBlock("[[Lead]] words");
+    hit(textNode(container, "Lead"), 2);
+    expect(resolveClickOffset(container, 0, 0)).toBe(4); // `[[Le|ad]]`
+  });
+
+  it("the end of a link with text after it is unchanged: inside, before the `]]`", () => {
+    const container = renderBlock("a [[Mid]] b");
+    hit(textNode(container, "Mid"), 3);
+    expect(resolveClickOffset(container, 0, 0)).toBe(7); // `a [[Mid|]] b`
+  });
+
+  it("the end of a link that ends a line of a multi-line block is that line's end", () => {
+    const content = "see [[One]]\nsecond";
+    const container = renderBlock(content);
+    hit(textNode(container, "One"), 3);
+    expect(resolveClickOffset(container, 0, 0)).toBe(content.indexOf("\n"));
+  });
+});
