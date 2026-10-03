@@ -22,7 +22,7 @@ runs the full e2e suite on the merged tree.
 | b585 | B-585 fix, **merged** (`7784d54`); B-587 cause found, not fixed | 6301 |
 | keys-small | B-450, B-594, B-592, **merged** (`4c233f1`) | 6302 |
 | journal-headings | B-560, **merged** (`9f41585`) | 6303 |
-| top-menu | the "⋯" top-right menu (B-541 follow-up) | 6304 |
+| top-menu | "⋯" menu, **merged** (`8578821`) | 6304 |
 | tag-autocomplete | B-380 option (c), **merged** (`c6fe3bc`) | 6305 |
 | mermaid-lazy | mermaid lazy + single sidecar copy, **merged** (`ce99b82`, `05ac71e`) | 6306 |
 | real-device-test | readiness and runbook for the Mac + own server + physical iPhone test | 6307 |

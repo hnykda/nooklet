@@ -1473,6 +1473,8 @@ everywhere `callOp` is reachable, in case this decision is revisited.
 
 ---
 
+2026-10-03: `nav.graph` (the "⋯" menu's Graph, and "Open graph" in the palette) is left out of the registry on Capacitor (`app/CommandLayer.tsx`).
+
 ### B-577 · Server-dependent views show a raw, alarming error instead of calm "needs a server" messaging in local-only mode
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-15, two owner screenshots on the same
 Simulator session: the References panel showing "Couldn't load references. Retry" in red under a
@@ -1863,6 +1865,8 @@ unaffected, it is never mobile) when `mobile` is true.
 
 ---
 
+Also applies to the "⋯" menu (2026-10-03): its Keyboard shortcuts item runs `app.showShortcuts`, whose `when` is `!mobile` (`MoreMenu.test.tsx`, `more-menu-phone.spec.ts`).
+
 ### B-563 · `ConnectView` reads as "syncing is mandatory"
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-14, owner feedback after seeing the real
 screen on the iOS Simulator: "it also says that the device needs server's address and token, but it
@@ -1921,6 +1925,16 @@ Trash, Keyboard shortcuts / Help, Diagnostics — next to the quiet sync icon an
 **Resolved 2026-09-13 — the hypothesis was wrong.** Checked in a real test window (m11/desktop-shell, B-531): `TitleBarStyle::Transparent` starts the page below the title strip; the traffic lights never cover the toolbar, and real clicks reached Toggle sidebar, Graph, Pages, "?" and Settings. The owner's missing controls were an OLD client kept by the service worker (B-532, fixed: `skipWaiting` + `clientsClaim`). The top-right "⋯" menu the owner asked for is still a to-do.
 
 ---
+
+**Follow-up done 2026-10-03** (`8578821`): the top-right "⋯" menu — `shell/MoreMenu.tsx`, last in
+the top bar after the sync cloud and the agent badge — with Settings (Cmd+,), All pages, Graph,
+Trash, Keyboard shortcuts, Diagnostics. Each item runs a command (new: `nav.allPages`, `nav.graph`,
+`nav.trash`, `app.showShortcuts`, `app.openDiagnostics`; Settings is `app.openSettings`), so the
+palette reaches the same places. Graph is not registered on Capacitor (B-578); Keyboard shortcuts
+has `when: "!mobile"` (B-564). Settings moved out of the `?` menu (one pointer route); the `?` FAB
+stays for docs, bug/feature links and the version. **Test:** `e2e/tests/more-menu.spec.ts` (opens
+each item), `e2e/tests/more-menu-phone.spec.ts`, `e2e/tests/desktop-shell.spec.ts`,
+`apps/web/src/shell/MoreMenu.test.tsx`. Not run in the real Tauri window or iOS build.
 
 ### B-531 · Hypothesis refuted: the traffic lights do NOT cover Toggle sidebar / Back / Forward
 **Status:** not a bug · **Severity:** — · **Found:** 2026-09-13, desktop-shell ·
