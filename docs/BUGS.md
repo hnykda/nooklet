@@ -891,7 +891,46 @@ same-named page competing with it. Expected, probably: the alias holder is the r
 link, and no "New page" for a name an alias answers. What the server does with a page whose key
 equals another page's alias (link resolution afterwards) was not checked.
 
+### B-602 · A WebSocket upgrade to an unrouted bare path hangs instead of failing
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
+
+`/sync/live` with no `/g/<id>` prefix: no 101, no error response (`tools/probes/ws-bare-origin.mjs`, "NEVER OPENED" after 5 s). The client fix (bare address → `/g/default`) avoids it; the server should answer 404.
+
+### B-603 · `nooklet://` deep links reach nothing
+**Status:** open · **Severity:** medium · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
+
+`platform.deepLinks.onOpen` has no subscriber anywhere in `apps/web/src` (grep), so opening `nooklet://anything` just foregrounds the app. A `nooklet://connect?url=…&token=…` link (or QR) would also remove the token-pasting step.
+
+### B-604 · `nooklet serve --host 0.0.0.0` prints `http://0.0.0.0:6100/...` as the address to use
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
+
+Not reachable from a phone; printing the machine's LAN IPs would save a lookup.
+
 ## Fixed
+
+### B-601 · The container image failed on first run: the official Node Linux binary needs `libatomic1`
+**Status:** fixed · **Severity:** low (deploy only) · **Found:** 2026-10-03, real-device-test agent ·
+**Test:** manual: `docker run` of `deploy/docker/Dockerfile`'s image
+
+**Fixed 2026-10-03** (`ee8c54c`) by installing `libatomic1` in the image. Possibly also affects the Linux desktop sidecar on minimal distros; not investigated.
+
+### B-600 · Security: the loopback auto-token was handed to every client behind a same-host reverse proxy
+**Status:** fixed (partly; see D3) · **Severity:** high (security) · **Found:** 2026-10-03, real-device-test agent ·
+**Test:** `packages/server/src/http/host-guard.test.ts` "refuses a token to a request that came through a same-machine reverse proxy"; probe `tools/probes/loopback-proxy-token.mjs`
+
+The server gives a write token to any caller that looks local. A proxy on the server's machine that rewrites `Host` to its upstream made every client look local. **Fixed 2026-10-03** (`ee8c54c`) for any request carrying forwarding headers (`X-Forwarded-For`, `Forwarded`, …) in `http/app.ts`. Still open: a proxy that rewrites `Host` and adds no forwarding header is indistinguishable from a local browser (decision D3 in `docs/progress/real-device-test.md`). the home server's setup is not affected (the Tailscale proxy runs in a separate pod).
+
+### B-599 · A server address typed without a path (`http://host:6100`) never opened live sync
+**Status:** fixed · **Severity:** high · **Found:** 2026-10-03, real-device-test agent ·
+**Test:** `apps/web/src/data/connect-graph.test.ts`, updated `ConnectView.test.tsx`/`GraphSwitcher.test.tsx`; probe `tools/probes/ws-bare-origin.mjs`
+
+The address was stored as-is; HTTP worked via the server's 307 to `/g/default`, but `/sync/live` never opened (WebSockets don't follow redirects), so live sync silently never connected. **Fixed 2026-10-03** (`ee8c54c`): `connect-graph.ts#graphBaseUrl` stores a bare address as `<address>/g/default`.
+
+### B-598 · The iOS app could not reach any server: no CORS on the server
+**Status:** fixed · **Severity:** critical (iPhone sync impossible) · **Found:** 2026-10-03, real-device-test agent ·
+**Test:** `packages/server/src/graphs/mount.test.ts` "CORS for nooklet's own app shells"; probe `tools/probes/capacitor-network/` (Simulator, before/after)
+
+Preflights got 401 (graph routes) or 307 (bare origin) without `Access-Control-Allow-Origin`; WebKit reported "TypeError: Load failed" for every fetch from `capacitor://localhost`. **Fixed 2026-10-03** (`ee8c54c`) in `graphs/mount.ts`: an allowlist of `capacitor://localhost` (never `*`). Verified on the iOS Simulator: 5/5 fetch checks failed before, 11/11 pass after; a block written on the server appeared live in the real app over a LAN IP. Not verified on a physical iPhone.
 
 ### B-592 · The B-382 e2e test's precondition ("a link to a page that does not exist") cannot hold since ADR 024
 **Status:** fixed (`4c233f1`) · **Severity:** low (test only) · **Test:** the reworked test itself

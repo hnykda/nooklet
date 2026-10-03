@@ -25,7 +25,7 @@ runs the full e2e suite on the merged tree.
 | top-menu | "⋯" menu, **merged** (`8578821`) | 6304 |
 | tag-autocomplete | B-380 option (c), **merged** (`c6fe3bc`) | 6305 |
 | mermaid-lazy | mermaid lazy + single sidecar copy, **merged** (`ce99b82`, `05ac71e`) | 6306 |
-| real-device-test | readiness and runbook for the Mac + own server + physical iPhone test | 6307 |
+| real-device-test | runbook + CORS, bare-address, proxy-token fixes, deploy/ drafts, **merged** (`ee8c54c`) | 6307 |
 | refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
 | empty-journal | B-595, an editable empty journal day like Logseq | 6309 |
 | sweep-core | readiness sweep: daily-use loop on a copy of the real graph → `docs/review/2026-10-03-sweep-core.md` | 6310 |
