@@ -77,13 +77,15 @@ interface OpRow {
  * Every op the server let take effect, in `seq` order — NOT the rejected ones (B-123).
  *
  * Whether a `page.create`, `page.rename` or page un-delete is rejected depends on the state it met
- * (`page-key-collision`, sql-schema.md rule 24), and core's replay re-sorts by HLC. A late push
+ * (`page-key-collision`, sql-schema.md rule 24), and core's replay used to re-sort by HLC. A late push
  * carrying an OLDER HLC than the write that beat it — a laptop offline since before today's
  * journal existed, pushing its own `page.create` for the day after an agent's `page_append` —
  * would win the name on replay although the server rejected it, and `verify` reported the
  * difference as divergence. The rejection is already decided: pull never ships rejected ops to any
  * device, and a cycle rejection's effect lives in its own logged corrective op. Replaying them
- * could only ever disagree with the server, never catch a real bug.
+ * could only ever disagree with the server, never catch a real bug. (Since ADR 026 the replay
+ * keeps `seq` order, which alone would also re-reject them; skipping them stays the cheaper and
+ * more obviously-right of the two.)
  */
 function loadOps(driver: SqlDriver): Op[] {
   const rows = driver.all<OpRow>(
@@ -164,7 +166,10 @@ export function verifyRebuildParity(driver: SqlDriver): VerifyReport {
   const rejectedSkipped = opCount - ops.length;
   const scratch = createNodeSqliteDriver(openNodeSqlite(":memory:"));
   initSchema(scratch);
-  applyOps(scratch, ops);
+  // In `seq` order, as the server applied them (rule 26, ADR 026) — not re-sorted by HLC: an op
+  // minted before its device heard of an older-seq op has the smaller HLC, and replaying it first
+  // can re-decide a name collision the server decided the other way (B-587).
+  applyOps(scratch, ops, { order: "seq" });
 
   const divergences: Divergence[] = [];
   for (const { table, pk } of STATE_TABLES) {
