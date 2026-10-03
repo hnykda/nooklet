@@ -17,11 +17,38 @@ Everything nooklet owns lives under it (see §2). `--port` defaults to 6100.
 
 ```
 nooklet serving ~/.nooklet/default
-  http  http://127.0.0.1:6100/api/v1
-  mcp   http://127.0.0.1:6100/mcp
-  spec  http://127.0.0.1:6100/openapi.json
-  sync  ws://127.0.0.1:6100/sync/live
+  graphs http://127.0.0.1:6100/graphs
+  http   http://127.0.0.1:6100/g/<id>/api/v1
+  mcp    http://127.0.0.1:6100/g/<id>/mcp
+  ...
 ```
+
+### 1.1 Reaching it from other devices
+
+```sh
+nooklet serve --host 0.0.0.0 --allow-host 192.168.1.5,my-mac.local [--no-loopback-token]
+```
+
+- `--host` (default `127.0.0.1`) is the bind address. Loopback means only this machine can connect.
+- `--allow-host` lists the names (`Host` header, port ignored) clients may use besides the loopback
+  names. With a non-loopback bind, any other name gets 403 on every route; `/mcp` follows the same
+  list on any bind. The 403 says which `--allow-host` to add, and so does the server's stderr, once
+  per refused name. This is the DNS-rebinding guard; don't work around it with a wildcard.
+- Bound to `0.0.0.0`, the banner lists this machine's LAN addresses as "the server address to type
+  in the app", marks the ones `--allow-host` doesn't cover yet, and prints the flag to restart with.
+- **Loopback auto-token.** A browser on the server's own machine (peer address AND `Host` are
+  loopback, no `X-Forwarded-For`/`Forwarded`/`X-Real-IP`) is handed a write + sync token
+  automatically, so the local desktop app needs no setup. Every other device needs a token from
+  `nooklet token create` (§8).
+- **`--no-loopback-token`** turns that off entirely. Use it behind a reverse proxy **on the same
+  machine** that rewrites `Host` to `127.0.0.1` and adds no forwarding header (a bare nginx
+  `proxy_pass`): to the server, every client of such a proxy looks exactly like a local browser
+  and would get a token. The container image and the Helm chart in `deploy/` set it by default:
+  nothing runs a browser inside a container, while a sidecar or `kubectl port-forward` arrives over
+  the pod's loopback.
+- Plain `http://` is a secure context only on loopback. A browser tab on `http://<LAN-IP>` gets a
+  blank page (no `crypto.randomUUID`/OPFS). The iOS app is unaffected (its page is
+  `capacitor://localhost`); for a browser on another device, put the server behind HTTPS.
 
 It's a single Node process, single writer connection to SQLite (WAL mode). There's no
 supervisor/systemd unit shipped — run it under whatever you already use to keep a process alive
@@ -310,6 +337,15 @@ nooklet token create --label <name> [--scope read|write|admin] [--sync]
 nooklet token list
 nooklet token revoke <token-id>
 ```
+
+**Pairing a phone.** `nooklet token create --label phone --scope write --sync --link
+<address the phone uses>` also prints `nooklet://connect?url=…&token=…`. Opened on the iPhone, the app
+shows a pre-filled "Connect to this server?" screen with the address and connects only when you tap
+Connect; it adds the server as a graph, keeping any local-only graphs. **The link contains the
+token**: it leaks wherever the link goes (clipboard and Universal Clipboard, notes, chat, shell
+history, screenshots, browser history). Use one token per device, delete the message you carried it
+in, and revoke on any doubt. (No QR code yet: there's no QR library in the dependency tree, and
+adding one is the owner's call.)
 
 The raw token is printed **exactly once**, at creation — copy it into whatever's going to use it
 (an agent's MCP config, a device's sync settings) immediately; only its hash is ever stored.
