@@ -50,9 +50,9 @@ agents are left running.
 B-560 (date headings open the day), the B-541 "⋯" top-right menu, B-380 option (c), mermaid out of
 the precache plus a single sidecar copy, the references heading count. The order below still stands.
 
-### Owner decisions still open
-B-534 (`zotero://` links from the desktop app), B-450, B-472, and the "synced via another tab" label.
-B-534's entry is under Fixed, but its "Owner decision needed" paragraph is unanswered.
+### Owner decisions (answered 2026-10-03)
+B-534: keep the allowlist, no `zotero://`. B-450: mimic Logseq. B-472: deferred ("no for now").
+"Synced via another tab" label: keep. Still open: the references heading count (to-do 5).
 
 ### Suggested next steps, in order
 1. B-585 (then re-check B-587 against it). B-592 is a quick test fix.

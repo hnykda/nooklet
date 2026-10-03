@@ -300,8 +300,9 @@ the tree's root, or navigate out of the zoom. Probe: `e2e/tests/zz-ekv-probe.spe
 ---
 
 ### B-450 · With a block selection standing, Enter on a focused button opens the block instead of pressing the button
+**Owner decision 2026-10-03:** mimic Logseq. Being implemented (see `docs/progress/keys-small.md`).
 
-**Status:** open (needs owner decision: whether buttons join B-300's rule) · **Severity:** low · **Found:**
+**Status:** open (decided: mimic Logseq) · **Severity:** low · **Found:**
 2026-09-13, keys-in-fields (checking what B-300's fix leaves out) · **Test:** — (probe:
 `tools/probes/keys-in-fields-selection.spec.ts`, "on a focused button")
 
@@ -399,7 +400,8 @@ split trims). Both shapes were already lossy (marker, leading spaces); owner's g
 ---
 
 ### B-472 · A text line `foo:: bar` in a block becomes a real property the first time the block is edited in the app
-**Status:** open (needs owner decision) · **Severity:** medium · **Found:** 2026-09-13,
+**Owner decision 2026-10-03:** "no for now" — deferred; the current promotion stays as is and is not changed until revisited.
+**Status:** deferred (owner, 2026-10-03) · **Severity:** medium · **Found:** 2026-09-13,
 mirror-escape (fixing B-342) · **Test:** none yet; probe `tools/probes/content-shapes-beyond-b342.ts`
 (unit level; not run in a browser)
 
@@ -1833,6 +1835,7 @@ bars from the real pointer — so a drag itself is still unverified.
 ---
 
 ### B-534 · Links that open a new window do nothing in the desktop app — every external link in a note, and Help's Documentation / Report a bug
+**Owner decision 2026-10-03:** "don't need zotero" — keep the allowlist (`http`, `https`, `mailto`); app schemes stay dead in the desktop app. Closed.
 **Status:** believed fixed (no test can click in the app here) · **Severity:** high · **Found:**
 2026-09-13, desktop-shell (reading Tauri's source for the Help menu) · **Test:** none — see below
 
