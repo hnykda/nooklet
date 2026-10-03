@@ -9,7 +9,7 @@
  * reminder would fail on first use.
  */
 import type { NetworkInterfaceInfo } from "node:os";
-import { isLoopbackName } from "./http/app.js";
+import { isLoopbackName } from "./http/host-names.js";
 
 export interface LanAddress {
   address: string;

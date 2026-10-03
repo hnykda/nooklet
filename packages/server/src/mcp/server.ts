@@ -36,6 +36,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import type { ServerContext } from "../apply-ops.js";
 import { allScopesFor, verifyToken } from "../auth/tokens.js";
+import { allowedHostNames, rejectHost, requestHostName } from "../http/host-names.js";
 import { renderToolText } from "../ops/dry-run.js";
 import {
   buildOpContext,
@@ -249,10 +250,6 @@ export function buildMcp(
   );
 }
 
-/** Always permitted, whatever `config.allowedHosts` adds: a desktop bundle and `nooklet mcp
- * --stdio` both reach the server by one of these, and losing them would break the default setup. */
-const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1", "[::1]"];
-
 export function mountMcp(
   app: Hono,
   reg: OpRegistry,
@@ -261,20 +258,23 @@ export function mountMcp(
   version?: string,
 ): void {
   const handler = buildMcp(reg, serverCtx, config, version);
-  // The library installs its own Host/Origin guard as a `use("*")` middleware on this sub-app,
-  // and `createApp` merges the sub-app at `"/"`, so it also runs for every path with no earlier
-  // route — the web client's SPA fallback included. It is fed the same allowlist as nooklet's own
-  // guard (`../http/app.ts`, registered before every route, which is the one that actually
-  // covers `/healthz`, `/api/*` and `/sync/*`), so the two can never disagree about a hostname.
-  const mcpApp = createMcpHonoApp(
-    config.allowedHosts?.length
-      ? {
-          host: config.host,
-          allowedHosts: [...LOOPBACK_HOSTS, ...config.allowedHosts],
-          allowedOrigins: [...LOOPBACK_HOSTS, ...config.allowedHosts],
-        }
-      : { host: config.host },
-  );
+  // B-616: this sub-app is mounted at `/mcp`, never at `/`. The library installs its Host/Origin
+  // guard as a `use("*")` on it; merged at `/`, that guard ran for every path with no earlier route
+  // (the web client's SPA fallback included), so behind a same-host proxy that rewrites `Host` the
+  // app shell got 403 `{"jsonrpc":…,"Invalid Host"}` while `/api/session` got 200. And it is
+  // always given the server's own list (loopback + `--allow-host`): without `allowedHosts` it fell
+  // back to localhost-only, ignoring `--allow-host` on a loopback bind. Our own check runs first so
+  // a rejected Host gets nooklet's 403, which names the `--allow-host` to add.
+  const allowed = allowedHostNames(config);
+  const mcpApp = createMcpHonoApp({
+    host: config.host,
+    allowedHosts: [...allowed],
+    allowedOrigins: [...allowed],
+  });
+  app.use("/mcp", async (c, next) => {
+    if (!allowed.has(requestHostName(c))) return rejectHost(c, c.req.header("host"));
+    return next();
+  });
   const gate = requireBearerAuth({
     verifier: {
       async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -293,10 +293,10 @@ export function mountMcp(
     },
     requiredScopes: ["read"],
   });
-  mcpApp.all("/mcp", async (c) => {
+  mcpApp.all("/", async (c) => {
     const authResult = await gate(c.req.raw);
     if (authResult instanceof Response) return authResult;
     return handler.fetch(c.req.raw, { parsedBody: c.get("parsedBody"), authInfo: authResult });
   });
-  app.route("/", mcpApp);
+  app.route("/mcp", mcpApp);
 }
