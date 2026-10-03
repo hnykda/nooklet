@@ -814,40 +814,6 @@ it means generalising `VirtualJournalDay` into a page draft that writes nothing 
 Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
 parity for names nothing links to; revisit if it bites in daily use.
 
-### B-613 · Revoked or invalid stored token shows as "Offline", forever, with no way to re-pair
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `edges.probe.ts`. Join with a device token, `nooklet token revoke <id>`, reload, edit. The
-indicator says "Offline — changes are kept and sent when back online" for 20 s+ and the edit never
-reaches the server. The connect screen is not offered, because the entry still has a token. With a
-memory replica the page reads "This page doesn't exist yet. Create …". A 401 on push is reported as
-`offline` (`sync-client.ts` catch → `state: "offline"`).
-
-### B-614 · Sync indicator stays "Synced" while the server is down
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `edges.probe.ts`. Synced client, stop the server, don't type: "Synced" at 1/3/5/10/20/30 s,
-with and without a proxy. The live WebSocket's `close` only schedules a reconnect
-(`http-transport.ts`) and never changes the status. Only a failed push or pull does.
-
-### B-615 · Plain-http non-loopback origin: token accepted, then a blank white page with no explanation
-**Status:** open · **Severity:** medium (B-27 is the cause; this is the silent failure mode) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `insecure-context.probe.ts` (`serve.sh <dir> 6311 <LAN-IP>`, open `http://<LAN-IP>:6311/`,
-paste a valid token). Errors: `crypto.randomUUID is not a function` (`data/bootstrap.ts`,
-`live/window-id.ts`, `app/hosts.ts`) and `navigator.locks` undefined. ConnectView could detect
-`!isSecureContext` and say why. The same blank page is expected in the desktop app pointed at a
-plain-http remote.
-
-### B-618 · Graph switcher labels are generic and can't be told apart
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: two-clients 1c. Entries read "This graph" and "Remote graph" rather than the server's graph
-label or slug. In the desktop picker, two graphs on one server both have the title `127.0.0.1:6311`
-and differ only in the subtitle URL. Adding the bare server address (no `/g/<slug>`) for a graph
-already listed creates a duplicate entry with its own replica (two-clients 1d). The add form gives
-no hint that `/g/<slug>` is expected, and nothing uses `GET /graphs` to offer a choice.
-
 ### B-620 · Plugin `rpc.expose` routes turn any thrown error into an unhandled 500
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, tasks-workflow agent (B-610) · **Test:** none
 
@@ -897,6 +863,83 @@ It needs a worker method that unlinks one pool file (the mismatched graph's). Mu
 anyone with a local-only graph hits a graph mismatch.
 
 ## Fixed
+
+### B-632 · On web, pairing on `/g/<slug>` verified the token against the default graph
+**Status:** fixed (2026-10-03, connection-states) · **Severity:** medium · **Found:** 2026-10-03, connection-states agent (B-613) ·
+**Test:** `ConnectView.test.tsx` "on /g/<slug>, verifies against that graph" (red without the fix)
+
+`ConnectView`'s same-origin pairing verified at `/api/v1/graph.overview` with no `/g/<slug>`, which
+the server's bare-origin 307 sends to the default graph, so on `/g/work` a valid `work` token read
+as "rejected". `connectToGraph` now verifies at `samePathGraphPrefix()`. Not run in a real browser.
+
+### B-618 · Graph switcher labels are generic and can't be told apart
+**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+
+Repro: two-clients 1c. Entries read "This graph" and "Remote graph" rather than the server's graph
+label or slug. In the desktop picker, two graphs on one server both have the title `127.0.0.1:6311`
+and differ only in the subtitle URL. Adding the bare server address (no `/g/<slug>`) for a graph
+already listed creates a duplicate entry with its own replica (two-clients 1d). The add form gives
+no hint that `/g/<slug>` is expected, and nothing uses `GET /graphs` to offer a choice.
+
+**Fixed 2026-10-03.** Test and details: `e2e/tests/graph-switcher.spec.ts` "B-618: rows carry the
+server's graph names, a bare address is not added twice, and a root token lists graphs" (red on
+38e17a6 at the label assertion; the duplicate-add part was not separately run red),
+`e2e/tests/desktop-launcher.spec.ts` "B-618: two graphs on one server get distinct titles…" (red
+on 38e17a6), `ops.http.test.ts` graph.overview label case, `bootstrap.test.ts` two B-618 cases.
+Fix: see Done. API change: `graph.overview` output gains `graph: {id, label}`
+(`docs/spec/mcp-tools.md` updated). Not done: the Capacitor ConnectView's own server field has no
+`/g/<graph>` hint (only the switcher's add form and the desktop picker do); the desktop dedupe is
+in the launcher JS, `main.rs#add_graph` still compares exact strings.
+
+### B-615 · Plain-http non-loopback origin: token accepted, then a blank white page with no explanation
+**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+
+Repro: `insecure-context.probe.ts` (`serve.sh <dir> 6311 <LAN-IP>`, open `http://<LAN-IP>:6311/`,
+paste a valid token). Errors: `crypto.randomUUID is not a function` (`data/bootstrap.ts`,
+`live/window-id.ts`, `app/hosts.ts`) and `navigator.locks` undefined. ConnectView could detect
+`!isSecureContext` and say why. The same blank page is expected in the desktop app pointed at a
+plain-http remote.
+
+**Fixed 2026-10-03.** Test and details: `e2e/tests/insecure-context.spec.ts` (red on 38e17a6: blank
+page), `insecure-context.test.ts`. Fix: the top of `main.tsx` gates before starting anything and
+shows why plus the three fixes. The capability check (randomUUID,
+locks) decides alongside `isSecureContext`. Capacitor `capacitor://localhost` = secure context per
+the recorded Simulator probe (`tools/probes/capacitor-network/`, `docs/progress/real-device-test.md`);
+not re-probed here. Desktop app pointed at a plain-http remote: expected to land on the same page
+(same build), not run.
+
+### B-614 · Sync indicator stays "Synced" while the server is down
+**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+
+Repro: `edges.probe.ts`. Synced client, stop the server, don't type: "Synced" at 1/3/5/10/20/30 s,
+with and without a proxy. The live WebSocket's `close` only schedules a reconnect
+(`http-transport.ts`) and never changes the status. Only a failed push or pull does.
+
+**Fixed 2026-10-03.** Test and details: `e2e/tests/sync-connection-states.spec.ts` "with nobody typing,
+Synced gives way to Offline…" (red on 38e17a6) and "a blip … never changes what the dot shows"
+(guard). Fix: WS close → 1.5 s grace → probe `pull()`; failure → `offline`; reconnect → pull →
+`idle`. Each failed reconnect re-probes, so recovery is noticed even without the socket. Not
+verified against a real killed server (the e2e uses a TCP proxy that stops listening).
+
+### B-613 · Revoked or invalid stored token shows as "Offline", forever, with no way to re-pair
+**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+
+Repro: `edges.probe.ts`. Join with a device token, `nooklet token revoke <id>`, reload, edit. The
+indicator says "Offline — changes are kept and sent when back online" for 20 s+ and the edit never
+reaches the server. The connect screen is not offered, because the entry still has a token. With a
+memory replica the page reads "This page doesn't exist yet. Create …". A 401 on push is reported as
+`offline` (`sync-client.ts` catch → `state: "offline"`).
+
+**Fixed 2026-10-03.** Test and details: `e2e/tests/sync-connection-states.spec.ts` "a refused token says
+so, keeps the edit, and re-pairing sends it" (red on 38e17a6); `sync-client.test.ts` "connection
+states" block; `sync-indicator-state.test.ts` B-613 case; `connect-graph.test.ts`
+`repairTargetFor`. Fix: 401/403 on push/pull/snapshot and WS close 4403 → `unauthorized`
+(sticky until a request succeeds); indicator "Token rejected — changes stay on this device until
+you enter a new token" + visible "Token rejected" button → re-pair screen (same entry, address
+read-only, pending ops kept and pushed after reload). Also covers a loopback tab left open across
+a server restart (its per-process web-client token is retired): the re-pair screen offers Reload.
+Not verified: WebKit memory-replica variant from the sweep (the indicator logic puts
+`unauthorized` ahead of `memory`, unit-tested only).
 
 ### B-630 · A relaunch or graph switch could start on an in-memory replica and lose everything at the next reload
 **Status:** fixed (2026-10-03, local-graphs agent) · **Severity:** high for local-only · **Found:** 2026-10-03, local-graphs agent · **Test:** see below
