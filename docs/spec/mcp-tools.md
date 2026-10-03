@@ -519,6 +519,7 @@ export const graphOverview = defineOp({
   name: 'graph.overview', summary: 'Orient: what is in this graph',
   input: z.object({}).strict(),
   output: z.object({
+    graph: z.object({ id: z.string(), label: z.string() }), // B-618: slug + label, from graph.json
     today: z.string().describe('YYYY-MM-DD'), timezone: z.string(),
     counts: z.object({ pages: z.number().int(), journals: z.number().int(), blocks: z.number().int() }),
     recent_journals: z.array(z.object({ date: z.string(), first_line: z.string(), block_count: z.number().int() })),

@@ -78,10 +78,12 @@ async function openLauncher(
           });
         }
         w.__TAURI_INTERNALS__ = {
-          invoke: async (cmd: string) => {
+          invoke: async (cmd: string, args?: { url?: string }) => {
             w.__invoked.push(cmd);
             if (cmd === "server_status") return w.__status;
-            if (cmd === "add_graph" || cmd === "remove_graph") return null;
+            // `add_graph` answers with the entry, as `main.rs` does; the picker then activates it.
+            if (cmd === "add_graph") return { id: "added", url: args?.url ?? "" };
+            if (cmd === "remove_graph") return null;
             if (cmd === "set_active_graph" || cmd === "restart_app") return null;
             throw new Error(`unexpected command ${cmd}`);
           },
@@ -178,4 +180,33 @@ test("B-584: re-picking 'This Mac' from a forced picker restarts, rather than po
   await expect.poll(() => launcher.invoked()).toContain("restart_app");
   // And it never reappeared as a stuck "Starting nooklet…" — the pre-fix behavior.
   await expect(page.locator("#status")).toBeHidden();
+});
+
+test("B-618: two graphs on one server get distinct titles, and a bare address for a listed graph is not added again", async ({
+  page,
+}) => {
+  const launcher = await openLauncher(page, fixtures.starting, {
+    forcePicker: true,
+    activeGraphId: "w",
+    graphs: [
+      { id: "d", url: `${APP_SERVER}/g/default` },
+      { id: "w", url: `${APP_SERVER}/g/work` },
+    ],
+  });
+  await expect(page.locator("#picker")).toBeVisible();
+  const host = new URL(APP_SERVER).host;
+  await expect(page.locator("#graph-list h2")).toContainText([
+    "This Mac",
+    `default on ${host}`,
+    `work on ${host}`,
+  ]);
+
+  // The bare server address is its default graph, already listed: switch to it, add nothing.
+  launcher.serverAnswers();
+  await page.getByRole("button", { name: "Add a server" }).click();
+  await expect(page.locator("#picker-form")).toContainText("/g/<graph>");
+  await page.locator("#picker-url").fill(`${APP_SERVER}/`);
+  await page.locator("#picker-form").getByRole("button", { name: "Connect" }).click();
+  await expect.poll(() => launcher.invoked()).toContain("set_active_graph");
+  expect(await launcher.invoked()).not.toContain("add_graph");
 });

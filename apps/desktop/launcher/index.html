@@ -137,8 +137,11 @@
         <form id="picker-form" hidden>
           <button type="button" id="picker-back" class="back">‹ Back</button>
           <h1>Add a server</h1>
-          <p class="lede">Enter the address of the nooklet server you already run.</p>
-          <input id="picker-url" aria-label="Server address" placeholder="https://nooklet.example.com" />
+          <p class="lede">
+            Enter the address of the nooklet server you already run. Add <code>/g/&lt;graph&gt;</code>
+            for a graph other than its default one.
+          </p>
+          <input id="picker-url" aria-label="Server address" placeholder="https://nooklet.example.com/g/work" />
           <div class="row">
             <button type="submit">Connect</button>
           </div>
@@ -196,6 +199,31 @@
        * a sibling remove button on any non-active remote entry — two sibling buttons, never nested,
        * unlike the single big card the old two-option picker used (a `<button>` cannot contain
        * another `<button>`). Mirrors `apps/web/src/shell/GraphSwitcher.tsx`'s own row shape. */
+      /** B-618: an address without `/g/<graph>` opens the server's default graph (its bare origin
+       * redirects there), so the two spellings are one graph — for the row title and for not adding
+       * it twice. Mirrors `apps/web/src/data/connect-graph.ts#graphBaseUrl`. */
+      function graphAddress(url) {
+        try {
+          const u = new URL(url);
+          const path = u.pathname.replace(/\/+$/, "");
+          return `${u.origin}${path || "/g/default"}`;
+        } catch {
+          return url.replace(/\/+$/, "");
+        }
+      }
+
+      /** B-618: "work on 127.0.0.1:6311", not just the host — two graphs on one server used to get
+       * the same title and differ only in the small subtitle. */
+      function graphTitle(url) {
+        try {
+          const u = new URL(graphAddress(url));
+          const slug = /\/g\/([a-z0-9-]+)$/.exec(u.pathname)?.[1];
+          return slug ? `${slug} on ${u.host}` : `${u.host}${u.pathname}`;
+        } catch {
+          return url;
+        }
+      }
+
       function graphRow(entry) {
         const isLocal = entry === null;
         const id = isLocal ? null : entry.id;
@@ -206,11 +234,7 @@
           title = "This Mac";
           subtitle = "Works offline, nothing to set up.";
         } else {
-          try {
-            title = new URL(entry.url).host;
-          } catch {
-            title = entry.url;
-          }
+          title = graphTitle(entry.url);
           subtitle = entry.url;
         }
 
@@ -479,7 +503,10 @@
         }
         let entry;
         try {
-          entry = await invoke("add_graph", { url });
+          // B-618: the graph is already listed under another spelling (bare origin vs
+          // `/g/default`): switch to that entry instead of remembering it twice.
+          entry = graphs.find((g) => graphAddress(g.url) === graphAddress(url));
+          if (!entry) entry = await invoke("add_graph", { url });
           await invoke("set_active_graph", { id: entry.id });
         } catch (err) {
           $("picker-err").textContent = typeof err === "string" ? err : "Could not save that.";

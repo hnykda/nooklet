@@ -22,13 +22,23 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   (`docs/progress/real-device-test.md`: `isSecureContext=true`) and on the real app booting there,
   which it cannot do without `crypto.randomUUID`.
 
+- B-618: `graph.overview` returns `graph: {id, label}` (label from the graph's `graph.json`,
+  slug without one) so any graph token can name its graph; `connectToGraph` stores it as the entry
+  label; placeholder labels ("This graph"/"Remote graph") are replaced lazily when the switcher
+  opens, a renamed label never. Rows show name + address. `setConnectedGraphToken` matches entries
+  by resolved absolute URL (bare origin → `/g/default` already via `graphBaseUrl`), so the
+  same-origin graph is not added twice; the add form refuses the already-active graph outright.
+  Add form: `/g/<graph>` hint + "Show graphs on this server (root token)" via `GET /graphs`;
+  picking one fills the address and asks for that graph's device token. Desktop launcher: titles
+  "<slug> on <host>", `/g/<graph>` hint, and a bare address for an already-listed graph activates
+  that entry instead of `add_graph`. e2e: `graph-switcher.spec.ts` B-618 test and
+  `desktop-launcher.spec.ts` B-618 test, both red on 38e17a6 (title/label assertions).
+
 ## In flight
 - nothing
 
 ## Next steps
-1. B-618 (labels from graph.overview, dedupe by resolved URL, /g/<slug> hint, GET /graphs list,
-   desktop picker)
-3. Full verification run; format the pre-existing biome errors in `tools/probes/sweep-*`.
+1. Full verification run; format the pre-existing biome errors in `tools/probes/sweep-*`.
 
 ## Decisions
 - Server-down simulation: `page.routeWebSocket` does NOT intercept a socket opened in a dedicated
@@ -66,5 +76,14 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   the recorded Simulator probe (`tools/probes/capacitor-network/`, `docs/progress/real-device-test.md`);
   not re-probed here. Desktop app pointed at a plain-http remote: expected to land on the same page
   (same build), not run.
+- **B-618** → `fixed` · **Test:** `e2e/tests/graph-switcher.spec.ts` "B-618: rows carry the
+  server's graph names, a bare address is not added twice, and a root token lists graphs" (red on
+  38e17a6 at the label assertion; the duplicate-add part was not separately run red),
+  `e2e/tests/desktop-launcher.spec.ts` "B-618: two graphs on one server get distinct titles…" (red
+  on 38e17a6), `ops.http.test.ts` graph.overview label case, `bootstrap.test.ts` two B-618 cases.
+  Fix: see Done. API change: `graph.overview` output gains `graph: {id, label}`
+  (`docs/spec/mcp-tools.md` updated). Not done: the Capacitor ConnectView's own server field has no
+  `/g/<graph>` hint (only the switcher's add form and the desktop picker do); the desktop dedupe is
+  in the launcher JS, `main.rs#add_graph` still compares exact strings.
 - Noticed, not fixed (e2e harness): a `route.fetch` carrying a foreign `Origin` header got 403 from
   the per-graph app — same family as the sweep's "same-host reverse proxy 403" entry.
