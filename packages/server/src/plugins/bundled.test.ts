@@ -89,6 +89,25 @@ describe("bundled built-in plugins (B-180)", () => {
   });
 });
 
+// The desktop sidecar used to ship mermaid twice: in its web build and inlined (~12 MB) into the
+// mermaid plugin's client half, which the app never requests (ADR 023). `clientImportUrls` leaves
+// the import pointing at the web build's copy instead. That the result still draws a diagram when
+// served is `tools/probes/sidecar-mermaid.mjs`.
+describe("clientImportUrls", () => {
+  it("leaves a mapped specifier as an import of its URL instead of inlining it", async () => {
+    const dir = join(tmpDir("nooklet-bundled-urls-"), "plugins");
+    await packageBundledPlugins(REPO_PLUGINS_DIR, dir, {
+      clientImportUrls: { mermaid: "/static/mermaid.core-TEST.js" },
+    });
+    const client = join(dir, "mermaid", "client.js");
+    const js = readFileSync(client, "utf8");
+    expect(js).toContain('import("/static/mermaid.core-TEST.js")');
+    expect(js).toContain("registerCodeBlockRenderer");
+    // Inlined, it was ~12 MB.
+    expect(statSync(client).size).toBeLessThan(64 * 1024);
+  }, 60_000);
+});
+
 // A plugin the USER writes, the documented way, loaded by a server that has no `node_modules` for
 // its imports — the desktop sidecar (B-336). The sidecar resolves `@nooklet/plugin-api`, `zod` etc.
 // to the files `packageHostModules` shipped, through `$NOOKLET_HOST_MODULES_DIR`; here those files
