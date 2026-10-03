@@ -21,6 +21,7 @@ import {
   type ServerConfig,
 } from "../ops/registry.js";
 import { mountSync } from "../sync/index.js";
+import { suggestedTaskWorkflow } from "../task-workflow.js";
 import { mountAssetRoutes } from "./assets.js";
 import { mountWebClient } from "./web-client.js";
 
@@ -127,9 +128,11 @@ function buildClientBootstrap(ctx: ServerContext, c: Context): object {
   // A suggestion, not a setting: the format this graph's journals were written in, used as the
   // client's initial choice and ignored the moment someone picks one (ADR 018).
   const journalTitleFormat = suggestedJournalTitleFormat(ctx.driver) ?? undefined;
+  // B-608: the graph's task workflow, imported or inferred from its markers. Also a suggestion.
+  const taskWorkflow = suggestedTaskWorkflow(ctx.driver);
   if (!isLoopbackRequest(c))
-    return { token: null, reason: "non_loopback_host", graphId, journalTitleFormat };
-  return { token: webClientToken(ctx), graphId, journalTitleFormat };
+    return { token: null, reason: "non_loopback_host", graphId, journalTitleFormat, taskWorkflow };
+  return { token: webClientToken(ctx), graphId, journalTitleFormat, taskWorkflow };
 }
 
 /** Per-process web-client token, minted lazily on the first page load. `write` + `can_sync` is

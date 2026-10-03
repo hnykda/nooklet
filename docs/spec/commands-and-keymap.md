@@ -469,6 +469,8 @@ back to its `text/plain` sibling) except behind a future "paste as markdown" plu
 | `task.setDeadline` | Set deadline date | — | — | `editorFocused \|\| (blockSelected && selectionCount == 1)` |
 | `task.setMarkerTodo` | Mark TODO | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerDoing` | Mark DOING | — | — | `editorFocused \|\| blockSelected` |
+| `task.setMarkerLater` | Mark LATER | — | — | `editorFocused \|\| blockSelected` |
+| `task.setMarkerNow` | Mark NOW | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerDone` | Mark DONE | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerWaiting` | Mark WAITING | — | — | `editorFocused \|\| blockSelected` |
 | `task.setMarkerCanceled` | Mark CANCELED | — | — | `editorFocused \|\| blockSelected` |
@@ -482,6 +484,14 @@ by having those two states be separate commands with no place in the cycle). Any
 **new** marker is `DONE` follows R35 (the repeat-aware completion rule) instead of a plain
 marker write. Bulk-cycling more than one selected block at once is out of scope for v1 (§ Open
 issues) — hence the `selectionCount == 1` guard.
+
+*Amended 2026-10-03 (B-608, owner policy "mimic Logseq"):* the cycle follows the graph's task
+workflow, Logseq 0.10.9's `util/marker.cljs#cycle-marker-state`: `TODO → DOING → DONE`,
+`LATER → NOW → DONE`, `DONE → null`, and `null` (or WAITING/CANCELED) → the workflow's start
+marker — `LATER` under `now`, `TODO` under `todo`. The pair is chosen by the *current* marker, not
+by the workflow. `task.toggleDone`'s `DONE →` step (R36) also writes the start marker, and R35's
+repeating reset writes `LATER` for a LATER/NOW task. Where the workflow comes from:
+`apps/web/src/data/task-workflow.ts`; rationale and sources: `docs/progress/tasks-workflow.md`.
 
 **R35.** Completing a task (any command that would set `marker = DONE` — `task.cycle`'s
 `DOING → DONE` step, `task.toggleDone`, or `task.setMarkerDone`) MUST: stamp the block's `done`
@@ -875,6 +885,14 @@ the block first.
 | Property | `block.insertProperty` | metadata, `::` |
 | Template | `block.insertTemplate` | snippet, insert, tpl |
 | Query | `block.insertQueryFence` | query, filter, tasks, search, ```` ```query ```` |
+| DOING | `task.setMarkerDoing` | task, started |
+| LATER | `task.setMarkerLater` | task, someday |
+| NOW | `task.setMarkerNow` | task, started |
+
+*B-608 (2026-10-03):* that is the order for a graph whose task workflow is `todo`. Under `now`
+(Logseq's `:preferred-workflow :now`, the preferred pair first as in Logseq's
+`commands.cljs#get-preferred-workflow`) the first row is `LATER / task` → `task.setMarkerLater`
+and the last three task rows are NOW, TODO, DOING (`slash/items.ts#slashItemsFor`).
 
 Templates **are** a core slash item: ADR 019 reversed PLAN §2's "later as a plugin or slash
 command". A plugin that adds an item contributes it declaratively the same way any plugin command

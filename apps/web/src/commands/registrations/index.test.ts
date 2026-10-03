@@ -9,6 +9,7 @@ import { compileWhen } from "../when/compile.js";
 import { evaluateWhen } from "../when/evaluate.js";
 import { createFakeDatePickerHost } from "./date-picker-host.js";
 import { createCoreCommands } from "./index.js";
+import { createTaskCommands } from "./task.js";
 
 function makeDeps() {
   return {
@@ -329,5 +330,57 @@ describe("the marker commands act on every selected block, in one write (B-346)"
     expect(evaluateWhen(when, { ...base, blockSelected: true, selectionCount: 3 })).toBe(true);
     expect(evaluateWhen(when, { ...base, editorFocused: true, isTask: true })).toBe(true);
     expect(evaluateWhen(when, { ...base, editorFocused: true, isTask: false })).toBe(false);
+  });
+});
+
+describe("task commands follow the graph's task workflow (B-608)", () => {
+  function nowCommand(id: string) {
+    const cmd = createTaskCommands({
+      datePicker: createFakeDatePickerHost(),
+      workflow: () => "now",
+    }).find((c) => c.id === id);
+    if (!cmd) throw new Error(`no ${id}`);
+    return cmd;
+  }
+
+  it("task.cycle under `now`: none → LATER → NOW → DONE (stamped) → none", async () => {
+    const store = createFakeStore({ b1: {} });
+    const cycle = nowCommand("task.cycle");
+    const ctx = taskCtx(store, { editorFocused: true, focusedBlockId: "b1" });
+    const seen: (string | null | undefined)[] = [];
+    for (let i = 0; i < 4; i++) {
+      await cycle.run(ctx);
+      seen.push(store.props.get("b1")?.marker);
+      if (i === 2) expect(store.props.get("b1")?.done).toMatch(/Z$/);
+    }
+    expect(seen).toEqual(["LATER", "NOW", "DONE", null]);
+  });
+
+  it("task.cycle under `todo` (the default) still starts at TODO", async () => {
+    const store = createFakeStore({ b1: {} });
+    await taskCommand("task.cycle").run(
+      taskCtx(store, { editorFocused: true, focusedBlockId: "b1" }),
+    );
+    expect(store.props.get("b1")?.marker).toBe("TODO");
+  });
+
+  it("task.toggleDone on DONE under `now` reopens as LATER", async () => {
+    const store = createFakeStore({ b1: { marker: "DONE" } });
+    await nowCommand("task.toggleDone").run(
+      taskCtx(store, { editorFocused: true, focusedBlockId: "b1" }),
+    );
+    expect(store.props.get("b1")?.marker).toBe("LATER");
+  });
+
+  it("Mark LATER / Mark NOW exist and write their marker", async () => {
+    const store = createFakeStore({ b1: {}, b2: {} });
+    await taskCommand("task.setMarkerLater").run(
+      taskCtx(store, { editorFocused: true, focusedBlockId: "b1" }),
+    );
+    await taskCommand("task.setMarkerNow").run(
+      taskCtx(store, { editorFocused: true, focusedBlockId: "b2" }),
+    );
+    expect(store.props.get("b1")?.marker).toBe("LATER");
+    expect(store.props.get("b2")?.marker).toBe("NOW");
   });
 });

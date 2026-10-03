@@ -60,6 +60,7 @@ import {
 import { isPrinting } from "../app/print.js";
 import { openOnShelf } from "../app/shelf.js";
 import { dispatchPopupKey, isEditorPopupOpen, isPopupOpen } from "../commands/popup-keys.js";
+import { taskWorkflow } from "../commands/task-workflow.js";
 import { displayPageName } from "../data/page-title.js";
 import { applyOps, usePageProperties, usePageTree } from "../data/store.js";
 import type { BlockTreeNode } from "../data/types.js";
@@ -1133,7 +1134,7 @@ export function BlockTree(props: {
       case "task.cycle": {
         const block = tree.byId.get(id);
         if (!block) return false;
-        commitStep(cycleMarker(block, clock));
+        commitStep(cycleMarker(block, clock, Date.now(), taskWorkflow()));
         return true;
       }
       case "edit.undo":
@@ -1474,7 +1475,13 @@ export function BlockTree(props: {
         if (sel.ids.length !== 1) return;
         const block = tree.byId.get(sel.focusId);
         if (!block) return;
-        commit(cycleMarker(block, clock), tree, "structure", null, null);
+        commit(
+          cycleMarker(block, clock, Date.now(), taskWorkflow()),
+          tree,
+          "structure",
+          null,
+          null,
+        );
         return;
       }
       case "edit.undo":
@@ -1536,7 +1543,7 @@ export function BlockTree(props: {
     const clock = clockSig();
     const block = editorTree().byId.get(id);
     if (!clock || !block) return;
-    commitStep(toggleDone(block, clock));
+    commitStep(toggleDone(block, clock, Date.now(), taskWorkflow()));
   }
 
   /** Shift+click, from a row or from a `[[page]]` link inside one (`BlockRowView.tsx` explains why

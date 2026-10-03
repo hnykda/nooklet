@@ -349,6 +349,21 @@ export class OpRegistry {
     this.ops.set(op.name, { ...op, owner });
   }
 
+  /**
+   * A new registry holding this one's core ops and none of its plugin ops — one per graph when a
+   * process hosts several (ADR 025, B-617). Core op definitions are graph-independent (each request
+   * gets its graph's context), so sharing them is fine; a plugin op is not: it is registered by one
+   * graph's activation of the plugin, may close over that graph's plugin context (`plugin.data`,
+   * `plugin.kv`), and is disposed with it. With one shared registry the second graph's activation
+   * of word-count threw `op "page.wordcount" is already registered`, and the first graph's op
+   * answered for every graph.
+   */
+  forkCore(): OpRegistry {
+    const fork = new OpRegistry();
+    for (const op of this.ops.values()) if (op.owner === "core") fork.ops.set(op.name, op);
+    return fork;
+  }
+
   /** Used by a plugin's Disposable to remove its own op on deactivate/reload. */
   unregister(name: string): void {
     this.ops.delete(name);

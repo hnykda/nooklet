@@ -9,8 +9,9 @@
  * module-level constant, which is half of why `/mermaid` was dead (B-103).
  */
 import { createSignal } from "solid-js";
+import { taskWorkflow } from "../task-workflow.js";
 import type { SlashItem } from "../types.js";
-import { SLASH_ITEMS } from "./items.js";
+import { slashItemsFor } from "./items.js";
 
 const [contributed, setContributed] = createSignal<readonly SlashItem[]>([]);
 
@@ -20,8 +21,10 @@ export function contributeSlashItem(item: SlashItem): () => void {
   return () => setContributed((rows) => rows.filter((r) => r !== item));
 }
 
-/** Core rows, then contributed rows, in registration order. Tracked. */
+/** Core rows (ordered for the graph's task workflow, B-608), then contributed rows, in
+ * registration order. Tracked. */
 export function slashItems(): readonly SlashItem[] {
+  const core = slashItemsFor(taskWorkflow());
   const extra = contributed();
-  return extra.length === 0 ? SLASH_ITEMS : [...SLASH_ITEMS, ...extra];
+  return extra.length === 0 ? core : [...core, ...extra];
 }

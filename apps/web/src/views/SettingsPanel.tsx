@@ -48,6 +48,7 @@ import {
   journalTitleOptions,
   setJournalTitleFormat,
 } from "../data/page-title.js";
+import { chooseTaskWorkflow, taskWorkflow } from "../data/task-workflow.js";
 import { listTemplates, setJournalTemplate, type TemplateSummary } from "../data/templates.js";
 import { openDiagnostics } from "./DiagnosticsPanel.js";
 import { PluginsSection } from "./PluginsSection.js";
@@ -621,6 +622,40 @@ function TemplatesSection(): JSX.Element {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------------------------
+
+/** B-608: Logseq's `:preferred-workflow`. The value and where it comes from belong to
+ * `data/task-workflow.ts`; this is the picker over it. */
+function TasksSection(): JSX.Element {
+  return (
+    <section>
+      <h3>Tasks</h3>
+      <Row label="Task workflow">
+        <select
+          id="set-task-workflow"
+          aria-label="Task workflow"
+          value={taskWorkflow()}
+          onChange={(e) => {
+            const v = e.currentTarget.value;
+            if (v === "now" || v === "todo") chooseTaskWorkflow(v);
+          }}
+        >
+          <option value="now">LATER → NOW → DONE</option>
+          <option value="todo">TODO → DOING → DONE</option>
+        </select>
+      </Row>
+      <p class="set-note">
+        What Cmd/Ctrl+Enter starts a task as, and which pair the slash menu offers first — Logseq's{" "}
+        <code>:preferred-workflow</code>. A LATER or TODO task always cycles within its own pair.
+        Until you choose, it follows the graph: its imported Logseq setting, or the markers it
+        already uses. Stored per device.
+      </p>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
 
 export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
   return (
@@ -641,6 +676,7 @@ export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
           </button>
         </header>
         <AppearanceSection />
+        <TasksSection />
         <TemplatesSection />
         <EmbeddingsSection />
         <PluginsSection />

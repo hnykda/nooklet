@@ -116,7 +116,10 @@ export class GraphRegistry {
     const dirs = pluginDirsFor(config.dataDir);
     const { app } = await createAppWithPlugins({
       serverCtx: ctx,
-      registry: this.#opts.registry,
+      // Per graph, like every other plugin registry (they key on the graph's `ServerContext`):
+      // each graph activates its own copy of every plugin, so each needs room for its plugin ops
+      // (B-617). Core ops are shared definitions, copied in.
+      registry: this.#opts.registry.forkCore(),
       config,
       version: this.#opts.version,
       pluginDirs: dirs.dirs,

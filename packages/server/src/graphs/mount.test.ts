@@ -57,6 +57,35 @@ describe("createMultiGraphApp: dynamic /g/:graphId/* dispatch", () => {
     expect(listB.json.items.map((p: { name: string }) => p.name)).not.toContain("Only In A");
   });
 
+  it("activates every built-in plugin in each graph, each graph's plugin op answering for its own data (B-617)", async () => {
+    const { app } = makeApp();
+    const tokenA = await createGraph(app, "a");
+    const tokenB = await createGraph(app, "b");
+    await post(app, "/g/a/api/v1/page.create", tokenA, {
+      name: "Counted",
+      markdown: "- one two three",
+    });
+    await post(app, "/g/b/api/v1/page.create", tokenB, { name: "Counted", markdown: "- one" });
+
+    for (const [graph, token, words] of [
+      ["a", tokenA, 3],
+      ["b", tokenB, 1],
+    ] as const) {
+      const list = await app.request(`/g/${graph}/api/v1/plugins`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const ids = ((await list.json()) as { plugins: { id: string }[] }).plugins.map((p) => p.id);
+      // Only `active` plugins are listed: the second graph's word-count used to fail activation
+      // with `op "page.wordcount" is already registered`.
+      expect(ids).toEqual(expect.arrayContaining(["word-count", "mermaid", "daily-summary"]));
+      const count = await post(app, `/g/${graph}/api/v1/page.wordcount`, token, {
+        page: "Counted",
+      });
+      expect(count.status).toBe(200);
+      expect(count.json.word_count).toBe(words);
+    }
+  });
+
   it("404s for an unknown graph id before ever checking that graph's own auth", async () => {
     const { app } = makeApp();
     const res = await post(app, "/g/nope/api/v1/page.list", "irrelevant-token", {});

@@ -428,6 +428,10 @@ const SLASH_ORDER = [
   // M7 appends, in `items.ts` order: templates (ADR 019) and the query fence (ADR 011).
   "Template",
   "Query",
+  // B-608: the rest of both task pairs (this spec's graph has no tasks, so its workflow is `todo`).
+  "DOING",
+  "LATER",
+  "NOW",
   // Contributed by the built-in mermaid plugin's client half, after every core row (ADR 023).
   "Mermaid diagram",
 ];

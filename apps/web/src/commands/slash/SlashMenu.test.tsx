@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeEditorHost } from "../hosts/editor-host.js";
 import { createFakeStore } from "../hosts/store.js";
 import { CommandProvider } from "../provider/CommandProvider.js";
+import { setActiveTaskWorkflow } from "../task-workflow.js";
 import { type Command, type CommandContext, DEFAULT_WHEN_CONTEXT } from "../types.js";
 import { contributeSlashItem } from "./contributed.js";
 import { SLASH_ITEMS } from "./items.js";
@@ -57,6 +58,30 @@ describe("<SlashMenu>", () => {
     // Every row of the shared list, whatever its current length — M7 appends to it from more
     // than one feature, so a literal count here would break on each append.
     expect(options).toHaveLength(SLASH_ITEMS.length);
+  });
+
+  it("follows the graph's task workflow: LATER first under `now` (B-608)", async () => {
+    const editor = createFakeEditorHost({ content: "/", start: 1, end: 1 });
+    setActiveTaskWorkflow("now");
+    try {
+      render(() => (
+        <CommandProvider commands={[]} platform="mac">
+          <SlashMenu
+            editor={editor}
+            trigger={{ from: 0, query: "" }}
+            position={{ top: 0, left: 0 }}
+            getContext={baseContext}
+            onDismiss={() => {}}
+          />
+        </CommandProvider>
+      ));
+      const labels = screen.getAllByRole("option").map((o) => o.textContent);
+      expect(labels[0]).toBe("LATER / task");
+      expect(labels.slice(-3)).toEqual(["NOW", "TODO", "DOING"]);
+      expect(labels).toHaveLength(SLASH_ITEMS.length);
+    } finally {
+      setActiveTaskWorkflow("todo");
+    }
   });
 
   it("filters items by query", () => {
