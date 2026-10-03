@@ -39,6 +39,11 @@ runs the full e2e suite on the merged tree.
 | b609 | B-609 fast burst on a new journal day loses Tab | 6330-6334 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
+### Incidents 2026-10-03 (so they are not repeated)
+- An agent opened the iOS Simulator window in front of the owner, who closed it. Agents must use
+  the Simulator headless only: `xcrun simctl boot <udid>`, never `open -a Simulator`.
+- Two agents' servers collided on port 6315. Give each agent its own port range.
+
 ### State of `main`
 - `pnpm -r typecheck` clean. Unit: core 423, plugin-api 17, server 780, web 1,383, all green after
   B-590 (two calendar tests that failed on the 3rd of every month).
