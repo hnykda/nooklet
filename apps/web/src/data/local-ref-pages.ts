@@ -24,6 +24,18 @@
  * travels through the same `pending_op` outbox as the edit that prompted it, in the same batch —
  * so by the time the server's own `planReferencedPages` looks at the reference, it already resolves
  * (to the page this device created), and does not mint a competing one.
+ *
+ * B-585: only a device with no server runs this (`db/worker-core.ts#WorkerDbOptions.
+ * localReferencePages`). On a synced device the server already mints these pages AND reclaims the
+ * junk ones (a link edited one character at a time, a link deleted before anyone wrote in its page,
+ * B-445's revival) — but only pages carrying `REFERENCE_DEVICE_ID`. A page minted here carries this
+ * device's real id, so the server can never tell it from one the owner made on purpose: running
+ * this on a synced device left every intermediate name of a slowly-typed link as a permanent page.
+ *
+ * Synchronous on purpose (B-585): it runs inside the worker's `applyLocalOps`, against the replica
+ * directly. It used to run on the main thread before the batch was posted, awaiting a worker round
+ * trip per lookup — which let a later `forceSync()` overtake the batch (Turn into page pushed the
+ * block without its last keystrokes) and delayed the B-247 crash-safe copy of the batch.
  */
 import {
   canonicalRefName,
@@ -72,18 +84,18 @@ export function namesReferencedByOps(ops: readonly Op[]): string[] {
  * `A/B`, as a reader would expect"). `wanted` accumulates key -> display name across the whole
  * batch so two references to the same missing page/ancestor mint exactly once.
  */
-async function want(
+function want(
   name: string,
   wanted: Map<string, string>,
-  pageExists: (key: string) => Promise<boolean>,
-): Promise<void> {
+  pageExists: (key: string) => boolean,
+): void {
   const trimmed = name.trim();
   if (!isMintableName(trimmed)) return;
   for (const n of [trimmed, ...namespaceAncestors(trimmed)].reverse()) {
     if (!isMintableName(n)) continue;
     const key = referenceKey(n);
     if (wanted.has(key)) continue;
-    if (await pageExists(key)) continue;
+    if (pageExists(key)) continue;
     wanted.set(key, n);
   }
 }
@@ -92,19 +104,20 @@ async function want(
  * The `page.create` ops (this device's own id — see header) a batch needs so every reference it
  * introduces resolves to a real page locally, `[]` for the ordinary edit that references nothing
  * new. `pageExists`/`mint` are injected so this stays testable with fakes, no worker/DB/HLC clock
- * needed — the real caller (`data/store.ts#applyOps`) wires them to `queryAs`/`workerNextHlc`.
+ * needed — the real caller (`db/worker-core.ts#WorkerDb.applyLocalOps`) wires them to the replica's
+ * `page` table and the device's one clock.
  */
-export async function planLocalReferencedPages(
+export function planLocalReferencedPages(
   ops: readonly Op[],
-  pageExists: (key: string) => Promise<boolean>,
-  mint: (name: string) => Promise<Op>,
-): Promise<Op[]> {
+  pageExists: (key: string) => boolean,
+  mint: (name: string) => Op,
+): Op[] {
   const names = namesReferencedByOps(ops);
   if (names.length === 0) return [];
   const wanted = new Map<string, string>();
-  for (const name of names) await want(name, wanted, pageExists);
+  for (const name of names) want(name, wanted, pageExists);
   if (wanted.size === 0) return [];
   const out: Op[] = [];
-  for (const name of wanted.values()) out.push(await mint(name));
+  for (const name of wanted.values()) out.push(mint(name));
   return out;
 }

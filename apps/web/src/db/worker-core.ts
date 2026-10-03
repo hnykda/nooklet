@@ -21,10 +21,13 @@ import {
   getPage,
   initSchema,
   listChildren,
+  makeOp,
+  newId,
   type Op,
   type PageRow,
   type SqlDriver,
 } from "@nooklet/core";
+import { planLocalReferencedPages } from "../data/local-ref-pages.js";
 import { buildBlockTree } from "../data/tree.js";
 import type {
   BlockTreeNode,
@@ -124,6 +127,13 @@ export interface WorkerDbOptions {
    * every single cold start for a device that will never have one — see
    * `docs/proposals/004-capacitor-storage-durability.md`'s sibling problem statement. */
   hasSyncTarget?: boolean;
+  /** B-568/B-585: mint `page.create` for pages a local batch newly references
+   * (`data/local-ref-pages.ts`). Only for a device no server will ever see this session's writes
+   * from — on a synced device the server's `ref-pages.ts` mints them as reclaimable
+   * `REFERENCE_DEVICE_ID` pages, and a page minted here (this device's id) would never be
+   * reclaimed: every intermediate name of a link typed slowly became a permanent page. Default
+   * `false`. */
+  localReferencePages?: boolean;
   onChange?: (e: ChangeEvent) => void;
   onSyncStatus?: (s: SyncStatus) => void;
 }
@@ -132,12 +142,14 @@ export class WorkerDb {
   readonly driver: SqlDriver;
   readonly sync: SyncClient;
   private readonly hasSyncTarget: boolean;
+  private readonly localReferencePages: boolean;
   private onChangeCb: ((e: ChangeEvent) => void) | undefined;
 
   constructor(opts: WorkerDbOptions) {
     this.driver = opts.driver;
     ensureSchema(this.driver);
     this.hasSyncTarget = opts.hasSyncTarget ?? true;
+    this.localReferencePages = opts.localReferencePages ?? false;
     this.onChangeCb = opts.onChange;
     this.sync = new SyncClient({
       driver: this.driver,
@@ -236,7 +248,29 @@ export class WorkerDb {
   }
 
   applyLocalOps(ops: readonly Op[]): ApplyOpsResult {
-    return this.sync.applyLocal(ops);
+    return this.sync.applyLocal(this.withReferencedPages(ops));
+  }
+
+  /** `ops` with a `page.create` prepended for every page it references that does not exist here
+   * yet (ancestors first), when this device mints them itself (`localReferencePages`). Runs here,
+   * synchronously, rather than on the main thread before posting: see `local-ref-pages.ts`'s
+   * header (B-585). Same batch, so one transaction with the edit that named the page. */
+  private withReferencedPages(ops: readonly Op[]): readonly Op[] {
+    if (!this.localReferencePages) return ops;
+    const extra = planLocalReferencedPages(
+      ops,
+      (key) =>
+        this.driver.get("SELECT 1 AS x FROM page WHERE key = ? AND deleted_at IS NULL", [key]) !==
+        undefined,
+      (name) =>
+        makeOp(this.sync.nextHlc(), this.sync.getDeviceId(), newId(), {
+          kind: "page.create",
+          name,
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+    );
+    return extra.length > 0 ? [...extra, ...ops] : ops;
   }
 
   /** See `WorkerApi.replayLocalOps`. The `op` table is the replica's record of every op id it
@@ -246,7 +280,8 @@ export class WorkerDb {
     const fresh = ops.filter(
       (op) => this.driver.get("SELECT 1 AS x FROM op WHERE id = ?", [op.id]) === undefined,
     );
-    if (fresh.length > 0) this.sync.applyLocal(fresh);
+    // Through the same minting as a live write: the batch being replayed never got its pages.
+    if (fresh.length > 0) this.sync.applyLocal(this.withReferencedPages(fresh));
     return { replayed: fresh.length, skipped: ops.length - fresh.length };
   }
 

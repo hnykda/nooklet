@@ -118,6 +118,11 @@ async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
     // above either way (constructing it is cheap and side-effect-free); what changes is whether
     // `WorkerDb.start()` ever calls it.
     hasSyncTarget: opts.syncBaseUrl !== undefined,
+    // B-585: no server will run `ref-pages.ts` for these writes — none configured (Capacitor's
+    // "Just this device"), or no credential (the web/desktop "Just this device": same origin, but
+    // the token is fixed at startup and absent, so nothing ever pushes). Only then does the
+    // client mint referenced pages itself; see `WorkerDbOptions.localReferencePages`.
+    localReferencePages: opts.syncBaseUrl === undefined || !opts.token,
     onChange: (e) => safeCall(changeListener, e),
     onSyncStatus: (s) => safeCall(statusListener, s),
   });

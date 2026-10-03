@@ -60,42 +60,42 @@ describe("namesReferencedByOps", () => {
 });
 
 describe("planLocalReferencedPages", () => {
-  it("returns [] fast when nothing is referenced — pageExists/mint never called", async () => {
+  it("returns [] fast when nothing is referenced — pageExists/mint never called", () => {
     const pageExists = vi.fn();
     const mint = vi.fn();
-    const result = await planLocalReferencedPages([createOp("plain text")], pageExists, mint);
+    const result = planLocalReferencedPages([createOp("plain text")], pageExists, mint);
     expect(result).toEqual([]);
     expect(pageExists).not.toHaveBeenCalled();
     expect(mint).not.toHaveBeenCalled();
   });
 
-  it("mints a page.create for a reference that does not exist locally", async () => {
-    const pageExists = vi.fn().mockResolvedValue(false);
-    const mint = vi.fn(async (name: string) => ({
+  it("mints a page.create for a reference that does not exist locally", () => {
+    const pageExists = vi.fn().mockReturnValue(false);
+    const mint = vi.fn((name: string) => ({
       id: `new-${name}`,
       hlc: "h",
       device: "d",
       entity: `page-for-${name}`,
       payload: { kind: "page.create" as const, name, journalDay: null, createdAt: 0 },
     }));
-    const result = await planLocalReferencedPages([textOp("see [[New Page]]")], pageExists, mint);
+    const result = planLocalReferencedPages([textOp("see [[New Page]]")], pageExists, mint);
     expect(result).toHaveLength(1);
     expect(mint).toHaveBeenCalledWith("New Page");
   });
 
-  it("does not mint anything for a reference that already resolves locally", async () => {
-    const pageExists = vi.fn().mockResolvedValue(true);
+  it("does not mint anything for a reference that already resolves locally", () => {
+    const pageExists = vi.fn().mockReturnValue(true);
     const mint = vi.fn();
-    const result = await planLocalReferencedPages([textOp("see [[Existing]]")], pageExists, mint);
+    const result = planLocalReferencedPages([textOp("see [[Existing]]")], pageExists, mint);
     expect(result).toEqual([]);
     expect(mint).not.toHaveBeenCalled();
   });
 
-  it("mints missing namespace ancestors too, ancestors before the page", async () => {
+  it("mints missing namespace ancestors too, ancestors before the page", () => {
     const existing = new Set<string>();
-    const pageExists = vi.fn(async (key: string) => existing.has(key));
+    const pageExists = vi.fn((key: string) => existing.has(key));
     const minted: string[] = [];
-    const mint = vi.fn(async (name: string) => {
+    const mint = vi.fn((name: string) => {
       minted.push(name);
       return {
         id: `new-${name}`,
@@ -105,7 +105,7 @@ describe("planLocalReferencedPages", () => {
         payload: { kind: "page.create" as const, name, journalDay: null, createdAt: 0 },
       };
     });
-    const result = await planLocalReferencedPages(
+    const result = planLocalReferencedPages(
       [textOp("see [[Projects/Aurora/Launch]]")],
       pageExists,
       mint,
@@ -114,16 +114,16 @@ describe("planLocalReferencedPages", () => {
     expect(minted).toEqual(["Projects", "Projects/Aurora", "Projects/Aurora/Launch"]);
   });
 
-  it("mints a missing reference once even when named twice in the same batch", async () => {
-    const pageExists = vi.fn().mockResolvedValue(false);
-    const mint = vi.fn(async (name: string) => ({
+  it("mints a missing reference once even when named twice in the same batch", () => {
+    const pageExists = vi.fn().mockReturnValue(false);
+    const mint = vi.fn((name: string) => ({
       id: `new-${name}`,
       hlc: "h",
       device: "d",
       entity: `page-for-${name}`,
       payload: { kind: "page.create" as const, name, journalDay: null, createdAt: 0 },
     }));
-    const result = await planLocalReferencedPages(
+    const result = planLocalReferencedPages(
       [textOp("[[Repeat]]"), textOp("[[Repeat]] again")],
       pageExists,
       mint,
@@ -132,10 +132,10 @@ describe("planLocalReferencedPages", () => {
     expect(mint).toHaveBeenCalledTimes(1);
   });
 
-  it("never mints a journal-day-looking name", async () => {
-    const pageExists = vi.fn().mockResolvedValue(false);
+  it("never mints a journal-day-looking name", () => {
+    const pageExists = vi.fn().mockReturnValue(false);
     const mint = vi.fn();
-    const result = await planLocalReferencedPages([textOp("see [[2026-09-15]]")], pageExists, mint);
+    const result = planLocalReferencedPages([textOp("see [[2026-09-15]]")], pageExists, mint);
     expect(result).toEqual([]);
     expect(mint).not.toHaveBeenCalled();
   });
