@@ -14,10 +14,12 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   ("Offline — …" label, dot still `synced`) and the server-down test ("Synced" with the proxy
   down); the blip test is a guard, green both before and after. Green after, `--repeat-each=2`.
 
-- B-615: `index.html` now loads `src/entry.ts`, which checks `isSecureContext` +
-  `crypto.randomUUID` + `navigator.locks` and renders `src/insecure-context.ts`'s plain-DOM page
-  (why, plus Tailscale serve / HTTPS / localhost or SSH tunnel) instead of dynamically importing
-  `main.tsx`. e2e `insecure-context.spec.ts`: red on 38e17a6 (blank white page, screenshot), green
+- B-615: the top of `main.tsx` checks `isSecureContext` + `crypto.randomUUID` +
+  `navigator.locks` and renders `src/insecure-context.ts`'s plain-DOM page (why, plus Tailscale
+  serve / HTTPS / localhost or SSH tunnel) instead of starting. A first version used a separate
+  `entry.ts` that dynamically imported `main.tsx`; the full e2e run showed 19 failures (palette /
+  keybinding / mermaid-offline specs pressing keys right after `goto`): with the extra hop, `load`
+  fired before the app mounted. Reverted to an in-module gate; those specs pass again. e2e `insecure-context.spec.ts`: red on 38e17a6 (blank white page, screenshot), green
   after. Capacitor: not re-probed (no Simulator allowed); relies on the recorded Simulator probe
   (`docs/progress/real-device-test.md`: `isSecureContext=true`) and on the real app booting there,
   which it cannot do without `crypto.randomUUID`.
@@ -47,7 +49,11 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   forever", which fails identically on 38e17a6 (3/3 with `--repeat-each=3`): today's journal shows
   the draft row, the test's `draft.isVisible()` check runs before it renders and the fallback
   clicks a `.vr-block-view` that does not exist. Pre-existing, not touched.
-- Full e2e suite: see below once it finishes.
+- Full e2e suite, first pass (with the `entry.ts` version of B-615): 674 passed, 19 failed, 2
+  skipped. 15 of the 19 were caused by `entry.ts` (see Done, B-615) and pass after the rework.
+  The other 4 — `page-find.spec.ts` ×2 (Cmd/Ctrl+F) and `random-page.spec.ts` ×2 — fail
+  identically on 38e17a6 (run there: 4 failed). Pre-existing, not touched.
+- Full e2e suite, second pass: see below.
 
 ## Next steps
 1. Nothing left in scope. Fold the BUGS.md entries below.
@@ -82,8 +88,8 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   `idle`. Each failed reconnect re-probes, so recovery is noticed even without the socket. Not
   verified against a real killed server (the e2e uses a TCP proxy that stops listening).
 - **B-615** → `fixed` · **Test:** `e2e/tests/insecure-context.spec.ts` (red on 38e17a6: blank
-  page), `insecure-context.test.ts`. Fix: `src/entry.ts` gates before `main.tsx` is imported (its
-  imports are what throw) and shows why plus the three fixes. The capability check (randomUUID,
+  page), `insecure-context.test.ts`. Fix: the top of `main.tsx` gates before starting anything and
+  shows why plus the three fixes. The capability check (randomUUID,
   locks) decides alongside `isSecureContext`. Capacitor `capacitor://localhost` = secure context per
   the recorded Simulator probe (`tools/probes/capacitor-network/`, `docs/progress/real-device-test.md`);
   not re-probed here. Desktop app pointed at a plain-http remote: expected to land on the same page

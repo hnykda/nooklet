@@ -7,9 +7,10 @@
  * absent (B-27), and the app used to accept a token and then render a blank white page, with only
  * `crypto.randomUUID is not a function` in a console nobody on a phone can open.
  *
- * Checked in `./entry.ts` before `./main.tsx` is even loaded, because its imports are what fail:
- * module-level code in `live/window-id.ts` and friends runs at import time, before any check in
- * `main.tsx`'s body could.
+ * Checked at the top of `./main.tsx`, before anything starts: the failures are in what starting
+ * calls (`live/window-id.ts`, the DB worker's lock), not in what importing evaluates. (A separate
+ * entry module that dynamically imported `main.tsx` was tried first; it let `load` fire before the
+ * app mounted and broke 19 e2e tests that press a key right after `goto`.)
  *
  * The capability check, not only `isSecureContext`, decides: what breaks is the missing APIs, and a
  * shell that is secure but somehow lacks them should land here too, not on a blank page. The iOS
