@@ -145,12 +145,9 @@ test("promoting a local-only graph pushes its full pre-existing local history to
   });
   await page.goto("/journals");
 
-  // A `token: null` response makes `App.tsx` show `ConnectView` rather than the journal (same as a
-  // genuine remote/Capacitor device with nothing paired yet) — its own "Just this device" is the
-  // SAME real mechanism `local-page-creation.spec.ts` already uses to reach this state, a plain
-  // in-memory skip (`App.tsx`'s `onSkip`) that touches no storage, so it cannot disturb the entry
-  // just seeded above.
-  await page.getByRole("button", { name: /Just this device/s }).click();
+  // B-612: an active local-only entry IS the "Just this device" choice, remembered, so `App.tsx`
+  // shows the journal straight away — no set-up screen, despite the `token: null` above.
+  await expect(page.locator(".connect")).toHaveCount(0);
 
   // Real content, through the editor — a local-only replica has no server to seed through the API.
   const draft = page.locator(".journal-day-today .vr-draft-input").first();

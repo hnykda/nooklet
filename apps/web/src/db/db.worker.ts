@@ -26,7 +26,7 @@ import * as Comlink from "comlink";
 import { createHttpTransport } from "../sync/http-transport.js";
 import type { SyncStatus } from "../sync/types.js";
 import { createResumeRetry, type ResumeRetry } from "./reopen-on-resume.js";
-import { openSqliteWasmDriver } from "./sqlite-wasm-driver.js";
+import { openSqliteWasmDriver, UNNAMESPACED_REPLICA } from "./sqlite-wasm-driver.js";
 import type { ChangeEvent, InitResult, WorkerApi, WorkerInitOptions } from "./worker-api.js";
 import { WorkerDb } from "./worker-core.js";
 
@@ -64,6 +64,29 @@ function tryBecomeLeader(graphEntryId: string | undefined): Promise<boolean> {
   });
 }
 
+/**
+ * How long a replica with no server waits for the writer lock before settling for a follower.
+ * A follower's replica is in memory and, for a follower, "reaches the leader through sync" — but
+ * with no server there is no sync, so everything written in it is gone at the next reload. And the
+ * commonest way to start as a follower is not a second tab at all: it is a relaunch or reload,
+ * where the previous page load's worker still holds the lock for a moment while it is torn down
+ * (`tools/probes/local-graphs/relaunch-loss.probe.ts`: 1 relaunch in 10 came up as a follower).
+ * Waiting that moment out keeps the local copy; a genuine second tab still gets its follower, late.
+ */
+const LOCAL_ONLY_LOCK_WAIT_MS = 3_000;
+
+async function becomeLeader(
+  graphEntryId: string | undefined,
+  localOnly: boolean,
+): Promise<boolean> {
+  const deadline = Date.now() + (localOnly ? LOCAL_ONLY_LOCK_WAIT_MS : 0);
+  for (;;) {
+    if (await tryBecomeLeader(graphEntryId)) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 let changeListener: ((e: ChangeEvent) => unknown) | undefined;
 let statusListener: ((s: SyncStatus) => unknown) | undefined;
 
@@ -89,10 +112,11 @@ interface OpenedDb {
   /** Only meaningful for the leader (a follower's replica is in-memory, nothing to export) —
    * Option C's checkpoint read side (`api.exportSnapshot`). */
   exportBytes?: () => Uint8Array;
+  unnamespacedReplica?: InitResult["unnamespacedReplica"];
 }
 
 async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
-  const leader = await tryBecomeLeader(opts.graphEntryId);
+  const leader = await becomeLeader(opts.graphEntryId, opts.syncBaseUrl === undefined);
   // Same reasoning as `leaderLockName` above: `undefined` keeps `openSqliteWasmDriver`'s own
   // unnamespaced default filename, exactly pre-ADR-025 behavior, for every caller that doesn't
   // pass a `graphEntryId`.
@@ -102,6 +126,7 @@ async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
     // A follower's driver is already forced to memory above, so restoring here would be pointless
     // (and `openSqliteWasmDriver` never reaches the pool code on that path anyway).
     restoreBytes: leader ? opts.restoreBytes : undefined,
+    inspect: opts.inspectUnnamespaced ? UNNAMESPACED_REPLICA : undefined,
   });
   const { driver } = opened;
   const storage: OpenedDb["storage"] = leader ? opened.storage : "follower";
@@ -127,7 +152,13 @@ async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
     onSyncStatus: (s) => safeCall(statusListener, s),
   });
   await db.start();
-  return { db, storage, storageError, exportBytes: leader ? opened.exportBytes : undefined };
+  return {
+    db,
+    storage,
+    storageError,
+    exportBytes: leader ? opened.exportBytes : undefined,
+    unnamespacedReplica: leader ? opened.inspected : undefined,
+  };
 }
 
 /**
@@ -154,8 +185,8 @@ const api: WorkerApi = {
         () => openDb(initOpts as WorkerInitOptions),
       );
     }
-    const { db, storage, storageError } = await retry.current();
-    return { deviceId: db.getDeviceId(), storage, storageError };
+    const { db, storage, storageError, unnamespacedReplica } = await retry.current();
+    return { deviceId: db.getDeviceId(), storage, storageError, unnamespacedReplica };
   },
 
   async nextHlc() {

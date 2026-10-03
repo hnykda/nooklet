@@ -15,7 +15,13 @@ import "./styles/views.css";
 import { Navigate, Route, Router, type RouteSectionProps } from "@solidjs/router";
 import { createSignal, type JSX, Show } from "solid-js";
 import { CommandLayer } from "./app/CommandLayer.js";
-import { bootstrapConfig, samePathGraphPrefix } from "./data/bootstrap.js";
+import {
+  activeGraph,
+  bootstrapConfig,
+  chooseLocalOnly,
+  isLocalOnlyEntry,
+  samePathGraphPrefix,
+} from "./data/bootstrap.js";
 import { platform } from "./platform/index.js";
 import { CaptureRoute } from "./routes/CaptureRoute.js";
 import { GraphRoute } from "./routes/GraphRoute.js";
@@ -65,6 +71,23 @@ export function App() {
   // with rather than equals: this runs before `<Router>` exists to strip its own `base` (below),
   // so the raw pathname may still carry a `/g/<slug>` prefix.
   const isCapture = (): boolean => Boolean(globalThis.location?.pathname?.endsWith("/capture"));
+  // B-612: a local-only list entry has no server, so there is no token to ask for — it is the
+  // "Just this device" choice already made, remembered.
+  const localOnly = isLocalOnlyEntry(activeGraph());
+
+  /** B-612: under Capacitor, "Just this device" is a real list entry (so the switcher can come back
+   * to it once a server graph is added), not an in-memory flag that the next "Add a graph" strands.
+   * Web/desktop keep the in-memory skip: there the page is always served by some graph's origin,
+   * which already has an entry (`initBootstrap`). */
+  function skip(): void {
+    if (platform.name === "capacitor" && !activeGraph()) {
+      if (chooseLocalOnly().reload) {
+        location.reload();
+        return;
+      }
+    }
+    setSkipped(true);
+  }
 
   // Checked before anything else: a graph mismatch makes every other screen quietly lie, so
   // there is no point rendering them.
@@ -83,8 +106,8 @@ export function App() {
     <>
       <PairingLinkPrompt />
       <Show
-        when={config.token !== null || skipped() || isCapture()}
-        fallback={<ConnectView reason={config.reason} onSkip={() => setSkipped(true)} />}
+        when={config.token !== null || skipped() || localOnly || isCapture()}
+        fallback={<ConnectView reason={config.reason} onSkip={skip} />}
       >
         {/* ADR 025: routes below are defined app-relative ("/journals", not "/g/default/journals");
           `base` is what lets the router match/generate them correctly wherever this page actually

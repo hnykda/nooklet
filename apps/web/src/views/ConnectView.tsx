@@ -108,9 +108,12 @@ export function ConnectView(props: {
                 </span>
                 <span class="connect-choice-text">
                   <h2>Just this device</h2>
+                  {/* B-612: under Capacitor the choice is remembered as a graph of its own, and a
+                      server is added later from the graph switcher, not from this screen. */}
                   <p>
-                    Nothing to set up. You'll see this screen again if you want to add a server
-                    later.
+                    {showServerField
+                      ? "Nothing to set up. You can add a server later from the graph switcher."
+                      : "Nothing to set up. You'll see this screen again if you want to add a server later."}
                   </p>
                 </span>
               </button>

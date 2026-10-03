@@ -9,7 +9,8 @@
  * lost, and on the owner's graph `second line` came out as `ecoe` (B-411). Now there is one tree
  * per day for as long as the section shows that day. The caller keys this component by day.
  */
-import { createSignal, type JSX, Show } from "solid-js";
+import { createEffect, createSignal, type JSX, Show } from "solid-js";
+import { flushDraftIntoExistingDay } from "../data/journal-draft-store.js";
 import type { JournalDayEntry, NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
 import { JournalDayLoading, VirtualJournalDay } from "./VirtualJournalDay.js";
@@ -21,6 +22,14 @@ export function JournalDayOutline(props: {
   onNavigate?: (t: NavigateTarget) => void;
 }): JSX.Element {
   const [started, setStarted] = createSignal(false);
+  // B-619: a draft kept from an earlier page load for a day that has a page by now (sync brought
+  // it in) has no draft to restore into; it goes at the end of the page instead. Once per mount.
+  let flushed = false;
+  createEffect(() => {
+    if (flushed || started() || !props.entry?.page) return;
+    flushed = true;
+    void flushDraftIntoExistingDay(props.day);
+  });
   return (
     <Show when={props.entry !== undefined || started()} fallback={<JournalDayLoading />}>
       <Show

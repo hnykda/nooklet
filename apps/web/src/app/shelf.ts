@@ -13,6 +13,7 @@
 
 import { normalizePageName } from "@nooklet/core";
 import { createSignal } from "solid-js";
+import { activeGraphId } from "../data/bootstrap.js";
 
 /**
  * What a caller asks the shelf to hold.
@@ -49,7 +50,11 @@ interface ShelfState {
  * Surviving a reload — which is what `sessionStorage` buys over a plain signal — is the part that
  * actually matters, since a reload is how most of this app's bugs get worked around.
  */
-const STORAGE_KEY = "nooklet.shelf.state";
+/** Per graph (ADR 025): switching graphs navigates the SAME tab, and `sessionStorage` survives
+ * that, so one key would put graph A's cards — block ids, page names — on graph B's shelf, where a
+ * page card opens B's page of the same name. Read once, at module load, which is after the
+ * switch's navigation, so the active entry is the graph this page load shows. */
+const STORAGE_KEY = `nooklet.shelf.state:${activeGraphId() ?? "~"}`;
 
 function storage(): Storage | undefined {
   try {

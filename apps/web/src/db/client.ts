@@ -5,16 +5,24 @@
  * (`../data/store.ts` and up) only ever sees plain async functions and Solid signals/resources.
  */
 import type { ApplyOpsResult, Op } from "@nooklet/core";
+import { newId } from "@nooklet/core";
 import * as Comlink from "comlink";
 import { createSignal } from "solid-js";
+import { replicaScope, soleLegacyStateOwner } from "../data/bootstrap.js";
 import { platform } from "../platform/index.js";
 import type { SyncStatus } from "../sync/types.js";
-import { createCheckpointScheduler, readCheckpoint } from "./capacitor-checkpoint.js";
+import {
+  createCheckpointScheduler,
+  migrateUnscopedCheckpoint,
+  readCheckpoint,
+} from "./capacitor-checkpoint.js";
 import {
   createUnappliedOpsJournal,
   holdOwnerLock,
+  migrateUnscopedBatches,
   type OwnerLocks,
   replayOrphanedBatches,
+  type UnappliedOpsJournal,
 } from "./unapplied-ops.js";
 import type { ChangeEvent, InitResult, WorkerApi, WorkerInitOptions } from "./worker-api.js";
 
@@ -46,9 +54,24 @@ function browserLocks(): OwnerLocks | undefined {
   return typeof navigator === "undefined" ? undefined : (navigator.locks as OwnerLocks | undefined);
 }
 
-/** Every write kept on the main thread until the worker has it (B-247, `./unapplied-ops.ts`). */
-const unapplied = createUnappliedOpsJournal({ storage: browserStorage() });
-holdOwnerLock(browserLocks(), unapplied.owner);
+/** This page load's id: the owner of its B-247 batches, held as a Web Lock until it goes away. */
+const pageLoadOwner = newId();
+holdOwnerLock(browserLocks(), pageLoadOwner);
+
+/**
+ * Every write kept on the main thread until the worker has it (B-247, `./unapplied-ops.ts`), scoped
+ * to the replica this page load opened (B-611). Created by `initDb`, which is the one place that
+ * knows which replica that is — not at module load, where on a first launch `initBootstrap` has not
+ * yet added the entry the worker is about to open.
+ */
+let unapplied: UnappliedOpsJournal | undefined;
+let scope: string | undefined;
+
+/** The replica this page load opened, as `data/bootstrap.ts#replicaScope` (set by `initDb`). For
+ * main-thread state that belongs to one graph, like the journal draft copy (B-619). */
+export function currentReplicaScope(): string {
+  return scope ?? replicaScope(undefined);
+}
 
 function getWorker(): Comlink.Remote<WorkerApi> {
   if (!workerApi) {
@@ -64,13 +87,26 @@ function getWorker(): Comlink.Remote<WorkerApi> {
 export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
   if (!initPromise) {
     const api = getWorker();
+    scope = replicaScope(opts.graphEntryId);
+    const journal = createUnappliedOpsJournal({
+      storage: browserStorage(),
+      scope,
+      owner: pageLoadOwner,
+    });
+    unapplied = journal;
+    const replicaScopeNow = scope;
     // Option C (docs/proposals/004): only on Capacitor — web/PWA/desktop's OPFS never needs a
     // native-filesystem backstop. `readCheckpoint()` itself never fetches `@capacitor/filesystem`
     // outside Capacitor (lazy import inside it, same pattern as `platform/capacitor.ts`), and
     // resolves `undefined` on "no checkpoint yet" (every first run) as much as on a real read
     // failure — either way `init()` below proceeds with no restore.
+    // B-611: the checkpoint is per replica now; the old device-wide file is sorted out first.
     const restoreBytes: Promise<Uint8Array | undefined> =
-      platform.name === "capacitor" ? readCheckpoint() : Promise.resolve(undefined);
+      platform.name === "capacitor"
+        ? migrateUnscopedCheckpoint(soleLegacyStateOwner()).then(() =>
+            readCheckpoint(replicaScopeNow),
+          )
+        : Promise.resolve(undefined);
     initPromise = restoreBytes
       .then((bytes) => api.init({ ...opts, restoreBytes: bytes }))
       .then((r) => {
@@ -81,14 +117,21 @@ export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
       platform.lifecycle.on(event, () => void api.notifyLifecycle(event));
     }
     if (platform.name === "capacitor") {
-      const scheduler = createCheckpointScheduler(() => api.exportSnapshot());
+      const scheduler = createCheckpointScheduler(() => api.exportSnapshot(), replicaScopeNow);
       onChange(() => scheduler.onChange());
       platform.lifecycle.on("pause", () => scheduler.onPause());
     }
     // Writes an earlier page load handed to its worker and never saw applied. Posted right behind
     // `init`, which the worker finishes (bootstrap included) before it runs anything else.
+    // B-611: only this replica's batches; unscoped ones from an older build are first attributed
+    // to the one replica that could have written them, or quarantined.
     const replay = () =>
-      replayOrphanedBatches(unapplied, browserLocks(), (ops) => api.replayLocalOps(ops));
+      replayOrphanedBatches(
+        journal,
+        browserLocks(),
+        (ops) => api.replayLocalOps(ops),
+        (live) => void migrateUnscopedBatches(browserStorage(), live, soleLegacyStateOwner()),
+      );
     // Once more a little later: the page load a reload replaced releases its owner lock when the
     // browser tears it down, and nothing promises that has happened by the time this one asks. In
     // Chromium it had, in every run of `reload-durability.spec.ts`; other engines are unmeasured.
@@ -123,12 +166,13 @@ export async function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
   // The copy is written BEFORE the message is posted and synchronously, so an unload at any
   // point after this line leaves the batch to be replayed (B-247). Deliberately before the
   // `readyWorker()` await below, not after — this must stay true regardless of init timing.
-  const key = unapplied.record(ops);
-  const worker = await readyWorker();
+  const ready = readyWorker(); // runs `initDb` synchronously if nothing has, creating the journal
+  const key = unapplied?.record(ops);
+  const worker = await ready;
   const result = worker.applyLocalOps(ops);
   // Kept when the call fails: whatever failed, the next start retries it rather than losing it.
   void result.then(
-    () => unapplied.settle(key),
+    () => unapplied?.settle(key),
     () => {},
   );
   return result;
