@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+  Probe: can the Capacitor iOS shell (page origin `capacitor://localhost`) actually talk to a
+  `nooklet serve` on another host? Settles, on a real WKWebView rather than by reading docs:
+  CORS preflight, App Transport Security for plain http to a LAN IP, mixed-content blocking from
+  the capacitor:// scheme, and the WebSocket upgrade — from BOTH the page and a dedicated Worker
+  (the real app's sync engine runs in a Worker, `apps/web/src/db/db.worker.ts`).
+
+  How to run: tools/probes/capacitor-network/run.sh (writes config.js, swaps these files into
+  apps/web/ios/App/App/public, builds for the Simulator, installs, launches, screenshots).
+  Results are shown on screen AND sent to a no-cors log endpoint (config.js's `LOG`), which a
+  WKWebView sends even when the response is unreadable.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>net probe</title>
+<style>
+  body { font: 13px/1.35 -apple-system, sans-serif; margin: 60px 10px 10px; background: #fff; color: #000; }
+  .ok { color: #070; } .fail { color: #b00; }
+  pre { white-space: pre-wrap; word-break: break-all; margin: 0; }
+</style>
+<script src="config.js"></script>
+</head>
+<body>
+<h3>capacitor network probe</h3>
+<pre id="out"></pre>
+<script>
+const out = document.getElementById("out");
+const lines = [];
+function log(tag, ok, detail) {
+  const line = `${ok ? "PASS" : "FAIL"} ${tag}: ${detail}`;
+  lines.push(line);
+  const el = document.createElement("div");
+  el.className = ok ? "ok" : "fail";
+  el.textContent = line;
+  out.appendChild(el);
+  try {
+    fetch(`${LOG}/log?${encodeURIComponent(line)}`, { mode: "no-cors" }).catch(() => {});
+  } catch {}
+}
+async function run() {
+  log("page.origin", true, `${location.origin} secure=${self.isSecureContext}`);
+  const G = `${BASE}/g/default`;
+  try {
+    const r = await fetch(`${BASE}/healthz`);
+    log("page.healthz (simple GET)", r.ok, `${r.status} ${await r.text()}`);
+  } catch (e) { log("page.healthz (simple GET)", false, String(e)); }
+  try {
+    const r = await fetch(`${G}/api/session`, { headers: { accept: "application/json" } });
+    log("page.session", r.ok, `${r.status} ${(await r.text()).slice(0, 80)}`);
+  } catch (e) { log("page.session", false, String(e)); }
+  try {
+    const r = await fetch(`${G}/api/v1/graph.overview`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: "{}",
+    });
+    log("page.overview (preflighted POST)", r.ok, `${r.status} ${(await r.text()).slice(0, 60)}`);
+  } catch (e) { log("page.overview (preflighted POST)", false, String(e)); }
+  try {
+    const r = await fetch(`${BASE}/api/v1/graph.overview`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: "{}",
+    });
+    log("page.overview at BARE origin (307)", r.ok, `${r.status} ${r.url}`);
+  } catch (e) { log("page.overview at BARE origin (307)", false, String(e)); }
+  await new Promise((resolve) => {
+    const w = new Worker("worker.js");
+    w.postMessage({ BASE, TOKEN });
+    w.onmessage = (ev) => {
+      if (ev.data === "done") return resolve();
+      log(ev.data.tag, ev.data.ok, ev.data.detail);
+    };
+    w.onerror = (e) => { log("worker.error", false, e.message); resolve(); };
+    setTimeout(resolve, 20000);
+  });
+  log("done", true, `${lines.filter((l) => l.startsWith("FAIL")).length} failure(s)`);
+}
+run();
+</script>
+</body>
+</html>

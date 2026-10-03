@@ -224,3 +224,72 @@ describe("createMultiGraphApp: dynamic /g/:graphId/* dispatch", () => {
     });
   });
 });
+
+/**
+ * The iOS app shell loads from `capacitor://localhost`, so every request it makes is cross-origin.
+ * Before this, a preflight hit the per-graph bearer gate (401, no CORS headers) and the app could
+ * not reach any server at all — shown on the real iOS Simulator by
+ * `tools/probes/capacitor-network/` ("TypeError: Load failed" for every fetch).
+ */
+describe("createMultiGraphApp: CORS for nooklet's own app shells", () => {
+  const CAP = "capacitor://localhost";
+  const preflight = (origin: string) => ({
+    method: "OPTIONS",
+    headers: {
+      origin,
+      "access-control-request-method": "POST",
+      "access-control-request-headers": "authorization,content-type",
+    },
+  });
+
+  it("answers a Capacitor preflight to a graph route with 204 and the headers it needs — before that graph's own bearer gate", async () => {
+    const { app } = makeApp();
+    await createGraph(app, "default");
+    const res = await app.request("/g/default/api/v1/graph.overview", preflight(CAP));
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(CAP);
+    expect(res.headers.get("access-control-allow-headers")).toContain("authorization");
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+  });
+
+  it("answers a preflight at bare origin too, rather than 307-redirecting it (a redirected preflight fails outright)", async () => {
+    const { app } = makeApp();
+    await createGraph(app, "default");
+    const res = await app.request("/graphs", preflight(CAP));
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(CAP);
+  });
+
+  it("tags the real response for a Capacitor origin, so the app can read it", async () => {
+    const { app } = makeApp();
+    const token = await createGraph(app, "default");
+    const res = await app.request("/g/default/api/v1/graph.overview", {
+      method: "POST",
+      headers: {
+        origin: CAP,
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe(CAP);
+    const session = await app.request("/g/default/api/session", { headers: { origin: CAP } });
+    expect(session.headers.get("access-control-allow-origin")).toBe(CAP);
+  });
+
+  it("grants nothing to any other origin — /api/session hands a token to loopback callers, so a website must never be able to read it", async () => {
+    const { app } = makeApp();
+    await createGraph(app, "default");
+    const session = await app.request("/g/default/api/session", {
+      headers: { origin: "https://evil.example" },
+    });
+    expect(session.headers.get("access-control-allow-origin")).toBeNull();
+    const pre = await app.request(
+      "/g/default/api/v1/graph.overview",
+      preflight("https://evil.example"),
+    );
+    expect(pre.headers.get("access-control-allow-origin")).toBeNull();
+    expect(pre.status).toBe(401); // unchanged: falls through to the graph's own bearer gate
+  });
+});

@@ -37,6 +37,19 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- For a server reached over plain http on the LAN (docs/progress/real-device-test.md).
+	     NSAllowsLocalNetworking lets ATS permit http to .local / unqualified names without
+	     loosening it for the internet; the Simulator reached a bare LAN IP without it
+	     (tools/probes/capacitor-network), a physical device is unverified. The usage string is
+	     the text of iOS's "find devices on your local network" prompt. A tailnet HTTPS
+	     (*.ts.net) server needs neither. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>nooklet syncs your notes with a nooklet server you run on your own network.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

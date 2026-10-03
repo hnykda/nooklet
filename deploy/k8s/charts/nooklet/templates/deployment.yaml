@@ -1,0 +1,103 @@
+# DRAFT — not applied. See deploy/k8s/README.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nooklet.fullname" . }}
+  labels:
+    {{- include "nooklet.labels" . | nindent 4 }}
+spec:
+  replicas: 1                # SQLite, one writer process — never scale this
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate           # a RollingUpdate would briefly run two servers on one database
+  selector:
+    matchLabels:
+      {{- include "nooklet.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nooklet.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      # The server reads <data>/root.token (minting one if absent). Copying the Secret over it on
+      # every start makes SOPS the source of truth, so rotating means editing the secret + restart.
+      - name: root-token
+        image: {{ include "nooklet.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["/bin/sh", "-c", "cp /secret/root-token /data/root.token && chmod 600 /data/root.token"]
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: root-token
+          mountPath: /secret
+          readOnly: true
+      containers:
+      - name: nooklet
+        image: {{ include "nooklet.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        args:
+        - serve
+        - --data
+        - /data
+        - --host
+        - 0.0.0.0
+        - --port
+        - "6100"
+        - --web
+        - /app/web
+        - --allow-host
+        - {{ join "," .Values.allowHosts | quote }}
+        ports:
+        - name: http
+          containerPort: 6100
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        # `Host: localhost`: bound to 0.0.0.0 with --allow-host, nooklet 403s any Host not on the
+        # list under /g/<id>/ and kubelet's default Host is the pod IP. The bare /healthz probed here
+        # sits outside that guard today (checked against the image: 200 with a pod-IP Host), so
+        # this header is belt-and-braces, not load-bearing.
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+            httpHeaders:
+            - name: Host
+              value: localhost
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+            httpHeaders:
+            - name: Host
+              value: localhost
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "nooklet.fullname" . }}
+      - name: root-token
+        secret:
+          secretName: {{ include "nooklet.fullname" . }}
+          items:
+          - key: root-token
+            path: root-token

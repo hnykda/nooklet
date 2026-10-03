@@ -1,0 +1,19 @@
+# DRAFT — not applied.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nooklet.fullname" . }}
+  labels:
+    {{- include "nooklet.labels" . | nindent 4 }}
+  annotations:
+    # In the chart from the FIRST install: Helm reads this from the stored release manifest, so
+    # adding it later does not protect the volume (infra-repo
+    # docs/incidents/2026-08-18-helm-resource-policy-keep-does-not-work-post-hoc.md).
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.persistence.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
