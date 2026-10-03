@@ -421,20 +421,6 @@ are not covered. Not fixed here: it is outside B-411's cause.
 
 ---
 
-### B-543 · `connectivity.spec.ts` › "search returns rather than spinning forever" fails most runs
-**Status:** open · **Severity:** low (test only) · **Found:** 2026-09-13, quiet-topbar (running the
-specs it touched) · **Test:** the test itself
-
-On the unchanged base commit `9ac9e48` (port 6422, Chromium) it failed 3 of 4 runs, the same as on
-`m11/quiet-topbar`: `locator.click` times out waiting for `.vr-outliner .vr-block-view`. The page
-snapshot at the failure shows today's virtual journal with its "Start typing…" draft and no
-outliner. Likely cause (read, not proven): the test decides which branch to take with a
-non-retrying `await draft.isVisible()` straight after `page.goto("/journals")`, before the journal
-has rendered, so it takes the "outliner" branch on a day that only has a draft. `openJournal` in
-`e2e/helpers/editor.ts` waits for `draft.or(outliner)` first and does not have this race.
-
----
-
 ### B-512 · The tasks view, search hits and property values show `((id))` for a block reference
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, ref-label-flash (after fixing B-510)
 · **Test:** none yet
@@ -582,6 +568,8 @@ and interleave regardless of how good either is. In range, but not comparable wi
 semantic scores, and no agent can threshold on it. Not changed here.
 
 ---
+
+2026-10-03: the client now merges server hits by position, never by score, so raw RRF values no longer matter to it.
 
 ### B-527 · Settings says "Indexing… It turns on by itself" for a backfill that stopped on errors — the state the search note calls `index_incomplete`
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, search-fallback verify (real-graph
@@ -919,7 +907,54 @@ reset.
 "Delete page from the … menu…" and "from the palette mid-typing…" fail intermittently on `4c28fad`.
 `autocomplete-inside-link.spec.ts` (the B-382/B-592 test) was flaky the same way.
 
+### B-626 · The device's search tag filter is approximate
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
+
+`local-search.ts` matches `tags` from a block's own text plus `Task` for a marker; a `tags::` block property is not seen (the replica has no `ref` table). The server's answer, when merged, is exact.
+
+### B-627 · Search keeps the previous query's rows on screen until the device answers
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
+
+A resource keeps its last value while loading: 2–4 ms locally, invisible in practice; noted because a probe timing "first list change" misreads it (`tools/probes/search-latency.mjs`).
+
+### B-628 · The OpenAI-compatible embedding provider never sends an API key
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
+
+`factory.ts` builds `new OpenAiCompatProvider({ baseUrl: host, model })` without `apiKey`, and no setting holds one, so a hosted `/v1/embeddings` API answers 401. Found by reading code only.
+
 ## Fixed
+
+### B-543 · `connectivity.spec.ts` › "search returns rather than spinning forever" fails most runs
+**Status:** fixed (2026-10-03, server-search agent) · **Test:** the spec itself (3/3 fail before, 3/3 pass after)
+
+On the unchanged base commit `9ac9e48` (port 6422, Chromium) it failed 3 of 4 runs, the same as on
+`m11/quiet-topbar`: `locator.click` times out waiting for `.vr-outliner .vr-block-view`. The page
+snapshot at the failure shows today's virtual journal with its "Start typing…" draft and no
+outliner. Likely cause (read, not proven): the test decides which branch to take with a
+non-retrying `await draft.isVisible()` straight after `page.goto("/journals")`, before the journal
+has rendered, so it takes the "outliner" branch on a day that only has a draft. `openJournal` in
+`e2e/helpers/editor.ts` waits for `draft.or(outliner)` first and does not have this race.
+
+---
+
+Fixed: `connectivity.spec.ts` waits for `draft.or(today's first block)` before branching.
+
+### B-625 · Search had no local fallback: offline it failed after 10 s, local-only it said "Search needs a server"
+**Status:** fixed (2026-10-03, `3844838`, `ba58947`) · **Severity:** high · **Found:** 2026-10-03, server-search agent (owner request) ·
+**Test:** `apps/web/src/data/local-search.test.ts` (8), `apps/web/src/data/search-enrich.test.ts` (13),
+`apps/web/src/views/SearchView.test.tsx` "SearchView: local first, then the server's semantic matches" (9),
+`apps/web/src/data/api-client.test.ts` "callOp's time bound and cancellation" (2),
+`e2e/tests/search-semantic-server.spec.ts` (5), `e2e/tests/search-local-only.spec.ts` (1)
+
+The Search view only asked the server; the replica had no full-text index. **Fixed:** the replica
+gets its own FTS index with the server's tokenizer (diacritics folded; the query parser moved to
+core), rebuilt once for an existing replica (57 ms on the real 18.6k-block graph). Local results
+show at once (2–4 ms); after a 250 ms pause the server's hybrid search is asked and its hits merged
+in, marked "semantic", with a 6 s bound that only stops waiting for the server. Rows never re-sort
+under the pointer/focus. A server hit the replica lacks shows "Not on this device yet". `[[`/`((`
+autocomplete and the palette stay local. Design agreed with the owner: local first, then enrich.
+Semantic search needs `nooklet embed model bge-m3 --provider ollama --host …` per graph (Ollama
+recommended on homeserver, `OLLAMA_KEEP_ALIVE=-1`); `docs/progress/server-search.md`.
 
 ### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
 **Status:** fixed (2026-10-03, `319d1e8`, `e65638a`) · **Severity:** low · **Test:** `e2e/tests/journal-draft-burst.spec.ts`
@@ -1818,6 +1853,8 @@ calm rendering in this pass — same pattern, deliberately left for a follow-up 
 this one further.
 
 ---
+
+2026-10-03: the Search branch is superseded by local-first search (local-only now searches the device). References/graph branches unchanged.
 
 ### B-576 · Sidebar drawer cannot be closed by tapping outside it
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-15, owner report: "also it cannot be

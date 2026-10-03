@@ -36,12 +36,17 @@ test("the API accepts that token", async ({ page }) => {
 test("search returns rather than spinning forever", async ({ page }) => {
   // Seed something findable through the UI, so this also proves the write path reached the server.
   await page.goto("/journals");
-  const draft = page.locator(".vr-draft-input").first();
+  // Today as a draft, or today's outliner: wait for whichever renders before choosing. A bare
+  // `isVisible()` straight after `goto` read "no draft" before the journal had rendered and took
+  // the outliner branch on a day that only had a draft (B-543).
+  const draft = page.locator(".journal-day-today .vr-draft-input").first();
+  const firstBlock = page.locator(".journal-day-today .vr-outliner .vr-block-view").first();
+  await expect(draft.or(firstBlock).first()).toBeVisible();
   if (await draft.isVisible()) {
     await draft.fill("findable haystack needle");
     await draft.blur();
   } else {
-    await page.locator(".vr-outliner").first().locator(".vr-block-view").first().click();
+    await firstBlock.click();
     await page.keyboard.type("findable haystack needle", { delay: 20 });
     await page.locator("body").click({ position: { x: 5, y: 5 } });
   }

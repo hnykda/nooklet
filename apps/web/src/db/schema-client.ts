@@ -9,6 +9,8 @@
  *  - `sync_state` is a flat key/value table holding `server_cursor`, `device_id`, `hlc_last`
  *    (research/03-sync.md §6.2).
  */
+import type { SqlDriver } from "@nooklet/core";
+
 export const CLIENT_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS pending_op (
     id      TEXT PRIMARY KEY,
@@ -50,6 +52,82 @@ export const CLIENT_INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS block_dated ON block(due_day)
     WHERE deleted_at IS NULL AND due_day IS NOT NULL`,
 ];
+
+/**
+ * The replica's own full-text index (server-search): the same FTS5 tables and triggers the server
+ * has (`packages/server/src/schema.ts`, "derived: full-text search"), minus the trigram twins,
+ * which only the server's substring paths read. Before this the replica had no text index at all,
+ * so search answered only through the server — and not at all offline or in local-only mode.
+ *
+ * External-content tables (`content='block'`), so the index stores tokens, not a second copy of
+ * the text, and the triggers keep it in step with every write `applyOps` makes, local or pulled.
+ * Measured with `tools/probes/client-fts-cost.mjs` on sqlite-wasm and the owner's graph (18.6k
+ * blocks): the one-time rebuild takes 57 ms, a query about 1 ms.
+ *
+ * Same tokenizer as the server (diacritics removed, `-`/`_` inside words): a Czech word typed
+ * without its háčky finds the same blocks on the device as on the server.
+ */
+const CLIENT_FTS_STATEMENTS: readonly string[] = [
+  `CREATE VIRTUAL TABLE IF NOT EXISTS block_fts USING fts5(
+    content, content='block', content_rowid='rowid',
+    tokenize="unicode61 remove_diacritics 2 tokenchars '-_'"
+  )`,
+  `CREATE TRIGGER IF NOT EXISTS block_fts_ai AFTER INSERT ON block BEGIN
+    INSERT INTO block_fts(rowid, content) VALUES (new.rowid, new.content);
+  END`,
+  `CREATE TRIGGER IF NOT EXISTS block_fts_ad AFTER DELETE ON block BEGIN
+    INSERT INTO block_fts(block_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+  END`,
+  `CREATE TRIGGER IF NOT EXISTS block_fts_au AFTER UPDATE OF content ON block BEGIN
+    INSERT INTO block_fts(block_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+    INSERT INTO block_fts(rowid, content) VALUES (new.rowid, new.content);
+  END`,
+  `CREATE VIRTUAL TABLE IF NOT EXISTS page_fts USING fts5(
+    name, content='page', content_rowid='rowid',
+    tokenize="unicode61 remove_diacritics 2 tokenchars '-_'"
+  )`,
+  `CREATE TRIGGER IF NOT EXISTS page_fts_ai AFTER INSERT ON page BEGIN
+    INSERT INTO page_fts(rowid, name) VALUES (new.rowid, new.name);
+  END`,
+  `CREATE TRIGGER IF NOT EXISTS page_fts_ad AFTER DELETE ON page BEGIN
+    INSERT INTO page_fts(page_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+  END`,
+  `CREATE TRIGGER IF NOT EXISTS page_fts_au AFTER UPDATE OF name ON page BEGIN
+    INSERT INTO page_fts(page_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+    INSERT INTO page_fts(rowid, name) VALUES (new.rowid, new.name);
+  END`,
+];
+
+/**
+ * `CLIENT_FTS_STATEMENTS` on every open; a replica that did not have the index yet (created before
+ * it existed) gets it rebuilt from the rows already there, once — the triggers only see writes
+ * made after they exist.
+ *
+ * Never fatal: a build of SQLite without FTS5 would leave the replica unopenable over a feature
+ * that only search needs. Local search reports itself unavailable instead
+ * (`../data/local-search.ts`).
+ */
+export function ensureClientSearchIndex(driver: SqlDriver): boolean {
+  // One savepoint: a half-made index (table there, triggers or rebuild not) would read as "had it"
+  // on the next open and never be rebuilt.
+  driver.exec("SAVEPOINT client_fts");
+  try {
+    const had = driver.get<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'block_fts'",
+    );
+    for (const stmt of CLIENT_FTS_STATEMENTS) driver.exec(stmt);
+    if (!had) {
+      driver.exec("INSERT INTO block_fts(block_fts) VALUES('rebuild')");
+      driver.exec("INSERT INTO page_fts(page_fts) VALUES('rebuild')");
+    }
+    driver.exec("RELEASE client_fts");
+    return true;
+  } catch {
+    driver.exec("ROLLBACK TO client_fts");
+    driver.exec("RELEASE client_fts");
+    return false;
+  }
+}
 
 /** Create `pending_op`/`sync_state` on an already-core-schema'd database. Safe to call twice. */
 export function initClientSchema(driver: { exec(sql: string): void }): void {
