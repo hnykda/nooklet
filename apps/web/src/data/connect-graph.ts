@@ -85,6 +85,60 @@ export function parseServerUrl(raw: string): { url: string } | { error: string }
   return { url: value };
 }
 
+export interface PairingLink {
+  /** The server address, validated as by `parseServerUrl` (so a bare origin is still mapped to
+   * `/g/default` later by `connectToGraph`, exactly as for a typed address). */
+  serverUrl: string;
+  token: string;
+}
+
+/**
+ * B-603: `nooklet://connect?url=<server address>&token=<device token>`, as printed by
+ * `nooklet token create --link <public url>` (server `cli.ts`). Returns `undefined` for a
+ * `nooklet://` link that is not a pairing link at all, so other deep links can be added later
+ * without this claiming them.
+ *
+ * Strict on purpose. Anything that can open a URL on the phone can craft one of these: a web page,
+ * a QR code on a poster, a message. The link is therefore never acted on silently (the app shows
+ * the connect screen pre-filled, with the address in plain view, and waits for a tap), and what is
+ * shown must be what would be contacted: only http(s), and no `user:pass@` part, which would let
+ * `https://my-server@evil.example` read as "my-server" at a glance.
+ */
+export function parsePairingLink(raw: string): PairingLink | { error: string } | undefined {
+  let link: URL;
+  try {
+    link = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  if (link.protocol !== "nooklet:") return undefined;
+  // `nooklet://connect?...` parses with host "connect" in a browser engine; a URL parser that treats
+  // the scheme as opaque gives pathname "//connect" instead. Accept both.
+  const target = (link.host || link.pathname.replace(/^\/+/, "")).replace(/\/+$/, "");
+  if (target !== "connect") return undefined;
+
+  const url = link.searchParams.get("url");
+  const token = link.searchParams.get("token")?.trim();
+  if (!url) return { error: "This pairing link has no server address (url=…)." };
+  if (!token) return { error: "This pairing link has no token (token=…)." };
+  if (!/^[A-Za-z0-9_-]{8,256}$/.test(token)) {
+    return { error: "This pairing link's token is not a nooklet token." };
+  }
+  const parsed = parseServerUrl(url);
+  if ("error" in parsed)
+    return { error: `This pairing link's server address is not usable. ${parsed.error}` };
+  let server: URL;
+  try {
+    server = new URL(parsed.url);
+  } catch {
+    return { error: "This pairing link's server address is not a valid URL." };
+  }
+  if (server.username || server.password) {
+    return { error: "This pairing link's server address contains a user name; refusing it." };
+  }
+  return { serverUrl: parsed.url, token };
+}
+
 export type CreateGraphResult =
   | { ok: true; baseUrl: string; token: string }
   | { ok: false; error: string };

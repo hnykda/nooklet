@@ -214,6 +214,14 @@ export interface ServerConfig {
    * un-allowlisted `Host` gets 403 on every path, web client and `/mcp` alike.
    */
   allowedHosts?: string[];
+  /**
+   * Whether `/api/session` (and the page bootstrap) hands a write + sync token to a caller that
+   * looks like this machine (`../http/app.ts#isLoopbackRequest`). Default true — zero-config for
+   * the local browser. `nooklet serve --no-loopback-token` sets false, for a deployment behind a
+   * same-machine reverse proxy that rewrites `Host` and sends no forwarding header (B-600, D3):
+   * there every remote client looks local, and nothing at the HTTP level can tell them apart.
+   */
+  loopbackToken?: boolean;
 }
 
 export interface Logger {

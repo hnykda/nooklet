@@ -14,7 +14,14 @@ const ORIGIN = "http://localhost:6419";
 const obs = (...a: unknown[]) => console.log("OBS:", ...a);
 const up = new Set<string>(["6311"]);
 
-async function open(page: Page, desktop: { graphs: Array<{ id: string; url: string }>; activeGraphId: string | null; forcePicker: boolean }) {
+async function open(
+  page: Page,
+  desktop: {
+    graphs: Array<{ id: string; url: string }>;
+    activeGraphId: string | null;
+    forcePicker: boolean;
+  },
+) {
   await page.route(`${ORIGIN}/**`, (route) => {
     const path = new URL(route.request().url()).pathname;
     return route.fulfill({ path: join(launcherDir, path === "/" ? "index.html" : path) });
@@ -41,7 +48,12 @@ async function open(page: Page, desktop: { graphs: Array<{ id: string; url: stri
     };
   }, desktop);
   await page.goto(`${ORIGIN}/`);
-  return () => page.evaluate(() => (window as unknown as { __calls: unknown[] }).__calls.filter((c) => (c as string[])[0] !== "server_status"));
+  return () =>
+    page.evaluate(() =>
+      (window as unknown as { __calls: unknown[] }).__calls.filter(
+        (c) => (c as string[])[0] !== "server_status",
+      ),
+    );
 }
 
 test("picker: list, remove, add (validation, unreachable, good), switch", async ({ page }) => {
@@ -55,9 +67,19 @@ test("picker: list, remove, add (validation, unreachable, good), switch", async 
   });
   await expect(page.locator("#picker")).toBeVisible();
   obs("rows:", (await page.locator("#graph-list").innerText()).replace(/\n+/g, " | "));
-  obs("remove buttons:", await page.locator(".row-remove").evaluateAll((b) => b.map((x) => x.getAttribute("aria-label"))));
+  obs(
+    "remove buttons:",
+    await page
+      .locator(".row-remove")
+      .evaluateAll((b) => b.map((x) => x.getAttribute("aria-label"))),
+  );
   await page.locator(".row-remove").first().click();
-  obs("after remove: rows =", (await page.locator("#graph-list").innerText()).replace(/\n+/g, " | "), "calls =", JSON.stringify(await calls()));
+  obs(
+    "after remove: rows =",
+    (await page.locator("#graph-list").innerText()).replace(/\n+/g, " | "),
+    "calls =",
+    JSON.stringify(await calls()),
+  );
 
   await page.getByRole("button", { name: /Add a server/ }).click();
   await page.locator("#picker-url").fill("nooklet.example.com");
@@ -70,25 +92,63 @@ test("picker: list, remove, add (validation, unreachable, good), switch", async 
   await page.locator("#picker-url").fill("http://127.0.0.1:6311/g/work/");
   await page.getByRole("button", { name: "Connect" }).click();
   await page.waitForTimeout(4000);
-  obs("good add -> picker-err =", await page.locator("#picker-err").textContent(), "saved visible =", await page.locator("#picker-saved").isVisible(), "page fetch:", await page.evaluate(() => fetch("http://127.0.0.1:6311/healthz", { mode: "no-cors" }).then(() => "ok", (e) => String(e))));
+  obs(
+    "good add -> picker-err =",
+    await page.locator("#picker-err").textContent(),
+    "saved visible =",
+    await page.locator("#picker-saved").isVisible(),
+    "page fetch:",
+    await page.evaluate(() =>
+      fetch("http://127.0.0.1:6311/healthz", { mode: "no-cors" }).then(
+        () => "ok",
+        (e) => String(e),
+      ),
+    ),
+  );
   await page.waitForTimeout(1500);
   obs("good add -> calls =", JSON.stringify(await calls()));
 });
 
-test("picker: choosing a different row sets it active and restarts; This Mac = null", async ({ page }) => {
-  const calls = await open(page, { graphs: [{ id: "g1", url: "http://127.0.0.1:6311/g/default" }], activeGraphId: "g1", forcePicker: true });
+test("picker: choosing a different row sets it active and restarts; This Mac = null", async ({
+  page,
+}) => {
+  const calls = await open(page, {
+    graphs: [{ id: "g1", url: "http://127.0.0.1:6311/g/default" }],
+    activeGraphId: "g1",
+    forcePicker: true,
+  });
   await page.getByRole("button", { name: /This Mac/ }).click();
   await page.waitForTimeout(1600);
   obs("pick This Mac -> calls =", JSON.stringify(await calls()));
 });
 
-test("active server unreachable at startup -> picker with error -> auto-reconnects when it comes back", async ({ page }) => {
+test("active server unreachable at startup -> picker with error -> auto-reconnects when it comes back", async ({
+  page,
+}) => {
   test.setTimeout(90_000);
-  const calls = await open(page, { graphs: [{ id: "g1", url: "http://127.0.0.1:6313/g/default" }], activeGraphId: "g1", forcePicker: false });
+  const calls = await open(page, {
+    graphs: [{ id: "g1", url: "http://127.0.0.1:6313/g/default" }],
+    activeGraphId: "g1",
+    forcePicker: false,
+  });
   await page.waitForTimeout(8000);
-  obs("unreachable at startup: picker visible =", await page.locator("#picker").isVisible(), "| problem/help visible =", await page.locator("#help").isVisible(), "| text:", (await page.locator("body").innerText()).replace(/\n+/g, " | ").slice(0, 300));
+  obs(
+    "unreachable at startup: picker visible =",
+    await page.locator("#picker").isVisible(),
+    "| problem/help visible =",
+    await page.locator("#help").isVisible(),
+    "| text:",
+    (await page.locator("body").innerText()).replace(/\n+/g, " | ").slice(0, 300),
+  );
   up.add("6313");
   const t0 = Date.now();
   await page.waitForURL(/127\.0\.0\.1:6313/, { timeout: 30_000 }).catch(() => {});
-  obs("after server came back: url =", page.url(), "after", Date.now() - t0, "ms; calls =", JSON.stringify(await calls()));
+  obs(
+    "after server came back: url =",
+    page.url(),
+    "after",
+    Date.now() - t0,
+    "ms; calls =",
+    JSON.stringify(await calls()),
+  );
 });

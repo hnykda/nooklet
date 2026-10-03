@@ -209,3 +209,26 @@
 .connect-back:hover {
   color: var(--fg);
 }
+
+/* B-603: the server a pairing link names, shown large and unabbreviated — the owner's whole job on
+   that screen is to check it is theirs before tapping Connect. */
+.connect-pairing-server {
+  margin: 0 0 var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+/* `PairingLinkPrompt.tsx`: the connect screen over whatever the app was showing. */
+.pairing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow-y: auto;
+  background: var(--bg);
+}

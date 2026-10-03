@@ -24,10 +24,17 @@ for (const [name, launcher, opts] of [
     await p.getByRole("button", { name: /Sync with a server/s }).click();
     await p.getByLabel("Device token").fill(T.default.mac);
     await p.getByRole("button", { name: "Connect" }).click();
-    await expect(p.locator(".connect")).toHaveCount(0, { timeout: 20_000 }).catch(() => {});
+    await expect(p.locator(".connect"))
+      .toHaveCount(0, { timeout: 20_000 })
+      .catch(() => {});
     await p.waitForTimeout(6000);
     await p.screenshot({ path: `/tmp/nooklet-sweep-insecure-${name}.png` });
-    console.log("OBS:", name, "body:", (await p.locator("body").innerText()).slice(0, 300).replace(/\n+/g, " | "));
+    console.log(
+      "OBS:",
+      name,
+      "body:",
+      (await p.locator("body").innerText()).slice(0, 300).replace(/\n+/g, " | "),
+    );
     console.log("OBS:", name, "pageerrors:", JSON.stringify([...new Set(errors)]));
     await b.close();
   });

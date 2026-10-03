@@ -150,14 +150,51 @@ describe("createApp with a web client", () => {
     const dist = makeDist();
     const lan = { host: "192.168.1.5:6100", accept: "text/html" };
 
-    const closed = makeTestServer({ webClientDir: dist });
+    // Bound to a LAN address: nooklet's own Host guard refuses an unlisted name.
+    const closed = makeTestServer({ webClientDir: dist, host: "0.0.0.0" });
     expect((await closed.app.request("/", { headers: lan })).status).toBe(403);
 
-    const open = makeTestServer({ webClientDir: dist, allowedHosts: ["192.168.1.5"] });
+    const open = makeTestServer({
+      webClientDir: dist,
+      host: "0.0.0.0",
+      allowedHosts: ["192.168.1.5"],
+    });
     const res = await open.app.request("/", { headers: lan });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     // Loopback keeps working alongside the added host, not instead of it.
     expect((await open.app.request("/", { headers: HOST })).status).toBe(200);
+  });
+
+  it("serves the app shell behind a same-host proxy that rewrites Host (B-616)", async () => {
+    // Bound to loopback, a proxy on this machine forwards `Host: nooklet.example`. The shell used
+    // to get 403 `{"jsonrpc":…,"Invalid Host"}` from the MCP sub-app's guard, which was mounted at
+    // "/" and so ran for the SPA fallback, while `/api/session` answered 200.
+    const proxied = { host: "nooklet.example", accept: "text/html" };
+    const s = makeTestServer({ webClientDir: makeDist() });
+    const shell = await s.app.request("/", { headers: proxied });
+    expect(shell.status).toBe(200);
+    expect(shell.headers.get("content-type")).toContain("text/html");
+    expect((await s.app.request("/journals", { headers: proxied })).status).toBe(200);
+    expect((await s.app.request("/api/session", { headers: proxied })).status).toBe(200);
+
+    // /mcp stays guarded, with nooklet's own message naming the fix...
+    const mcp = await s.app.request("/mcp", {
+      method: "POST",
+      headers: { ...proxied, "content-type": "application/json", accept: "application/json" },
+      body: "{}",
+    });
+    expect(mcp.status).toBe(403);
+    expect(((await mcp.json()) as { error: { message: string } }).error.message).toContain(
+      "--allow-host nooklet.example",
+    );
+    // ...and follows --allow-host on a loopback bind too (it used to be localhost-only there).
+    const allowed = makeTestServer({ allowedHosts: ["nooklet.example"] });
+    const mcpAllowed = await allowed.app.request("/mcp", {
+      method: "POST",
+      headers: { ...proxied, "content-type": "application/json", accept: "application/json" },
+      body: "{}",
+    });
+    expect(mcpAllowed.status).not.toBe(403);
   });
 });

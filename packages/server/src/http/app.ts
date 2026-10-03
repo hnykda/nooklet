@@ -23,7 +23,10 @@ import {
 import { mountSync } from "../sync/index.js";
 import { suggestedTaskWorkflow } from "../task-workflow.js";
 import { mountAssetRoutes } from "./assets.js";
+import { allowedHostNames, hostName, isLoopbackName, rejectHost } from "./host-names.js";
 import { mountWebClient } from "./web-client.js";
+
+export { isLoopbackName } from "./host-names.js";
 
 export interface CreateAppOptions {
   serverCtx: ServerContext;
@@ -34,17 +37,16 @@ export interface CreateAppOptions {
   /**
    * M4/plugins: pass an already-constructed `Hono` app when a `PluginHost` (`../plugins/host.ts`)
    * has already mounted `ctx.registerRoute`/`rpc.expose` routes and the two plugin-discovery
-   * routes (`../plugins/http.ts`) onto it. MUST happen before this function's own `mountMcp` call
-   * below — that mount merges in a sub-app at `"/"` that matches every path on this app, so
-   * anything registered after it risks being shadowed (see that call's own comment). Omitted, this
-   * creates a fresh app exactly as before M4 — every existing caller is unaffected.
+   * routes (`../plugins/http.ts`) onto it, before this function's own routes. (`mountMcp` used to
+   * merge a sub-app at `"/"` that could shadow later routes; since B-616 it is mounted at `/mcp`.)
+   * Omitted, this creates a fresh app exactly as before M4 — every existing caller is unaffected.
    */
   app?: Hono;
   /**
    * M4/plugins: called (if given) right after `mountHttp` below — i.e. AFTER the `/api/v1/*`
    * bearer-auth gate exists, so a route mounted here (`../plugins/http.ts`'s
    * `mountPluginListRoute`, `GET /api/v1/plugins`) is authenticated by it — and BEFORE `mountSync`/
-   * `mountMcp`, so it isn't shadowed by `mountMcp`'s `"/"` catch-all. This is the one spot a route
+   * `mountMcp` (whose sub-app was a `"/"` catch-all before B-616). This is the one spot a route
    * needing BOTH of those things can be added without `../plugins/` reaching back into this file.
    */
   mountBeforeMcp?: (app: Hono) => void;
@@ -55,17 +57,6 @@ export interface CreateAppOptions {
    * (`./web-client.ts`). Omitted, the server is API-only exactly as before.
    */
   webClientDir?: string;
-}
-
-/** The `Host` header's hostname, without port; IPv6 literals arrive bracketed. */
-function hostName(host: string | undefined): string {
-  if (!host) return "";
-  return host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : (host.split(":")[0] ?? "");
-}
-
-/** A bind address or `Host` name that means this machine. */
-export function isLoopbackName(name: string): boolean {
-  return name === "127.0.0.1" || name === "localhost" || name === "[::1]" || name === "::1";
 }
 
 /**
@@ -120,7 +111,7 @@ function isLoopbackRequest(c: Context): boolean {
  * The raw token is minted once per server process (see `webClientToken`) and held only in memory;
  * its hash is in the `token` table like any other, and the next process to mint one revokes it.
  */
-function buildClientBootstrap(ctx: ServerContext, c: Context): object {
+function buildClientBootstrap(ctx: ServerContext, config: ServerConfig, c: Context): object {
   // The graph's identity goes to every client, credential or not: a client needs it to notice
   // that the replica it is holding belongs to a different graph than this server is serving
   // (`../graph-identity.ts`).
@@ -130,6 +121,17 @@ function buildClientBootstrap(ctx: ServerContext, c: Context): object {
   const journalTitleFormat = suggestedJournalTitleFormat(ctx.driver) ?? undefined;
   // B-608: the graph's task workflow, imported or inferred from its markers. Also a suggestion.
   const taskWorkflow = suggestedTaskWorkflow(ctx.driver);
+  // `--no-loopback-token` (B-600, decision D3): behind a same-machine reverse proxy that rewrites
+  // `Host` to its upstream and adds no forwarding header, every remote client is indistinguishable
+  // from a local browser — the only safe answer there is to never auto-mint at all.
+  if (config.loopbackToken === false)
+    return {
+      token: null,
+      reason: "loopback_token_disabled",
+      graphId,
+      journalTitleFormat,
+      taskWorkflow,
+    };
   if (!isLoopbackRequest(c))
     return { token: null, reason: "non_loopback_host", graphId, journalTitleFormat, taskWorkflow };
   return { token: webClientToken(ctx), graphId, journalTitleFormat, taskWorkflow };
@@ -176,26 +178,9 @@ export function createApp(opts: CreateAppOptions): Hono {
    */
   const boundHost = config.host ?? "127.0.0.1";
   if (!isLoopbackName(boundHost)) {
-    const allowed = new Set([
-      "127.0.0.1",
-      "localhost",
-      "[::1]",
-      "::1",
-      ...(config.allowedHosts ?? []),
-    ]);
+    const allowed = allowedHostNames(config);
     app.use("*", async (c, next) => {
-      const name = hostName(c.req.header("host"));
-      if (!allowed.has(name)) {
-        return c.json(
-          {
-            error: {
-              code: "forbidden",
-              message: `Host "${name || "(missing)"}" is not allowed. Start the server with --allow-host ${name || "<hostname>"} to reach it by this name.`,
-            },
-          },
-          403,
-        );
-      }
+      if (!allowed.has(hostName(c.req.header("host")))) return rejectHost(c, c.req.header("host"));
       return next();
     });
   }
@@ -217,7 +202,7 @@ export function createApp(opts: CreateAppOptions): Hono {
    * sits outside `/api/v1/*` so it is deliberately NOT behind `bearerAuth` — it is what you call
    * when you do not yet have a token.
    */
-  app.get("/api/session", (c) => c.json(buildClientBootstrap(serverCtx, c)));
+  app.get("/api/session", (c) => c.json(buildClientBootstrap(serverCtx, config, c)));
   if (!opts.webClientDir) app.get("/", (c) => c.json(health));
   app.get("/openapi.json", (c) => c.json(buildOpenApi(registry)));
   mountAssetRoutes(app, serverCtx, config); // GET /assets/:id (asset.upload, ADR 013)
@@ -264,7 +249,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   if (opts.webClientDir) {
     mountWebClient(app, {
       dir: opts.webClientDir,
-      bootstrap: (c) => buildClientBootstrap(serverCtx, c),
+      bootstrap: (c) => buildClientBootstrap(serverCtx, config, c),
     });
   }
 

@@ -39,5 +39,10 @@ EXPOSE 6100
 VOLUME ["/data"]
 # --host 0.0.0.0 so the pod is reachable at all; the server then refuses any Host it was not
 # told about (--allow-host), so the deployment must pass the name clients use.
+# --no-loopback-token: nobody runs a browser inside this container, so the "this machine gets a
+# token automatically" convenience has no legitimate user here — but anything that DOES reach the
+# server over the container's loopback (a sidecar proxy in the same pod, `kubectl port-forward`,
+# `docker exec ... curl`) would be handed a write + sync token by it (B-600, decision D3). Devices
+# use a token from `nooklet token create` instead, exactly as they do over the network anyway.
 ENTRYPOINT ["/app/node", "/app/server.mjs"]
-CMD ["serve", "--host", "0.0.0.0", "--port", "6100", "--web", "/app/web"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "6100", "--web", "/app/web", "--no-loopback-token"]
