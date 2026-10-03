@@ -52,15 +52,29 @@ interface ShelfState {
  */
 /** Per graph (ADR 025): switching graphs navigates the SAME tab, and `sessionStorage` survives
  * that, so one key would put graph A's cards — block ids, page names — on graph B's shelf, where a
- * page card opens B's page of the same name. Read once, at module load, which is after the
- * switch's navigation, so the active entry is the graph this page load shows. */
-const STORAGE_KEY = `nooklet.shelf.state:${activeGraphId() ?? "~"}`;
+ * page card opens B's page of the same name. Taken at module load, which is after the switch's
+ * navigation, so the active entry is the graph this page load shows.
+ *
+ * Except on a tab's very first load: this module is imported before bootstrap has adopted a graph,
+ * so there is no active id yet. Fixing the key at "~" then wrote that session's shelf where no
+ * later load reads it — the first reload (now with an id) came up with an empty shelf
+ * (`e2e/tests/views.spec.ts` "a shelf card's crumb…", red since `c58ede4`). So an id-less key is
+ * re-resolved until bootstrap has set one, and then stays fixed for the rest of the page load. */
+let storageKey: string | null = null;
+function shelfKey(): string {
+  if (storageKey !== null) return storageKey;
+  const id = activeGraphId();
+  if (id === undefined) return "nooklet.shelf.state:~";
+  storageKey = `nooklet.shelf.state:${id}`;
+  return storageKey;
+}
+shelfKey();
 
 /** B-631: forget this graph's stored shelf (its replica is being discarded; the cards point into
  * it). Other graphs' shelves are untouched. */
 export function clearStoredShelf(): void {
   try {
-    storage()?.removeItem(STORAGE_KEY);
+    storage()?.removeItem(shelfKey());
   } catch {
     // nothing to do
   }
@@ -81,7 +95,7 @@ function readStored(): ShelfState {
   const store = storage();
   if (!store) return empty;
   try {
-    const raw = store.getItem(STORAGE_KEY);
+    const raw = store.getItem(shelfKey());
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as Partial<ShelfState>;
     const items = Array.isArray(parsed.items) ? parsed.items.filter(isShelfItem) : [];
@@ -113,7 +127,7 @@ function persist(): void {
   const store = storage();
   if (!store) return;
   try {
-    store.setItem(STORAGE_KEY, JSON.stringify({ open: open(), items: items() }));
+    store.setItem(shelfKey(), JSON.stringify({ open: open(), items: items() }));
   } catch {
     // Quota or a storage-disabled browser. The in-memory shelf still works; only the reload
     // survival is lost, which is not worth interrupting the user over.
