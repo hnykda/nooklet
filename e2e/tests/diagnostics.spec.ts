@@ -29,6 +29,22 @@ test("closes on backdrop click", async ({ page }) => {
   await expect(page.locator(".diag-panel")).toHaveCount(0);
 });
 
+test("closes on Escape, like every other overlay (B-594)", async ({ page }) => {
+  await page.goto("/journals");
+  await page.locator(".app-sync-indicator").click();
+  await expect(page.locator(".diag-panel")).toBeVisible();
+  // Once with focus inside the panel, once with nothing focused: both must close it.
+  await page.locator(".diag-close").focus();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".diag-panel")).toHaveCount(0);
+
+  await page.locator(".app-sync-indicator").click();
+  await expect(page.locator(".diag-panel")).toBeVisible();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".diag-panel")).toHaveCount(0);
+});
+
 test("says plainly when the API cannot be reached", async ({ page }) => {
   await page.goto("/journals");
   await page.route("**/api/v1/system.diagnostics", (route) => route.abort("failed"));

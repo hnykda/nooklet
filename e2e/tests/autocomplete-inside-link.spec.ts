@@ -74,20 +74,44 @@ test("a new [[ typed right before an existing link leaves that link alone (B-294
 // fragment: `alpha [[Walkin Unm]] omega`, plus a page "Walkin Unm" (B-382). A link to a page that
 // does not exist yet is ordinary, and before the pages list has loaded the "New page" row is the
 // only row even for one that does — so a stray Enter there must leave the link as it was.
+//
+// Since ADR 024 the server (and, B-568, the client) mints a page for every link it stores, so
+// seeding the link alone no longer leaves its page missing: the popup offered the real page, not
+// "New page" (B-592). Trashing it does not help either — a still-referenced page is minted again
+// (`ref-pages.ts`). The one stored state left where a link's page does not exist is a link naming
+// another page's ALIAS: the server mints no page for it, and the popup's "New page" check
+// compares titles only, so the row is offered. (Whether "New page" should be offered for an alias
+// name at all is its own question — if that changes, this test needs another missing-page state.)
 test("Enter on New page inside a link to a page that does not exist keeps the whole link (B-382)", async ({
   page,
 }) => {
   const name = "Caret Inside Src Four";
-  await openEditing(page, name, "- alpha [[Walkin Unmade Page]] omega");
+  await api(page, "page.create", {
+    name: "Walkin Alias Holder",
+    if_exists: "return",
+    properties: { alias: "Walkin Unmade Page" },
+    markdown: "- holder",
+  });
+  await seedPage(page, name, "- alpha [[Walkin Unmade Page]] omega");
+  expect(await pageNames(page)).not.toContain("Walkin Unmade Page");
+  await openEditing(page, name);
   await walkTo(page, "alpha [[Walkin Unm".length);
   const popup = page.locator(".cmd-popup");
-  await expect(popup.locator(".cmd-row--active")).toContainText("New page");
+  // The row names the whole link, not the fragment before the caret — B-382's fix, visible.
+  const create = popup.locator(".cmd-row", { hasText: 'New page "Walkin Unmade Page"' });
+  await expect(create).toHaveCount(1);
+  // Ranking may put a fuzzy page match (another spec's "Walkin …" page) first; walk to the row.
+  for (let i = 0; i < 10; i++) {
+    if (await create.evaluate((el) => el.classList.contains("cmd-row--active"))) break;
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(create).toHaveClass(/cmd-row--active/);
   await page.keyboard.press("Enter");
   await expect(popup).toHaveCount(0);
   await page.keyboard.type("!");
   await expect.poll(() => stored(page, name)).toEqual(["alpha [[Walkin Unmade Page]]! omega"]);
-  // The page the link names is the one created, not one named after the fragment.
-  await expect.poll(() => pageNames(page)).toContain("Walkin Unmade Page");
+  // No page named after the fragment was created.
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   expect(await pageNames(page)).not.toContain("Walkin Unm");
 });
 
