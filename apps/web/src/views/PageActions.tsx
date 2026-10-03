@@ -91,7 +91,8 @@ export function PageActions(props: {
           <span
             class="page-actions-notice"
             classList={{ "page-actions-notice-error": n.error }}
-            role="status"
+            // A failure interrupts (alert); "Copied page as markdown" waits its turn (status).
+            role={n.error ? "alert" : "status"}
           >
             {n.text}
           </span>

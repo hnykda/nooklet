@@ -11,16 +11,18 @@
  * configuration mistake would be the worst possible trade. So it explains what happened and asks.
  */
 
-import { createSignal, type JSX } from "solid-js";
+import { createSignal, type JSX, Show } from "solid-js";
 import { describeError } from "../data/api-client.js";
 import { rememberActiveGraphInstanceId } from "../data/bootstrap.js";
 import "./connect.css";
 
 export function GraphMismatchView(props: { graphId: string }): JSX.Element {
   const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
 
   async function resetLocalCopy(): Promise<void> {
     setBusy(true);
+    setError(null);
     try {
       // Clear OPFS wholesale rather than picking out SQLite's files: the `opfs-sahpool` VFS spreads
       // one database over a pool of opaquely named files, so there is nothing safe to select.
@@ -32,8 +34,8 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
       location.reload();
     } catch (err) {
       setBusy(false);
-      // eslint-disable-next-line no-alert
-      alert(`Could not clear the local copy: ${describeError(err)}`);
+      // Inline, not `alert()`: the desktop app's webview shows nothing for that (B-491).
+      setError(`Could not clear the local copy: ${describeError(err)}`);
     }
   }
 
@@ -55,6 +57,13 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
           {busy() ? "Clearing…" : "Discard the local copy and re-sync"}
         </button>
       </div>
+      <Show when={error()}>
+        {(text) => (
+          <p class="connect-error" role="alert">
+            {text()}
+          </p>
+        )}
+      </Show>
 
       <p class="connect-why">
         This deletes this device's local copy and downloads the server's graph fresh. Anything typed

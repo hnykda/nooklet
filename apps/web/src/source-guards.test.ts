@@ -56,6 +56,24 @@ describe("server calls and their failures (B-330)", () => {
   });
 });
 
+describe("native dialogs (B-491)", () => {
+  it("nothing calls window.confirm / alert / prompt — the desktop webview swallows all three", () => {
+    // wry's WKWebView UI delegate implements none of WebKit's JavaScript panel methods, so in the
+    // desktop app `confirm()` is Cancel unseen and `alert()` shows nothing
+    // (`tools/probes/wkwebview-confirm.swift`). Chromium shows them, so e2e cannot catch a new one.
+    // Use `app/confirm-dialog.tsx` (`confirmDialog`, `noticeDialog`) or an inline role=alert line.
+    // Behaviour: `e2e/tests/history.spec.ts`, `e2e/tests/page-delete.spec.ts`.
+    // Matches `window.confirm(`, `globalThis.alert(`, and a bare `alert(` / `confirm(` / `prompt(`
+    // — but not a method of the same name (`deps.confirm(`, `ctx.prompt(`), a string ("prompt()"),
+    // a comment, or a typed method signature (`confirm(options: X): Promise<boolean>;`).
+    const nativeDialog =
+      /^(?!\s*(\/\/|\*|\/\*)).*(\b(window|globalThis|self)\.(alert|confirm|prompt)\b|(^|[^.\w"'`])(alert|confirm|prompt)\s*\()/;
+    const methodSignature = /:\s*(alert|confirm|prompt)\(.*\)\s*:\s*[\w<]/;
+    const found = offenders(ALL, nativeDialog).filter((o) => !methodSignature.test(o));
+    expect(found).toEqual([]);
+  });
+});
+
 describe("page route paths (B-331)", () => {
   it("are built only by routes/page-path.ts", () => {
     // A `/page/${…}` or `/history/${…}` template anywhere else is a path built by hand — six of

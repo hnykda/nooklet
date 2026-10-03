@@ -14,7 +14,7 @@
  * from the palette closes it first.
  */
 
-import { For, type JSX, onCleanup, onMount } from "solid-js";
+import { For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { render } from "solid-js/web";
 import { rememberFocus } from "../commands/focus-return.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
@@ -28,6 +28,9 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** Styles the confirm button as destructive. */
   destructive?: boolean;
+  /** No Cancel button: the dialog only reports something (`noticeDialog`), standing in for
+   * `window.alert`, which the desktop app's webview swallows as well (B-491). */
+  acknowledgeOnly?: boolean;
 }
 
 function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }): JSX.Element {
@@ -44,7 +47,7 @@ function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }
     });
     onCleanup(release);
     // The action has focus: Enter confirms, as in a native sheet. Nothing here is irreversible —
-    // the one caller today moves a page to the Trash — and a person who opened the dialog from the
+    // Delete page moves a page to the Trash, History's undos are themselves undoable — and a person who opened the dialog from the
     // palette with Enter has already let go of the key by the time it renders.
     queueMicrotask(() => confirmEl?.focus());
   });
@@ -55,7 +58,7 @@ function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }
       e.stopPropagation();
       props.onDone(false);
     } else if (e.key === "Tab") {
-      // Two buttons; keep Tab between them rather than walking into the page behind the scrim.
+      // Two buttons (or just the one); keep Tab between them rather than walking into the page behind the scrim.
       e.preventDefault();
       (document.activeElement === confirmEl ? cancelEl : confirmEl)?.focus();
     }
@@ -81,14 +84,16 @@ function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }
           <For each={props.message}>{(line) => <p>{line}</p>}</For>
         </div>
         <div class="confirm-dialog-buttons">
-          <button
-            ref={cancelEl}
-            type="button"
-            class="confirm-dialog-button"
-            onClick={() => props.onDone(false)}
-          >
-            {props.cancelLabel ?? "Cancel"}
-          </button>
+          <Show when={props.acknowledgeOnly !== true}>
+            <button
+              ref={cancelEl}
+              type="button"
+              class="confirm-dialog-button"
+              onClick={() => props.onDone(false)}
+            >
+              {props.cancelLabel ?? "Cancel"}
+            </button>
+          </Show>
           <button
             ref={confirmEl}
             type="button"
@@ -130,4 +135,13 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     answerOpen = done;
     dispose = render(() => <ConfirmDialog {...opts} onDone={done} />, root);
   });
+}
+
+/**
+ * Tell the person something went wrong, in the page: the in-app `window.alert`. Resolves once it is
+ * dismissed (OK, Escape or the backdrop). Not `alert()`: in the desktop app that shows nothing, and
+ * a failed action would fail without a word (B-491).
+ */
+export async function noticeDialog(title: string, message: string[]): Promise<void> {
+  await confirmDialog({ title, message, confirmLabel: "OK", acknowledgeOnly: true });
 }

@@ -98,6 +98,7 @@ function setup(overrides: Partial<ClientPluginHostDeps> = {}) {
       applied.push(ops);
     },
     focusBlock: (id, caret) => focused.push({ id, caret }),
+    confirm: async (message) => message === "yes?",
     logger: silent,
     ...overrides,
   };
@@ -238,6 +239,26 @@ describe("editor.insertBlockAfter / focusBlock / currentBlock (B-344)", () => {
       }),
     ]);
     expect(seen).toEqual(["before  after", null]);
+  });
+});
+
+describe("dialogs (B-491)", () => {
+  it("confirm() asks through the host's in-page dialog and returns its answer", async () => {
+    const t = setup();
+    const answers: boolean[] = [];
+    await createClientPluginHost(t.deps).start([
+      plugin("asker", async (ctx) => {
+        answers.push(await ctx.confirm("yes?"), await ctx.confirm("no?"));
+      }),
+    ]);
+    expect(answers).toEqual([true, false]);
+  });
+
+  it("prompt() still rejects, naming itself — there is no in-page text dialog yet", async () => {
+    const t = setup();
+    const host = createClientPluginHost(t.deps);
+    await host.start([plugin("asker", (ctx) => ctx.prompt("name?").then(() => {}))]);
+    expect(host.list()[0]?.error).toContain("prompt() is not supported");
   });
 });
 

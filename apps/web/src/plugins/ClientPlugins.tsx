@@ -11,6 +11,7 @@
 import type { Page } from "@nooklet/core";
 import { useLocation, useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
+import { confirmDialog } from "../app/confirm-dialog.js";
 import { type EditorHost, useCommands } from "../commands/index.js";
 import { contributeSlashItem } from "../commands/slash/contributed.js";
 import { apiBaseUrl, appRelativePathname, authToken } from "../data/bootstrap.js";
@@ -55,6 +56,8 @@ export function ClientPlugins(props: { editor: EditorHost; mobile: boolean }): n
     blockAfterOps,
     applyOps,
     focusBlock: requestBlockFocus,
+    confirm: (message) =>
+      confirmDialog({ title: message, message: [], confirmLabel: "OK", cancelLabel: "Cancel" }),
   });
   onMount(() => void host.start(BUILTIN_CLIENT_PLUGINS));
   onCleanup(() => void host.stop());
