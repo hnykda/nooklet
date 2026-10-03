@@ -285,3 +285,35 @@ describe("WorkerDb.start (B-567)", () => {
     expect(transport.calls).toContain("pull");
   });
 });
+
+describe("WorkerDb.applyLocalOps: pages a write references (B-568, B-585)", () => {
+  function livePageNames(db: WorkerDb): string[] {
+    return db
+      .query<{ name: string }>("SELECT name FROM page WHERE deleted_at IS NULL ORDER BY name")
+      .map((r) => r.name);
+  }
+
+  function writeLink(db: WorkerDb): void {
+    const host = pageCreate(db, "Host");
+    db.applyLocalOps([host]);
+    db.applyLocalOps([blockCreate(db, host.entity, null, "a0", "see [[Proj/Sub]]")]);
+  }
+
+  it("with no server, the device mints the page and its ancestors in the same write", () => {
+    const db = new WorkerDb({
+      driver: memoryDriver(),
+      transport: new NoopTransport(),
+      localReferencePages: true,
+    });
+    writeLink(db);
+    expect(livePageNames(db)).toEqual(["Host", "Proj", "Proj/Sub"]);
+  });
+
+  // B-585: a synced device minting under its own id gave the server pages it can never reclaim —
+  // every intermediate name of a slowly-typed link became permanent (ref-pages.spec.ts:123).
+  it("a synced device (the default) leaves minting to the server", () => {
+    const db = new WorkerDb({ driver: memoryDriver(), transport: new NoopTransport() });
+    writeLink(db);
+    expect(livePageNames(db)).toEqual(["Host"]);
+  });
+});

@@ -20,7 +20,6 @@
 import {
   type ApplyOpsResult,
   makeOp,
-  newId,
   normalizePageName,
   type Op,
   type OpPayload,
@@ -60,7 +59,6 @@ import {
   type SearchResult,
 } from "./api-client.js";
 import { invalidateBlockRefs } from "./block-ref-cache.js";
-import { planLocalReferencedPages } from "./local-ref-pages.js";
 import { type AliasCandidate, findPageByAlias } from "./page-alias.js";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult, TaskRow } from "./types.js";
 
@@ -238,32 +236,14 @@ export function useJournalDaysWithContent(
 // "Apply these ops"
 // ---------------------------------------------------------------------------------------------
 
-/** B-568: a page a batch newly references must exist locally too, not just once this device
- * syncs (`ref-pages.ts` is server-only) — see `local-ref-pages.ts`'s header for the full design.
- * Minted ops are prepended so ancestors/the referenced page land before the edit that names them,
- * in the SAME call to `workerApplyOps` (one worker transaction, matching `serverApplyOps`'s "in
- * the same transaction" for the equivalent server-side ops). */
-export async function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
-  const extra = await planLocalReferencedPages(
-    ops,
-    async (key) => {
-      const rows = await queryAs<{ id: string }>(
-        "SELECT id FROM page WHERE key = ? AND deleted_at IS NULL LIMIT 1",
-        [key],
-      );
-      return rows.length > 0;
-    },
-    async (name) => {
-      const [hlc, device] = await Promise.all([workerNextHlc(), getLocalDeviceId()]);
-      return makeOp(hlc, device, newId(), {
-        kind: "page.create",
-        name,
-        journalDay: null,
-        createdAt: Date.now(),
-      });
-    },
-  );
-  return workerApplyOps(extra.length > 0 ? [...extra, ...ops] : ops);
+/** Every client write goes through here. Deliberately nothing awaited before `workerApplyOps`:
+ * it records the batch for crash replay (B-247) and posts it to the worker synchronously, so
+ * batches reach the worker in call order — `refactor-host.tsx#write()` does `flushTyping(); await
+ * forceSync()` and relies on the flushed edit being posted before the push (B-585: an await here
+ * let the push overtake it, and Turn into page lost the last keystrokes). B-568's local page
+ * creation runs inside the worker for that reason (`WorkerDb.applyLocalOps`). */
+export function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
+  return workerApplyOps(ops);
 }
 
 // ---------------------------------------------------------------------------------------------
