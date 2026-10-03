@@ -1,10 +1,9 @@
-import { refKeyOf } from "@nooklet/core";
+import { ftsPhrase, refKeyOf } from "@nooklet/core";
 import { z } from "zod";
 import { unlinkedMentionRows } from "../data-api.js";
 import { pageLookupKeys } from "../page-aliases.js";
 import { pagesTaggedWith, type TaggedPageRow } from "../page-tags.js";
 import { pageWireNameById } from "../rows.js";
-import { ftsPhrase } from "./fts-query.js";
 import { defineOp } from "./registry.js";
 import { resolvePageRef, wirePageName } from "./resolve.js";
 import { BlockId, Cursor, Limit, PageRef } from "./schemas.js";

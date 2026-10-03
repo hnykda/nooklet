@@ -1,5 +1,6 @@
 export * from "./block-text.js";
 export * from "./blocks.js";
+export * from "./fts-query.js";
 export * from "./hlc.js";
 export * from "./ids.js";
 export * from "./journal.js";

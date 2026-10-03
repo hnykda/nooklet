@@ -16,6 +16,7 @@ import {
   type BlockId,
   canonicalRefName,
   DEFAULT_JOURNAL_TITLE_FORMAT,
+  ftsPhrase,
   isoJournalName,
   isValidJournalDay,
   makeOp,
@@ -43,7 +44,6 @@ import {
 } from "./embeddings/semantic-search.js";
 import { suggestedJournalTitleFormat } from "./journal-format.js";
 import { journalTemplateNode } from "./journal-template.js";
-import { ftsPhrase } from "./ops/fts-query.js";
 import { pageLookupKeys, resolvePageIdForKey } from "./page-aliases.js";
 import { unclaimedReferencePageForKey } from "./ref-pages.js";
 import {

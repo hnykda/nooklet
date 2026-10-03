@@ -7,9 +7,11 @@
  * Also here: `apiClient`, the typed wrappers for the read ops the local replica cannot answer on
  * its own — `search`, `page.backlinks` (docs/spec/mcp-tools.md §4.3.5/§4.3.6) and `graph.links`.
  * The client-only schema (`@nooklet/core`'s `CORE_SCHEMA_STATEMENTS`, mirrored by
- * `../db/schema-client.ts`) has no `ref`/`path_ref`/`block_fts`/`page_fts`/`embedding*` tables —
- * those are server-only derived tables (docs/spec/sql-schema.md rule 1) — so references, search
- * and the link graph must go over HTTP rather than through the worker.
+ * `../db/schema-client.ts`) has no `ref`/`path_ref`/`embedding*` tables —
+ * those are server-only derived tables (docs/spec/sql-schema.md rule 1) — so references and the
+ * link graph must go over HTTP rather than through the worker. Search no longer must: the replica
+ * has its own keyword index, and `search` here only adds the server's semantic matches
+ * (`./search-session.ts`).
  *
  * Auth: `./bootstrap.ts`'s token — handed out by `/api/session` on loopback, pasted into the
  * connect screen and kept in `localStorage` on any other device — read on every call, so a token
@@ -203,19 +205,39 @@ const API_TIMEOUT_MS = 10_000;
  * recognizable code instead, so every caller can share one calm render branch. */
 export const NO_SYNC_TARGET_CODE = "no_sync_target";
 
-export async function callOp<TOut>(name: string, body: unknown): Promise<TOut> {
+export interface CallOpOptions {
+  /** Cancels the request, e.g. because the search it answers is no longer the one on screen.
+   * An abort by this signal rejects with an `ApiError` whose code is `"aborted"`. */
+  signal?: AbortSignal;
+  /** Overrides `API_TIMEOUT_MS` for a caller that would rather give up sooner. */
+  timeoutMs?: number;
+}
+
+export async function callOp<TOut>(
+  name: string,
+  body: unknown,
+  opts: CallOpOptions = {},
+): Promise<TOut> {
   if (!hasSyncTarget()) {
     throw new ApiError(NO_SYNC_TARGET_CODE, "This device isn't configured to sync with a server.");
   }
+  const timeout = AbortSignal.timeout(opts.timeoutMs ?? API_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(`${apiBaseUrl()}/api/v1/${name}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+      signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
     });
   } catch (err) {
+    if (opts.signal?.aborted) throw new ApiError("aborted", "the request was cancelled");
+    if (timeout.aborted) {
+      throw new ApiError(
+        "timeout",
+        `${apiBaseUrl() || location.origin} did not answer within ${(opts.timeoutMs ?? API_TIMEOUT_MS) / 1000} s`,
+      );
+    }
     throw new ApiError(
       "network",
       `could not reach ${apiBaseUrl() || location.origin} (${err instanceof Error ? err.message : String(err)})`,
@@ -271,7 +293,7 @@ interface GraphLinksWireOutput {
 }
 
 export interface ApiClient {
-  search(input: SearchInput): Promise<SearchResult>;
+  search(input: SearchInput, opts?: CallOpOptions): Promise<SearchResult>;
   pageBacklinks(target: string, includeUnlinked?: boolean): Promise<BacklinksResult>;
   graphLinks(input?: GraphLinksInput): Promise<GraphLinksResult>;
 }
@@ -279,21 +301,27 @@ export interface ApiClient {
 /** The typed read ops, through `callOp` like every other server call — so a search or a graph
  * that cannot reach the server says where it tried, and a rejection keeps its hint (B-330). */
 export const apiClient: ApiClient = {
-  async search(input: SearchInput): Promise<SearchResult> {
-    const out = await callOp<SearchWireOutput>("search", {
-      query: input.query,
-      mode: input.mode ?? "hybrid",
-      scope: input.scope ?? "all",
-      tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
-      properties:
-        input.properties && Object.keys(input.properties).length > 0 ? input.properties : undefined,
-      namespace: input.namespace || undefined,
-      journals_only: input.journalsOnly ?? false,
-      updated_after: input.updatedAfter,
-      updated_before: input.updatedBefore,
-      limit: input.limit ?? 50,
-      cursor: input.cursor,
-    });
+  async search(input: SearchInput, opts?: CallOpOptions): Promise<SearchResult> {
+    const out = await callOp<SearchWireOutput>(
+      "search",
+      {
+        query: input.query,
+        mode: input.mode ?? "hybrid",
+        scope: input.scope ?? "all",
+        tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
+        properties:
+          input.properties && Object.keys(input.properties).length > 0
+            ? input.properties
+            : undefined,
+        namespace: input.namespace || undefined,
+        journals_only: input.journalsOnly ?? false,
+        updated_after: input.updatedAfter,
+        updated_before: input.updatedBefore,
+        limit: input.limit ?? 50,
+        cursor: input.cursor,
+      },
+      opts,
+    );
     return {
       hits: out.hits.map((h) => ({
         kind: h.kind,
