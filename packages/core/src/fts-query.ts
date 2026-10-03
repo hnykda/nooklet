@@ -12,6 +12,10 @@
  * and `-exclusions`, plus a trailing `*` on a bare word for prefix matching. Every term is emitted
  * as an FTS5 string literal (`"…"` with inner quotes doubled), which is the one form the parser
  * takes verbatim, so nothing the user types can reach the query language itself.
+ *
+ * In core, not the server, because the client replica has its own FTS5 index for local search
+ * (`apps/web/src/data/local-search.ts`, server-search): one grammar, so the same words find the
+ * same blocks whether the server or the device answered.
  */
 
 interface Term {

@@ -55,8 +55,6 @@ import {
   type BacklinksResult,
   type GraphLinksInput,
   type GraphLinksResult,
-  type SearchInput,
-  type SearchResult,
 } from "./api-client.js";
 import { invalidateBlockRefs } from "./block-ref-cache.js";
 import { type AliasCandidate, findPageByAlias } from "./page-alias.js";
@@ -660,9 +658,9 @@ export function useNamespaceChildren(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Server-backed reads: linked/unlinked references and search. The client-only schema has no
-// ref/path_ref/FTS/embedding tables (docs/spec/sql-schema.md rule 1: those are server-only
-// derived tables), so these two go over HTTP to `/api/v1/*` via `./api-client.ts` instead of the
+// Server-backed reads: linked/unlinked references and the link graph. The client-only schema has
+// no ref/path_ref/embedding tables (docs/spec/sql-schema.md rule 1: those are server-only derived
+// tables), so these go over HTTP (search is local-first now: `./search-session.ts`) to `/api/v1/*` via `./api-client.ts` instead of the
 // worker/SqlDriver seam. Not wired into the table/page invalidation bus above (the server, not a
 // local write, is the source of truth here); each exposes `refetch` for a manual "refresh" instead.
 // ---------------------------------------------------------------------------------------------
@@ -711,15 +709,6 @@ export function useGraphLinks(
     () => stamped(input(), ["block", "page"]),
     ({ value: i }) => apiClient.graphLinks(i),
   );
-  return [resource, { refetch: () => void refetch() }];
-}
-
-/** Full-text/semantic/hybrid search (docs/spec/mcp-tools.md §4.3.5). `undefined` query means "no
- * search yet" — kept distinct from an empty-string query, which the server would reject. */
-export function useSearchResults(
-  input: Accessor<SearchInput | undefined>,
-): [Resource<SearchResult | undefined>, { refetch: () => void }] {
-  const [resource, { refetch }] = createResource(input, (i) => apiClient.search(i));
   return [resource, { refetch: () => void refetch() }];
 }
 

@@ -549,7 +549,11 @@ async function main(): Promise<void> {
         const hostFlag = args.flags.get("host");
         const current = getEmbeddingSettings(driver);
         const provider = typeof providerFlag === "string" ? providerFlag : current.provider;
-        if (provider !== "ollama" && provider !== "openai-compat") {
+        // `fake` (deterministic vectors, `embeddings/fake-provider.ts`) only for test harnesses that
+        // ask for it: the e2e suite needs a server whose semantic search really runs, without a
+        // model (`e2e/tests/search-semantic-server.spec.ts`). Never offered to a person.
+        const fakeAllowed = provider === "fake" && process.env.NOOKLET_TEST_FAKE_EMBEDDINGS === "1";
+        if (provider !== "ollama" && provider !== "openai-compat" && !fakeAllowed) {
           die(`unknown provider "${provider}" (expected ollama or openai-compat)`);
         }
         const host = typeof hostFlag === "string" ? hostFlag : current.host;

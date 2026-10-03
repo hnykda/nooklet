@@ -1,5 +1,5 @@
 import type { SqlDriver } from "@nooklet/core";
-import { normalizePageName } from "@nooklet/core";
+import { normalizePageName, toFtsQuery } from "@nooklet/core";
 import { z } from "zod";
 import {
   checkSemanticAvailability,
@@ -10,7 +10,6 @@ import {
   semanticCandidates,
 } from "../embeddings/index.js";
 import { wirePageNameOf } from "../rows.js";
-import { toFtsQuery } from "./fts-query.js";
 import { defineOp, OpError } from "./registry.js";
 import { resolvePageIds } from "./resolve.js";
 import { Cursor, Limit, PageRef, PropertyKey } from "./schemas.js";

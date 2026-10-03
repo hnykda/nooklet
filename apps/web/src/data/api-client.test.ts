@@ -105,3 +105,34 @@ describe("undoBatch", () => {
     });
   });
 });
+
+/** A fetch that never answers, the way a server that accepted the connection and hangs does —
+ * except that it honours its abort signal, as the real one does. */
+function hangingFetch(_url: unknown, init?: RequestInit): Promise<Response> {
+  return new Promise((_, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+  });
+}
+
+describe("callOp's time bound and cancellation (server-search)", () => {
+  it("a server that never answers is given up on after `timeoutMs`, as code `timeout`", async () => {
+    fetchMock.mockImplementationOnce(hangingFetch);
+    const started = Date.now();
+    const err = await apiClient
+      .search({ query: "pricing" }, { timeoutMs: 50 })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe("timeout");
+    expect(describeError(err)).toContain("did not answer within 0.05 s");
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("an abort by the caller's signal is code `aborted`, not a network failure", async () => {
+    fetchMock.mockImplementationOnce(hangingFetch);
+    const controller = new AbortController();
+    const pending = apiClient.search({ query: "pricing" }, { signal: controller.signal });
+    controller.abort();
+    const err = await pending.catch((e: unknown) => e);
+    expect((err as ApiError).code).toBe("aborted");
+  });
+});
