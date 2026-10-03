@@ -7,8 +7,8 @@
  * the top bar (`shell/CalendarButton.tsx`), so picking a day writes to `app/journal-nav.ts`'s
  * shared signal instead of local state — this view just reads it.
  */
-import { formatJournalTitle } from "@nooklet/core";
-import { useNavigate } from "@solidjs/router";
+import { formatJournalTitle, isoJournalName } from "@nooklet/core";
+import { A, useNavigate } from "@solidjs/router";
 import {
   createEffect,
   createMemo,
@@ -26,6 +26,7 @@ import { journalTitleFormat } from "../data/page-title.js";
 import { useJournalStream, usePinnedJournalDay } from "../data/store.js";
 import type { JournalDayEntry, NavigateTarget } from "../data/types.js";
 import { BlockTree } from "../editor/BlockTree.js";
+import { pageRoutePath } from "../routes/page-path.js";
 import { JournalAgenda } from "./JournalAgenda.js";
 import { JournalDayOutline } from "./JournalDayOutline.js";
 import { goToTarget } from "./navigateTarget.js";
@@ -38,6 +39,23 @@ const LOAD_MORE_STEP = 14;
  *  the most visible place hard-coded ISO was wrong. */
 function dayTitle(day: number): string {
   return formatJournalTitle(day, journalTitleFormat());
+}
+
+/**
+ * A day heading's text, as a link to that day's own page (B-560) — Logseq's behaviour, where the
+ * date title is how you open a journal on its own. Addressed by the ISO name the page is stored
+ * under (ADR 018), not the display title: both resolve, but the ISO one is the canonical URL.
+ * A router `<A>`, not a raw `<a>` + `rawAnchorHref`: `<Router base>` already adds ADR 025's
+ * `/g/<slug>` prefix to it, and adding it here too would double it (`routes/page-path.ts`).
+ * A day with no page yet (today before its first block) still links: `PageView` shows a date URL
+ * as that day — its title, agenda, references and a Create button — rather than a dead end.
+ */
+function DayTitleLink(props: { day: number; children: JSX.Element }): JSX.Element {
+  return (
+    <A class="journal-day-link" href={pageRoutePath(isoJournalName(props.day))}>
+      {props.children}
+    </A>
+  );
 }
 
 export function JournalStreamView(): JSX.Element {
@@ -117,7 +135,9 @@ export function JournalStreamView(): JSX.Element {
       <For each={laterDays()}>
         {(day) => (
           <section class="journal-day journal-day-upcoming" aria-label={dayTitle(day)}>
-            <h2 class="journal-day-title">{dayTitle(day)} · Upcoming</h2>
+            <h2 class="journal-day-title">
+              <DayTitleLink day={day}>{dayTitle(day)} · Upcoming</DayTitleLink>
+            </h2>
             <Show when={entryByDay().get(day)?.page}>
               {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
             </Show>
@@ -127,7 +147,9 @@ export function JournalStreamView(): JSX.Element {
       </For>
 
       <section class="journal-day journal-day-today" aria-label="Today">
-        <h2 class="journal-day-title">{dayTitle(today())} · Today</h2>
+        <h2 class="journal-day-title">
+          <DayTitleLink day={today()}>{dayTitle(today())} · Today</DayTitleLink>
+        </h2>
         {/* Keyed by day: a day started from its draft keeps its own tree (B-411), which must not
             carry over to the next day at midnight. */}
         <Show when={today()} keyed>
@@ -139,7 +161,9 @@ export function JournalStreamView(): JSX.Element {
       <Show when={pinned() && pinnedDay() !== undefined}>
         <section class="journal-day journal-day-pinned" aria-label="Jumped-to day">
           <h2 class="journal-day-title">
-            {dayTitle(pinnedDay() as number)}
+            <DayTitleLink day={pinnedDay() as number}>
+              {dayTitle(pinnedDay() as number)}
+            </DayTitleLink>
             <button type="button" class="journal-day-unpin" onClick={() => clearPinnedJournalDay()}>
               Back to stream
             </button>
@@ -161,7 +185,9 @@ export function JournalStreamView(): JSX.Element {
       <For each={earlierDays()}>
         {(day) => (
           <section class="journal-day" aria-label={dayTitle(day)}>
-            <h2 class="journal-day-title">{dayTitle(day)}</h2>
+            <h2 class="journal-day-title">
+              <DayTitleLink day={day}>{dayTitle(day)}</DayTitleLink>
+            </h2>
             <Show when={entryByDay().get(day)?.page}>
               {(page) => <BlockTree pageId={page().id} onNavigate={onNavigate} />}
             </Show>
