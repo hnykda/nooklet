@@ -981,6 +981,22 @@ draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty 
 
 ## Fixed
 
+### B-596 · Linked-references heading counted every block, not Logseq's number
+**Status:** fixed · **Severity:** low · **Found:** 2026-09-13 (B-550's open question); owner
+decision 2026-10-03 · **Test:** `apps/web/src/views/ReferencesPanel.test.tsx`,
+`apps/web/src/views/referenceNesting.test.ts` "countDirectReferences …",
+`packages/server/src/ops/page-backlinks-totals.http.test.ts` "page.backlinks direct references",
+`e2e/tests/references-render.spec.ts`
+
+The heading counted every `path_ref` block, so a journal block linking `[[@Alex]]` with ten
+children counted 11 (756 on `@alex`, shown as 91 rows). Logseq 0.10.9
+(`frontend/components/reference.cljs`, `top-level-blocks` / `filter-n`; read via a fetched summary,
+not a local clone) counts blocks whose own refs name the page or an alias, and under a filter shows
+"F of T". **Fixed 2026-10-03** (`7d34d03`): `page.backlinks` marks each linked item `direct` and
+returns `linked_direct_total`; the panel counts direct blocks (`referenceNesting.ts#countDirectReferences`,
+with Logseq's parent add-back under a filter) and reads "F of T" when filtered. Unlinked count
+unchanged (Logseq counts every mention too). Details: `docs/progress/refs-count.md`.
+
 ### B-380 · Enter on the `#` autocomplete that walking into an existing `#tag` opened duplicates the tag's tail
 **Status:** fixed (owner chose option c) · **Severity:** low · **Found:** 2026-09-13, fixing B-294 ·
 **Test:** `e2e/tests/autocomplete-inside-tag.spec.ts`; probe `tools/probes/autocomplete-tag-walk.spec.ts`
@@ -2885,7 +2901,7 @@ a link inside opens its target, a breadcrumb step opens that parent.
   appeared twice. On the owner's graph `@alex`'s 756 references are 91 rows. Folding is against the
   filtered list — a child whose parent the filter hides becomes a row, with that parent in its
   breadcrumb. The heading still counts blocks (what `page.backlinks` reports); Logseq counts
-  top-level references instead — left as an open question.
+  top-level references instead — left as an open question. **Resolved 2026-10-03 by B-596** (Logseq's direct count).
 - A breadcrumb identical to the row above's is left out (`task`: 169 breadcrumbs → 66).
 - Rows are keyed by page name and block id, so a backlinks refetch (one per typing pause) keeps
   them and their folds; before, every row was rebuilt on each refetch.

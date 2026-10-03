@@ -26,7 +26,7 @@ runs the full e2e suite on the merged tree.
 | tag-autocomplete | B-380 option (c), **merged** (`c6fe3bc`) | 6305 |
 | mermaid-lazy | mermaid out of precache, single sidecar copy | 6306 |
 | real-device-test | readiness and runbook for the Mac + own server + physical iPhone test | 6307 |
-| refs-count | references heading counts the way Logseq does | 6308 |
+| refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
 | empty-journal | B-595, an editable empty journal day like Logseq | 6309 |
 | sweep-core | readiness sweep: daily-use loop on a copy of the real graph → `docs/review/2026-10-03-sweep-core.md` | 6310 |
 | sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
