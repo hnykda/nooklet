@@ -28,6 +28,9 @@ runs the full e2e suite on the merged tree.
 | real-device-test | readiness and runbook for the Mac + own server + physical iPhone test | 6307 |
 | refs-count | references heading counts the way Logseq does | 6308 |
 | empty-journal | B-595, an editable empty journal day like Logseq | 6309 |
+| sweep-core | readiness sweep: daily-use loop on a copy of the real graph → `docs/review/2026-10-03-sweep-core.md` | 6310 |
+| sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
+| sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### State of `main`
