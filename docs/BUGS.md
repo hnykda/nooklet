@@ -789,49 +789,6 @@ independent of anything else in this session's iOS/mobile/desktop work.
 
 ---
 
-### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
-**Status:** open, cause found (2026-10-03), not fixed — not B-585 · **Severity:** unclear until the
-third-device question below is settled
-
-```
-AssertionError: expected [ { table: 'page', …(2) }, …(1) ] to deeply equal []
-- []
-+ [
-+   { "key": { "id": "1m2kcpq6nmw48w" }, "kind": "missing-in-rebuild", "table": "page" },
-+   { "key": { "id": "1m2kcpq6nmw48x" }, "kind": "missing-in-rebuild", "table": "block" },
-+ ]
-```
-
-Confirmed pre-existing in the same accumulated-but-uncommitted tree B-585 already covers (`git
-stash` back to `629f572`, this test passes cleanly there) — not caused by ADR 025 / B-586, whose
-code this test never touches (no `bootstrap.ts`/`GraphSwitcher.tsx` import). Given the scenario
-(server-side "page of a name whose earlier page was deleted" + B-443's "never revive an unclaimed
-tombstone" logic, right next to B-568's ref-page work this session already touched), this may share
-B-585's upstream cause or may be a distinct correctness bug in the same area — not narrowed down,
-only reproduced and confirmed real. Deliberately not investigated further here, same reasoning as
-B-585: different subsystem than the multi-graph work in flight, flagged rather than silently
-expanding scope. Whoever picks this up should start from `verifyRebuildParity`'s own divergence
-report (`apps/web/src/sync/e2e.test.ts` imports it) — a `missing-in-rebuild` on both `page` and
-`block` for what looks like device A's own newly-created page/block suggests the SERVER's replay of
-the op log loses them, not that A's own local state is wrong (the test's own `live(driverA)` vs.
-`live(s)` comparison a few lines above passes).
-
-**Cause (2026-10-03):** flaky, not deterministic — 3 of 8 runs of `src/sync/e2e.test.ts` failed
-after B-585's fix, and it was caught on "pull first" too. Op log from a failing run: the
-reference rule's `page.delete` of "Ghost Name" is seq 5 with HLC `…:09.838Z-0002-00000000`; device
-A's own `page.create` of "Ghost Name" is seq 6 with HLC `…:09.838Z-0000-562db010` — minted in
-the same millisecond, before A had heard of seq 5, so it has the smaller HLC. Live, the server
-applied them in seq order (name free, A's page lands). `verifyRebuildParity` replays in one
-`applyOps` call, and core's `applyOps` sorts by HLC, so the create runs while the ghost is live and
-is rejected `page-key-collision` → A's page and block `missing-in-rebuild`. Reproduced
-deterministically by `tools/probes/b587-hlc-order-name-collision.ts`. Not related to B-585: the
-test drives `SyncClient` directly, no client page minting involved. The real problem is that a
-name collision is order-dependent while HLC order can disagree with the server's causal (seq)
-order. Unverified: whether a third device pulling those ops in one batch diverges the same way —
-if so this is a convergence bug, not just a verify false alarm. Fix options (not chosen): the
-server re-stamps or rejects an op whose HLC is behind ops it already applied on the same name;
-or replay/pull apply in seq order rather than HLC order.
-
 ### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
 **Status:** open, not investigated · **Severity:** low (test only) · **Found:** 2026-10-03, while
 running B-581's probe with neighbours · **Test:** the test itself
@@ -884,7 +841,116 @@ it means generalising `VirtualJournalDay` into a page draft that writes nothing 
 Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
 parity for names nothing links to; revisit if it bites in daily use.
 
+### B-606 · Clicking right of a block's text, or pressing End, puts the caret inside a trailing `[[link]]`
+**Status:** open · **Severity:** high · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
+
+**Severity:** high. Typing corrupts the link target and creates junk pages. "… with [[Person]]" is
+a very common block shape. Not covered by B-325 or B-585.
+**Repro:** seed `- plain text [[Balení]]`. Click in the empty space right of the rendered text and
+type `Y`: the result is `plain text [[BalenYí]]`. Click the same block, press Home, then End, then
+type `Z`: the result is `plain text [[BaleníZ]]`. A page named `BaleníZ` now exists and shows up in
+Mod+K. Blocks that do not end in a link (`[[Inbox]] trailing words`, `text **bold** end`) behave
+correctly. Probe: `tools/probes/sweep-core/end-after-link.mjs`. Likely cause: `livePreview.ts`
+hides `]]` with `Decoration.replace` while the caret is not touching the link, so End stops before
+it, and the click mapping in `caret.ts` lands in the link token. Not confirmed.
+
+### B-607 · `nooklet import` into a fresh data dir, then `nooklet serve`, crashes: `a graph called "default" already exists`
+**Status:** open · **Severity:** medium · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
+
+**Severity:** medium. It blocks first start on a new server if the import comes first. Workaround:
+run `serve` once before importing, or write `graphs/default/graph.json` by hand.
+**Repro:** `nooklet import <graph> --data $D` on an empty `$D`, then `nooklet serve --data $D`. The
+process exits 1. `import` creates `graphs/default/graph.sqlite` but no `graph.json`.
+`GraphRegistry.list()` skips directories without one, so `cli.ts:286` calls `create("default")`,
+which throws because the db exists. README also still says `~/.nooklet/default`, but the layout is
+now `graphs/default`.
+
+Same root cause as `nooklet token create` before the first `serve` (found by the b587 agent, `docs/progress/b587.md`): any command that opens a fresh data dir creates `graphs/default/graph.sqlite` without `graph.json`.
+
+### B-608 · Mod+Enter ignores the owner's LATER/NOW workflow: a LATER task cycles to no marker
+**Status:** open · **Severity:** medium · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
+
+**Severity:** medium. The owner's graph has `:preferred-workflow :now`, with 72 LATER, 5 NOW and
+0 TODO blocks.
+**Repro:** on `- LATER owner style`, press Mod+Enter three times. Markers go `null`, then `TODO`,
+then `DOING` (`task-logic.ts#nextCycleMarker`). Logseq goes LATER→NOW→DONE, and a plain block
+starts at LATER. Probe: `tasks.mjs`.
+
+### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
+
+**Severity:** low. At 60 ms/key the result is correct, but rows flicker for about 1.1 s, showing
+`["","ccc"]`.
+**Repro:** today is empty. Click today and type `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ with no delay. The server
+gets `aaa`,`bbb`,`ccc`, all at depth 0, instead of `bbb` indented. The same burst on an ordinary
+page is correct. Probe: `indent-render.mjs journal fast 0`.
+
+### B-610 · The word-count plugin returns 500 for a page just deleted
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
+
+**Severity:** low; it only adds console noise.
+**Repro:** delete a page from Page actions. The server log shows
+`OpError: no page named "…"` at `plugins/word-count … countPage`, and the browser logs a 500.
+
 ## Fixed
+
+### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
+**Status:** fixed (2026-10-03, `0cb4a62`, ADR 026) · **Severity:** high (replicas diverged for good) ·
+**Test:** `apps/web/src/sync/e2e.test.ts` "a page created under a name the server freed … (B-587)";
+`packages/server/src/sync/convergence.property.test.ts`; `packages/core/src/sync/apply-ops.test.ts`
+
+```
+AssertionError: expected [ { table: 'page', …(2) }, …(1) ] to deeply equal []
+- []
++ [
++   { "key": { "id": "1m2kcpq6nmw48w" }, "kind": "missing-in-rebuild", "table": "page" },
++   { "key": { "id": "1m2kcpq6nmw48x" }, "kind": "missing-in-rebuild", "table": "block" },
++ ]
+```
+
+Confirmed pre-existing in the same accumulated-but-uncommitted tree B-585 already covers (`git
+stash` back to `629f572`, this test passes cleanly there) — not caused by ADR 025 / B-586, whose
+code this test never touches (no `bootstrap.ts`/`GraphSwitcher.tsx` import). Given the scenario
+(server-side "page of a name whose earlier page was deleted" + B-443's "never revive an unclaimed
+tombstone" logic, right next to B-568's ref-page work this session already touched), this may share
+B-585's upstream cause or may be a distinct correctness bug in the same area — not narrowed down,
+only reproduced and confirmed real. Deliberately not investigated further here, same reasoning as
+B-585: different subsystem than the multi-graph work in flight, flagged rather than silently
+expanding scope. Whoever picks this up should start from `verifyRebuildParity`'s own divergence
+report (`apps/web/src/sync/e2e.test.ts` imports it) — a `missing-in-rebuild` on both `page` and
+`block` for what looks like device A's own newly-created page/block suggests the SERVER's replay of
+the op log loses them, not that A's own local state is wrong (the test's own `live(driverA)` vs.
+`live(s)` comparison a few lines above passes).
+
+**Cause (2026-10-03):** flaky, not deterministic — 3 of 8 runs of `src/sync/e2e.test.ts` failed
+after B-585's fix, and it was caught on "pull first" too. Op log from a failing run: the
+reference rule's `page.delete` of "Ghost Name" is seq 5 with HLC `…:09.838Z-0002-00000000`; device
+A's own `page.create` of "Ghost Name" is seq 6 with HLC `…:09.838Z-0000-562db010` — minted in
+the same millisecond, before A had heard of seq 5, so it has the smaller HLC. Live, the server
+applied them in seq order (name free, A's page lands). `verifyRebuildParity` replays in one
+`applyOps` call, and core's `applyOps` sorts by HLC, so the create runs while the ghost is live and
+is rejected `page-key-collision` → A's page and block `missing-in-rebuild`. Reproduced
+deterministically by `tools/probes/b587-hlc-order-name-collision.ts`. Not related to B-585: the
+test drives `SyncClient` directly, no client page minting involved. The real problem is that a
+name collision is order-dependent while HLC order can disagree with the server's causal (seq)
+order. Unverified: whether a third device pulling those ops in one batch diverges the same way —
+if so this is a convergence bug, not just a verify false alarm. Fix options (not chosen): the
+server re-stamps or rejects an op whose HLC is behind ops it already applied on the same name;
+or replay/pull apply in seq order rather than HLC order.
+
+**Settled (2026-10-03):** a convergence bug, not only a verify false alarm. Deterministic test
+(A's clock 5 s behind): a replica that bootstrapped before the delete and then pulled the delete
+and A's ops in one batch ended with no live "Ghost Name" and without A's block — for good; a
+replica pulling the whole log in one batch lacked the old page's tombstone. Live replicas and a
+later snapshot were fine. **Fix:** batches read out of the server's log are applied in `seq`
+order as given — `applyOps(…, { order: "seq" })` in `SyncClient.pull()`, push-response
+corrections and `verifyRebuildParity` (sql-schema.md rule 26 already said `seq`). Rejected: the
+server re-stamping or rejecting the late op (ADR 026). **Tests:** `apps/web/src/sync/e2e.test.ts`
+"a page created under a name the server freed, with an HLC older than the freeing op, converges
+on every replica (B-587)" (fails before: `[ 'C', 'D' ]`); `packages/server/src/sync/
+convergence.property.test.ts`; `packages/core/src/sync/apply-ops.test.ts` `order: "seq"`.
+`e2e.test.ts` 20/20 runs green. Probes: `tools/probes/b587-hlc-order-name-collision.ts`,
+`tools/probes/b587-three-device-http.ts`.
 
 ### B-491 · `window.confirm()` is always "Cancel" and `window.alert()` shows nothing in the desktop app
 **Status:** fixed (2026-10-03, `f3a0d78`) · **Severity:** high · **Test:** `e2e/tests/history.spec.ts`
