@@ -1,0 +1,74 @@
+/* The top bar's "⋯" menu (`./MoreMenu.tsx`). The button is an ordinary `.app-icon-button`
+   (`../styles/shell.css`), matching the sync cloud and the consent badge beside it. Items look like
+   the `?` menu's (`./help-menu.css`) so the two menus read as one family. */
+
+.more-menu-wrap {
+  position: relative;
+  display: flex;
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  /* Right-anchored: the button is the bar's last item, so a left-anchored popover would run off
+     the right edge (the mirror of B-583's lesson in `./calendar-button.css`). The bar is already
+     inset by the right safe area (`.app-shell`'s padding), so this stays clear of it too. */
+  right: 0;
+  z-index: 60;
+  min-width: 13rem;
+  max-width: calc(100vw - 2 * var(--space-md));
+  padding: var(--space-xs);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-sm) var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.more-menu-item:hover,
+.more-menu-item:focus-visible {
+  background: var(--surface-2);
+}
+
+.more-menu-label {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.more-menu-item kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.more-menu-sep {
+  /* An `<hr>` (a real separator for assistive tech), so the UA's border and inset are reset. */
+  height: 1px;
+  margin: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: var(--hairline);
+}
+
+/* A finger needs a bigger row than a pointer. */
+@media (pointer: coarse) {
+  .more-menu-item {
+    padding: var(--space-md) var(--space-lg);
+  }
+}

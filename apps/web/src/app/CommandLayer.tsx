@@ -63,8 +63,11 @@ import {
   runRemoteCommand,
   setLiveConnected,
 } from "../live/index.js";
+import { platform as hostPlatform } from "../platform/index.js";
 import { ClientPlugins } from "../plugins/ClientPlugins.js";
 import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
+import { openShortcuts } from "../shell/HelpMenu.js";
+import { openDiagnostics } from "../views/DiagnosticsPanel.js";
 import { requestPluginsSection } from "../views/PluginsSection.js";
 import { openSettings as openSettingsPanel } from "../views/SettingsPanel.js";
 import { BlockContextMenu } from "./BlockContextMenu.js";
@@ -244,6 +247,8 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       requestPluginsSection();
       openSettingsPanel();
     },
+    openShortcuts,
+    openDiagnostics,
   });
 
   const getContext = (): ContextBase =>
@@ -316,7 +321,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     });
   });
 
-  const commands = createCoreCommands({
+  const allCommands = createCoreCommands({
     editor,
     navigation,
     app,
@@ -348,6 +353,12 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       navigate: (path) => navigate(path),
     }),
   });
+  // B-578: no graph on Capacitor (`/graph` redirects to /journals there), so no "Open graph" in
+  // the palette or the "⋯" menu either — both list what the registry holds.
+  const commands =
+    hostPlatform.name === "capacitor"
+      ? allCommands.filter((c) => c.id !== "nav.graph")
+      : allCommands;
 
   const anyAutocomplete = createMemo(() => {
     const t = triggers();

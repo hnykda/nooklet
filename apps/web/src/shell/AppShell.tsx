@@ -25,6 +25,7 @@ import {
 import { CalendarButton } from "./CalendarButton.js";
 import { GraphSwitcher } from "./GraphSwitcher.js";
 import { HelpMenu, openShortcuts } from "./HelpMenu.js";
+import { MoreMenu } from "./MoreMenu.js";
 import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
 import { SyncIndicator } from "./SyncIndicator.js";
@@ -82,6 +83,9 @@ export function AppShell(props: { children?: JSX.Element }) {
         <SyncIndicator />
         <PluginStatusItems />
         <ConsentBadge />
+        {/* B-541 follow-up: last in the bar, as Logseq's "⋯" — the right end is also the end of
+            the bar furthest from macOS's traffic lights. */}
+        <MoreMenu />
       </div>
       <div class="app-shell-body">
         <Sidebar />
@@ -96,7 +100,7 @@ export function AppShell(props: { children?: JSX.Element }) {
       <Show when={diagnosticsOpen()}>
         <DiagnosticsPanel onClose={closeDiagnostics} />
       </Show>
-      {/* Raised by the help menu and by `app.openSettings` (Cmd/Ctrl+,), which used to navigate to
+      {/* Raised by the "⋯" menu and by `app.openSettings` (Cmd/Ctrl+,), which used to navigate to
           a route that does not exist — see `../views/SettingsPanel.tsx`. */}
       <Show when={settingsOpen()}>
         <SettingsPanel onClose={closeSettings} />

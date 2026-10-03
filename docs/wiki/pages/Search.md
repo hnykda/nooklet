@@ -12,7 +12,7 @@ tags:: guide
 - ## Turning on semantic search
   - Semantic search finds notes by meaning, across languages — the default model `bge-m3` covers Czech and English — using an embedding model you run yourself. Nothing leaves your machine. It is off by default and keyword search is unaffected either way.
   - Install Ollama and pull a model: `ollama pull bge-m3`.
-  - Open Settings (Cmd/Ctrl+, or the `?` button → Settings) → **Search & embeddings** → **Turn on semantic search…**. Provider `Ollama`, server URL `http://127.0.0.1:11434`, model `bge-m3`, then **Test connection & enable**. nooklet asks the provider for the model's vector size before storing anything, so a wrong URL or an unpulled model fails right there with a message rather than halfway through indexing (B-38).
+  - Open Settings (Cmd/Ctrl+, or the top bar's `⋯` menu → Settings) → **Search & embeddings** → **Turn on semantic search…**. Provider `Ollama`, server URL `http://127.0.0.1:11434`, model `bge-m3`, then **Test connection & enable**. nooklet asks the provider for the model's vector size before storing anything, so a wrong URL or an unpulled model fails right there with a message rather than halfway through indexing (B-38).
   - Indexing runs in the background on the server. The panel shows embedded and pending counts and semantic search switches itself on once the backfill drains. Afterwards the same section offers **Change model…** and **Re-index everything**.
   - An OpenAI-compatible provider — LM Studio, llama.cpp, a hosted API — can be chosen instead of Ollama in the same form.
   - From a terminal: `nooklet embed status`, `nooklet embed run`, `nooklet embed model <name> [--provider ollama|openai-compat] [--host <url>]` ([[Command line]]).

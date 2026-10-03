@@ -2,8 +2,8 @@ type:: reference
 summary:: Every command nooklet registers, with its default keys on macOS and on Windows/Linux. Generated from the code, not written by hand.
 tags:: reference
 
-- **Generated on 2026-09-13** from `apps/web/src/commands/registrations/*.ts` by `docs/wiki/tools/generate-shortcuts.mjs`. Do not edit this page by hand; re-run the generator (`node docs/wiki/tools/generate-shortcuts.mjs`).
-- 90 commands are registered; 48 have a default key. The same list, limited to bound keys, is in the app under the `?` button in the corner → Keyboard shortcuts, built from the live keymap.
+- **Generated on 2026-10-03** from `apps/web/src/commands/registrations/*.ts` by `docs/wiki/tools/generate-shortcuts.mjs`. Do not edit this page by hand; re-run the generator (`node docs/wiki/tools/generate-shortcuts.mjs`).
+- 97 commands are registered; 49 have a default key. The same list, limited to bound keys, is in the app under the `?` button in the corner → Keyboard shortcuts, built from the live keymap.
 - "When" is the condition under which the key does this ([[Concepts]] explains `editorFocused` and `blockSelected`). One key can do different things in different states: Enter splits a block while editing and starts editing a selected block.
 - Keys are meant to be rebindable through a user-editable `keybindings.json` (ADR 009, `docs/spec/commands-and-keymap.md` §I). The keymap merge rules exist in `apps/web/src/commands/keymap/`; a settings screen for editing them is not built.
 - ## Block
@@ -35,6 +35,7 @@ tags:: reference
   | Indent selected blocks (`block.indentSelected`) | Tab | Tab | `blockSelected` |
   | Outdent selected blocks (`block.outdentSelected`) | Shift+Tab | Shift+Tab | `blockSelected` |
   | Copy selected blocks as markdown (`block.copySelection`) | Cmd+C | Ctrl+C | `blockSelected` |
+  | Cut selected blocks as markdown (`block.cutSelection`) | Cmd+X | Ctrl+X | `blockSelected` |
   | Duplicate block (`block.duplicate`) | Cmd+Shift+D | Ctrl+Shift+D | `editorFocused \|\| blockSelected` |
   | Copy block reference (`block.copyRef`) | Cmd+Shift+C | Ctrl+Shift+C | `editorFocused \|\| blockSelected` |
   | Paste (`edit.paste`) | Cmd+V | Ctrl+V | `editorFocused` |
@@ -78,10 +79,10 @@ tags:: reference
 - Reachable from the command palette (Cmd/Ctrl+K), the slash menu (`/` at the start of a line), the block context menu, or the phone toolbar. Listed so the palette holds no surprises.
   - **Block**: Collapse all (`block.collapseAll`) · Expand all (`block.expandAll`) · Turn into page (`block.turnIntoPage`) · Move to page… (`block.moveToPage`) · Open on shelf (`block.openOnShelf`)
   - **Task**: Toggle done (`task.toggleDone`) · Mark TODO (`task.setMarkerTodo`) · Mark DOING (`task.setMarkerDoing`) · Mark WAITING (`task.setMarkerWaiting`) · Mark CANCELED (`task.setMarkerCanceled`) · Mark DONE (`task.setMarkerDone`) · Clear task marker (`task.clearMarker`) · Set priority A (`task.setPriorityA`) · Set priority B (`task.setPriorityB`) · Set priority C (`task.setPriorityC`) · Set scheduled date (`task.setScheduled`) · Set deadline date (`task.setDeadline`)
-  - **Navigation**: Find and replace… (`search.findReplace`) · Open this page on shelf (`nav.openPageOnShelf`)
+  - **Navigation**: Open all pages (`nav.allPages`) · Open graph (`nav.graph`) · Open trash (`nav.trash`) · Find and replace… (`search.findReplace`) · Open this page on shelf (`nav.openPageOnShelf`)
   - **Formatting**: Insert page reference (`format.insertPageRef`) · Insert tag (`format.insertTag`) · Insert block reference (`format.insertBlockRef`)
-  - **Insert**: Heading 1 (`block.setHeading1`) · Heading 2 (`block.setHeading2`) · Heading 3 (`block.setHeading3`) · Code block (`block.insertCodeFence`) · Query (`block.insertQueryFence`) · Table (`block.insertTable`) · Image (`block.insertImage`) · Embed page (`block.embedPage`) · Embed block (`block.embedBlock`) · Today's date (`block.insertToday`) · Property (`block.insertProperty`) · Open slash menu (`block.openSlashMenu`) · Insert template… (`block.insertTemplate`)
-  - **App**: Open plugin manager (`app.openPluginManager`) · Sync now (`sync.now`) · Toggle theme (`app.toggleTheme`) · Hide keyboard (`app.hideKeyboard`) · Merge this page into… (`edit.mergePage`)
+  - **Insert**: Heading 1 (`block.setHeading1`) · Heading 2 (`block.setHeading2`) · Heading 3 (`block.setHeading3`) · Code block (`block.insertCodeFence`) · Query (`block.insertQueryFence`) · Table (`block.insertTable`) · Image (`block.insertImage`) · Embed page (`block.embedPage`) · Embed block (`block.embedBlock`) · Today's date (`block.insertToday`) · Property (`block.insertProperty`) · Open slash menu (`block.openSlashMenu`) · Numbered list (`block.toggleNumberedList`) · Insert template… (`block.insertTemplate`)
+  - **App**: Open plugin manager (`app.openPluginManager`) · Show keyboard shortcuts (`app.showShortcuts`) · Open diagnostics (`app.openDiagnostics`) · Sync now (`sync.now`) · Toggle theme (`app.toggleTheme`) · Hide keyboard (`app.hideKeyboard`) · Merge this page into… (`edit.mergePage`)
 - ## Commands that need arguments
 - Not in the palette: each does nothing without its payload. Agents run them through the live UI channel; a `keybindings.json` row can bind one with `args`.
   - Open page (`nav.openPage`)

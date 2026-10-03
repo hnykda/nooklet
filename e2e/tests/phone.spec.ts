@@ -90,8 +90,8 @@ test("the settings panel's close button stays reachable after scrolling on a pho
   page,
 }) => {
   await page.goto("/journals");
-  await page.locator(".help-fab").click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
   const panel = page.locator(".set-panel");
   await expect(panel).toBeVisible();
 

@@ -2,7 +2,7 @@ type:: guide
 summary:: What the Settings panel offers — theme, journal date format, semantic search, about — and where the other knobs live.
 tags:: guide
 
-- Open with Cmd/Ctrl+, the `?` button in the corner → Settings, or "Open settings" in the command palette. It is a panel over the current view, not a route.
+- Open with Cmd/Ctrl+, the `⋯` menu at the right end of the top bar → Settings, or "Open settings" in the command palette. It is a panel over the current view, not a route.
 - ## Appearance
   - **Theme**: Light, Dark, System. System follows the OS. Stored per device; `Toggle theme` in the palette cycles it.
   - **Journal date format**: how journal days are titled on screen — `Sep 7th, 2026`, `September 7th, 2026`, `2026-09-07`, `Mon, 07.09.2026`, `Monday, 07.09.2026`, `Monday, Sep 7th, 2026`, `07.09.2026`. Stored per device. The stored page name stays the ISO date, so links, search and the markdown export are unaffected (ADR 018). After a Logseq import the graph's own format is offered as the initial value, and appears in the list even when it is not one of the presets. See [[Journals]].

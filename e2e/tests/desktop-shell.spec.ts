@@ -50,11 +50,13 @@ test("at the desktop window's size, Settings, Graph, All pages and Help are reac
 
   const toggle = page.getByRole("button", { name: "Toggle sidebar" });
   const help = page.getByRole("button", { name: "Help" });
+  const more = page.getByRole("button", { name: "More" });
   for (const control of [
     toggle,
     page.getByRole("button", { name: "Back" }),
     page.getByRole("button", { name: "Forward" }),
     help,
+    more,
   ]) {
     await expectClickable(page, control);
   }
@@ -73,11 +75,21 @@ test("at the desktop window's size, Settings, Graph, All pages and Help are reac
   await expect(page).toHaveURL(/\/pages$/);
   await expect(page.locator(".all-pages")).toBeVisible();
 
-  // ? → Settings.
+  // ⋯ → Settings (B-541 follow-up: Settings moved here from the `?` menu).
+  await expectClickable(page, more);
+  await more.click();
+  await expectClickable(page, page.getByRole("menuitem", { name: "Settings" }));
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "Settings" })
+    .getByRole("button", { name: "Close" })
+    .click();
+
+  // ? still opens the help menu.
   await expectClickable(page, help);
   await help.click();
-  await page.locator(".help-item", { hasText: "Settings" }).click();
-  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await expect(page.locator(".help-menu")).toBeVisible();
 });
 
 test("the native menu's Settings… and Keyboard Shortcuts open the client's own panels (B-533)", async ({

@@ -51,6 +51,38 @@ export function createNavCommands(deps: {
         navigation.openJournals();
       },
     },
+    // The "⋯" menu's destinations (B-541 follow-up). Commands rather than links in the menu, so
+    // the palette reaches the same places by the same path; no default keys.
+    {
+      id: "nav.allPages",
+      title: "Open all pages",
+      category: "Navigation",
+      defaultKeys: {},
+      when: "true",
+      run() {
+        navigation.openAllPages();
+      },
+    },
+    {
+      id: "nav.graph",
+      title: "Open graph",
+      category: "Navigation",
+      defaultKeys: {},
+      when: "true",
+      run() {
+        navigation.openGraph();
+      },
+    },
+    {
+      id: "nav.trash",
+      title: "Open trash",
+      category: "Navigation",
+      defaultKeys: {},
+      when: "true",
+      run() {
+        navigation.openTrash();
+      },
+    },
     {
       id: "nav.back",
       title: "Go back",
