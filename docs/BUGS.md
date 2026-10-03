@@ -814,21 +814,6 @@ same-named page competing with it. Expected, probably: the alias holder is the r
 link, and no "New page" for a name an alias answers. What the server does with a page whose key
 equals another page's alias (link resolution afterwards) was not checked.
 
-### B-602 · A WebSocket upgrade to an unrouted bare path hangs instead of failing
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
-
-`/sync/live` with no `/g/<id>` prefix: no 101, no error response (`tools/probes/ws-bare-origin.mjs`, "NEVER OPENED" after 5 s). The client fix (bare address → `/g/default`) avoids it; the server should answer 404.
-
-### B-603 · `nooklet://` deep links reach nothing
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
-
-`platform.deepLinks.onOpen` has no subscriber anywhere in `apps/web/src` (grep), so opening `nooklet://anything` just foregrounds the app. A `nooklet://connect?url=…&token=…` link (or QR) would also remove the token-pasting step.
-
-### B-604 · `nooklet serve --host 0.0.0.0` prints `http://0.0.0.0:6100/...` as the address to use
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
-
-Not reachable from a phone; printing the machine's LAN IPs would save a lookup.
-
 ### B-605 · An ordinary page nothing references still opens as "doesn't exist yet / Create"; Logseq opens every missing page as an editable empty page
 **Status:** deferred (coordinator decision 2026-10-03: keep as is for now) · **Severity:** low ·
 **Found:** 2026-10-03, while doing B-595 · **Test:** none
@@ -840,19 +825,6 @@ also the signal for a deleted page, an unsynced name, and the two-device race (A
 it means generalising `VirtualJournalDay` into a page draft that writes nothing until typed.
 Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
 parity for names nothing links to; revisit if it bites in daily use.
-
-### B-607 · `nooklet import` into a fresh data dir, then `nooklet serve`, crashes: `a graph called "default" already exists`
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** medium. It blocks first start on a new server if the import comes first. Workaround:
-run `serve` once before importing, or write `graphs/default/graph.json` by hand.
-**Repro:** `nooklet import <graph> --data $D` on an empty `$D`, then `nooklet serve --data $D`. The
-process exits 1. `import` creates `graphs/default/graph.sqlite` but no `graph.json`.
-`GraphRegistry.list()` skips directories without one, so `cli.ts:286` calls `create("default")`,
-which throws because the db exists. README also still says `~/.nooklet/default`, but the layout is
-now `graphs/default`.
-
-Same root cause as `nooklet token create` before the first `serve` (found by the b587 agent, `docs/progress/b587.md`): any command that opens a fresh data dir creates `graphs/default/graph.sqlite` without `graph.json`.
 
 ### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
@@ -914,16 +886,6 @@ paste a valid token). Errors: `crypto.randomUUID is not a function` (`data/boots
 `!isSecureContext` and say why. The same blank page is expected in the desktop app pointed at a
 plain-http remote.
 
-### B-616 · Behind a same-host reverse proxy, the app shell 403s with an MCP "Invalid Host" JSON-RPC error
-**Status:** open · **Severity:** medium (deployment trap) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `serve.sh <dir> 6311` (bound 127.0.0.1, no `--allow-host`), then
-`node host-proxy.mjs 6312 6311` (forwards `Host: nooklet.sweep.test`).
-`curl 127.0.0.1:6312/g/default/` → 403 `{"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid Host: nooklet.sweep.test"}}`,
-while `/api/session` returns 200. The cause is `mountMcp`'s `"/"` sub-app guard
-(`createMcpHonoApp({host})` auto-enables localhost Host validation). The workaround is
-`--allow-host <name>`, but the CLI only suggests it for non-loopback binds.
-
 ### B-618 · Graph switcher labels are generic and can't be told apart
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
 
@@ -947,7 +909,72 @@ not narrowed down.
 `rpc.expose` handler that throws returns an unhandled 500. B-610 was fixed inside word-count;
 another plugin throwing `OpError` from rpc would 500 the same way.
 
+### B-622 · `mcp/stdio-main.ts` defaults to the pre-ADR-025 `~/.nooklet/default/graph.sqlite`
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, pairing agent · **Test:** none
+
+Run without `--data` it would create a stray legacy database beside `graphs/`. Dev-only: `nooklet mcp --stdio` goes through `cli.ts`.
+
 ## Fixed
+
+### B-621 · After a deep link's reload, `App.getLaunchUrl()` re-delivered the same link, so the pairing confirm screen kept coming back
+**Status:** fixed (2026-10-03, `fb31593`) · **Severity:** medium · **Found:** 2026-10-03, pairing agent on the Simulator · **Test:** `platform/launch-url.test.ts`; probe `tools/probes/pairing-link-ui/`
+
+`getLaunchUrl()` is Capacitor's `lastURL`, so after `location.reload()` the same `nooklet://connect` link came back. Fixed in `platform/launch-url.ts`.
+
+### B-616 · Behind a same-host reverse proxy, the app shell 403s with an MCP "Invalid Host" JSON-RPC error
+**Status:** fixed (2026-10-03, `f177b35`) · **Test:** `http/web-client.test.ts` "serves the app shell behind a same-host proxy that rewrites Host (B-616)"
+
+Repro: `serve.sh <dir> 6311` (bound 127.0.0.1, no `--allow-host`), then
+`node host-proxy.mjs 6312 6311` (forwards `Host: nooklet.sweep.test`).
+`curl 127.0.0.1:6312/g/default/` → 403 `{"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid Host: nooklet.sweep.test"}}`,
+while `/api/session` returns 200. The cause is `mountMcp`'s `"/"` sub-app guard
+(`createMcpHonoApp({host})` auto-enables localhost Host validation). The workaround is
+`--allow-host <name>`, but the CLI only suggests it for non-loopback binds.
+
+The MCP Host guard applies only to `/mcp`, follows `--allow-host`, and its 403 and the server log suggest the flag.
+
+### B-607 · `nooklet import` into a fresh data dir, then `nooklet serve`, crashes: `a graph called "default" already exists`
+**Status:** fixed (2026-10-03, `228f942`) · **Test:** `graphs/registry.test.ts`, `cli-first-run.test.ts` (both orders failed before with `serve exited 1`)
+
+**Severity:** medium. It blocks first start on a new server if the import comes first. Workaround:
+run `serve` once before importing, or write `graphs/default/graph.json` by hand.
+**Repro:** `nooklet import <graph> --data $D` on an empty `$D`, then `nooklet serve --data $D`. The
+process exits 1. `import` creates `graphs/default/graph.sqlite` but no `graph.json`.
+`GraphRegistry.list()` skips directories without one, so `cli.ts:286` calls `create("default")`,
+which throws because the db exists. README also still says `~/.nooklet/default`, but the layout is
+now `graphs/default`.
+
+Same root cause as `nooklet token create` before the first `serve` (found by the b587 agent, `docs/progress/b587.md`): any command that opens a fresh data dir creates `graphs/default/graph.sqlite` without `graph.json`.
+
+CLI commands write `graph.json`; `serve` adopts an existing `graph.sqlite` without one. README and OPERATIONS §2 paths updated.
+
+### B-604 · `nooklet serve --host 0.0.0.0` prints `http://0.0.0.0:6100/...` as the address to use
+**Status:** fixed (2026-10-03, `f19a64b`) · **Test:** `serve-banner.test.ts`
+
+Not reachable from a phone; printing the machine's LAN IPs would save a lookup.
+
+A `0.0.0.0` bind prints the LAN addresses (skipping VM/Docker bridges) and the exact `--allow-host` to restart with.
+
+### B-603 · `nooklet://` deep links reach nothing
+**Status:** fixed (2026-10-03, `0399e4e`, `fb31593`) · **Test:** unit tests in `docs/progress/pairing.md`; Simulator probe `tools/probes/pairing-link-ui/`
+
+`platform.deepLinks.onOpen` has no subscriber anywhere in `apps/web/src` (grep), so opening `nooklet://anything` just foregrounds the app. A `nooklet://connect?url=…&token=…` link (or QR) would also remove the token-pasting step.
+
+`nooklet://connect?url=…&token=…` opens ConnectView pre-filled and connects only on a tap; it adds a server graph and keeps local ones. Parsing rejects non-http(s) URLs, user-info and missing params. `nooklet token create --link <url>` prints the link. No QR (no library in the tree; adding one is an owner decision). The token sits in the URL: it can leak via clipboard/history — documented.
+
+### B-602 · A WebSocket upgrade to an unrouted bare path hangs instead of failing
+**Status:** fixed (2026-10-03, `b233294`) · **Test:** `graphs/mount.test.ts` "answers a failed upgrade with 404 at once … (B-602)" and "survives a client resetting the TCP connection mid-upgrade (B-589, kept by the new guard)"
+
+`/sync/live` with no `/g/<id>` prefix: no 101, no error response (`tools/probes/ws-bare-origin.mjs`, "NEVER OPENED" after 5 s). The client fix (bare address → `/g/default`) avoids it; the server should answer 404.
+
+Root cause: B-589's second `'upgrade'` listener — `@hono/node-server` only answers a failed upgrade when it has the sole listener, so every failed upgrade hung (unknown graphs too). The B-589 guard now attaches at `'connection'` (`http/upgrade-guard.ts`).
+
+### B-600 · Security: the loopback auto-token was handed to every client behind a same-host reverse proxy
+**Status:** fixed (2026-10-03, `b233294`, D3) · **Test:** `http/host-guard.test.ts` "--no-loopback-token (B-600, decision D3)"
+
+The server gives a write token to any caller that looks local. A proxy on the server's machine that rewrites `Host` to its upstream made every client look local. **Fixed 2026-10-03** (`ee8c54c`) for any request carrying forwarding headers (`X-Forwarded-For`, `Forwarded`, …) in `http/app.ts`. Still open: a proxy that rewrites `Host` and adds no forwarding header is indistinguishable from a local browser (decision D3 in `docs/progress/real-device-test.md`). the home server's setup is not affected (the Tailscale proxy runs in a separate pod).
+
+**D3 done 2026-10-03:** `nooklet serve --no-loopback-token`, set in the Dockerfile and the Helm chart (no browser runs in a container; port-forwards and sidecars arrive over loopback). Off by default in the CLI because the local desktop app relies on the auto-token.
 
 ### B-617 · Plugin "word-count" fails to activate for every graph after the first
 **Status:** fixed (2026-10-03, `de59bf8`) · **Severity:** low · **Test:** `packages/server/src/graphs/mount.test.ts`
@@ -1134,12 +1161,6 @@ element. Ordinary missing pages keep "doesn't exist yet / Create" — see B-605.
 **Test:** manual: `docker run` of `deploy/docker/Dockerfile`'s image
 
 **Fixed 2026-10-03** (`ee8c54c`) by installing `libatomic1` in the image. Possibly also affects the Linux desktop sidecar on minimal distros; not investigated.
-
-### B-600 · Security: the loopback auto-token was handed to every client behind a same-host reverse proxy
-**Status:** fixed (partly; see D3) · **Severity:** high (security) · **Found:** 2026-10-03, real-device-test agent ·
-**Test:** `packages/server/src/http/host-guard.test.ts` "refuses a token to a request that came through a same-machine reverse proxy"; probe `tools/probes/loopback-proxy-token.mjs`
-
-The server gives a write token to any caller that looks local. A proxy on the server's machine that rewrites `Host` to its upstream made every client look local. **Fixed 2026-10-03** (`ee8c54c`) for any request carrying forwarding headers (`X-Forwarded-For`, `Forwarded`, …) in `http/app.ts`. Still open: a proxy that rewrites `Host` and adds no forwarding header is indistinguishable from a local browser (decision D3 in `docs/progress/real-device-test.md`). the home server's setup is not affected (the Tailscale proxy runs in a separate pod).
 
 ### B-599 · A server address typed without a path (`http://host:6100`) never opened live sync
 **Status:** fixed · **Severity:** high · **Found:** 2026-10-03, real-device-test agent ·
@@ -1471,6 +1492,8 @@ the same probe (`--fix` flag) that the identical scenario now survives, and conf
 connection through the real server still opens, exchanges messages, and closes cleanly with the fix
 in place — this isn't just "swallow all upgrade errors," it targets exactly the pre-handshake gap
 the vulnerability lives in.
+
+2026-10-03: the guard moved to `http/upgrade-guard.ts` (attached at `'connection'`) as part of B-602's fix.
 
 ### B-588 · Desktop picker (local/server switch) made the owner manually quit and reopen the app every time
 **Status:** fixed · **Test:** `e2e/tests/desktop-launcher.spec.ts` (B-584's regression
