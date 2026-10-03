@@ -53,7 +53,11 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   skipped. 15 of the 19 were caused by `entry.ts` (see Done, B-615) and pass after the rework.
   The other 4 — `page-find.spec.ts` ×2 (Cmd/Ctrl+F) and `random-page.spec.ts` ×2 — fail
   identically on 38e17a6 (run there: 4 failed). Pre-existing, not touched.
-- Full e2e suite, second pass: see below.
+- Full e2e suite, second pass (155b740): 687 passed, 6 failed, 2 skipped. 4 are the
+  pre-existing page-find/random-page failures above. `mermaid-lazy-cache` and
+  `search-fallback` "a keyword search shows no fallback note" failed once in the full run and pass
+  in isolation, 6/6 each with `--repeat-each=3` — order/load-dependent, not reproduced; not
+  checked on 38e17a6 in a full run.
 
 ## Next steps
 1. Nothing left in scope. Fold the BUGS.md entries below.
