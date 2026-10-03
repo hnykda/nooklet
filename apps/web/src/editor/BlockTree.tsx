@@ -184,6 +184,17 @@ function firstLine(content: string): string {
   return line.length > 48 ? `${line.slice(0, 47)}…` : line || "(empty)";
 }
 
+/**
+ * Chrome outside the outliner whose clicks belong to the current editing or selection session, so
+ * a pointerdown there must not end it: popups, menus, the palette and the mobile toolbar act on
+ * the session. The zoom breadcrumb is this tree's own chrome, rendered beside the outliner rather
+ * than inside it; a click there navigates within the same session. So are the find bar's buttons
+ * (not its input, which takes the keyboard): they keep focus where it is, and a click on "close"
+ * while typing in a match ended the edit it meant to leave alone.
+ */
+const SESSION_CHROME =
+  ".cmd-popup, .ctx-menu, .cmd-palette, .cmd-toolbar, .help-menu, .help-keys, .shelf, .vr-zoom-trail, .page-find-button";
+
 function rangeBetween(ids: readonly BlockId[], a: number, b: number): BlockId[] {
   const [lo, hi] = a <= b ? [a, b] : [b, a];
   return ids.slice(lo, hi + 1);
@@ -499,22 +510,55 @@ export function BlockTree(props: {
       // pointerdown, so by the time a click handler ran it would already be gone; hence the check
       // here, at capture time.)
       if (blockMenuRequest()) return;
-      // The zoom breadcrumb is this tree's own chrome, rendered beside the outliner rather than
-      // inside it; a click there navigates within the same editing session. So are the find bar's
-      // buttons (not its input, which takes the keyboard): they keep focus where it is, and a
-      // click on "close" while typing in a match ended the edit it meant to leave alone.
-      if (
-        target.closest(
-          ".cmd-popup, .ctx-menu, .cmd-palette, .cmd-toolbar, .help-menu, .help-keys, .shelf, .vr-zoom-trail, .page-find-button",
-        )
-      )
-        return;
+      if (target.closest(SESSION_CHROME)) return;
       flushPendingEdit();
       surface.detach();
       setEditingId(null);
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     onCleanup(() => document.removeEventListener("pointerdown", onPointerDown, true));
+  });
+  /**
+   * A standing block selection ends when the pointer or the keyboard goes to a control outside
+   * the outline (B-450, owner decision "mimic Logseq"). Before this it outlived both, so with a
+   * button or link focused Enter opened the selected block instead of pressing it, and Backspace
+   * there deleted the block.
+   *
+   * Pointer: Logseq's window-level `pointerdown` listener
+   * (`src/main/frontend/components/container.cljs#hide-context-menu-and-clear-selection`) clears
+   * the selection unless Shift/Meta is held, the target is an `<input>`/`<textarea>`
+   * (`util/input?`), a block (`.ls-block`) or `[data-keep-selection]` chrome. Copied as is — the
+   * text-field exemption is also what B-300 relies on: a click into the page title, the palette or
+   * the find bar keeps the selection, and that field then owns its keys.
+   *
+   * Keyboard: Logseq has no focus listener for this, but it needs none — Tab is one of its
+   * shortcut handler's "global keys" and indents the selection, so keyboard focus cannot walk out
+   * of a selection to a button there. Here a field owns Tab (B-300), so "click the title, Tab"
+   * reaches the History link with the selection standing. Ending the selection when focus lands
+   * on a button or link outside the outline gives that path the outcome Logseq's has: Enter and
+   * Space press the control, Backspace does nothing to the blocks.
+   */
+  createEffect(() => {
+    if (selection() === null) return;
+    const outside = (target: Element): boolean =>
+      !outlinerEl?.contains(target) && !blockMenuRequest() && !target.closest(SESSION_CHROME);
+    const onPointerDown = (e: PointerEvent): void => {
+      const target = e.target as Element | null;
+      if (!target || e.shiftKey || e.metaKey || e.ctrlKey) return;
+      if (target.closest("input, textarea")) return;
+      if (outside(target)) setSelection(null);
+    };
+    const onFocusIn = (e: FocusEvent): void => {
+      const target = e.target as Element | null;
+      if (!target?.closest("button, a[href], [role=button], [role=link]")) return;
+      if (outside(target)) setSelection(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("focusin", onFocusIn, true);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("focusin", onFocusIn, true);
+    });
   });
   // `requestEditingEnd()` (`./focus-request.ts`): something outside the outline took the keyboard.
   createEffect(

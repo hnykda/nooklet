@@ -311,3 +311,61 @@ test("Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z on a focused select do not take back a blo
   await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
   await expect.poll(() => stored(page, name)).toEqual(SEEDED);
 });
+
+// B-450 (owner decision: mimic Logseq). A standing selection ends when the pointer or the keyboard
+// goes to a button or link outside the outline, so Enter there presses the control. Before, the
+// global keymap's `block.editSelected` took Enter and opened the block, and the control did nothing.
+test("Enter on a button focused outside the outline presses it, not the selected block (B-450)", async ({
+  page,
+}, info) => {
+  const name = runName("Keys Button Selection", info);
+  const outliner = await openEditing(page, name, SEED);
+  const selected = outliner.locator(".vr-row-selected");
+  await page.keyboard.press("Escape");
+  await expect(selected).toHaveCount(1);
+
+  await page.locator(".help-fab").focus();
+  await expect(selected).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".help-menu")).toBeVisible();
+  await expect(page.locator(".vr-outliner .cm-content")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".help-menu")).toHaveCount(0);
+
+  // A mouse click outside ends it too (Logseq's pointerdown rule), so Backspace afterwards has no
+  // selection to delete.
+  await outliner.locator(".vr-block-view").nth(1).click();
+  await page.keyboard.press("Escape");
+  await expect(selected).toHaveCount(1);
+  await page.locator(".app-sync-indicator").click();
+  await expect(selected).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".diag-panel")).toHaveCount(0);
+  await page.keyboard.press("Backspace");
+  await page.waitForTimeout(300);
+  expect(await rowTexts(page, outliner)).toEqual(SEEDED);
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
+  expect(await stored(page, name)).toEqual(SEEDED);
+});
+
+test("click the title, Tab to the History link, Enter follows the link with a block selected (B-450)", async ({
+  page,
+}, info) => {
+  const name = runName("Keys History Link Selection", info);
+  const outliner = await openEditing(page, name, SEED);
+  const selected = outliner.locator(".vr-row-selected");
+  await page.keyboard.press("Escape");
+  await expect(selected).toHaveCount(1);
+
+  // A click into a text field keeps the selection — Logseq's `util/input?` exemption, and B-300's
+  // premise (the field then owns its keys).
+  await page.locator("textarea.page-title-input").click();
+  await expect(selected).toHaveCount(1);
+  await page.keyboard.press("Tab");
+  await expect(page.locator("a.page-history-link")).toBeFocused();
+  await expect(selected).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/history\//);
+  await expect(page.locator(".vr-outliner .cm-content")).toHaveCount(0);
+  expect(await stored(page, name)).toEqual(SEEDED);
+});

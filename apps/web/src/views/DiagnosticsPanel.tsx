@@ -12,7 +12,7 @@
  * from Settings → About → "Open diagnostics". There is no palette command for it.
  */
 
-import { createResource, createSignal, type JSX, Show } from "solid-js";
+import { createResource, createSignal, type JSX, onCleanup, onMount, Show } from "solid-js";
 import {
   clearFocusLog,
   focusLogCount,
@@ -20,6 +20,7 @@ import {
   focusLogText,
   setFocusLogEnabled,
 } from "../app/focus-log.js";
+import { claimPopupKeys } from "../commands/popup-keys.js";
 import { callOp, describeError } from "../data/api-client.js";
 import { apiBaseUrl, bootstrapConfig, hasSyncTarget } from "../data/bootstrap.js";
 import { useSyncStatus } from "../data/store.js";
@@ -73,9 +74,29 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
   // Reading an errored resource re-throws, so every read goes through this.
   const data = () => (backend.error !== undefined ? undefined : backend());
 
+  // B-594: Escape closes it, as it closes HelpMenu, the confirm dialog and the context menu. Two
+  // paths, as in HelpMenu: a document listener for when focus is on the panel or the page, and the
+  // popup-key claim for when a block editor underneath still has focus — without the claim, the
+  // editor's keymap reads the same Escape as "leave editing" (B-72).
+  onMount(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") props.onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const release = claimPopupKeys((key) => {
+      if (key !== "Escape") return false;
+      props.onClose();
+      return true;
+    });
+    onCleanup(() => {
+      document.removeEventListener("keydown", onKey);
+      release();
+    });
+  });
+
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: click-away dismiss only; the keyboard way out is the dialog's Close <button>.
-    // biome-ignore lint/a11y/useKeyWithClickEvents: as above — there is no Escape handler for this panel, the Close button is the keyboard path.
+    // biome-ignore lint/a11y/noStaticElementInteractions: click-away dismiss only; the keyboard way out is Escape (document listener above) or the Close <button>.
+    // biome-ignore lint/a11y/useKeyWithClickEvents: as above — Escape is handled on the document, not on this element.
     <div class="diag-backdrop" onClick={props.onClose}>
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: only stops propagation so a click inside the dialog never reaches the dismissing backdrop. */}
       <div
