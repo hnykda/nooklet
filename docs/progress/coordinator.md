@@ -26,6 +26,7 @@ runs the full e2e suite on the merged tree.
 | tag-autocomplete | B-380 option (c) | 6305 |
 | mermaid-lazy | mermaid out of precache, single sidecar copy | 6306 |
 | real-device-test | readiness and runbook for the Mac + own server + physical iPhone test | 6307 |
+| refs-count | references heading counts the way Logseq does | 6308 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### State of `main`
@@ -67,7 +68,7 @@ the precache plus a single sidecar copy, the references heading count. The order
 
 ### Owner decisions (answered 2026-10-03)
 B-534: keep the allowlist, no `zotero://`. B-450: mimic Logseq. B-472: deferred ("no for now").
-"Synced via another tab" label: keep. Still open: the references heading count (to-do 5).
+"Synced via another tab" label: keep. References heading count: Claude to decide, owner leaning Logseq → switch to Logseq's count (agent refs-count).
 
 ### Suggested next steps, in order
 1. B-585 (then re-check B-587 against it). B-592 is a quick test fix.
