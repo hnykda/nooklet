@@ -37,6 +37,9 @@ runs the full e2e suite on the merged tree.
 | b606 | B-606 caret inside a trailing `[[link]]` (high) | 6320-6324 |
 | tasks-workflow | B-608 LATER/NOW workflow like Logseq, B-610 word-count 500 | 6325-6329 |
 | b609 | B-609 fast burst on a new journal day loses Tab | 6330-6334 |
+| local-graphs | B-611 local→server leak, B-612 local graph lost, B-619 (all high/test items 8-9) | 6335-6339 |
+| connection-states | B-613 revoked token, B-614 indicator, B-615 insecure context page, B-618 labels | 6340-6344 |
+(B-617 → tasks-workflow; B-616 + runbook localhost fix → pairing.)
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### Incidents 2026-10-03 (so they are not repeated)
