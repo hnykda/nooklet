@@ -29,12 +29,23 @@ runs the full e2e suite on the merged tree.
 | refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
 | empty-journal | B-595, **merged** (`6ddfc77`); B-605 deferred | 6309 |
 | sweep-core | **done**: basic loop works; B-606..B-610 → `docs/review/2026-10-03-sweep-core.md` | 6310 |
-| sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
+| sweep-devices | **done**; B-611..B-619 → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
 | b587 | B-587, real divergence, **merged** (`0cb4a62`, ADR 026) | 6314 |
 | b491 | B-491, **merged** (`f3a0d78`) | 6315 |
-| pairing | D3 `--no-loopback-token`, B-602, B-604, B-603 `nooklet://connect` link | 6316-6319 |
+| pairing | D3 `--no-loopback-token`, B-602, B-604, B-603 `nooklet://connect` link, + B-607 | 6316-6319 |
+| b606 | B-606 caret inside a trailing `[[link]]` (high) | 6320-6324 |
+| tasks-workflow | B-608 LATER/NOW workflow like Logseq, B-610 word-count 500 | 6325-6329 |
+| b609 | B-609 fast burst on a new journal day loses Tab | 6330-6334 |
+| local-graphs | B-611 local→server leak, B-612 local graph lost, B-619 (all high/test items 8-9) | 6335-6339 |
+| connection-states | B-613 revoked token, B-614 indicator, B-615 insecure context page, B-618 labels | 6340-6344 |
+(B-617 → tasks-workflow; B-616 + runbook localhost fix → pairing.)
 If cut off: `git worktree list` shows the branches; read each progress file.
+
+### Incidents 2026-10-03 (so they are not repeated)
+- An agent opened the iOS Simulator window in front of the owner, who closed it. Agents must use
+  the Simulator headless only: `xcrun simctl boot <udid>`, never `open -a Simulator`.
+- Two agents' servers collided on port 6315. Give each agent its own port range.
 
 ### State of `main`
 - `pnpm -r typecheck` clean. Unit: core 423, plugin-api 17, server 780, web 1,383, all green after
@@ -74,7 +85,7 @@ B-560 (date headings open the day), the B-541 "⋯" top-right menu, B-380 option
 the precache plus a single sidecar copy, the references heading count. The order below still stands.
 
 ### Owner decisions pending for the real test (from `docs/progress/real-device-test.md`)
-D1 **answered 2026-10-03: the owner's Mac** (runbook option L, LAN) for the first test; homeserver later; D2 homeserver
+D1 **answered 2026-10-03: the owner's Mac** (runbook option L, LAN) for the first test, **empty graph** (no import); homeserver later; D2 homeserver
 details (namespace, hostname, volume size, memory limit, image build trigger). D3 decided by the
 coordinator: add `--no-loopback-token` (agent pairing). D4 is checked by runbook step H6.
 
