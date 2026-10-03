@@ -37,7 +37,7 @@ runs the full e2e suite on the merged tree.
 | b606 | B-606, **merged** (`15a203c`) | 6320-6324 |
 | tasks-workflow | B-608, B-610, B-617, **merged** (`69e9e99`, `de59bf8`); empty graph defaults to `now` | 6325-6329 |
 | b609 | B-609, **merged** (`319d1e8`, `e65638a`) | 6330-6334 |
-| local-graphs | B-611 local→server leak, B-612 local graph lost, B-619 (all high/test items 8-9) | 6335-6339 |
+| local-graphs | B-611, B-612, B-619 + 2 more, **merged** (`c58ede4`, `3e3c1c5`); B-631 open (discard deletes all) | 6335-6339 |
 | connection-states | B-613 revoked token, B-614 indicator, B-615 insecure context page, B-618 labels | 6340-6344 |
 (B-617 → tasks-workflow; B-616 + runbook localhost fix → pairing.)
 | e2e-green | B-623 page-find/random-page red, B-624, B-593, B-561 flakes; full suite twice | 6350-6354 |

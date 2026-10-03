@@ -814,32 +814,6 @@ it means generalising `VirtualJournalDay` into a page draft that writes nothing 
 Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
 parity for names nothing links to; revisit if it bites in daily use.
 
-### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
-**Status:** open, reproduced · **Severity:** high (data goes into the wrong graph, which ADR 025 forbids) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `tools/probes/sweep-devices/local-then-server.probe.ts` with `SWEEP_LT_FAST=1 SWEEP_LT_SETTLE_MS=0`.
-On an emulated Capacitor shell:
-1. "Just this device", type a note in today's journal.
-2. Relaunch at once, then "Just this device" again.
-3. Within ~3 s, Switch graph → Add a graph → Sync with a server → `<server>/g/<id>` + token.
-
-The note shows up in that server graph, and the server API returns it. This happened in 1 of 4
-runs, plus the first exploratory run against `default`. Suspected cause, from the code:
-`db/client.ts`'s unapplied-ops journal (`nooklet.unapplied-ops.v1:*`) is not keyed by graph entry.
-A batch still held at the relaunch (seen in localStorage at that moment) replays into whichever
-graph the next page load opens. A second suspect, same class, not seen to fire:
-`db/capacitor-checkpoint.ts` uses one fixed `CHECKPOINT_PATH` for every graph entry, and restores it
-into any graph's empty replica. The same orphan replay presumably applies to web/desktop graph
-switching right after an edit (not tested).
-
-### B-612 · Capacitor local-only graph disappears from the list once a server graph is added
-**Status:** open · **Severity:** high · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: as above, at any timing. "Just this device" creates no `nooklet.graphs` entry (`App.tsx` only
-sets `skipped`), so after a server graph is added the switcher lists only "Remote graph". The
-local-only replica, which uses the un-namespaced OPFS file, can no longer be reached. The relaunch
-goes straight into the server graph.
-
 ### B-613 · Revoked or invalid stored token shows as "Offline", forever, with no way to re-pair
 **Status:** open · **Severity:** medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
 
@@ -873,13 +847,6 @@ label or slug. In the desktop picker, two graphs on one server both have the tit
 and differ only in the subtitle URL. Adding the bare server address (no `/g/<slug>`) for a graph
 already listed creates a duplicate entry with its own replica (two-clients 1d). The add form gives
 no hint that `/g/<slug>` is expected, and nothing uses `GET /graphs` to offer a choice.
-
-### B-619 · Local-only draft-journal write can be lost on an immediate relaunch
-**Status:** open, intermittent (1 of 3 at 0 ms; 0 of 1 with a 5 s settle) · **Severity:** low–medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `local-then-server.probe.ts` with `SWEEP_LT_SETTLE_MS=0`: fill today's draft, Enter, Escape,
-reload at once. One run showed the note momentarily, then an empty day. Possibly B-247 territory,
-not narrowed down.
 
 ### B-620 · Plugin `rpc.expose` routes turn any thrown error into an unhandled 500
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, tasks-workflow agent (B-610) · **Test:** none
@@ -922,7 +889,76 @@ A resource keeps its last value while loading: 2–4 ms locally, invisible in pr
 
 `factory.ts` builds `new OpenAiCompatProvider({ baseUrl: host, model })` without `apiKey`, and no setting holds one, so a hosted `/v1/embeddings` API answers 401. Found by reading code only.
 
+### B-631 · "Discard the local copy and re-sync" deletes every graph's database on the device, including local-only notes
+**Status:** open · **Severity:** high (data loss: local-only notes exist nowhere else) · **Found:** 2026-10-03, local-graphs agent · **Test:** none yet
+
+`GraphMismatchView`'s button deletes every OPFS entry, i.e. every graph's replica on the device.
+It needs a worker method that unlinks one pool file (the mismatched graph's). Must be fixed before
+anyone with a local-only graph hits a graph mismatch.
+
 ## Fixed
+
+### B-630 · A relaunch or graph switch could start on an in-memory replica and lose everything at the next reload
+**Status:** fixed (2026-10-03, local-graphs agent) · **Severity:** high for local-only · **Found:** 2026-10-03, local-graphs agent · **Test:** see below
+
+A relaunch could start as an in-memory follower while the old page held the writer lock, and a graph switch could start on memory while the old page held the shared OPFS pool; with no server, everything written was lost. Tests: `local-graphs.spec.ts` 20-run test (fails with `data-state="memory"` when the pool retry is off); `relaunch-loss.probe.ts` for the follower case (no deterministic test: depends on teardown timing).
+
+### B-629 · Under Capacitor, switching to a remote graph left the app for the server's web page
+**Status:** fixed (2026-10-03, local-graphs agent) · **Severity:** low-medium · **Found:** 2026-10-03, local-graphs agent · **Test:** see below
+
+`location.assign(<server URL>)` navigated the app away. Now reloads in place. Test: `data/bootstrap.test.ts` "graphEntryUrl under Capacitor".
+
+### B-619 · Local-only draft-journal write can be lost on an immediate relaunch
+**Status:** fixed (2026-10-03, `c58ede4`, `3e3c1c5`) · **Severity:** low-medium · **Test:** `views/VirtualJournalDay.test.tsx`
+"keeps typed lines until they are ops" (3, incl. the coordinator's merge test for B-609 depths), `e2e/tests/local-graphs.spec.ts` B-619 (5 runs)
+
+Repro: `local-then-server.probe.ts` with `SWEEP_LT_SETTLE_MS=0`: fill today's draft, Enter, Escape,
+reload at once. One run showed the note momentarily, then an empty day. Possibly B-247 territory,
+not narrowed down.
+
+Cause: the draft's commit waits on `prepare()` before any op exists, so B-247's copy had nothing
+to copy (lost 9/10 in the probe). Fixed: draft lines are kept in `localStorage` per replica until
+they are ops (`data/journal-draft-store.ts`). Coordinator merge note: B-609's depths and this store
+met in one merge; the store now keeps `{text, depth}` and reads an older string-only copy at depth 0.
+
+### B-612 · Capacitor local-only graph disappears from the list once a server graph is added
+**Status:** fixed (2026-10-03, `c58ede4`) · **Severity:** high · **Test:** `data/bootstrap.test.ts` "B-612: ...",
+`e2e/tests/local-graphs.spec.ts` "an install stranded by the old ..." and the 20-run test's switch-back
+
+Repro: as above, at any timing. "Just this device" creates no `nooklet.graphs` entry (`App.tsx` only
+sets `skipped`), so after a server graph is added the switcher lists only "Remote graph". The
+local-only replica, which uses the un-namespaced OPFS file, can no longer be reached. The relaunch
+goes straight into the server graph.
+
+Fixed: "Just this device" is a real graph-list entry that takes over the old local database; a device already stranded gets it back as "This device" at startup.
+
+### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
+**Status:** fixed (2026-10-03, `c58ede4`, `3e3c1c5`) · **Severity:** high · **Test:** `apps/web/src/db/client-graph-scope.test.ts`,
+`db/unapplied-ops.test.ts` "batches belong to the replica..." + "migrateUnscopedBatches", `data/bootstrap.test.ts`
+"B-611: who could have written...", `e2e/tests/local-graphs.spec.ts` (20-run sequence: 0 leaks; deterministic unscoped batch)
+
+Repro: `tools/probes/sweep-devices/local-then-server.probe.ts` with `SWEEP_LT_FAST=1 SWEEP_LT_SETTLE_MS=0`.
+On an emulated Capacitor shell:
+1. "Just this device", type a note in today's journal.
+2. Relaunch at once, then "Just this device" again.
+3. Within ~3 s, Switch graph → Add a graph → Sync with a server → `<server>/g/<id>` + token.
+
+The note shows up in that server graph, and the server API returns it. This happened in 1 of 4
+runs, plus the first exploratory run against `default`. Suspected cause, from the code:
+`db/client.ts`'s unapplied-ops journal (`nooklet.unapplied-ops.v1:*`) is not keyed by graph entry.
+A batch still held at the relaunch (seen in localStorage at that moment) replays into whichever
+graph the next page load opens. A second suspect, same class, not seen to fire:
+`db/capacitor-checkpoint.ts` uses one fixed `CHECKPOINT_PATH` for every graph entry, and restores it
+into any graph's empty replica. The same orphan replay presumably applies to web/desktop graph
+switching right after an edit (not tested).
+
+**Fixed 2026-10-03.** Cause confirmed: the B-247 unapplied-ops journal was not keyed by graph, so
+the next load replayed a batch into whatever graph it opened (deterministic test: 2 hits in the
+server graph before, 0 after). The checkpoint file had the same flaw (not seen firing; fixed the
+same way). The journal, the checkpoint and the shelf are now keyed by replica. Older unkeyed
+leftovers go to a graph only if exactly one could have written them; otherwise they are set aside
+and never replayed. Simulator run on a private headless device: local-only → relaunch → add a server
+graph → switch back; the server graph held no local data.
 
 ### B-543 · `connectivity.spec.ts` › "search returns rather than spinning forever" fails most runs
 **Status:** fixed (2026-10-03, server-search agent) · **Test:** the spec itself (3/3 fail before, 3/3 pass after)
@@ -6743,6 +6779,8 @@ after typing all kept the text in the replica AND on the server, without a furth
 afterwards: OK, 20,466 ops replayed, rebuild matches live state.
 
 ---
+
+2026-10-03 (local-graphs): a follower replica with no sync target replays orphaned batches into memory and settles them; with the new lock wait this should no longer happen on relaunch, but a genuine second tab of a local-only graph would still do it.
 
 ### B-245 · Cmd+X on a block selection does nothing
 **Status:** fixed · **Severity:** low · **Found:**
