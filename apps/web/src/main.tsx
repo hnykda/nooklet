@@ -9,6 +9,7 @@ import {
   initBootstrap,
 } from "./data/bootstrap.js";
 import { suggestJournalTitleFormat } from "./data/page-title.js";
+import { initTaskWorkflow } from "./data/task-workflow.js";
 import { initDb } from "./db/client.js";
 import { registerServiceWorker } from "./sw/register.js";
 
@@ -37,6 +38,12 @@ void initDb({
   // active graph behind this origin never contends with this one for either.
   graphEntryId: activeGraph()?.id,
 });
+
+// B-608: the graph's task workflow (LATER/NOW or TODO/DOING), before anything renders so the first
+// Mod+Enter already starts a task the way this graph does. After `initDb`, not before: its offline
+// fallback queries the replica, and a query before `initDb(options)` would initialise it without
+// them.
+initTaskWorkflow(bootstrap.taskWorkflow);
 
 registerServiceWorker();
 

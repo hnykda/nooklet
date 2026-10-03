@@ -1,5 +1,6 @@
 /** E.2 Tasks (category `Task`) — R34-R39. */
-import type { TaskMarker } from "@nooklet/core";
+import { type TaskMarker, type TaskWorkflow, workflowStartMarker } from "@nooklet/core";
+import { taskWorkflow } from "../task-workflow.js";
 import type { BlockPropsWrite, Command, CommandContext } from "../types.js";
 import type { DatePickerHost } from "./date-picker-host.js";
 import { completeTask, nextCycleMarker } from "./task-logic.js";
@@ -101,8 +102,13 @@ async function runDateCommand(
   await picker.set({ blockId, field, input });
 }
 
-export function createTaskCommands(deps: { datePicker: DatePickerHost }): Command[] {
+export function createTaskCommands(deps: {
+  datePicker: DatePickerHost;
+  /** B-608: the graph's workflow, read at run time. Defaults to the app-wide signal. */
+  workflow?: () => TaskWorkflow;
+}): Command[] {
   const serial = createSerialRun();
+  const workflow = deps.workflow ?? taskWorkflow;
   return [
     {
       id: "task.cycle",
@@ -115,12 +121,12 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
         if (!blockId) return;
         const snapshot = await ctx.store.getBlockTaskState(blockId);
         const current = snapshot?.marker ?? null;
-        if (current === "DOING") {
-          // R34: the DOING -> DONE step is repeat-aware (R35).
+        const next = nextCycleMarker(current, workflow());
+        if (next === "DONE") {
+          // R34: the DOING/NOW -> DONE step is repeat-aware (R35).
           await applyCompletion(ctx, blockId);
           return;
         }
-        const next = nextCycleMarker(current);
         await ctx.store.setBlockProp(blockId, "marker", next);
       }),
     },
@@ -135,8 +141,9 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
         if (!blockId) return;
         const snapshot = await ctx.store.getBlockTaskState(blockId);
         if (snapshot?.marker === "DONE") {
-          // R36: does not restore whatever pre-DONE state it had.
-          await ctx.store.setBlockProp(blockId, "marker", "TODO");
+          // R36: does not restore whatever pre-DONE state it had. Reopens at the workflow's start
+          // marker, LATER under `now` (Logseq's `uncheck`, B-608).
+          await ctx.store.setBlockProp(blockId, "marker", workflowStartMarker(workflow()));
           return;
         }
         // marker is TODO/DOING/WAITING (isTask excludes null); CANCELED is left as-is by a
@@ -149,6 +156,9 @@ export function createTaskCommands(deps: { datePicker: DatePickerHost }): Comman
     },
     setMarker(serial, "task.setMarkerTodo", "Mark TODO", "TODO"),
     setMarker(serial, "task.setMarkerDoing", "Mark DOING", "DOING"),
+    // B-608: the `now` workflow's pair, so `/LATER` and `/NOW` exist as in Logseq's slash menu.
+    setMarker(serial, "task.setMarkerLater", "Mark LATER", "LATER"),
+    setMarker(serial, "task.setMarkerNow", "Mark NOW", "NOW"),
     setMarker(serial, "task.setMarkerWaiting", "Mark WAITING", "WAITING"),
     setMarker(serial, "task.setMarkerCanceled", "Mark CANCELED", "CANCELED"),
     {

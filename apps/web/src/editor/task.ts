@@ -3,7 +3,15 @@
  * level marker pill's click-to-cycle behavior (BUILD item 1) and by `Cmd/Ctrl+Enter`. Pure and
  * DOM-free, same seam as `commands.ts` — see `task.test.ts`.
  */
-import { formatDoneIso, makeOp, type Op, type TaskMarker } from "@nooklet/core";
+import {
+  cycleTaskMarker,
+  formatDoneIso,
+  makeOp,
+  type Op,
+  repeatReopenMarker,
+  type TaskWorkflow,
+  workflowStartMarker,
+} from "@nooklet/core";
 import type { BlockId, Clock, EditableBlock } from "./types.js";
 
 function op(clock: Clock, entity: BlockId, payload: Parameters<typeof makeOp>[3]): Op {
@@ -57,7 +65,8 @@ function advanceField(
 /** R35: completing a task (any transition to `DONE`). Always stamps `done`; if the block has a
  * `repeat` property, does NOT set `marker = DONE` — instead advances `scheduled`/`deadline`
  * (whichever is present, both if both) from their original value (or from `done` if the repeater
- * has "from done") and resets `marker = TODO`, leaving the task open for its next occurrence. */
+ * has "from done") and reopens it — `LATER` for a LATER/NOW task, else `TODO` (B-608) — leaving it
+ * open for its next occurrence. */
 export function completeTask(block: EditableBlock, clock: Clock, now: number = Date.now()): Op[] {
   const ops: Op[] = [
     op(clock, block.id, { kind: "block.prop", key: "done", value: formatDoneIso(now) }),
@@ -88,34 +97,48 @@ export function completeTask(block: EditableBlock, clock: Clock, now: number = D
       }),
     );
   }
-  ops.push(op(clock, block.id, { kind: "block.prop", key: "marker", value: "TODO" }));
+  ops.push(
+    op(clock, block.id, {
+      kind: "block.prop",
+      key: "marker",
+      value: repeatReopenMarker(block.marker),
+    }),
+  );
   return ops;
 }
 
-/** R34: `task.cycle`, `null -> TODO -> DOING -> DONE -> null` (wrapping). `WAITING`/`CANCELED`
- * are never reached by cycling. A transition to `DONE` is routed through `completeTask` (R35). */
-export function cycleMarker(block: EditableBlock, clock: Clock, now: number = Date.now()): Op[] {
-  const next: Record<string, TaskMarker | null> = { TODO: "DOING", DOING: "DONE" };
-  const current = block.marker;
-  if (current === null)
-    return [op(clock, block.id, { kind: "block.prop", key: "marker", value: "TODO" })];
-  if (current === "DOING") return completeTask(block, clock, now);
-  if (current === "DONE" || current === "WAITING" || current === "CANCELED") {
-    // DONE -> null; per R34 WAITING/CANCELED are not part of the cycle, but task.cycle must still
-    // be total over any current state it is invoked from (defensive: falls back to clearing).
-    return [op(clock, block.id, { kind: "block.prop", key: "marker", value: null })];
-  }
-  const n = next[current];
-  return n
-    ? [op(clock, block.id, { kind: "block.prop", key: "marker", value: n })]
-    : [op(clock, block.id, { kind: "block.prop", key: "marker", value: null })];
+/** R34 as amended by B-608, Logseq's `cycle-marker-state`: `TODO→DOING→DONE`,
+ * `LATER→NOW→DONE`, `DONE→none`; none, WAITING and CANCELED start the graph's workflow (`LATER`
+ * under `now`, `TODO` under `todo`). A transition to `DONE` is routed through `completeTask` (R35).
+ * `workflow` is a parameter, not a read of the signal, to keep this module pure. */
+export function cycleMarker(
+  block: EditableBlock,
+  clock: Clock,
+  now: number = Date.now(),
+  workflow: TaskWorkflow = "todo",
+): Op[] {
+  const next = cycleTaskMarker(block.marker, workflow);
+  if (next === "DONE") return completeTask(block, clock, now);
+  return [op(clock, block.id, { kind: "block.prop", key: "marker", value: next })];
 }
 
-/** R36: the checkbox-click equivalent. `DONE -> TODO` (does not restore prior state); any other
- * non-null marker (`TODO`/`DOING`/`WAITING`) completes via R35. */
-export function toggleDone(block: EditableBlock, clock: Clock, now: number = Date.now()): Op[] {
+/** R36: the checkbox-click equivalent. `DONE →` the workflow's start marker (does not restore the
+ * prior state; Logseq's `uncheck` writes LATER under `now`, B-608); any other non-null marker
+ * completes via R35. */
+export function toggleDone(
+  block: EditableBlock,
+  clock: Clock,
+  now: number = Date.now(),
+  workflow: TaskWorkflow = "todo",
+): Op[] {
   if (block.marker === "DONE") {
-    return [op(clock, block.id, { kind: "block.prop", key: "marker", value: "TODO" })];
+    return [
+      op(clock, block.id, {
+        kind: "block.prop",
+        key: "marker",
+        value: workflowStartMarker(workflow),
+      }),
+    ];
   }
   return completeTask(block, clock, now);
 }

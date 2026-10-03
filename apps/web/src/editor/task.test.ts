@@ -116,3 +116,50 @@ describe("toggleDone (R36)", () => {
     expect(ops).toContainEqual({ kind: "block.prop", key: "marker", value: "DONE" });
   });
 });
+
+// B-608: the editor's Mod+Enter in a graph whose workflow is Logseq's `:now` (the owner's).
+describe("cycleMarker / toggleDone under the `now` workflow (B-608)", () => {
+  const markerOf = (ops: ReturnType<typeof cycleMarker>) =>
+    ops.find((o) => o.payload.kind === "block.prop" && o.payload.key === "marker")?.payload;
+
+  it("none → LATER → NOW → (DONE via R35) → none", () => {
+    const clock = makeFakeClock();
+    const at = (marker: Parameters<typeof makeBlock>[0]["marker"]) =>
+      markerOf(cycleMarker(makeBlock({ id: "A", marker }), clock, NOW, "now"));
+    expect(at(null)).toEqual({ kind: "block.prop", key: "marker", value: "LATER" });
+    expect(at("LATER")).toEqual({ kind: "block.prop", key: "marker", value: "NOW" });
+    expect(at("NOW")).toEqual({ kind: "block.prop", key: "marker", value: "DONE" });
+    expect(at("DONE")).toEqual({ kind: "block.prop", key: "marker", value: null });
+    // NOW → DONE is a completion: `done` is stamped first (R35).
+    const ops = cycleMarker(makeBlock({ id: "A", marker: "NOW" }), clock, NOW, "now");
+    expect(ops[0]?.payload).toEqual({
+      kind: "block.prop",
+      key: "done",
+      value: "2026-01-01T00:00:00Z",
+    });
+  });
+
+  it("a TODO block still cycles to DOING; a LATER block under `todo` still goes to NOW", () => {
+    const clock = makeFakeClock();
+    expect(
+      markerOf(cycleMarker(makeBlock({ id: "A", marker: "TODO" }), clock, NOW, "now")),
+    ).toEqual({ kind: "block.prop", key: "marker", value: "DOING" });
+    expect(
+      markerOf(cycleMarker(makeBlock({ id: "A", marker: "LATER" }), clock, NOW, "todo")),
+    ).toEqual({ kind: "block.prop", key: "marker", value: "NOW" });
+  });
+
+  it("un-ticking a DONE checkbox reopens as LATER", () => {
+    const ops = toggleDone(makeBlock({ id: "A", marker: "DONE" }), makeFakeClock(), NOW, "now");
+    expect(ops.map((o) => o.payload)).toEqual([
+      { kind: "block.prop", key: "marker", value: "LATER" },
+    ]);
+  });
+
+  it("a repeating NOW task reopens as LATER, with its date advanced", () => {
+    const block = makeBlock({ id: "A", marker: "NOW", scheduled: "2026-09-10", repeat: "1w" });
+    const ops = cycleMarker(block, makeFakeClock(), NOW, "now").map((o) => o.payload);
+    expect(ops).toContainEqual({ kind: "block.prop", key: "scheduled", value: "2026-09-17" });
+    expect(ops).toContainEqual({ kind: "block.prop", key: "marker", value: "LATER" });
+  });
+});

@@ -16,6 +16,7 @@ import { verifyToken } from "../auth/tokens.js";
 import { openDb } from "../db.js";
 import { setSuggestedJournalTitleFormat } from "../journal-format.js";
 import { buildRegistry } from "../ops/index.js";
+import { setRecordedTaskWorkflow } from "../task-workflow.js";
 import { makeTestServer } from "../test-helpers.js";
 import { createApp, WEB_CLIENT_TOKEN_LABEL } from "./app.js";
 
@@ -92,6 +93,18 @@ describe("loopback detection", () => {
       journalTitleFormat?: string;
     };
     expect(body.journalTitleFormat).toBe("E, dd.MM.yyyy");
+  });
+
+  it("hands the graph's task workflow to the client (B-608)", async () => {
+    const s = makeTestServer({ webClientDir: undefined });
+    const port = await listen(s.app);
+    const read = async (): Promise<string | undefined> =>
+      (JSON.parse((await get(port, "/api/session")).body) as { taskWorkflow?: string })
+        .taskWorkflow;
+    // Nothing recorded, no tasks: nooklet's long-standing TODO start.
+    expect(await read()).toBe("todo");
+    setRecordedTaskWorkflow(s.serverCtx.driver, "now");
+    expect(await read()).toBe("now");
   });
 
   it("a restart retires the previous process's auto token instead of leaving it live (B-54)", async () => {

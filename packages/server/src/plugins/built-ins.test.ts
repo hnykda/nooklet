@@ -7,7 +7,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { DataApi, ServerPluginContext } from "@nooklet/plugin-api";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createServerContext } from "../apply-ops.js";
 import { openDb } from "../db.js";
 import { bundleServerEntry } from "./bundler.js";
@@ -90,6 +90,37 @@ describe("word-count", () => {
     });
     expect(status).toBe(404);
     expect(json.error.code).toBe("not_found");
+  });
+
+  it("the status bar's rpc answers null, not a 500, for a page just deleted (B-610)", async () => {
+    const setup = await makePluginTestSetup([REPO_PLUGINS_DIR]);
+    await makePageWithContent(setup);
+    const count = (page: string) =>
+      setup.app.request("/api/plugins/word-count/rpc/count", {
+        method: "POST",
+        body: JSON.stringify([page]),
+        headers: { "content-type": "application/json", authorization: `Bearer ${setup.readToken}` },
+      });
+
+    const live = await count("Word Count Fixture");
+    expect(live.status).toBe(200);
+    expect(await live.json()).toMatchObject({ wordCount: 11, blockCount: 3 });
+
+    const del = await post(setup.app, "/api/v1/page.delete", setup.writeToken, {
+      page: "Word Count Fixture",
+    });
+    expect(del.status).toBe(200);
+
+    // The 500 came with an `OpError: no page named …` stack in the server log; neither may recur.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const gone = await count("Word Count Fixture");
+      expect(gone.status).toBe(200);
+      expect(await gone.json()).toBeNull();
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("is exposed as the page_wordcount MCP tool", async () => {

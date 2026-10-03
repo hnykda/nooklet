@@ -240,6 +240,11 @@ export interface BootstrapConfig {
    * reader has already made.
    */
   journalTitleFormat?: string;
+  /**
+   * B-608: the graph's task workflow (`now`/`todo`), imported from Logseq's `:preferred-workflow`
+   * or inferred by the server from the graph's markers. A suggestion like `journalTitleFormat`.
+   */
+  taskWorkflow?: string;
 }
 
 interface InjectedWindow {
@@ -295,6 +300,7 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
         reason?: string;
         graphId?: string;
         journalTitleFormat?: string;
+        taskWorkflow?: string;
       };
       const physicalGraphId = body.graphId;
       let entry = activeGraph();
@@ -331,6 +337,7 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
           physicalGraphId && entry?.graphInstanceId && entry.graphInstanceId !== physicalGraphId,
         ),
         journalTitleFormat: body.journalTitleFormat,
+        taskWorkflow: body.taskWorkflow,
       };
       return cached;
     }

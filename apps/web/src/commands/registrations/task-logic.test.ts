@@ -16,6 +16,27 @@ describe("nextCycleMarker (R34)", () => {
       expect(next).not.toBe("CANCELED");
     }
   });
+
+  it("under `now` (B-608): null -> LATER -> NOW -> DONE -> null; TODO still goes to DOING", () => {
+    expect(nextCycleMarker(null, "now")).toBe("LATER");
+    expect(nextCycleMarker("LATER", "now")).toBe("NOW");
+    expect(nextCycleMarker("NOW", "now")).toBe("DONE");
+    expect(nextCycleMarker("DONE", "now")).toBe(null);
+    expect(nextCycleMarker("TODO", "now")).toBe("DOING");
+  });
+
+  it("a LATER block under `todo` cycles within its own pair, not to null (B-608)", () => {
+    expect(nextCycleMarker("LATER", "todo")).toBe("NOW");
+    expect(nextCycleMarker("NOW", "todo")).toBe("DONE");
+  });
+});
+
+describe("completeTask (R35) — repeating LATER/NOW task (B-608)", () => {
+  it("reopens as LATER, not TODO", () => {
+    const r = completeTask({ marker: "NOW", scheduled: "2026-09-10", repeat: "1d" }, 0);
+    expect(r.marker).toBe("LATER");
+    expect(r.scheduled).toBe("2026-09-11");
+  });
 });
 
 describe("formatDoneTimestamp", () => {

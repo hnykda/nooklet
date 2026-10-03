@@ -2,7 +2,12 @@
  * R34-R39: pure task-state transition logic, kept independent of `Store`/`EditorHost` so it's
  * exhaustively unit-testable. `registrations/task.ts` wires these to the actual read/write seam.
  */
-import type { TaskMarker } from "@nooklet/core";
+import {
+  cycleTaskMarker,
+  repeatReopenMarker,
+  type TaskMarker,
+  type TaskWorkflow,
+} from "@nooklet/core";
 
 export interface TaskSnapshot {
   marker: TaskMarker | null;
@@ -93,7 +98,8 @@ export function completeTask(snapshot: TaskSnapshot, nowMs: number = Date.now())
   const unit = m[2] as "d" | "w" | "m" | "y";
   const fromDone = snapshot.repeat.endsWith("from done");
 
-  const result: CompletionResult = { marker: "TODO", done };
+  // Reopens in the task's own pair: a repeating LATER/NOW task comes back as LATER (B-608).
+  const result: CompletionResult = { marker: repeatReopenMarker(snapshot.marker), done };
   if (snapshot.scheduled !== undefined) {
     const basis = fromDone
       ? doneAsBasis(done, snapshot.scheduled.includes(":"))
@@ -107,18 +113,13 @@ export function completeTask(snapshot: TaskSnapshot, nowMs: number = Date.now())
   return result;
 }
 
-/** R34: `null -> TODO -> DOING -> DONE -> null`, wrapping. Completion (the `DOING -> DONE` step)
- * is handled by the caller via `completeTask` — this function only returns the plain marker for
- * every other transition. */
-export function nextCycleMarker(current: TaskMarker | null): TaskMarker | null {
-  switch (current) {
-    case null:
-      return "TODO";
-    case "TODO":
-      return "DOING";
-    case "DOING":
-      return "DONE"; // caller must route this through completeTask() instead (R34).
-    default:
-      return null; // DONE, WAITING, CANCELED, LATER, NOW all wrap/exit to null on cycle.
-  }
+/** R34 as amended by B-608 (Logseq's `cycle-marker-state`): `TODO→DOING→DONE`,
+ * `LATER→NOW→DONE`, `DONE→none`, and none/WAITING/CANCELED → the workflow's start marker
+ * (`LATER` under `now`, `TODO` under `todo`). A `DONE` result is routed through `completeTask` by
+ * the caller (R35) — this function only names the plain marker. */
+export function nextCycleMarker(
+  current: TaskMarker | null,
+  workflow: TaskWorkflow = "todo",
+): TaskMarker | null {
+  return cycleTaskMarker(current, workflow);
 }
