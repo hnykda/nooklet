@@ -242,23 +242,6 @@ case one appears (a plugin, a future full navigation).
 
 ---
 
-### B-380 · Enter on the `#` autocomplete that walking into an existing `#tag` opened duplicates the tag's tail
-**Status:** open (needs owner decision) · **Severity:** low · **Found:** 2026-09-13, fixing B-294 ·
-**Test:** none; probe `tools/probes/autocomplete-tag-walk.spec.ts`
-
-`- alpha #WalkTagTarget omega`, Home, ArrowRight ×12 (caret after `#WalkT`): the tag autocomplete
-opens; Enter picks `WalkTagTarget` and replaces only `WalkT`, giving `alpha #WalkTagTarget!agTarget
-omega` (with `!` typed after). The `[[link]]` form was B-294, fixed by replacing through the link's
-`]]`. A tag has no closer, and the probe's second case shows what that costs: `- alpha omega`, `#WalkT`
-typed straight before `omega`, Enter → `alpha #WalkTagTarget!omega` today; a "swallow the rest of the
-tag" rule (text up to a `TAG_STOP` character, `core/tokens.ts`) would delete `omega` there, and the
-two cases look identical to the popup (same text before and after the caret). Options: (a) leave it;
-(b) swallow the tail only when the popup was opened by caret movement rather than typing (needs
-`CommandLayer` to remember how each trigger opened); (c) do not open the `#` popup when the caret is
-inside a word that already follows `#`.
-
----
-
 ### B-381 · `page-icons.spec.ts` fails intermittently: it reads the server and the page token without waiting
 **Status:** open (test flake) · **Severity:** low · **Found:** 2026-09-13, m10/editor-keys full e2e run
 (port 6400, `tests/[m-z]` half) · **Test:** —
@@ -997,6 +980,34 @@ link) shows the generic "This page doesn't exist yet / Create" view instead of t
 draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
 
 ## Fixed
+
+### B-380 · Enter on the `#` autocomplete that walking into an existing `#tag` opened duplicates the tag's tail
+**Status:** fixed (owner chose option c) · **Severity:** low · **Found:** 2026-09-13, fixing B-294 ·
+**Test:** `e2e/tests/autocomplete-inside-tag.spec.ts`; probe `tools/probes/autocomplete-tag-walk.spec.ts`
+
+`- alpha #WalkTagTarget omega`, Home, ArrowRight ×12 (caret after `#WalkT`): the tag autocomplete
+opens; Enter picks `WalkTagTarget` and replaces only `WalkT`, giving `alpha #WalkTagTarget!agTarget
+omega` (with `!` typed after). The `[[link]]` form was B-294, fixed by replacing through the link's
+`]]`. A tag has no closer, and the probe's second case shows what that costs: `- alpha omega`, `#WalkT`
+typed straight before `omega`, Enter → `alpha #WalkTagTarget!omega` today; a "swallow the rest of the
+tag" rule (text up to a `TAG_STOP` character, `core/tokens.ts`) would delete `omega` there, and the
+two cases look identical to the popup (same text before and after the caret). Options: (a) leave it;
+(b) swallow the tail only when the popup was opened by caret movement rather than typing (needs
+`CommandLayer` to remember how each trigger opened); (c) do not open the `#` popup when the caret is
+inside a word that already follows `#`.
+
+---
+
+**Fixed 2026-10-03 (option c, `c6fe3bc`).** The tag popup no longer opens when the text after the caret
+continues the tag: `commands/autocomplete/trigger.ts#matchTagTrigger` takes the text after the
+caret (passed by `app/CommandLayer.tsx`'s keyup re-detection) and refuses when the run up to the
+next tag stop (whitespace, `, ; ) ] } ' "`), less trailing `.!?:`, is non-empty — the same rule
+as `core/tokens.ts`. Enter there is a plain Enter (splits the block). Cost, as accepted: `#` typed
+straight before a word (`#Wa|omega`) gets no popup either. Caret at the end of a tag, a fresh
+`#ta`, and `#[[multi word]]` still open it. **Test:** `e2e/tests/autocomplete-inside-tag.spec.ts`
+"walking into an existing #tag opens no popup, and Enter does not duplicate its tail (B-380)" — red
+before (popup count 1), green after; three guards green before and after. Unit: `trigger.test.ts`
+"matchTagTrigger — caret inside an existing tag (B-380)" (3). Spec R57 updated.
 
 ### B-560 · Journal date headings are not clickable
 **Status:** fixed (2026-10-03) · **Severity:** low · **Found:** 2026-09-13, owner request ·
