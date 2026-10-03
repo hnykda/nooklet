@@ -855,14 +855,37 @@ A resource keeps its last value while loading: 2–4 ms locally, invisible in pr
 
 `factory.ts` builds `new OpenAiCompatProvider({ baseUrl: host, model })` without `apiKey`, and no setting holds one, so a hosted `/v1/embeddings` API answers 401. Found by reading code only.
 
+## Fixed
+
+### B-633 · A graph-mismatched page may still sync its old replica with the server's new graph
+**Status:** fixed (2026-10-03, coordinator) · **Severity:** high (confirmed: cross-graph mixing) · **Found:** 2026-10-03, b631 agent ·
+**Test:** `e2e/tests/graph-mismatch-discard.spec.ts` "B-633: while the mismatch screen shows, the old replica does not sync with the server's graph"
+
+`main.tsx` runs `initDb` with the server as sync target without looking at `graphMismatch`, so while
+`GraphMismatchView` is on screen the OLD replica's worker can push its pending ops to, and pull from,
+the DIFFERENT graph the server now serves — the cross-graph mix the view exists to prevent. The
+B-631 e2e holds sync off, so it does not test this. Candidate fix: no sync target (or no `initDb`)
+on a mismatch until the discard.
+
+**Confirmed and fixed 2026-10-03.** With the fix reverted the test fails: the pending note reached
+the server's different graph (`Expected: 0, Received: 1`). Fix: `main.tsx` opens the replica with no
+sync target when `bootstrap.graphMismatch` is set; the discard is worker-local, so it still works.
+Both tests in the spec pass with the fix.
+
 ### B-631 · "Discard the local copy and re-sync" deletes every graph's database on the device, including local-only notes
-**Status:** open · **Severity:** high (data loss: local-only notes exist nowhere else) · **Found:** 2026-10-03, local-graphs agent · **Test:** none yet
+**Status:** fixed (2026-10-03, `926fdb4`) · **Severity:** high (data loss) · **Test:** `e2e/tests/graph-mismatch-discard.spec.ts`
+(fails on the old code: local-only note lost), `db/sqlite-wasm-driver.test.ts` "discardReplicaFile",
+`db/unapplied-ops.test.ts` "discardScopeBatches"
 
 `GraphMismatchView`'s button deletes every OPFS entry, i.e. every graph's replica on the device.
 It needs a worker method that unlinks one pool file (the mismatched graph's). Must be fixed before
 anyone with a local-only graph hits a graph mismatch.
 
-## Fixed
+**Fixed 2026-10-03.** The discard closes the replica and unlinks only its pool file (sqlite-wasm
+`PoolUtil.unlink`, plus `-journal`/`-wal`), plus that replica's B-247 batches, checkpoint, journal
+drafts and shelf; it refuses (inline message, nothing deleted) when this tab is a follower or in
+memory. Audit: no other device-wide delete exists. Not verified: the Capacitor checkpoint delete
+against the real plugin.
 
 ### B-632 · On web, pairing on `/g/<slug>` verified the token against the default graph
 **Status:** fixed (2026-10-03, connection-states) · **Severity:** medium · **Found:** 2026-10-03, connection-states agent (B-613) ·

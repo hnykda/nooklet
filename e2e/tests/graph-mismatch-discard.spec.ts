@@ -214,3 +214,59 @@ test("B-631: discarding a mismatched graph's local copy keeps every other graph'
   expect(await hits(base, graphId, token, localNote)).toBe(0);
   await ctx.close();
 });
+
+test("B-633: while the mismatch screen shows, the old replica does not sync with the server's graph", async ({
+  browser,
+  baseURL,
+}) => {
+  test.setTimeout(2 * 60_000);
+  const base = baseURL as string;
+  const graphId = `gm33-${Date.now().toString(36)}`;
+  const token = await createGraph(base, graphId);
+  const unsyncedNote = marker("gm33unsynced");
+  const ctx = await capacitorContext(browser, base);
+  const page = await ctx.newPage();
+
+  await page.goto(`${base}/journals`);
+  await page.getByRole("button", { name: /Sync with a server/s }).click();
+  await page.getByLabel("Server address").fill(`${base}/g/${graphId}`);
+  await page.getByLabel("Device token").fill(token);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced", {
+    timeout: 20_000,
+  });
+
+  // A pending op the server has not seen (sync held off while it is written).
+  await page.route(`**/g/${graphId}/sync/**`, (route) => route.abort());
+  await typeToday(page, unsyncedNote);
+  await waitForWritesApplied(page);
+
+  // The mismatch, then sync open again: only the fix stands between the pending op and the
+  // server's (different) graph now.
+  await page.evaluate(() => {
+    const active = localStorage.getItem("nooklet.activeGraphId");
+    const graphs = JSON.parse(localStorage.getItem("nooklet.graphs") ?? "[]") as {
+      id: string;
+      graphInstanceId?: string;
+    }[];
+    const entry = graphs.find((g) => g.id === active);
+    if (!entry?.graphInstanceId) throw new Error("the server entry has no remembered identity");
+    entry.graphInstanceId = "an-earlier-graph-instance";
+    localStorage.setItem("nooklet.graphs", JSON.stringify(graphs));
+  });
+  await page.unroute(`**/g/${graphId}/sync/**`);
+  const syncRequests: string[] = [];
+  page.on("request", (req) => {
+    if (req.url().includes(`/g/${graphId}/sync/`)) syncRequests.push(req.url());
+  });
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "This device holds a different graph" }),
+  ).toBeVisible();
+
+  // Long enough for a worker that does sync to have pushed (it pushes within a second or two).
+  await page.waitForTimeout(5_000);
+  expect(await hits(base, graphId, token, unsyncedNote)).toBe(0);
+  expect(syncRequests).toEqual([]);
+  await ctx.close();
+});

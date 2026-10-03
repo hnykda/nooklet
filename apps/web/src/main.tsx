@@ -48,9 +48,14 @@ async function start(): Promise<void> {
   // `WorkerInitOptions.syncBaseUrl`'s own doc comment already says omitting it means "run local-only",
   // which `WorkerDb.start()` uses to skip bootstrap/connectLive/pull rather than pay B-566's timeout
   // on every cold start for a device that will never have anything to reach.
+  //
+  // B-633: on a graph mismatch (`GraphMismatchView` is what renders), the server now serves a
+  // DIFFERENT graph than this replica holds. Syncing would push this replica's pending ops into that
+  // graph and pull its ops into this one — the cross-graph mix the view exists to prevent. So the
+  // replica opens local-only until the owner discards it; the discard itself is worker-local.
   const replica = replicaKey(activeGraph());
   const dbReady = initDb({
-    syncBaseUrl: hasSyncTarget() ? apiBaseUrl() : undefined,
+    syncBaseUrl: hasSyncTarget() && !bootstrap.graphMismatch ? apiBaseUrl() : undefined,
     token: authToken(),
     // ADR 025: namespaces this worker's OPFS filename and leader-election lock so a future second
     // active graph behind this origin never contends with this one for either. `undefined` for the
