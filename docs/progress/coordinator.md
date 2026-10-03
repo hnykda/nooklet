@@ -77,7 +77,7 @@ B-560 (date headings open the day), the B-541 "⋯" top-right menu, B-380 option
 the precache plus a single sidecar copy, the references heading count. The order below still stands.
 
 ### Owner decisions pending for the real test (from `docs/progress/real-device-test.md`)
-D1 **answered 2026-10-03: the owner's Mac** (runbook option L, LAN) for the first test; homeserver later; D2 homeserver
+D1 **answered 2026-10-03: the owner's Mac** (runbook option L, LAN) for the first test, **empty graph** (no import); homeserver later; D2 homeserver
 details (namespace, hostname, volume size, memory limit, image build trigger). D3 decided by the
 coordinator: add `--no-loopback-token` (agent pairing). D4 is checked by runbook step H6.
 
