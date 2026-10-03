@@ -28,6 +28,8 @@ export interface TestServerOptions {
   allowedHosts?: string[];
   /** Bind address (`ServerConfig.host`); the Host allowlist only engages when it is non-loopback. */
   host?: string;
+  /** `ServerConfig.loopbackToken` — false is `nooklet serve --no-loopback-token`. */
+  loopbackToken?: boolean;
 }
 
 export function makeTestServer(opts: TestServerOptions = {}): TestServer {
@@ -43,6 +45,7 @@ export function makeTestServer(opts: TestServerOptions = {}): TestServer {
     mirror: { enabled: false },
     allowedHosts: opts.allowedHosts,
     host: opts.host,
+    loopbackToken: opts.loopbackToken,
   };
   const app = createApp({
     serverCtx,

@@ -75,6 +75,7 @@ import { graphDir } from "./graphs/paths.js";
 import { pluginDirsFor } from "./graphs/plugin-dirs.js";
 import { GraphRegistry } from "./graphs/registry.js";
 import { isLoopbackName } from "./http/app.js";
+import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { importLogseqGraph } from "./importer/logseq.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
@@ -118,6 +119,8 @@ function baseServerConfig(args: Args): BaseServerConfig {
             .map((h) => h.trim())
             .filter(Boolean)
         : undefined,
+    // `--no-loopback-token` parses as `loopback-token: false` (cli-args.ts). Only `serve` reads it.
+    loopbackToken: args.flags.get("loopback-token") !== false,
   };
 }
 
@@ -191,6 +194,8 @@ const USAGE = `nooklet — a local-first outliner server
 
   nooklet serve  [--data <dir>] [--port <n>] [--web <dir>]
                  [--host <addr>] [--allow-host <h,h>]   expose on a LAN/tailnet
+                 [--no-loopback-token]   never auto-issue a token to "this machine"; use
+                                         behind a same-host reverse proxy (docs/OPERATIONS.md)
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
@@ -312,24 +317,10 @@ async function main(): Promise<void> {
             `  return 403. Pass e.g. --allow-host 192.168.1.5,my-machine.local to allow it.\n`,
         );
       }
-      // `@hono/node-server@2.1.1`'s own `setupWebSocket()` (its `dist/index.mjs`, the code behind
-      // `serve()`'s `websocket` option) registers an `'upgrade'` handler that awaits OUR fetch
-      // callback (auth, graph routing/resolution — genuinely slow the first time a graph is
-      // touched) before ever calling `wss.handleUpgrade()`, and attaches NO `'error'` listener to
-      // the raw socket for the whole time it is doing that. A client that resets the TCP
-      // connection during that window (a page navigating away mid-handshake, a reconnect loop
-      // superseding its own in-flight attempt — real, ordinary client behavior, not misbehavior)
-      // fires an unhandled `'error'` event and crashes the ENTIRE process — verified against the
-      // exact ECONNRESET/`emitErrorCloseNT` stack an owner hit in real use by isolating the same
-      // pattern in a standalone repro (`tools/probes/upgrade-socket-error.mjs`) and by reading
-      // `@hono/node-server`'s own source (its `setupWebSocket`, `server.on("upgrade", ...)`, never
-      // calls `socket.on("error", ...)` at all). Fix: a SECOND `'upgrade'` listener on the same
-      // server, registered after `serve()` returns — Node's `EventEmitter` runs listeners
-      // synchronously in registration order for one `emit()`, and an async listener only yields at
-      // its first `await`, so this one is already attached before hono's async gap can ever open,
-      // regardless of how long that gap turns out to be. No new capability needed: a reset socket
-      // during an abandoned upgrade has nothing left to do anyway, so swallowing its `'error'` is
-      // correct, not just convenient — the alternative is the whole server dying instead.
+      // B-589 (a client reset mid-upgrade crashed the process) is handled by
+      // `guardUpgradeSockets` below, at `'connection'` time. It must NOT be a second `'upgrade'`
+      // listener: @hono/node-server only answers a failed upgrade when it is the sole one (B-602).
+      // See `http/upgrade-guard.ts`.
       const server = serve(
         { fetch: app.fetch, port: baseConfig.port, hostname, websocket: { server: wss } },
         (info) => {
@@ -349,9 +340,7 @@ async function main(): Promise<void> {
           );
         },
       );
-      server.on("upgrade", (_request, socket) => {
-        socket.on("error", () => {});
-      });
+      guardUpgradeSockets(server);
       return;
     }
 

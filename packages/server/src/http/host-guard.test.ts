@@ -157,6 +157,24 @@ describe("loopback detection", () => {
   });
 });
 
+describe("--no-loopback-token (B-600, decision D3)", () => {
+  it("never hands out a token, even to a genuine loopback peer with a loopback Host", async () => {
+    // The case forwarding headers cannot catch: a same-machine proxy that rewrites Host to
+    // 127.0.0.1 and adds nothing. It looks exactly like this request, so the flag is the only fix.
+    const s = makeTestServer({ loopbackToken: false });
+    const port = await listen(s.app);
+    const res = await get(port, "/api/session", `127.0.0.1:${port}`);
+    const body = JSON.parse(res.body) as { token: string | null; reason?: string };
+    expect(res.status).toBe(200);
+    expect(body.token).toBeNull();
+    expect(body.reason).toBe("loopback_token_disabled");
+    const minted = s.serverCtx.driver.all<{ id: string }>("SELECT id FROM token WHERE label = ?", [
+      WEB_CLIENT_TOKEN_LABEL,
+    ]);
+    expect(minted).toHaveLength(0);
+  });
+});
+
 describe("Host allowlist when bound to a non-loopback address", () => {
   it("guards EVERY route, not just the ones with no earlier match", async () => {
     // The regression: `@modelcontextprotocol/hono`'s own guard is merged in last, and Hono

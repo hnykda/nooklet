@@ -119,7 +119,7 @@ function isLoopbackRequest(c: Context): boolean {
  * The raw token is minted once per server process (see `webClientToken`) and held only in memory;
  * its hash is in the `token` table like any other, and the next process to mint one revokes it.
  */
-function buildClientBootstrap(ctx: ServerContext, c: Context): object {
+function buildClientBootstrap(ctx: ServerContext, config: ServerConfig, c: Context): object {
   // The graph's identity goes to every client, credential or not: a client needs it to notice
   // that the replica it is holding belongs to a different graph than this server is serving
   // (`../graph-identity.ts`).
@@ -127,6 +127,11 @@ function buildClientBootstrap(ctx: ServerContext, c: Context): object {
   // A suggestion, not a setting: the format this graph's journals were written in, used as the
   // client's initial choice and ignored the moment someone picks one (ADR 018).
   const journalTitleFormat = suggestedJournalTitleFormat(ctx.driver) ?? undefined;
+  // `--no-loopback-token` (B-600, decision D3): behind a same-machine reverse proxy that rewrites
+  // `Host` to its upstream and adds no forwarding header, every remote client is indistinguishable
+  // from a local browser — the only safe answer there is to never auto-mint at all.
+  if (config.loopbackToken === false)
+    return { token: null, reason: "loopback_token_disabled", graphId, journalTitleFormat };
   if (!isLoopbackRequest(c))
     return { token: null, reason: "non_loopback_host", graphId, journalTitleFormat };
   return { token: webClientToken(ctx), graphId, journalTitleFormat };
@@ -214,7 +219,7 @@ export function createApp(opts: CreateAppOptions): Hono {
    * sits outside `/api/v1/*` so it is deliberately NOT behind `bearerAuth` — it is what you call
    * when you do not yet have a token.
    */
-  app.get("/api/session", (c) => c.json(buildClientBootstrap(serverCtx, c)));
+  app.get("/api/session", (c) => c.json(buildClientBootstrap(serverCtx, config, c)));
   if (!opts.webClientDir) app.get("/", (c) => c.json(health));
   app.get("/openapi.json", (c) => c.json(buildOpenApi(registry)));
   mountAssetRoutes(app, serverCtx, config); // GET /assets/:id (asset.upload, ADR 013)
@@ -261,7 +266,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   if (opts.webClientDir) {
     mountWebClient(app, {
       dir: opts.webClientDir,
-      bootstrap: (c) => buildClientBootstrap(serverCtx, c),
+      bootstrap: (c) => buildClientBootstrap(serverCtx, config, c),
     });
   }
 
