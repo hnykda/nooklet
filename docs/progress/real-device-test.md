@@ -205,6 +205,21 @@ Woodpecker pipeline. Not applied, not rendered with `helm template` (no helm run
   image failed on first run without it. Possibly also affects the Linux desktop sidecar on minimal
   distros — not investigated.
 
+## Verification (final, 2026-10-03)
+
+- `pnpm -r typecheck` clean; `pnpm exec biome check . --diagnostic-level=error` clean (1086 files).
+- `packages/server` vitest: 93 files / 785 tests pass. `apps/web` vitest: 163 files / 1386 pass.
+- After `pnpm ios:sync` with the real bundle: `xcodebuild -sdk iphonesimulator build` succeeds, and
+  `xcodebuild -sdk iphoneos CODE_SIGNING_ALLOWED=NO build` succeeds (arm64; Info.plist in the
+  product carries both new keys). Signing itself is the owner's step in Xcode — not verifiable here.
+- Simulator probes and the real-app sync run: see the tables above.
+- `pnpm e2e` NOT run: no e2e spec covers a cross-origin client, and the changed server paths
+  (CORS only for `capacitor://localhost`, token refusal only with forwarding headers) do not
+  change what a same-origin browser sees. Run it before merging if in doubt.
+- Cleaned up: throwaway servers (6377) and log server (6378) stopped, probe container and image
+  removed, Simulator shut down, scratch data dirs deleted. The owner's live server, `~/.nooklet` and
+  the desktop app config were never touched.
+
 ## How to resume
 
 Everything is committed on the branch. Probes: `tools/probes/capacitor-network/{run.sh,
