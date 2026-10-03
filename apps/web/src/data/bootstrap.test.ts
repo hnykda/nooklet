@@ -8,13 +8,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activeGraph,
   addGraph,
+  adoptLegacyReplica,
   apiBaseUrl,
+  chooseLocalOnly,
+  graphEntryUrl,
   hasSyncTarget,
+  isLocalOnlyEntry,
   listGraphs,
   removeGraph,
+  replicaKey,
   resetBootstrapForTests,
   setActiveGraphId,
   setConnectedGraphToken,
+  soleLegacyStateOwner,
   updateGraph,
 } from "./bootstrap.js";
 
@@ -133,5 +139,73 @@ describe("hasSyncTarget()", () => {
     addGraph({ id: "local1", label: "Local", kind: "local" });
     setActiveGraphId("local1");
     expect(hasSyncTarget()).toBe(false);
+  });
+});
+
+describe('B-612: "Just this device" is a real list entry', () => {
+  it("the first choice adopts the un-namespaced replica this load already opened, no reload", () => {
+    fakePlatform.name = "capacitor";
+    expect(chooseLocalOnly()).toEqual({ reload: false });
+    const entry = activeGraph();
+    expect(entry).toMatchObject({ kind: "local", legacyReplica: true });
+    expect(entry?.baseUrl).toBeUndefined();
+    expect(replicaKey(entry)).toBeUndefined();
+    expect(isLocalOnlyEntry(entry)).toBe(true);
+  });
+
+  it("is adopted once only: removing that entry does not make a later local graph inherit it", () => {
+    fakePlatform.name = "capacitor";
+    const first = adoptLegacyReplica();
+    expect(first).toBeDefined();
+    removeGraph(first?.id as string);
+    expect(adoptLegacyReplica()).toBeUndefined();
+    // So the next "Just this device" is a fresh, namespaced replica, which needs a reload to open.
+    expect(chooseLocalOnly()).toEqual({ reload: true });
+    expect(replicaKey(activeGraph())).toBe(activeGraph()?.id);
+  });
+
+  it("a stranded install (remote entry active) gets its local data back as a second entry", () => {
+    fakePlatform.name = "capacitor";
+    addGraph({ id: "r", label: "Remote graph", kind: "remote", baseUrl: "https://s.example/g/x" });
+    setActiveGraphId("r");
+    adoptLegacyReplica();
+    expect(listGraphs().map((g) => g.label)).toEqual(["Remote graph", "This device"]);
+    expect(activeGraph()?.id).toBe("r");
+  });
+});
+
+describe("B-611: who could have written state from before it was keyed by graph", () => {
+  it("Capacitor with no entries, or only the adopted local one: the un-namespaced replica", () => {
+    fakePlatform.name = "capacitor";
+    expect(soleLegacyStateOwner()).toBe("~");
+    adoptLegacyReplica();
+    expect(soleLegacyStateOwner()).toBe("~");
+  });
+
+  it("Capacitor with a server entry: ambiguous (the leak scenario), so nobody", () => {
+    fakePlatform.name = "capacitor";
+    addGraph({ id: "r", label: "R", kind: "remote", baseUrl: "https://s.example/g/x" });
+    expect(soleLegacyStateOwner()).toBeUndefined();
+  });
+
+  it("web with one entry: that entry; with two: nobody", () => {
+    addGraph({ id: "a", label: "A", kind: "local", baseUrl: "/g/default" });
+    expect(soleLegacyStateOwner()).toBe("a");
+    addGraph({ id: "b", label: "B", kind: "remote", baseUrl: "/g/work" });
+    expect(soleLegacyStateOwner()).toBeUndefined();
+  });
+});
+
+describe("graphEntryUrl under Capacitor", () => {
+  it("reloads the app in place instead of navigating the WebView to the server's address", () => {
+    fakePlatform.name = "capacitor";
+    const loc = { pathname: "/journals", search: "", hash: "" } as Location;
+    const remote = {
+      id: "r",
+      label: "R",
+      kind: "remote" as const,
+      baseUrl: "https://s.example/g/x",
+    };
+    expect(graphEntryUrl(remote, loc)).toBe("/journals");
   });
 });

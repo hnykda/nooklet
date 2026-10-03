@@ -26,7 +26,7 @@ import * as Comlink from "comlink";
 import { createHttpTransport } from "../sync/http-transport.js";
 import type { SyncStatus } from "../sync/types.js";
 import { createResumeRetry, type ResumeRetry } from "./reopen-on-resume.js";
-import { openSqliteWasmDriver } from "./sqlite-wasm-driver.js";
+import { openSqliteWasmDriver, UNNAMESPACED_REPLICA } from "./sqlite-wasm-driver.js";
 import type { ChangeEvent, InitResult, WorkerApi, WorkerInitOptions } from "./worker-api.js";
 import { WorkerDb } from "./worker-core.js";
 
@@ -89,6 +89,7 @@ interface OpenedDb {
   /** Only meaningful for the leader (a follower's replica is in-memory, nothing to export) —
    * Option C's checkpoint read side (`api.exportSnapshot`). */
   exportBytes?: () => Uint8Array;
+  unnamespacedReplica?: InitResult["unnamespacedReplica"];
 }
 
 async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
@@ -102,6 +103,7 @@ async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
     // A follower's driver is already forced to memory above, so restoring here would be pointless
     // (and `openSqliteWasmDriver` never reaches the pool code on that path anyway).
     restoreBytes: leader ? opts.restoreBytes : undefined,
+    inspect: opts.inspectUnnamespaced ? UNNAMESPACED_REPLICA : undefined,
   });
   const { driver } = opened;
   const storage: OpenedDb["storage"] = leader ? opened.storage : "follower";
@@ -127,7 +129,13 @@ async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
     onSyncStatus: (s) => safeCall(statusListener, s),
   });
   await db.start();
-  return { db, storage, storageError, exportBytes: leader ? opened.exportBytes : undefined };
+  return {
+    db,
+    storage,
+    storageError,
+    exportBytes: leader ? opened.exportBytes : undefined,
+    unnamespacedReplica: leader ? opened.inspected : undefined,
+  };
 }
 
 /**
@@ -154,8 +162,8 @@ const api: WorkerApi = {
         () => openDb(initOpts as WorkerInitOptions),
       );
     }
-    const { db, storage, storageError } = await retry.current();
-    return { deviceId: db.getDeviceId(), storage, storageError };
+    const { db, storage, storageError, unnamespacedReplica } = await retry.current();
+    return { deviceId: db.getDeviceId(), storage, storageError, unnamespacedReplica };
   },
 
   async nextHlc() {

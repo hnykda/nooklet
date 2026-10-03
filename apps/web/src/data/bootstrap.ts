@@ -41,10 +41,106 @@ export interface GraphListEntry {
    * server) — mismatch detection, now per entry instead of one global key, since two entries can
    * legitimately hold different graphs. */
   graphInstanceId?: string;
+  /** B-612: this entry's replica is the un-namespaced one (`/nooklet.sqlite3`, the checkpoint at
+   * its old path, the unscoped journal scope), not `/nooklet-<id>.sqlite3`. Set on exactly one
+   * entry ever: the one that adopted what a "Just this device" install wrote before local-only was
+   * a list entry (`adoptLegacyReplica`). */
+  legacyReplica?: true;
 }
 
 const GRAPHS_KEY = "nooklet.graphs";
 const ACTIVE_GRAPH_KEY = "nooklet.activeGraphId";
+/** Set once the un-namespaced replica has been given to a list entry, so it is adopted only once:
+ * removing that entry later must not make a "fresh" local graph reappear with the old notes. */
+const LEGACY_ADOPTED_KEY = "nooklet.legacyReplicaAdopted";
+
+/**
+ * The one name everything per-graph on this device is keyed by (ADR 025, B-611): the OPFS file and
+ * writer lock (`db.worker.ts`), the B-247 journal (`db/unapplied-ops.ts`), the native checkpoint
+ * (`db/capacitor-checkpoint.ts`), the journal draft copy (`journal-draft-store.ts`), the shelf.
+ * `undefined` is the un-namespaced replica: the one a load with no active entry opens, and the one
+ * a `legacyReplica` entry owns.
+ */
+export function replicaKey(entry: GraphListEntry | undefined): string | undefined {
+  return entry && !entry.legacyReplica ? entry.id : undefined;
+}
+
+/** `replicaKey` as a non-empty string, for storage keys. `~` never collides with an entry id
+ * (`newGraphEntryId`: a UUID or `graph-…`). */
+export function replicaScope(key: string | undefined): string {
+  return key ?? "~";
+}
+
+/**
+ * B-611: state written before it was keyed by graph (the v1 journal, the one fixed checkpoint) can
+ * only be given to a replica when exactly ONE replica could have written it. Otherwise it is
+ * quarantined, never replayed: replaying it into the wrong graph is the leak this exists to stop.
+ *
+ * The candidates are every listed entry's replica, plus the un-namespaced one wherever a load could
+ * have run with no entry: always under Capacitor ("Just this device" used to add none, B-612), and
+ * on web/desktop only when the list is empty (there, `initBootstrap` adds an entry on the first
+ * load that reaches a server, so a no-entry load means a first launch that never got one).
+ * Returns the one candidate's scope (`replicaScope`), or `undefined` when it is ambiguous.
+ */
+export function soleLegacyStateOwner(): string | undefined {
+  const graphs = readGraphs();
+  const candidates = new Set(graphs.map((g) => replicaScope(replicaKey(g))));
+  if (platform.name === "capacitor" || graphs.length === 0) candidates.add(replicaScope(undefined));
+  return candidates.size === 1 ? [...candidates][0] : undefined;
+}
+
+function legacyAdopted(): boolean {
+  try {
+    return localStorage.getItem(LEGACY_ADOPTED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * B-612: gives the un-namespaced replica a list entry, once per device. Returns the entry, or
+ * `undefined` when it was adopted before (the entry may have been removed since; it is not
+ * resurrected). `ConnectView`'s "Just this device" (`chooseLocalOnly`) and the boot-time check for
+ * an install stranded by B-612 (`main.tsx`) are the callers.
+ */
+export function adoptLegacyReplica(label = "This device"): GraphListEntry | undefined {
+  if (legacyAdopted() || readGraphs().some((g) => g.legacyReplica)) return undefined;
+  const entry: GraphListEntry = {
+    id: newGraphEntryId(),
+    label,
+    kind: "local",
+    legacyReplica: true,
+  };
+  addGraph(entry);
+  try {
+    localStorage.setItem(LEGACY_ADOPTED_KEY, "1");
+  } catch {
+    // Without the flag it could be adopted again after a removal; the entry itself is what matters.
+  }
+  return entry;
+}
+
+/**
+ * B-612: "Just this device" from the set-up screen makes a real list entry and makes it active, so
+ * the switcher can come back to it after a server graph is added. The first time on a device it
+ * adopts the un-namespaced replica (the one this page load already opened with no entry, and the
+ * one every pre-fix "Just this device" install wrote to), so nothing written there is stranded.
+ * Returns whether the page must reload: only when the new entry's replica is not the open one.
+ */
+export function chooseLocalOnly(): { reload: boolean } {
+  const adopted = adoptLegacyReplica();
+  if (adopted) {
+    setActiveGraphId(adopted.id);
+    return { reload: false };
+  }
+  createLocalOnlyGraph("This device");
+  return { reload: true };
+}
+
+/** A local-only entry has no server, so it needs no token and never shows the set-up screen. */
+export function isLocalOnlyEntry(entry: GraphListEntry | undefined): boolean {
+  return Boolean(entry && entry.kind === "local" && !entry.baseUrl);
+}
 
 function readGraphs(): GraphListEntry[] {
   try {
@@ -163,6 +259,13 @@ export function appRelativePathname(pathname: string): string {
  */
 export function graphEntryUrl(entry: GraphListEntry, currentLocation: Location): string {
   const appPath = appRelativePathname(currentLocation.pathname);
+  // Under Capacitor the app is the bundle at the shell's own origin, whatever graph is active: a
+  // remote entry's `baseUrl` is the SERVER's address, and navigating the WebView there would leave
+  // the app for that server's web client (Capacitor opens a non-allowlisted URL outside the
+  // WebView). So the app-relative path is reloaded in place, and `apiBaseUrl()` does the rest.
+  if (platform.name === "capacitor") {
+    return `${appPath}${currentLocation.search}${currentLocation.hash}`;
+  }
   const prefix = entry.baseUrl ?? samePathGraphPrefix() ?? "";
   return `${prefix}${appPath}${currentLocation.search}${currentLocation.hash}`;
 }

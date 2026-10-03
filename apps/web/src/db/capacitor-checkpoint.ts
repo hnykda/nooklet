@@ -17,7 +17,67 @@ function filesystem(): Promise<typeof import("@capacitor/filesystem")> {
   return filesystemModule;
 }
 
-const CHECKPOINT_PATH = "nooklet-checkpoint.sqlite3";
+/**
+ * One checkpoint per replica (B-611). There used to be one fixed file for the whole device, written
+ * by whichever graph was active and restored into ANY graph's empty replica: a new local-only graph
+ * would have started as a copy of a server graph, `pending_op` included, or a newly added server
+ * graph as a copy of local-only notes, which its first push would then have sent to the server.
+ * The un-namespaced replica keeps the old filename, so a pure "Just this device" install keeps its
+ * backstop through the upgrade; `migrateUnscopedCheckpoint` deals with every other install.
+ */
+const UNSCOPED_CHECKPOINT_PATH = "nooklet-checkpoint.sqlite3";
+const CHECKPOINT_MIGRATED_KEY = "nooklet.checkpoint-scoped.v1";
+
+/** `scope` is `data/bootstrap.ts#replicaScope`: `~` for the un-namespaced replica. */
+export function checkpointPath(scope: string): string {
+  return scope === "~"
+    ? UNSCOPED_CHECKPOINT_PATH
+    : `nooklet-checkpoint-${encodeURIComponent(scope)}.sqlite3`;
+}
+
+/**
+ * Once per device, before any checkpoint is read or written by this build: the old fixed file is
+ * left to the un-namespaced replica (whose path it already is) only when that replica is the one
+ * thing that could have written it (`soleOwner === "~"`, from
+ * `data/bootstrap.ts#soleLegacyStateOwner`). Otherwise it is renamed out of the way — kept, never
+ * restored — because restoring it into the wrong graph's replica is the leak. Never throws; a
+ * failure leaves the flag unset so the next start tries again (and until then nothing restores
+ * from the old path except the un-namespaced replica, the same as before this change).
+ */
+export async function migrateUnscopedCheckpoint(soleOwner: string | undefined): Promise<void> {
+  try {
+    if (localStorage.getItem(CHECKPOINT_MIGRATED_KEY) === "1") return;
+  } catch {
+    return;
+  }
+  try {
+    if (soleOwner !== "~") {
+      const { Filesystem, Directory } = await filesystem();
+      const exists = await Filesystem.stat({
+        path: UNSCOPED_CHECKPOINT_PATH,
+        directory: Directory.Data,
+      }).then(
+        () => true,
+        () => false,
+      );
+      if (exists) {
+        await Filesystem.rename({
+          from: UNSCOPED_CHECKPOINT_PATH,
+          to: `nooklet-checkpoint.quarantine-${Date.now()}.sqlite3`,
+          directory: Directory.Data,
+          toDirectory: Directory.Data,
+        });
+        console.warn(
+          "nooklet: the device-wide checkpoint from before graphs were kept apart could not be " +
+            "matched to one graph; kept as nooklet-checkpoint.quarantine-*.sqlite3, not restored.",
+        );
+      }
+    }
+    localStorage.setItem(CHECKPOINT_MIGRATED_KEY, "1");
+  } catch {
+    // Try again next start.
+  }
+}
 
 /** No encoding specified means binary, base64-encoded — the Filesystem plugin's own documented
  * contract for non-text data (`WriteFileOptions.encoding`'s doc: "If you do not provide encoding
@@ -50,10 +110,13 @@ export function base64ToBytes(base64: string): Uint8Array {
  * startup, since the ordinary OPFS path (which this is only ever a backstop for) is what actually
  * decides whether the replica has real data.
  */
-export async function readCheckpoint(): Promise<Uint8Array | undefined> {
+export async function readCheckpoint(scope: string): Promise<Uint8Array | undefined> {
   try {
     const { Filesystem, Directory } = await filesystem();
-    const result = await Filesystem.readFile({ path: CHECKPOINT_PATH, directory: Directory.Data });
+    const result = await Filesystem.readFile({
+      path: checkpointPath(scope),
+      directory: Directory.Data,
+    });
     if (typeof result.data === "string") return base64ToBytes(result.data);
     // Blob is web/jeep-sqlite-fallback only per the plugin's own docs, not a real iOS/Android
     // build — handled anyway rather than silently dropping a real checkpoint if it ever occurs.
@@ -63,11 +126,11 @@ export async function readCheckpoint(): Promise<Uint8Array | undefined> {
   }
 }
 
-async function writeCheckpoint(bytes: Uint8Array): Promise<void> {
+async function writeCheckpoint(scope: string, bytes: Uint8Array): Promise<void> {
   try {
     const { Filesystem, Directory } = await filesystem();
     await Filesystem.writeFile({
-      path: CHECKPOINT_PATH,
+      path: checkpointPath(scope),
       directory: Directory.Data,
       data: bytesToBase64(bytes),
     });
@@ -103,6 +166,8 @@ export interface CheckpointScheduler {
  */
 export function createCheckpointScheduler(
   exportSnapshot: () => Promise<Uint8Array | undefined>,
+  /** Which replica's checkpoint file this writes (`checkpointPath`). */
+  scope = "~",
 ): CheckpointScheduler {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
@@ -120,7 +185,7 @@ export function createCheckpointScheduler(
     running = true;
     try {
       const bytes = await exportSnapshot().catch(() => undefined);
-      if (bytes && !stopped) await writeCheckpoint(bytes);
+      if (bytes && !stopped) await writeCheckpoint(scope, bytes);
     } finally {
       running = false;
       if (runAgain && !stopped) {

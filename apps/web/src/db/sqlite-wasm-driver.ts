@@ -90,6 +90,40 @@ export function shouldRestoreCheckpoint(
   return hasCheckpoint && !existingFileNames.includes(filename);
 }
 
+/**
+ * Whether another replica file in this pool holds anything (B-612's stranded "Just this device"
+ * data). Opened read-only in effect — two `SELECT`s — and closed again; this worker owns every
+ * file in the pool once the VFS is installed, so nothing else can hold it. Never throws: a file
+ * that is not a database we understand counts as `"empty"`, so it is never offered as a graph.
+ */
+function inspectReplica(
+  poolUtil: Sqlite3OpfsSAHPoolUtil,
+  name: string,
+): NonNullable<OpenedSqliteWasm["inspected"]> {
+  if (!poolUtil.getFileNames().includes(name)) return "absent";
+  let other: Sqlite3Db | undefined;
+  try {
+    other = new poolUtil.OpfsSAHPoolDb(name);
+    const hasOpTable = other.selectValue(
+      "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'op'",
+    );
+    if (Number(hasOpTable) === 0) return "empty";
+    if (Number(other.selectValue("SELECT EXISTS (SELECT 1 FROM op)")) !== 1) return "empty";
+    // A replica that ever pulled from a server (a pre-ADR-025 install pointed at one) is a copy of
+    // that server's graph, not notes that exist only here: not offered as a local-only graph.
+    const cursor = other.selectValue("SELECT value FROM sync_state WHERE key = 'server_cursor'");
+    return cursor === undefined || cursor === null || Number(cursor) === 0 ? "data" : "synced";
+  } catch {
+    return "empty";
+  } finally {
+    try {
+      other?.close();
+    } catch {
+      // nothing to do
+    }
+  }
+}
+
 /** Wrap a sahpool `OpfsSAHPoolDb` (or any object satisfying `Sqlite3Db`, e.g. a fake in a future
  * browser-run test) as a `@nooklet/core` `SqlDriver`. */
 export function createSqliteWasmDriver(db: Sqlite3Db): SqlDriver {
@@ -191,7 +225,16 @@ export interface OpenedSqliteWasm {
    * restore. Lets a caller log/verify the restore path was taken, not just assume it from the
    * inputs it passed in. */
   restored: boolean;
+  /** B-612: what `opts.inspect` (another replica's filename in the same pool) holds — `"absent"`
+   * when the pool has no such file, `"empty"` when it has no op at all, `"synced"` when it has
+   * pulled from a server (a copy of a server graph), `"data"` otherwise: notes only this device has.
+   * `undefined` when not asked, or when the pool could not be opened. */
+  inspected?: "absent" | "empty" | "synced" | "data";
 }
+
+/** The un-namespaced replica's filename: `openSqliteWasmDriver`'s default, used by a load with no
+ * active graph entry and by a `legacyReplica` entry (`data/bootstrap.ts#replicaKey`). */
+export const UNNAMESPACED_REPLICA = "/nooklet.sqlite3";
 
 /**
  * Open (creating on first run) the OPFS-backed replica and apply nooklet's server PRAGMAs where
@@ -214,14 +257,15 @@ export interface OpenedSqliteWasm {
  * first, not as a patch-up after.
  */
 export async function openSqliteWasmDriver(
-  filename = "/nooklet.sqlite3",
-  opts: { memory?: boolean; restoreBytes?: Uint8Array } = {},
+  filename = UNNAMESPACED_REPLICA,
+  opts: { memory?: boolean; restoreBytes?: Uint8Array; inspect?: string } = {},
 ): Promise<OpenedSqliteWasm> {
   const sqlite3 = await sqlite3InitModule();
   let db: Sqlite3Db;
   let storage: OpenedSqliteWasm["storage"] = "opfs";
   let storageError: string | undefined;
   let restored = false;
+  let inspected: OpenedSqliteWasm["inspected"];
   try {
     // A follower tab (B-81) asks for memory outright: sahpool allows one connection per file, and
     // the leader tab holds it.
@@ -239,6 +283,9 @@ export async function openSqliteWasmDriver(
       restored = true;
     }
     db = new poolUtil.OpfsSAHPoolDb(filename);
+    if (opts.inspect && opts.inspect !== filename) {
+      inspected = inspectReplica(poolUtil, opts.inspect);
+    }
   } catch (err) {
     storage = "memory";
     storageError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
@@ -262,6 +309,7 @@ export async function openSqliteWasmDriver(
     storage,
     storageError,
     restored,
+    inspected,
     exportBytes:
       storage === "opfs" ? () => sqlite3.capi.sqlite3_js_db_export(db.pointer) : undefined,
   };

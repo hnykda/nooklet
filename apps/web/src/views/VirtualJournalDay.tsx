@@ -14,9 +14,10 @@ import {
   type OpPayload,
   orderBetween,
 } from "@nooklet/core";
-import { createSignal, For, type JSX, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { describeError } from "../data/api-client.js";
 import { appendToJournalDay } from "../data/journal-day.js";
+import { clearDraftLines, readDraftLines, saveDraftLines } from "../data/journal-draft-store.js";
 import { applyOps, getOpClock } from "../data/store.js";
 import { journalTemplateOpsFor, loadJournalTemplate } from "../data/templates.js";
 import type { NavigateTarget } from "../data/types.js";
@@ -79,10 +80,13 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   const [pageId, setPageId] = createSignal<string | undefined>(undefined);
   // The batch that started the day, which the day's tree is drawn from before its first fetch.
   let startOps: readonly Op[] = [];
-  const [draft, setDraft] = createSignal("");
+  // B-619: a copy left by a page load that ended before its commit (see the effect below) starts
+  // the draft off. Read before anything can save over it.
+  const kept = readDraftLines(props.day);
+  const [draft, setDraft] = createSignal(kept?.at(-1) ?? "");
   // Lines Enter has closed that are not written yet. Only non-empty while a commit waits for
   // `prepare` (a busy replica), or after a failed write put them back.
-  const [closed, setClosed] = createSignal<readonly string[]>([]);
+  const [closed, setClosed] = createSignal<readonly string[]>(kept?.slice(0, -1) ?? []);
   const [error, setError] = createSignal<string | undefined>(undefined);
 
   let textarea: HTMLTextAreaElement | undefined;
@@ -90,6 +94,21 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   let committing = false;
   let prepared: Prepared | undefined;
   let preparing: Promise<Prepared> | undefined;
+
+  // B-619: what is typed here exists only in this page until `commit` has built its ops, which
+  // waits on worker round trips (`prepare`). Kept synchronously in `localStorage` for exactly that
+  // long (`../data/journal-draft-store.ts`), so a reload in between does not lose it; `commit`
+  // clears the copy once `applyOps` has recorded the ops in the B-247 journal.
+  createEffect(() => {
+    if (pageId() !== undefined) return;
+    saveDraftLines(props.day, [...closed(), draft()]);
+  });
+
+  // The kept copy is written straight away: every line of it was typed, and a blur would have
+  // written it.
+  onMount(() => {
+    if (kept) void commit();
+  });
 
   onCleanup(() => {
     disposed = true;
@@ -184,6 +203,9 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
       const { ops, lastBlockId } = dayOps(prep, newPageId, lines);
       // Posted now, before the tree below exists and can post anything of its own.
       const written = applyOps(ops);
+      // `applyOps` copied the batch into the B-247 journal synchronously, so that copy carries the
+      // lines from here; the draft's own copy goes (a failure below saves it again via the effect).
+      clearDraftLines(props.day);
       // The module-level request, claimed by the tree below the moment it renders the block from
       // `startOps` — before this handler returns, so the next key already has an editor.
       if (document.activeElement === textarea) {
