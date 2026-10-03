@@ -841,19 +841,6 @@ it means generalising `VirtualJournalDay` into a page draft that writes nothing 
 Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
 parity for names nothing links to; revisit if it bites in daily use.
 
-### B-606 · Clicking right of a block's text, or pressing End, puts the caret inside a trailing `[[link]]`
-**Status:** open · **Severity:** high · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** high. Typing corrupts the link target and creates junk pages. "… with [[Person]]" is
-a very common block shape. Not covered by B-325 or B-585.
-**Repro:** seed `- plain text [[Balení]]`. Click in the empty space right of the rendered text and
-type `Y`: the result is `plain text [[BalenYí]]`. Click the same block, press Home, then End, then
-type `Z`: the result is `plain text [[BaleníZ]]`. A page named `BaleníZ` now exists and shows up in
-Mod+K. Blocks that do not end in a link (`[[Inbox]] trailing words`, `text **bold** end`) behave
-correctly. Probe: `tools/probes/sweep-core/end-after-link.mjs`. Likely cause: `livePreview.ts`
-hides `]]` with `Decoration.replace` while the caret is not touching the link, so End stops before
-it, and the click mapping in `caret.ts` lands in the link token. Not confirmed.
-
 ### B-607 · `nooklet import` into a fresh data dir, then `nooklet serve`, crashes: `a graph called "default" already exists`
 **Status:** open · **Severity:** medium · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
 
@@ -977,6 +964,34 @@ reload at once. One run showed the note momentarily, then an empty day. Possibly
 not narrowed down.
 
 ## Fixed
+
+### B-606 · Clicking right of a block's text, or pressing End, puts the caret inside a trailing `[[link]]`
+**Status:** fixed (`15a203c`) · **Severity:** high · **Found:** 2026-10-03, core readiness sweep ·
+**Test:** `e2e/tests/caret-after-link.spec.ts` (all 14, Chromium and WebKit), `apps/web/src/editor/caret.test.tsx` "resolveClickOffset at a line's edges (B-606)"
+
+**Severity:** high. Typing corrupts the link target and creates junk pages. "… with [[Person]]" is
+a very common block shape. Not covered by B-325 or B-585.
+**Repro:** seed `- plain text [[Balení]]`. Click in the empty space right of the rendered text and
+type `Y`: the result is `plain text [[BalenYí]]`. Click the same block, press Home, then End, then
+type `Z`: the result is `plain text [[BaleníZ]]`. A page named `BaleníZ` now exists and shows up in
+Mod+K. Blocks that do not end in a link (`[[Inbox]] trailing words`, `text **bold** end`) behave
+correctly. Probe: `tools/probes/sweep-core/end-after-link.mjs`. Likely cause: `livePreview.ts`
+hides `]]` with `Decoration.replace` while the caret is not touching the link, so End stops before
+it, and the click mapping in `caret.ts` lands in the link token. Not confirmed.
+
+**Fixed 2026-10-03.** Two causes, one per gesture. (1) Click on the rendered block:
+`caret.ts#resolveClickOffset` added the rendered character offset to the link's `data-from`,
+which is its `[[`, so the end of `Balení` mapped to `[[Bale|ní]]` and nothing could map past
+`]]` (same for a trailing `**bold**` and `((ref))`). Now a point with nothing rendered after it
+on its line maps to the outermost enclosing token's `data-to` (start of line: `data-from`), and
+characters inside an un-aliased link count from its target (`data-text-from`). (2) End, and a
+click inside the editor: with `lineWrapping`, CM6's `moveToLineBoundary` hit-tests the editor's
+right edge, which never lands past a zero-width hidden `]]`; `livePreview.ts` now wraps
+Home/End/Cmd-Arrow and pointer selection to cross hidden markers at the line edge (Home before a
+leading `[[` likewise). `#[[multi word]]` was never affected. Red before: 20 failed in Chromium +
+WebKit; green after 28/28. Probe `end-after-link.mjs` on the real graph: all five blocks append
+after the link, no `BaleníZ` page.
+Not run in the real Mac app (Playwright WebKit stood in).
 
 ### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
 **Status:** fixed (2026-10-03, `0cb4a62`, ADR 026) · **Severity:** high (replicas diverged for good) ·

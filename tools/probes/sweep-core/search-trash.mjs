@@ -150,15 +150,13 @@ await step("imported images render (page '97 poets of Revachol')", async () => {
   await page.goto(`${BASE}/page/${encodeURIComponent("97 poets of Revachol")}`);
   await page.locator(".vr-outliner .vr-row").first().waitFor({ timeout: 10000 });
   await page.waitForTimeout(3000);
-  const imgs = await page
-    .locator(".vr-outliner img")
-    .evaluateAll((xs) =>
-      xs.map((i) => ({
-        src: i.getAttribute("src")?.slice(0, 80),
-        w: i.naturalWidth,
-        complete: i.complete,
-      })),
-    );
+  const imgs = await page.locator(".vr-outliner img").evaluateAll((xs) =>
+    xs.map((i) => ({
+      src: i.getAttribute("src")?.slice(0, 80),
+      w: i.naturalWidth,
+      complete: i.complete,
+    })),
+  );
   assert(imgs.length > 0 && imgs.every((i) => i.w > 0), JSON.stringify(imgs));
   return imgs.slice(0, 3);
 });
