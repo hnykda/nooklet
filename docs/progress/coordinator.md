@@ -32,7 +32,7 @@ runs the full e2e suite on the merged tree.
 | sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
 | b587 | B-587: does HLC-vs-seq order diverge a third device? fix | 6314 |
-| b491 | B-491: replace remaining native confirm/alert with in-app UI | 6315 |
+| b491 | B-491, **merged** (`f3a0d78`) | 6315 |
 | pairing | D3 `--no-loopback-token`, B-602, B-604, B-603 `nooklet://connect` link | 6316-6319 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
@@ -74,7 +74,7 @@ B-560 (date headings open the day), the B-541 "⋯" top-right menu, B-380 option
 the precache plus a single sidecar copy, the references heading count. The order below still stands.
 
 ### Owner decisions pending for the real test (from `docs/progress/real-device-test.md`)
-D1 where the server runs for the first test (agent recommends: Mac on LAN first, then homeserver); D2 homeserver
+D1 **answered 2026-10-03: the owner's Mac** (runbook option L, LAN) for the first test; homeserver later; D2 homeserver
 details (namespace, hostname, volume size, memory limit, image build trigger). D3 decided by the
 coordinator: add `--no-loopback-token` (agent pairing). D4 is checked by runbook step H6.
 

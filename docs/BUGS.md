@@ -150,32 +150,6 @@ Not fixed here (a reporting change in three ops outside this branch's bugs). Lik
 
 ---
 
-### B-491 · `window.confirm()` is always "Cancel" and `window.alert()` shows nothing in the desktop app
-**Status:** open · **Severity:** high · **Found:** 2026-09-13, delete-launcher (choosing how to
-confirm a page delete) · **Test:** none yet; probe `tools/probes/wkwebview-confirm.swift`
-
-The desktop app is a WKWebView through wry 0.55.1, whose `WKUIDelegate`
-(`wry-0.55.1/src/wkwebview/class/wry_web_view_ui_delegate.rs`) implements the file-upload panel,
-media-capture permission and new windows — and none of the JavaScript panel methods
-(`webView:runJavaScriptConfirmPanelWithMessage:…`, `…AlertPanel…`, `…TextInputPanel…`). WebKit then
-answers without showing anything. The probe builds exactly that (a UI delegate with no panel
-methods) and prints `confirm returned false after 0 ms` / `alert returned undefined after 1 ms`.
-
-What that breaks in the app today, found by grep, none of it verified in a built app:
-
-- History view: "Undo" and "Restore this version" both open with `window.confirm`
-  (`views/HistoryView.tsx`) — on the desktop app they silently do nothing.
-- Every failure reported through `window.alert` is invisible there: "Turn into page / Move to page /
-  Merge page failed" (`app/refactor-host.tsx`), "Rename failed" (`views/PageView.tsx`), "Could not
-  clear the local copy" (`views/GraphMismatchView.tsx`). The action fails with no word.
-
-Chromium (the e2e suite) shows real dialogs, which is why no test noticed. Fix direction: an
-in-page dialog. `apps/web/src/app/confirm-dialog.tsx` (added for Delete page on this branch) is a
-drop-in for the confirms; the alerts want the same or an inline error line. Not done here — those
-call sites belong to other workstreams.
-
----
-
 ### B-492 · `page.delete`'s `backlinks_affected` counts every block under a linking block, not the links
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, delete-launcher (Delete page on a copy
 of the owner's graph) · **Test:** none yet
@@ -911,6 +885,40 @@ Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth 
 parity for names nothing links to; revisit if it bites in daily use.
 
 ## Fixed
+
+### B-491 · `window.confirm()` is always "Cancel" and `window.alert()` shows nothing in the desktop app
+**Status:** fixed (2026-10-03, `f3a0d78`) · **Severity:** high · **Test:** `e2e/tests/history.spec.ts`
+(Undo/Restore confirm in-page), `e2e/tests/refactor.spec.ts` "a failed Turn into page says so in the
+page…", `e2e/tests/page-rename.spec.ts` (clash notice), `apps/web/src/source-guards.test.ts`
+"native dialogs (B-491)" (guard), `apps/web/src/plugins/host.test.ts` "dialogs (B-491)"
+
+The desktop app is a WKWebView through wry 0.55.1, whose `WKUIDelegate`
+(`wry-0.55.1/src/wkwebview/class/wry_web_view_ui_delegate.rs`) implements the file-upload panel,
+media-capture permission and new windows — and none of the JavaScript panel methods
+(`webView:runJavaScriptConfirmPanelWithMessage:…`, `…AlertPanel…`, `…TextInputPanel…`). WebKit then
+answers without showing anything. The probe builds exactly that (a UI delegate with no panel
+methods) and prints `confirm returned false after 0 ms` / `alert returned undefined after 1 ms`.
+
+What that breaks in the app today, found by grep, none of it verified in a built app:
+
+- History view: "Undo" and "Restore this version" both open with `window.confirm`
+  (`views/HistoryView.tsx`) — on the desktop app they silently do nothing.
+- Every failure reported through `window.alert` is invisible there: "Turn into page / Move to page /
+  Merge page failed" (`app/refactor-host.tsx`), "Rename failed" (`views/PageView.tsx`), "Could not
+  clear the local copy" (`views/GraphMismatchView.tsx`). The action fails with no word.
+
+Chromium (the e2e suite) shows real dialogs, which is why no test noticed. Fix direction: an
+in-page dialog. `apps/web/src/app/confirm-dialog.tsx` (added for Delete page on this branch) is a
+drop-in for the confirms; the alerts want the same or an inline error line. Not done here — those
+call sites belong to other workstreams.
+
+---
+
+**Fixed 2026-10-03:** History confirms through `confirmDialog`; refactor failures through a new
+one-button `noticeDialog`; rename failure on the title-row notice (now role=alert for errors);
+graph-mismatch failure as an inline role=alert line (no test); plugin `ctx.confirm` now uses the
+in-page dialog, `ctx.prompt` still unsupported (no in-page text dialog). A source-guard test forbids
+any new `window.confirm/alert/prompt`. Only run in Chromium, not in the built desktop app.
 
 ### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
 **Status:** fixed (2026-10-03, `6ddfc77`) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
