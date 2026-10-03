@@ -81,6 +81,10 @@ export interface BacklinkRef {
   page: string;
   text: string;
   updatedAt?: string;
+  /** The block links the target itself (its own refs), rather than only sitting under a block
+   * that does. Linked references only; what the heading counts (refs-count, Logseq's rule). An
+   * older server sends nothing, read as `true` — counting every block, as before. */
+  direct?: boolean;
 }
 
 /** A page carrying the backlinks target as a page-level tag (ADR 017, B-111). */
@@ -98,6 +102,8 @@ export interface BacklinksResult {
   linked: BacklinkRef[];
   /** How many linked references there are, whether or not all of them are in `linked`. */
   linkedTotal: number;
+  /** How many of `linkedTotal` link the target directly: the heading's unfiltered count. */
+  linkedDirectTotal: number;
   unlinked: BacklinkRef[];
   /** More unlinked mentions exist than `unlinked` holds. */
   unlinkedTruncated: boolean;
@@ -245,8 +251,9 @@ interface SearchWireOutput {
 
 interface BacklinksWireOutput {
   target: string;
-  linked: Array<{ id: string; page: string; text: string; updated_at: string }>;
+  linked: Array<{ id: string; page: string; text: string; updated_at: string; direct?: boolean }>;
   linked_total?: number;
+  linked_direct_total?: number;
   unlinked: Array<{ id: string; page: string; text: string }>;
   unlinked_truncated?: boolean;
   tagged_pages?: TaggedPage[];
@@ -342,8 +349,13 @@ export const apiClient: ApiClient = {
         page: r.page,
         text: r.text,
         updatedAt: r.updated_at,
+        direct: r.direct ?? true,
       })),
       linkedTotal: first.linked_total ?? linkedWire.length,
+      linkedDirectTotal:
+        first.linked_direct_total ??
+        first.linked_total ??
+        linkedWire.filter((r) => r.direct ?? true).length,
       unlinked: first.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
       unlinkedTruncated: first.unlinked_truncated ?? false,
       taggedPages: uniqueTagged,

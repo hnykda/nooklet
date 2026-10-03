@@ -20,8 +20,13 @@
  * M7 (research/13 §4.2 items 5 and 10) adds, on the linked half, Logseq's filter popover — the
  * other pages the referencing blocks mention, click to include, again to exclude, again to clear
  * — and a recent/by-name sort; and on the unlinked half a "Link all" button that runs
- * `mentions.link` (one batch) and offers `batch.undo` on the result. The count on each heading is
- * the count of what is under it, filter applied — a "12" over three visible rows is a lie.
+ * `mentions.link` (one batch) and offers `batch.undo` on the result.
+ *
+ * The linked heading counts what Logseq counts (refs-count, owner decision 2026-10-03): blocks
+ * that link the page themselves, not the children that only inherit the link
+ * (`./referenceNesting.ts#countDirectReferences`). Filtered, it reads "F of T" as Logseq's does,
+ * so the number under a filter is never mistaken for the whole. The unlinked heading counts every
+ * mention, which is also Logseq's rule there.
  *
  * "What is under it" means every reference, not the first page of them (B-253): the panel used to
  * hold the first 200 linked and 50 unlinked rows and count, filter and Link-all over that slice.
@@ -31,8 +36,7 @@
  *
  * Each row is the block as its page shows it, children nested, with a breadcrumb (B-550,
  * `./ReferenceItem.tsx`), read from the replica (`../data/reference-trees.ts`). A reference inside
- * another listed reference is not a row of its own (`./referenceNesting.ts`); the heading still
- * counts blocks, the number `page.backlinks` reports.
+ * another listed reference is not a row of its own (`./referenceNesting.ts`).
  */
 import { normalizePageName } from "@nooklet/core";
 import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
@@ -62,7 +66,7 @@ import {
   type ReferenceFilter,
   type ReferenceSort,
 } from "./referenceGrouping.js";
-import { foldNestedReferences, loadedTrees } from "./referenceNesting.js";
+import { countDirectReferences, foldNestedReferences, loadedTrees } from "./referenceNesting.js";
 import { countLabel, firstRows, REFERENCE_ROWS_STEP } from "./referenceWindow.js";
 import "./references.css";
 import { TaggedPages } from "./TaggedPages.js";
@@ -240,18 +244,26 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
       loadedTrees(unlinkedTrees()),
     ),
   );
+  /** Rows the filter leaves (any block, direct or not): whether "No references match" shows. */
   const linkedCount = createMemo(() => filteredLinked().length);
   const unlinkedCount = createMemo(() =>
     props.unlinked === false ? 0 : (data()?.unlinked.length ?? 0),
   );
   /** The client stopped short of every linked reference (`MAX_LINKED_REFERENCES`). */
   const linkedPartial = createMemo(() => allLinked().length < (data()?.linkedTotal ?? 0));
-  // Unfiltered, the heading can give the server's true total even past the fetch cap; filtered,
-  // it can only count what was fetched, and says "+" when that is not everything.
+  // Logseq's count: blocks linking the page directly. Unfiltered, the heading can give the
+  // server's true total even past the fetch cap; filtered, it can only count what was fetched, and
+  // says "+" when that is not everything.
+  const linkedDirectTotal = createMemo(() =>
+    Math.max(data()?.linkedDirectTotal ?? 0, allLinked().filter((r) => r.direct !== false).length),
+  );
   const linkedCountText = createMemo(() =>
     isFilterEmpty(filter())
-      ? String(Math.max(data()?.linkedTotal ?? 0, linkedCount()))
-      : countLabel(linkedCount(), linkedPartial()),
+      ? String(linkedDirectTotal())
+      : `${countLabel(
+          countDirectReferences(allLinked(), filteredLinked(), loadedTrees(linkedTrees())),
+          linkedPartial(),
+        )} of ${linkedDirectTotal()}`,
   );
   const unlinkedCountText = createMemo(() =>
     countLabel(unlinkedCount(), data()?.unlinkedTruncated ?? false),

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BlockTreeNode } from "../data/types.js";
 import {
   breadcrumbLabel,
+  countDirectReferences,
   foldNestedReferences,
   type LoadedReferenceTrees,
   referenceParents,
@@ -111,5 +112,56 @@ describe("breadcrumbLabel", () => {
     // Not headings: a tag, and seven #s.
     expect(breadcrumbLabel("#tag and text")).toBe("#tag and text");
     expect(breadcrumbLabel("####### seven")).toBe("####### seven");
+  });
+});
+
+describe("countDirectReferences (Logseq's linked-references count, refs-count)", () => {
+  // `ref` and `grand` link T themselves; `child` only inherits from `ref`; `other` links T on its
+  // own; `p2` is on a second page and links T; `p2kid` sits under it.
+  const all = [
+    { id: "ref", direct: true },
+    { id: "child", direct: false },
+    { id: "grand", direct: true },
+    { id: "other", direct: true },
+    { id: "p2", direct: true },
+    { id: "p2kid", direct: false },
+  ];
+  const withPage2 = (): LoadedReferenceTrees => {
+    const t = trees(["ref", "child", "grand", "other", "p2", "p2kid"]);
+    (t.ancestors as Map<string, string[]>).set("p2", []);
+    (t.ancestors as Map<string, string[]>).set("p2kid", ["p2"]);
+    return t;
+  };
+  const pick = (...ids: string[]) => all.filter((r) => ids.includes(r.id));
+
+  it("unfiltered: counts blocks that link the page, across pages, not the children under them", () => {
+    // Six listed blocks, four rows after folding (ref, other, p2 … and grand folds under ref),
+    // but Logseq's number is the direct links: ref, grand, other, p2.
+    expect(countDirectReferences(all, all, withPage2())).toBe(4);
+  });
+
+  it("a direct link nested under another direct link still counts", () => {
+    expect(countDirectReferences(all, pick("ref", "child", "grand"), withPage2())).toBe(2);
+  });
+
+  it("filtered: a direct block counts when only a block under it passes the filter", () => {
+    // The filter kept `child` (a non-direct block); Logseq adds its listed parents back, so `ref`
+    // counts. `p2kid` passing brings in `p2`.
+    expect(countDirectReferences(all, pick("child", "p2kid"), withPage2())).toBe(2);
+  });
+
+  it("filtered: a direct block whose subtree all fails the filter does not count", () => {
+    expect(countDirectReferences(all, pick("other"), withPage2())).toBe(1);
+    expect(countDirectReferences(all, [], withPage2())).toBe(0);
+  });
+
+  it("without trees, counts only the direct blocks that pass the filter themselves", () => {
+    expect(countDirectReferences(all, pick("child", "p2kid", "other"), undefined)).toBe(1);
+  });
+
+  it("an item with no `direct` flag (older server) counts as direct", () => {
+    expect(
+      countDirectReferences([{ id: "a" }, { id: "b" }], [{ id: "a" }, { id: "b" }], undefined),
+    ).toBe(2);
   });
 });

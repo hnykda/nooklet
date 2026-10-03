@@ -56,7 +56,7 @@ test("counts, filters and Link all cover every reference, not the first 200 / 50
   const rare = popover.locator(".references-filter-option", { hasText: "Refcap Rare" });
   await expect(rare.locator(".reference-count")).toHaveText("5");
   await rare.click();
-  await expect(section.locator(".references-toggle .reference-count")).toHaveText("5");
+  await expect(section.locator(".references-toggle .reference-count")).toHaveText("5 of 205");
   await expect(section.locator(".reference-item")).toHaveCount(5);
   await rare.click(); // exclude
   await rare.click(); // clear

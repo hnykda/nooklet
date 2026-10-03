@@ -15,7 +15,9 @@ export const pageBacklinks = defineOp({
   description:
     "Lists blocks that reference a page or block: [[page]] links, #tags, ((block refs)), and - if " +
     "include_unlinked - plain-text mentions of the page's name that are not already a link. Each " +
-    "item has the referencing block's id, page, and text. For a page it also lists tagged_pages: " +
+    "item has the referencing block's id, page, and text, and direct: true when the block links the " +
+    "target itself rather than only sitting under a block that does (linked_direct_total counts " +
+    "those - the number Logseq shows as N Linked References). For a page it also lists tagged_pages: " +
     "the pages that carry it as a page-level tag - a tags:: page property naming it (source " +
     "property), or every journal day under Journal (source intrinsic) - with tagged_total, so " +
     "asking about Person or Journal returns its members. Linked references and tagged_pages are " +
@@ -44,9 +46,25 @@ export const pageBacklinks = defineOp({
   output: z.object({
     target: z.string(),
     linked: z.array(
-      z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() }),
+      z.object({
+        id: BlockId,
+        page: z.string(),
+        text: z.string(),
+        updated_at: z.string(),
+        direct: z
+          .boolean()
+          .describe(
+            "The block links the target itself; false when it is listed only because an ancestor does",
+          ),
+      }),
     ),
     linked_total: z.number().int().describe("Linked references across all pages of results"),
+    linked_direct_total: z
+      .number()
+      .int()
+      .describe(
+        "How many of linked_total link the target directly - Logseq's linked-references count",
+      ),
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
     unlinked_truncated: z
       .boolean()
@@ -88,6 +106,7 @@ export const pageBacklinks = defineOp({
       page_id: string;
       content: string;
       updated_at: number;
+      direct: number;
     }>;
     let unlinkedRows: Array<{ block_id: string; page_id: string; content: string }> = [];
     // ADR 017: the pages carrying the target as a page-level tag, from the `page_tag` index. A
@@ -100,12 +119,16 @@ export const pageBacklinks = defineOp({
       // `Real` when `Real` lists `alias:: Nick`.
       const keys = pageLookupKeys(driver, asPage);
       const keyList = keys.map(() => "?").join(",");
+      // `direct`: the block's OWN refs name the page (or an alias), as opposed to it being in
+      // `path_ref` only through an ancestor or its page. Logseq's heading counts these
+      // (`reference.cljs` `top-level-blocks`, docs/progress/refs-count.md); the list keeps the rest.
       linkedRows = driver.all(
-        `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
+        `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at,
+                EXISTS (SELECT 1 FROM ref r WHERE r.src_block_id = b.id AND r.dst_page_key IN (${keyList})) AS direct
          FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL
          WHERE pr.page_key IN (${keyList}) AND b.page_id != ?
          ORDER BY b.updated_at DESC`,
-        [...keys, asPage.id],
+        [...keys, ...keys, asPage.id],
       );
       // One more than asked for, so the answer can say whether it stopped short (B-253: the
       // panel showed a silent 50 while Link all rewrote 187).
@@ -118,7 +141,7 @@ export const pageBacklinks = defineOp({
       if (asBlock) {
         targetWire = input.target;
         linkedRows = driver.all(
-          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
+          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at, 1 AS direct
            FROM ref r JOIN block b ON b.id = r.src_block_id AND b.deleted_at IS NULL
            WHERE r.kind = 'block' AND r.dst_block_id = ?
            ORDER BY b.updated_at DESC`,
@@ -141,11 +164,12 @@ export const pageBacklinks = defineOp({
         const key = refKeyOf(input.target);
         targetWire = input.target;
         linkedRows = driver.all(
-          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at
+          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at,
+                  EXISTS (SELECT 1 FROM ref r WHERE r.src_block_id = b.id AND r.dst_page_key = ?) AS direct
            FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL
            WHERE pr.page_key = ?
            ORDER BY b.updated_at DESC`,
-          [key],
+          [key, key],
         );
         // `Journal` usually has no page of its own, yet every journal day carries it: a tag that
         // only exists as an index key must still list its pages (B-111).
@@ -178,8 +202,10 @@ export const pageBacklinks = defineOp({
         page: pageWireNameById(driver, r.page_id),
         text: (r.content.split("\n")[0] ?? "").trim(),
         updated_at: new Date(r.updated_at).toISOString(),
+        direct: r.direct === 1,
       })),
       linked_total: linkedRows.length,
+      linked_direct_total: linkedRows.filter((r) => r.direct === 1).length,
       unlinked: unlinkedRows.slice(0, input.unlinked_limit).map((r) => ({
         id: r.block_id,
         page: pageWireNameById(driver, r.page_id),
