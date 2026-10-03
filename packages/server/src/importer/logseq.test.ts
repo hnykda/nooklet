@@ -102,8 +102,8 @@ describe("importLogseqGraph: task workflow (B-608)", () => {
     expect(suggestedTaskWorkflow(ctx.driver)).toBe("now");
   });
 
-  it("with no setting, a TODO graph or an empty one suggests `todo`", async () => {
-    expect(suggestedTaskWorkflow(ctx.driver)).toBe("todo");
+  it("with no setting, an empty graph suggests `now` and a TODO graph `todo`", async () => {
+    expect(suggestedTaskWorkflow(ctx.driver)).toBe("now");
     writeGraphFile("pages/Tasks.md", "- TODO one\n- DOING two\n- LATER three\n");
     await importLogseqGraph(ctx, graphDir);
     expect(suggestedTaskWorkflow(ctx.driver)).toBe("todo");

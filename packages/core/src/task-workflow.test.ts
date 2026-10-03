@@ -62,10 +62,10 @@ describe("workflow helpers", () => {
     expect(parseTaskWorkflow(null)).toBeNull();
   });
 
-  it("infers from markers; empty or tied stays `todo`", () => {
+  it("infers from markers; empty or tied is `now`, Logseq's default", () => {
     expect(inferTaskWorkflow({ laterNow: 77, todoDoing: 0 })).toBe("now");
     expect(inferTaskWorkflow({ laterNow: 0, todoDoing: 3 })).toBe("todo");
-    expect(inferTaskWorkflow({ laterNow: 0, todoDoing: 0 })).toBe("todo");
-    expect(inferTaskWorkflow({ laterNow: 2, todoDoing: 2 })).toBe("todo");
+    expect(inferTaskWorkflow({ laterNow: 0, todoDoing: 0 })).toBe("now");
+    expect(inferTaskWorkflow({ laterNow: 2, todoDoing: 2 })).toBe("now");
   });
 });

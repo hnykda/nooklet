@@ -72,11 +72,11 @@ export function parseTaskWorkflow(value: unknown): TaskWorkflow | null {
 }
 
 /**
- * A graph with no explicit setting: whichever pair it actually uses. More LATER+NOW than
- * TODO+DOING → `now`; otherwise (including an empty graph) `todo`. Logseq's own default when the
- * key is absent is `now`, but a graph nooklet created never had the key, and its blocks are the
- * better evidence; an empty one keeps nooklet's long-standing TODO start.
+ * A graph with no explicit setting: whichever pair it actually uses. More TODO+DOING than
+ * LATER+NOW → `todo`; otherwise (including an empty graph, or a tie) `now`, which is Logseq's own
+ * default when the key is absent. The owner's workflow is `now` and nooklet mimics Logseq, so a
+ * fresh graph starts at LATER (owner decision 2026-10-03).
  */
 export function inferTaskWorkflow(counts: { laterNow: number; todoDoing: number }): TaskWorkflow {
-  return counts.laterNow > counts.todoDoing ? "now" : "todo";
+  return counts.todoDoing > counts.laterNow ? "todo" : "now";
 }

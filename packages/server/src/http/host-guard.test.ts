@@ -101,10 +101,10 @@ describe("loopback detection", () => {
     const read = async (): Promise<string | undefined> =>
       (JSON.parse((await get(port, "/api/session")).body) as { taskWorkflow?: string })
         .taskWorkflow;
-    // Nothing recorded, no tasks: nooklet's long-standing TODO start.
-    expect(await read()).toBe("todo");
-    setRecordedTaskWorkflow(s.serverCtx.driver, "now");
+    // Nothing recorded, no tasks: Logseq's default, `now`.
     expect(await read()).toBe("now");
+    setRecordedTaskWorkflow(s.serverCtx.driver, "todo");
+    expect(await read()).toBe("todo");
   });
 
   it("a restart retires the previous process's auto token instead of leaving it live (B-54)", async () => {

@@ -854,15 +854,6 @@ now `graphs/default`.
 
 Same root cause as `nooklet token create` before the first `serve` (found by the b587 agent, `docs/progress/b587.md`): any command that opens a fresh data dir creates `graphs/default/graph.sqlite` without `graph.json`.
 
-### B-608 · Mod+Enter ignores the owner's LATER/NOW workflow: a LATER task cycles to no marker
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** medium. The owner's graph has `:preferred-workflow :now`, with 72 LATER, 5 NOW and
-0 TODO blocks.
-**Repro:** on `- LATER owner style`, press Mod+Enter three times. Markers go `null`, then `TODO`,
-then `DOING` (`task-logic.ts#nextCycleMarker`). Logseq goes LATER→NOW→DONE, and a plain block
-starts at LATER. Probe: `tasks.mjs`.
-
 ### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
 
@@ -871,13 +862,6 @@ starts at LATER. Probe: `tasks.mjs`.
 **Repro:** today is empty. Click today and type `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ with no delay. The server
 gets `aaa`,`bbb`,`ccc`, all at depth 0, instead of `bbb` indented. The same burst on an ordinary
 page is correct. Probe: `indent-render.mjs journal fast 0`.
-
-### B-610 · The word-count plugin returns 500 for a page just deleted
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** low; it only adds console noise.
-**Repro:** delete a page from Page actions. The server log shows
-`OpError: no page named "…"` at `plugins/word-count … countPage`, and the browser logs a 500.
 
 ### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
 **Status:** open, reproduced · **Severity:** high (data goes into the wrong graph, which ADR 025 forbids) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
@@ -940,13 +924,6 @@ while `/api/session` returns 200. The cause is `mountMcp`'s `"/"` sub-app guard
 (`createMcpHonoApp({host})` auto-enables localhost Host validation). The workaround is
 `--allow-host <name>`, but the CLI only suggests it for non-loopback binds.
 
-### B-617 · Plugin "word-count" fails to activate for every graph after the first
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `nooklet serve` with two graphs, then hit `/g/<second>/…`. The server log shows
-`[plugins] plugin "word-count" failed to activate: op "page.wordcount" is already registered`. The
-op registry looks process-global across graph contexts.
-
 ### B-618 · Graph switcher labels are generic and can't be told apart
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
 
@@ -963,7 +940,54 @@ Repro: `local-then-server.probe.ts` with `SWEEP_LT_SETTLE_MS=0`: fill today's dr
 reload at once. One run showed the note momentarily, then an empty day. Possibly B-247 territory,
 not narrowed down.
 
+### B-620 · Plugin `rpc.expose` routes turn any thrown error into an unhandled 500
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, tasks-workflow agent (B-610) · **Test:** none
+
+`plugins/server-context.ts`: unlike `ops.register`, which maps an `OpError` to its status, an
+`rpc.expose` handler that throws returns an unhandled 500. B-610 was fixed inside word-count;
+another plugin throwing `OpError` from rpc would 500 the same way.
+
 ## Fixed
+
+### B-617 · Plugin "word-count" fails to activate for every graph after the first
+**Status:** fixed (2026-10-03, `de59bf8`) · **Severity:** low · **Test:** `packages/server/src/graphs/mount.test.ts`
+"activates every built-in plugin in each graph … (B-617)"
+
+Repro: `nooklet serve` with two graphs, then hit `/g/<second>/…`. The server log shows
+`[plugins] plugin "word-count" failed to activate: op "page.wordcount" is already registered`. The
+op registry looks process-global across graph contexts.
+
+Fixed: each graph gets its own op registry for plugin ops; mermaid and daily-summary checked too.
+
+### B-610 · The word-count plugin returns 500 for a page just deleted
+**Status:** fixed (2026-10-03, `69e9e99`) · **Severity:** low · **Test:** `packages/server/src/plugins/built-ins.test.ts`
+"the status bar's rpc answers null, not a 500, for a page just deleted (B-610)"; e2e `plugins.spec.ts`
+"deleting the open page asks word count about it without a 500 (B-610)"
+
+**Severity:** low; it only adds console noise.
+**Repro:** delete a page from Page actions. The server log shows
+`OpError: no page named "…"` at `plugins/word-count … countPage`, and the browser logs a 500.
+
+### B-608 · Mod+Enter ignores the owner's LATER/NOW workflow: a LATER task cycles to no marker
+**Status:** fixed (2026-10-03, `69e9e99`) · **Severity:** medium · **Test:** `packages/core/src/task-workflow.test.ts`,
+`apps/web/src/editor/task.test.ts` "under the `now` workflow (B-608)", `commands/registrations/index.test.ts`
+"follow the graph's task workflow (B-608)", `SlashMenu.test.tsx` "LATER first under `now`",
+`importer/logseq.test.ts` "task workflow (B-608)", `http/host-guard.test.ts` "task workflow", e2e
+`e2e/tests/task-workflow.spec.ts`
+
+**Severity:** medium. The owner's graph has `:preferred-workflow :now`, with 72 LATER, 5 NOW and
+0 TODO blocks.
+**Repro:** on `- LATER owner style`, press Mod+Enter three times. Markers go `null`, then `TODO`,
+then `DOING` (`task-logic.ts#nextCycleMarker`). Logseq goes LATER→NOW→DONE, and a plain block
+starts at LATER. Probe: `tasks.mjs`.
+
+**Fixed 2026-10-03.** Logseq ref: 0.10.9 `util/marker.cljs#cycle-marker-state`: the next marker
+depends on the current one (TODO→DOING→DONE, LATER→NOW→DONE); the workflow picks the start marker.
+Per-graph setting in Settings → Tasks (per device, as settings don't sync yet); the importer reads
+`:preferred-workflow`; with no setting the server infers from markers. Also changed to match Logseq:
+WAITING/CANCELED + Mod+Enter → start marker; un-tick DONE → start marker; a repeating LATER/NOW task
+reopens as LATER. `done::` on DONE→none left as is. **Coordinator follow-up:** an empty graph (or a
+tie) now infers `now`, Logseq's own default and the owner's workflow (the agent had kept `todo`).
 
 ### B-606 · Clicking right of a block's text, or pressing End, puts the caret inside a trailing `[[link]]`
 **Status:** fixed (`15a203c`) · **Severity:** high · **Found:** 2026-10-03, core readiness sweep ·

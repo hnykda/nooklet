@@ -35,7 +35,7 @@ runs the full e2e suite on the merged tree.
 | b491 | B-491, **merged** (`f3a0d78`) | 6315 |
 | pairing | D3 `--no-loopback-token`, B-602, B-604, B-603 `nooklet://connect` link, + B-607 | 6316-6319 |
 | b606 | B-606, **merged** (`15a203c`) | 6320-6324 |
-| tasks-workflow | B-608 LATER/NOW workflow like Logseq, B-610 word-count 500 | 6325-6329 |
+| tasks-workflow | B-608, B-610, B-617, **merged** (`69e9e99`, `de59bf8`); empty graph defaults to `now` | 6325-6329 |
 | b609 | B-609 fast burst on a new journal day loses Tab | 6330-6334 |
 | local-graphs | B-611 local→server leak, B-612 local graph lost, B-619 (all high/test items 8-9) | 6335-6339 |
 | connection-states | B-613 revoked token, B-614 indicator, B-615 insecure context page, B-618 labels | 6340-6344 |
