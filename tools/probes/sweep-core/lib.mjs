@@ -3,7 +3,7 @@
 // a copy of the owner's Logseq graph imported. Never point this at port 6100.
 import { chromium } from "@playwright/test";
 
-// SWEEP_BASE points the probes at another scratch server (agents get their own port range).
+// SWEEP_BASE points the probes at another server (default: the sweep's own 6310).
 export const BASE = process.env.SWEEP_BASE ?? "http://127.0.0.1:6310/g/default";
 export const OUT = process.env.OUT ?? ".";
 export const MOD = process.platform === "darwin" ? "Meta" : "Control";
