@@ -47,6 +47,11 @@ If cut off: `git worktree list` shows the branches; read each progress file.
 - An agent opened the iOS Simulator window in front of the owner, who closed it. Agents must use
   the Simulator headless only: `xcrun simctl boot <udid>`, never `open -a Simulator`.
 - Two agents' servers collided on port 6315. Give each agent its own port range.
+- Two agents shared one booted Simulator device. The app on it was still connected to the pairing
+  agent's scratch server, so another agent's input wrote a page "something" there (not the owner).
+  Each agent must `simctl create` its own device, address it by UDID (never `booted`, never
+  `shutdown all`), and delete it when done. The pairing agent's final checks ran on a private
+  device after the incident, so they stand.
 
 ### State of `main`
 - `pnpm -r typecheck` clean. Unit: core 423, plugin-api 17, server 780, web 1,383, all green after
