@@ -3,7 +3,7 @@
 Branch: `worktree-agent-a81e27c54a58c349a`. It had been created from an old commit (`41666ee`, no
 SyncIndicator, no B-541), so it was fast-forwarded to main `fd779f4` before any work.
 
-## Status: done (one commit on the branch, not merged into main)
+## Status: done — commit `8578821` on the branch, not merged into main
 
 ## What was built
 - `apps/web/src/shell/MoreMenu.tsx` + `more-menu.css`: an `.app-icon-button` with lucide's
