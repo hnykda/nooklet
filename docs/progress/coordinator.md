@@ -27,7 +27,7 @@ runs the full e2e suite on the merged tree.
 | mermaid-lazy | mermaid lazy + single sidecar copy, **merged** (`ce99b82`, `05ac71e`) | 6306 |
 | real-device-test | runbook + CORS, bare-address, proxy-token fixes, deploy/ drafts, **merged** (`ee8c54c`) | 6307 |
 | refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
-| empty-journal | B-595, an editable empty journal day like Logseq | 6309 |
+| empty-journal | B-595, **merged** (`6ddfc77`); B-605 deferred | 6309 |
 | sweep-core | readiness sweep: daily-use loop on a copy of the real graph → `docs/review/2026-10-03-sweep-core.md` | 6310 |
 | sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |

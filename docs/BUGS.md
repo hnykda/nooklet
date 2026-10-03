@@ -870,14 +870,6 @@ swapped for the real outliner once the snapshot lands" race B-335 fixed in `open
 `.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
 `openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
 
-### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
-**Status:** open (decided 2026-10-03: mimic Logseq, an editable empty journal) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
-**Test:** none yet
-
-Opening a not-yet-created journal day's page (today's heading before today has a block, or any date
-link) shows the generic "This page doesn't exist yet / Create" view instead of the journal stream's
-draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
-
 ### B-597 · Inside a `[[link]]` naming another page's alias, the popup offers "New page" for the alias name, and Enter creates a page with that name
 **Status:** open, not investigated · **Severity:** low · **Found:** 2026-10-03, keys-small (B-592)
 · **Test:** —
@@ -906,7 +898,39 @@ equals another page's alias (link resolution afterwards) was not checked.
 
 Not reachable from a phone; printing the machine's LAN IPs would save a lookup.
 
+### B-605 · An ordinary page nothing references still opens as "doesn't exist yet / Create"; Logseq opens every missing page as an editable empty page
+**Status:** deferred (coordinator decision 2026-10-03: keep as is for now) · **Severity:** low ·
+**Found:** 2026-10-03, while doing B-595 · **Test:** none
+
+Logseq 0.10.9 (`components/page.cljs`, `page` and `dummy-block`) gives any missing page a
+"Click here to edit..." row. B-595 did this for journal days only. For ordinary names the gap is
+small since ADR 024: a referenced name already exists and opens editable. The missing view is
+also the signal for a deleted page, an unsynced name, and the two-device race (ADR 024 §7). Doing
+it means generalising `VirtualJournalDay` into a page draft that writes nothing until typed.
+Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
+parity for names nothing links to; revisit if it bites in daily use.
+
 ## Fixed
+
+### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
+**Status:** fixed (2026-10-03, `6ddfc77`) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
+**Test:** `apps/web/src/views/PageView.test.tsx` (4 tests; 3 failed before the fix);
+`e2e/tests/empty-journal-page.spec.ts` (2 tests: date URL, and today's heading in a fresh graph,
+both checking that viewing creates no page and typing creates the blocks on the server).
+
+Opening a not-yet-created journal day's page (today's heading before today has a block, or any date
+link) shows the generic "This page doesn't exist yet / Create" view instead of the journal stream's
+draft input (`JournalDayOutline`'s virtual day). Logseq shows an editable empty journal there.
+
+**Fixed 2026-10-03**: `PageView` shows a whole-day date route with no page as the journal stream's
+draft (`VirtualJournalDay`). Typing creates the day (page, template, blocks) in one batch, and
+viewing writes nothing. After the first write the draft stays mounted (B-411). Logseq does the same
+(`components/page.cljs` 0.10.9, `dummy-block`), although Logseq also creates the page entity on
+view, which nooklet does not (that would be B-579's junk). Found along the way and fixed in the same
+change: as a bare fragment, the page header growing after the first write *moved* the draft's DOM
+node and blurred the editor (caret lost right after Enter); the section is now wrapped in one
+element. Ordinary missing pages keep "doesn't exist yet / Create" — see B-605. The three
+`ref-pages.spec.ts` failures the agent saw were B-585 (its branch predated that fix's merge).
 
 ### B-601 · The container image failed on first run: the official Node Linux binary needs `libatomic1`
 **Status:** fixed · **Severity:** low (deploy only) · **Found:** 2026-10-03, real-device-test agent ·
