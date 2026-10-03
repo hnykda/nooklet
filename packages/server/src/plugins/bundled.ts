@@ -30,6 +30,17 @@ export interface PackagedPlugin {
   client: boolean;
 }
 
+export interface PackageOptions {
+  /**
+   * Bare specifiers a client half imports that the served web build already contains, mapped to
+   * the URL of that copy (`{ mermaid: "/static/mermaid.core-<hash>.js" }`). Left as imports of
+   * that URL instead of inlined. The desktop sidecar uses it so the mermaid plugin's client half
+   * is a few KB instead of a second ~12 MB mermaid beside the web build's own (ADR 023). Only
+   * valid when the packaged plugins are served by the same origin as that web build.
+   */
+  clientImportUrls?: Readonly<Record<string, string>>;
+}
+
 /**
  * Bundles every plugin under `srcRoot` (`<srcRoot>/<name>/package.json#nooklet`) into
  * `<outRoot>/<name>/`: `server.mjs` and/or `client.js`, and a `package.json` whose manifest points
@@ -39,6 +50,7 @@ export interface PackagedPlugin {
 export async function packageBundledPlugins(
   srcRoot: string,
   outRoot: string,
+  options: PackageOptions = {},
 ): Promise<PackagedPlugin[]> {
   const { found, errors } = discoverPlugins([srcRoot]);
   if (errors.length > 0) {
@@ -57,7 +69,7 @@ export async function packageBundledPlugins(
       manifest.server = "./server.mjs";
     }
     if (d.clientEntry) {
-      const { file } = await bundleClientEntry(d.clientEntry, d.dir);
+      const { file } = await bundleClientEntry(d.clientEntry, d.dir, options.clientImportUrls);
       copyFileSync(file, join(out, "client.js"));
       manifest.client = "./client.js";
     }

@@ -86,6 +86,19 @@ Two more facts shaped the fix:
   research/14 §3's 732 KiB. `globIgnores` for these chunks would give that back at the cost of the
   first diagram needing the network. Not done here: `vite.config.ts` is shared and it is the owner's
   trade.
+  **Update 2026-10-03 (owner agreed, `docs/progress/mermaid-lazy.md`):** done. The chunks only
+  mermaid's lazy import reaches are found in the module graph (`apps/web/src/sw/
+  lazy-only-chunks.ts`) and dropped from the precache; a function-matcher runtime rule caches
+  `/static/*` on first load, so a diagram seen once renders offline
+  (`e2e/tests/mermaid-lazy-cache.spec.ts`). Precache 222 → 108 entries, 8,026 → 3,006 KiB. The
+  first diagram after installing — or after an update, since chunk hashes change — needs the
+  network.
+- **Update 2026-10-03:** the desktop sidecar's packaged mermaid client half (served at
+  `/plugins/mermaid/client.*.js`, requested by nothing) no longer inlines a second mermaid:
+  `build-sidecar.mjs` passes `clientImportUrls` so it imports the web build's own
+  `/static/mermaid.core-*.js`. `plugins/mermaid/client.js` 12,032,014 → 2,452 bytes; `nooklet.app`
+  186.6 → 174.6 MB (`tools/probes/sidecar-mermaid.mjs`). `nooklet serve` from the repo is
+  unchanged: it still inlines mermaid when that URL is first requested.
 - The lockfile gains mermaid's dependency tree (+116 packages).
 - Enabling or disabling a built-in plugin with `nooklet plugin disable` affects its server half
   only; the web app activates every compiled-in client half.

@@ -1,6 +1,36 @@
+import type { Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
+import { lazyOnlyChunks } from "./src/sw/lazy-only-chunks.js";
+
+/**
+ * mermaid's chunks, filled in by `mermaidChunks()` when Rollup has the bundle and read by the
+ * workbox `manifestTransforms` below, which runs later (vite-plugin-pwa generates the service
+ * worker after the bundle is written).
+ */
+const notPrecached = new Set<string>();
+
+/** Finds the chunks only mermaid's lazy import reaches (`src/sw/lazy-only-chunks.ts`). Fails
+ * the build when it finds no mermaid at all: a rename upstream would otherwise silently put ~6 MB
+ * back into every install. */
+function mermaidChunks(): Plugin {
+  return {
+    name: "nooklet:mermaid-chunks",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      notPrecached.clear();
+      const chunks = Object.values(bundle).flatMap((o) => (o.type === "chunk" ? [o] : []));
+      const { roots, lazyOnly } = lazyOnlyChunks(chunks, (c) =>
+        /[\\/]node_modules[\\/]mermaid[\\/]/.test(c.facadeModuleId ?? ""),
+      );
+      if (roots.length === 0) {
+        this.error("no mermaid dynamic-entry chunk in the bundle — is it still imported lazily?");
+      }
+      for (const name of lazyOnly) notPrecached.add(name);
+    },
+  };
+}
 
 // sqlite-wasm ships its own worker/wasm loading dance and must never be pre-bundled by esbuild
 // (research/08 §1.2 / sqlite.org/wasm persistence.md); `worker.format: 'es'` is required for the
@@ -10,6 +40,7 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify("0.1.0") },
   plugins: [
     solid(),
+    mermaidChunks(),
     VitePWA({
       // generateSW (not injectManifest): this milestone needs offline precaching of the app
       // shell only, nothing custom (no push/share-target handler yet — that's later work, and it
@@ -32,6 +63,15 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,svg,woff2,wasm}"],
+        // mermaid is NOT precached: ~6 MB every install downloaded for a feature most pages never
+        // use (ADR 023 §Consequences). Its chunks load on the first diagram, and the `/static/`
+        // runtime rule below keeps them for offline use from then on.
+        manifestTransforms: [
+          async (entries) => ({
+            manifest: entries.filter((e) => !notPrecached.has(e.url)),
+            warnings: [],
+          }),
+        ],
         maximumFileSizeToCacheInBytes: 6_000_000,
         // `(\/g\/[^/]+)?` (ADR 025): a graph is served at `/g/<slug>/...`, not bare root, so an
         // API/sync/asset request carries that prefix too — matching only the bare form left these
@@ -40,6 +80,20 @@ export default defineConfig({
         // NetworkOnly/CacheFirst rules below.
         navigateFallbackDenylist: [/^(\/g\/[^/]+)?\/(api|sync)\//],
         runtimeCaching: [
+          // A FUNCTION, not a RegExp: workbox tests a RegExp route against the full `url.href`,
+          // so the `^\/`-anchored patterns below never match anything (B-401). Hashed build output
+          // the precache does not hold — mermaid's chunks — is kept after its first load, so a
+          // diagram seen once still renders offline. Precached files never reach this route (the
+          // precache route is registered first). Hashed names are immutable, hence CacheFirst;
+          // the expiry only bounds what superseded builds leave behind.
+          {
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/static/"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "lazy-chunks",
+              expiration: { maxEntries: 300, maxAgeSeconds: 90 * 86400 },
+            },
+          },
           { urlPattern: /^(\/g\/[^/]+)?\/(api|sync)\//, handler: "NetworkOnly" },
           {
             urlPattern: /^(\/g\/[^/]+)?\/assets\//,

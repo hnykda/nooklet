@@ -202,10 +202,28 @@ const { packageBundledPlugins, packageHostModules } = await tsImport(
   pathToFileURL(join(repoRoot, "packages", "server", "src", "plugins", "bundled.ts")).href,
   import.meta.url,
 );
-const packaged = await packageBundledPlugins(join(repoRoot, "plugins"), join(outDir, "plugins"));
+// mermaid is NOT bundled into the mermaid plugin's client half: the web build in `web/` already
+// has it (the app compiles that client half in, ADR 023), and inlining it here shipped a second
+// ~12 MB copy that nothing ever loads — the app requests no `/plugins/<id>/client.*.js`. The
+// served half imports the web build's own `mermaid.core` chunk by URL instead, which works because
+// the sidecar serves both from one origin.
+const mermaidCore = readdirSync(join(outDir, "web", "static")).filter((n) =>
+  /^mermaid\.core-[\w-]+\.js$/.test(n),
+);
+if (mermaidCore.length !== 1) {
+  throw new Error(`expected one mermaid.core chunk in the web build, found ${mermaidCore.length}`);
+}
+const packaged = await packageBundledPlugins(join(repoRoot, "plugins"), join(outDir, "plugins"), {
+  clientImportUrls: { mermaid: `/static/${mermaidCore[0]}` },
+});
 for (const p of packaged) {
   const halves = [p.server && "server", p.client && "client"].filter(Boolean).join(" + ");
   console.log(`${`plugins/${p.id}`.padEnd(22)}(${halves})`);
+}
+// The guard against a second mermaid creeping back (a renamed import, a new specifier).
+const mermaidClient = join(outDir, "plugins", "mermaid", "client.js");
+if (existsSync(mermaidClient) && statSync(mermaidClient).size > 512 * 1024) {
+  throw new Error(`plugins/mermaid/client.js is ${mib(mermaidClient)} — mermaid got inlined again`);
 }
 if (!packaged.some((p) => p.id === "word-count")) {
   throw new Error("no word-count plugin was packaged — the built-in plugins are missing");

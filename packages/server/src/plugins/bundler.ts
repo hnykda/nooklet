@@ -124,6 +124,9 @@ export async function bundleServerEntry(
 export async function bundleClientEntry(
   entryFile: string,
   pluginDir: string,
+  /** Bare specifiers to leave as imports of a URL the page can already load, instead of inlining
+   * them — see `PackageOptions.clientImportUrls` in `./bundled.ts`. */
+  importUrls: Readonly<Record<string, string>> = {},
 ): Promise<BundleResult> {
   const outDir = join(pluginDir, ".nooklet-build");
   const result = await esbuild.build({
@@ -133,6 +136,7 @@ export async function bundleClientEntry(
     platform: "browser",
     format: "esm",
     target: "es2022",
+    plugins: Object.keys(importUrls).length > 0 ? [urlImports(importUrls)] : [],
     alias: hostAliasMap(),
     write: false,
     logLevel: "silent",
@@ -149,6 +153,19 @@ export async function bundleClientEntry(
     renameSync(partial, file);
   }
   return { file, hash, warnings: result.warnings };
+}
+
+/** Resolves each exact specifier in `map` to its URL and marks it external, so `import("mermaid")`
+ * is emitted as `import("/static/mermaid.core-<hash>.js")` rather than bundled. */
+function urlImports(map: Readonly<Record<string, string>>): esbuild.Plugin {
+  const escaped = Object.keys(map).map((s) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&"));
+  const filter = new RegExp(`^(?:${escaped.join("|")})$`);
+  return {
+    name: "nooklet-url-imports",
+    setup(build) {
+      build.onResolve({ filter }, (args) => ({ path: map[args.path] as string, external: true }));
+    },
+  };
 }
 
 async function hashFile(path: string): Promise<string> {
