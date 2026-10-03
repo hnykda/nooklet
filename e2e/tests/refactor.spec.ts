@@ -71,6 +71,25 @@ test("Turn into page: the first line names a page, the children move there, the 
   await expect.poll(() => rowTexts(page)).toEqual(["agenda", "budget", "attendees"]);
 });
 
+test("a failed Turn into page says so in the page, not in window.alert (B-491)", async ({
+  page,
+}) => {
+  // `window.alert` shows nothing in the desktop app's webview; Chromium would show it, so nothing
+  // here listens for a `dialog` event — Playwright dismisses a native one and the test fails on the
+  // missing `alertdialog`.
+  const outliner = await openEditing(page, "Refactor Turn Fails", "- Doomed\n  - child");
+  await page.route("**/api/v1/block.to_page", (route) => route.abort("failed"));
+  await openMenuOn(page, outliner, 0);
+  await runItem(page, "Turn into page");
+
+  const notice = page.getByRole("alertdialog");
+  await expect(notice.getByRole("heading")).toHaveText("Turn into page failed");
+  await expect(notice.getByRole("button")).toHaveText(["OK"]);
+  await notice.getByRole("button", { name: "OK" }).click();
+  await expect(notice).toHaveCount(0);
+  expect(await rowTexts(page, outliner)).toEqual(["Doomed", "child"]);
+});
+
 test("Move to page… asks for a page and moves the subtree to its end", async ({ page }) => {
   await seedPage(page, "Refactor Move Dst", "- already here");
   const outliner = await openEditing(page, "Refactor Move Src", "- keep\n- take me\n  - and me");

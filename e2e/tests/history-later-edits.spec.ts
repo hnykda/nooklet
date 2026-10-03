@@ -36,12 +36,12 @@ test("Restore this version on one page keeps a later edit to a block on another 
   await page.goto(historyPath("History Later B"));
   const batches = page.locator(".history-batch");
   await expect(batches).toHaveCount(3);
-  let confirmText = "";
-  page.once("dialog", (d) => {
-    confirmText = d.message();
-    void d.accept();
-  });
   await batches.nth(2).locator(".history-restore").click();
+  // The in-page confirm (B-491), not `window.confirm`.
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toBeVisible();
+  const confirmText = (await dialog.textContent()) ?? "";
+  await dialog.getByRole("button", { name: "Restore" }).click();
   await expect(page.locator(".history-status")).toContainText("Restored: 2 changes undone.");
 
   expect(await contents(page, "History Later B")).toEqual([`other ${tag}`]);
@@ -61,9 +61,9 @@ test("Undo of an old batch keeps a later edit to the same block and says so", as
   await page.goto(historyPath("History Later Undo"));
   const batches = page.locator(".history-batch");
   await expect(batches).toHaveCount(3);
-  page.once("dialog", (d) => void d.accept());
   // The middle batch ("first draft" -> "second draft"): its block was edited again afterwards.
   await batches.nth(1).locator(".history-undo").click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Undo" }).click();
   await expect(page.locator(".history-status")).toContainText("changed again later");
   expect(await contents(page, "History Later Undo")).toEqual(["third draft, keep me"]);
 });

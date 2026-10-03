@@ -14,6 +14,7 @@ import {
 } from "@nooklet/core";
 import { A, useNavigate } from "@solidjs/router";
 import { type Accessor, createEffect, createSignal, type JSX, Show } from "solid-js";
+import { announce } from "../app/page-actions.js";
 import { useAgendaTasks } from "../data/agenda.js";
 import { describeError } from "../data/api-client.js";
 import { currentDay } from "../data/day-clock.js";
@@ -131,7 +132,9 @@ export function PageView(props: PageViewProps): JSX.Element {
       // put the real name back rather than leave the input claiming a rename that did not happen.
       setRenaming(false);
       setTitleDraft(p.name);
-      window.alert(`Rename failed: ${describeError(err)}`);
+      // On the title row, where the rename was typed — not `window.alert`, which the desktop
+      // app's webview never shows (B-491).
+      announce(`Rename failed: ${describeError(err)}`, true);
     }
   }
 

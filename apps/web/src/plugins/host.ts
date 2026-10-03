@@ -10,8 +10,8 @@
  * implemented: `registerSlashCommand`, `registerCommand`, `registerCodeBlockRenderer`,
  * `registerStatusItem`, `on("page.opened" | "page.changed")`, `rpc.call`, `editor.currentPage`,
  * `editor.currentBlock`, `editor.insertText`, `editor.insertBlockAfter`, `editor.focusBlock`,
- * `editor.openPage`, `editor.navigate`, `log`, `subscriptions`, `host`,
- * `plugin`. Not yet: `data`, panels, menus, toolbar, keybindings, macros, theme, dialogs,
+ * `editor.openPage`, `editor.navigate`, `confirm`, `log`, `subscriptions`, `host`,
+ * `plugin`. Not yet: `data`, panels, menus, toolbar, keybindings, macros, theme, `prompt`, `modal`, `notify`,
  * settings, and the server-shaped change events (`block.updated` & co. — the replica's change bus
  * knows which pages a write touched, not which rows, so any payload would be invented).
  *
@@ -74,6 +74,8 @@ export interface ClientPluginHostDeps {
   /** `editor.focusBlock`: puts the caret in `blockId` once a tree shows it
    * (`editor/focus-request.ts#requestBlockFocus`). */
   focusBlock: (blockId: string, caret: { at: "start" | "end" } | { offset: number }) => void;
+  /** `ctx.confirm`: asks in the page and resolves `true` only for the confirm button. */
+  confirm: (message: string) => Promise<boolean>;
   fetch?: typeof fetch;
   logger?: Pick<Console, "info" | "warn" | "error" | "debug">;
 }
@@ -283,7 +285,11 @@ export function createClientPluginHost(deps: ClientPluginHostDeps): ClientPlugin
       editor,
 
       notify: () => unsupported("notify()"),
-      confirm: async () => unsupported("confirm()"),
+      // The in-page dialog (`app/confirm-dialog.tsx`), never `window.confirm`: the desktop app's
+      // webview answers that with Cancel unseen (B-491).
+      confirm: (message) => deps.confirm(message),
+      // Still unsupported: there is no in-page text-input dialog to hand it to, and
+      // `window.prompt` is swallowed by the desktop webview exactly like `confirm` (B-491).
       prompt: async () => unsupported("prompt()"),
       modal: () => unsupported("modal()"),
 

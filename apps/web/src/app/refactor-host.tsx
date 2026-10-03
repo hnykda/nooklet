@@ -26,6 +26,7 @@ import { forceSync } from "../db/client.js";
 import { flushTyping } from "../editor/outline-registry.js";
 import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { fuzzyFindPages } from "../views/pageSearch.js";
+import { noticeDialog } from "./confirm-dialog.js";
 
 /** `/page/Projects/Aurora` (optionally `/g/<slug>/page/Projects/Aurora`, ADR 025 — every caller
  * here passes the RAW `window.location.pathname`) -> `Projects/Aurora`; anything else -> `null`. */
@@ -195,7 +196,12 @@ export function createRefactorHost(deps: {
       await forceSync();
     } catch (err) {
       console.error(`${label} failed`, err);
-      window.alert(`${label} failed: ${describeError(err)}`);
+      // An in-page notice, not `window.alert`: the desktop app's webview shows nothing for that
+      // (B-491). Not the page title row's notice either — "Turn into page" and "Move to page" also
+      // run from the journals stream, which has no title row. Not awaited, so a palette waiting on
+      // this command closes now; closed first, so the notice is not stacked over it.
+      deps.closePalette?.();
+      void noticeDialog(`${label} failed`, [describeError(err)]);
     }
   }
   return {
