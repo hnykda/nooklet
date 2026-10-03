@@ -164,9 +164,7 @@ test("a match can be edited while the filter stays, and typing it out of matchin
   expect(
     await input(page).evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]),
   ).toEqual([0, 4]);
-  await expect
-    .poll(async () => (await readBlocks(page, name))[0]?.content)
-    .toBe("changed");
+  await expect.poll(async () => (await readBlocks(page, name))[0]?.content).toBe("changed");
   // The edited block no longer matches and is no longer being edited, so it drops out.
   await expect.poll(() => rowTexts(page, outliner)).toEqual(["keep too"]);
 });

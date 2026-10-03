@@ -107,8 +107,11 @@ test("Enter on New page inside a link to a page that does not exist keeps the wh
   // The row names the whole link, not the fragment before the caret — B-382's fix, visible.
   const create = popup.locator(".cmd-row", { hasText: `New page "${unmade}"` });
   await expect(create).toHaveCount(1);
-  // Ranking may put a fuzzy page match (another spec's "Walkin …" page) first; walk to the row.
-  for (let i = 0; i < 10; i++) {
+  // Ranking may put fuzzy page matches (other "Walkin …" pages, earlier runs' "Walkin Unmade …")
+  // first; walk to the row. Bounded by the rows on offer, not a fixed 10: each run adds two
+  // rows above it, and the sixth run under --repeat-each had eleven.
+  const rows = await popup.locator(".cmd-row").count();
+  for (let i = 0; i <= rows; i++) {
     if (await create.evaluate((el) => el.classList.contains("cmd-row--active"))) break;
     await page.keyboard.press("ArrowDown");
   }
@@ -126,7 +129,7 @@ test("Enter on New page inside a link to a page that does not exist keeps the wh
 function runTag(): string {
   const info = test.info();
   const n = info.repeatEachIndex * 4 + info.retry;
-  return String.fromCharCode(97 + Math.floor(n / 26) % 26) + String.fromCharCode(97 + (n % 26));
+  return String.fromCharCode(97 + (Math.floor(n / 26) % 26)) + String.fromCharCode(97 + (n % 26));
 }
 
 async function pageNames(page: Page): Promise<string[]> {
