@@ -67,6 +67,12 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   Its token pre-fills the token field only if the link names the same graph (bare origin and
   `/g/default` count as the same). Tests: `ConnectView.test.tsx` "B-613 × B-603" (2 cases).
 - `connect-graph.test.ts`: both import sets and both test blocks kept.
+- After the merge (b96e6e2): `pnpm -r typecheck` exit 0; `pnpm -r test` core 473, plugin-api 17,
+  server 781, web 1526, desktop 4, all pass; biome clean. e2e chromium port 6340:
+  sync-connection-states, insecure-context, local-graphs, graph-switcher, remote-device (holds the
+  pairing/connect cases — there is no separate pairing-link or connect spec on main),
+  connectivity, sync-indicator, journal-draft-burst, desktop-launcher — 30 passed, 0 failed
+  (connectivity "search returns" passes now, too). Full suite not re-run after the merge.
 
 ## Next steps
 1. Nothing left in scope. Fold the BUGS.md entries below.
