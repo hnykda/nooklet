@@ -837,6 +837,20 @@ may be a real takeover race or a test timing issue.
 One run's client build breaks the other's server (`web_client_missing`); separate ports do not
 isolate them. Use separate worktrees for parallel e2e runs.
 
+### B-638 · `nooklet serve --data <dir that does not exist yet>` dies at once: `ENOENT … root.token`
+**Status:** open · **Severity:** high (first start of any new server fails) · **Found:** 2026-10-03, owner, step 1 of the real-device test · **Test:** none yet
+
+The owner ran the runbook's first command on a fresh machine path:
+
+```
+$ pnpm nooklet serve --data ~/nooklet-test --port 6200 --host 0.0.0.0 --allow-host 192.168.1.5
+nooklet: ENOENT: no such file or directory, open '~/nooklet-test/root.token'
+```
+
+`ensureRootToken` (`auth/root-token.ts`) writes `<dataDir>/root.token` without creating `dataDir`;
+since ADR 025 graphs are mounted lazily, so nothing has created the directory by then. Every test,
+probe and agent run used an existing `mkdtemp` directory, so none caught it.
+
 ## Fixed
 
 ### B-634 · A block shelf made on a tab's first load was gone after a reload
