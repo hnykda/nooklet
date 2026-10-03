@@ -30,6 +30,13 @@
  * accumulated log) is what buys convergence. See `sync.property.test.ts` for a worked
  * demonstration of exactly this "concurrent cycle-creating move" case converging deterministically
  * under this rule, and `apply-ops.test.ts`'s cycle-rejection tests for the single-device case.
+ *
+ * With a home server there IS an arbiter, and its `seq` order is the order of record (ADR 026,
+ * sql-schema.md rule 26): a batch read out of the server's op log — a pull, a push response's
+ * corrections, `verify`'s replay — is applied with `{ order: "seq" }`, as given. HLC order is not
+ * causal order across devices: an op minted before its device heard of an older-seq op has the
+ * smaller HLC, and re-sorting lets it meet state the server never showed it (B-587: a
+ * `page.create` applied before the `page.delete` that freed its name, and refused for it).
  */
 
 import { compareHlc, parseHlc } from "../hlc.js";
@@ -38,7 +45,7 @@ import { TASK_MARKERS } from "../model.js";
 import type { BlockPlace, Op, OpKind, OpPayload } from "../ops.js";
 import { normalizePageName } from "../page-name.js";
 import type { SqlDriver } from "./driver.js";
-import type { AppliedOpResult, ApplyOpsResult, ApplyReason } from "./types.js";
+import type { AppliedOpResult, ApplyOpsOptions, ApplyOpsResult, ApplyReason } from "./types.js";
 
 const PRIORITIES = new Set(["A", "B", "C"]);
 /** Bag keys whose columns `block.create`'s INSERT stamps with the op's own HLC (B-89). */
@@ -56,12 +63,20 @@ interface OpOutcome {
 
 /**
  * Apply a batch of ops to `driver`'s `page`/`block`/`block_prop`/`page_prop` state, HLC-ordered
- * (see file header), each op's effect recorded into `op`. Idempotent: an op whose `id` is already
- * in the `op` table is skipped (its previously recorded status is reported back unchanged) rather
- * than reprocessed, matching the sync protocol's "idempotent, resumable" requirement (ADR 003).
+ * unless `options.order` is `"seq"` (see file header), each op's effect recorded into `op`.
+ * Idempotent: an op whose `id` is already in the `op` table is skipped (its previously recorded
+ * status is reported back unchanged) rather than reprocessed, matching the sync protocol's
+ * "idempotent, resumable" requirement (ADR 003).
  */
-export function applyOps(driver: SqlDriver, ops: readonly Op[]): ApplyOpsResult {
-  const sorted = [...ops].sort((a, b) => compareHlc(a.hlc, b.hlc) || compareHlc(a.id, b.id));
+export function applyOps(
+  driver: SqlDriver,
+  ops: readonly Op[],
+  options: ApplyOpsOptions = {},
+): ApplyOpsResult {
+  const sorted =
+    options.order === "seq"
+      ? ops
+      : [...ops].sort((a, b) => compareHlc(a.hlc, b.hlc) || compareHlc(a.id, b.id));
   const results: AppliedOpResult[] = [];
 
   driver.transaction(() => {
@@ -118,14 +133,18 @@ export function applyOps(driver: SqlDriver, ops: readonly Op[]): ApplyOpsResult 
 }
 
 /**
- * Wipe `page`/`block`/`block_prop`/`page_prop`/`op` and replay `ops` from empty, HLC-ordered
- * (rule 26, adapted: the spec replays in server `seq` order, but a plain `Op[]` — as opposed to
- * `LoggedOp[]` — carries no `seq`; HLC order is this package's substitute canonical order, see
- * the file header). Must reproduce state byte-identical to a device that received the same op
+ * Wipe `page`/`block`/`block_prop`/`page_prop`/`op` and replay `ops` from empty. Rule 26 replays
+ * in server `seq` order: pass a server log in that order with `{ order: "seq" }` (ADR 026). With
+ * the default, HLC order stands in for it — the canonical order when there is no server (see the
+ * file header) — and must reproduce state byte-identical to a device that received the same op
  * set through any sequence of `applyOps` calls that eventually merges everything via HLC-ordered
  * replay (see `sync.property.test.ts`).
  */
-export function rebuild(driver: SqlDriver, ops: readonly Op[]): ApplyOpsResult {
+export function rebuild(
+  driver: SqlDriver,
+  ops: readonly Op[],
+  options: ApplyOpsOptions = {},
+): ApplyOpsResult {
   driver.transaction(() => {
     driver.run("DELETE FROM block_prop");
     driver.run("DELETE FROM page_prop");
@@ -133,7 +152,7 @@ export function rebuild(driver: SqlDriver, ops: readonly Op[]): ApplyOpsResult {
     driver.run("DELETE FROM page");
     driver.run("DELETE FROM op");
   });
-  return applyOps(driver, ops);
+  return applyOps(driver, ops, options);
 }
 
 // ---------------------------------------------------------------------------------------------

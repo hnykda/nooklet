@@ -274,7 +274,9 @@ export class SyncClient {
       }
       for (const a of res.accepted) this.driver.run("DELETE FROM pending_op WHERE id = ?", [a.id]);
       for (const r of res.rejected) this.driver.run("DELETE FROM pending_op WHERE id = ?", [r.id]);
-      if (res.corrections.length > 0) coreApplyOps(this.driver, res.corrections);
+      // The server's own order (ADR 026), like a pull: corrections are logged in the order the
+      // server applied them.
+      if (res.corrections.length > 0) coreApplyOps(this.driver, res.corrections, { order: "seq" });
     });
     this.persistHlc();
     this.refreshPendingCount();
@@ -331,7 +333,13 @@ export class SyncClient {
             // Merge ops go in the SAME batch as the pulled ops they resolve: they carry newer
             // HLCs, so applying them together means the merged text wins deterministically here
             // and, once pushed, on every other device too.
-            coreApplyOps(this.driver, [...res.ops, ...extraOps]);
+            //
+            // In the server's `seq` order, not re-sorted by HLC (ADR 026, B-587): a page.create
+            // minted before its device heard of the delete that freed its name has the smaller
+            // HLC, and HLC order applied it while the old page still held the name — refused here,
+            // accepted on the server, so this replica lost the page and everything on it. The
+            // merge ops are newest and go last either way.
+            coreApplyOps(this.driver, [...res.ops, ...extraOps], { order: "seq" });
             for (const op of res.ops) {
               this.driver.run("DELETE FROM pending_op WHERE id = ?", [op.id]);
             }

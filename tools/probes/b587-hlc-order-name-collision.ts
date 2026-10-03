@@ -14,6 +14,11 @@
  *
  * Run from packages/server:  pnpm exec tsx ../../tools/probes/b587-hlc-order-name-collision.ts
  * Output on 7784d54: live "Ghost Name" = A's page; replay: A's create "rejected", name not live.
+ *
+ * Follow-up (2026-10-03, ADR 026): the third-device question is settled — a replica pulling those
+ * ops in one batch DID diverge the same way (`apps/web/src/sync/e2e.test.ts`, B-587 test). Fixed by
+ * applying server-log batches with `applyOps(…, { order: "seq" })`; the last lines below show it.
+ * The HLC-sorted replay above still behaves as recorded — that is the default order, on purpose.
  */
 import { applyOps, initSchema, type Op, type OpPayload } from "../../packages/core/src/index.js";
 import {
@@ -70,3 +75,8 @@ const res = applyOps(replay, log);
 const mine = res.results.find((r) => r.entity === "mineA");
 console.log(`replay (one batch, HLC-sorted): A's create ${mine?.status} (${mine?.reason ?? ""})`);
 console.log("replay: ghost name ->", livePage(replay)?.id ?? "none");
+
+// ADR 026: the same one batch, applied in the server's seq order.
+const seqReplay = fresh();
+applyOps(seqReplay, log, { order: "seq" });
+console.log("replay (one batch, seq order): ghost name ->", livePage(seqReplay)?.id ?? "none");
