@@ -1,6 +1,6 @@
 # B-380 — no `#` autocomplete inside an existing tag (owner option c)
 
-## Status: done (one commit on branch `worktree-agent-aa4a26c6b54a87399`, see `git log`)
+## Status: done — fix commit `c6fe3bc` on branch `worktree-agent-aa4a26c6b54a87399`
 - [x] Worktree branch fast-forwarded from a stale base (41666ee) to main `fd779f4` before starting.
 - [x] `trigger.ts#matchTagTrigger(before, after = "")` returns null when the text after the caret
       continues the tag (`continuesTag`).
