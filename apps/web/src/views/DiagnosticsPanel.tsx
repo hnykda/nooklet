@@ -74,8 +74,10 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
   const data = () => (backend.error !== undefined ? undefined : backend());
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: click-away dismiss only; the keyboard way out is the dialog's Close <button>.
+    // biome-ignore lint/a11y/useKeyWithClickEvents: as above — there is no Escape handler for this panel, the Close button is the keyboard path.
     <div class="diag-backdrop" onClick={props.onClose}>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop-dismiss; the dialog below stops propagation so a click inside never closes it. */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: only stops propagation so a click inside the dialog never reaches the dismissing backdrop. */}
       <div
         class="diag-panel"
         role="dialog"

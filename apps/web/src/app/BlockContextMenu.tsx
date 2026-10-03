@@ -162,6 +162,7 @@ export function BlockContextMenu(props: { getContext: () => ContextBase }): JSX.
           <For each={visible()}>
             {(entry) =>
               entry === null ? (
+                // biome-ignore lint/a11y/useSemanticElements: role="separator" carries the same semantics as <hr>; a div keeps `.ctx-sep` free of <hr>'s UA border and margins.
                 <div class="ctx-sep" role="separator" />
               ) : (
                 <button

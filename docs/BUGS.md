@@ -821,14 +821,30 @@ data loss or a wrong reading of anything.
 ---
 
 ### B-581 · A direct cold navigation to a page with zero blocks hangs on "Loading…" forever
-**Status:** open · **Severity:** high · **Found:** 2026-09-15, found while investigating B-568 on
-desktop, independently reproduced by the coordinator in isolation (`Zero-block page, cold nav —
-stuck on 'Loading…': true`) · **Test:** `e2e/tests/desktop-page-creation-probe.spec.ts`'s second
-test reproduces it reliably **only when run alone** — sharing today's journal state with the file's
-first test currently makes its own setup fail before it ever reaches the actual repro (confirmed:
-running the full file back-to-back fails at `.journal-day-today .vr-draft-input` not being found,
-not at the thing being tested); run with `-g "cold navigation"` or give it its own page/day to fix
-properly.
+**Status:** not reproduced — the original repro was a probe artifact (2026-10-03); left open only
+until someone who saw the hang by hand confirms or closes it · **Severity:** high if real ·
+**Found:** 2026-09-15, found while investigating B-568 on desktop · **Test:**
+`e2e/tests/desktop-page-creation-probe.spec.ts` "probe: direct cold navigation to a zero-block page
+does not hang on 'Loading…' (B-581)" — now a real assertion, passes.
+
+**2026-10-03 re-check.** The "`stuck on 'Loading…': true`" evidence came from
+`page.getByText("Loading…").isVisible({ timeout: 8000 })`. Playwright's `isVisible` does not wait —
+its `timeout` is ignored — so that `true` meant "Loading… was on screen the instant after `goto`",
+which every cold load shows. Re-measured with a real wait: "Loading…" is visible right after `goto`
+and gone ~80 ms later, 3/3 repeats (`B-581 probe: "Loading…" visible right after goto: true; gone
+after 81 ms`). The original probe, run alone 3 times, logged `true` once and then failed its own
+setup twice (below), so it never observed a hang either. The "snapshot at timeout" quoted in the
+original entry is not in any kept artifact; if it was real it came from an earlier, unkept version.
+
+Why the spec failed on every full run (both tests, ~10.4 s = the 10 s expect timeout): both typed
+into `.journal-day-today .vr-draft-input`, which only exists while today's journal has no blocks.
+The first test (or any earlier spec on the shared server) writes to today, so the locator was never
+found (`Error: expect(locator).toBeVisible() failed … element(s) not found`). Fixed in the spec:
+each test now seeds its own host page (`openEditing`) and a `runName` target, polls `search`/
+`page.list` instead of a fixed sleep, and asserts "Loading…" clears within 15 s. Passes alone
+(`--repeat-each 3`, 6/6) and after `autocomplete*`, `connectivity`, `journal-draft-sync`.
+
+Original report, kept as written:
 
 `page.goto()` to a page's URL directly — a deep link, browser back/forward, or simply the first time
 anyone ever opens a freshly-referenced page — is a full cold client bootstrap (fresh worker, fresh
@@ -899,6 +915,10 @@ that was not written expecting it); whether the FIX is "make the common case in
 `local-ref-pages.ts` avoid the round-trip" or "make the editor's debounce/reconciliation robust to
 a slower `applyOps`" is an open question for whoever picks this up.
 
+**Not B-585 (2026-10-03):** `autocomplete-inside-link.spec.ts` "Enter on New page inside a link
+to a page that does not exist keeps the whole link (B-382)", which `docs/progress/coordinator.md`
+listed as "likely" B-585, fails identically on `629f572` (before any B-568 client code) — see B-592.
+
 **Deliberately not fixed in this session's multi-graph pass**: different subsystem (client-side
 ref-page creation + CodeMirror/editor debounce interaction), pre-existing in the uncommitted tree
 from earlier this session's B-568 work, not touched by ADR 025's server routing/storage/client-list
@@ -938,8 +958,49 @@ report (`apps/web/src/sync/e2e.test.ts` imports it) — a `missing-in-rebuild` o
 the op log loses them, not that A's own local state is wrong (the test's own `live(driverA)` vs.
 `live(s)` comparison a few lines above passes).
 
+### B-592 · The B-382 e2e test's precondition ("a link to a page that does not exist") cannot hold since ADR 024
+**Status:** open · **Severity:** low (test only; B-382's fix itself is not shown broken) ·
+**Found:** 2026-10-03, triaging the full e2e run · **Test:** `e2e/tests/autocomplete-inside-link.spec.ts`
+"Enter on New page inside a link to a page that does not exist keeps the whole link (B-382)" is the
+failing test
+
+Fails every time, alone or with neighbours:
+`Expected substring: "New page" / Received string: "Walkin Unmade Page"` at the
+`.cmd-row--active` check — the popup offers the real page, so there is no "New page" row to press.
+The test seeds `- alpha [[Walkin Unmade Page]] omega` through `page.create`; since ADR 024
+(`c162820`, after B-382's `dc86f5b`) `serverApplyOps` mints every referenced page in the same
+transaction, so "Walkin Unmade Page" exists before the browser opens. **Not B-585:** checked out
+`629f572` (no `local-ref-pages.ts` at all) in a worktree and ran the spec with `--repeat-each 3` —
+the same test failed 3/3 with the same received string, the other six passed. Earlier green runs
+(e.g. `f2b21b0`'s "634 passed") are unexplained — presumably the "pages list not loaded yet" race
+the B-382 entry mentions, which used to leave "New page" as the only row. To fix the test (not
+done here): it needs a link whose page does not exist, which ADR 024 forbids for anything written
+through the server — e.g. type the link in the browser with the page list known not to contain it,
+or assert the B-382 guarantee (Enter leaves the whole link) for whichever row is active.
+
+### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
+**Status:** open, not investigated · **Severity:** low (test only) · **Found:** 2026-10-03, while
+running B-581's probe with neighbours · **Test:** the test itself
+
+Run as `autocomplete-busy-replica, autocomplete-inside-link, autocomplete, connectivity,
+desktop-page-creation-probe, journal-draft-sync` it failed with `locator.click: Test timeout of
+30000ms exceeded … waiting for locator('.vr-outliner').first().locator('.vr-block-view').first()`.
+It branches on `draft.isVisible()` immediately after `goto("/journals")` — the same "draft may be
+swapped for the real outliner once the snapshot lands" race B-335 fixed in `openJournal` — and
+`.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
+`openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
+
+### B-594 · The Diagnostics panel does not close on Escape
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, while fixing B-591 · **Test:** none
+
+Every other overlay (HelpMenu, the confirm dialog, the context menu) closes on Escape. The
+Diagnostics panel (`views/DiagnosticsPanel.tsx`) closes only on a backdrop click or its Close
+button, so a keyboard user has to tab to Close.
+
+## Fixed
+
 ### B-591 · `biome check .` is not clean on `main`: five a11y lint errors in three files
-**Status:** open · **Severity:** low (lint only) · **Found:** 2026-10-03, coordinator cleanup pass ·
+**Status:** fixed · **Severity:** low (lint only) · **Found:** 2026-10-03, coordinator cleanup pass ·
 **Test:** `pnpm exec biome check . --diagnostic-level=error` is the test
 
 `pnpm exec biome check .` exits 1 on `629f572` (checked in a clean worktree of that commit, not just
@@ -951,7 +1012,12 @@ Earlier "biome clean" claims in progress files were per-package or per-file runs
 repo. The same pass removed the other four errors — formatter noise in generated files — by
 excluding `apps/desktop/src-tauri/gen` and `apps/web/ios` in `biome.json`.
 
-## Fixed
+**Fixed 2026-10-03** with correctly placed `biome-ignore` comments, each giving the real reason, on
+BlockContextMenu's separator, the BlockRowView row, and the DiagnosticsPanel backdrop and dialog. The
+misplaced DiagnosticsPanel suppression and two unused HelpMenu suppressions are removed. DOM, roles
+and handlers are unchanged. Verified: `pnpm exec biome check . --diagnostic-level=error` exits 0,
+which is the test. Found along the way: B-594.
+
 
 ### B-590 · Two calendar tests (unit and e2e) fail on the 3rd of every month
 **Status:** fixed · **Severity:** low (test only) · **Found:** 2026-10-03, full `pnpm -r test` on
@@ -1530,7 +1596,7 @@ current build (screenshot: typed `[[something]]`, clicked it, landed on "This pa
 yet. `Create \"something\"`") · **Test:** `data/local-ref-pages.test.ts` (10 cases, pure — no
 worker/DB/HLC needed, `pageExists`/`mint` injected), `e2e/tests/local-page-creation.spec.ts` (the
 real bar: no server configured at all, type `[[Local Only New Page]]`, click the rendered link,
-land on a real page, not "doesn't exist yet") — both new, both pass; full `pnpm --filter
+land on a real page, not "doesn't exist yet") — both new, both pass (2026-10-03: the real-server sibling, `desktop-page-creation-probe.spec.ts`'s first test, was failing only on its journal-draft setup — fixed, passes; see B-581); full `pnpm --filter
 @nooklet/web test` (1358) and `typecheck` clean.
 
 Fix: `data/local-ref-pages.ts`, a scoped client-side mirror of `packages/server/src/ref-pages.ts`'s

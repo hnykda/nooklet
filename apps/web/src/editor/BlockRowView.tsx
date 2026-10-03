@@ -128,6 +128,7 @@ export function BlockRowView(props: {
   }
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: right-click is only a pointer shortcut — every context-menu entry is a registered command reachable from the keymap and the palette.
     <div
       class="vr-row"
       classList={{

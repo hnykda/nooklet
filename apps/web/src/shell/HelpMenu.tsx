@@ -127,7 +127,6 @@ export function HelpMenu(): JSX.Element {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: click-away dismiss; Escape is handled above. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: see above. */}
         <div class="help-backdrop" onClick={() => setOpen(false)}>
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the backdrop dismissing a click on the menu itself. */}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: only stops propagation. */}
           <div class="help-menu" role="menu" onClick={(e) => e.stopPropagation()}>
             {/* The only pointer route into settings, deliberately just one: the panel is also on
@@ -187,7 +186,6 @@ export function HelpMenu(): JSX.Element {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: click-away dismiss; Escape is handled above. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: see above. */}
         <div class="help-backdrop" onClick={() => setShowKeys(false)}>
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the backdrop dismissing a click inside. */}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: only stops propagation. */}
           <div
             class="help-keys"

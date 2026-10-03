@@ -4,7 +4,64 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
-## Session end — 2026-09-13 evening (READ THIS FIRST)
+## Assessment — 2026-10-03 (READ THIS FIRST)
+
+The 2026-09-14..16 work (ADR 025 multi-graph hosting, the Capacitor iOS shell, desktop remote mode)
+had sat uncommitted for two weeks. It is now on `main` as `26e1f10` (generated iOS project) and
+`cb79009` (everything else, with its docs). Nothing is pushed: `main` is ~635 commits ahead of
+`origin/main`. All merged branches were deleted. Only `m8/rv-web-security` is kept, because it was
+cherry-picked in part on purpose (see "Integration choices" under M8). No worktrees, servers or
+agents are left running.
+
+### State of `main`
+- `pnpm -r typecheck` clean. Unit: core 423, plugin-api 17, server 780, web 1,383, all green after
+  B-590 (two calendar tests that failed on the 3rd of every month).
+- Full Chromium e2e: 657 passed, 9 failed, 2 skipped (14.7 min). Known failures: B-585 (ref-page
+  creation; ref-pages ×3, remote-rewrite ×1), the B-581/B-568 probe spec ×2, B-592 ×1, B-561's
+  search flake ×1, and B-590's e2e sibling ×1 (fixed after the run). `cb79009`'s message credits
+  B-585 with 5. Triage later showed the fifth (autocomplete-inside-link, the B-382 test) is B-592:
+  since ADR 024 the "page that does not exist" precondition cannot hold, and it fails on `629f572`
+  too. The probe spec is rewritten and passes 2/2. Its B-581 "hang" was a probe artifact
+  (`isVisible` ignores its timeout), so B-581 is now "not reproduced". B-593 (a connectivity e2e
+  race) was found and logged.
+- Expected next full e2e: only B-585 ×4, B-592 ×1 and the B-561/B-593 order flakes. Not yet run.
+- One web unit run showed 1 failure out of 1,383 that the next two runs did not repeat. Which test
+  it was is unknown, because the output was not captured.
+- `biome check . --diagnostic-level=error`: clean (B-591 fixed; B-594 found along the way).
+- `pnpm nooklet verify` was NOT run this pass.
+
+### Threads and where they stand
+| Thread | State | Resume file |
+|---|---|---|
+| ADR 025 multi-graph hosting | M1–M6 done. M7 (graph switcher on the iOS Simulator) not started. A human click-through of the desktop picker has never been done | `multi-graph-hosting.md` |
+| Capacitor iOS (PLAN M5) | Builds and runs on the Simulator, local-only works. No physical device, no native plugin call, no completed server connect, no Android | `mobile-ios.md` |
+| Desktop remote mode | Superseded by ADR 025 M6 | `desktop-remote-mode.md` |
+
+### Open bugs that matter most (high severity, all in BUGS.md Open)
+- **B-585**: client-side ref-page creation loses keystrokes and mints junk pages. Silent data loss,
+  and the main source of e2e red. Fix this first.
+- **B-587**: server rebuild-parity divergence after a push-first name collision. Not investigated;
+  possibly related to B-585.
+- **B-581**: a cold navigation to a zero-block page hangs on "Loading…".
+- **B-42**: the `[[` popup drops focus in the desktop app. Waiting on the owner's focus log.
+- **B-491**: `confirm()`/`alert()` are dead in the desktop app.
+
+### The 2026-09-13 to-dos: none started (audited 2026-10-03)
+B-560 (date headings open the day), the B-541 "⋯" top-right menu, B-380 option (c), mermaid out of
+the precache plus a single sidecar copy, the references heading count. The order below still stands.
+
+### Owner decisions still open
+B-534 (`zotero://` links from the desktop app), B-450, B-472, and the "synced via another tab" label.
+B-534's entry is under Fixed, but its "Owner decision needed" paragraph is unanswered.
+
+### Suggested next steps, in order
+1. B-585 (then re-check B-587 against it). B-592 is a quick test fix.
+2. A human click-through of the desktop picker and ADR 025 M7 on the Simulator. Both are short,
+   and both are verification gaps rather than code work.
+3. The 2026-09-13 to-do list below.
+4. Push: `main` has never been pushed since the M8 runs. That is the owner's call.
+
+## Session end — 2026-09-13 evening
 
 Everything from the M8–M11 runs is merged into `main` and nothing is running. No agent, workflow or
 server of this session is left. Nothing has been pushed: `main` is 626 commits ahead of `origin/main`.

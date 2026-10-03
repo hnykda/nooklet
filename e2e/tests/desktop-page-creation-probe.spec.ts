@@ -3,70 +3,73 @@
  * convention ("a claim you can re-run beats a claim you remember") since it reproduces a real,
  * separate bug found along the way — see the second test. Real server (loopback, real token), not
  * the skip-sync path `local-page-creation.spec.ts` covers.
+ *
+ * Each test types its `[[ref]]` into its OWN seeded page, not today's journal draft. The draft only
+ * exists while today has no blocks, so it was gone as soon as anything — the first test here, or any
+ * earlier spec on the shared server — had written to today: both tests then failed at the draft
+ * locator (~10.4 s, the expect timeout) before reaching what they probe (2026-10-03, B-581).
  */
 import { expect, test } from "@playwright/test";
+import { api, openEditing, pagePath, runName } from "../helpers/index.js";
 
 test("probe: [[ref]] with a real server — creates the page correctly (corroborates B-568)", async ({
   page,
-  request,
-}) => {
-  await page.goto("/journals");
-  const token = await page.evaluate(
-    () => (window as unknown as { __NOOKLET__?: { token?: string } }).__NOOKLET__?.token,
-  );
-  expect(token).toBeTruthy();
-
-  const draft = page.locator(".journal-day-today .vr-draft-input").first();
-  await expect(draft).toBeVisible();
-  await draft.fill("see [[Desktop Probe Page]]");
-  await page.keyboard.press("Enter");
+}, info) => {
+  const target = runName("Desktop Probe Page", info);
+  await openEditing(page, runName("Desktop Probe Host", info), "- start");
+  await page.keyboard.type(` see [[${target}]]`);
   await page.keyboard.press("Escape");
-  await page.waitForTimeout(2000);
 
-  const serverRes = await request.post("/api/v1/search", {
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    data: { query: "Desktop Probe Page", scope: "pages", limit: 5 },
-  });
-  const serverBody = await serverRes.json();
-  expect(serverBody.hits?.[0]?.page).toBe("Desktop Probe Page");
+  await expect
+    .poll(async () => {
+      const body = await api<{ hits?: Array<{ page?: string }> }>(page, "search", {
+        query: target,
+        scope: "pages",
+        limit: 5,
+      });
+      return body.hits?.map((h) => h.page);
+    })
+    .toContain(target);
 
-  const link = page.locator("a.vr-page-ref", { hasText: "Desktop Probe Page" }).first();
+  const link = page.locator("a.vr-page-ref", { hasText: target }).first();
   await expect(link).toBeVisible();
   await link.click();
   await expect(page.getByText("This page doesn't exist yet.")).toHaveCount(0);
-  await expect(page.locator("h1")).toHaveText("Desktop Probe Page");
+  await expect(page.locator("h1")).toHaveText(target);
 });
 
 /**
- * NOT a B-568 bug — a separate, real finding. `page.goto()` to a URL is a full cold client
- * bootstrap (fresh worker, fresh driver open), unlike an in-app `<A>` navigation. The page
- * snapshot at timeout showed the shelf/header had already resolved ("0 blocks on Desktop Probe
- * Page" — proving the page itself loaded fine) while the block-tree content area stayed on
- * "Loading…" indefinitely. A freshly-referenced page (whether created by B-568's client-side path
- * or the server's own `ref-pages.ts` — both produce a page with zero blocks until someone writes
- * into it) hitting this on the very first cold load anyone gives it is a real, user-visible gap:
- * `usePageTree`/`BlockTree`'s handling of a zero-block page on a cold worker start looks like the
- * likely place, not investigated further here — out of this probe's scope, logged for follow-up.
+ * B-581 — NOT a B-568 bug, a separate report: a direct cold navigation (`page.goto()`, a full
+ * client bootstrap, unlike an in-app `<A>` click) to a page with zero blocks was said to stay on
+ * "Loading…" forever. The original version of this probe never showed that: it read
+ * `isVisible({ timeout: 8000 })`, and `isVisible` does not wait — the timeout is ignored — so its
+ * `true` was "Loading…" at the first instant after `goto`, which every cold load shows. Re-measured
+ * 2026-10-03 with a real wait, it clears. So this now asserts the claim instead of logging it.
  */
-test("probe: direct cold navigation to a zero-block page hangs on 'Loading…' — logged, not fixed here", async ({
+test("probe: direct cold navigation to a zero-block page does not hang on 'Loading…' (B-581)", async ({
   page,
-}) => {
-  await page.goto("/journals");
-  const draft = page.locator(".journal-day-today .vr-draft-input").first();
-  await expect(draft).toBeVisible();
-  await draft.fill("see [[Cold Nav Zero Block Page]]");
-  await page.keyboard.press("Enter");
+}, info) => {
+  const target = runName("Cold Nav Zero Block Page", info);
+  await openEditing(page, runName("Cold Nav Host", info), "- start");
+  await page.keyboard.type(` see [[${target}]]`);
   await page.keyboard.press("Escape");
-  await page.waitForTimeout(1500);
+  // The page must exist (zero blocks) before the cold load, or this probes "page not found".
+  await expect
+    .poll(async () => {
+      const out = await api<{ items: Array<{ name: string }> }>(page, "page.list", {
+        prefix: "Cold Nav Zero",
+      });
+      return out.items.map((p) => p.name);
+    })
+    .toContain(target);
 
-  // Cold nav directly to the URL — not an in-app link click — is what reproduces it.
-  await page.goto("/page/Cold%20Nav%20Zero%20Block%20Page");
-  const stuckLoading = await page
-    .getByText("Loading…")
-    .isVisible({ timeout: 8000 })
-    .catch(() => false);
-  // Documented as a known-open finding, not asserted as a hard failure here — see the header
-  // comment above. Flip this to `expect(stuckLoading).toBe(false)` once it has its own bug entry
-  // and fix.
-  console.log("Zero-block page, cold nav — stuck on 'Loading…':", stuckLoading);
+  // Cold nav directly to the URL — not an in-app link click — is what the report was about.
+  await page.goto(pagePath(target));
+  const loadingAtOnce = await page.getByText("Loading…").isVisible();
+  const t0 = Date.now();
+  await expect(page.locator("h1")).toHaveText(target);
+  await expect(page.getByText("Loading…")).toHaveCount(0, { timeout: 15_000 });
+  console.log(
+    `B-581 probe: "Loading…" visible right after goto: ${loadingAtOnce}; gone after ${Date.now() - t0} ms`,
+  );
 });
