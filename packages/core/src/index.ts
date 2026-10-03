@@ -1,5 +1,6 @@
 export * from "./block-text.js";
 export * from "./blocks.js";
+export * from "./fts-query.js";
 export * from "./hlc.js";
 export * from "./ids.js";
 export * from "./journal.js";
@@ -24,5 +25,6 @@ export * from "./sync/schema.js";
 export * from "./sync/text-merge.js";
 export * from "./sync/types.js";
 export * from "./task-dates.js";
+export * from "./task-workflow.js";
 export * from "./templates.js";
 export * from "./tokens.js";

@@ -17,11 +17,14 @@ const LG = process.env.SWEEP_LT_GRAPH ?? "default";
 const LTOK = process.env.SWEEP_LT_TOKEN ?? T.default.mac;
 const NOTE = `LOCAL ONLY NOTE ${Date.now() % 100000}`;
 const onServer = async (m: string) => {
-  const r = await fetch(`http://127.0.0.1:6311/g/${LG}/api/v1/search`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${LTOK}` },
-    body: JSON.stringify({ query: m.split(" ").pop() }),
-  });
+  const r = await fetch(
+    `${process.env.SWEEP_SERVER ?? "http://127.0.0.1:6311"}/g/${LG}/api/v1/search`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${LTOK}` },
+      body: JSON.stringify({ query: m.split(" ").pop() }),
+    },
+  );
   return JSON.stringify(((await r.json()) as { hits: unknown[] }).hits).includes(m);
 };
 const label = async (p: Page) =>

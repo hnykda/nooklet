@@ -42,12 +42,15 @@ import {
   ordersBetween,
   type ParsedPage,
   parseOutline,
+  parseTaskWorkflow,
+  type TaskWorkflow,
 } from "@nooklet/core";
 import { type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { assetMarkdownPath, mimeFromFilename, storeAssetBytes } from "../assets/store.js";
 import { setSuggestedJournalTitleFormat } from "../journal-format.js";
 import { REFERENCE_DEVICE_ID, unclaimedReferencePageForKey } from "../ref-pages.js";
 import { mintDanglingReferencedPages } from "../ref-pages-migration.js";
+import { setRecordedTaskWorkflow } from "../task-workflow.js";
 
 // -------------------------------------------------------------------------------------------
 // config.edn (tiny EDN subset)
@@ -69,12 +72,17 @@ export interface LogseqConfig {
    *  NOT additionally special-case the pre-2022-05 "legacy-dot" (`/` -> `.`) encoding some very
    *  old graphs use even when this value is absent. */
   fileNameFormat: "triple-lowbar" | "legacy";
+  /** `:preferred-workflow` (B-608), read the way Logseq reads it (`/now|NOW/` → `now`, any other
+   *  value → `todo`); `null` when the key is absent, so the graph's markers decide instead
+   *  (`../task-workflow.ts`). */
+  preferredWorkflow: TaskWorkflow | null;
 }
 
 export const DEFAULT_LOGSEQ_CONFIG: LogseqConfig = {
   journalFileNameFormat: "yyyy_MM_dd",
   journalPageTitleFormat: DEFAULT_JOURNAL_TITLE_FORMAT,
   fileNameFormat: "legacy",
+  preferredWorkflow: null,
 };
 
 /** Strip EDN line comments (`;` to end of line), respecting string literals, so a commented-out
@@ -140,6 +148,11 @@ export function parseLogseqConfigEdn(text: string): LogseqConfig {
       ednKeywordValue(stripped, "file/name-format") === "triple-lowbar"
         ? "triple-lowbar"
         : "legacy",
+    // Logseq accepts a keyword (`:now`) or, in older configs, a string (`"now"`).
+    preferredWorkflow: parseTaskWorkflow(
+      ednKeywordValue(stripped, "preferred-workflow") ??
+        ednStringValue(stripped, "preferred-workflow"),
+    ),
   };
 }
 
@@ -624,6 +637,8 @@ export async function importLogseqGraph(
         "by ISO date and shown in that same format, changeable under Settings → Journal date format",
     );
   }
+  // B-608: Mod+Enter, the slash menu and the checkbox start tasks the way this graph did.
+  if (config.preferredWorkflow) setRecordedTaskWorkflow(ctx.driver, config.preferredWorkflow);
   const entries = resolveFileEntries(graphDir, warnings);
   const ids = assignIds(entries, warnings);
 

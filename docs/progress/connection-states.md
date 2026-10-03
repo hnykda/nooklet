@@ -59,6 +59,15 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   in isolation, 6/6 each with `--repeat-each=3` — order/load-dependent, not reproduced; not
   checked on 38e17a6 in a full run.
 
+## Merge of main 525e01e (coordinator request)
+- `main.tsx`: all of main's startup (replicaKey / inspectUnnamespaced / adoptLegacyReplica,
+  initTaskWorkflow) now runs inside `start()`, behind the B-615 gate; both imports kept.
+- `ConnectView.tsx`: `repair` wins over `prefill`. In repair mode the address is the entry's own,
+  read-only, and the server field never appears; a pairing link's address is ignored entirely.
+  Its token pre-fills the token field only if the link names the same graph (bare origin and
+  `/g/default` count as the same). Tests: `ConnectView.test.tsx` "B-613 × B-603" (2 cases).
+- `connect-graph.test.ts`: both import sets and both test blocks kept.
+
 ## Next steps
 1. Nothing left in scope. Fold the BUGS.md entries below.
 

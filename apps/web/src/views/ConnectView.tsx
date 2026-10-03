@@ -28,11 +28,26 @@
  * read-only: typing a different one here would attach this replica's local history to some other
  * graph, which is exactly the merge ADR 025 rules out. The entry keeps its id, so its local copy
  * and its unpushed changes are kept and pushed with the new token after the reload.
+ *
+ * B-603: a `nooklet://connect?url=…&token=…` pairing link opens this same form pre-filled
+ * (`props.prefill`, from `PairingLinkPrompt.tsx`). It never connects by itself: anything that can
+ * open a URL on the phone can craft such a link, so the address is shown in plain view and nothing
+ * happens until the owner taps Connect. `onCancel` dismisses it.
+ *
+ * Both at once: `repair` wins. The address stays the entry's own — a pairing link can never move a
+ * repaired entry to another server or graph. Its token is used to pre-fill the token field only
+ * when the link names that same graph (`sameGraphAddress`); otherwise the link is ignored here.
  */
 
 import { Server, Smartphone } from "lucide-solid";
 import { createResource, createSignal, type JSX, Show } from "solid-js";
-import { connectToGraph, parseServerUrl, type RepairTarget } from "../data/connect-graph.js";
+import {
+  connectToGraph,
+  graphBaseUrl,
+  type PairingLink,
+  parseServerUrl,
+  type RepairTarget,
+} from "../data/connect-graph.js";
 import { platform } from "../platform/index.js";
 import "./connect.css";
 
@@ -41,9 +56,24 @@ export function ConnectView(props: {
   onSkip?: () => void;
   /** B-613: re-pair an existing entry whose token the server refused (see the header). */
   repair?: RepairTarget & { onCancel: () => void };
+  /** From a pairing link (B-603): fills both fields and shows the confirm-this-server wording. */
+  prefill?: PairingLink;
+  onCancel?: () => void;
 }): JSX.Element {
-  // A plain read, not a signal: the shell this build runs in cannot change mid-session.
-  const showServerField = platform.name === "capacitor" && !props.repair;
+  // Repair wins over a pairing link (see the header): a link for some other graph is dropped
+  // here, so nothing below can read its address.
+  const prefill = props.prefill && !props.repair ? props.prefill : undefined;
+  const repairToken =
+    props.repair &&
+    props.prefill &&
+    sameGraphAddress(props.prefill.serverUrl, props.repair.displayUrl)
+      ? props.prefill.token
+      : undefined;
+
+  // A plain read, not a signal: the shell this build runs in cannot change mid-session. A pairing
+  // link always names a server, so it needs the field wherever it was opened. Never in repair mode,
+  // where the address is fixed and shown read-only.
+  const showServerField = !props.repair && (platform.name === "capacitor" || prefill !== undefined);
 
   // B-613, loopback only: the server hands a browser on its own machine a fresh token on every
   // start and retires the old one, so a tab left open across a `nooklet serve` restart is refused
@@ -67,10 +97,10 @@ export function ConnectView(props: {
 
   // No skip path means there is nothing to choose between — go straight to the form, as before
   // B-563. Otherwise start undecided so the choice renders first.
-  const [wantsSync, setWantsSync] = createSignal(props.onSkip ? undefined : true);
+  const [wantsSync, setWantsSync] = createSignal(props.onSkip && !prefill ? undefined : true);
 
-  const [serverUrl, setServerUrl] = createSignal("");
-  const [token, setToken] = createSignal("");
+  const [serverUrl, setServerUrl] = createSignal(prefill?.serverUrl ?? "");
+  const [token, setToken] = createSignal(repairToken ?? prefill?.token ?? "");
   const [error, setError] = createSignal<string | undefined>();
   const [busy, setBusy] = createSignal(false);
 
@@ -193,9 +223,12 @@ export function ConnectView(props: {
                 </span>
                 <span class="connect-choice-text">
                   <h2>Just this device</h2>
+                  {/* B-612: under Capacitor the choice is remembered as a graph of its own, and a
+                      server is added later from the graph switcher, not from this screen. */}
                   <p>
-                    Nothing to set up. You'll see this screen again if you want to add a server
-                    later.
+                    {showServerField
+                      ? "Nothing to set up. You can add a server later from the graph switcher."
+                      : "Nothing to set up. You'll see this screen again if you want to add a server later."}
                   </p>
                 </span>
               </button>
@@ -216,28 +249,43 @@ export function ConnectView(props: {
           </>
         }
       >
-        <Show when={props.onSkip}>
+        <Show when={props.onSkip && !prefill}>
           <button type="button" class="connect-back" onClick={() => setWantsSync(undefined)}>
             ‹ Back
           </button>
         </Show>
-        <h1>Connect this device</h1>
-        <Show
-          when={showServerField}
-          fallback={
+        <Show when={prefill} fallback={<h1>Connect this device</h1>}>
+          {(p) => (
+            <>
+              <h1>Connect to this server?</h1>
+              <p class="connect-lede">
+                A pairing link asked to sync this device with the server below. Connect only if it
+                is yours.
+              </p>
+              <p class="connect-pairing-server" data-testid="pairing-server">
+                {p().serverUrl}
+              </p>
+            </>
+          )}
+        </Show>
+        <Show when={!prefill}>
+          <Show
+            when={showServerField}
+            fallback={
+              <p class="connect-lede">
+                This device needs a token to reach <code>{location.host}</code>. Create one on the
+                machine running nooklet:
+              </p>
+            }
+          >
             <p class="connect-lede">
-              This device needs a token to reach <code>{location.host}</code>. Create one on the
+              This device needs your nooklet server's address and a token. Create the token on the
               machine running nooklet:
             </p>
-          }
-        >
-          <p class="connect-lede">
-            This device needs your nooklet server's address and a token. Create the token on the
-            machine running nooklet:
-          </p>
+          </Show>
+          <pre class="connect-cmd">nooklet token create --label phone --scope write --sync</pre>
+          <p class="connect-note">The token is shown once. Paste it here.</p>
         </Show>
-        <pre class="connect-cmd">nooklet token create --label phone --scope write --sync</pre>
-        <p class="connect-note">The token is shown once. Paste it here.</p>
 
         <form onSubmit={(e) => void connect(e)}>
           <Show when={showServerField}>
@@ -283,9 +331,20 @@ export function ConnectView(props: {
             >
               {busy() ? "Checking…" : "Connect"}
             </button>
+            <Show when={props.onCancel}>
+              <button type="button" class="connect-skip" onClick={() => props.onCancel?.()}>
+                Cancel
+              </button>
+            </Show>
           </div>
         </form>
 
+        <Show when={props.reason === "loopback_token_disabled"}>
+          <p class="connect-why">
+            This server was started with --no-loopback-token, so it hands no token out
+            automatically, not even to a browser on its own machine.
+          </p>
+        </Show>
         <Show when={props.reason === "non_loopback_host"}>
           <p class="connect-why">
             nooklet only hands out a token automatically to a browser on the same machine as the
@@ -299,4 +358,18 @@ export function ConnectView(props: {
       </Show>
     </main>
   );
+}
+
+/** Whether two addresses name the same graph: bare origin and `/g/default` alike, trailing slashes
+ * and case of the host ignored. */
+function sameGraphAddress(a: string, b: string): boolean {
+  const norm = (u: string): string => {
+    try {
+      const url = new URL(graphBaseUrl(u.trim().replace(/\/+$/, "")));
+      return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+    } catch {
+      return u;
+    }
+  };
+  return norm(a) === norm(b);
 }

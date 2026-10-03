@@ -421,20 +421,6 @@ are not covered. Not fixed here: it is outside B-411's cause.
 
 ---
 
-### B-543 · `connectivity.spec.ts` › "search returns rather than spinning forever" fails most runs
-**Status:** open · **Severity:** low (test only) · **Found:** 2026-09-13, quiet-topbar (running the
-specs it touched) · **Test:** the test itself
-
-On the unchanged base commit `9ac9e48` (port 6422, Chromium) it failed 3 of 4 runs, the same as on
-`m11/quiet-topbar`: `locator.click` times out waiting for `.vr-outliner .vr-block-view`. The page
-snapshot at the failure shows today's virtual journal with its "Start typing…" draft and no
-outliner. Likely cause (read, not proven): the test decides which branch to take with a
-non-retrying `await draft.isVisible()` straight after `page.goto("/journals")`, before the journal
-has rendered, so it takes the "outliner" branch on a day that only has a draft. `openJournal` in
-`e2e/helpers/editor.ts` waits for `draft.or(outliner)` first and does not have this race.
-
----
-
 ### B-512 · The tasks view, search hits and property values show `((id))` for a block reference
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, ref-label-flash (after fixing B-510)
 · **Test:** none yet
@@ -582,6 +568,8 @@ and interleave regardless of how good either is. In range, but not comparable wi
 semantic scores, and no agent can threshold on it. Not changed here.
 
 ---
+
+2026-10-03: the client now merges server hits by position, never by score, so raw RRF values no longer matter to it.
 
 ### B-527 · Settings says "Indexing… It turns on by itself" for a backfill that stopped on errors — the state the search note calls `index_incomplete`
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, search-fallback verify (real-graph
@@ -814,21 +802,6 @@ same-named page competing with it. Expected, probably: the alias holder is the r
 link, and no "New page" for a name an alias answers. What the server does with a page whose key
 equals another page's alias (link resolution afterwards) was not checked.
 
-### B-602 · A WebSocket upgrade to an unrouted bare path hangs instead of failing
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
-
-`/sync/live` with no `/g/<id>` prefix: no 101, no error response (`tools/probes/ws-bare-origin.mjs`, "NEVER OPENED" after 5 s). The client fix (bare address → `/g/default`) avoids it; the server should answer 404.
-
-### B-603 · `nooklet://` deep links reach nothing
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
-
-`platform.deepLinks.onOpen` has no subscriber anywhere in `apps/web/src` (grep), so opening `nooklet://anything` just foregrounds the app. A `nooklet://connect?url=…&token=…` link (or QR) would also remove the token-pasting step.
-
-### B-604 · `nooklet serve --host 0.0.0.0` prints `http://0.0.0.0:6100/...` as the address to use
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, real-device-test agent · **Test:** none yet
-
-Not reachable from a phone; printing the machine's LAN IPs would save a lookup.
-
 ### B-605 · An ordinary page nothing references still opens as "doesn't exist yet / Create"; Logseq opens every missing page as an editable empty page
 **Status:** deferred (coordinator decision 2026-10-03: keep as is for now) · **Severity:** low ·
 **Found:** 2026-10-03, while doing B-595 · **Test:** none
@@ -840,83 +813,6 @@ also the signal for a deleted page, an unsynced name, and the two-device race (A
 it means generalising `VirtualJournalDay` into a page draft that writes nothing until typed.
 Reasoning in `docs/progress/empty-journal.md`. Kept because the signal is worth more than the
 parity for names nothing links to; revisit if it bites in daily use.
-
-### B-606 · Clicking right of a block's text, or pressing End, puts the caret inside a trailing `[[link]]`
-**Status:** open · **Severity:** high · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** high. Typing corrupts the link target and creates junk pages. "… with [[Person]]" is
-a very common block shape. Not covered by B-325 or B-585.
-**Repro:** seed `- plain text [[Balení]]`. Click in the empty space right of the rendered text and
-type `Y`: the result is `plain text [[BalenYí]]`. Click the same block, press Home, then End, then
-type `Z`: the result is `plain text [[BaleníZ]]`. A page named `BaleníZ` now exists and shows up in
-Mod+K. Blocks that do not end in a link (`[[Inbox]] trailing words`, `text **bold** end`) behave
-correctly. Probe: `tools/probes/sweep-core/end-after-link.mjs`. Likely cause: `livePreview.ts`
-hides `]]` with `Decoration.replace` while the caret is not touching the link, so End stops before
-it, and the click mapping in `caret.ts` lands in the link token. Not confirmed.
-
-### B-607 · `nooklet import` into a fresh data dir, then `nooklet serve`, crashes: `a graph called "default" already exists`
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** medium. It blocks first start on a new server if the import comes first. Workaround:
-run `serve` once before importing, or write `graphs/default/graph.json` by hand.
-**Repro:** `nooklet import <graph> --data $D` on an empty `$D`, then `nooklet serve --data $D`. The
-process exits 1. `import` creates `graphs/default/graph.sqlite` but no `graph.json`.
-`GraphRegistry.list()` skips directories without one, so `cli.ts:286` calls `create("default")`,
-which throws because the db exists. README also still says `~/.nooklet/default`, but the layout is
-now `graphs/default`.
-
-Same root cause as `nooklet token create` before the first `serve` (found by the b587 agent, `docs/progress/b587.md`): any command that opens a fresh data dir creates `graphs/default/graph.sqlite` without `graph.json`.
-
-### B-608 · Mod+Enter ignores the owner's LATER/NOW workflow: a LATER task cycles to no marker
-**Status:** open · **Severity:** medium · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** medium. The owner's graph has `:preferred-workflow :now`, with 72 LATER, 5 NOW and
-0 TODO blocks.
-**Repro:** on `- LATER owner style`, press Mod+Enter three times. Markers go `null`, then `TODO`,
-then `DOING` (`task-logic.ts#nextCycleMarker`). Logseq goes LATER→NOW→DONE, and a plain block
-starts at LATER. Probe: `tasks.mjs`.
-
-### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** low. At 60 ms/key the result is correct, but rows flicker for about 1.1 s, showing
-`["","ccc"]`.
-**Repro:** today is empty. Click today and type `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ with no delay. The server
-gets `aaa`,`bbb`,`ccc`, all at depth 0, instead of `bbb` indented. The same burst on an ordinary
-page is correct. Probe: `indent-render.mjs journal fast 0`.
-
-### B-610 · The word-count plugin returns 500 for a page just deleted
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, core readiness sweep on a copy of the real graph (`docs/review/2026-10-03-sweep-core.md`) · **Test:** none yet
-
-**Severity:** low; it only adds console noise.
-**Repro:** delete a page from Page actions. The server log shows
-`OpError: no page named "…"` at `plugins/word-count … countPage`, and the browser logs a 500.
-
-### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
-**Status:** open, reproduced · **Severity:** high (data goes into the wrong graph, which ADR 025 forbids) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `tools/probes/sweep-devices/local-then-server.probe.ts` with `SWEEP_LT_FAST=1 SWEEP_LT_SETTLE_MS=0`.
-On an emulated Capacitor shell:
-1. "Just this device", type a note in today's journal.
-2. Relaunch at once, then "Just this device" again.
-3. Within ~3 s, Switch graph → Add a graph → Sync with a server → `<server>/g/<id>` + token.
-
-The note shows up in that server graph, and the server API returns it. This happened in 1 of 4
-runs, plus the first exploratory run against `default`. Suspected cause, from the code:
-`db/client.ts`'s unapplied-ops journal (`nooklet.unapplied-ops.v1:*`) is not keyed by graph entry.
-A batch still held at the relaunch (seen in localStorage at that moment) replays into whichever
-graph the next page load opens. A second suspect, same class, not seen to fire:
-`db/capacitor-checkpoint.ts` uses one fixed `CHECKPOINT_PATH` for every graph entry, and restores it
-into any graph's empty replica. The same orphan replay presumably applies to web/desktop graph
-switching right after an edit (not tested).
-
-### B-612 · Capacitor local-only graph disappears from the list once a server graph is added
-**Status:** open · **Severity:** high · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: as above, at any timing. "Just this device" creates no `nooklet.graphs` entry (`App.tsx` only
-sets `skipped`), so after a server graph is added the switcher lists only "Remote graph". The
-local-only replica, which uses the un-namespaced OPFS file, can no longer be reached. The relaunch
-goes straight into the server graph.
 
 ### B-613 · Revoked or invalid stored token shows as "Offline", forever, with no way to re-pair
 **Status:** open · **Severity:** medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
@@ -943,23 +839,6 @@ paste a valid token). Errors: `crypto.randomUUID is not a function` (`data/boots
 `!isSecureContext` and say why. The same blank page is expected in the desktop app pointed at a
 plain-http remote.
 
-### B-616 · Behind a same-host reverse proxy, the app shell 403s with an MCP "Invalid Host" JSON-RPC error
-**Status:** open · **Severity:** medium (deployment trap) · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `serve.sh <dir> 6311` (bound 127.0.0.1, no `--allow-host`), then
-`node host-proxy.mjs 6312 6311` (forwards `Host: nooklet.sweep.test`).
-`curl 127.0.0.1:6312/g/default/` → 403 `{"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid Host: nooklet.sweep.test"}}`,
-while `/api/session` returns 200. The cause is `mountMcp`'s `"/"` sub-app guard
-(`createMcpHonoApp({host})` auto-enables localhost Host validation). The workaround is
-`--allow-host <name>`, but the CLI only suggests it for non-loopback binds.
-
-### B-617 · Plugin "word-count" fails to activate for every graph after the first
-**Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
-
-Repro: `nooklet serve` with two graphs, then hit `/g/<second>/…`. The server log shows
-`[plugins] plugin "word-count" failed to activate: op "page.wordcount" is already registered`. The
-op registry looks process-global across graph contexts.
-
 ### B-618 · Graph switcher labels are generic and can't be told apart
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
 
@@ -969,14 +848,300 @@ and differ only in the subtitle URL. Adding the bare server address (no `/g/<slu
 already listed creates a duplicate entry with its own replica (two-clients 1d). The add form gives
 no hint that `/g/<slug>` is expected, and nothing uses `GET /graphs` to offer a choice.
 
+### B-620 · Plugin `rpc.expose` routes turn any thrown error into an unhandled 500
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, tasks-workflow agent (B-610) · **Test:** none
+
+`plugins/server-context.ts`: unlike `ops.register`, which maps an `OpError` to its status, an
+`rpc.expose` handler that throws returns an unhandled 500. B-610 was fixed inside word-count;
+another plugin throwing `OpError` from rpc would 500 the same way.
+
+### B-622 · `mcp/stdio-main.ts` defaults to the pre-ADR-025 `~/.nooklet/default/graph.sqlite`
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, pairing agent · **Test:** none
+
+Run without `--data` it would create a stray legacy database beside `graphs/`. Dev-only: `nooklet mcp --stdio` goes through `cli.ts`.
+
+### B-623 · `page-find.spec.ts` and `random-page.spec.ts` fail on every run
+**Status:** open, not investigated · **Severity:** unknown (test or real regression) · **Found:** 2026-10-03, b609 agent's full e2e run · **Test:** the specs themselves
+
+On `4c28fad`, also alone (not order-dependent): `page-find.spec.ts` "Cmd/Ctrl+F narrows the
+outline…" and "Enter and Shift+Enter step through the matches"; `random-page.spec.ts` "Open a random
+page jumps to another page…" and "from a view that is not a page…". Same failures with B-609's files
+reset.
+
+### B-624 · `page-delete.spec.ts` is flaky under `--repeat-each=2`
+**Status:** open, not investigated · **Severity:** low (test, so far) · **Found:** 2026-10-03, b609 agent · **Test:** the spec itself
+
+"Delete page from the … menu…" and "from the palette mid-typing…" fail intermittently on `4c28fad`.
+`autocomplete-inside-link.spec.ts` (the B-382/B-592 test) was flaky the same way.
+
+### B-626 · The device's search tag filter is approximate
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
+
+`local-search.ts` matches `tags` from a block's own text plus `Task` for a marker; a `tags::` block property is not seen (the replica has no `ref` table). The server's answer, when merged, is exact.
+
+### B-627 · Search keeps the previous query's rows on screen until the device answers
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
+
+A resource keeps its last value while loading: 2–4 ms locally, invisible in practice; noted because a probe timing "first list change" misreads it (`tools/probes/search-latency.mjs`).
+
+### B-628 · The OpenAI-compatible embedding provider never sends an API key
+**Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
+
+`factory.ts` builds `new OpenAiCompatProvider({ baseUrl: host, model })` without `apiKey`, and no setting holds one, so a hosted `/v1/embeddings` API answers 401. Found by reading code only.
+
+### B-631 · "Discard the local copy and re-sync" deletes every graph's database on the device, including local-only notes
+**Status:** open · **Severity:** high (data loss: local-only notes exist nowhere else) · **Found:** 2026-10-03, local-graphs agent · **Test:** none yet
+
+`GraphMismatchView`'s button deletes every OPFS entry, i.e. every graph's replica on the device.
+It needs a worker method that unlinks one pool file (the mismatched graph's). Must be fixed before
+anyone with a local-only graph hits a graph mismatch.
+
+## Fixed
+
+### B-630 · A relaunch or graph switch could start on an in-memory replica and lose everything at the next reload
+**Status:** fixed (2026-10-03, local-graphs agent) · **Severity:** high for local-only · **Found:** 2026-10-03, local-graphs agent · **Test:** see below
+
+A relaunch could start as an in-memory follower while the old page held the writer lock, and a graph switch could start on memory while the old page held the shared OPFS pool; with no server, everything written was lost. Tests: `local-graphs.spec.ts` 20-run test (fails with `data-state="memory"` when the pool retry is off); `relaunch-loss.probe.ts` for the follower case (no deterministic test: depends on teardown timing).
+
+### B-629 · Under Capacitor, switching to a remote graph left the app for the server's web page
+**Status:** fixed (2026-10-03, local-graphs agent) · **Severity:** low-medium · **Found:** 2026-10-03, local-graphs agent · **Test:** see below
+
+`location.assign(<server URL>)` navigated the app away. Now reloads in place. Test: `data/bootstrap.test.ts` "graphEntryUrl under Capacitor".
+
 ### B-619 · Local-only draft-journal write can be lost on an immediate relaunch
-**Status:** open, intermittent (1 of 3 at 0 ms; 0 of 1 with a 5 s settle) · **Severity:** low–medium · **Found:** 2026-10-03, devices readiness sweep (`docs/review/2026-10-03-sweep-devices.md`) · **Test:** none yet (probe named below)
+**Status:** fixed (2026-10-03, `c58ede4`, `3e3c1c5`) · **Severity:** low-medium · **Test:** `views/VirtualJournalDay.test.tsx`
+"keeps typed lines until they are ops" (3, incl. the coordinator's merge test for B-609 depths), `e2e/tests/local-graphs.spec.ts` B-619 (5 runs)
 
 Repro: `local-then-server.probe.ts` with `SWEEP_LT_SETTLE_MS=0`: fill today's draft, Enter, Escape,
 reload at once. One run showed the note momentarily, then an empty day. Possibly B-247 territory,
 not narrowed down.
 
-## Fixed
+Cause: the draft's commit waits on `prepare()` before any op exists, so B-247's copy had nothing
+to copy (lost 9/10 in the probe). Fixed: draft lines are kept in `localStorage` per replica until
+they are ops (`data/journal-draft-store.ts`). Coordinator merge note: B-609's depths and this store
+met in one merge; the store now keeps `{text, depth}` and reads an older string-only copy at depth 0.
+
+### B-612 · Capacitor local-only graph disappears from the list once a server graph is added
+**Status:** fixed (2026-10-03, `c58ede4`) · **Severity:** high · **Test:** `data/bootstrap.test.ts` "B-612: ...",
+`e2e/tests/local-graphs.spec.ts` "an install stranded by the old ..." and the 20-run test's switch-back
+
+Repro: as above, at any timing. "Just this device" creates no `nooklet.graphs` entry (`App.tsx` only
+sets `skipped`), so after a server graph is added the switcher lists only "Remote graph". The
+local-only replica, which uses the un-namespaced OPFS file, can no longer be reached. The relaunch
+goes straight into the server graph.
+
+Fixed: "Just this device" is a real graph-list entry that takes over the old local database; a device already stranded gets it back as "This device" at startup.
+
+### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
+**Status:** fixed (2026-10-03, `c58ede4`, `3e3c1c5`) · **Severity:** high · **Test:** `apps/web/src/db/client-graph-scope.test.ts`,
+`db/unapplied-ops.test.ts` "batches belong to the replica..." + "migrateUnscopedBatches", `data/bootstrap.test.ts`
+"B-611: who could have written...", `e2e/tests/local-graphs.spec.ts` (20-run sequence: 0 leaks; deterministic unscoped batch)
+
+Repro: `tools/probes/sweep-devices/local-then-server.probe.ts` with `SWEEP_LT_FAST=1 SWEEP_LT_SETTLE_MS=0`.
+On an emulated Capacitor shell:
+1. "Just this device", type a note in today's journal.
+2. Relaunch at once, then "Just this device" again.
+3. Within ~3 s, Switch graph → Add a graph → Sync with a server → `<server>/g/<id>` + token.
+
+The note shows up in that server graph, and the server API returns it. This happened in 1 of 4
+runs, plus the first exploratory run against `default`. Suspected cause, from the code:
+`db/client.ts`'s unapplied-ops journal (`nooklet.unapplied-ops.v1:*`) is not keyed by graph entry.
+A batch still held at the relaunch (seen in localStorage at that moment) replays into whichever
+graph the next page load opens. A second suspect, same class, not seen to fire:
+`db/capacitor-checkpoint.ts` uses one fixed `CHECKPOINT_PATH` for every graph entry, and restores it
+into any graph's empty replica. The same orphan replay presumably applies to web/desktop graph
+switching right after an edit (not tested).
+
+**Fixed 2026-10-03.** Cause confirmed: the B-247 unapplied-ops journal was not keyed by graph, so
+the next load replayed a batch into whatever graph it opened (deterministic test: 2 hits in the
+server graph before, 0 after). The checkpoint file had the same flaw (not seen firing; fixed the
+same way). The journal, the checkpoint and the shelf are now keyed by replica. Older unkeyed
+leftovers go to a graph only if exactly one could have written them; otherwise they are set aside
+and never replayed. Simulator run on a private headless device: local-only → relaunch → add a server
+graph → switch back; the server graph held no local data.
+
+### B-543 · `connectivity.spec.ts` › "search returns rather than spinning forever" fails most runs
+**Status:** fixed (2026-10-03, server-search agent) · **Test:** the spec itself (3/3 fail before, 3/3 pass after)
+
+On the unchanged base commit `9ac9e48` (port 6422, Chromium) it failed 3 of 4 runs, the same as on
+`m11/quiet-topbar`: `locator.click` times out waiting for `.vr-outliner .vr-block-view`. The page
+snapshot at the failure shows today's virtual journal with its "Start typing…" draft and no
+outliner. Likely cause (read, not proven): the test decides which branch to take with a
+non-retrying `await draft.isVisible()` straight after `page.goto("/journals")`, before the journal
+has rendered, so it takes the "outliner" branch on a day that only has a draft. `openJournal` in
+`e2e/helpers/editor.ts` waits for `draft.or(outliner)` first and does not have this race.
+
+---
+
+Fixed: `connectivity.spec.ts` waits for `draft.or(today's first block)` before branching.
+
+### B-625 · Search had no local fallback: offline it failed after 10 s, local-only it said "Search needs a server"
+**Status:** fixed (2026-10-03, `3844838`, `ba58947`) · **Severity:** high · **Found:** 2026-10-03, server-search agent (owner request) ·
+**Test:** `apps/web/src/data/local-search.test.ts` (8), `apps/web/src/data/search-enrich.test.ts` (13),
+`apps/web/src/views/SearchView.test.tsx` "SearchView: local first, then the server's semantic matches" (9),
+`apps/web/src/data/api-client.test.ts` "callOp's time bound and cancellation" (2),
+`e2e/tests/search-semantic-server.spec.ts` (5), `e2e/tests/search-local-only.spec.ts` (1)
+
+The Search view only asked the server; the replica had no full-text index. **Fixed:** the replica
+gets its own FTS index with the server's tokenizer (diacritics folded; the query parser moved to
+core), rebuilt once for an existing replica (57 ms on the real 18.6k-block graph). Local results
+show at once (2–4 ms); after a 250 ms pause the server's hybrid search is asked and its hits merged
+in, marked "semantic", with a 6 s bound that only stops waiting for the server. Rows never re-sort
+under the pointer/focus. A server hit the replica lacks shows "Not on this device yet". `[[`/`((`
+autocomplete and the palette stay local. Design agreed with the owner: local first, then enrich.
+Semantic search needs `nooklet embed model bge-m3 --provider ollama --host …` per graph (Ollama
+recommended on homeserver, `OLLAMA_KEEP_ALIVE=-1`); `docs/progress/server-search.md`.
+
+### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
+**Status:** fixed (2026-10-03, `319d1e8`, `e65638a`) · **Severity:** low · **Test:** `e2e/tests/journal-draft-burst.spec.ts`
+(3 tests; red before), `apps/web/src/views/VirtualJournalDay.test.tsx` "keeps Tab and Shift+Tab typed
+while the replica has not answered…" and "Backspace at the start of an empty waiting line…"
+
+**Severity:** low. At 60 ms/key the result is correct, but rows flicker for about 1.1 s, showing
+`["","ccc"]`.
+**Repro:** today is empty. Click today and type `aaa`⏎`bbb`⇥⏎`ccc`⇧⇥ with no delay. The server
+gets `aaa`,`bbb`,`ccc`, all at depth 0, instead of `bbb` indented. The same burst on an ordinary
+page is correct. Probe: `indent-render.mjs journal fast 0`.
+
+**Fixed 2026-10-03.** Two causes. (1) The sweep's case is today with a page but no blocks (`BlockTree`): its page-tree
+effect re-runs on every Enter (it tracks `editingId`) against the last fetch, and kept only the
+edited block among this tab's unfetched creations — the block above vanished, so Tab had nothing to
+nest under, and the rows flickered down to the edited one. Now every unfetched creation is kept.
+(2) The draft (no page at all; `/journals` today, `/page/<date>`): a burst beats `prepare()`, so the
+keys stay in the textarea (B-411) — where Tab moved focus to the Help button, Enter pressed it, and
+`ccc` was lost. Tab/Shift+Tab now nest draft lines and the day is written as that tree. (3) The
+flicker: the same effect re-ran on every Enter, and a fetch read before a Tab and answered after it
+put the old place back. The effect now runs on fetches only, and moves/deletes are held until the
+worker answers them (as text already was, B-303). Real-graph copy, 60 ms/key: the Tab showed undone
+for 0.3-0.6 s in 4/7 runs before, 0/12 after. See `docs/progress/b609.md`.
+
+### B-621 · After a deep link's reload, `App.getLaunchUrl()` re-delivered the same link, so the pairing confirm screen kept coming back
+**Status:** fixed (2026-10-03, `fb31593`) · **Severity:** medium · **Found:** 2026-10-03, pairing agent on the Simulator · **Test:** `platform/launch-url.test.ts`; probe `tools/probes/pairing-link-ui/`
+
+`getLaunchUrl()` is Capacitor's `lastURL`, so after `location.reload()` the same `nooklet://connect` link came back. Fixed in `platform/launch-url.ts`.
+
+### B-616 · Behind a same-host reverse proxy, the app shell 403s with an MCP "Invalid Host" JSON-RPC error
+**Status:** fixed (2026-10-03, `f177b35`) · **Test:** `http/web-client.test.ts` "serves the app shell behind a same-host proxy that rewrites Host (B-616)"
+
+Repro: `serve.sh <dir> 6311` (bound 127.0.0.1, no `--allow-host`), then
+`node host-proxy.mjs 6312 6311` (forwards `Host: nooklet.sweep.test`).
+`curl 127.0.0.1:6312/g/default/` → 403 `{"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid Host: nooklet.sweep.test"}}`,
+while `/api/session` returns 200. The cause is `mountMcp`'s `"/"` sub-app guard
+(`createMcpHonoApp({host})` auto-enables localhost Host validation). The workaround is
+`--allow-host <name>`, but the CLI only suggests it for non-loopback binds.
+
+The MCP Host guard applies only to `/mcp`, follows `--allow-host`, and its 403 and the server log suggest the flag.
+
+### B-607 · `nooklet import` into a fresh data dir, then `nooklet serve`, crashes: `a graph called "default" already exists`
+**Status:** fixed (2026-10-03, `228f942`) · **Test:** `graphs/registry.test.ts`, `cli-first-run.test.ts` (both orders failed before with `serve exited 1`)
+
+**Severity:** medium. It blocks first start on a new server if the import comes first. Workaround:
+run `serve` once before importing, or write `graphs/default/graph.json` by hand.
+**Repro:** `nooklet import <graph> --data $D` on an empty `$D`, then `nooklet serve --data $D`. The
+process exits 1. `import` creates `graphs/default/graph.sqlite` but no `graph.json`.
+`GraphRegistry.list()` skips directories without one, so `cli.ts:286` calls `create("default")`,
+which throws because the db exists. README also still says `~/.nooklet/default`, but the layout is
+now `graphs/default`.
+
+Same root cause as `nooklet token create` before the first `serve` (found by the b587 agent, `docs/progress/b587.md`): any command that opens a fresh data dir creates `graphs/default/graph.sqlite` without `graph.json`.
+
+CLI commands write `graph.json`; `serve` adopts an existing `graph.sqlite` without one. README and OPERATIONS §2 paths updated.
+
+### B-604 · `nooklet serve --host 0.0.0.0` prints `http://0.0.0.0:6100/...` as the address to use
+**Status:** fixed (2026-10-03, `f19a64b`) · **Test:** `serve-banner.test.ts`
+
+Not reachable from a phone; printing the machine's LAN IPs would save a lookup.
+
+A `0.0.0.0` bind prints the LAN addresses (skipping VM/Docker bridges) and the exact `--allow-host` to restart with.
+
+### B-603 · `nooklet://` deep links reach nothing
+**Status:** fixed (2026-10-03, `0399e4e`, `fb31593`) · **Test:** unit tests in `docs/progress/pairing.md`; Simulator probe `tools/probes/pairing-link-ui/`
+
+`platform.deepLinks.onOpen` has no subscriber anywhere in `apps/web/src` (grep), so opening `nooklet://anything` just foregrounds the app. A `nooklet://connect?url=…&token=…` link (or QR) would also remove the token-pasting step.
+
+`nooklet://connect?url=…&token=…` opens ConnectView pre-filled and connects only on a tap; it adds a server graph and keeps local ones. Parsing rejects non-http(s) URLs, user-info and missing params. `nooklet token create --link <url>` prints the link. No QR (no library in the tree; adding one is an owner decision). The token sits in the URL: it can leak via clipboard/history — documented.
+
+### B-602 · A WebSocket upgrade to an unrouted bare path hangs instead of failing
+**Status:** fixed (2026-10-03, `b233294`) · **Test:** `graphs/mount.test.ts` "answers a failed upgrade with 404 at once … (B-602)" and "survives a client resetting the TCP connection mid-upgrade (B-589, kept by the new guard)"
+
+`/sync/live` with no `/g/<id>` prefix: no 101, no error response (`tools/probes/ws-bare-origin.mjs`, "NEVER OPENED" after 5 s). The client fix (bare address → `/g/default`) avoids it; the server should answer 404.
+
+Root cause: B-589's second `'upgrade'` listener — `@hono/node-server` only answers a failed upgrade when it has the sole listener, so every failed upgrade hung (unknown graphs too). The B-589 guard now attaches at `'connection'` (`http/upgrade-guard.ts`).
+
+### B-600 · Security: the loopback auto-token was handed to every client behind a same-host reverse proxy
+**Status:** fixed (2026-10-03, `b233294`, D3) · **Test:** `http/host-guard.test.ts` "--no-loopback-token (B-600, decision D3)"
+
+The server gives a write token to any caller that looks local. A proxy on the server's machine that rewrites `Host` to its upstream made every client look local. **Fixed 2026-10-03** (`ee8c54c`) for any request carrying forwarding headers (`X-Forwarded-For`, `Forwarded`, …) in `http/app.ts`. Still open: a proxy that rewrites `Host` and adds no forwarding header is indistinguishable from a local browser (decision D3 in `docs/progress/real-device-test.md`). the home server's setup is not affected (the Tailscale proxy runs in a separate pod).
+
+**D3 done 2026-10-03:** `nooklet serve --no-loopback-token`, set in the Dockerfile and the Helm chart (no browser runs in a container; port-forwards and sidecars arrive over loopback). Off by default in the CLI because the local desktop app relies on the auto-token.
+
+### B-617 · Plugin "word-count" fails to activate for every graph after the first
+**Status:** fixed (2026-10-03, `de59bf8`) · **Severity:** low · **Test:** `packages/server/src/graphs/mount.test.ts`
+"activates every built-in plugin in each graph … (B-617)"
+
+Repro: `nooklet serve` with two graphs, then hit `/g/<second>/…`. The server log shows
+`[plugins] plugin "word-count" failed to activate: op "page.wordcount" is already registered`. The
+op registry looks process-global across graph contexts.
+
+Fixed: each graph gets its own op registry for plugin ops; mermaid and daily-summary checked too.
+
+### B-610 · The word-count plugin returns 500 for a page just deleted
+**Status:** fixed (2026-10-03, `69e9e99`) · **Severity:** low · **Test:** `packages/server/src/plugins/built-ins.test.ts`
+"the status bar's rpc answers null, not a 500, for a page just deleted (B-610)"; e2e `plugins.spec.ts`
+"deleting the open page asks word count about it without a 500 (B-610)"
+
+**Severity:** low; it only adds console noise.
+**Repro:** delete a page from Page actions. The server log shows
+`OpError: no page named "…"` at `plugins/word-count … countPage`, and the browser logs a 500.
+
+### B-608 · Mod+Enter ignores the owner's LATER/NOW workflow: a LATER task cycles to no marker
+**Status:** fixed (2026-10-03, `69e9e99`) · **Severity:** medium · **Test:** `packages/core/src/task-workflow.test.ts`,
+`apps/web/src/editor/task.test.ts` "under the `now` workflow (B-608)", `commands/registrations/index.test.ts`
+"follow the graph's task workflow (B-608)", `SlashMenu.test.tsx` "LATER first under `now`",
+`importer/logseq.test.ts` "task workflow (B-608)", `http/host-guard.test.ts` "task workflow", e2e
+`e2e/tests/task-workflow.spec.ts`
+
+**Severity:** medium. The owner's graph has `:preferred-workflow :now`, with 72 LATER, 5 NOW and
+0 TODO blocks.
+**Repro:** on `- LATER owner style`, press Mod+Enter three times. Markers go `null`, then `TODO`,
+then `DOING` (`task-logic.ts#nextCycleMarker`). Logseq goes LATER→NOW→DONE, and a plain block
+starts at LATER. Probe: `tasks.mjs`.
+
+**Fixed 2026-10-03.** Logseq ref: 0.10.9 `util/marker.cljs#cycle-marker-state`: the next marker
+depends on the current one (TODO→DOING→DONE, LATER→NOW→DONE); the workflow picks the start marker.
+Per-graph setting in Settings → Tasks (per device, as settings don't sync yet); the importer reads
+`:preferred-workflow`; with no setting the server infers from markers. Also changed to match Logseq:
+WAITING/CANCELED + Mod+Enter → start marker; un-tick DONE → start marker; a repeating LATER/NOW task
+reopens as LATER. `done::` on DONE→none left as is. **Coordinator follow-up:** an empty graph (or a
+tie) now infers `now`, Logseq's own default and the owner's workflow (the agent had kept `todo`).
+
+### B-606 · Clicking right of a block's text, or pressing End, puts the caret inside a trailing `[[link]]`
+**Status:** fixed (`15a203c`) · **Severity:** high · **Found:** 2026-10-03, core readiness sweep ·
+**Test:** `e2e/tests/caret-after-link.spec.ts` (all 14, Chromium and WebKit), `apps/web/src/editor/caret.test.tsx` "resolveClickOffset at a line's edges (B-606)"
+
+**Severity:** high. Typing corrupts the link target and creates junk pages. "… with [[Person]]" is
+a very common block shape. Not covered by B-325 or B-585.
+**Repro:** seed `- plain text [[Balení]]`. Click in the empty space right of the rendered text and
+type `Y`: the result is `plain text [[BalenYí]]`. Click the same block, press Home, then End, then
+type `Z`: the result is `plain text [[BaleníZ]]`. A page named `BaleníZ` now exists and shows up in
+Mod+K. Blocks that do not end in a link (`[[Inbox]] trailing words`, `text **bold** end`) behave
+correctly. Probe: `tools/probes/sweep-core/end-after-link.mjs`. Likely cause: `livePreview.ts`
+hides `]]` with `Decoration.replace` while the caret is not touching the link, so End stops before
+it, and the click mapping in `caret.ts` lands in the link token. Not confirmed.
+
+**Fixed 2026-10-03.** Two causes, one per gesture. (1) Click on the rendered block:
+`caret.ts#resolveClickOffset` added the rendered character offset to the link's `data-from`,
+which is its `[[`, so the end of `Balení` mapped to `[[Bale|ní]]` and nothing could map past
+`]]` (same for a trailing `**bold**` and `((ref))`). Now a point with nothing rendered after it
+on its line maps to the outermost enclosing token's `data-to` (start of line: `data-from`), and
+characters inside an un-aliased link count from its target (`data-text-from`). (2) End, and a
+click inside the editor: with `lineWrapping`, CM6's `moveToLineBoundary` hit-tests the editor's
+right edge, which never lands past a zero-width hidden `]]`; `livePreview.ts` now wraps
+Home/End/Cmd-Arrow and pointer selection to cross hidden markers at the line edge (Home before a
+leading `[[` likewise). `#[[multi word]]` was never affected. Red before: 20 failed in Chromium +
+WebKit; green after 28/28. Probe `end-after-link.mjs` on the real graph: all five blocks append
+after the link, no `BaleníZ` page.
+Not run in the real Mac app (Playwright WebKit stood in).
 
 ### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
 **Status:** fixed (2026-10-03, `0cb4a62`, ADR 026) · **Severity:** high (replicas diverged for good) ·
@@ -1095,12 +1260,6 @@ element. Ordinary missing pages keep "doesn't exist yet / Create" — see B-605.
 **Test:** manual: `docker run` of `deploy/docker/Dockerfile`'s image
 
 **Fixed 2026-10-03** (`ee8c54c`) by installing `libatomic1` in the image. Possibly also affects the Linux desktop sidecar on minimal distros; not investigated.
-
-### B-600 · Security: the loopback auto-token was handed to every client behind a same-host reverse proxy
-**Status:** fixed (partly; see D3) · **Severity:** high (security) · **Found:** 2026-10-03, real-device-test agent ·
-**Test:** `packages/server/src/http/host-guard.test.ts` "refuses a token to a request that came through a same-machine reverse proxy"; probe `tools/probes/loopback-proxy-token.mjs`
-
-The server gives a write token to any caller that looks local. A proxy on the server's machine that rewrites `Host` to its upstream made every client look local. **Fixed 2026-10-03** (`ee8c54c`) for any request carrying forwarding headers (`X-Forwarded-For`, `Forwarded`, …) in `http/app.ts`. Still open: a proxy that rewrites `Host` and adds no forwarding header is indistinguishable from a local browser (decision D3 in `docs/progress/real-device-test.md`). the home server's setup is not affected (the Tailscale proxy runs in a separate pod).
 
 ### B-599 · A server address typed without a path (`http://host:6100`) never opened live sync
 **Status:** fixed · **Severity:** high · **Found:** 2026-10-03, real-device-test agent ·
@@ -1433,6 +1592,8 @@ connection through the real server still opens, exchanges messages, and closes c
 in place — this isn't just "swallow all upgrade errors," it targets exactly the pre-handshake gap
 the vulnerability lives in.
 
+2026-10-03: the guard moved to `http/upgrade-guard.ts` (attached at `'connection'`) as part of B-602's fix.
+
 ### B-588 · Desktop picker (local/server switch) made the owner manually quit and reopen the app every time
 **Status:** fixed · **Test:** `e2e/tests/desktop-launcher.spec.ts` (B-584's regression
 case, exercises the same `restart_app` path) · **Severity:** low (annoying, not broken — the app
@@ -1728,6 +1889,8 @@ calm rendering in this pass — same pattern, deliberately left for a follow-up 
 this one further.
 
 ---
+
+2026-10-03: the Search branch is superseded by local-first search (local-only now searches the device). References/graph branches unchanged.
 
 ### B-576 · Sidebar drawer cannot be closed by tapping outside it
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-15, owner report: "also it cannot be
@@ -6616,6 +6779,8 @@ after typing all kept the text in the replica AND on the server, without a furth
 afterwards: OK, 20,466 ops replayed, rebuild matches live state.
 
 ---
+
+2026-10-03 (local-graphs): a follower replica with no sync target replays orphaned batches into memory and settles them; with the new lock wait this should no longer happen on relaunch, but a genuine second tab of a local-only graph would still do it.
 
 ### B-245 · Cmd+X on a block selection does nothing
 **Status:** fixed · **Severity:** low · **Found:**

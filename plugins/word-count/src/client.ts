@@ -41,8 +41,14 @@ export default {
             return;
           }
           try {
-            const result = await ctx.rpc.call<CountResult>("count", page.name);
+            const result = await ctx.rpc.call<CountResult | null>("count", page.name);
             if (disposed || request !== latest) return;
+            // No such page on the server (just deleted, or not synced yet): no count (B-610).
+            if (!result) {
+              el.textContent = "";
+              el.title = "";
+              return;
+            }
             el.textContent = `${result.wordCount} ${result.wordCount === 1 ? "word" : "words"}`;
             el.title = `${result.blockCount} ${result.blockCount === 1 ? "block" : "blocks"} on ${result.page}`;
           } catch (e) {

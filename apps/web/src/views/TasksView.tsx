@@ -8,6 +8,7 @@
 import type { TaskMarker } from "@nooklet/core";
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { taskWorkflow } from "../commands/task-workflow.js";
 import { displayRefName } from "../data/page-title.js";
 import { applyOps, getOpClock, useOpenTasks } from "../data/store.js";
 import type { TaskRow } from "../data/types.js";
@@ -84,7 +85,7 @@ export function TasksView(): JSX.Element {
 
   async function onToggle(t: TaskRow): Promise<void> {
     const clock = await getOpClock();
-    await applyOps(toggleDone(toEditableBlock(t), clock));
+    await applyOps(toggleDone(toEditableBlock(t), clock, Date.now(), taskWorkflow()));
   }
 
   return (

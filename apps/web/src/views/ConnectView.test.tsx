@@ -201,3 +201,42 @@ describe("B-563: choice screen precedes the form whenever a skip path exists", (
     expect(screen.queryByLabelText("Device token")).toBeNull();
   });
 });
+
+describe("B-613 × B-603: re-pair wins over a pairing link", () => {
+  const repair = {
+    connectBase: "https://home.example/g/default",
+    displayUrl: "https://home.example/g/default",
+    sessionBase: "https://home.example/g/default",
+    graphSlug: "default",
+    onCancel: () => {},
+  };
+
+  it("a link for another server cannot change the address, and its token is not used", () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ token: null }), { status: 200 }));
+    render(() => (
+      <ConnectView
+        repair={repair}
+        prefill={{ serverUrl: "https://evil.example/g/default", token: "nk_evil" }}
+      />
+    ));
+    const address = screen.getByLabelText("Server address") as HTMLInputElement;
+    expect(address.value).toBe("https://home.example/g/default");
+    expect(address.readOnly).toBe(true);
+    expect((screen.getByLabelText("Device token") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByText("https://evil.example/g/default")).toBeNull();
+  });
+
+  it("a link for the same graph (bare origin) pre-fills only the token", () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ token: null }), { status: 200 }));
+    render(() => (
+      <ConnectView
+        repair={repair}
+        prefill={{ serverUrl: "https://home.example/", token: "nk_new" }}
+      />
+    ));
+    expect((screen.getByLabelText("Server address") as HTMLInputElement).value).toBe(
+      "https://home.example/g/default",
+    );
+    expect((screen.getByLabelText("Device token") as HTMLInputElement).value).toBe("nk_new");
+  });
+});

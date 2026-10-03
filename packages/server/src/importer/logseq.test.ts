@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { openDb } from "../db.js";
 import { suggestedJournalTitleFormat } from "../journal-format.js";
+import { recordedTaskWorkflow, suggestedTaskWorkflow } from "../task-workflow.js";
 import { importLogseqGraph, parseLogseqConfigEdn } from "./logseq.js";
 
 let ctx: ServerContext;
@@ -71,6 +72,41 @@ describe("parseLogseqConfigEdn", () => {
     expect(config.journalPageTitleFormat).toBe("MMM do, yyyy");
     expect(config.journalFileNameFormat).toBe("yyyy_MM_dd");
     expect(config.fileNameFormat).toBe("legacy");
+    expect(config.preferredWorkflow).toBeNull();
+  });
+
+  it("reads :preferred-workflow the way Logseq does (B-608)", () => {
+    expect(parseLogseqConfigEdn("{:preferred-workflow :now}").preferredWorkflow).toBe("now");
+    expect(parseLogseqConfigEdn("{:preferred-workflow :todo}").preferredWorkflow).toBe("todo");
+    expect(parseLogseqConfigEdn('{:preferred-workflow "NOW"}').preferredWorkflow).toBe("now");
+    expect(
+      parseLogseqConfigEdn("{;; :preferred-workflow :todo\n :preferred-workflow :now}")
+        .preferredWorkflow,
+    ).toBe("now");
+  });
+});
+
+describe("importLogseqGraph: task workflow (B-608)", () => {
+  it("records config.edn's :preferred-workflow, which wins over the markers", async () => {
+    writeGraphFile("logseq/config.edn", "{:preferred-workflow :todo}");
+    writeGraphFile("pages/Tasks.md", "- LATER one\n- LATER two\n");
+    await importLogseqGraph(ctx, graphDir);
+    expect(recordedTaskWorkflow(ctx.driver)).toBe("todo");
+    expect(suggestedTaskWorkflow(ctx.driver)).toBe("todo");
+  });
+
+  it("with no setting, a graph of LATER/NOW tasks suggests `now` (the owner's graph)", async () => {
+    writeGraphFile("pages/Tasks.md", "- LATER one\n- NOW two\n- DONE three\n");
+    await importLogseqGraph(ctx, graphDir);
+    expect(recordedTaskWorkflow(ctx.driver)).toBeNull();
+    expect(suggestedTaskWorkflow(ctx.driver)).toBe("now");
+  });
+
+  it("with no setting, an empty graph suggests `now` and a TODO graph `todo`", async () => {
+    expect(suggestedTaskWorkflow(ctx.driver)).toBe("now");
+    writeGraphFile("pages/Tasks.md", "- TODO one\n- DOING two\n- LATER three\n");
+    await importLogseqGraph(ctx, graphDir);
+    expect(suggestedTaskWorkflow(ctx.driver)).toBe("todo");
   });
 });
 

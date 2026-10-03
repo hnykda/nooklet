@@ -15,7 +15,13 @@ import "./styles/views.css";
 import { Navigate, Route, Router, type RouteSectionProps } from "@solidjs/router";
 import { createSignal, type JSX, Show } from "solid-js";
 import { CommandLayer } from "./app/CommandLayer.js";
-import { bootstrapConfig, samePathGraphPrefix } from "./data/bootstrap.js";
+import {
+  activeGraph,
+  bootstrapConfig,
+  chooseLocalOnly,
+  isLocalOnlyEntry,
+  samePathGraphPrefix,
+} from "./data/bootstrap.js";
 import { platform } from "./platform/index.js";
 import { CaptureRoute } from "./routes/CaptureRoute.js";
 import { GraphRoute } from "./routes/GraphRoute.js";
@@ -29,6 +35,7 @@ import { ConnectView } from "./views/ConnectView.js";
 import { FindReplaceView } from "./views/FindReplaceView.js";
 import { GraphMismatchView } from "./views/GraphMismatchView.js";
 import { HistoryRoute } from "./views/HistoryView.js";
+import { PairingLinkPrompt } from "./views/PairingLinkPrompt.js";
 import { TrashView } from "./views/TrashView.js";
 
 /** Hidden on Capacitor for now (owner's call, `docs/BUGS.md` "Graph hidden on Capacitor"): `/graph`
@@ -64,38 +71,65 @@ export function App() {
   // with rather than equals: this runs before `<Router>` exists to strip its own `base` (below),
   // so the raw pathname may still carry a `/g/<slug>` prefix.
   const isCapture = (): boolean => Boolean(globalThis.location?.pathname?.endsWith("/capture"));
+  // B-612: a local-only list entry has no server, so there is no token to ask for — it is the
+  // "Just this device" choice already made, remembered.
+  const localOnly = isLocalOnlyEntry(activeGraph());
+
+  /** B-612: under Capacitor, "Just this device" is a real list entry (so the switcher can come back
+   * to it once a server graph is added), not an in-memory flag that the next "Add a graph" strands.
+   * Web/desktop keep the in-memory skip: there the page is always served by some graph's origin,
+   * which already has an entry (`initBootstrap`). */
+  function skip(): void {
+    if (platform.name === "capacitor" && !activeGraph()) {
+      if (chooseLocalOnly().reload) {
+        location.reload();
+        return;
+      }
+    }
+    setSkipped(true);
+  }
 
   // Checked before anything else: a graph mismatch makes every other screen quietly lie, so
   // there is no point rendering them.
   if (config.graphMismatch && config.graphId) {
-    return <GraphMismatchView graphId={config.graphId} />;
+    return (
+      <>
+        <GraphMismatchView graphId={config.graphId} />
+        <PairingLinkPrompt />
+      </>
+    );
   }
 
+  // `PairingLinkPrompt` (B-603) sits outside the token gate: a `nooklet://connect` link must work
+  // on a fresh install, a local-only device, and one already syncing elsewhere alike.
   return (
-    <Show
-      when={config.token !== null || skipped() || isCapture()}
-      fallback={<ConnectView reason={config.reason} onSkip={() => setSkipped(true)} />}
-    >
-      {/* ADR 025: routes below are defined app-relative ("/journals", not "/g/default/journals");
+    <>
+      <PairingLinkPrompt />
+      <Show
+        when={config.token !== null || skipped() || localOnly || isCapture()}
+        fallback={<ConnectView reason={config.reason} onSkip={skip} />}
+      >
+        {/* ADR 025: routes below are defined app-relative ("/journals", not "/g/default/journals");
           `base` is what lets the router match/generate them correctly wherever this page actually
           loaded from. `samePathGraphPrefix()`, not `apiBaseUrl()`/`activeGraph()` — see its own
           doc comment for why those are the wrong source (can be a different origin entirely). */}
-      <Router base={samePathGraphPrefix() ?? ""} root={RouterRoot}>
-        <Route path="/" component={() => <Navigate href="/journals" />} />
-        <Route path="/journal/today" component={() => <Navigate href="/journals" />} />
-        <Route path="/journals" component={JournalsRoute} />
-        <Route path="/pages" component={PagesRoute} />
-        <Route path="/page/*name" component={PageRoute} />
-        <Route path="/search" component={SearchRoute} />
-        <Route path="/tasks" component={TasksRoute} />
-        <Route path="/graph" component={GraphOrRedirect} />
-        <Route path="/replace" component={FindReplaceView} />
-        {/* M7 item 8 (ADR 022): the trash, and a page's history at `/history/*name` — not under
+        <Router base={samePathGraphPrefix() ?? ""} root={RouterRoot}>
+          <Route path="/" component={() => <Navigate href="/journals" />} />
+          <Route path="/journal/today" component={() => <Navigate href="/journals" />} />
+          <Route path="/journals" component={JournalsRoute} />
+          <Route path="/pages" component={PagesRoute} />
+          <Route path="/page/*name" component={PageRoute} />
+          <Route path="/search" component={SearchRoute} />
+          <Route path="/tasks" component={TasksRoute} />
+          <Route path="/graph" component={GraphOrRedirect} />
+          <Route path="/replace" component={FindReplaceView} />
+          {/* M7 item 8 (ADR 022): the trash, and a page's history at `/history/*name` — not under
             `/page/*name`, whose splat would swallow "/history" as part of the page name. */}
-        <Route path="/trash" component={TrashView} />
-        <Route path="/history/*name" component={HistoryRoute} />
-        <Route path="/capture" component={CaptureRoute} />
-      </Router>
-    </Show>
+          <Route path="/trash" component={TrashView} />
+          <Route path="/history/*name" component={HistoryRoute} />
+          <Route path="/capture" component={CaptureRoute} />
+        </Router>
+      </Show>
+    </>
   );
 }

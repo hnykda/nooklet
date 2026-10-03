@@ -57,6 +57,11 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
    `plugin`, `ref`, `path_ref`, `page_alias`, `block_fts`/`block_tri`, `page_fts`/`page_tri`,
    `schema_migration` — exists on both, with identical schema. Embeddings never sync (ADR 010);
    this is why they are server-only even though the client otherwise holds a full replica.
+   *As built (2026-10-03, server-search):* the replica created by `CORE_SCHEMA_STATEMENTS` has no
+   `ref`/`path_ref`/`page_alias` and no trigram tables. It does have `block_fts` and `page_fts`
+   with the server's DDL and triggers, created `IF NOT EXISTS` and rebuilt once on the first open
+   that lacks them (`schema-client.ts#ensureClientSearchIndex`) — the device's own keyword search,
+   which the server's semantic matches are added to when reachable.
 2. Every top-level writable table (state and bookkeeping, not derived tables) MUST carry
    `graph_id TEXT NOT NULL DEFAULT 'default'` per `00-conventions.md` ("one graph per server in
    v1... every table still carries `graph_id`"). Derived tables (`ref`, `path_ref`, `page_alias`,

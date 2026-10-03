@@ -6,7 +6,8 @@
  *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
- *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] [--ui-control] |
+ *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] [--ui-control]
+ *                   [--link <public url>] (B-603: also prints a nooklet://connect pairing link) |
  *                   list | revoke <id> | root  (--ui-control grants ADR 015's live-UI-control
  *                   capability; `root` prints this data dir's root token — ADR 025, `/graphs` —
  *                   minting one if it does not exist yet; ignores --graph, it is not per-graph)
@@ -34,12 +35,13 @@
  */
 
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import type { ServerContext } from "./apply-ops.js";
+import { PairingLinkError, pairingLink } from "./auth/pairing-link.js";
 import { ensureRootToken } from "./auth/root-token.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
 import { createBackup, restoreBackup } from "./backup/index.js";
@@ -70,11 +72,16 @@ import {
 import { runGc } from "./gc.js";
 import { migrateLegacyLayoutIfNeeded } from "./graphs/migrate-legacy-layout.js";
 import { createMultiGraphApp } from "./graphs/mount.js";
-import { type BaseServerConfig, openGraph } from "./graphs/open-graph.js";
+import type { BaseServerConfig } from "./graphs/open-graph.js";
 import { graphDir } from "./graphs/paths.js";
 import { pluginDirsFor } from "./graphs/plugin-dirs.js";
-import { GraphRegistry } from "./graphs/registry.js";
-import { isLoopbackName } from "./http/app.js";
+import {
+  ensureGraphMeta,
+  GraphRegistry,
+  GraphSelectionError,
+  openGraphForCommand,
+} from "./graphs/registry.js";
+import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { importLogseqGraph } from "./importer/logseq.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
@@ -84,6 +91,7 @@ import type { ServerConfig } from "./ops/registry.js";
 import { discoverPlugins } from "./plugins/manifest.js";
 import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/settings.js";
 import { applyOrgDateRepair, formatOrgDateReport, planOrgDateRepair } from "./repair-org-dates.js";
+import { formatServeBanner } from "./serve-banner.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
 
 function dataDir(args: Args): string {
@@ -118,6 +126,8 @@ function baseServerConfig(args: Args): BaseServerConfig {
             .map((h) => h.trim())
             .filter(Boolean)
         : undefined,
+    // `--no-loopback-token` parses as `loopback-token: false` (cli-args.ts). Only `serve` reads it.
+    loopbackToken: args.flags.get("loopback-token") !== false,
   };
 }
 
@@ -161,7 +171,16 @@ interface OpenOptions {
 function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config: ServerConfig } {
   const dir = dataDir(args);
   migrateLegacyLayoutIfNeeded(dir);
-  return openGraph(dir, graphIdFlag(args), baseServerConfig(args), { migrate: opts.migrate });
+  // Through the registry's helper, not `openGraph` directly: on a fresh data dir this creates the
+  // default graph, and it must get its `graph.json` or `serve` later fails (B-607).
+  try {
+    return openGraphForCommand(dir, graphIdFlag(args), baseServerConfig(args), {
+      migrate: opts.migrate,
+    });
+  } catch (err) {
+    if (err instanceof GraphSelectionError) die(err.message);
+    throw err;
+  }
 }
 
 /**
@@ -191,10 +210,13 @@ const USAGE = `nooklet — a local-first outliner server
 
   nooklet serve  [--data <dir>] [--port <n>] [--web <dir>]
                  [--host <addr>] [--allow-host <h,h>]   expose on a LAN/tailnet
+                 [--no-loopback-token]   never auto-issue a token to "this machine"; use
+                                         behind a same-host reverse proxy (docs/OPERATIONS.md)
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
   nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
+                      [--link <public url>]   also print a nooklet://connect pairing link
   nooklet token list
   nooklet token revoke <token-id>
   nooklet token root
@@ -304,54 +326,28 @@ async function main(): Promise<void> {
       // Loopback by default (see ServerConfig.host): reaching this server from another machine
       // has to be something you asked for.
       const hostname = baseConfig.host ?? "127.0.0.1";
-      const exposed = !isLoopbackName(hostname);
-      if (exposed && !baseConfig.allowedHosts?.length) {
-        process.stderr.write(
-          `nooklet: bound to ${hostname} with no --allow-host, so ONLY requests addressed to\n` +
-            `  localhost are accepted — reaching this server by its LAN IP or tailnet name will\n` +
-            `  return 403. Pass e.g. --allow-host 192.168.1.5,my-machine.local to allow it.\n`,
-        );
-      }
-      // `@hono/node-server@2.1.1`'s own `setupWebSocket()` (its `dist/index.mjs`, the code behind
-      // `serve()`'s `websocket` option) registers an `'upgrade'` handler that awaits OUR fetch
-      // callback (auth, graph routing/resolution — genuinely slow the first time a graph is
-      // touched) before ever calling `wss.handleUpgrade()`, and attaches NO `'error'` listener to
-      // the raw socket for the whole time it is doing that. A client that resets the TCP
-      // connection during that window (a page navigating away mid-handshake, a reconnect loop
-      // superseding its own in-flight attempt — real, ordinary client behavior, not misbehavior)
-      // fires an unhandled `'error'` event and crashes the ENTIRE process — verified against the
-      // exact ECONNRESET/`emitErrorCloseNT` stack an owner hit in real use by isolating the same
-      // pattern in a standalone repro (`tools/probes/upgrade-socket-error.mjs`) and by reading
-      // `@hono/node-server`'s own source (its `setupWebSocket`, `server.on("upgrade", ...)`, never
-      // calls `socket.on("error", ...)` at all). Fix: a SECOND `'upgrade'` listener on the same
-      // server, registered after `serve()` returns — Node's `EventEmitter` runs listeners
-      // synchronously in registration order for one `emit()`, and an async listener only yields at
-      // its first `await`, so this one is already attached before hono's async gap can ever open,
-      // regardless of how long that gap turns out to be. No new capability needed: a reset socket
-      // during an abandoned upgrade has nothing left to do anyway, so swallowing its `'error'` is
-      // correct, not just convenient — the alternative is the whole server dying instead.
+      // B-589 (a client reset mid-upgrade crashed the process) is handled by
+      // `guardUpgradeSockets` below, at `'connection'` time. It must NOT be a second `'upgrade'`
+      // listener: @hono/node-server only answers a failed upgrade when it is the sole one (B-602).
+      // See `http/upgrade-guard.ts`.
       const server = serve(
         { fetch: app.fetch, port: baseConfig.port, hostname, websocket: { server: wss } },
         (info) => {
-          const shown = exposed ? hostname : "127.0.0.1";
-          const base = `http://${shown}:${info.port}`;
-          process.stdout.write(
-            `nooklet serving ${dir}\n` +
-              `  graphs ${base}/graphs\n` +
-              `  http   ${base}/g/<id>/api/v1\n` +
-              `  mcp    ${base}/g/<id>/mcp\n` +
-              `  spec   ${base}/g/<id>/openapi.json\n` +
-              `  sync   ws://${shown}:${info.port}/g/<id>/sync/live\n` +
-              `  live   ws://${shown}:${info.port}/g/<id>/ui/live\n` +
-              (webClientDir
-                ? `  app    ${base}/g/<id>/  (serving ${webClientDir})\n`
-                : `  app    not served — build it (pnpm --filter @nooklet/web build) or pass --web <dir>\n`),
-          );
+          // B-604: a wildcard bind lists the LAN addresses to use, and which still need
+          // --allow-host (`serve-banner.ts`).
+          const banner = formatServeBanner({
+            dataDir: dir,
+            host: hostname,
+            port: info.port,
+            allowedHosts: baseConfig.allowedHosts,
+            webClientDir,
+            interfaces: networkInterfaces(),
+          });
+          process.stdout.write(banner.stdout);
+          if (banner.stderr) process.stderr.write(banner.stderr);
         },
       );
-      server.on("upgrade", (_request, socket) => {
-        socket.on("error", () => {});
-      });
+      guardUpgradeSockets(server);
       return;
     }
 
@@ -409,15 +405,39 @@ async function main(): Promise<void> {
         // ADR 015 §7: `--ui-control` grants the orthogonal live-UI-control capability
         // (`../ops/registry.ts`'s `Permission`), independent of --scope/--sync.
         const uiControl = args.flags.get("ui-control") === true;
-        const created = createToken(ctx.driver, {
-          label,
-          scope,
-          canSync: args.flags.get("sync") === true,
-          uiControl,
-        });
+        const canSync = args.flags.get("sync") === true;
+        // B-603: `--link <public url>` also prints a `nooklet://connect` pairing link. Checked
+        // BEFORE minting, so a bad address does not leave an unused live token behind.
+        const linkFlag = args.flags.get("link");
+        if (linkFlag === true)
+          die("--link needs the address devices use, e.g. --link http://192.168.1.5:6100");
+        const linkFor = (token: string): string | undefined => {
+          if (typeof linkFlag !== "string") return undefined;
+          try {
+            return pairingLink(linkFlag, token, graphIdFlag(args));
+          } catch (err) {
+            if (err instanceof PairingLinkError) die(err.message);
+            throw err;
+          }
+        };
+        linkFor("nk_validate");
+        const created = createToken(ctx.driver, { label, scope, canSync, uiControl });
         process.stdout.write(
           `${created.token}\n\nSaved as "${label}" (${scope}${uiControl ? ", ui:control" : ""}). This is the only time it is shown.\n`,
         );
+        const link = linkFor(created.token);
+        if (link) {
+          process.stdout.write(
+            `\nPairing link: open it on the phone (tap it in Notes/Messages, or paste it into\n` +
+              `Safari's address bar). The app shows the server address and asks before connecting.\n` +
+              `  ${link}\n` +
+              `It CONTAINS the token: anyone who sees it can use this graph until you revoke it\n` +
+              `("nooklet token revoke"). Clipboard, chat, shell history and screenshots all keep it.\n` +
+              (canSync && scope !== "read"
+                ? ""
+                : `Note: a phone needs --scope write --sync to edit and sync; this token is ${scope}${canSync ? "" : " without --sync"}.\n`),
+          );
+        }
         return;
       }
       if (sub === "list") {
@@ -529,7 +549,11 @@ async function main(): Promise<void> {
         const hostFlag = args.flags.get("host");
         const current = getEmbeddingSettings(driver);
         const provider = typeof providerFlag === "string" ? providerFlag : current.provider;
-        if (provider !== "ollama" && provider !== "openai-compat") {
+        // `fake` (deterministic vectors, `embeddings/fake-provider.ts`) only for test harnesses that
+        // ask for it: the e2e suite needs a server whose semantic search really runs, without a
+        // model (`e2e/tests/search-semantic-server.spec.ts`). Never offered to a person.
+        const fakeAllowed = provider === "fake" && process.env.NOOKLET_TEST_FAKE_EMBEDDINGS === "1";
+        if (provider !== "ollama" && provider !== "openai-compat" && !fakeAllowed) {
           die(`unknown provider "${provider}" (expected ollama or openai-compat)`);
         }
         const host = typeof hostFlag === "string" ? hostFlag : current.host;
@@ -667,6 +691,8 @@ async function main(): Promise<void> {
       // `serve`/`open()` will look for it — migrateLegacyLayoutIfNeeded never needs to touch it.
       const dir = graphDir(dataDir(args), graphIdFlag(args));
       const result = restoreBackup(resolve(archivePath), { dataDir: dir, force });
+      // Into a fresh data dir this is the graph's first database; give it its graph.json (B-607).
+      ensureGraphMeta(dataDir(args), graphIdFlag(args));
       process.stdout.write(
         `restored ${result.filesRestored} file(s) into ${dir} ` +
           `(archive schema version ${result.manifest.schemaVersion})\n` +

@@ -183,6 +183,17 @@ export function createMultiGraphApp(opts: CreateMultiGraphAppOptions): Hono {
   // for whoever wonders why a request with no `/g/` in it ever works at all) stay as close to
   // zero-friction as it was before ADR 025: nothing above `/g/<id>/` needs to know its own slug.
   app.all("*", (c) => {
+    // A WebSocket never follows a redirect, so a 307 here would only be a slower way to fail.
+    // Say what is wrong instead (B-602): the client stored an address without `/g/<id>`.
+    if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
+      return c.json(
+        errorJson(
+          "not_found",
+          "WebSocket endpoints live under /g/<graph-id>/ (e.g. /g/default/sync/live); a bare path is not redirected.",
+        ),
+        404,
+      );
+    }
     if (!existsSync(graphDbPath(dataDir, "default"))) {
       return c.json({ name: "nooklet", graphs: "/graphs" }, 404);
     }

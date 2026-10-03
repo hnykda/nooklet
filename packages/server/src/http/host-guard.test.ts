@@ -16,6 +16,7 @@ import { verifyToken } from "../auth/tokens.js";
 import { openDb } from "../db.js";
 import { setSuggestedJournalTitleFormat } from "../journal-format.js";
 import { buildRegistry } from "../ops/index.js";
+import { setRecordedTaskWorkflow } from "../task-workflow.js";
 import { makeTestServer } from "../test-helpers.js";
 import { createApp, WEB_CLIENT_TOKEN_LABEL } from "./app.js";
 
@@ -94,6 +95,18 @@ describe("loopback detection", () => {
     expect(body.journalTitleFormat).toBe("E, dd.MM.yyyy");
   });
 
+  it("hands the graph's task workflow to the client (B-608)", async () => {
+    const s = makeTestServer({ webClientDir: undefined });
+    const port = await listen(s.app);
+    const read = async (): Promise<string | undefined> =>
+      (JSON.parse((await get(port, "/api/session")).body) as { taskWorkflow?: string })
+        .taskWorkflow;
+    // Nothing recorded, no tasks: Logseq's default, `now`.
+    expect(await read()).toBe("now");
+    setRecordedTaskWorkflow(s.serverCtx.driver, "todo");
+    expect(await read()).toBe("todo");
+  });
+
   it("a restart retires the previous process's auto token instead of leaving it live (B-54)", async () => {
     // Two `ServerContext`s over one database stand in for two server processes: the raw token
     // lives in process memory, so only the next mint can revoke the row the last one left behind.
@@ -154,6 +167,24 @@ describe("loopback detection", () => {
       ) as { token: string | null };
       expect(body.token, header).toBeNull();
     }
+  });
+});
+
+describe("--no-loopback-token (B-600, decision D3)", () => {
+  it("never hands out a token, even to a genuine loopback peer with a loopback Host", async () => {
+    // The case forwarding headers cannot catch: a same-machine proxy that rewrites Host to
+    // 127.0.0.1 and adds nothing. It looks exactly like this request, so the flag is the only fix.
+    const s = makeTestServer({ loopbackToken: false });
+    const port = await listen(s.app);
+    const res = await get(port, "/api/session", `127.0.0.1:${port}`);
+    const body = JSON.parse(res.body) as { token: string | null; reason?: string };
+    expect(res.status).toBe(200);
+    expect(body.token).toBeNull();
+    expect(body.reason).toBe("loopback_token_disabled");
+    const minted = s.serverCtx.driver.all<{ id: string }>("SELECT id FROM token WHERE label = ?", [
+      WEB_CLIENT_TOKEN_LABEL,
+    ]);
+    expect(minted).toHaveLength(0);
   });
 });
 

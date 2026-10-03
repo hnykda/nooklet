@@ -207,6 +207,9 @@ function NavLink(props: {
   href: string;
   from: number;
   to: number;
+  /** Where the rendered text starts in the source, when it is a verbatim slice of it (a
+   * wikilink's target, after the `[[`): `caret.ts#resolveClickOffset` counts from here. */
+  textFrom?: number;
   onNavigate?: Navigate;
   onShelfOpen?: Navigate;
   children: unknown;
@@ -222,6 +225,7 @@ function NavLink(props: {
       class={props.class}
       data-from={props.from}
       data-to={props.to}
+      data-text-from={props.textFrom}
       onClick={(e) => {
         // Shift first, and `stop` before anything else runs: the enclosing block row treats a
         // Shift+click of its own as "shelve this block", so without halting propagation here you
@@ -371,6 +375,12 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
                 href={pageRoutePath(tok.target)}
                 from={tok.start}
                 to={tok.end}
+                textFrom={
+                  tok.alias === undefined &&
+                  ctx.source.slice(tok.targetStart, tok.targetEnd) === tok.target
+                    ? tok.targetStart
+                    : undefined
+                }
                 onNavigate={ctx.onNavigate}
                 onShelfOpen={ctx.onShelfOpen}
               >

@@ -214,6 +214,14 @@ export interface ServerConfig {
    * un-allowlisted `Host` gets 403 on every path, web client and `/mcp` alike.
    */
   allowedHosts?: string[];
+  /**
+   * Whether `/api/session` (and the page bootstrap) hands a write + sync token to a caller that
+   * looks like this machine (`../http/app.ts#isLoopbackRequest`). Default true — zero-config for
+   * the local browser. `nooklet serve --no-loopback-token` sets false, for a deployment behind a
+   * same-machine reverse proxy that rewrites `Host` and sends no forwarding header (B-600, D3):
+   * there every remote client looks local, and nothing at the HTTP level can tell them apart.
+   */
+  loopbackToken?: boolean;
 }
 
 export interface Logger {
@@ -347,6 +355,21 @@ export class OpRegistry {
       throw new Error(`op "${op.name}" is exposed to MCP but has no render()`);
     }
     this.ops.set(op.name, { ...op, owner });
+  }
+
+  /**
+   * A new registry holding this one's core ops and none of its plugin ops — one per graph when a
+   * process hosts several (ADR 025, B-617). Core op definitions are graph-independent (each request
+   * gets its graph's context), so sharing them is fine; a plugin op is not: it is registered by one
+   * graph's activation of the plugin, may close over that graph's plugin context (`plugin.data`,
+   * `plugin.kv`), and is disposed with it. With one shared registry the second graph's activation
+   * of word-count threw `op "page.wordcount" is already registered`, and the first graph's op
+   * answered for every graph.
+   */
+  forkCore(): OpRegistry {
+    const fork = new OpRegistry();
+    for (const op of this.ops.values()) if (op.owner === "core") fork.ops.set(op.name, op);
+    return fork;
   }
 
   /** Used by a plugin's Disposable to remove its own op on deactivate/reload. */

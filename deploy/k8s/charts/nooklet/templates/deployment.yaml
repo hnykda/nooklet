@@ -56,6 +56,11 @@ spec:
         - /app/web
         - --allow-host
         - {{ join "," .Values.allowHosts | quote }}
+        # B-600/D3: no auto-issued token for "this machine". The Tailscale ingress is a separate
+        # pod (peer = pod IP, never loopback), but `kubectl port-forward` and any future sidecar
+        # proxy arrive over the pod's loopback and would otherwise be handed a write + sync token.
+        # Nothing legitimate needs it here — no browser runs inside the pod.
+        - --no-loopback-token
         ports:
         - name: http
           containerPort: 6100

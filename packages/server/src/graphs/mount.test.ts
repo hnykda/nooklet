@@ -9,12 +9,14 @@
  */
 
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { connect as netConnect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
+import { guardUpgradeSockets } from "../http/upgrade-guard.js";
 import { buildRegistry } from "../ops/index.js";
 import { post } from "../test-helpers.js";
 import { createMultiGraphApp } from "./mount.js";
@@ -55,6 +57,35 @@ describe("createMultiGraphApp: dynamic /g/:graphId/* dispatch", () => {
 
     const listB = await post(app, "/g/b/api/v1/page.list", tokenB, {});
     expect(listB.json.items.map((p: { name: string }) => p.name)).not.toContain("Only In A");
+  });
+
+  it("activates every built-in plugin in each graph, each graph's plugin op answering for its own data (B-617)", async () => {
+    const { app } = makeApp();
+    const tokenA = await createGraph(app, "a");
+    const tokenB = await createGraph(app, "b");
+    await post(app, "/g/a/api/v1/page.create", tokenA, {
+      name: "Counted",
+      markdown: "- one two three",
+    });
+    await post(app, "/g/b/api/v1/page.create", tokenB, { name: "Counted", markdown: "- one" });
+
+    for (const [graph, token, words] of [
+      ["a", tokenA, 3],
+      ["b", tokenB, 1],
+    ] as const) {
+      const list = await app.request(`/g/${graph}/api/v1/plugins`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const ids = ((await list.json()) as { plugins: { id: string }[] }).plugins.map((p) => p.id);
+      // Only `active` plugins are listed: the second graph's word-count used to fail activation
+      // with `op "page.wordcount" is already registered`.
+      expect(ids).toEqual(expect.arrayContaining(["word-count", "mermaid", "daily-summary"]));
+      const count = await post(app, `/g/${graph}/api/v1/page.wordcount`, token, {
+        page: "Counted",
+      });
+      expect(count.status).toBe(200);
+      expect(count.json.word_count).toBe(words);
+    }
   });
 
   it("404s for an unknown graph id before ever checking that graph's own auth", async () => {
@@ -221,6 +252,83 @@ describe("createMultiGraphApp: dynamic /g/:graphId/* dispatch", () => {
 
       await sleep(100);
       expect(pokedB).toBe(false);
+    });
+
+    /** Starts the multi-graph app the way `cli.ts`'s `serve` does: hono's WebSocket wiring plus
+     * `guardUpgradeSockets`. `delayMs` stretches the fetch callback, standing in for the slow
+     * first open of a graph (the window B-589's crash needed). */
+    async function listenLikeServe(
+      app: ReturnType<typeof createMultiGraphApp>,
+      delayMs = 0,
+    ): Promise<number> {
+      wss = new WebSocketServer({ noServer: true });
+      const fetch: typeof app.fetch = async (req, env, ctx) => {
+        if (delayMs) await sleep(delayMs);
+        return app.fetch(req, env, ctx);
+      };
+      const port = await new Promise<number>((resolve) => {
+        server = serve(
+          { fetch, port: 0, hostname: "127.0.0.1", websocket: { server: wss as WebSocketServer } },
+          (info) => resolve(info.port),
+        );
+        guardUpgradeSockets(server as ServerType);
+      });
+      return port;
+    }
+
+    /** Resolves with the HTTP status a failed upgrade was answered with, or "open", or "hung". */
+    function upgradeOutcome(port: number, path: string): Promise<number | "open" | "hung"> {
+      return new Promise((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`);
+        sockets.push(ws);
+        const timer = setTimeout(() => resolve("hung"), 1500);
+        ws.once("open", () => {
+          clearTimeout(timer);
+          resolve("open");
+        });
+        ws.once("unexpected-response", (_req, res) => {
+          clearTimeout(timer);
+          resolve(res.statusCode ?? 0);
+        });
+        ws.on("error", () => {});
+      });
+    }
+
+    it("answers a failed upgrade with 404 at once instead of leaving it hanging (B-602)", async () => {
+      // Before: the B-589 fix was a second 'upgrade' listener, and @hono/node-server answers a
+      // failed upgrade only when its listener is the sole one — so these hung with no response.
+      const { app } = makeApp();
+      await createGraph(app, "default");
+      const port = await listenLikeServe(app);
+      expect(server?.listenerCount("upgrade")).toBe(1);
+      expect(await upgradeOutcome(port, "/sync/live")).toBe(404); // bare path: no 307 for a WS
+      expect(await upgradeOutcome(port, "/g/nope/sync/live")).toBe(404); // unknown graph
+      expect(await upgradeOutcome(port, "/g/default/sync/live")).toBe("open");
+    });
+
+    it("survives a client resetting the TCP connection mid-upgrade (B-589, kept by the new guard)", async () => {
+      // Without any guard this is an unhandled 'error' on the socket, which kills the process
+      // (vitest reports it as an unhandled error and fails the run).
+      const { app } = makeApp();
+      await createGraph(app, "default");
+      const port = await listenLikeServe(app, 200);
+      await new Promise<void>((resolve) => {
+        const sock = netConnect({ host: "127.0.0.1", port }, () => {
+          sock.write(
+            "GET /g/default/sync/live HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n" +
+              "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+              "Sec-WebSocket-Version: 13\r\n\r\n",
+          );
+          setTimeout(() => {
+            sock.resetAndDestroy();
+            resolve();
+          }, 30);
+        });
+        sock.on("error", () => {});
+      });
+      await sleep(400);
+      // Still serving after the reset.
+      expect(await upgradeOutcome(port, "/g/default/sync/live")).toBe("open");
     });
   });
 });

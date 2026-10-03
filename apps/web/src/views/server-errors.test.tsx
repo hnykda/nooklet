@@ -6,12 +6,11 @@
  * printed a rejection's message without its hint, History `err.message` — so `graph.replace`'s "fix
  * the pattern, or set regex: false…" never reached the person who typed the pattern.
  *
- * Only the HTTP edge is replaced: Find & Replace's `refactorApi`, Search's resource, History's
+ * Only the HTTP edge is replaced: Find & Replace's `refactorApi`, Search's `apiClient.search`, History's
  * `callOp`. `../source-guards.test.ts` keeps new views from growing a formatter of their own.
  */
 import { Route, Router } from "@solidjs/router";
 import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
-import { createResource } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SearchInput, SearchResult } from "../data/api-client.js";
 
@@ -29,6 +28,17 @@ vi.mock("../db/client.js", () => ({
 vi.mock("../data/api-client.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   callOp: (name: string, body: unknown) => fake.callOp?.(name, body),
+  apiClient: { search: (input: SearchInput) => fake.search?.(input) },
+}));
+// Search is local first now (server-search): the device answers, the server only adds to it.
+vi.mock("../data/local-search.js", () => ({
+  searchLocal: async () => ({ hits: [], modeUsed: "keyword" }),
+  presenceOnDevice: async () => new Map(),
+}));
+vi.mock("../data/bootstrap.js", () => ({
+  hasSyncTarget: () => true,
+  apiBaseUrl: () => "http://127.0.0.1:6405",
+  authToken: () => "t",
 }));
 vi.mock("../data/refactor-api.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../data/refactor-api.js")>();
@@ -38,10 +48,8 @@ vi.mock("../data/refactor-api.js", async (importOriginal) => {
   };
 });
 vi.mock("../data/store.js", () => ({
-  useSearchResults: (input: () => SearchInput | undefined) => {
-    const [resource, { refetch }] = createResource(input, (i: SearchInput) => fake.search?.(i));
-    return [resource, { refetch: () => void refetch() }];
-  },
+  stampedFor: (value: unknown) => ({ value, version: 0 }),
+  useSyncStatus: () => () => ({ state: "idle", pendingCount: 0, serverCursor: 0 }),
   useAllPages: () => Object.assign(() => [], { loading: false, error: undefined }),
 }));
 
@@ -86,9 +94,15 @@ describe("server failures keep their address and hint (B-330)", () => {
       </Router>
     ));
     fireEvent.input(screen.getByPlaceholderText("Search…"), { target: { value: "pangolin" } });
-    const alert = await screen.findByRole("alert", undefined, { timeout: 3000 });
-    expect(alert.textContent).toContain("Search failed.");
-    expect(alert.textContent).toContain("could not reach http://127.0.0.1:6405");
+    // Not an alert any more: the device's own keyword hits are on screen regardless, so a server
+    // that cannot be reached is a quiet line — but it still names the address it tried.
+    await vi.waitFor(
+      () =>
+        expect(document.querySelector(".search-source")?.textContent).toContain(
+          "could not reach http://127.0.0.1:6405",
+        ),
+      { timeout: 3000 },
+    );
   });
 
   it("History's Undo shows the server's hint when the undo is refused", async () => {

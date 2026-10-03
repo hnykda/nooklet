@@ -17,7 +17,8 @@ command was run.
 - [x] Blocker 2 — a bare `http://host:port` server address made live sync silently never connect.
       **Fixed** + tests.
 - [x] Security — loopback auto-token leaked through a same-host reverse proxy. **Fixed for every
-      proxy that sends forwarding headers**; one configuration remains (owner decision D3).
+      proxy that sends forwarding headers**; the remaining case is covered by
+      `nooklet serve --no-loopback-token` (D3 decided (b); `docs/progress/pairing.md`).
 - [x] Info.plist: local-network usage string + ATS `NSAllowsLocalNetworking`.
 - [x] Container image `deploy/docker/Dockerfile` — built for linux/amd64 and run locally; found and
       fixed a missing `libatomic1`.
@@ -170,8 +171,8 @@ Woodpecker pipeline. Not applied, not rendered with `helm template` (no helm run
 - **D3 — same-host proxy that rewrites Host without forwarding headers** still gets a token.
   Options: (a) document "keep Host or send X-Forwarded-For" (done in the runbook); (b) add
   `nooklet serve --no-loopback-token` for proxied deployments; (c) only mint when the peer is
-  loopback AND no proxy is configured. **Recommend (b)**, small. Not urgent for homeserver (separate pod)
-  or `tailscale serve` (keeps Host).
+  loopback AND no proxy is configured. **Decided (b), done** (`b233294`, `docs/progress/pairing.md`):
+  the flag exists and is on in the container image and the draft Helm chart.
 - **D4 — Tailscale ingress Host header** — whether the operator's proxy forwards
   `nooklet.<tailnet>.ts.net` as `Host` is unverified. If not, nooklet answers 403 naming the host
   it saw; add that to `allowHosts`. Runbook step H6 checks it.
@@ -232,62 +233,86 @@ agent mid-session — pick unusual ports).
 
 # Runbook — first real three-device test
 
-Three clients of one server: the **Mac desktop app** (Tauri) in remote mode, the **iPhone app**
-(Capacitor), and optionally **iPhone Safari** as a fallback. Plus each app's local-only mode.
+**Owner's decision for the first test (2026-10-03): Option L** — the server runs on the Mac, on
+the LAN, with an **empty graph** (no import), in a separate `--data ~/nooklet-test` on a port other
+than 6100. Clients: the **iPhone app** (Capacitor) and the **Mac desktop app** (Tauri) in remote
+mode on the same Mac, plus each app's local-only mode.
 
-## 0. Choose the server (D1)
+**Which address each client uses (B-615 / B-27).** Plain `http://` is a secure context only on
+loopback. A page loaded from `http://<LAN-IP>` is not one: no `crypto.randomUUID`, no
+`navigator.locks`, no OPFS, so the client shows a blank white page after the token is accepted.
 
-**Option L — Mac on the LAN (fastest).** In a terminal you keep open:
+| client | address | why |
+|---|---|---|
+| iPhone app | `http://<LAN-IP>:6200` | its page is `capacitor://localhost` (a secure context); only its API calls go to the LAN IP |
+| Mac desktop app (same Mac as the server) | `http://127.0.0.1:6200` | its window *loads the page from* the server, so the page's origin must be loopback |
+| iPhone Safari | — | over plain http it cannot work at all; only with HTTPS (Options H/T) |
+
+## 0. Start the server (Option L)
+
+In a terminal you keep open:
 
 ```sh
 ipconfig getifaddr en0                       # e.g. 192.168.1.5 — the Mac's LAN IP
-pnpm nooklet serve --data ~/nooklet-test --host 0.0.0.0 --allow-host 192.168.1.5
+pnpm nooklet serve --data ~/nooklet-test --port 6200 --host 0.0.0.0 --allow-host 192.168.1.5
 ```
 
-- Use a separate `--data` dir for the test (not `~/.nooklet`), and any port but the one your live
-  server uses (`--port 6200`). The server prints a root token on first run — save it.
+- Empty `~/nooklet-test` the first time: `serve` creates the `default` graph and prints a root
+  token for `/graphs` (save it; `nooklet token root --data ~/nooklet-test` shows it again). **No
+  import** for this test.
+- The banner lists "other devices — the server address to type in the app" (B-604). An address
+  marked `(403 until allowed)` needs `--allow-host`; the server prints the exact flag to restart
+  with. A request refused for its Host is also logged on this terminal with the flag to add (B-616).
 - macOS will ask whether `node` may accept incoming connections: **Allow**, or the phone gets a
   timeout.
-- The address to type everywhere is `http://192.168.1.5:<port>` (the app adds `/g/default`).
 - Both devices on the same Wi-Fi; guest/isolated networks block device-to-device traffic.
 
-**Option H — homeserver over Tailscale (long-term home).** See §Hosting on homeserver below; the address is
-`https://nooklet.<tailnet>.ts.net`. Both devices must be on the tailnet (Tailscale app on the
-iPhone, VPN on).
-
-**Option T — Mac + `tailscale serve`.** `pnpm nooklet serve --data ~/nooklet-test --port 6200
---allow-host <mac-name>.<tailnet>.ts.net` (loopback bind is fine), then
-`tailscale serve --bg --https=443 http://127.0.0.1:6200`. Address:
-`https://<mac-name>.<tailnet>.ts.net`. Never put a proxy in front that rewrites `Host` to
-`127.0.0.1` without adding `X-Forwarded-For` (D3).
+**Later options, not for the first test.** **H — homeserver over Tailscale**: see §7; address
+`https://nooklet.<tailnet>.ts.net`; the image and chart run `--no-loopback-token` (D3).
+**T — Mac + `tailscale serve`**: `pnpm nooklet serve --data ~/nooklet-test --port 6200
+--allow-host <mac-name>.<tailnet>.ts.net` (loopback bind), then
+`tailscale serve --bg --https=443 http://127.0.0.1:6200`; address
+`https://<mac-name>.<tailnet>.ts.net`. Behind any same-machine proxy that rewrites `Host` to
+`127.0.0.1` without adding `X-Forwarded-For`, add `--no-loopback-token` (D3, B-600).
 
 **Sanity check from the Mac before touching a device:**
 
 ```sh
-curl -s <address>/healthz                                    # {"name":"nooklet","status":"ok"}
+curl -s http://192.168.1.5:6200/healthz                     # {"name":"nooklet","status":"ok"}
 curl -si -X OPTIONS -H 'Origin: capacitor://localhost' \
   -H 'Access-Control-Request-Method: POST' \
   -H 'Access-Control-Request-Headers: authorization,content-type' \
-  <address>/g/default/api/v1/graph.overview | grep -i access-control-allow-origin
+  http://192.168.1.5:6200/g/default/api/v1/graph.overview | grep -i access-control-allow-origin
 # must print: access-control-allow-origin: capacitor://localhost  (else the server is an old build)
 ```
 
-## 1. Mint one token per device
+## 1. Mint the iPhone's token — after the first `serve`
 
-On the machine with the server's data dir (Option L/T), or `kubectl exec` (Option H):
+Mint it **after** step 0 has run once. Before B-607's fix (branch
+`worktree-agent-a1a8803e8c967f3b2`, `228f942`) is merged this order is mandatory: a `token create`
+on a fresh data dir made the next `serve` die with `a graph called "default" already exists`. With
+the fix either order works, but there is no reason to change it.
 
 ```sh
-pnpm nooklet token create --data ~/nooklet-test --label iphone --scope write --sync
-pnpm nooklet token create --data ~/nooklet-test --label mac-desktop --scope write --sync
-# homeserver: kubectl -n apps exec deploy/nooklet -- /app/node /app/server.mjs token create \
-#         --label iphone --scope write --sync
+pnpm nooklet token create --data ~/nooklet-test --label iphone --scope write --sync \
+  --link http://192.168.1.5:6200
 ```
 
-Each is shown once. **Getting it onto the iPhone** (no link/QR flow exists yet): copy it on the Mac
-and paste on the iPhone via **Universal Clipboard** (same Apple ID on both, Wi-Fi + Bluetooth on,
-Handoff enabled in System Settings → General → AirDrop & Handoff and iPhone Settings → General →
-AirPlay & Continuity); or AirDrop a note containing it. Revoke any you leak with
-`nooklet token revoke <id>` (`token list` shows ids).
+It prints the token (shown once) and a **pairing link**,
+`nooklet://connect?url=http%3A%2F%2F192.168.1.5%3A6200%2Fg%2Fdefault&token=nk_…` (B-603). Get the
+link onto the iPhone: AirDrop a note containing it, or Universal Clipboard (same Apple ID, Handoff
+on) and paste it into Safari's address bar. Tapping it opens the app on a pre-filled "Connect to
+this server?" screen showing the address; nothing is contacted until you tap **Connect**.
+
+**The link contains the token.** Anything that sees it can use the graph until the token is
+revoked: the clipboard (and Universal Clipboard on every device on the Apple ID), the note you
+AirDropped, shell history, screenshots, Safari history if pasted there. Delete the note afterwards;
+revoke with `nooklet token revoke <id>` (`token list` shows ids) on any doubt.
+
+The Mac desktop app needs **no** token: it loads from `http://127.0.0.1:6200`, a loopback caller,
+and the server hands it one automatically (unless the server runs `--no-loopback-token`).
+(Option H: `kubectl -n apps exec deploy/nooklet -- /app/node /app/server.mjs token create --label
+iphone --scope write --sync --link https://nooklet.<tailnet>.ts.net`.)
 
 ## 2. Build and install the iPhone app
 
@@ -315,12 +340,16 @@ Xcode only bundles whatever is in `ios/App/App/public`.)
 
 ## 3. Connect the iPhone
 
-Open nooklet → **Sync with a server** → Server address: the address from step 0 (no `/g/...`
-needed) → Device token: paste → Connect.
+**With the pairing link (step 1):** tap it → iOS asks "Open in nooklet?" → Open → check the address
+on the confirm screen is `http://192.168.1.5:6200/g/default` → **Connect**.
 
-- Option L: iOS asks "nooklet would like to find and connect to devices on your local network" —
-  **Allow** (if you tapped Don't Allow: Settings → Privacy & Security → Local Network → nooklet).
-- Expected: app reloads into Today; the sync indicator (cloud icon, top right) turns green.
+**By hand:** open nooklet → **Sync with a server** → Server address `http://192.168.1.5:6200` (no
+`/g/...` needed) → Device token: paste → Connect.
+
+- iOS asks "nooklet would like to find and connect to devices on your local network" — **Allow**
+  (if you tapped Don't Allow: Settings → Privacy & Security → Local Network → nooklet).
+- Expected: app reloads into Today; the sync indicator (cloud icon, top right) turns green. The
+  confirm screen must **not** come back after the reload (it did before `fb31593`).
 
 ## 4. Set up the Mac desktop app
 
@@ -329,10 +358,12 @@ pnpm desktop:install     # rebuilds the sidecar (B-580) + the .app, copies to /A
 ```
 
 (`pnpm desktop` for a dev run; both refresh the sidecar first.) Open nooklet → menu **Switch
-Server…** (or the picker if nothing is configured) → **Add a server** → the address from step 0 →
-it checks `/healthz`, saves, restarts. The window now loads the client **from the server** (so its
-UI is the server's build, not the app's) → paste the `mac-desktop` token on the connect screen.
-"This Mac" in the same picker is local mode (its own bundled server, separate graph).
+Server…** (or the picker if nothing is configured) → **Add a server** → **`http://127.0.0.1:6200`**
+(not the LAN IP: the window loads its page from this address, and `http://<LAN-IP>` is not a secure
+context, so it would be a blank page — B-615) → it checks `/healthz`, saves, restarts. The window
+now loads the client **from the server**, and as a loopback caller it is given a token
+automatically: no connect screen. "This Mac" in the same picker is local mode (its own bundled
+server, separate graph).
 
 ## 5. Test script
 
@@ -354,14 +385,21 @@ Mark each pass/fail in the table in §Results. Keep both devices visible.
    rotate to landscape and back.
 8. **Graph switcher**: switcher icon (next to the sync indicator) → **Add a graph** → *local-only* →
    switch to it (empty) → switch back to the server graph (content intact, no mixing).
-9. **Local-only mode, phone**: in the local-only graph add a few bullets, kill/relaunch, still there.
-10. **Local mode, Mac**: picker → "This Mac" → app restarts on its bundled server → separate graph;
-    then back to the server entry.
-11. **Deep link**: Safari on the iPhone → `nooklet://test` → the app opens. *Expected today:
-    nothing else happens* (nothing subscribes to deep links yet — logged); it must not crash.
-12. **Safari fallback** (HTTPS options H/T only): Safari → `https://<name>.<tailnet>.ts.net` →
-    paste a token → works like the app. Over plain `http://<LAN-IP>` it cannot work (B-27: not a
-    secure context, no OPFS) — expected, not a bug.
+9. **Local-only mode, phone**: in the local-only graph from item 8 add a few bullets, kill/relaunch,
+   still there; switch back to the server graph, its content intact and none of the local bullets in
+   it (they never reach the server or the Mac).
+10. **Local mode, Mac**: picker → "This Mac" → app restarts on its bundled server → a separate graph
+    (not `~/nooklet-test`'s; nothing from the phone in it) → picker → back to `http://127.0.0.1:6200`
+    → the shared graph again.
+11. **Pairing link with a graph already there** (B-603): mint a second token with `--link` (step 1),
+    open its link on the phone while the app shows the server graph → the confirm screen appears
+    over it with the address → **Cancel** → nothing changes. Open it again → **Connect** → app
+    reloads, still connected, and the graph switcher still lists the local-only graph from item 8.
+    Revoke the spare token afterwards. A malformed link (`nooklet://connect?url=ftp://x&token=nk_x`)
+    shows "This pairing link can't be used" and changes nothing.
+12. **Safari fallback**: not possible on Option L — plain `http://<LAN-IP>` is not a secure context
+    (B-27/B-615: blank page). Only with HTTPS (Options H/T): Safari → `https://<name>.<tailnet>.ts.net`
+    → paste a token → works like the app.
 13. **Reconnect after server restart**: stop the server 30 s, edit on both devices, start it again →
     both drain and converge.
 
@@ -428,6 +466,6 @@ Prereqs: decisions D2/D4. Nothing here has been applied.
 | 8 | graph switcher | | | |
 | 9 | local-only (phone) | | — | |
 | 10 | local mode (Mac) | — | | |
-| 11 | deep link | | — | |
-| 12 | Safari fallback | | — | |
+| 11 | pairing link | | — | |
+| 12 | Safari fallback (H/T only) | | — | |
 | 13 | server restart | | | |

@@ -187,3 +187,25 @@ test("word count follows in-app navigation and is gone where no single page is o
   await expect(wordCount(page)).toHaveText("");
   await expect(wordCount(page)).toBeHidden();
 });
+
+test("deleting the open page asks word count about it without a 500 (B-610)", async ({ page }) => {
+  const statuses: number[] = [];
+  page.on("response", (res) => {
+    if (res.url().includes("/api/plugins/word-count/rpc/count")) statuses.push(res.status());
+  });
+  await openPage(page, "Plugins Words Doomed", "- soon gone");
+  await expect(wordCount(page)).toHaveText("2 words");
+  const before = statuses.length;
+
+  await page.getByRole("button", { name: "Page actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete page…" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete page" }).click();
+  await expect(page).toHaveURL(/\/journals$/);
+
+  // The delete fires `page.changed` while the page is still the current one, so the status item
+  // asks the server about a page that no longer exists. That answer used to be a 500 with an
+  // `OpError: no page named …` stack in the server log; now it is a 200 carrying null.
+  await expect.poll(() => statuses.length).toBeGreaterThan(before);
+  expect(statuses.filter((s) => s >= 500)).toEqual([]);
+  await expect(wordCount(page)).toHaveText("");
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { graphBaseUrl, repairTargetFor } from "./connect-graph.js";
+import { graphBaseUrl, parsePairingLink, repairTargetFor } from "./connect-graph.js";
 
 describe("repairTargetFor (B-613: re-pair the SAME entry)", () => {
   it("a same-origin entry re-pairs in place (null base) and shows the full address", () => {
@@ -40,5 +40,56 @@ describe("graphBaseUrl", () => {
 
   it("leaves a non-absolute value alone for the fetch to reject readably", () => {
     expect(graphBaseUrl("/g/default")).toBe("/g/default");
+  });
+});
+
+describe("parsePairingLink (B-603)", () => {
+  const TOKEN = `nk_${"a".repeat(48)}`;
+  const link = (q: string) => `nooklet://connect?${q}`;
+
+  it("reads the server address and token, URL-encoded as `token create --link` prints them", () => {
+    const url = encodeURIComponent("http://192.168.1.5:6100");
+    expect(parsePairingLink(link(`url=${url}&token=${TOKEN}`))).toEqual({
+      serverUrl: "http://192.168.1.5:6100",
+      token: TOKEN,
+    });
+    expect(parsePairingLink(link(`url=https://n.example.ts.net/g/work/&token=${TOKEN}`))).toEqual({
+      serverUrl: "https://n.example.ts.net/g/work",
+      token: TOKEN,
+    });
+  });
+
+  it("rejects a non-http(s) server address", () => {
+    for (const bad of [
+      "javascript:alert(1)",
+      "file:///etc/passwd",
+      "ftp://h.example",
+      "h.example",
+    ]) {
+      const r = parsePairingLink(link(`url=${encodeURIComponent(bad)}&token=${TOKEN}`));
+      expect(r, bad).toHaveProperty("error");
+    }
+  });
+
+  it("rejects a missing url or token, and a token that is not token-shaped", () => {
+    expect(parsePairingLink(link(`token=${TOKEN}`))).toHaveProperty("error");
+    expect(parsePairingLink(link("url=https://h.example"))).toHaveProperty("error");
+    expect(parsePairingLink(link("url=https://h.example&token="))).toHaveProperty("error");
+    expect(parsePairingLink(link("url=https://h.example&token=a%20b%3Cscript"))).toHaveProperty(
+      "error",
+    );
+  });
+
+  it("rejects an address with a user-info part, which would disguise the real host", () => {
+    const url = encodeURIComponent("https://my-server.example@evil.example");
+    expect(parsePairingLink(link(`url=${url}&token=${TOKEN}`))).toHaveProperty("error");
+  });
+
+  it("does not claim other links", () => {
+    expect(parsePairingLink("nooklet://page/Foo")).toBeUndefined();
+    expect(
+      parsePairingLink(`https://connect?url=https://h.example&token=${TOKEN}`),
+    ).toBeUndefined();
+    expect(parsePairingLink("not a url")).toBeUndefined();
   });
 });

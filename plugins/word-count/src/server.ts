@@ -26,10 +26,11 @@ interface WordCountResult {
   wordCount: number;
 }
 
+/** The count, or `null` when no page answers to `pageRef`. */
 async function countPage(
   data: import("@nooklet/plugin-api").DataApi,
   pageRef: string,
-): Promise<WordCountResult> {
+): Promise<WordCountResult | null> {
   let target = await data.pages.get({ name: pageRef });
   if (!target) {
     // `pages.journal` throws (rather than returning null) for a ref that isn't a valid
@@ -41,13 +42,7 @@ async function countPage(
       target = null;
     }
   }
-  if (!target) {
-    throw new OpError(
-      "not_found",
-      `no page named "${pageRef}"`,
-      'check the exact name with page.list, or pass a journal date / "today"',
-    );
-  }
+  if (!target) return null;
   const tree = await data.blocks.tree({ page: target.id });
   let blockCount = 0;
   let wordCount = 0;
@@ -94,6 +89,14 @@ export default {
         render: (out) => `${out.page}: ${out.word_count} words across ${out.block_count} blocks`,
         async handler({ page }, opCtx) {
           const result = await countPage(opCtx.data, page);
+          if (!result) {
+            // A caller asking by name (an agent, the API) gets a proper 404 with a hint.
+            throw new OpError(
+              "not_found",
+              `no page named "${page}"`,
+              'check the exact name with page.list, or pass a journal date / "today"',
+            );
+          }
           return {
             page: result.page,
             block_count: result.blockCount,
@@ -109,6 +112,11 @@ export default {
     plugin.rpc.expose("count", async (pageRef) => {
       if (typeof pageRef !== "string") throw new Error("count(pageRef: string) — missing pageRef");
       const result = await countPage(plugin.data, pageRef);
+      // `null`, not a throw: the status bar asks about the page on screen, which can be one that
+      // was just deleted (the client fires `page.changed` as it goes) or one not yet synced. A
+      // throw here was an unhandled error in the rpc route — a 500 and a server-log stack trace
+      // for an ordinary moment (B-610). "No such page" is an answer, not a failure.
+      if (!result) return null;
       return { page: result.page, wordCount: result.wordCount, blockCount: result.blockCount };
     });
   },

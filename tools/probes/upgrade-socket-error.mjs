@@ -15,6 +15,11 @@
 // vulnerable gap opens, because Node's `EventEmitter` calls listeners synchronously in registration
 // order for one `emit()`, and an async listener only yields control at its first `await`.
 //
+// UPDATE 2026-10-03 (B-602): the fix as described above (a second `'upgrade'` listener) broke
+// failed upgrades — @hono/node-server answers one only when its own listener is the sole one, so
+// they hung. The fix now attaches the same no-op listener at `'connection'` instead
+// (`packages/server/src/http/upgrade-guard.ts`); `--fix` here still demonstrates the mechanism.
+//
 // A real client (a page navigating away mid-handshake, a reconnect loop superseding its own
 // in-flight attempt) resetting mid-upgrade is ordinary behavior, not misbehavior — this is a real
 // crash-the-whole-server bug in a dependency, not something only a malicious client could trigger.
