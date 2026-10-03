@@ -1,0 +1,63 @@
+# DRAFT — not applied.
+#
+# A consistent snapshot of every graph into /data/backups/, for the home server's 02:00 duplicacy run (which
+# copies every PVC directory as live files — fine for these archives, not guaranteed consistent for
+# a SQLite file mid-write). `nooklet backup` is a VACUUM INTO snapshot + assets and is safe while
+# the server is running. Mounting the same ReadWriteOnce volume works because homeserver is a single
+# node (RWO is per-node); on a multi-node cluster this would need pod affinity to the server pod.
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "nooklet.fullname" . }}-backup
+  labels:
+    {{- include "nooklet.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: backup
+            image: {{ include "nooklet.image" . }}
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              mkdir -p /data/backups
+              stamp=$(date +%Y-%m-%d)
+              for dir in /data/graphs/*/; do
+                id=$(basename "$dir")
+                /app/node /app/server.mjs backup --data /data --graph "$id" \
+                  --out "/data/backups/nooklet-$id-$stamp.tar"
+              done
+              find /data/backups -name 'nooklet-*.tar' -mtime +{{ .Values.backup.keepDays }} -delete
+            resources:
+              requests:
+                cpu: 20m
+                memory: 64Mi
+              limits:
+                memory: 512Mi
+            volumeMounts:
+            - name: data
+              mountPath: /data
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: {{ include "nooklet.fullname" . }}
+{{- end }}

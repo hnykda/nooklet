@@ -1,0 +1,52 @@
+# DRAFT — not applied. → infra-repo .woodpecker/nooklet.yaml
+#
+# The source lives in the nooklet repo, not infra-repo, so this follows infra-repo CLAUDE.md's
+# "source in another repo" pattern: a manual pipeline gated on BUILD_TARGET, cloning nooklet at a
+# given ref. OWNER DECISION: whether to trigger it from a nooklet GitHub Action (Woodpecker API,
+# repo id 4) or only by hand; a private nooklet repo also needs a deploy key.
+when:
+  - event: manual
+    evaluate: 'BUILD_TARGET == "nooklet"'
+
+steps:
+  - name: clone-nooklet
+    image: alpine/git
+    commands:
+      - git clone --depth 1 --branch "${NOOKLET_REF:-main}" https://github.com/OWNER/nooklet.git nooklet-src
+      - cd nooklet-src && git rev-parse --short=8 HEAD > ../nooklet-sha
+
+  - name: build
+    depends_on: [clone-nooklet]
+    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    settings:
+      repo: registry.container-registry:5000/nooklet
+      registry: registry.container-registry:5000
+      tags_file: nooklet-sha       # pushes :<sha8>; deploy below uses the same file
+      platforms: linux/amd64
+      insecure: true
+      provenance: false
+      context: nooklet-src
+      dockerfile: nooklet-src/deploy/docker/Dockerfile
+      buildkit_config: |
+        [registry."registry.container-registry:5000"]
+        http = true
+      cache_images:
+        - registry.container-registry:5000/nooklet:cache
+
+  - name: deploy
+    depends_on: [build]
+    image: ghcr.io/helmfile/helmfile:v1.2.3
+    environment:
+      AGE_SOPS_SECRET_KEY:
+        from_secret: age_sops_secret_key
+      HOMESERVER_KUBECONFIG:
+        from_secret: homeserver_kubeconfig
+    commands:
+      - echo "$HOMESERVER_KUBECONFIG" | base64 -d > /tmp/kubeconfig
+      - export KUBECONFIG=/tmp/kubeconfig
+      - echo "$AGE_SOPS_SECRET_KEY" > /tmp/age-key.txt
+      - export SOPS_AGE_KEY_FILE=/tmp/age-key.txt
+      - TAG=$(cat nooklet-sha)
+      - cd k8s
+      - helmfile repos
+      - helmfile -l name=nooklet sync --state-values-set apps.nooklet.enabled=true --set-string image.tag=$TAG

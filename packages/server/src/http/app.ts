@@ -80,6 +80,8 @@ export function isLoopbackName(name: string): boolean {
  * condition rather than replaced: a DNS-rebinding attack arrives from a real loopback peer (the
  * victim's own browser) but carries the attacker's hostname, so both have to hold.
  */
+const FORWARDING_HEADERS = ["forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip"];
+
 function isLoopbackRequest(c: Context): boolean {
   let remote: string | undefined;
   try {
@@ -88,6 +90,14 @@ function isLoopbackRequest(c: Context): boolean {
     return false; // no socket (in-process `app.request()`); never hand out a credential
   }
   if (!remote) return false;
+  // A reverse proxy on this same machine (`tailscale serve`, Caddy, nginx, a sidecar) makes EVERY
+  // client's peer address 127.0.0.1 — so if it also rewrites `Host` to its upstream (a bare nginx
+  // `proxy_pass http://127.0.0.1:6100;` does), every remote client passed both checks below and was
+  // handed a write + sync token (`tools/probes/loopback-proxy-token.mjs`). A request that carries
+  // forwarding headers came through a proxy on someone else's behalf, so it is never "this
+  // machine". A proxy that rewrites Host AND adds no forwarding header is still indistinguishable
+  // from a local browser — the deployment docs say not to configure one that way.
+  for (const h of FORWARDING_HEADERS) if (c.req.header(h) !== undefined) return false;
   // Node reports IPv4-mapped IPv6 for a dual-stack listener.
   const peer = remote.startsWith("::ffff:") ? remote.slice(7) : remote;
   const peerIsLoopback = peer === "::1" || peer.startsWith("127.");

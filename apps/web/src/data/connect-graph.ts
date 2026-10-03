@@ -15,9 +15,10 @@ export type ConnectResult = { ok: true } | { ok: false; error: string };
  * string). Verifies before storing, so a typo or a token that was revoked fails here with a
  * readable reason rather than becoming a silent permanent "offline" screens later. */
 export async function connectToGraph(
-  baseUrl: string | null,
+  typedBaseUrl: string | null,
   token: string,
 ): Promise<ConnectResult> {
+  const baseUrl = typedBaseUrl === null ? null : graphBaseUrl(typedBaseUrl);
   const base = baseUrl ?? "";
   try {
     const res = await fetch(`${base}/api/v1/graph.overview`, {
@@ -45,6 +46,28 @@ export async function connectToGraph(
         : `Could not reach the server: ${describeError(err)}`,
     };
   }
+}
+
+/**
+ * A server address typed with no path (`http://192.168.1.5:6100`, `https://nooklet.example.ts.net`)
+ * means that server's default graph, so it is stored as `<origin>/g/default` — the same place the
+ * server's own bare-origin 307 fallback sends a plain HTTP request.
+ *
+ * Storing the bare origin instead LOOKS fine (every fetch follows the 307) but is not: a
+ * WebSocket never follows a redirect, so `/sync/live` at bare origin never opens and live sync
+ * silently never connects (`tools/probes/ws-bare-origin.mjs`). An address that already has a path
+ * (`/g/work`, or a reverse-proxy subpath) is kept exactly as typed.
+ */
+export function graphBaseUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/" || parsed.pathname === "") {
+      return `${url.replace(/\/+$/, "")}/g/default`;
+    }
+  } catch {
+    // Not absolute — leave it to the fetch to fail with a readable reason.
+  }
+  return url;
 }
 
 /** `http://` or `https://` required rather than guessed, so a bare `nooklet.example.com` (missing

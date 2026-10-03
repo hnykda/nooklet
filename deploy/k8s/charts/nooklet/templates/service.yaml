@@ -1,0 +1,16 @@
+# DRAFT — not applied. ClusterIP only: exposure is the Tailscale Ingress (tailscale-services chart).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nooklet.fullname" . }}
+  labels:
+    {{- include "nooklet.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nooklet.selectorLabels" . | nindent 4 }}
+  ports:
+  - name: http
+    port: 80
+    targetPort: 6100
+    protocol: TCP

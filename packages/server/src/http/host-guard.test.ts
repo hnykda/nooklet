@@ -45,10 +45,21 @@ afterEach(async () => {
  * spec — `fetch` silently drops it, so a test written with `fetch` would assert nothing about the
  * very header under test while appearing to pass.
  */
-function get(port: number, path: string, host?: string): Promise<{ status: number; body: string }> {
+function get(
+  port: number,
+  path: string,
+  host?: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const req = httpRequest(
-      { host: "127.0.0.1", port, path, method: "GET", headers: host ? { Host: host } : {} },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "GET",
+        headers: { ...(host ? { Host: host } : {}), ...extraHeaders },
+      },
       (res) => {
         let body = "";
         res.setEncoding("utf8");
@@ -129,6 +140,20 @@ describe("loopback detection", () => {
     };
     expect(body.token).toBeNull();
     expect(body.reason).toBe("non_loopback_host");
+  });
+
+  it("refuses a token to a request that came through a same-machine reverse proxy, even with a loopback Host", async () => {
+    // A proxy on this machine makes every remote client a loopback peer; one that also rewrites
+    // Host to its upstream (nginx's default) handed every tailnet/LAN client a write token
+    // (`tools/probes/loopback-proxy-token.mjs`). Forwarding headers mark such a request.
+    const s = makeTestServer({ webClientDir: undefined });
+    const port = await listen(s.app);
+    for (const header of ["x-forwarded-for", "forwarded", "x-forwarded-host", "x-real-ip"]) {
+      const body = JSON.parse(
+        (await get(port, "/api/session", `127.0.0.1:${port}`, { [header]: "100.64.0.7" })).body,
+      ) as { token: string | null };
+      expect(body.token, header).toBeNull();
+    }
   });
 });
 

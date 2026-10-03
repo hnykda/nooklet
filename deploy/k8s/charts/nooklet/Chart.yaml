@@ -1,0 +1,7 @@
+# DRAFT — not applied. See deploy/k8s/README.md.
+apiVersion: v2
+name: nooklet
+description: nooklet server (local-first outliner) — single replica, SQLite on a PVC
+type: application
+version: 0.1.0
+appVersion: "0.0.1"

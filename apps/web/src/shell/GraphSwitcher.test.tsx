@@ -180,10 +180,15 @@ describe("GraphSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     // B-586: the new graph's own server address, not wherever the browser happened to be.
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("https://nooklet.example.com/"));
+    // A bare origin means that server's default graph (`connect-graph.ts#graphBaseUrl`).
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("https://nooklet.example.com/g/default/"),
+    );
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe("https://nooklet.example.com/api/v1/graph.overview");
-    expect(listGraphs().some((g) => g.baseUrl === "https://nooklet.example.com")).toBe(true);
+    expect(url).toBe("https://nooklet.example.com/g/default/api/v1/graph.overview");
+    expect(listGraphs().some((g) => g.baseUrl === "https://nooklet.example.com/g/default")).toBe(
+      true,
+    );
   });
 
   it("add-a-server form: a rejected token shows the same message ConnectView uses, and adds nothing", async () => {

@@ -107,11 +107,13 @@ describe("Capacitor: a server-address field is required first", () => {
     await screen.findByRole("button", { name: "Connect" });
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe("https://nooklet.example.com/api/v1/graph.overview");
+    // A bare origin is stored as `/g/default`: a WebSocket never follows the server's bare-origin
+    // 307, so storing the bare origin left live sync never connecting.
+    expect(url).toBe("https://nooklet.example.com/g/default/api/v1/graph.overview");
     expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
       "Bearer nk_abc",
     );
-    expect(activeGraph()?.baseUrl).toBe("https://nooklet.example.com");
+    expect(activeGraph()?.baseUrl).toBe("https://nooklet.example.com/g/default");
     expect(activeGraph()?.token).toBe("nk_abc");
     expect(reload).toHaveBeenCalled();
   });

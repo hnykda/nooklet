@@ -14,6 +14,7 @@
 
 import { existsSync } from "node:fs";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { requireRootToken } from "../auth/root-token.js";
 import { createToken } from "../auth/tokens.js";
 import { serveStaticFile } from "../http/web-client.js";
@@ -66,9 +67,50 @@ export interface CreateMultiGraphAppOptions {
   webClientDir?: string;
 }
 
+/**
+ * Origins of nooklet's own bundled app shells, which load the client from a custom scheme and so
+ * reach every server cross-origin. Only the iOS Capacitor shell today (`apps/web/
+ * capacitor.config.ts` keeps Capacitor's default `iosScheme`/`hostname`, which that file pins
+ * because the origin is also the OPFS storage key). Add Android's default (`https://localhost`)
+ * only once an Android project exists — it is an origin a local dev server can also claim.
+ *
+ * Deliberately an exact allowlist, never `*`: `/api/session` hands a write token to any loopback
+ * caller, and a wildcard would let any website open in a browser on the server's own machine read
+ * that response. A web page cannot forge its `Origin`, so `capacitor://localhost` is reachable
+ * only from an installed app shell. The web/PWA client and the desktop app are same-origin with
+ * the server and never send a cross-origin request, so they are unaffected.
+ */
+export const APP_SHELL_ORIGINS: ReadonlySet<string> = new Set(["capacitor://localhost"]);
+
+/**
+ * Without this, the iOS app could not reach any server at all: every request it makes carries an
+ * `Authorization` header (so WebKit preflights it), the preflight hit the per-graph bearer gate and
+ * got a 401 with no `Access-Control-Allow-Origin`, and even the unpreflighted `GET /api/session`
+ * was unreadable. WebKit reports all of that as an opaque "TypeError: Load failed"
+ * (`tools/probes/capacitor-network/`, run on the iOS Simulator). Registered on THIS app, ahead of
+ * the `/g` mount and the bare-origin redirect, so a preflight is answered here — never redirected
+ * (a preflight that gets a 3xx fails outright) and never reaches a graph's own auth or Host guard.
+ * The real request still goes through both.
+ */
+const appShellCors = cors({
+  origin: (origin) => (APP_SHELL_ORIGINS.has(origin) ? origin : null),
+  allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+  allowHeaders: ["authorization", "content-type", "accept", "idempotency-key"],
+  maxAge: 600,
+});
+
 export function createMultiGraphApp(opts: CreateMultiGraphAppOptions): Hono {
   const app = new Hono();
   const { registry, rootToken, dataDir, webClientDir } = opts;
+
+  app.use("*", (c, next) => {
+    // Any other origin (or none — same-origin, curl, agents) passes through untouched, so this
+    // changes nothing for any client except the app shells above. A WebSocket upgrade is not
+    // subject to CORS at all, and its 101 response must not be rewritten.
+    const origin = c.req.header("origin");
+    if (!origin || !APP_SHELL_ORIGINS.has(origin) || c.req.header("upgrade")) return next();
+    return appShellCors(c, next);
+  });
 
   // A service worker registration is rejected outright if its script response is the result of a
   // redirect — so `/sw.js` and the handful of files it needs (its own workbox runtime chunk, the
