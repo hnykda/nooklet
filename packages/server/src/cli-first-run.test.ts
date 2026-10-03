@@ -55,6 +55,25 @@ function serve(dataDir: string): Promise<number> {
   });
 }
 
+describe("first run: a data dir that does not exist yet (B-638)", () => {
+  // The owner's very first command: `serve --data ~/nooklet-test` where `~/nooklet-test` was never
+  // made. Every other test here uses `mkdtempSync`, which is exactly why this went unnoticed.
+  it("serve creates the data dir and starts", async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "nooklet-first-run-")), "not", "made", "yet");
+    const port = await serve(dir);
+    const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+    expect(res.status).toBe(200);
+  }, 60_000);
+
+  it("token create on a dir that does not exist yet works too", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "nooklet-first-run-")), "fresh");
+    const token = run(dir, "token", "create", "--label", "phone", "--scope", "write", "--sync")
+      .split("\n")[0]
+      ?.trim();
+    expect(token).toMatch(/^nk/);
+  }, 60_000);
+});
+
 describe("first run: a command before the first serve (B-607)", () => {
   it("token create, then serve: serve starts and the token works", async () => {
     const dir = mkdtempSync(join(tmpdir(), "nooklet-first-run-"));

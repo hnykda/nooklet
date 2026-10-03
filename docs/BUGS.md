@@ -837,8 +837,11 @@ may be a real takeover race or a test timing issue.
 One run's client build breaks the other's server (`web_client_missing`); separate ports do not
 isolate them. Use separate worktrees for parallel e2e runs.
 
+## Fixed
+
 ### B-638 · `nooklet serve --data <dir that does not exist yet>` dies at once: `ENOENT … root.token`
-**Status:** open · **Severity:** high (first start of any new server fails) · **Found:** 2026-10-03, owner, step 1 of the real-device test · **Test:** none yet
+**Status:** fixed (2026-10-03, coordinator) · **Severity:** high (first start of any new server failed) · **Found:** 2026-10-03, owner, step 1 of the real-device test ·
+**Test:** `packages/server/src/cli-first-run.test.ts` "first run: a data dir that does not exist yet (B-638)" — "serve creates the data dir and starts" (red before with the owner's exact ENOENT, green after)
 
 The owner ran the runbook's first command on a fresh machine path:
 
@@ -851,7 +854,9 @@ nooklet: ENOENT: no such file or directory, open '~/nooklet-test/root.token'
 since ADR 025 graphs are mounted lazily, so nothing has created the directory by then. Every test,
 probe and agent run used an existing `mkdtemp` directory, so none caught it.
 
-## Fixed
+**Fixed 2026-10-03.** `ensureRootToken` creates the data dir (`mkdirSync … recursive, mode 0o700`)
+before writing `root.token`. `token create` on a missing dir already worked (B-607's registry path);
+it now has a test too. The owner worked around it with `mkdir -p ~/nooklet-test` and continued.
 
 ### B-634 · A block shelf made on a tab's first load was gone after a reload
 **Status:** fixed (2026-10-03, `19c5941`) · **Severity:** low (real regression) · **Found:** 2026-10-03, e2e-green · **Test:** `apps/web/src/app/shelf.test.ts` (red before), e2e shelf-crumb test in `views.spec.ts` (red 2/2 before, 5/5 after)

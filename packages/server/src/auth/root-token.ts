@@ -11,7 +11,8 @@
  */
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { MiddlewareHandler } from "hono";
 import { rootTokenPath } from "../graphs/paths.js";
 
@@ -27,6 +28,10 @@ export function ensureRootToken(dataDir: string): { token: string; created: bool
     // No file yet, or unreadable: fall through and mint one.
   }
   const token = `nkroot_${randomBytes(24).toString("hex")}`;
+  // B-638: on a first `serve --data <new dir>` nothing has made the data dir yet — graphs are
+  // mounted lazily (ADR 025) — so create it here rather than die with ENOENT. Owner-only, like
+  // the token file itself.
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, `${token}\n`, { mode: 0o600 });
   return { token, created: true };
 }
