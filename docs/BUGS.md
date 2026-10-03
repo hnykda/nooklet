@@ -689,6 +689,13 @@ cache. Not verified in a browser; found by reading the generated SW and workbox'
 
 ---
 
+**2026-10-03 (mermaid-lazy, `ce99b82`):** confirmed in Chromium. A RegExp rule `/^\/static\//` never
+put a chunk in its cache; the function matcher `({ url, sameOrigin }) => sameOrigin &&
+url.pathname.startsWith("/static/")` did (`e2e/tests/mermaid-lazy-cache.spec.ts`). The two original
+rules (`api|sync` NetworkOnly, `/assets/` CacheFirst) are untouched and still never match; the
+`/assets/` one still needs the authenticated-response question answered before it is switched to a
+function.
+
 ### B-404 · One ChangeEvent naming four tables refetches a History page four times
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, m10/tests-desktop (probing B-403) ·
 **Test:** none

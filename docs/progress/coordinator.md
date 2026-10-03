@@ -24,7 +24,7 @@ runs the full e2e suite on the merged tree.
 | journal-headings | B-560, **merged** (`9f41585`) | 6303 |
 | top-menu | the "⋯" top-right menu (B-541 follow-up) | 6304 |
 | tag-autocomplete | B-380 option (c), **merged** (`c6fe3bc`) | 6305 |
-| mermaid-lazy | mermaid out of precache, single sidecar copy | 6306 |
+| mermaid-lazy | mermaid lazy + single sidecar copy, **merged** (`ce99b82`, `05ac71e`) | 6306 |
 | real-device-test | readiness and runbook for the Mac + own server + physical iPhone test | 6307 |
 | refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
 | empty-journal | B-595, an editable empty journal day like Logseq | 6309 |
