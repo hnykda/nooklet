@@ -42,11 +42,27 @@ import {
   pagesDisplacedByPull,
   reapplyCapturedPage,
 } from "./refused-page.js";
-import type { PushResponse, SyncStatus, SyncTransport } from "./types.js";
+import {
+  isSyncAuthError,
+  LIVE_AUTH_REJECTED_CODES,
+  type PushResponse,
+  type SyncState,
+  type SyncStatus,
+  type SyncTransport,
+} from "./types.js";
 
 const PULL_LIMIT = 1000;
 const PUSH_BATCH_LIMIT = 200;
 export const PUSH_DEBOUNCE_MS = 300;
+
+/**
+ * B-614: how long the live socket may stay down before this client checks whether the server is
+ * reachable at all (one `pull()`, whose failure is what reports `offline`). A server restart, or a
+ * proxy recycling the connection, is back within about this long; probing at once would make every
+ * such blip read as an outage. The indicator adds its own `ATTENTION_DELAY_MS` on top before the
+ * dot changes (`shell/sync-indicator-state.ts`), so a blip shorter than both never shows at all.
+ */
+export const LIVE_DOWN_GRACE_MS = 1500;
 
 interface PendingOpRow {
   id: string;
@@ -101,6 +117,11 @@ export class SyncClient {
   private flushAgain = false;
   private pulling = false;
   private unsubscribeLive: (() => void) | undefined;
+  private liveDownTimer: ReturnType<typeof setTimeout> | undefined;
+  /** B-613: the server refused this device's token. Sticky until a request succeeds again: a
+   * network failure on top of it must not turn "re-pair this device" back into "wait, it will
+   * sync when back online", which is the false promise this state exists to stop making. */
+  private authRejected = false;
   private status: SyncStatus = { state: "offline", pendingCount: 0, serverCursor: 0 };
 
   constructor(opts: SyncClientOptions) {
@@ -220,7 +241,7 @@ export class SyncClient {
     }
     this.flushing = true;
     try {
-      this.setStatus({ state: "pushing" });
+      this.setStatus({ state: this.busyState("pushing") });
       for (;;) {
         const rows = this.driver.all<PendingOpRow>(
           "SELECT * FROM pending_op ORDER BY hlc LIMIT ?",
@@ -232,7 +253,7 @@ export class SyncClient {
         try {
           res = await this.transport.push({ device_id: this.deviceId, ops });
         } catch (err) {
-          this.setStatus({ state: "offline", lastError: String(err) });
+          this.setStatus({ state: this.failureState(err), lastError: String(err) });
           return;
         }
         try {
@@ -246,6 +267,7 @@ export class SyncClient {
         }
         if (rows.length < this.pushBatchLimit) break;
       }
+      this.authRejected = false;
       this.setStatus({ state: "idle" });
     } finally {
       this.flushing = false;
@@ -310,7 +332,7 @@ export class SyncClient {
     if (this.pulling) return;
     this.pulling = true;
     try {
-      this.setStatus({ state: "pulling" });
+      this.setStatus({ state: this.busyState("pulling") });
       for (;;) {
         const cursor = Number(this.getState(SYNC_STATE_SERVER_CURSOR) ?? "0");
         const res = await this.transport.pull(this.deviceId, cursor, this.pullLimit);
@@ -357,9 +379,10 @@ export class SyncClient {
         this.setStatus({ serverCursor: res.cursor });
         if (!res.has_more) break;
       }
+      this.authRejected = false;
       this.setStatus({ state: "idle" });
     } catch (err) {
-      this.setStatus({ state: "offline", lastError: String(err) });
+      this.setStatus({ state: this.failureState(err), lastError: String(err) });
     } finally {
       this.pulling = false;
     }
@@ -370,7 +393,16 @@ export class SyncClient {
    * HLCs — rather than replaying them through `applyOps`. */
   async bootstrap(): Promise<void> {
     this.setStatus({ state: "bootstrapping" });
-    const snap = await this.transport.snapshot();
+    let snap: Awaited<ReturnType<SyncTransport["snapshot"]>>;
+    try {
+      snap = await this.transport.snapshot();
+    } catch (err) {
+      // Still thrown — `worker-core.ts#start` tolerates it and carries on with an empty replica —
+      // but no longer left at "bootstrapping", which the indicator shows as a sync that is about
+      // to start rather than one that cannot (B-613).
+      this.setStatus({ state: this.failureState(err), lastError: String(err) });
+      throw err;
+    }
     let maxHlc: string | undefined;
     const track = (hlc: string | null | undefined) => {
       if (hlc && (!maxHlc || hlc > maxHlc)) maxHlc = hlc;
@@ -478,9 +510,11 @@ export class SyncClient {
     this.unsubscribeLive = this.transport.connectLive(this.deviceId, {
       onPoke: () => void this.pull(),
       onOpen: () => {
+        this.clearLiveDownTimer();
         void this.pull();
         this.pushIfPending();
       },
+      onClose: (code) => this.onLiveClosed(code),
     });
     this.pushIfPending();
   }
@@ -497,7 +531,47 @@ export class SyncClient {
     if (this.status.pendingCount > 0) this.schedulePush(0);
   }
 
+  /**
+   * B-614: the live socket closed, or a reconnect attempt failed. A socket the server refused is
+   * the token being rejected (B-613), reported at once. Anything else may be a blip, so wait
+   * `LIVE_DOWN_GRACE_MS` and then ask the server directly with a `pull()`: its failure is what
+   * says `offline`, its success means only the live channel is down (a proxy without WebSocket
+   * support) and the data really is in sync. Each later failed reconnect probes again, so this is
+   * also what notices the server coming back when the socket alone cannot.
+   */
+  private onLiveClosed(code: number): void {
+    if (LIVE_AUTH_REJECTED_CODES.has(code)) {
+      this.clearLiveDownTimer();
+      this.authRejected = true;
+      this.setStatus({ state: "unauthorized", lastError: `live sync refused the token (${code})` });
+      return;
+    }
+    if (this.authRejected || this.liveDownTimer) return;
+    this.liveDownTimer = setTimeout(() => {
+      this.liveDownTimer = undefined;
+      void this.pull();
+    }, LIVE_DOWN_GRACE_MS);
+  }
+
+  private clearLiveDownTimer(): void {
+    if (this.liveDownTimer) clearTimeout(this.liveDownTimer);
+    this.liveDownTimer = undefined;
+  }
+
+  /** What a request that failed with `err` leaves the client in (B-613). */
+  private failureState(err: unknown): SyncState {
+    if (isSyncAuthError(err)) this.authRejected = true;
+    return this.authRejected ? "unauthorized" : "offline";
+  }
+
+  /** "pushing"/"pulling", unless the token is known to be refused: a retry that is all but certain
+   * to be refused again should not flicker the indicator through "N changes waiting to sync". */
+  private busyState(state: "pushing" | "pulling"): SyncState {
+    return this.authRejected ? "unauthorized" : state;
+  }
+
   dispose(): void {
+    this.clearLiveDownTimer();
     if (this.pushTimer) clearTimeout(this.pushTimer);
     this.unsubscribeLive?.();
     this.unsubscribeLive = undefined;

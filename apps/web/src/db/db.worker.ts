@@ -113,6 +113,8 @@ interface OpenedDb {
    * Option C's checkpoint read side (`api.exportSnapshot`). */
   exportBytes?: () => Uint8Array;
   unnamespacedReplica?: InitResult["unnamespacedReplica"];
+  /** B-631: the leader's `OpenedSqliteWasm.discard` (this replica's file only). */
+  discard?: () => string[];
 }
 
 async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
@@ -158,6 +160,7 @@ async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
     storageError,
     exportBytes: leader ? opened.exportBytes : undefined,
     unnamespacedReplica: leader ? opened.inspected : undefined,
+    discard: leader ? opened.discard : undefined,
   };
 }
 
@@ -245,6 +248,20 @@ const api: WorkerApi = {
   async exportSnapshot() {
     const o = await requireRetry().current();
     return o.exportBytes?.();
+  },
+
+  async discardReplica() {
+    const o = await requireRetry().current();
+    if (!o.discard) {
+      throw new Error(
+        o.storage === "follower"
+          ? "another tab of this graph is open and holds its local copy; close it and try again"
+          : "this browser could not open its local storage this session, so there is no local copy to remove now",
+      );
+    }
+    // Stop pushing and pulling first: the replica is about to be closed under the sync client.
+    o.db.sync.dispose();
+    return o.discard();
   },
 };
 

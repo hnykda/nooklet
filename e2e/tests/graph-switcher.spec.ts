@@ -177,3 +177,65 @@ test("promoting a local-only graph pushes its full pre-existing local history to
     .poll(() => keywordHitCount(base, "gs-promoted", newGraphToken, probeText), { timeout: 15_000 })
     .toBeGreaterThan(0);
 });
+
+test("B-618: rows carry the server's graph names, a bare address is not added twice, and a root token lists graphs", async ({
+  page,
+  baseURL,
+}) => {
+  const base = baseURL as string;
+  const res = await fetch(`${base}/graphs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${rootToken()}` },
+    body: JSON.stringify({ id: "gs-labelled", label: "Labelled Second" }),
+  });
+  expect(res.status).toBe(201);
+  const secondToken = ((await res.json()) as { token: string }).token;
+
+  await page.goto("/journals");
+  const switcher = page.getByRole("dialog", { name: "Switch graph" });
+  await page.getByRole("button", { name: "Switch graph" }).click();
+  // Named after the server's graph (the default graph's label is its slug), with its address —
+  // not the old placeholder "This graph".
+  const rows = switcher.locator(".graph-switcher-row");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first().locator(".graph-switcher-label")).toHaveText("default");
+  await expect(rows.first().locator(".graph-switcher-address")).toHaveText(
+    `${new URL(base).host}/g/default`,
+  );
+
+  // The bare server address IS the default graph, which is the one already shown here.
+  await switcher.getByText("Add a graph").click();
+  await expect(switcher).toContainText("/g/<graph>");
+  await switcher.getByLabel("Server address").fill(base);
+  await switcher.getByLabel("Device token").fill(await loopbackToken(base, "default"));
+  await switcher.getByRole("button", { name: "Connect" }).click();
+  await expect(switcher.locator(".graph-switcher-error")).toContainText("already this graph");
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("nooklet.graphs") ?? "[]").length),
+  ).toBe(1);
+
+  // A device token cannot list the server's graphs, and says what can.
+  await switcher.getByRole("button", { name: /Show graphs on this server/ }).click();
+  await expect(switcher.locator(".graph-switcher-error")).toContainText("root token");
+  // The root token can; picking one fills in its address and asks for that graph's own token.
+  await switcher.getByLabel("Device token").fill(rootToken());
+  await switcher.getByRole("button", { name: /Show graphs on this server/ }).click();
+  const listed = switcher.getByRole("list", { name: "Graphs on this server" });
+  await expect(listed).toContainText("Labelled Second");
+  await expect(listed.getByRole("button", { name: /default/ })).toContainText(
+    "already on this device",
+  );
+  await listed.getByRole("button", { name: /Labelled Second/ }).click();
+  await expect(switcher.getByLabel("Server address")).toHaveValue(`${base}/g/gs-labelled`);
+  await expect(switcher).toContainText("nooklet token create --graph gs-labelled");
+  await switcher.getByLabel("Device token").fill(secondToken);
+  await switcher.getByRole("button", { name: "Connect" }).click();
+  await expect(page).toHaveURL(/\/g\/gs-labelled\//, { timeout: 15_000 });
+
+  // Two graphs on one server, told apart by name.
+  await page.getByRole("button", { name: "Switch graph" }).click();
+  await expect(switcher.locator(".graph-switcher-label")).toHaveText([
+    "default",
+    "Labelled Second",
+  ]);
+});

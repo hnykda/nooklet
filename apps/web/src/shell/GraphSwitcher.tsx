@@ -19,6 +19,11 @@
  * (proposal 003's rejected merge) — neither move adds content to an entry that already resolves to
  * someone else's history; `connectToGraph` always ADDS a new list entry or matches by `baseUrl`,
  * and promote's target is created empty in the same call.
+ *
+ * B-618: rows are named by the server's own graph label (from `graph.overview`, which any graph
+ * token can call), with the address under it, so two graphs on one server can be told apart. An
+ * entry still on a placeholder label ("This graph"/"Remote graph", from before labels existed) is
+ * relabelled the next time the switcher opens; a label the owner typed is never replaced.
  */
 import DatabaseIcon from "lucide-solid/icons/database";
 import Pencil from "lucide-solid/icons/pencil";
@@ -32,14 +37,26 @@ import {
   activeGraph,
   activeGraphId,
   createLocalOnlyGraph,
+  findGraphByAddress,
   type GraphListEntry,
   graphEntryUrl,
+  isPlaceholderGraphLabel,
   listGraphs,
   removeGraph,
+  resolvedGraphAddress,
   setActiveGraphId,
   updateGraph,
 } from "../data/bootstrap.js";
-import { connectToGraph, createGraphOnServer, parseServerUrl } from "../data/connect-graph.js";
+import {
+  connectToGraph,
+  createGraphOnServer,
+  fetchGraphLabel,
+  graphBaseUrl,
+  graphSlugOf,
+  listServerGraphs,
+  parseServerUrl,
+  type ServerGraph,
+} from "../data/connect-graph.js";
 import { platform } from "../platform/index.js";
 import "./graph-switcher.css";
 
@@ -48,6 +65,26 @@ type Mode = "list" | "add-choice" | "add-form" | "promote-form";
 /** A reasonable starting graph id from a label someone already typed, editable before submit —
  * not itself validated against the server's `isValidGraphId` (`packages/server/src/graphs/
  * paths.ts`), which runs the real check and reports a real error if this guess is not enough. */
+/** What a row is called: the label, unless it is a placeholder nobody chose — then the graph's
+ * slug says more (B-618). */
+export function graphDisplayName(entry: GraphListEntry): string {
+  if (!isPlaceholderGraphLabel(entry.label)) return entry.label;
+  return graphSlugOf(entry.baseUrl) ?? entry.label;
+}
+
+/** The line under the name: where this graph lives. Same-origin entries show this page's host, so
+ * the address reads the same however the entry happens to be stored. */
+export function graphAddressLine(entry: GraphListEntry): string | undefined {
+  const resolved = resolvedGraphAddress(entry.baseUrl);
+  if (!resolved) return undefined;
+  try {
+    const url = new URL(resolved);
+    return `${url.host}${url.pathname}`;
+  } catch {
+    return resolved;
+  }
+}
+
 function slugify(label: string): string {
   return label
     .toLowerCase()
@@ -71,6 +108,8 @@ export function GraphSwitcher(): JSX.Element {
   const [promoteServerUrl, setPromoteServerUrl] = createSignal("");
   const [promoteGraphId, setPromoteGraphId] = createSignal("");
   const [promoteRootToken, setPromoteRootToken] = createSignal("");
+  const [serverGraphs, setServerGraphs] = createSignal<ServerGraph[] | undefined>();
+  const [pickedNote, setPickedNote] = createSignal<string | undefined>();
 
   // Only real on Capacitor — see this file's own header.
   const showLocalOption = platform.name === "capacitor";
@@ -94,8 +133,27 @@ export function GraphSwitcher(): JSX.Element {
     location.assign(graphEntryUrl(entry, location));
   }
 
+  /** B-618: name placeholder-labelled entries after their server's graph. Best effort, once per
+   * entry (a found label stops it being a placeholder), never blocking the list. */
+  async function refreshPlaceholderLabels(): Promise<void> {
+    const pending = listGraphs().filter(
+      (g) => isPlaceholderGraphLabel(g.label) && g.baseUrl && g.token,
+    );
+    for (const entry of pending) {
+      const label = await fetchGraphLabel(entry.baseUrl as string, entry.token as string);
+      if (
+        label &&
+        isPlaceholderGraphLabel(listGraphs().find((g) => g.id === entry.id)?.label ?? "")
+      ) {
+        updateGraph(entry.id, { label });
+        refresh();
+      }
+    }
+  }
+
   function openSwitcher(): void {
     refresh();
+    void refreshPlaceholderLabels();
     setMode("list");
     setConfirmRemoveId(undefined);
     setRenamingId(undefined);
@@ -149,6 +207,14 @@ export function GraphSwitcher(): JSX.Element {
       setError(parsed.error);
       return;
     }
+    // B-618: the graph is already on this device — switch to it rather than adding it twice (each
+    // entry has its own replica, so a duplicate is a second, separately-synced copy). Its token is
+    // still verified and refreshed by `connectToGraph`, which matches the existing entry the same way.
+    const existing = findGraphByAddress(graphBaseUrl(parsed.url));
+    if (existing && existing.id === activeGraphId()) {
+      setError(`${graphDisplayName(existing)} is already this graph.`);
+      return;
+    }
     setBusy(true);
     setError(undefined);
     const result = await connectToGraph(parsed.url, tokenValue);
@@ -158,6 +224,35 @@ export function GraphSwitcher(): JSX.Element {
       return;
     }
     goToActiveGraph();
+  }
+
+  /** B-618: offer the graphs the server hosts, when the token in the form can list them. */
+  async function showServerGraphs(): Promise<void> {
+    const parsed = parseServerUrl(serverUrl());
+    if ("error" in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    const result = await listServerGraphs(parsed.url, token().trim());
+    setBusy(false);
+    if (!result.ok) {
+      setServerGraphs(undefined);
+      setError(result.error);
+      return;
+    }
+    setServerGraphs(result.graphs);
+  }
+
+  function pickServerGraph(g: ServerGraph): void {
+    setServerUrl(g.url);
+    setServerGraphs(undefined);
+    // Whatever listed the graphs was the root token, which cannot open a graph itself.
+    setToken("");
+    setPickedNote(
+      `Now paste a device token for ${g.label}: nooklet token create --graph ${g.id} --scope write --sync`,
+    );
   }
 
   function addLocalOnly(): void {
@@ -238,7 +333,12 @@ export function GraphSwitcher(): JSX.Element {
                           ) : (
                             <Smartphone size={14} aria-hidden="true" />
                           )}
-                          {entry.label}
+                          <span class="graph-switcher-name-text">
+                            <span class="graph-switcher-label">{graphDisplayName(entry)}</span>
+                            <Show when={graphAddressLine(entry)}>
+                              {(line) => <span class="graph-switcher-address">{line()}</span>}
+                            </Show>
+                          </span>
                         </button>
                       }
                     >
@@ -271,7 +371,7 @@ export function GraphSwitcher(): JSX.Element {
                         <button
                           type="button"
                           class="graph-switcher-icon-action"
-                          aria-label={`Rename ${entry.label}`}
+                          aria-label={`Rename ${graphDisplayName(entry)}`}
                           title="Rename"
                           onClick={() => startRename(entry)}
                         >
@@ -283,7 +383,7 @@ export function GraphSwitcher(): JSX.Element {
                           <button
                             type="button"
                             class="graph-switcher-icon-action"
-                            aria-label={`Add a server for ${entry.label}`}
+                            aria-label={`Add a server for ${graphDisplayName(entry)}`}
                             title="Add a server for this graph"
                             onClick={() => startPromote(entry)}
                           >
@@ -294,7 +394,7 @@ export function GraphSwitcher(): JSX.Element {
                           <button
                             type="button"
                             class="graph-switcher-icon-action"
-                            aria-label={`Remove ${entry.label}`}
+                            aria-label={`Remove ${graphDisplayName(entry)}`}
                             title="Remove from this device"
                             onClick={() => setConfirmRemoveId(entry.id)}
                           >
@@ -310,7 +410,11 @@ export function GraphSwitcher(): JSX.Element {
             <button
               type="button"
               class="graph-switcher-add"
-              onClick={() => setMode(showLocalOption ? "add-choice" : "add-form")}
+              onClick={() => {
+                setServerGraphs(undefined);
+                setPickedNote(undefined);
+                setMode(showLocalOption ? "add-choice" : "add-form");
+              }}
             >
               <Plus size={14} /> Add a graph
             </button>
@@ -360,11 +464,15 @@ export function GraphSwitcher(): JSX.Element {
                   autocapitalize="none"
                   autocorrect="off"
                   spellcheck={false}
-                  placeholder="https://nooklet.example.com"
+                  placeholder="https://nooklet.example.com/g/work"
                   value={serverUrl()}
                   onInput={(e) => setServerUrl(e.currentTarget.value)}
                 />
               </label>
+              <p class="graph-switcher-hint">
+                <code>/g/&lt;graph&gt;</code> at the end picks a graph; without it you get the
+                server's default graph.
+              </p>
               <label class="graph-switcher-field">
                 <span>Device token</span>
                 <input
@@ -378,6 +486,9 @@ export function GraphSwitcher(): JSX.Element {
                   onInput={(e) => setToken(e.currentTarget.value)}
                 />
               </label>
+              <Show when={pickedNote()}>
+                <p class="graph-switcher-hint">{pickedNote()}</p>
+              </Show>
               <Show when={error()}>
                 <p class="graph-switcher-error" role="alert">
                   {error()}
@@ -386,6 +497,36 @@ export function GraphSwitcher(): JSX.Element {
               <button type="submit" disabled={busy() || !serverUrl().trim() || !token().trim()}>
                 {busy() ? "Checking…" : "Connect"}
               </button>
+              <button
+                type="button"
+                class="graph-switcher-link"
+                disabled={busy() || !serverUrl().trim() || !token().trim()}
+                onClick={() => void showServerGraphs()}
+              >
+                Show graphs on this server (root token)
+              </button>
+              <Show when={serverGraphs()}>
+                {(list) => (
+                  <ul class="graph-switcher-server-graphs" aria-label="Graphs on this server">
+                    <Show when={list().length === 0}>
+                      <li class="graph-switcher-hint">This server hosts no graphs yet.</li>
+                    </Show>
+                    <For each={list()}>
+                      {(g) => (
+                        <li>
+                          <button type="button" onClick={() => pickServerGraph(g)}>
+                            <span class="graph-switcher-label">{g.label}</span>
+                            <span class="graph-switcher-address">
+                              /g/{g.id}
+                              {findGraphByAddress(g.url) ? " · already on this device" : ""}
+                            </span>
+                          </button>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                )}
+              </Show>
             </form>
           </Show>
 

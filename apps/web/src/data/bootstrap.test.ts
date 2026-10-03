@@ -94,6 +94,27 @@ describe("setConnectedGraphToken", () => {
     expect(activeGraph()?.id).toBe(firstId);
     expect(activeGraph()?.token).toBe("nk_new");
   });
+
+  it("B-618: an absolute address for the same-origin entry matches it, keeping its own form", () => {
+    addGraph({ id: "here", label: "This graph", kind: "local", baseUrl: "/g/default" });
+    setActiveGraphId("here");
+    setConnectedGraphToken(`${location.origin}/g/default/`, "nk_new", "Home");
+    expect(listGraphs()).toHaveLength(1);
+    expect(activeGraph()).toMatchObject({
+      id: "here",
+      baseUrl: "/g/default",
+      token: "nk_new",
+      label: "Home",
+    });
+  });
+
+  it("B-618: the server's label replaces a placeholder, never a label someone chose", () => {
+    setConnectedGraphToken("https://h.example/g/work", "nk_a", "Work notes");
+    expect(activeGraph()?.label).toBe("Work notes");
+    updateGraph(activeGraph()?.id as string, { label: "Mine" });
+    setConnectedGraphToken("https://h.example/g/work", "nk_b", "Work notes");
+    expect(activeGraph()?.label).toBe("Mine");
+  });
 });
 
 describe("apiBaseUrl() precedence", () => {

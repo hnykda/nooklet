@@ -47,6 +47,13 @@ describe("deriveSyncView", () => {
     expect(deriveSyncView("memory", status({}), false)).toBe("memory");
     expect(deriveSyncView("follower", status({}), false)).toBe("follower");
   });
+
+  it("B-613: a refused token is its own view, ahead of storage facts and pending changes", () => {
+    const refused = status({ state: "unauthorized", pendingCount: 2 });
+    expect(deriveSyncView("opfs", refused, true)).toBe("unauthorized");
+    expect(deriveSyncView("memory", refused, true)).toBe("unauthorized");
+    expect(syncLabel("unauthorized", 2)).toMatch(/^Token rejected/);
+  });
 });
 
 describe("syncLabel", () => {

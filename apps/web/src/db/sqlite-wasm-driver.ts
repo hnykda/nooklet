@@ -51,6 +51,10 @@ interface Sqlite3OpfsSAHPoolUtil {
    * opened with `OpfsSAHPoolDb` — sqlite-wasm's own supported import path (validates the file
    * header itself), verified against the installed package source. Synchronous. */
   importDb(name: string, bytes: Uint8Array): number;
+  /** Disassociate one name from its pool slot (the slot is cleared and reused); `false` when no
+   * slot holds that name. "Results are undefined if the file is currently in active use" — close
+   * the database first. Verified against the installed package source (`deletePath`). */
+  unlink(name: string): boolean;
 }
 
 /**
@@ -156,6 +160,28 @@ function inspectReplica(
       // nothing to do
     }
   }
+}
+
+/**
+ * B-631: delete ONE replica from the pool — `filename` and the sidecar files SQLite may have made
+ * for it — and nothing else. The pool is shared by every graph on the device (each graph is a name
+ * in it), so the old "discard the local copy" that removed every OPFS entry also deleted every other
+ * graph's replica, local-only notes included, which exist nowhere else. `db` is closed first:
+ * sahpool's `unlink` is undefined for a file still open. Returns the names actually removed.
+ */
+export function discardReplicaFile(
+  pool: Pick<Sqlite3OpfsSAHPoolUtil, "unlink">,
+  db: { close(): void },
+  filename: string,
+): string[] {
+  db.close();
+  const removed: string[] = [];
+  // Exact names only, never a prefix match: `/nooklet.sqlite3` must not take
+  // `/nooklet-<id>.sqlite3` with it, nor the other way round.
+  for (const name of [filename, `${filename}-journal`, `${filename}-wal`]) {
+    if (pool.unlink(name)) removed.push(name);
+  }
+  return removed;
 }
 
 /** Wrap a sahpool `OpfsSAHPoolDb` (or any object satisfying `Sqlite3Db`, e.g. a fake in a future
@@ -264,6 +290,9 @@ export interface OpenedSqliteWasm {
    * pulled from a server (a copy of a server graph), `"data"` otherwise: notes only this device has.
    * `undefined` when not asked, or when the pool could not be opened. */
   inspected?: "absent" | "empty" | "synced" | "data";
+  /** B-631: close this replica and remove its file (only this one) from the pool
+   * (`discardReplicaFile`). `undefined` when `storage` is `"memory"`: nothing here owns a file. */
+  discard?: () => string[];
 }
 
 /** The un-namespaced replica's filename: `openSqliteWasmDriver`'s default, used by a load with no
@@ -300,6 +329,7 @@ export async function openSqliteWasmDriver(
   let storageError: string | undefined;
   let restored = false;
   let inspected: OpenedSqliteWasm["inspected"];
+  let pool: Sqlite3OpfsSAHPoolUtil | undefined;
   try {
     // A follower tab (B-81) asks for memory outright: sahpool allows one connection per file, and
     // the leader tab holds it.
@@ -317,6 +347,7 @@ export async function openSqliteWasmDriver(
       restored = true;
     }
     db = new poolUtil.OpfsSAHPoolDb(filename);
+    pool = poolUtil;
     if (opts.inspect && opts.inspect !== filename) {
       inspected = inspectReplica(poolUtil, opts.inspect);
     }
@@ -332,6 +363,7 @@ export async function openSqliteWasmDriver(
     db = new sqlite3.oo1.DB();
   }
   const driver = createSqliteWasmDriver(db);
+  const ownedPool = pool;
   // docs/spec/sql-schema.md rule 29's client PRAGMAs, scaled for mobile memory; journal_mode is
   // left at sahpool's default (it manages its own durability model, not a real WAL file on OPFS).
   driver.exec("PRAGMA foreign_keys = ON");
@@ -346,5 +378,6 @@ export async function openSqliteWasmDriver(
     inspected,
     exportBytes:
       storage === "opfs" ? () => sqlite3.capi.sqlite3_js_db_export(db.pointer) : undefined,
+    discard: ownedPool ? () => discardReplicaFile(ownedPool, db, filename) : undefined,
   };
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { isoJournalName, todayJournalDay } from "@nooklet/core";
 import { z } from "zod";
 import { defineOp, type OriginKind } from "./registry.js";
@@ -14,6 +16,9 @@ export const graphOverview = defineOp({
     "oriented and to get a seq for changes_since later.",
   input: z.object({}).strict(),
   output: z.object({
+    graph: z
+      .object({ id: z.string(), label: z.string() })
+      .describe("Which graph this is: its URL slug (/g/<id>/) and its label"),
     today: z.string().describe("YYYY-MM-DD"),
     timezone: z.string(),
     counts: z.object({
@@ -132,6 +137,7 @@ export const graphOverview = defineOp({
     const seq = driver.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM changes")?.n ?? 0;
 
     return {
+      graph: graphIdentity(ctx.config.dataDir, ctx.config.graphId),
       today: isoJournalName(todayJournalDay()),
       timezone: ctx.config.timezone,
       counts: { pages, journals, blocks },
@@ -143,3 +149,25 @@ export const graphOverview = defineOp({
     };
   },
 });
+
+/**
+ * B-618: the graph's slug and label, so a client that holds only a graph-scoped token can still
+ * name the graph it is connected to (the switcher used to say "This graph"/"Remote graph" for all
+ * of them). `GET /graphs` has the same data but needs the root token. The label lives in
+ * `graph.json` next to the database (`../graphs/registry.ts#create`); a graph without one (the
+ * default graph of a data dir that predates ADR 025, or a single-graph test server) is labelled by
+ * its slug, exactly as `create()` defaults it.
+ */
+function graphIdentity(graphDir: string, graphId: string): { id: string; label: string } {
+  try {
+    const meta = JSON.parse(readFileSync(join(graphDir, "graph.json"), "utf8")) as {
+      label?: unknown;
+    };
+    if (typeof meta.label === "string" && meta.label.trim()) {
+      return { id: graphId, label: meta.label };
+    }
+  } catch {
+    // No graph.json, or unreadable: fall through to the slug.
+  }
+  return { id: graphId, label: graphId };
+}

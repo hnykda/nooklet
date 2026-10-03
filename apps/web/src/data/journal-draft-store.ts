@@ -91,6 +91,24 @@ export function clearDraftLines(day: number): void {
   }
 }
 
+/** B-631: forget every kept draft of THIS page load's replica (it is being discarded); other
+ * graphs' drafts are untouched. */
+export function clearReplicaDrafts(): void {
+  const store = storage();
+  if (!store) return;
+  const prefix = `${PREFIX}${encodeURIComponent(currentReplicaScope())}:`;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const k = store.key(i);
+      if (k?.startsWith(prefix)) keys.push(k);
+    }
+    for (const k of keys) store.removeItem(k);
+  } catch {
+    // nothing to do
+  }
+}
+
 /**
  * A kept draft for a day that has a page by now (another device wrote the day, and sync brought it
  * in before this load's stream answered): its non-empty lines go at the end of that page, one block

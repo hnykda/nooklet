@@ -56,6 +56,16 @@ interface ShelfState {
  * switch's navigation, so the active entry is the graph this page load shows. */
 const STORAGE_KEY = `nooklet.shelf.state:${activeGraphId() ?? "~"}`;
 
+/** B-631: forget this graph's stored shelf (its replica is being discarded; the cards point into
+ * it). Other graphs' shelves are untouched. */
+export function clearStoredShelf(): void {
+  try {
+    storage()?.removeItem(STORAGE_KEY);
+  } catch {
+    // nothing to do
+  }
+}
+
 function storage(): Storage | undefined {
   try {
     // Merely touching `sessionStorage` throws in some privacy modes, so this is a probe rather

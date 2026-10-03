@@ -126,6 +126,17 @@ export async function readCheckpoint(scope: string): Promise<Uint8Array | undefi
   }
 }
 
+/** B-631: remove ONE replica's checkpoint, so a discarded replica is not restored from it into the
+ * fresh, empty file on the next start. Never throws; a missing file is the common case. */
+export async function deleteCheckpoint(scope: string): Promise<void> {
+  try {
+    const { Filesystem, Directory } = await filesystem();
+    await Filesystem.deleteFile({ path: checkpointPath(scope), directory: Directory.Data });
+  } catch {
+    // No checkpoint (never written), or no plugin.
+  }
+}
+
 async function writeCheckpoint(scope: string, bytes: Uint8Array): Promise<void> {
   try {
     const { Filesystem, Directory } = await filesystem();
