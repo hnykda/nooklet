@@ -152,7 +152,7 @@ test("a day nobody has written in yet still shows what is scheduled then", async
   // Nine days ahead: no journal page (no spec writes one there), reached by its date the way a
   // date link reaches it.
   await page.goto(pagePath(isoOffset(9)));
-  await expect(page.locator(".page-view-missing")).toBeVisible();
+  await expect(page.locator(".page-view-draft .vr-draft-input")).toBeVisible();
   await expect(page.locator(".journal-agenda .journal-agenda-item")).toHaveText([
     /agx in nine days/,
   ]);

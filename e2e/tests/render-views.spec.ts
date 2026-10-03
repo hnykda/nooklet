@@ -201,7 +201,7 @@ test("a journal day nobody has written shows the links to it, whatever date form
           : "th";
   // Logseq's default title format, as an old link or a typed URL would spell it.
   await page.goto(pagePath(`${month} ${d}${suffix}, ${y}`));
-  await expect(page.locator(".page-view-missing")).toBeVisible();
+  await expect(page.locator(".page-view-draft")).toBeVisible();
   await expect(page.locator(".linked-references .reference-group-page")).toHaveText([
     "RV Date Linker",
   ]);
@@ -295,7 +295,8 @@ test("a page that does not exist yet keeps its references panel, and its place i
 }) => {
   await page.setViewportSize({ width: 1000, height: 500 });
   // A journal day: since ADR 024 a linked ordinary name is a page, and a day nobody wrote is what
-  // still shows the missing view with references. An offset no other spec uses.
+  // still shows references without a page (since B-595 as an editable empty day). An offset no
+  // other spec uses.
   const name = isoOffset(-777);
   for (let p = 0; p < 6; p++) {
     await seedPage(
@@ -305,7 +306,7 @@ test("a page that does not exist yet keeps its references panel, and its place i
     );
   }
   await page.goto(pagePath(name));
-  await expect(page.locator(".page-view-missing")).toBeVisible();
+  await expect(page.locator(".page-view-draft")).toBeVisible();
   const groups = page.locator(".linked-references .reference-group-page");
   await expect(groups).toHaveCount(6);
 
@@ -345,11 +346,11 @@ test("a page that does not exist yet keeps its references panel, and its place i
   expect(after).toEqual({ samePanel: true, loadingSeen: false });
   expect(await scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
 
-  // Navigating on to a page that exists still leaves the missing view, and back again shows it.
+  // Navigating on to a page that exists still leaves the empty day, and back again shows it.
   await groups.first().click();
-  await expect(page.locator(".page-view-missing")).toHaveCount(0);
+  await expect(page.locator(".page-view-draft")).toHaveCount(0);
   await expect(page.locator(".page-title-input")).toHaveValue(/RV Keep Place Linker/);
   await page.goBack();
-  await expect(page.locator(".page-view-missing")).toBeVisible();
+  await expect(page.locator(".page-view-draft")).toBeVisible();
   await expect(groups).toHaveCount(6);
 });

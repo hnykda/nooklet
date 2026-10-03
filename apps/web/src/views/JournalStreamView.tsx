@@ -48,7 +48,7 @@ function dayTitle(day: number): string {
  * A router `<A>`, not a raw `<a>` + `rawAnchorHref`: `<Router base>` already adds ADR 025's
  * `/g/<slug>` prefix to it, and adding it here too would double it (`routes/page-path.ts`).
  * A day with no page yet (today before its first block) still links: `PageView` shows a date URL
- * as that day — its title, agenda, references and a Create button — rather than a dead end.
+ * as that day — its title, the stream's draft to start it in (B-595), agenda and references.
  */
 function DayTitleLink(props: { day: number; children: JSX.Element }): JSX.Element {
   return (
