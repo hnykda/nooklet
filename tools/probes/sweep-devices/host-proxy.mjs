@@ -13,13 +13,24 @@
 // `isLoopbackRequest` (peer AND Host must be loopback) says no and injects no token — the same
 // thing a TLS-terminating reverse proxy (Caddy, `tailscale serve`) in front of the server does.
 // Handles WebSocket upgrades (sync/live, ui/live). Stand-in for the deployment, not a model of it.
+
+import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
-import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 
-const [listenPort, upstreamPort, fakeHost = "nooklet.sweep.test", staticDir] = process.argv.slice(2);
-const TYPES = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".wasm": "application/wasm", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json" };
+const [listenPort, upstreamPort, fakeHost = "nooklet.sweep.test", staticDir] =
+  process.argv.slice(2);
+const TYPES = {
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".html": "text/html",
+  ".wasm": "application/wasm",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webmanifest": "application/manifest+json",
+};
 function serveStatic(req, res) {
   if (!staticDir) return false;
   const path = new URL(req.url, "http://x").pathname;

@@ -34,11 +34,17 @@ test("where does the local-only note leak to the server", async () => {
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 393, height: 852 } });
   await ctx.addInitScript(() => {
-    (window as unknown as { Capacitor: unknown }).Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", isPluginAvailable: () => false, Plugins: {} };
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => "ios",
+      isPluginAvailable: () => false,
+      Plugins: {},
+    };
   });
   const p = await ctx.newPage();
   p.on("request", (r) => {
-    if (/\/sync\/push|\/sync\/bootstrap|\/sync\/pull/.test(r.url())) console.log("REQ", r.method(), r.url());
+    if (/\/sync\/push|\/sync\/bootstrap|\/sync\/pull/.test(r.url()))
+      console.log("REQ", r.method(), r.url());
   });
   await p.goto(`${APP}/`);
   await p.getByRole("button", { name: /Just this device/s }).click();
@@ -69,6 +75,14 @@ test("where does the local-only note leak to the server", async () => {
   obs("2 right after add-server navigation:", JSON.stringify(await state(p)));
   await p.waitForTimeout(6000);
   obs("3 6s later: on server =", await onServer(marker), JSON.stringify(await state(p)));
-  obs("  today shows marker =", (await p.locator(".journal-day-today").innerText().catch(() => "")).includes(marker));
+  obs(
+    "  today shows marker =",
+    (
+      await p
+        .locator(".journal-day-today")
+        .innerText()
+        .catch(() => "")
+    ).includes(marker),
+  );
   await b.close();
 });

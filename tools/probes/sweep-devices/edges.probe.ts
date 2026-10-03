@@ -16,16 +16,26 @@ const DATA = process.env.SWEEP_DATA ?? "";
 const T = JSON.parse(readFileSync(process.env.SWEEP_TOKENS ?? "tokens.json", "utf8"));
 const obs = (...a: unknown[]) => console.log("OBS:", ...a);
 const label = async (p: Page) =>
-  (await p.locator(".app-sync-indicator").getAttribute("aria-label").catch(() => null)) ?? "(none)";
+  (await p
+    .locator(".app-sync-indicator")
+    .getAttribute("aria-label")
+    .catch(() => null)) ?? "(none)";
 const cli = (args: string) =>
   execFileSync(
     "bash",
-    ["-c", `cd ${join(HERE, "../../../packages/server")} && NOOKLET_DATA=${DATA} pnpm exec tsx src/cli.ts ${args} --data ${DATA}`],
+    [
+      "-c",
+      `cd ${join(HERE, "../../../packages/server")} && NOOKLET_DATA=${DATA} pnpm exec tsx src/cli.ts ${args} --data ${DATA}`,
+    ],
     { encoding: "utf8" },
   );
-const kill = () => execFileSync("bash", ["-c", "lsof -ti tcp:6311 -sTCP:LISTEN | xargs kill; sleep 1; true"]);
+const kill = () =>
+  execFileSync("bash", ["-c", "lsof -ti tcp:6311 -sTCP:LISTEN | xargs kill; sleep 1; true"]);
 const start = () =>
-  execFileSync(join(HERE, "serve.sh"), [DATA, "6311", "127.0.0.1", "nooklet.sweep.test"], { stdio: ["ignore", "pipe", "ignore"], timeout: 90_000 });
+  execFileSync(join(HERE, "serve.sh"), [DATA, "6311", "127.0.0.1", "nooklet.sweep.test"], {
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 90_000,
+  });
 
 test("edges", async () => {
   test.setTimeout(240_000);
@@ -33,17 +43,24 @@ test("edges", async () => {
   const ctx = await b.newContext();
   const p = await ctx.newPage();
   p.on("pageerror", (e) => console.log("[pageerror]", String(e).slice(0, 200)));
-  const tok = cli("token create --label edge --scope write --sync --graph default").match(/nk_[0-9a-f]+/)?.[0];
+  const tok = cli("token create --label edge --scope write --sync --graph default").match(
+    /nk_[0-9a-f]+/,
+  )?.[0];
   await p.goto(`${BASE}/`);
   await p.getByRole("button", { name: /Sync with a server/s }).click();
   await p.getByLabel("Device token").fill(tok as string);
   await p.getByRole("button", { name: "Connect" }).click();
-  await expect(p.locator(".app-sync-indicator")).toHaveAttribute("aria-label", "Synced", { timeout: 20_000 });
+  await expect(p.locator(".app-sync-indicator")).toHaveAttribute("aria-label", "Synced", {
+    timeout: 20_000,
+  });
   await p.goto(`${BASE}/g/default/page/Sweep%20Shared`);
   await expect(p.locator(".vr-outliner").first()).toContainText("seed from server");
   const sw = await p.evaluate(async () => {
     const ready = navigator.serviceWorker?.ready;
-    const r = await Promise.race([ready, new Promise((res) => setTimeout(() => res(undefined), 20_000))]);
+    const r = await Promise.race([
+      ready,
+      new Promise((res) => setTimeout(() => res(undefined), 20_000)),
+    ]);
     return Boolean((r as ServiceWorkerRegistration | undefined)?.active);
   });
   obs("service worker active:", sw);
@@ -52,13 +69,22 @@ test("edges", async () => {
   // host-proxy.mjs as the reason the indicator stays green.
   const direct = await ctx.newPage();
   await direct.goto("http://127.0.0.1:6311/g/default/page/Sweep%20Shared");
-  await expect(direct.locator(".app-sync-indicator")).toHaveAttribute("aria-label", "Synced", { timeout: 20_000 });
+  await expect(direct.locator(".app-sync-indicator")).toHaveAttribute("aria-label", "Synced", {
+    timeout: 20_000,
+  });
 
   // 1. Indicator while the server is down and nobody types.
   kill();
   for (const s of [1, 3, 5, 10, 20, 30]) {
-    await p.waitForTimeout(s === 1 ? 1000 : s === 3 ? 2000 : s === 5 ? 2000 : s === 10 ? 5000 : 10_000);
-    obs(`server down ${s}s, no edits: label via proxy =`, await label(p), "| direct =", await label(direct));
+    await p.waitForTimeout(
+      s === 1 ? 1000 : s === 3 ? 2000 : s === 5 ? 2000 : s === 10 ? 5000 : 10_000,
+    );
+    obs(
+      `server down ${s}s, no edits: label via proxy =`,
+      await label(p),
+      "| direct =",
+      await label(direct),
+    );
   }
 
   await direct.close();
@@ -72,9 +98,22 @@ test("edges", async () => {
     "label =",
     await label(p),
     "outliner has seed =",
-    (await p.locator(".vr-outliner").first().innerText().catch(() => "")).includes("seed from server"),
+    (
+      await p
+        .locator(".vr-outliner")
+        .first()
+        .innerText()
+        .catch(() => "")
+    ).includes("seed from server"),
     "body:",
-    (await p.locator("body").innerText().catch(() => "")).slice(0, 160).replace(/\n+/g, " | "),
+    (
+      await p
+        .locator("body")
+        .innerText()
+        .catch(() => "")
+    )
+      .slice(0, 160)
+      .replace(/\n+/g, " | "),
   );
   start();
   await p.waitForTimeout(8000);
@@ -82,7 +121,12 @@ test("edges", async () => {
 
   // 3. Revoked token, client with a local replica.
   const list = cli("token list --graph default");
-  const id = list.split("\n").filter((l) => /\bactive\b/.test(l) && /\bedge$/.test(l.trim())).pop()?.trim().split(/\s+/)[0];
+  const id = list
+    .split("\n")
+    .filter((l) => /\bactive\b/.test(l) && /\bedge$/.test(l.trim()))
+    .pop()
+    ?.trim()
+    .split(/\s+/)[0];
   cli(`token revoke ${id} --graph default`);
   obs("revoked edge token", id);
   await p.reload();
@@ -93,7 +137,14 @@ test("edges", async () => {
     "label =",
     await label(p),
     "body:",
-    (await p.locator("body").innerText().catch(() => "")).slice(0, 200).replace(/\n+/g, " | "),
+    (
+      await p
+        .locator("body")
+        .innerText()
+        .catch(() => "")
+    )
+      .slice(0, 200)
+      .replace(/\n+/g, " | "),
   );
   // An edit with the revoked token: does it reach the server, and what does the indicator say?
   const outliner = p.locator(".vr-outliner").first();

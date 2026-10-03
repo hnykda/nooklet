@@ -37,8 +37,20 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
 ## In flight
 - nothing
 
+## Verification (on b18bce4 + probe formatting)
+- `pnpm -r typecheck`: exit 0. `pnpm -r test`: core 426, plugin-api 17, server 791, web 1444,
+  desktop 4 — all pass. `pnpm exec biome check . --diagnostic-level=error`: clean (after
+  formatting the sweep's probe files, which failed it on 38e17a6 already).
+- e2e (chromium, port 6340): sync-indicator, connectivity, graph-switcher, remote-device,
+  desktop-launcher, sync-connection-states, insecure-context, sync-timeout, local-page-creation,
+  diagnostics — 28 passed, 1 failed: `connectivity.spec.ts` "search returns rather than spinning
+  forever", which fails identically on 38e17a6 (3/3 with `--repeat-each=3`): today's journal shows
+  the draft row, the test's `draft.isVisible()` check runs before it renders and the fallback
+  clicks a `.vr-block-view` that does not exist. Pre-existing, not touched.
+- Full e2e suite: see below once it finishes.
+
 ## Next steps
-1. Full verification run; format the pre-existing biome errors in `tools/probes/sweep-*`.
+1. Nothing left in scope. Fold the BUGS.md entries below.
 
 ## Decisions
 - Server-down simulation: `page.routeWebSocket` does NOT intercept a socket opened in a dedicated
@@ -85,5 +97,9 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   (`docs/spec/mcp-tools.md` updated). Not done: the Capacitor ConnectView's own server field has no
   `/g/<graph>` hint (only the switcher's add form and the desktop picker do); the desktop dedupe is
   in the launcher JS, `main.rs#add_graph` still compares exact strings.
+- New entry (noticed, not fixed): `e2e/tests/connectivity.spec.ts` "search returns rather than
+  spinning forever" fails on main 38e17a6 when run (alone or with the connection specs): the
+  `isVisible()` check on `.vr-draft-input` does not wait, so it takes the `.vr-block-view` branch
+  on an empty journal and times out. Severity low (test-only).
 - Noticed, not fixed (e2e harness): a `route.fetch` carrying a foreign `Origin` header got 403 from
   the per-graph app — same family as the sweep's "same-host reverse proxy 403" entry.
