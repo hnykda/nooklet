@@ -288,10 +288,8 @@ curl -si -X OPTIONS -H 'Origin: capacitor://localhost' \
 
 ## 1. Mint the iPhone's token — after the first `serve`
 
-Mint it **after** step 0 has run once. Before B-607's fix (branch
-`worktree-agent-a1a8803e8c967f3b2`, `228f942`) is merged this order is mandatory: a `token create`
-on a fresh data dir made the next `serve` die with `a graph called "default" already exists`. With
-the fix either order works, but there is no reason to change it.
+Mint it after step 0 has run once. (Since B-607's fix, `228f942`, merged 2026-10-03, either order
+works; this one is simply the natural one.)
 
 ```sh
 pnpm nooklet token create --data ~/nooklet-test --label iphone --scope write --sync \
