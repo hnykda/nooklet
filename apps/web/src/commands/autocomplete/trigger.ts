@@ -23,11 +23,35 @@ export function matchPageRefTrigger(textBeforeCaret: string): AutocompleteMatch 
   return { from: m.index, query: m[1] ?? "" };
 }
 
-export function matchTagTrigger(textBeforeCaret: string): AutocompleteMatch | null {
+/**
+ * `textAfterCaret` (B-380): when the text after the caret still continues the tag, the caret was
+ * walked into an existing `#tag`, and the popup does not open. A tag has no closer, so a pick
+ * there could only replace the part before the caret and left the tail behind
+ * (`#WalkTagTarget|agTarget`); swallowing the tail instead would also eat a word that `#` was
+ * typed straight before, which looks the same from here. The owner chose not opening (option c):
+ * the cost is that `#` typed straight before a word (`#Wa|omega`) gets no popup either.
+ */
+export function matchTagTrigger(
+  textBeforeCaret: string,
+  textAfterCaret = "",
+): AutocompleteMatch | null {
   const m = TAG_RE.exec(textBeforeCaret);
   if (!m) return null;
+  if (continuesTag(textAfterCaret)) return null;
   const hashIndexInMatch = m[0].indexOf("#");
   return { from: m.index + hashIndexInMatch, query: m[2] ?? "" };
+}
+
+// What ends a tag, copied from `packages/core/src/tokens.ts` (`TAG_STOP`, `TAG_TRAILING`) — that
+// module must not gain exports. The tokenizer works per line, so a newline ends a tag here too.
+// Trailing `.!?:` are not part of the tag (`#done.`), so a caret before them is at its end.
+const TAG_STOP_RE = /[\s,;)\]}'"]/;
+const TAG_TRAILING_RE = /[.!?:]+$/;
+
+function continuesTag(textAfterCaret: string): boolean {
+  const stop = textAfterCaret.search(TAG_STOP_RE);
+  const run = stop === -1 ? textAfterCaret : textAfterCaret.slice(0, stop);
+  return run.replace(TAG_TRAILING_RE, "").length > 0;
 }
 
 export function matchBlockRefTrigger(textBeforeCaret: string): AutocompleteMatch | null {
@@ -47,7 +71,8 @@ export function matchBlockRefTrigger(textBeforeCaret: string): AutocompleteMatch
  * (`[[|[[Other]]`) does not swallow that link.
  *
  * Not for `#tags`: a tag has no closer, so "the caret is inside an existing tag" cannot be told
- * apart from "`#` typed straight before a word" — B-380.
+ * apart from "`#` typed straight before a word" — B-380; the tag popup does not open there at all
+ * (`matchTagTrigger`'s `textAfterCaret`).
  */
 export function existingRefTailLength(textAfterCaret: string, closer: "]]" | "))"): number {
   const m = (closer === "]]" ? PAGE_REF_TAIL_RE : BLOCK_REF_TAIL_RE).exec(textAfterCaret);
