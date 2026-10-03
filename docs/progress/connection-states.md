@@ -97,6 +97,13 @@ Branch: `worktree-agent-a94b2c48784f3bb63`, based on main `38e17a6`.
   (`docs/spec/mcp-tools.md` updated). Not done: the Capacitor ConnectView's own server field has no
   `/g/<graph>` hint (only the switcher's add form and the desktop picker do); the desktop dedupe is
   in the launcher JS, `main.rs#add_graph` still compares exact strings.
+- New entry (found while doing B-613, fixed): on web, `ConnectView`'s same-origin pairing (and
+  so the re-pair screen) verified the token at `/api/v1/graph.overview` with no `/g/<slug>`, which
+  the server's bare-origin 307 sends to the DEFAULT graph — on `/g/work` a valid `work` token read
+  as "rejected". `connectToGraph` now verifies at `samePathGraphPrefix()`. Severity medium (any
+  non-default graph opened in a browser tab without a token could not be paired). **Test:**
+  `ConnectView.test.tsx` "on /g/<slug>, verifies against that graph" (red without the fix). Not
+  run in a real browser.
 - New entry (noticed, not fixed): `e2e/tests/connectivity.spec.ts` "search returns rather than
   spinning forever" fails on main 38e17a6 when run (alone or with the connection specs): the
   `isVisible()` check on `.vr-draft-input` does not wait, so it takes the `.vr-block-view` branch

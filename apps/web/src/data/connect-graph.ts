@@ -6,7 +6,7 @@
  * needs) already imports FROM `bootstrap.ts`.
  */
 import { describeError } from "./api-client.js";
-import { setConnectedGraphToken } from "./bootstrap.js";
+import { samePathGraphPrefix, setConnectedGraphToken } from "./bootstrap.js";
 
 export type ConnectResult = { ok: true } | { ok: false; error: string };
 
@@ -50,7 +50,9 @@ export async function connectToGraph(
   token: string,
 ): Promise<ConnectResult> {
   const baseUrl = typedBaseUrl === null ? null : graphBaseUrl(typedBaseUrl);
-  const base = baseUrl ?? "";
+  // Same-origin: verify against THIS page's graph. A bare "" resolved to the server's bare-origin
+  // redirect, i.e. always the default graph, so on `/g/work` a valid `work` token was "rejected".
+  const base = baseUrl ?? samePathGraphPrefix() ?? "";
   try {
     const res = await fetch(`${base}/api/v1/graph.overview`, {
       method: "POST",

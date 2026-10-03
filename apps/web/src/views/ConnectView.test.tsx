@@ -61,6 +61,25 @@ describe("web/PWA: unchanged, no server-address field", () => {
     expect(activeGraph()?.baseUrl).toBeUndefined();
     expect(reload).toHaveBeenCalled();
   });
+
+  it("on /g/<slug>, verifies against that graph, not the server's default", async () => {
+    const original = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, pathname: "/g/work/journals", reload: vi.fn() },
+    });
+    try {
+      fakePlatform.name = "web";
+      fetchMock.mockResolvedValueOnce(ok());
+      render(() => <ConnectView />);
+      fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_work" } });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+      await screen.findByRole("button", { name: "Connect" });
+      expect(fetchMock.mock.calls[0]?.[0]).toBe("/g/work/api/v1/graph.overview");
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
+  });
 });
 
 describe("Capacitor: a server-address field is required first", () => {
