@@ -12,16 +12,17 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CORE_SCHEMA_STATEMENTS, makeOp, type Op, type SqlDriver } from "@nooklet/core";
 import { createNodeSqliteDriver } from "@nooklet/core/node-sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLIENT_SCHEMA_STATEMENTS } from "../db/schema-client.js";
-import { PUSH_DEBOUNCE_MS, SyncClient } from "./sync-client.js";
-import type {
-  PullResponse,
-  PushRequestBody,
-  PushResponse,
-  SnapshotResponse,
-  SyncLiveHandlers,
-  SyncTransport,
+import { LIVE_DOWN_GRACE_MS, PUSH_DEBOUNCE_MS, SyncClient } from "./sync-client.js";
+import {
+  type PullResponse,
+  type PushRequestBody,
+  type PushResponse,
+  type SnapshotResponse,
+  SyncAuthError,
+  type SyncLiveHandlers,
+  type SyncTransport,
 } from "./types.js";
 
 function schemaOn(driver: SqlDriver): void {
@@ -56,17 +57,22 @@ class FakeTransport implements SyncTransport {
     page_props: [],
   };
   failPush = false;
+  failPushWith: Error | undefined;
   liveHandlers: SyncLiveHandlers | undefined;
   liveDeviceId: string | undefined;
 
   async push(body: PushRequestBody): Promise<PushResponse> {
     this.pushCalls.push(body);
+    if (this.failPushWith) throw this.failPushWith;
     if (this.failPush) throw new Error("offline");
     return typeof this.nextPush === "function" ? this.nextPush() : this.nextPush;
   }
 
+  failPull: Error | undefined;
+
   async pull(deviceId: string, since: number): Promise<PullResponse> {
     this.pullCalls.push({ deviceId, since });
+    if (this.failPull) throw this.failPull;
     return typeof this.nextPull === "function" ? this.nextPull() : this.nextPull;
   }
 
@@ -634,5 +640,105 @@ describe("SyncClient crash-safety", () => {
     expect(onlineTransport.pushCalls[0]?.ops.map((o) => o.id)).toEqual([op.id]);
     expect(driver2.all("SELECT * FROM pending_op")).toHaveLength(0);
     db2.close();
+  });
+});
+
+describe("SyncClient connection states (B-613 token refused, B-614 live socket down)", () => {
+  let driver: SqlDriver;
+  let transport: FakeTransport;
+  let client: SyncClient;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    driver = memoryDriver();
+    transport = new FakeTransport();
+    client = new SyncClient({ driver, transport });
+    client.init();
+  });
+
+  afterEach(() => {
+    client.dispose();
+    vi.useRealTimers();
+  });
+
+  it("a refused push is 'unauthorized', not 'offline', and the op stays queued", async () => {
+    client.applyLocal([pageCreateOp(client, "Alpha")]);
+    transport.failPushWith = new SyncAuthError(401);
+    await client.flush();
+    expect(client.getStatus().state).toBe("unauthorized");
+    expect(client.getStatus().pendingCount).toBe(1);
+  });
+
+  it("a refused pull is 'unauthorized'", async () => {
+    transport.failPull = new SyncAuthError(403);
+    await client.pull();
+    expect(client.getStatus().state).toBe("unauthorized");
+  });
+
+  it("stays 'unauthorized' through a later network failure and an attempt in flight", async () => {
+    const seen: string[] = [];
+    client = new SyncClient({ driver, transport, onStatus: (s) => seen.push(s.state) });
+    client.init();
+    transport.failPull = new SyncAuthError(401);
+    await client.pull();
+    transport.failPull = new Error("Failed to fetch");
+    seen.length = 0;
+    await client.pull();
+    expect(client.getStatus().state).toBe("unauthorized");
+    expect(seen.filter((s) => s !== "unauthorized")).toEqual([]);
+  });
+
+  it("clears once a request succeeds again", async () => {
+    transport.failPull = new SyncAuthError(401);
+    await client.pull();
+    transport.failPull = undefined;
+    await client.pull();
+    expect(client.getStatus().state).toBe("idle");
+  });
+
+  it("a failed bootstrap leaves 'bootstrapping' for what actually happened", async () => {
+    transport.snapshot = async () => {
+      throw new SyncAuthError(401);
+    };
+    await expect(client.bootstrap()).rejects.toThrow();
+    expect(client.getStatus().state).toBe("unauthorized");
+  });
+
+  it("the live socket refused with 4403 is 'unauthorized' at once", () => {
+    client.connectLive();
+    transport.liveHandlers?.onClose?.(4403);
+    expect(client.getStatus().state).toBe("unauthorized");
+  });
+
+  it("the live socket closing probes with a pull after the grace period; failure is 'offline'", async () => {
+    client.connectLive();
+    await vi.advanceTimersByTimeAsync(0);
+    const pullsBefore = transport.pullCalls.length;
+    transport.failPull = new Error("Failed to fetch");
+    transport.liveHandlers?.onClose?.(1006);
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS - 1);
+    expect(transport.pullCalls.length).toBe(pullsBefore);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(transport.pullCalls.length).toBe(pullsBefore + 1);
+    expect(client.getStatus().state).toBe("offline");
+  });
+
+  it("a socket that reopens within the grace period probes nothing", async () => {
+    client.connectLive();
+    await vi.advanceTimersByTimeAsync(0);
+    transport.liveHandlers?.onClose?.(1006);
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS / 2);
+    transport.liveHandlers?.onOpen();
+    const pullsAfterOpen = transport.pullCalls.length;
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS * 2);
+    expect(transport.pullCalls.length).toBe(pullsAfterOpen);
+    expect(client.getStatus().state).toBe("idle");
+  });
+
+  it("a probe that succeeds (only the socket is down) stays in sync", async () => {
+    client.connectLive();
+    transport.liveHandlers?.onClose?.(1006);
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS);
+    expect(client.getStatus().state).toBe("idle");
   });
 });

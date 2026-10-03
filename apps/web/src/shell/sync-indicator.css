@@ -76,3 +76,37 @@
   --sync-dot: var(--sync-cutout);
   --sync-ring: var(--muted);
 }
+
+/* B-613: the server refused this device's token. Full danger, like `error`: nothing fixes it
+   without the reader, so unlike the quiet states it is meant to be noticed. */
+.app-sync-indicator[data-state="unauthorized"] {
+  --sync-dot: color-mix(in srgb, var(--danger) 85%, var(--surface-sunken));
+  --sync-ring: var(--sync-dot);
+}
+
+.app-sync-repair {
+  flex: none;
+  padding: 2px var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.app-sync-repair:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+/* The re-pair screen over the app: the same `ConnectView` a device with no token gets, on the
+   page's own ground so nothing behind it competes. */
+.app-sync-repair-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow-y: auto;
+  background: var(--bg);
+}

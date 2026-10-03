@@ -22,17 +22,48 @@
  * explicit "just this device" vs "sync with a server" choice, rather than showing two required-
  * looking fields with the opt-out demoted to a same-row second button — a real user read that as
  * "syncing is mandatory" (owner feedback). Only picking the sync option reveals the form.
+ *
+ * B-613: also the re-pair screen (`props.repair`), opened from the sync indicator when the server
+ * refuses the token a graph entry already has. Same form, but the address is the entry's own and
+ * read-only: typing a different one here would attach this replica's local history to some other
+ * graph, which is exactly the merge ADR 025 rules out. The entry keeps its id, so its local copy
+ * and its unpushed changes are kept and pushed with the new token after the reload.
  */
 
 import { Server, Smartphone } from "lucide-solid";
-import { createSignal, type JSX, Show } from "solid-js";
-import { connectToGraph, parseServerUrl } from "../data/connect-graph.js";
+import { createResource, createSignal, type JSX, Show } from "solid-js";
+import { connectToGraph, parseServerUrl, type RepairTarget } from "../data/connect-graph.js";
 import { platform } from "../platform/index.js";
 import "./connect.css";
 
-export function ConnectView(props: { reason?: string; onSkip?: () => void }): JSX.Element {
+export function ConnectView(props: {
+  reason?: string;
+  onSkip?: () => void;
+  /** B-613: re-pair an existing entry whose token the server refused (see the header). */
+  repair?: RepairTarget & { onCancel: () => void };
+}): JSX.Element {
   // A plain read, not a signal: the shell this build runs in cannot change mid-session.
-  const showServerField = platform.name === "capacitor";
+  const showServerField = platform.name === "capacitor" && !props.repair;
+
+  // B-613, loopback only: the server hands a browser on its own machine a fresh token on every
+  // start and retires the old one, so a tab left open across a `nooklet serve` restart is refused
+  // too. There is nothing to paste then; a reload picks up the new token by itself.
+  const [freshSessionToken] = createResource(
+    () => props.repair,
+    async (repair) => {
+      try {
+        const res = await fetch(`${repair.sessionBase}/api/session`, {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) return false;
+        const body = (await res.json()) as { token?: string | null };
+        return Boolean(body.token);
+      } catch {
+        return false;
+      }
+    },
+  );
 
   // No skip path means there is nothing to choose between — go straight to the form, as before
   // B-563. Otherwise start undecided so the choice renders first.
@@ -52,7 +83,9 @@ export function ConnectView(props: { reason?: string; onSkip?: () => void }): JS
     // back: a wrong address must fail this fetch, not silently resolve against
     // `capacitor://localhost` because nothing was stored yet.
     let base = "";
-    if (showServerField) {
+    if (props.repair) {
+      base = props.repair.connectBase ?? "";
+    } else if (showServerField) {
       const parsed = parseServerUrl(serverUrl());
       if ("error" in parsed) {
         setError(parsed.error);
@@ -66,7 +99,10 @@ export function ConnectView(props: { reason?: string; onSkip?: () => void }): JS
     // Verify before storing, so a typo fails here with a readable message rather than becoming a
     // silent permanent "offline" three screens later — which is exactly how the missing-token bug
     // presented before any of this existed.
-    const result = await connectToGraph(showServerField ? base : null, tokenValue);
+    const result = await connectToGraph(
+      props.repair ? props.repair.connectBase : showServerField ? base : null,
+      tokenValue,
+    );
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
@@ -76,6 +112,67 @@ export function ConnectView(props: { reason?: string; onSkip?: () => void }): JS
     // the honest way to get every transport onto the new credential (and, under Capacitor, the
     // new server address).
     location.reload();
+  }
+
+  if (props.repair) {
+    const repair = props.repair;
+    return (
+      <main class="connect connect-repair" aria-label="Re-enter token">
+        <button type="button" class="connect-back" onClick={repair.onCancel}>
+          ‹ Back
+        </button>
+        <h1>The server rejected this device's token</h1>
+        <p class="connect-lede">
+          <code>{repair.displayUrl}</code> refused the token this device was using, most likely
+          because it was revoked. Your notes and any changes not yet synced are kept on this device,
+          and are sent once a new token is accepted.
+        </p>
+        <Show when={freshSessionToken()}>
+          <p class="connect-note">
+            This browser is on the server's own machine, which issues it a new token each time it
+            starts. Reloading is enough.
+          </p>
+          <div class="connect-actions">
+            <button type="button" onClick={() => location.reload()}>
+              Reload
+            </button>
+          </div>
+        </Show>
+        <p class="connect-lede">Create a new token on the machine running nooklet:</p>
+        <pre class="connect-cmd">{`nooklet token create --label device --scope write --sync${
+          repair.graphSlug ? ` --graph ${repair.graphSlug}` : ""
+        }`}</pre>
+        <form onSubmit={(e) => void connect(e)}>
+          <label class="connect-field">
+            <span>Server address</span>
+            <input type="text" readOnly value={repair.displayUrl} />
+          </label>
+          <label class="connect-field">
+            <span>Device token</span>
+            <input
+              type="password"
+              autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck={false}
+              placeholder="nk_…"
+              value={token()}
+              onInput={(e) => setToken(e.currentTarget.value)}
+            />
+          </label>
+          <Show when={error()}>
+            <p class="connect-error" role="alert">
+              {error()}
+            </p>
+          </Show>
+          <div class="connect-actions">
+            <button type="submit" disabled={busy() || token().trim() === ""}>
+              {busy() ? "Checking…" : "Connect"}
+            </button>
+          </div>
+        </form>
+      </main>
+    );
   }
 
   return (

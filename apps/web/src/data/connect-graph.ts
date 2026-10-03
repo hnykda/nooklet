@@ -10,6 +10,37 @@ import { setConnectedGraphToken } from "./bootstrap.js";
 
 export type ConnectResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * B-613: everything the re-pair screen (`ConnectView.tsx`'s `repair` prop) needs to put a new token
+ * on an EXISTING entry rather than create one. `connectBase` is what `connectToGraph` gets: `null`
+ * for a same-origin entry (web/desktop, `baseUrl` like `/g/default`), which updates the active
+ * entry in place; the absolute address for a Capacitor entry, which `setConnectedGraphToken`
+ * matches back to the same entry. Either way the entry keeps its id, so its local replica (keyed
+ * by that id) and its unpushed `pending_op` rows are the ones that sync once the token works.
+ */
+export interface RepairTarget {
+  connectBase: string | null;
+  /** Shown read-only: the address is the entry's, not something to change while re-pairing. */
+  displayUrl: string;
+  /** Where to ask `/api/session` whether this browser would simply be handed a new token. */
+  sessionBase: string;
+  /** The `/g/<slug>` the entry points at, for the `nooklet token create --graph` hint. */
+  graphSlug?: string;
+}
+
+export function repairTargetFor(baseUrl: string | undefined, origin: string): RepairTarget {
+  const graphSlug = baseUrl ? /\/g\/([a-z0-9-]+)\/?$/.exec(baseUrl)?.[1] : undefined;
+  if (baseUrl && /^https?:\/\//i.test(baseUrl)) {
+    return { connectBase: baseUrl, displayUrl: baseUrl, sessionBase: baseUrl, graphSlug };
+  }
+  return {
+    connectBase: null,
+    displayUrl: `${origin}${baseUrl ?? ""}`,
+    sessionBase: baseUrl ?? "",
+    graphSlug,
+  };
+}
+
 /** `baseUrl: null` means "this page's own origin" (the non-Capacitor path — see
  * `setConnectedGraphToken`'s own doc comment for why that is a distinct case, not just an empty
  * string). Verifies before storing, so a typo or a token that was revoked fails here with a

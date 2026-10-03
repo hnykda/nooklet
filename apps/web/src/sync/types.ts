@@ -117,12 +117,42 @@ export interface SnapshotResponse {
   page_props: SnapshotPagePropRow[];
 }
 
+/**
+ * B-613: the server answered and refused the token. Its own class so `SyncClient` can tell it from
+ * a network failure — both used to become "offline", which promised the edit would go through
+ * "when back online" when in fact nothing short of a new token ever would.
+ */
+export class SyncAuthError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`sync request rejected the token: ${status}`);
+    this.name = "SyncAuthError";
+    this.status = status;
+  }
+}
+
+export function isSyncAuthError(err: unknown): boolean {
+  return (
+    err instanceof SyncAuthError || (err as { name?: unknown } | null)?.name === "SyncAuthError"
+  );
+}
+
 export interface SyncLiveHandlers {
   /** A `{type:'poke', seq}` frame arrived: something changed server-side, go pull. */
   onPoke(seq: number): void;
   /** The socket just (re)connected — pull once to cover whatever was missed while it was down. */
   onOpen(): void;
+  /** The socket closed, or a (re)connect attempt failed — `code` is the WebSocket close code.
+   * B-614: the only signal that the server went away while nobody is typing; before this the
+   * transport swallowed it into a silent reconnect loop and the indicator said "Synced" for as long
+   * as the server stayed down. `LIVE_AUTH_REJECTED_CODES` means the server refused the token. */
+  onClose?(code: number): void;
 }
+
+/** Close codes `packages/server/src/sync/live.ts` uses when the hello's token does not verify
+ * (it sends 4403 today; 4401 is accepted too so a future server distinguishing "unknown token" from
+ * "token lacks can_sync" does not silently fall back to "offline" here). */
+export const LIVE_AUTH_REJECTED_CODES: ReadonlySet<number> = new Set([4401, 4403]);
 
 /** Everything `SyncClient` needs from the network. `http-transport.ts` implements this for real
  * (fetch + WebSocket); tests implement a fake so sync logic runs with no network at all. */
@@ -140,7 +170,17 @@ export interface SyncTransport {
   connectLive(deviceId: string, handlers: SyncLiveHandlers): () => void;
 }
 
-export type SyncState = "offline" | "idle" | "pushing" | "pulling" | "bootstrapping" | "error";
+/** `unauthorized` (B-613): the server answered, and refused this device's token (HTTP 401/403, or
+ * the live socket closed with `LIVE_AUTH_REJECTED_CODES`). Distinct from `offline` because waiting
+ * cannot fix it — the token was revoked or never valid, and only re-pairing can. */
+export type SyncState =
+  | "offline"
+  | "idle"
+  | "pushing"
+  | "pulling"
+  | "bootstrapping"
+  | "error"
+  | "unauthorized";
 
 export interface SyncStatus {
   state: SyncState;

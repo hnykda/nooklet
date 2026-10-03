@@ -132,7 +132,13 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
             >
               <Show when={sync()} fallback={<span class="diag-muted">starting…</span>}>
                 {(s) => (
-                  <Status ok={s().state !== "offline" && s().state !== "error"}>
+                  <Status
+                    ok={
+                      s().state !== "offline" &&
+                      s().state !== "error" &&
+                      s().state !== "unauthorized"
+                    }
+                  >
                     {s().state}
                     {s().pendingCount > 0 ? ` · ${s().pendingCount} queued` : ""}
                     {s().lastError ? ` · ${s().lastError}` : ""}
