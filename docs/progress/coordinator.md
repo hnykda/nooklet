@@ -41,7 +41,7 @@ runs the full e2e suite on the merged tree.
 | connection-states | B-613, B-614, B-615, B-618 + B-632, **merged** (`b96e6e2`) | 6340-6344 |
 (B-617 → tasks-workflow; B-616 + runbook localhost fix → pairing.)
 | b631 | B-631, **merged** (`926fdb4`); B-633 found and fixed by the coordinator | 6355-6359 |
-| e2e-green | B-623 page-find/random-page red, B-624, B-593, B-561 flakes; full suite twice | 6350-6354 |
+| e2e-green | B-623 (real regression), B-624, B-561, B-593 + shelf regression, **merged**; final runs 739/1 and 740/0 | 6350-6354 |
 | server-search | local-first search + server semantic enrich, **merged** (`3844838`, `ba58947`) | 6345-6349 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 

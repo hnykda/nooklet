@@ -693,18 +693,6 @@ match on this run's block. Not changed here: outside this branch's specs.
 
 ---
 
-### B-561 · `search-fallback.spec.ts` "a keyword search shows no fallback note" fails in a full run, passes alone
-**Status:** open (test order) · **Severity:** low · **Found:** 2026-09-13, the coordinator's two
-final full Chromium runs on the merged tree · **Test:** the spec itself
-
-Failed at the same place in both full runs, passed 4/4 when `search-fallback.spec.ts` ran on its own.
-The assertion saw "2 results" where it expects "1 result": something else on the shared e2e server
-matches the test's search word by the time it runs — another spec seeding the same word, or (new
-since ADR 024) a page created from a reference that contains it. Fix: give the test a word no other
-spec uses, the same way B-356/B-243's specs were made order-proof.
-
----
-
 ### B-570 · `sync/e2e.test.ts` "…pull first" is flaky — order-independent, fails in isolation too
 **Status:** open · **Severity:** low (test only) · **Found:** 2026-09-14, coordinator noticed while
 re-verifying B-569 · **Test:** the test itself
@@ -777,18 +765,6 @@ independent of anything else in this session's iOS/mobile/desktop work.
 
 ---
 
-### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
-**Status:** open, not investigated · **Severity:** low (test only) · **Found:** 2026-10-03, while
-running B-581's probe with neighbours · **Test:** the test itself
-
-Run as `autocomplete-busy-replica, autocomplete-inside-link, autocomplete, connectivity,
-desktop-page-creation-probe, journal-draft-sync` it failed with `locator.click: Test timeout of
-30000ms exceeded … waiting for locator('.vr-outliner').first().locator('.vr-block-view').first()`.
-It branches on `draft.isVisible()` immediately after `goto("/journals")` — the same "draft may be
-swapped for the real outliner once the snapshot lands" race B-335 fixed in `openJournal` — and
-`.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
-`openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
-
 ### B-597 · Inside a `[[link]]` naming another page's alias, the popup offers "New page" for the alias name, and Enter creates a page with that name
 **Status:** open, not investigated · **Severity:** low · **Found:** 2026-10-03, keys-small (B-592)
 · **Test:** —
@@ -826,20 +802,6 @@ another plugin throwing `OpError` from rpc would 500 the same way.
 
 Run without `--data` it would create a stray legacy database beside `graphs/`. Dev-only: `nooklet mcp --stdio` goes through `cli.ts`.
 
-### B-623 · `page-find.spec.ts` and `random-page.spec.ts` fail on every run
-**Status:** open, not investigated · **Severity:** unknown (test or real regression) · **Found:** 2026-10-03, b609 agent's full e2e run · **Test:** the specs themselves
-
-On `4c28fad`, also alone (not order-dependent): `page-find.spec.ts` "Cmd/Ctrl+F narrows the
-outline…" and "Enter and Shift+Enter step through the matches"; `random-page.spec.ts` "Open a random
-page jumps to another page…" and "from a view that is not a page…". Same failures with B-609's files
-reset.
-
-### B-624 · `page-delete.spec.ts` is flaky under `--repeat-each=2`
-**Status:** open, not investigated · **Severity:** low (test, so far) · **Found:** 2026-10-03, b609 agent · **Test:** the spec itself
-
-"Delete page from the … menu…" and "from the palette mid-typing…" fail intermittently on `4c28fad`.
-`autocomplete-inside-link.spec.ts` (the B-382/B-592 test) was flaky the same way.
-
 ### B-626 · The device's search tag filter is approximate
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
 
@@ -855,7 +817,76 @@ A resource keeps its last value while loading: 2–4 ms locally, invisible in pr
 
 `factory.ts` builds `new OpenAiCompatProvider({ baseUrl: host, model })` without `apiKey`, and no setting holds one, so a hosted `/v1/embeddings` API answers 401. Found by reading code only.
 
+### B-635 · `popups.spec.ts` is not `--repeat-each`-safe
+**Status:** open · **Severity:** low (test) · **Found:** 2026-10-03, e2e-green · **Test:** the spec itself
+
+Fixed page names edited by the tests: lines 103, 223, 313, 578, 608, 619 fail on repeats 1–4.
+Single runs are green. (Its two slash-menu tests that assumed `todo` on an empty graph, stale since
+`34c8d3e`, are fixed: pinned `todo` in Settings.)
+
+### B-636 · `sw-update.spec.ts` B-537 test failed once in 4 full runs with a worker left `waiting`
+**Status:** open, not investigated · **Severity:** low (flaky; possibly a real takeover race) · **Found:** 2026-10-03, e2e-green final runs · **Test:** `sw-update.spec.ts:86`
+
+`{controlled: true, installing: false, waiting: true}` for 60 s after the reload. Passed in 3 other
+full runs and 10/10 alone. The reloaded app registers `/sw.js` again (one more update), so this
+may be a real takeover race or a test timing issue.
+
+### B-637 · Concurrent e2e runs in one checkout share `apps/web/dist`
+**Status:** open · **Severity:** low (process) · **Found:** 2026-10-03, e2e-green · **Test:** none
+
+One run's client build breaks the other's server (`web_client_missing`); separate ports do not
+isolate them. Use separate worktrees for parallel e2e runs.
+
 ## Fixed
+
+### B-634 · A block shelf made on a tab's first load was gone after a reload
+**Status:** fixed (2026-10-03, `19c5941`) · **Severity:** low (real regression) · **Found:** 2026-10-03, e2e-green · **Test:** `apps/web/src/app/shelf.test.ts` (red before), e2e shelf-crumb test in `views.spec.ts` (red 2/2 before, 5/5 after)
+
+Since `c58ede4` (B-611's per-replica keys) the shelf's storage key was fixed before a graph was chosen.
+
+### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
+**Status:** fixed (2026-10-03, with B-543) · **Test:** `connectivity.spec.ts` 5/5
+
+Run as `autocomplete-busy-replica, autocomplete-inside-link, autocomplete, connectivity,
+desktop-page-creation-probe, journal-draft-sync` it failed with `locator.click: Test timeout of
+30000ms exceeded … waiting for locator('.vr-outliner').first().locator('.vr-block-view').first()`.
+It branches on `draft.isVisible()` immediately after `goto("/journals")` — the same "draft may be
+swapped for the real outliner once the snapshot lands" race B-335 fixed in `openJournal` — and
+`.vr-outliner` `.first()` is unscoped (an Upcoming day can render above today). Probably wants
+`openJournal`. Not seen in the 2026-10-03 full run's failure list; logged, not fixed.
+
+Fixed on main by the server-search agent (waits for draft-or-block); verified 5/5 by e2e-green.
+
+### B-561 · `search-fallback.spec.ts` "a keyword search shows no fallback note" fails in a full run, passes alone
+**Status:** fixed (2026-10-03, test only) · **Test:** `search-fallback.spec.ts`
+
+Failed at the same place in both full runs, passed 4/4 when `search-fallback.spec.ts` ran on its own.
+The assertion saw "2 results" where it expects "1 result": something else on the shared e2e server
+matches the test's search word by the time it runs — another spec seeding the same word, or (new
+since ADR 024) a page created from a reference that contains it. Fix: give the test a word no other
+spec uses, the same way B-356/B-243's specs were made order-proof.
+
+---
+
+Cause reproduced: `popups.spec` also seeds "wombat". The spec now uses its own search words.
+
+### B-624 · `page-delete.spec.ts` is flaky under `--repeat-each=2`
+**Status:** fixed (2026-10-03, test only) · **Test:** `page-delete.spec.ts`, `autocomplete-inside-link.spec.ts` with `--repeat-each 5`
+
+"Delete page from the … menu…" and "from the palette mid-typing…" fail intermittently on `4c28fad`.
+`autocomplete-inside-link.spec.ts` (the B-382/B-592 test) was flaky the same way.
+
+Cause: repeat/retry carry-over through `seedPage`'s `if_exists: "return"` — repeat 0 always passed, 1–4 always failed. Per-run names; the autocomplete walk is bounded by the rows offered.
+
+### B-623 · `page-find.spec.ts` and `random-page.spec.ts` fail on every run
+**Status:** fixed (2026-10-03, `cfc863b`) · **Severity:** medium (real regression) · **Test:** `page-find.spec.ts` (red before), `random-page.spec.ts`
+
+On `4c28fad`, also alone (not order-dependent): `page-find.spec.ts` "Cmd/Ctrl+F narrows the
+outline…" and "Enter and Shift+Enter step through the matches"; `random-page.spec.ts` "Open a random
+page jumps to another page…" and "from a view that is not a page…". Same failures with B-609's files
+reset.
+
+**Fixed 2026-10-03.** Cause `6ddfc77` (B-595's `.page-view-body` wrapper): `PageFindBar.tsx` looked for `:scope > .vr-outliner`, so find-in-page filtered rows but drew no highlights and Enter/Shift+Enter no longer scrolled to the match — broken for real users. `random-page.spec.ts` had the same stale selector.
 
 ### B-633 · A graph-mismatched page may still sync its old replica with the server's new graph
 **Status:** fixed (2026-10-03, coordinator) · **Severity:** high (confirmed: cross-graph mixing) · **Found:** 2026-10-03, b631 agent ·
