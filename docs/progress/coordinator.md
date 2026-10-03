@@ -33,7 +33,10 @@ runs the full e2e suite on the merged tree.
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
 | b587 | B-587, real divergence, **merged** (`0cb4a62`, ADR 026) | 6314 |
 | b491 | B-491, **merged** (`f3a0d78`) | 6315 |
-| pairing | D3 `--no-loopback-token`, B-602, B-604, B-603 `nooklet://connect` link | 6316-6319 |
+| pairing | D3 `--no-loopback-token`, B-602, B-604, B-603 `nooklet://connect` link, + B-607 | 6316-6319 |
+| b606 | B-606 caret inside a trailing `[[link]]` (high) | 6320-6324 |
+| tasks-workflow | B-608 LATER/NOW workflow like Logseq, B-610 word-count 500 | 6325-6329 |
+| b609 | B-609 fast burst on a new journal day loses Tab | 6330-6334 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### State of `main`
