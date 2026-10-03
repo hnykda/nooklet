@@ -31,6 +31,7 @@ runs the full e2e suite on the merged tree.
 | sweep-core | readiness sweep: daily-use loop on a copy of the real graph → `docs/review/2026-10-03-sweep-core.md` | 6310 |
 | sweep-devices | readiness sweep: multi-device/desktop/Simulator flows → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
+| b587 | B-587: does HLC-vs-seq order diverge a third device? fix | 6314 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### State of `main`
