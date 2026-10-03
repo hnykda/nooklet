@@ -27,11 +27,30 @@
  * widget is covered by `e2e/tests/render.spec.ts`; the rest by the editing specs.
  */
 
-import { RangeSetBuilder, StateEffect } from "@codemirror/state";
 import {
+  cursorLineBoundaryBackward,
+  cursorLineBoundaryForward,
+  cursorLineBoundaryLeft,
+  cursorLineBoundaryRight,
+  selectLineBoundaryBackward,
+  selectLineBoundaryForward,
+  selectLineBoundaryLeft,
+  selectLineBoundaryRight,
+} from "@codemirror/commands";
+import {
+  EditorSelection,
+  EditorState,
+  Prec,
+  RangeSetBuilder,
+  StateEffect,
+  Transaction,
+} from "@codemirror/state";
+import {
+  type Command,
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -260,8 +279,134 @@ class LivePreviewPlugin {
   }
 }
 
-export const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
-  decorations: (v) => v.decorations,
-  provide: (plugin) =>
-    EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic ?? Decoration.none),
+/**
+ * The markers hidden in `state` as it stands (what is hidden depends on where its caret is),
+ * sorted. Only the zero-width ones: a math widget has width, so a caret before it is visibly
+ * somewhere else than a caret after it.
+ */
+function hiddenMarkers(state: EditorState): Array<{ from: number; to: number }> {
+  return buildRanges(state.doc.toString(), state.selection.main.head)
+    .hide.filter((r) => r.deco.spec.widget === undefined)
+    .map(({ from, to }) => ({ from, to }));
+}
+
+/** `pos` moved across every hidden marker that starts (`forward`) or ends exactly there, chained. */
+function pastHidden(
+  hidden: ReadonlyArray<{ from: number; to: number }>,
+  pos: number,
+  forward: boolean,
+): number {
+  let at = pos;
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const r of hidden) {
+      if (forward ? r.from === at && r.to > at : r.to === at && r.from < at) {
+        at = forward ? r.to : r.from;
+        moved = true;
+      }
+    }
+  }
+  return at;
+}
+
+/**
+ * Wraps a line-boundary command so the caret also crosses hidden markers sitting at the boundary.
+ *
+ * With `lineWrapping` on, CodeMirror finds a visual line's end by hit-testing the editor's right
+ * edge (`moveToLineBoundary` -> `posAtCoords`), and a zero-width `Decoration.replace` at the end of
+ * the line is never under that point: End stopped BEFORE a trailing link's hidden `]]`. That
+ * position touches the link, so the `]]` was revealed and the next key went into the link target
+ * (`[[BaleníZ]]`, a junk page; B-606). Home likewise stopped after a leading link's `[[`. Crossing
+ * the hidden range puts the caret where it visibly already was, outside the markup.
+ *
+ * The markers are read from the state BEFORE the move: the move itself reveals them.
+ */
+function acrossHiddenMarkers(command: Command, forward: boolean): Command {
+  return (view) => {
+    const hidden = hiddenMarkers(view.state);
+    if (!command(view)) return false;
+    const sel = view.state.selection;
+    const next = EditorSelection.create(
+      sel.ranges.map((r) => {
+        const head = pastHidden(hidden, r.head, forward);
+        if (head === r.head) return r;
+        return r.empty
+          ? EditorSelection.cursor(head, forward ? -1 : 1)
+          : EditorSelection.range(r.anchor, head);
+      }),
+      sel.mainIndex,
+    );
+    if (!next.eq(sel))
+      view.dispatch({ selection: next, scrollIntoView: true, userEvent: "select" });
+    return true;
+  };
+}
+
+/**
+ * The same hit test misplaces a click in the empty space right of a line that ends in a hidden
+ * marker (CM6's own mouse selection, in a block already being edited): it lands before the `]]`.
+ * A pointer caret from which only hidden markers remain up to its line's end (or back to its
+ * start) goes to that end. A click with visible text between it and the line edge is left alone.
+ */
+const pointerPastHidden = EditorState.transactionFilter.of((tr) => {
+  if (!tr.isUserEvent("select.pointer") || tr.docChanged || !tr.selection) return tr;
+  const main = tr.selection.main;
+  if (!main.empty || tr.selection.ranges.length > 1) return tr;
+  const line = tr.startState.doc.lineAt(main.head);
+  const hidden = hiddenMarkers(tr.startState);
+  const end = pastHidden(hidden, main.head, true);
+  const start = pastHidden(hidden, main.head, false);
+  const to =
+    end !== main.head && end === line.to
+      ? end
+      : start !== main.head && start === line.from
+        ? start
+        : null;
+  if (to === null) return tr;
+  return {
+    selection: EditorSelection.cursor(to, to === line.to ? -1 : 1),
+    effects: tr.effects,
+    scrollIntoView: tr.scrollIntoView,
+    annotations: Transaction.userEvent.of("select.pointer"),
+  };
 });
+
+const lineBoundaryKeymap = keymap.of([
+  {
+    key: "Home",
+    run: acrossHiddenMarkers(cursorLineBoundaryBackward, false),
+    shift: acrossHiddenMarkers(selectLineBoundaryBackward, false),
+    preventDefault: true,
+  },
+  {
+    key: "End",
+    run: acrossHiddenMarkers(cursorLineBoundaryForward, true),
+    shift: acrossHiddenMarkers(selectLineBoundaryForward, true),
+    preventDefault: true,
+  },
+  // CM6 picks the direction of these by the text at the caret; this outliner's text is
+  // left-to-right, so Left is backward and Right forward.
+  {
+    mac: "Cmd-ArrowLeft",
+    run: acrossHiddenMarkers(cursorLineBoundaryLeft, false),
+    shift: acrossHiddenMarkers(selectLineBoundaryLeft, false),
+    preventDefault: true,
+  },
+  {
+    mac: "Cmd-ArrowRight",
+    run: acrossHiddenMarkers(cursorLineBoundaryRight, true),
+    shift: acrossHiddenMarkers(selectLineBoundaryRight, true),
+    preventDefault: true,
+  },
+]);
+
+export const livePreview = [
+  ViewPlugin.fromClass(LivePreviewPlugin, {
+    decorations: (v) => v.decorations,
+    provide: (plugin) =>
+      EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic ?? Decoration.none),
+  }),
+  // Above `defaultKeymap`, whose Home/End/Cmd-Arrow bindings these replace with wrapped copies.
+  Prec.high(lineBoundaryKeymap),
+  pointerPastHidden,
+];

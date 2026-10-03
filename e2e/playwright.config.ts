@@ -58,12 +58,13 @@ export default defineConfig({
     // across a sync refresh with the `[[` popup open, and the focus log that records it there —
     // an in-memory replica changes nothing about focus. And the caret across a move of the row
     // being edited, which WebKit alone lost (B-501, B-502). And `ref-label-flash` (B-500): what a refresh
-    // leaves on screen between two renders does not depend on the storage tier.
+    // leaves on screen between two renders does not depend on the storage tier. And where a click or
+    // End puts the caret around a hidden `]]` (B-606): hit testing is the engine's own.
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
       testMatch:
-        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash)\.spec\.ts/,
+        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link)\.spec\.ts/,
     },
   ],
 });
