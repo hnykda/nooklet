@@ -3,17 +3,29 @@
  * `:preferred-workflow`. The owner's graph uses `:now` (72 LATER, 5 NOW, 0 TODO) and its LATER
  * tasks used to cycle to no marker at all.
  *
- * This spec's server starts with an empty graph, so the workflow comes from what each test seeds:
- * a graph of LATER/NOW tasks with no setting is inferred as `now` by `/api/session`.
+ * Each test sets the workflow in Settings first. The graph's own suggestion (imported
+ * `:preferred-workflow`, else inferred from its markers) depends on everything else the e2e run
+ * has seeded into the shared server — whichever pair dominates — so it is not asserted here; the
+ * inference is covered by `packages/server/src/importer/logseq.test.ts` and `host-guard.test.ts`.
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { api, clickRow, MOD, openEditing, seedPage } from "../helpers/index.js";
+import { api, clickRow, MOD, openEditing } from "../helpers/index.js";
 
 interface Node {
   content: string;
   marker?: string | null;
   children?: Node[];
+}
+
+/** Settings → Tasks → Task workflow. Stored per graph on this device, read at the next load. */
+async function chooseWorkflow(page: Page, value: "now" | "todo"): Promise<void> {
+  await page.goto("/journals");
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.locator("#set-task-workflow").selectOption(value);
+  await expect(page.locator("#set-task-workflow")).toHaveValue(value);
+  await page.getByRole("button", { name: "Close" }).click();
 }
 
 async function markers(page: Page, name: string): Promise<Array<string | null>> {
@@ -29,10 +41,11 @@ async function markers(page: Page, name: string): Promise<Array<string | null>> 
   return flat;
 }
 
-test("a LATER/NOW graph: Mod+Enter cycles LATER → NOW → DONE → none → LATER, and a plain block starts at LATER", async ({
+test("a graph set to LATER/NOW: Mod+Enter cycles LATER → NOW → DONE → none → LATER, and a plain block starts at LATER", async ({
   page,
 }) => {
   const name = "Workflow Owner Style";
+  await chooseWorkflow(page, "now");
   const outliner = await openEditing(
     page,
     name,
@@ -54,10 +67,11 @@ test("a LATER/NOW graph: Mod+Enter cycles LATER → NOW → DONE → none → LA
   await expect.poll(() => markers(page, name)).toEqual(["LATER", "LATER", "NOW", "LATER"]);
 });
 
-test("a LATER/NOW graph: the slash menu offers LATER first, and /now marks NOW", async ({
+test("a graph set to LATER/NOW: the slash menu offers LATER first, and /now marks NOW", async ({
   page,
 }) => {
   const name = "Workflow Slash";
+  await chooseWorkflow(page, "now");
   await openEditing(page, name, "- LATER seeded\n- NOW seeded too\n- x");
   // Into the plain block, then open the menu at a run start.
   await page.keyboard.press("ArrowDown");
@@ -78,15 +92,7 @@ test("a graph set to TODO in Settings: a plain block starts at TODO, a LATER blo
 }) => {
   const name = "Workflow Todo Choice";
   const markdown = "- plain todo\n- LATER kept\n- LATER more";
-  // LATER-heavy (this spec's earlier tests too), so without the choice this graph reads as `now`.
-  await seedPage(page, name, markdown);
-  await page.goto("/journals");
-  await page.getByRole("button", { name: "More" }).click();
-  await page.getByRole("menuitem", { name: "Settings" }).click();
-  const select = page.locator("#set-task-workflow");
-  await expect(select).toHaveValue("now");
-  await select.selectOption("todo");
-  await page.getByRole("button", { name: "Close" }).click();
+  await chooseWorkflow(page, "todo");
 
   // `openEditing` navigates with a full page load, so this also proves the choice was stored.
   const outliner = await openEditing(page, name, markdown);

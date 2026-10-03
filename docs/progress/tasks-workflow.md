@@ -55,10 +55,77 @@ its own (ADR 011/R35); Logseq does not clearly differ (it never deletes the logb
 - Repeating task completion resets `NOW/LATER → LATER`, else `TODO` (Logseq); was always TODO.
 - Checkbox uncheck (DONE → open) → workflow start marker (Logseq `uncheck`); was always TODO.
 
-## Status
+## Status: done (all three fixed, tested), branch not merged
 
-(in progress — updated as steps land)
+Commits: `69e9e99` (B-608 + B-610 code and unit tests), `9e21781` (e2e), `6fc1b6c` (merge of
+main, for B-617), `de59bf8` (B-617), and a last commit with the e2e made order-independent and this
+file.
+
+What changed (B-608):
+- `packages/core/src/task-workflow.ts`: `cycleTaskMarker`, `workflowStartMarker`,
+  `repeatReopenMarker`, `parseTaskWorkflow`, `inferTaskWorkflow`.
+- Editor Mod+Enter / marker checkbox (`apps/web/src/editor/task.ts`, `BlockTree.tsx`), Tasks view
+  checkbox (`TasksView.tsx`), registry `task.cycle`/`task.toggleDone` (`registrations/task.ts`)
+  all take the workflow; new commands `task.setMarkerLater`, `task.setMarkerNow`.
+- Slash menu: `DOING`, `LATER`, `NOW` rows appended; under `now` the first row is `LATER / task`
+  and the tail is NOW, TODO, DOING (`slash/items.ts#slashItemsFor`). Spec R34/R54 amended, wiki
+  shortcut page regenerated.
+- Keyboard toolbar's task button is `task.toggleDone` (enabled only on a task): its un-tick now
+  writes LATER under `now`. It still does not create a task on a plain block (unchanged).
+- Server: importer reads `:preferred-workflow` into `setting` `task.preferred_workflow`;
+  `/api/session` returns `taskWorkflow` (recorded, else inferred). Client:
+  `apps/web/src/data/task-workflow.ts` (stored choice > suggestion > local inference),
+  signal in `apps/web/src/commands/task-workflow.ts`; Settings → Tasks → Task workflow.
+- Tasks view, agenda and ```query``` NOW/LATER handling: unchanged code (they already treat
+  LATER/NOW as open); their e2e specs pass.
+
+B-610: `plugins/word-count/src/server.ts` rpc `count` returns `null` for a missing page instead of
+throwing (the HTTP/MCP `page.wordcount` op still answers 404 `not_found`); `client.ts` clears the
+status item on `null`.
+
+B-617 (added mid-task by the coordinator): `OpRegistry` was shared by every graph a process hosts,
+so the second graph's word-count activation threw. `OpRegistry.forkCore()` gives each graph
+(`graphs/registry.ts#open`) the shared core ops plus room for its own plugin ops — like every other
+plugin registry, which already keys on `ServerContext`. mermaid (client-only) and daily-summary
+(a job, per-ctx) were never affected; the new test checks all three are active in both graphs.
+
+Verification (2026-10-03, after merging main):
+- `pnpm -r test`: core 434, plugin-api 17, server 797, web 1440 — all pass.
+- `pnpm -r typecheck`: clean.
+- `pnpm exec biome check . --diagnostic-level=error`: errors only in `tools/probes/sweep-core/
+  search-trash.mjs` and `tools/probes/sweep-devices/*` (came from main, not touched here).
+- e2e (`NOOKLET_E2E_PORT=6325`): tasks, tasks-view-dates, journal-agenda, query, query-task-tag,
+  query-limits, task-marker-keys, popups, settings, plugins, page-delete, views, task-workflow —
+  144 passed. Full e2e suite not run.
+- Tests that fail without the fix (checked): B-610 server test (500) and e2e (500 seen); B-617
+  mount test (`failed to activate: op "page.wordcount" is already registered`). B-608 e2e on the
+  old build was not re-run; the old `nextCycleMarker` returned null for LATER by construction.
+
+Still unverified:
+- Not tried against a copy of the owner's real graph; the inference was checked with fixtures
+  (importer test: LATER/NOW-only graph → `now`).
+- The e2e sets the workflow through Settings; the server's inference is covered only by unit tests,
+  because the shared e2e server's dominant pair depends on what other specs seeded.
+- Inference is live: a graph with no setting can flip when its TODO+DOING count overtakes
+  LATER+NOW. The owner's graph (77 vs 0) won't flip in practice.
 
 ## BUGS.md updates to fold in
 
-(filled at the end)
+- **B-608** → Fixed (2026-10-03, `69e9e99`). Tests: `packages/core/src/task-workflow.test.ts`,
+  `apps/web/src/editor/task.test.ts` "under the `now` workflow (B-608)",
+  `apps/web/src/commands/registrations/index.test.ts` "follow the graph's task workflow (B-608)",
+  `SlashMenu.test.tsx` "LATER first under `now`", `importer/logseq.test.ts` "task workflow
+  (B-608)", `http/host-guard.test.ts` "task workflow", e2e `e2e/tests/task-workflow.spec.ts`.
+  Logseq ref: 0.10.9 `util/marker.cljs#cycle-marker-state`. Also changed to match Logseq:
+  WAITING/CANCELED + Mod+Enter → start marker (was none); un-tick DONE → start marker; a repeating
+  LATER/NOW task reopens as LATER. `done::` on DONE→none left as is (Logseq has no such property
+  and removes nothing on that step either).
+- **B-610** → Fixed (2026-10-03, `69e9e99`). Tests: `packages/server/src/plugins/built-ins.test.ts`
+  "the status bar's rpc answers null, not a 500, for a page just deleted (B-610)"; e2e
+  `plugins.spec.ts` "deleting the open page asks word count about it without a 500 (B-610)".
+- **B-617** → Fixed (2026-10-03, `de59bf8`). Test: `packages/server/src/graphs/mount.test.ts`
+  "activates every built-in plugin in each graph … (B-617)".
+- New, not fixed (observed in passing): plugin `rpc.expose` routes turn any thrown error into an
+  unhandled 500 (`plugins/server-context.ts`), unlike `ops.register`, which maps an `OpError` to
+  its status. B-610 was fixed in the plugin; another plugin throwing `OpError` from rpc would 500
+  the same way. Severity low.
