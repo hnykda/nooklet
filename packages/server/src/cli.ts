@@ -70,10 +70,15 @@ import {
 import { runGc } from "./gc.js";
 import { migrateLegacyLayoutIfNeeded } from "./graphs/migrate-legacy-layout.js";
 import { createMultiGraphApp } from "./graphs/mount.js";
-import { type BaseServerConfig, openGraph } from "./graphs/open-graph.js";
+import type { BaseServerConfig } from "./graphs/open-graph.js";
 import { graphDir } from "./graphs/paths.js";
 import { pluginDirsFor } from "./graphs/plugin-dirs.js";
-import { GraphRegistry } from "./graphs/registry.js";
+import {
+  ensureGraphMeta,
+  GraphRegistry,
+  GraphSelectionError,
+  openGraphForCommand,
+} from "./graphs/registry.js";
 import { isLoopbackName } from "./http/app.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { importLogseqGraph } from "./importer/logseq.js";
@@ -164,7 +169,16 @@ interface OpenOptions {
 function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config: ServerConfig } {
   const dir = dataDir(args);
   migrateLegacyLayoutIfNeeded(dir);
-  return openGraph(dir, graphIdFlag(args), baseServerConfig(args), { migrate: opts.migrate });
+  // Through the registry's helper, not `openGraph` directly: on a fresh data dir this creates the
+  // default graph, and it must get its `graph.json` or `serve` later fails (B-607).
+  try {
+    return openGraphForCommand(dir, graphIdFlag(args), baseServerConfig(args), {
+      migrate: opts.migrate,
+    });
+  } catch (err) {
+    if (err instanceof GraphSelectionError) die(err.message);
+    throw err;
+  }
 }
 
 /**
@@ -656,6 +670,8 @@ async function main(): Promise<void> {
       // `serve`/`open()` will look for it — migrateLegacyLayoutIfNeeded never needs to touch it.
       const dir = graphDir(dataDir(args), graphIdFlag(args));
       const result = restoreBackup(resolve(archivePath), { dataDir: dir, force });
+      // Into a fresh data dir this is the graph's first database; give it its graph.json (B-607).
+      ensureGraphMeta(dataDir(args), graphIdFlag(args));
       process.stdout.write(
         `restored ${result.filesRestored} file(s) into ${dir} ` +
           `(archive schema version ${result.manifest.schemaVersion})\n` +

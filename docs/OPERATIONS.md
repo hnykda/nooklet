@@ -44,13 +44,21 @@ result; if it reports a divergence, treat that as a real bug report (see §5's o
 
 ```
 <data>/
-  graph.sqlite            the database (WAL mode: also .graph.sqlite-wal, -shm alongside it)
-  assets/                 uploaded files (asset_upload), named <id>.<ext>
-  pages/  journals/       the markdown mirror (ADR 002) -- a read-through copy for Logseq/
+  root.token              the /graphs root token (`nooklet token root`; ADR 025)
+  graphs/<id>/            one directory per graph; `default` unless you made others (ADR 025)
+    graph.json            what makes the directory a graph (id, label); `serve` adopts a
+                          graph.sqlite that lacks one (B-607)
+    graph.sqlite          the database (WAL mode: also graph.sqlite-wal, -shm alongside it)
+    assets/               uploaded files (asset_upload), named <id>.<ext>
+    pages/  journals/     the markdown mirror (ADR 002) -- a read-through copy for Logseq/
                           Obsidian/grep/git, NOT the source of truth and NOT the sync medium
-  plugins/                installed plugins (each a directory with a manifest -- ADR 007)
-  backups/                default destination for `nooklet backup` (see §3)
+    plugins/              installed plugins (each a directory with a manifest -- ADR 007)
+    backups/              default destination for `nooklet backup` (see §3)
 ```
+
+Every command except `serve` works on one graph, `--graph <id>` (default `default`). On a fresh
+data dir any of them creates the default graph, so importing or minting tokens before the first
+`serve` is fine. Any other graph must already exist (create it with `POST /graphs` or from the app).
 
 Everything that matters is `graph.sqlite` + `assets/`. `pages/`/`journals/` are regenerated from
 the database (delete them and they'll be rewritten); `plugins/` is regenerated from whatever
