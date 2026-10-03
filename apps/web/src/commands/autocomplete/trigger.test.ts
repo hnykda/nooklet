@@ -60,6 +60,33 @@ describe("matchTagTrigger — # (R57, start-of-run like the slash trigger)", () 
   });
 });
 
+describe("matchTagTrigger — caret inside an existing tag (B-380)", () => {
+  it("does not open when the text after the caret continues the tag", () => {
+    // B-380's steps: `alpha #WalkTagTarget omega`, caret after `#WalkT`.
+    expect(matchTagTrigger("alpha #WalkT", "agTarget omega")).toBeNull();
+    expect(matchTagTrigger("#", "tag")).toBeNull();
+    expect(matchTagTrigger("#ta", "g.x")).toBeNull();
+    // Owner-accepted cost of option (c): `#` typed straight before a word gets no popup.
+    expect(matchTagTrigger("alpha #Wa", "omega")).toBeNull();
+  });
+
+  it("still opens at the end of a tag: end of text, whitespace, a stop char or trailing punctuation", () => {
+    expect(matchTagTrigger("hello #ta")).toEqual({ from: 6, query: "ta" });
+    expect(matchTagTrigger("hello #ta", "")).toEqual({ from: 6, query: "ta" });
+    expect(matchTagTrigger("hello #ta", " more")).toEqual({ from: 6, query: "ta" });
+    expect(matchTagTrigger("#ta", "\nnext line")).toEqual({ from: 0, query: "ta" });
+    expect(matchTagTrigger("#ta", ") x")).toEqual({ from: 0, query: "ta" });
+    expect(matchTagTrigger("#ta", ", x")).toEqual({ from: 0, query: "ta" });
+    expect(matchTagTrigger("#ta", ".")).toEqual({ from: 0, query: "ta" });
+    expect(matchTagTrigger("#ta", "?! x")).toEqual({ from: 0, query: "ta" });
+  });
+
+  it("leaves the #[[multi word]] form alone (an auto-paired ]] after the caret is a stop)", () => {
+    expect(matchTagTrigger("#[[", "]]")).toEqual({ from: 0, query: "[[" });
+    expect(matchPageRefTrigger("#[[multi")).toEqual({ from: 1, query: "multi" });
+  });
+});
+
 describe("computeTagQuery — dismissal (R57)", () => {
   it("grows the query as more is typed", () => {
     expect(computeTagQuery("#", 0)).toBe("");

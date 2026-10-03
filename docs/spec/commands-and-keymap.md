@@ -897,7 +897,11 @@ shortcuts), else, only with an empty query, that "Create" row — so Enter on th
 leaves the link as it was (B-384).
 
 **R57.** `#` (tag): triggers on `matchBefore(/(^|\s)#([^\s#]*)$/)` (start-of-run, same rule as the
-slash trigger, so `word#tag` does not open it). Matching and the "Create" affordance are identical
+slash trigger, so `word#tag` does not open it), and only when the caret is at the end of the tag:
+if the text after the caret continues it (anything before the next whitespace or `, ; ) ] } ' "`,
+less trailing `. ! ? :`), the caret was walked into an existing `#tag` and the popup stays shut —
+a tag has no closer, so a pick there would leave the tag's tail behind (B-380). The cost: `#` typed
+straight before a word (`#Wa|omega`) gets no popup either. Matching and the "Create" affordance are identical
 to R56, over tag pages instead of all pages. A query containing a space is only reachable by first
 typing `#[[`, which switches to the multi-word tag form `#[[multi word]]`; selecting an item in
 that form inserts `#[[<title>]]` instead of `#<title>`.

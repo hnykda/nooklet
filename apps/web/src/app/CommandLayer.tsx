@@ -279,7 +279,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       const next: Triggers = {
         slash: matchSlashTrigger(before),
         page: matchPageRefTrigger(before),
-        tag: matchTagTrigger(before),
+        tag: matchTagTrigger(before, sel.content.slice(sel.start)),
         block: matchBlockRefTrigger(before),
       };
       for (const kind of ["slash", "page", "tag", "block"] as const) {
