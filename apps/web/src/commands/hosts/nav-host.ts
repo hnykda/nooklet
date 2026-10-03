@@ -13,6 +13,12 @@ export interface NavigationHost {
   openPage(pageId: string): void;
   openTodayJournal(): void;
   openJournals(): void;
+  /** The All pages list (`/pages`). */
+  openAllPages(): void;
+  /** The graph view (`/graph`). The host hides `nav.graph` where there is no graph (B-578). */
+  openGraph(): void;
+  /** Trash (`/trash`). */
+  openTrash(): void;
   back(): void;
   forward(): void;
   openSearch(): void;
@@ -40,6 +46,10 @@ export interface AppHost {
   openSettings(): void;
   /** Settings, at its read-only list of running plugins — there is no manager UI (B-98). */
   openPluginManager(): void;
+  /** The keyboard-shortcuts dialog, generated from the live keymap (`shell/HelpMenu.tsx`). */
+  openShortcuts(): void;
+  /** The Diagnostics panel (`views/DiagnosticsPanel.tsx`). */
+  openDiagnostics(): void;
   /** Cycles light -> dark -> system (R52). */
   toggleTheme(): void;
   hideKeyboard(): void;
@@ -62,6 +72,15 @@ export function createFakeNavigationHost(): NavigationHost & {
     },
     openJournals() {
       calls.push({ method: "openJournals" });
+    },
+    openAllPages() {
+      calls.push({ method: "openAllPages" });
+    },
+    openGraph() {
+      calls.push({ method: "openGraph" });
+    },
+    openTrash() {
+      calls.push({ method: "openTrash" });
     },
     back() {
       calls.push({ method: "back" });
@@ -91,6 +110,8 @@ export function createFakeAppHost(): AppHost & { calls: string[] } {
     toggleSidebar: () => calls.push("toggleSidebar"),
     openSettings: () => calls.push("openSettings"),
     openPluginManager: () => calls.push("openPluginManager"),
+    openShortcuts: () => calls.push("openShortcuts"),
+    openDiagnostics: () => calls.push("openDiagnostics"),
     toggleTheme: () => calls.push("toggleTheme"),
     hideKeyboard: () => calls.push("hideKeyboard"),
     syncNow: () => {

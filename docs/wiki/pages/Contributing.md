@@ -9,7 +9,7 @@ tags:: guide
 - ## Scope
   - Deliberately small: an outliner, tasks, links, search, sync, and an API that AI agents can use properly. Not planned: flashcards and spaced repetition, kanban or whiteboard views, a plugin marketplace, a hosted service. A well-argued case for one of those is still worth reading.
 - ## Bugs
-  - Say what you did, what you expected, and what happened. Include the output of **Diagnostics** (click the sync indicator in the top bar): it shows whether the client reached the API, whether search and embeddings work, and what sync thinks it is doing. Say which app and which build — the `?` menu shows the version.
+  - Say what you did, what you expected, and what happened. Include the output of **Diagnostics** (click the sync indicator in the top bar, or `⋯` → Diagnostics): it shows whether the client reached the API, whether search and embeddings work, and what sync thinks it is doing. Say which app and which build — the `?` menu shows the version.
 - ## Working on the code
   - ```sh
     pnpm install

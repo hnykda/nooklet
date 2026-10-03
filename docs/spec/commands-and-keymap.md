@@ -557,6 +557,9 @@ from the edited block only.
 | `nav.switchPage` | Switch page | Cmd+O | Ctrl+O | `true` |
 | `nav.todayJournal` | Open today's journal | Cmd+J | Ctrl+J | `true` |
 | `nav.journals` | Open journals | Cmd+Shift+J | Ctrl+Shift+J | `true` |
+| `nav.allPages` | Open all pages | — | — | `true` |
+| `nav.graph` | Open graph | — | — | `true` |
+| `nav.trash` | Open trash | — | — | `true` |
 | `nav.back` | Go back | Cmd+[ | Alt+Left | `true` |
 | `nav.forward` | Go forward | Cmd+] | Alt+Right | `true` |
 | `nav.followLink` | Follow link under cursor | Alt+Enter | Alt+Enter | `editorFocused && caretInLink` |
@@ -632,6 +635,11 @@ random from the live pages that are not journal days and have at least one live 
 the page currently on screen (compared with `normalizePageName`). With no such page it does
 nothing. No default keybinding. Implementation: `commands/registrations/random-page.ts`,
 `data/random-page.ts`.
+
+**R44c.** `nav.allPages`, `nav.graph` and `nav.trash` (added 2026-10-03, B-541 follow-up) open
+`/pages`, `/graph` and `/trash`. They exist so the top bar's "⋯" menu (`shell/MoreMenu.tsx`) and the
+palette reach those views by the same command. On Capacitor `nav.graph` is not registered at all
+(B-578: there is no graph there). No default keybindings.
 
 #### E.4 Formatting (category `Formatting`)
 
@@ -736,6 +744,8 @@ behavior exactly rather than special-casing mobile.
 | `app.toggleSidebar` | Toggle sidebar | Cmd+\ | Ctrl+\ | `true` |
 | `app.openSettings` | Open settings | Cmd+, | Ctrl+, | `true` |
 | `app.openPluginManager` | Open plugin manager | — | — | `true` |
+| `app.showShortcuts` | Show keyboard shortcuts | — | — | `!mobile` |
+| `app.openDiagnostics` | Open diagnostics | — | — | `true` |
 | `sync.now` | Sync now | — | — | `true` |
 | `app.toggleTheme` | Toggle theme | — | — | `true` |
 | `app.hideKeyboard` | Hide keyboard | — | — | `mobile && editorFocused` |
@@ -779,6 +789,9 @@ changes only a property line is not covered yet (B-460).
 
 **R52.** `app.toggleSidebar` shows/hides the navigation sidebar (page tree, journals, tags).
 `app.openSettings` opens the settings view (which includes the keybindings editor, § G).
+`app.showShortcuts` opens the keyboard-shortcuts dialog listing the live keymap; its `when` is
+`!mobile` (B-564: a touch-primary device has no keyboard to press them with). `app.openDiagnostics`
+opens the Diagnostics panel. Both are also items of the top bar's "⋯" menu (B-541 follow-up).
 `app.openPluginManager` opens settings scrolled to its Plugins section, a read-only list of the
 plugins the server is running (`GET /api/v1/plugins`); enabling and disabling stay on the server's
 `nooklet plugin` CLI. `sync.now` requests an immediate

@@ -20,8 +20,8 @@ import {
 } from "../helpers/index.js";
 
 async function openSettings(page: Page): Promise<void> {
-  await page.locator(".help-fab").click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
   await expect(page.locator(".set-panel")).toBeVisible();
 }
 

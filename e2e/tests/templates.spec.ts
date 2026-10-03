@@ -198,8 +198,8 @@ test("Settings lists the templates and chooses the journal template by writing t
   page,
 }) => {
   await page.goto("/journals");
-  await page.locator(".help-fab").click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
   const panel = page.locator(".set-panel");
   await expect(panel).toContainText("Templates");
 
@@ -220,8 +220,8 @@ test("Settings lists the templates and chooses the journal template by writing t
     .toBe("true");
   // Reopening shows the choice, read back from the graph rather than remembered locally.
   await page.reload();
-  await page.locator(".help-fab").click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
   await expect(page.locator("#set-journal-template")).toHaveValue(daily?.id as string);
 });
 
@@ -300,8 +300,8 @@ test("a day created through the API begins with the journal template, before wha
 
 test("dynamic dates use the reader's journal date format", async ({ page }) => {
   await page.goto("/journals");
-  await page.locator(".help-fab").click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
   await page.locator("#set-journal-format").selectOption("yyyy-MM-dd");
   await page.locator(".set-close").click();
 

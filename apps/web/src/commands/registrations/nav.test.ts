@@ -57,3 +57,19 @@ describe("nav.revealBlock", () => {
     expect(navigation.calls).toEqual([{ method: "revealBlock", arg: "1k7f3qa2m9xzr7" }]);
   });
 });
+
+describe("the ⋯ menu's destinations (B-541 follow-up)", () => {
+  it.each([
+    ["nav.allPages", "openAllPages"],
+    ["nav.graph", "openGraph"],
+    ["nav.trash", "openTrash"],
+  ])("%s calls navigation.%s, unbound and always enabled", async (id, method) => {
+    const { commands, navigation } = setup();
+    const cmd = commands.find((c) => c.id === id);
+    expect(cmd?.defaultKeys).toEqual({});
+    expect(cmd?.when).toBe("true");
+    // biome-ignore lint/suspicious/noExplicitAny: test-only minimal CommandContext stub
+    await cmd?.run({} as any);
+    expect(navigation.calls).toEqual([{ method }]);
+  });
+});

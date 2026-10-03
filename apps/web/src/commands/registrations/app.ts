@@ -56,6 +56,27 @@ export function createAppCommands(deps: { app: AppHost }): Command[] {
       },
     },
     {
+      id: "app.showShortcuts",
+      title: "Show keyboard shortcuts",
+      category: "App",
+      defaultKeys: {},
+      // B-564: no keyboard to press any of them with on a touch-primary device.
+      when: "!mobile",
+      run() {
+        app.openShortcuts();
+      },
+    },
+    {
+      id: "app.openDiagnostics",
+      title: "Open diagnostics",
+      category: "App",
+      defaultKeys: {},
+      when: "true",
+      run() {
+        app.openDiagnostics();
+      },
+    },
+    {
       id: "sync.now",
       title: "Sync now",
       category: "App",

@@ -13,10 +13,10 @@
  */
 import { expect, test } from "@playwright/test";
 
-/** The help menu's Settings item — the one pointer route in. */
-async function openSettingsFromHelp(page: import("@playwright/test").Page): Promise<void> {
-  await page.locator(".help-fab").click();
-  await page.getByRole("button", { name: "Settings" }).click();
+/** The top bar's "⋯" → Settings — the one pointer route in (B-541 follow-up). */
+async function openSettingsFromMenu(page: import("@playwright/test").Page): Promise<void> {
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
 }
 
 /**
@@ -34,9 +34,9 @@ async function settledEmbeddingsPanel(
   return panel;
 }
 
-test("opens from the help menu and shows all three sections", async ({ page }) => {
+test("opens from the ⋯ menu and shows all three sections", async ({ page }) => {
   await page.goto("/journals");
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
 
   const panel = page.locator(".set-panel");
   await expect(panel).toBeVisible();
@@ -55,7 +55,7 @@ test("opens from the app.openSettings keybinding", async ({ page }) => {
 
 test("closes on backdrop click", async ({ page }) => {
   await page.goto("/journals");
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
   await expect(page.locator(".set-panel")).toBeVisible();
   await page.locator(".set-backdrop").click({ position: { x: 5, y: 5 } });
   await expect(page.locator(".set-panel")).toHaveCount(0);
@@ -63,7 +63,7 @@ test("closes on backdrop click", async ({ page }) => {
 
 test("the theme control actually changes data-theme", async ({ page }) => {
   await page.goto("/journals");
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
 
   const root = page.locator("html");
   await page.getByRole("button", { name: "Dark", exact: true }).click();
@@ -80,7 +80,7 @@ test("the theme control actually changes data-theme", async ({ page }) => {
 
 test("the journal date format picker offers the presets and keeps a choice", async ({ page }) => {
   await page.goto("/journals");
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
 
   // ADR 018's preference, owned by `data/page-title.ts`; this panel only renders the picker.
   const select = page.locator("#set-journal-format");
@@ -90,13 +90,13 @@ test("the journal date format picker offers the presets and keeps a choice", asy
 
   // It is per-device state in localStorage, so it must survive a reload.
   await page.reload();
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
   await expect(page.locator("#set-journal-format")).toHaveValue("yyyy-MM-dd");
 });
 
 test("the embeddings section reports real backend state, not a spinner", async ({ page }) => {
   await page.goto("/journals");
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
 
   const panel = await settledEmbeddingsPanel(page);
   await expect(panel).not.toContainText("Checking…");
@@ -119,7 +119,7 @@ test("a failed embeddings.configure shows a readable error, not a stuck button",
 }) => {
   await page.goto("/journals");
   await page.route("**/api/v1/embeddings.configure", (route) => route.abort("failed"));
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
 
   const panel = await settledEmbeddingsPanel(page);
   const turnOn = page.getByRole("button", { name: /Turn on semantic search/ });
@@ -142,7 +142,7 @@ test("a failed embeddings.configure shows a readable error, not a stuck button",
 
 test("a configure rejected by the server surfaces the server's own message", async ({ page }) => {
   await page.goto("/journals");
-  await openSettingsFromHelp(page);
+  await openSettingsFromMenu(page);
 
   const panel = await settledEmbeddingsPanel(page);
   const turnOn = page.getByRole("button", { name: /Turn on semantic search/ });

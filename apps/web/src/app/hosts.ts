@@ -272,6 +272,15 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
     openJournals() {
       deps.navigate("/journals");
     },
+    openAllPages() {
+      deps.navigate("/pages");
+    },
+    openGraph() {
+      deps.navigate("/graph");
+    },
+    openTrash() {
+      deps.navigate("/trash");
+    },
     back() {
       history.back();
     },
@@ -346,6 +355,9 @@ export interface AppDeps {
   openSettings: () => void;
   /** Raises the settings panel at its Plugins section (B-98) — same reason as `openSettings`. */
   openPluginManager: () => void;
+  /** The keyboard-shortcuts dialog and the Diagnostics panel — shell-level UI, same reason. */
+  openShortcuts: () => void;
+  openDiagnostics: () => void;
 }
 
 const THEME_CYCLE = { light: "dark", dark: "system", system: "light" } as const;
@@ -361,6 +373,8 @@ export function createAppHost(deps: AppDeps): AppHost {
     // Not `navigate("/settings/plugins")`, which is what this used to do — no such route, so the
     // main area went blank (B-98). There is no manager; Settings lists the running plugins.
     openPluginManager: deps.openPluginManager,
+    openShortcuts: deps.openShortcuts,
+    openDiagnostics: deps.openDiagnostics,
     toggleTheme() {
       deps.setTheme(THEME_CYCLE[deps.getTheme()]);
     },

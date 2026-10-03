@@ -1,6 +1,8 @@
 /**
  * The `?` in the bottom-right corner: keyboard shortcuts, docs, and the two things people
- * actually want when something is wrong — file a bug, request a feature.
+ * actually want when something is wrong — file a bug, request a feature. App destinations
+ * (Settings, Graph, Trash, Diagnostics…) live in the top bar's "⋯" (`./MoreMenu.tsx`) instead;
+ * this stays the place for help, as Logseq keeps both.
  *
  * It is a corner button rather than a menu-bar item because that is where people already look for
  * it, and because the things in it are wanted at the moment of confusion, not planned for.
@@ -10,15 +12,7 @@
  * than not listing it.
  */
 
-import {
-  Bug,
-  CircleQuestionMark,
-  Keyboard,
-  Lightbulb,
-  ScrollText,
-  Settings,
-  X,
-} from "lucide-solid";
+import { Bug, CircleQuestionMark, Keyboard, Lightbulb, ScrollText, X } from "lucide-solid";
 import {
   createEffect,
   createMemo,
@@ -32,7 +26,6 @@ import {
 import { useCommands } from "../commands/index.js";
 import { detectPlatformFromEnvironment } from "../commands/keymap/platform.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
-import { openSettings } from "../views/SettingsPanel.js";
 import "./help-menu.css";
 
 const REPO = "https://github.com/hnykda/nooklet";
@@ -129,19 +122,9 @@ export function HelpMenu(): JSX.Element {
         <div class="help-backdrop" onClick={() => setOpen(false)}>
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: only stops propagation. */}
           <div class="help-menu" role="menu" onClick={(e) => e.stopPropagation()}>
-            {/* The only pointer route into settings, deliberately just one: the panel is also on
-                Cmd/Ctrl+, and in the command palette, and a second button elsewhere in the shell
-                would be a second thing to keep in sync for no new reach. */}
-            <button
-              type="button"
-              class="help-item"
-              onClick={() => {
-                setOpen(false);
-                openSettings();
-              }}
-            >
-              <Settings size={15} /> Settings
-            </button>
+            {/* No Settings here any more: it moved to the top bar's "⋯" menu (`./MoreMenu.tsx`,
+                B-541 follow-up), which is where the owner looked for it. One pointer route, not
+                two — the panel is also on Cmd/Ctrl+, and in the palette. */}
             <Show when={showKeyboardShortcuts}>
               <button
                 type="button"
