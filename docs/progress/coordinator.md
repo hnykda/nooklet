@@ -4,7 +4,32 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
-## Assessment — 2026-10-03 (READ THIS FIRST)
+## Ready for the first real-device test — 2026-10-03 evening (READ THIS FIRST)
+
+All agent work of 2026-10-03 is merged into `main`; no worktrees, no agents, no servers running.
+Nothing pushed (`main` ~750 commits ahead of `origin/main`); pushing is the owner's call.
+
+**Final verification on `main` (coordinator, `07eddde`):** `pnpm install --frozen-lockfile` ok;
+`pnpm -r typecheck` clean; `biome check . --diagnostic-level=error` clean; unit core 473,
+plugin-api 17, server 781, web 1531 — all pass; full e2e (Chromium + WebKit projects)
+**740 passed, 0 failed, 2 skipped** (19.4 min). `nooklet verify` was run by the sweeps and agents
+on their scratch graphs (OK), not by the coordinator on this tree.
+
+**Next:** the owner's test, per `docs/progress/real-device-test.md` (Option L: test server on the
+owner's Mac, port 6200, `--data ~/nooklet-test`, empty graph; Mac desktop app at
+`http://127.0.0.1:6200`; iPhone app at the LAN IP via a `nooklet://connect` link). Never touch
+the owner's live server on 6100 or `~/.nooklet`.
+
+**Never verified on real hardware:** a physical iPhone (signing, local-network prompt, plugin
+bridges, background/resume, eviction/restore), the real Mac app window (the desktop picker has
+never been clicked through), WKWebView specifics beyond Playwright WebKit.
+
+**Open, worth knowing during the test:** B-636 (`sw-update` flake, possibly a real service-worker
+takeover race; PWA only), B-605 (deferred), B-472 (deferred), B-597 (alias "New page"), B-603's
+QR (no library; owner's call), B-628 (OpenAI-compat provider sends no API key), D2 (homeserver details +
+Ollama for semantic search).
+
+## Assessment — 2026-10-03 morning
 
 The 2026-09-14..16 work (ADR 025 multi-graph hosting, the Capacitor iOS shell, desktop remote mode)
 had sat uncommitted for two weeks. It is now on `main` as `26e1f10` (generated iOS project) and
