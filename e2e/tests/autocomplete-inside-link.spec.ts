@@ -85,20 +85,27 @@ test("a new [[ typed right before an existing link leaves that link alone (B-294
 test("Enter on New page inside a link to a page that does not exist keeps the whole link (B-382)", async ({
   page,
 }) => {
-  const name = "Caret Inside Src Four";
+  // Names of this run's own: the test's last Enter CREATES the alias's page, so a second run
+  // (`--repeat-each`, a retry) found "Walkin Unmade Page" already there and failed at the first
+  // check — B-624's flake in this spec. The walk stops partway into the tag, as it used to stop
+  // partway into "Unmade".
+  const tag = runTag();
+  const name = `Caret Inside Src Four ${tag}`;
+  const unmade = `Walkin Unmade ${tag} Page`;
+  const fragment = `Walkin Unmade ${tag.slice(0, 1)}`;
   await api(page, "page.create", {
-    name: "Walkin Alias Holder",
+    name: `Walkin Alias Holder ${tag}`,
     if_exists: "return",
-    properties: { alias: "Walkin Unmade Page" },
+    properties: { alias: unmade },
     markdown: "- holder",
   });
-  await seedPage(page, name, "- alpha [[Walkin Unmade Page]] omega");
-  expect(await pageNames(page)).not.toContain("Walkin Unmade Page");
+  await seedPage(page, name, `- alpha [[${unmade}]] omega`);
+  expect(await pageNames(page)).not.toContain(unmade);
   await openEditing(page, name);
-  await walkTo(page, "alpha [[Walkin Unm".length);
+  await walkTo(page, `alpha [[${fragment}`.length);
   const popup = page.locator(".cmd-popup");
   // The row names the whole link, not the fragment before the caret — B-382's fix, visible.
-  const create = popup.locator(".cmd-row", { hasText: 'New page "Walkin Unmade Page"' });
+  const create = popup.locator(".cmd-row", { hasText: `New page "${unmade}"` });
   await expect(create).toHaveCount(1);
   // Ranking may put a fuzzy page match (another spec's "Walkin …" page) first; walk to the row.
   for (let i = 0; i < 10; i++) {
@@ -109,11 +116,18 @@ test("Enter on New page inside a link to a page that does not exist keeps the wh
   await page.keyboard.press("Enter");
   await expect(popup).toHaveCount(0);
   await page.keyboard.type("!");
-  await expect.poll(() => stored(page, name)).toEqual(["alpha [[Walkin Unmade Page]]! omega"]);
+  await expect.poll(() => stored(page, name)).toEqual([`alpha [[${unmade}]]! omega`]);
   // No page named after the fragment was created.
   await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced");
-  expect(await pageNames(page)).not.toContain("Walkin Unm");
+  expect(await pageNames(page)).not.toContain(fragment);
 });
+
+/** "aa", "ab", … — one per repeat and retry. */
+function runTag(): string {
+  const info = test.info();
+  const n = info.repeatEachIndex * 4 + info.retry;
+  return String.fromCharCode(97 + Math.floor(n / 26) % 26) + String.fromCharCode(97 + (n % 26));
+}
 
 async function pageNames(page: Page): Promise<string[]> {
   const out = await api<{ items: Array<{ name: string }> }>(page, "page.list", {

@@ -23,6 +23,20 @@ import {
   seedPage,
 } from "../helpers/index.js";
 
+/** This run's own suffix. Every test here leaves its page behind in a changed state (restored,
+ * typed into, in the Trash), and `seedPage` returns an existing page untouched — so under
+ * `--repeat-each` or a retry the second run met the first run's page: "its 3 blocks" where it
+ * typed its second, "typed in B typed in B" (B-624). */
+function run(): string {
+  const info = test.info();
+  return `${info.repeatEachIndex}-${info.retry}`;
+}
+
+/** `/page/<name>` as it appears at the end of the URL. */
+function urlEnd(name: string): RegExp {
+  return new RegExp(`/page/${encodeURIComponent(name)}$`);
+}
+
 async function openPageView(page: Page, name: string): Promise<void> {
   await page.goto(pagePath(name));
   await expect(page.locator(".vr-outliner .vr-row").first()).toBeVisible();
@@ -73,12 +87,15 @@ async function keywordSearch(page: Page, query: string): Promise<void> {
 test("Delete page from the … menu: asked, gone from All pages and search, in the Trash, and Restore brings its blocks back", async ({
   page,
 }) => {
-  const name = "Delete Zebra Page";
-  await seedPage(page, name, "- zebradel alpha\n  - zebradel beta\n- zebradel gamma");
-  await seedPage(page, "Delete Zebra Linker", `- see [[${name}]]`);
+  const name = `Delete Zebra Page ${run()}`;
+  const linker = `Delete Zebra Linker ${run()}`;
+  // One search word per run: a restored page from an earlier run still holds its blocks.
+  const word = `zebradel${run().replace("-", "x")}`;
+  await seedPage(page, name, `- ${word} alpha\n  - ${word} beta\n- ${word} gamma`);
+  await seedPage(page, linker, `- see [[${name}]]`);
 
   // Search finds its blocks before, so "0 results" after means the delete, not a slow index.
-  await keywordSearch(page, "zebradel");
+  await keywordSearch(page, word);
   await expect(page.locator(".search-summary")).toHaveText("3 results", { timeout: 15_000 });
 
   await openPageView(page, name);
@@ -102,12 +119,12 @@ test("Delete page from the … menu: asked, gone from All pages and search, in t
   // All pages: the linking page is listed (the list has loaded), and the name is one empty page.
   await page.goto("/pages");
   const filter = page.locator(".all-pages-filter");
-  await filter.fill("Delete Zebra Linker");
+  await filter.fill(linker);
   await expect(page.locator(".all-pages-row")).toHaveCount(1);
   await filter.fill(name);
   await expect(page.locator(".all-pages-row")).toHaveCount(1);
 
-  await keywordSearch(page, "zebradel");
+  await keywordSearch(page, word);
   await expect(page.locator(".search-summary")).toHaveText("0 results", { timeout: 15_000 });
 
   // The Trash lists it as one page with its three blocks, deleted from the app over the API.
@@ -124,21 +141,21 @@ test("Delete page from the … menu: asked, gone from All pages and search, in t
 
   const blocks = await readBlocks(page, name);
   expect(blocks.map((b) => [b.content, b.depth])).toEqual([
-    ["zebradel alpha", 0],
-    ["zebradel beta", 1],
-    ["zebradel gamma", 0],
+    [`${word} alpha`, 0],
+    [`${word} beta`, 1],
+    [`${word} gamma`, 0],
   ]);
   await page.locator(".trash-notice-link").click();
-  await expect(page).toHaveURL(/\/page\/Delete%20Zebra%20Page$/);
-  await expect(page.locator(".vr-outliner").first()).toContainText("zebradel beta");
-  await keywordSearch(page, "zebradel");
+  await expect(page).toHaveURL(urlEnd(name));
+  await expect(page.locator(".vr-outliner").first()).toContainText(`${word} beta`);
+  await keywordSearch(page, word);
   await expect(page.locator(".search-summary")).toHaveText("3 results", { timeout: 15_000 });
 });
 
 test("Cancel, Escape and the backdrop delete nothing; from the palette, Enter confirms", async ({
   page,
 }) => {
-  const name = "Delete Zebra Palette";
+  const name = `Delete Zebra Palette ${run()}`;
   await seedPage(page, name, "- zebrapal only block");
   await openPageView(page, name);
   const dialog = page.getByRole("alertdialog");
@@ -158,7 +175,7 @@ test("Cancel, Escape and the backdrop delete nothing; from the palette, Enter co
   await page.mouse.click(5, 5);
   await expect(dialog).toHaveCount(0);
 
-  await expect(page).toHaveURL(/\/page\/Delete%20Zebra%20Palette$/);
+  await expect(page).toHaveURL(urlEnd(name));
   await expect(page.locator(".vr-outliner").first()).toContainText("zebrapal only block");
   expect(await pageExists(page, name)).toBe(true);
 
@@ -201,7 +218,7 @@ test("a journal day offers no Delete, and the palette command refuses it without
 test("from the palette mid-typing: the dialog counts the block just typed, and Escape gives the caret back", async ({
   page,
 }) => {
-  const name = "Delete Zebra Typing";
+  const name = `Delete Zebra Typing ${run()}`;
   await seedPage(page, name, "- zebratype one");
   await openPageView(page, name);
   await page.locator(".vr-outliner .vr-block-view").first().click();
@@ -228,7 +245,7 @@ test("from the palette mid-typing: the dialog counts the block just typed, and E
 // must not keep showing, or keep editing, a page that is in the Trash — and Restore must bring it
 // back there too, with what was typed in it before the delete.
 test("another window on the page follows the delete and the restore", async ({ browser }) => {
-  const name = "Delete Zebra Two Windows";
+  const name = `Delete Zebra Two Windows ${run()}`;
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
   try {

@@ -428,7 +428,7 @@ const SLASH_ORDER = [
   // M7 appends, in `items.ts` order: templates (ADR 019) and the query fence (ADR 011).
   "Template",
   "Query",
-  // B-608: the rest of both task pairs (this spec's graph has no tasks, so its workflow is `todo`).
+  // B-608: the rest of both task pairs, in the `todo` workflow's order (pinned by `pinTodoWorkflow`).
   "DOING",
   "LATER",
   "NOW",
@@ -436,10 +436,26 @@ const SLASH_ORDER = [
   "Mermaid diagram",
 ];
 
+/**
+ * Settings → Task workflow → TODO/DOING, as `task-workflow.spec.ts` does it. Without a choice the
+ * workflow is inferred from the markers on the shared e2e server — and an empty or tied graph is
+ * `now` since `34c8d3e` (owner decision), so "TODO / task" was no longer first when this ran alone,
+ * or after specs that seed LATER/NOW, and was first again after specs that seed more TODOs.
+ */
+async function pinTodoWorkflow(page: Page): Promise<void> {
+  await page.goto("/journals");
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.locator("#set-task-workflow").selectOption("todo");
+  await expect(page.locator("#set-task-workflow")).toHaveValue("todo");
+  await page.getByRole("button", { name: "Close" }).click();
+}
+
 test.describe("/ slash menu", () => {
   test("opens at a run start with every item in R54 order, first one highlighted", async ({
     page,
   }) => {
+    await pinTodoWorkflow(page);
     await openEditing(page, "Popup Slash Open", "- x");
     await page.keyboard.type(" /");
     await expect(popup(page)).toBeVisible();
@@ -549,6 +565,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("TODO / task turns the block into a task and removes the trigger", async ({ page }) => {
+    await pinTodoWorkflow(page);
     const outliner = await openEditing(page, "Popup Slash Todo", "- buy milk");
     await page.keyboard.type(" /todo");
     await expect(activeRow(page)).toHaveText("TODO / task");

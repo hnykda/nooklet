@@ -53,11 +53,13 @@ test("a hybrid search on a graph with no embedding model says semantic search is
   await expect(section.getByRole("button", { name: /Turn on semantic search/ })).toBeVisible();
 });
 
+// Search words are this spec's own (B-561): "wombat" was also seeded by `popups.spec.ts`, which runs
+// earlier on the shared server, and the summary read "2 results".
 test("a keyword search shows no fallback note", async ({ page }) => {
-  await seedPage(page, "Search Fallback Keyword Hit", "- a wombat sentence");
+  await seedPage(page, "Search Fallback Keyword Hit", "- a fallbackkwwombat sentence");
   await page.goto("/search");
   await page.locator(".search-mode-toggle button", { hasText: "keyword" }).click();
-  await page.locator(".search-query-input").fill("wombat");
+  await page.locator(".search-query-input").fill("fallbackkwwombat");
   await expect(page.locator(".search-summary")).toHaveText("1 result", { timeout: 15_000 });
   await expect(page.locator(".search-fallback")).toHaveCount(0);
 });
@@ -65,9 +67,9 @@ test("a keyword search shows no fallback note", async ({ page }) => {
 test("closing Settings re-runs a search that had fallen back, so its note is not left stale (B-523)", async ({
   page,
 }) => {
-  await seedPage(page, "Search Fallback Stale Hit", "- a numbat sentence");
+  await seedPage(page, "Search Fallback Stale Hit", "- a fallbackstalenumbat sentence");
   await page.goto("/search");
-  await page.locator(".search-query-input").fill("numbat");
+  await page.locator(".search-query-input").fill("fallbackstalenumbat");
   const note = page.locator(".search-fallback");
   await expect(note).toBeVisible({ timeout: 15_000 });
   test.skip(
@@ -96,7 +98,7 @@ test("Try again and Check again keep keyboard focus on the pressed button when t
   // fallback, and each reply carries a new object with a new count — which is what a real
   // "still indexing" answer does. jsdom cannot catch this: it does not blur a focused element
   // that is moved by `insertBefore`, and a move is what a browser blurs on.
-  await seedPage(page, "Search Fallback Focus Hit", "- a bilby sentence");
+  await seedPage(page, "Search Fallback Focus Hit", "- a fallbackfocusbilby sentence");
   let indexed = 0;
   let reason: "provider_unreachable" | "indexing" = "provider_unreachable";
   await page.route("**/api/v1/search", async (route) => {
@@ -110,7 +112,7 @@ test("Try again and Check again keep keyboard focus on the pressed button when t
     await route.fulfill({ response, json: { ...body, mode_used: "keyword", fallback } });
   });
   await page.goto("/search");
-  await page.locator(".search-query-input").fill("bilby");
+  await page.locator(".search-query-input").fill("fallbackfocusbilby");
   const note = page.locator(".search-fallback");
   await expect(note).toHaveAttribute("data-reason", "provider_unreachable", { timeout: 15_000 });
 
