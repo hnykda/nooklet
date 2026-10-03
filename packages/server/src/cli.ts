@@ -6,7 +6,8 @@
  *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
- *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] [--ui-control] |
+ *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] [--ui-control]
+ *                   [--link <public url>] (B-603: also prints a nooklet://connect pairing link) |
  *                   list | revoke <id> | root  (--ui-control grants ADR 015's live-UI-control
  *                   capability; `root` prints this data dir's root token — ADR 025, `/graphs` —
  *                   minting one if it does not exist yet; ignores --graph, it is not per-graph)
@@ -40,6 +41,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import type { ServerContext } from "./apply-ops.js";
+import { PairingLinkError, pairingLink } from "./auth/pairing-link.js";
 import { ensureRootToken } from "./auth/root-token.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
 import { createBackup, restoreBackup } from "./backup/index.js";
@@ -214,6 +216,7 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
   nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
+                      [--link <public url>]   also print a nooklet://connect pairing link
   nooklet token list
   nooklet token revoke <token-id>
   nooklet token root
@@ -402,15 +405,39 @@ async function main(): Promise<void> {
         // ADR 015 §7: `--ui-control` grants the orthogonal live-UI-control capability
         // (`../ops/registry.ts`'s `Permission`), independent of --scope/--sync.
         const uiControl = args.flags.get("ui-control") === true;
-        const created = createToken(ctx.driver, {
-          label,
-          scope,
-          canSync: args.flags.get("sync") === true,
-          uiControl,
-        });
+        const canSync = args.flags.get("sync") === true;
+        // B-603: `--link <public url>` also prints a `nooklet://connect` pairing link. Checked
+        // BEFORE minting, so a bad address does not leave an unused live token behind.
+        const linkFlag = args.flags.get("link");
+        if (linkFlag === true)
+          die("--link needs the address devices use, e.g. --link http://192.168.1.5:6100");
+        const linkFor = (token: string): string | undefined => {
+          if (typeof linkFlag !== "string") return undefined;
+          try {
+            return pairingLink(linkFlag, token, graphIdFlag(args));
+          } catch (err) {
+            if (err instanceof PairingLinkError) die(err.message);
+            throw err;
+          }
+        };
+        linkFor("nk_validate");
+        const created = createToken(ctx.driver, { label, scope, canSync, uiControl });
         process.stdout.write(
           `${created.token}\n\nSaved as "${label}" (${scope}${uiControl ? ", ui:control" : ""}). This is the only time it is shown.\n`,
         );
+        const link = linkFor(created.token);
+        if (link) {
+          process.stdout.write(
+            `\nPairing link: open it on the phone (tap it in Notes/Messages, or paste it into\n` +
+              `Safari's address bar). The app shows the server address and asks before connecting.\n` +
+              `  ${link}\n` +
+              `It CONTAINS the token: anyone who sees it can use this graph until you revoke it\n` +
+              `("nooklet token revoke"). Clipboard, chat, shell history and screenshots all keep it.\n` +
+              (canSync && scope !== "read"
+                ? ""
+                : `Note: a phone needs --scope write --sync to edit and sync; this token is ${scope}${canSync ? "" : " without --sync"}.\n`),
+          );
+        }
         return;
       }
       if (sub === "list") {

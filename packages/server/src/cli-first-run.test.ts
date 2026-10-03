@@ -71,6 +71,33 @@ describe("first run: a command before the first serve (B-607)", () => {
     expect(res.status).toBe(200);
   }, 60_000);
 
+  it("token create --link prints a pairing link carrying that token (B-603), and a bad --link mints nothing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nooklet-first-run-"));
+    const out = run(
+      dir,
+      "token",
+      "create",
+      "--label",
+      "phone",
+      "--scope",
+      "write",
+      "--sync",
+      "--link",
+      "http://192.168.1.5:6100",
+    );
+    const token = out.split("\n")[0]?.trim();
+    const link = /nooklet:\/\/connect\?\S+/.exec(out)?.[0];
+    expect(link).toBeDefined();
+    const parsed = new URL(link as string);
+    expect(parsed.searchParams.get("url")).toBe("http://192.168.1.5:6100/g/default");
+    expect(parsed.searchParams.get("token")).toBe(token);
+
+    expect(() => run(dir, "token", "create", "--label", "x", "--link", "ftp://h")).toThrow();
+    const list = run(dir, "token", "list");
+    expect(list).toContain("phone");
+    expect(list).not.toMatch(/ x\n/);
+  }, 60_000);
+
   it("import, then serve: serve starts and the imported page is there", async () => {
     const dir = mkdtempSync(join(tmpdir(), "nooklet-first-run-"));
     const graph = mkdtempSync(join(tmpdir(), "nooklet-first-run-graph-"));

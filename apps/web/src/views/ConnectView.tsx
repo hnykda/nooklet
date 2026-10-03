@@ -22,24 +22,36 @@
  * explicit "just this device" vs "sync with a server" choice, rather than showing two required-
  * looking fields with the opt-out demoted to a same-row second button — a real user read that as
  * "syncing is mandatory" (owner feedback). Only picking the sync option reveals the form.
+ *
+ * B-603: a `nooklet://connect?url=…&token=…` pairing link opens this same form pre-filled
+ * (`props.prefill`, from `PairingLinkPrompt.tsx`). It never connects by itself: anything that can
+ * open a URL on the phone can craft such a link, so the address is shown in plain view and nothing
+ * happens until the owner taps Connect. `onCancel` dismisses it.
  */
 
 import { Server, Smartphone } from "lucide-solid";
 import { createSignal, type JSX, Show } from "solid-js";
-import { connectToGraph, parseServerUrl } from "../data/connect-graph.js";
+import { connectToGraph, type PairingLink, parseServerUrl } from "../data/connect-graph.js";
 import { platform } from "../platform/index.js";
 import "./connect.css";
 
-export function ConnectView(props: { reason?: string; onSkip?: () => void }): JSX.Element {
-  // A plain read, not a signal: the shell this build runs in cannot change mid-session.
-  const showServerField = platform.name === "capacitor";
+export function ConnectView(props: {
+  reason?: string;
+  onSkip?: () => void;
+  /** From a pairing link (B-603): fills both fields and shows the confirm-this-server wording. */
+  prefill?: PairingLink;
+  onCancel?: () => void;
+}): JSX.Element {
+  // A plain read, not a signal: the shell this build runs in cannot change mid-session. A pairing
+  // link always names a server, so it needs the field wherever it was opened.
+  const showServerField = platform.name === "capacitor" || props.prefill !== undefined;
 
   // No skip path means there is nothing to choose between — go straight to the form, as before
   // B-563. Otherwise start undecided so the choice renders first.
-  const [wantsSync, setWantsSync] = createSignal(props.onSkip ? undefined : true);
+  const [wantsSync, setWantsSync] = createSignal(props.onSkip && !props.prefill ? undefined : true);
 
-  const [serverUrl, setServerUrl] = createSignal("");
-  const [token, setToken] = createSignal("");
+  const [serverUrl, setServerUrl] = createSignal(props.prefill?.serverUrl ?? "");
+  const [token, setToken] = createSignal(props.prefill?.token ?? "");
   const [error, setError] = createSignal<string | undefined>();
   const [busy, setBusy] = createSignal(false);
 
@@ -119,14 +131,27 @@ export function ConnectView(props: { reason?: string; onSkip?: () => void }): JS
           </>
         }
       >
-        <Show when={props.onSkip}>
+        <Show when={props.onSkip && !props.prefill}>
           <button type="button" class="connect-back" onClick={() => setWantsSync(undefined)}>
             ‹ Back
           </button>
         </Show>
-        <h1>Connect this device</h1>
+        <Show when={props.prefill} fallback={<h1>Connect this device</h1>}>
+          {(prefill) => (
+            <>
+              <h1>Connect to this server?</h1>
+              <p class="connect-lede">
+                A pairing link asked to sync this device with the server below. Connect only if it
+                is yours.
+              </p>
+              <p class="connect-pairing-server" data-testid="pairing-server">
+                {prefill().serverUrl}
+              </p>
+            </>
+          )}
+        </Show>
         <Show
-          when={showServerField}
+          when={showServerField && !props.prefill}
           fallback={
             <p class="connect-lede">
               This device needs a token to reach <code>{location.host}</code>. Create one on the
@@ -139,8 +164,10 @@ export function ConnectView(props: { reason?: string; onSkip?: () => void }): JS
             machine running nooklet:
           </p>
         </Show>
-        <pre class="connect-cmd">nooklet token create --label phone --scope write --sync</pre>
-        <p class="connect-note">The token is shown once. Paste it here.</p>
+        <Show when={!props.prefill}>
+          <pre class="connect-cmd">nooklet token create --label phone --scope write --sync</pre>
+          <p class="connect-note">The token is shown once. Paste it here.</p>
+        </Show>
 
         <form onSubmit={(e) => void connect(e)}>
           <Show when={showServerField}>
@@ -186,9 +213,20 @@ export function ConnectView(props: { reason?: string; onSkip?: () => void }): JS
             >
               {busy() ? "Checking…" : "Connect"}
             </button>
+            <Show when={props.onCancel}>
+              <button type="button" class="connect-skip" onClick={() => props.onCancel?.()}>
+                Cancel
+              </button>
+            </Show>
           </div>
         </form>
 
+        <Show when={props.reason === "loopback_token_disabled"}>
+          <p class="connect-why">
+            This server was started with --no-loopback-token, so it hands no token out
+            automatically, not even to a browser on its own machine.
+          </p>
+        </Show>
         <Show when={props.reason === "non_loopback_host"}>
           <p class="connect-why">
             nooklet only hands out a token automatically to a browser on the same machine as the
