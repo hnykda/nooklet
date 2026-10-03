@@ -51,6 +51,9 @@ vi.mock("../data/templates.js", async () => {
   };
 });
 
+// `../data/journal-draft-store.ts` keys its copy by the open replica (B-619/B-611).
+vi.mock("../db/client.js", () => ({ currentReplicaScope: () => "~" }));
+
 // What the day's tree was drawn from before its first fetch (B-411).
 let treeInitialOps: readonly Op[] | undefined;
 vi.mock("../editor/BlockTree.js", () => ({
@@ -62,6 +65,7 @@ vi.mock("../editor/BlockTree.js", () => ({
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   applyOps.mockClear();
   getOpClock.mockClear();
   appendToJournalDay.mockClear();
@@ -431,5 +435,77 @@ describe("VirtualJournalDay torn down with text nobody committed (B-243)", () =>
     expect(await screen.findByTestId("block-tree")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     clearBlockFocusRequest();
+  });
+});
+
+describe("VirtualJournalDay keeps typed lines until they are ops (B-619)", () => {
+  const DAY = 20261003;
+  const KEY = `nooklet.journal-draft.v1:~:${DAY}`;
+
+  it("a line Enter closed while the worker is still busy survives the page going away", async () => {
+    // The worker never answers `prepare` (its template + HLC pool): the busy-replica window.
+    loadJournalTemplate.mockImplementation(() => new Promise(() => {}));
+    const { unmount } = render(() => <VirtualJournalDay day={DAY} />);
+    const textarea = screen.getByPlaceholderText("Start typing…");
+    fireEvent.focus(textarea);
+    fireEvent.input(textarea, { target: { value: "LOCAL NOTE" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await settle();
+    expect(applyOps).not.toHaveBeenCalled();
+    // Synchronously stored: this is what an unload leaves behind.
+    expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual([
+      { text: "LOCAL NOTE", depth: 0 },
+      { text: "", depth: 0 },
+    ]);
+    unmount();
+
+    // The next page load: the draft comes back and is written, with an idle worker this time.
+    loadJournalTemplate.mockReset();
+    loadJournalTemplate.mockResolvedValue(null);
+    render(() => <VirtualJournalDay day={DAY} />);
+    await vi.waitFor(() => expect(applyOps).toHaveBeenCalledTimes(1));
+    const written = creates(applyOps.mock.calls[0]?.[0] ?? []).map((op) => op.payload.content);
+    expect(written).toEqual(["LOCAL NOTE", ""]);
+    // Handed to `applyOps` (whose B-247 copy takes over), so the draft's own copy is gone.
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("text typed without Enter is kept too, and nothing is stored for an empty draft", () => {
+    loadJournalTemplate.mockImplementation(() => new Promise(() => {}));
+    render(() => <VirtualJournalDay day={DAY} />);
+    const textarea = screen.getByPlaceholderText("Start typing…");
+    expect(localStorage.getItem(KEY)).toBeNull();
+    fireEvent.input(textarea, { target: { value: "half a thought" } });
+    expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual([
+      { text: "half a thought", depth: 0 },
+    ]);
+    fireEvent.input(textarea, { target: { value: "" } });
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("keeps a Tab-nested draft line's depth (B-609 with B-619), and reads an older string-only copy at depth 0", async () => {
+    loadJournalTemplate.mockImplementation(() => new Promise(() => {}));
+    const { unmount } = render(() => <VirtualJournalDay day={DAY} />);
+    const textarea = screen.getByPlaceholderText("Start typing…");
+    fireEvent.focus(textarea);
+    fireEvent.input(textarea, { target: { value: "parent" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    fireEvent.input(textarea, { target: { value: "child" } });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    await settle();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual([
+      { text: "parent", depth: 0 },
+      { text: "child", depth: 1 },
+    ]);
+    unmount();
+
+    // A copy written before depths existed: plain strings.
+    localStorage.setItem(KEY, JSON.stringify(["old line"]));
+    loadJournalTemplate.mockReset();
+    loadJournalTemplate.mockResolvedValue(null);
+    render(() => <VirtualJournalDay day={DAY} />);
+    await vi.waitFor(() => expect(applyOps).toHaveBeenCalled());
+    const written = creates(applyOps.mock.calls.at(-1)?.[0] ?? []).map((op) => op.payload.content);
+    expect(written).toEqual(["old line"]);
   });
 });

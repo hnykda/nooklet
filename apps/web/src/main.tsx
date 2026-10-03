@@ -3,14 +3,17 @@ import { App } from "./App.js";
 import { initFocusLog } from "./app/focus-log.js";
 import {
   activeGraph,
+  adoptLegacyReplica,
   apiBaseUrl,
   authToken,
   hasSyncTarget,
   initBootstrap,
+  replicaKey,
 } from "./data/bootstrap.js";
 import { suggestJournalTitleFormat } from "./data/page-title.js";
 import { initTaskWorkflow } from "./data/task-workflow.js";
 import { initDb } from "./db/client.js";
+import { platform } from "./platform/index.js";
 import { registerServiceWorker } from "./sw/register.js";
 
 // First, so a log left switched on (Diagnostics → Focus log) sees the page load from the start.
@@ -31,12 +34,22 @@ suggestJournalTitleFormat(bootstrap.journalTitleFormat);
 // `WorkerInitOptions.syncBaseUrl`'s own doc comment already says omitting it means "run local-only",
 // which `WorkerDb.start()` uses to skip bootstrap/connectLive/pull rather than pay B-566's timeout
 // on every cold start for a device that will never have anything to reach.
-void initDb({
+const replica = replicaKey(activeGraph());
+const dbReady = initDb({
   syncBaseUrl: hasSyncTarget() ? apiBaseUrl() : undefined,
   token: authToken(),
   // ADR 025: namespaces this worker's OPFS filename and leader-election lock so a future second
-  // active graph behind this origin never contends with this one for either.
-  graphEntryId: activeGraph()?.id,
+  // active graph behind this origin never contends with this one for either. `undefined` for the
+  // un-namespaced replica (no active entry, or the entry that adopted it — B-612).
+  graphEntryId: replica,
+  // B-612: a phone that chose "Just this device" before that made a list entry, then added a server
+  // graph, has its notes in the un-namespaced replica with nothing in the list pointing at it. Ask
+  // the worker whether it holds notes only this device has; if so, list it so the switcher reaches
+  // it again. Capacitor only: on web/desktop that file is a pre-ADR-025 copy of a server's graph.
+  inspectUnnamespaced: platform.name === "capacitor" && replica !== undefined,
+});
+void dbReady.then((r) => {
+  if (r.unnamespacedReplica === "data") adoptLegacyReplica();
 });
 
 // B-608: the graph's task workflow (LATER/NOW or TODO/DOING), before anything renders so the first

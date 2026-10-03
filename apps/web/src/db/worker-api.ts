@@ -48,6 +48,9 @@ export interface WorkerInitOptions {
    * every existing test) falls back to `sqlite-wasm-driver.ts`'s own unnamespaced default, exactly
    * pre-ADR-025 behavior. */
   graphEntryId?: string;
+  /** B-612: also report what the un-namespaced replica holds (`InitResult.unnamespacedReplica`).
+   * Only meaningful with a `graphEntryId` (otherwise that replica is the one being opened). */
+  inspectUnnamespaced?: boolean;
 }
 
 export interface InitResult {
@@ -59,6 +62,9 @@ export interface InitResult {
    * reach the other tab through sync, so nothing is lost — it just is not the tab that persists. */
   storage: "opfs" | "memory" | "follower";
   storageError?: string;
+  /** Answer to `WorkerInitOptions.inspectUnnamespaced` (`sqlite-wasm-driver.ts#inspectReplica`);
+   * absent when not asked, or when this tab does not own the pool (memory, follower). */
+  unnamespacedReplica?: "absent" | "empty" | "synced" | "data";
 }
 
 export interface WorkerApi {

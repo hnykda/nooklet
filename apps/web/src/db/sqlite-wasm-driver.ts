@@ -61,7 +61,11 @@ interface Sqlite3OpfsSAHPoolUtil {
 const MIN_POOL_CAPACITY = 6;
 
 interface Sqlite3Namespace {
-  installOpfsSAHPoolVfs(opts: { name?: string }): Promise<Sqlite3OpfsSAHPoolUtil>;
+  installOpfsSAHPoolVfs(opts: {
+    name?: string;
+    /** Without it, a failed install is cached and every later call rejects with the same error. */
+    forceReinitIfPreviouslyFailed?: boolean;
+  }): Promise<Sqlite3OpfsSAHPoolUtil>;
   /** The plain OO1 API; `new DB()` with no filename is an in-memory database. */
   oo1: { DB: new (filename?: string) => Sqlite3Db };
   /** The C API surface, for the one call Option C's checkpoint needs directly — verified against
@@ -88,6 +92,70 @@ export function shouldRestoreCheckpoint(
   hasCheckpoint: boolean,
 ): boolean {
   return hasCheckpoint && !existingFileNames.includes(filename);
+}
+
+/**
+ * How long to keep trying for the pool's files while another context still holds them. The pool is
+ * ONE set of OPFS files shared by every graph on the device (each graph is a name inside it), and
+ * the install takes a sync access handle on every one of them. The page load a graph switch or a
+ * reload replaces still holds those handles for a moment while its worker is torn down; the
+ * per-graph writer lock (`db.worker.ts`) does not cover that, since a different graph's lock has a
+ * different name. The install then failed with `NoModificationAllowedError` and the new page ran on
+ * an in-memory database: everything written in a local-only graph just switched to was gone at the
+ * next reload. Seen in `e2e/tests/local-graphs.spec.ts` right after "Add a graph".
+ */
+const POOL_BUSY_RETRY_MS = 5_000;
+
+async function installPool(sqlite3: Sqlite3Namespace): Promise<Sqlite3OpfsSAHPoolUtil> {
+  const deadline = Date.now() + POOL_BUSY_RETRY_MS;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await sqlite3.installOpfsSAHPoolVfs({
+        name: "nooklet-opfs-sahpool",
+        forceReinitIfPreviouslyFailed: attempt > 0,
+      });
+    } catch (err) {
+      // Only "someone else holds a handle" is worth waiting for; a browser without OPFS in
+      // workers (B-43) fails at once, as before.
+      const busy = err instanceof Error && err.name === "NoModificationAllowedError";
+      if (!busy || Date.now() >= deadline) throw err;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+}
+
+/**
+ * Whether another replica file in this pool holds anything (B-612's stranded "Just this device"
+ * data). Opened read-only in effect — two `SELECT`s — and closed again; this worker owns every
+ * file in the pool once the VFS is installed, so nothing else can hold it. Never throws: a file
+ * that is not a database we understand counts as `"empty"`, so it is never offered as a graph.
+ */
+function inspectReplica(
+  poolUtil: Sqlite3OpfsSAHPoolUtil,
+  name: string,
+): NonNullable<OpenedSqliteWasm["inspected"]> {
+  if (!poolUtil.getFileNames().includes(name)) return "absent";
+  let other: Sqlite3Db | undefined;
+  try {
+    other = new poolUtil.OpfsSAHPoolDb(name);
+    const hasOpTable = other.selectValue(
+      "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'op'",
+    );
+    if (Number(hasOpTable) === 0) return "empty";
+    if (Number(other.selectValue("SELECT EXISTS (SELECT 1 FROM op)")) !== 1) return "empty";
+    // A replica that ever pulled from a server (a pre-ADR-025 install pointed at one) is a copy of
+    // that server's graph, not notes that exist only here: not offered as a local-only graph.
+    const cursor = other.selectValue("SELECT value FROM sync_state WHERE key = 'server_cursor'");
+    return cursor === undefined || cursor === null || Number(cursor) === 0 ? "data" : "synced";
+  } catch {
+    return "empty";
+  } finally {
+    try {
+      other?.close();
+    } catch {
+      // nothing to do
+    }
+  }
 }
 
 /** Wrap a sahpool `OpfsSAHPoolDb` (or any object satisfying `Sqlite3Db`, e.g. a fake in a future
@@ -191,7 +259,16 @@ export interface OpenedSqliteWasm {
    * restore. Lets a caller log/verify the restore path was taken, not just assume it from the
    * inputs it passed in. */
   restored: boolean;
+  /** B-612: what `opts.inspect` (another replica's filename in the same pool) holds — `"absent"`
+   * when the pool has no such file, `"empty"` when it has no op at all, `"synced"` when it has
+   * pulled from a server (a copy of a server graph), `"data"` otherwise: notes only this device has.
+   * `undefined` when not asked, or when the pool could not be opened. */
+  inspected?: "absent" | "empty" | "synced" | "data";
 }
+
+/** The un-namespaced replica's filename: `openSqliteWasmDriver`'s default, used by a load with no
+ * active graph entry and by a `legacyReplica` entry (`data/bootstrap.ts#replicaKey`). */
+export const UNNAMESPACED_REPLICA = "/nooklet.sqlite3";
 
 /**
  * Open (creating on first run) the OPFS-backed replica and apply nooklet's server PRAGMAs where
@@ -214,19 +291,20 @@ export interface OpenedSqliteWasm {
  * first, not as a patch-up after.
  */
 export async function openSqliteWasmDriver(
-  filename = "/nooklet.sqlite3",
-  opts: { memory?: boolean; restoreBytes?: Uint8Array } = {},
+  filename = UNNAMESPACED_REPLICA,
+  opts: { memory?: boolean; restoreBytes?: Uint8Array; inspect?: string } = {},
 ): Promise<OpenedSqliteWasm> {
   const sqlite3 = await sqlite3InitModule();
   let db: Sqlite3Db;
   let storage: OpenedSqliteWasm["storage"] = "opfs";
   let storageError: string | undefined;
   let restored = false;
+  let inspected: OpenedSqliteWasm["inspected"];
   try {
     // A follower tab (B-81) asks for memory outright: sahpool allows one connection per file, and
     // the leader tab holds it.
     if (opts.memory) throw new Error("memory requested by the caller");
-    const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: "nooklet-opfs-sahpool" });
+    const poolUtil = await installPool(sqlite3);
     // Topped up on EVERY start, not left to the install (B-323). sqlite-wasm fills the pool only
     // when it finds it empty, one file at a time and asynchronously, so a first start torn down
     // part-way (a reload or navigation in its first tenth of a second) leaves one to five files and
@@ -239,6 +317,9 @@ export async function openSqliteWasmDriver(
       restored = true;
     }
     db = new poolUtil.OpfsSAHPoolDb(filename);
+    if (opts.inspect && opts.inspect !== filename) {
+      inspected = inspectReplica(poolUtil, opts.inspect);
+    }
   } catch (err) {
     storage = "memory";
     storageError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
@@ -262,6 +343,7 @@ export async function openSqliteWasmDriver(
     storage,
     storageError,
     restored,
+    inspected,
     exportBytes:
       storage === "opfs" ? () => sqlite3.capi.sqlite3_js_db_export(db.pointer) : undefined,
   };
