@@ -199,6 +199,24 @@ export function migrateUnscopedBatches(
   return counts;
 }
 
+/**
+ * B-631: drop every batch kept for ONE replica (`scope`), whoever wrote it — the replica itself has
+ * just been discarded ("Discard the local copy and re-sync"), and replaying its writes into the
+ * fresh copy of a different graph would be the B-611 leak again. Other replicas' batches, v1
+ * leftovers and the quarantine are untouched. Returns how many were removed.
+ */
+export function discardScopeBatches(storage: JournalStorage | undefined, scope: string): number {
+  if (!storage) return 0;
+  const prefix = `${UNAPPLIED_KEY_PREFIX}${encodeURIComponent(scope)}:`;
+  const keys: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  for (const key of keys) storage.removeItem(key);
+  return keys.length;
+}
+
 /** Hold this page load's owner lock until the document goes away. */
 export function holdOwnerLock(locks: OwnerLocks | undefined, owner: string): void {
   if (!locks) return;

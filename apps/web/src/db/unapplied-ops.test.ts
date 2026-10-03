@@ -2,6 +2,7 @@ import { makeOp, type Op } from "@nooklet/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   createUnappliedOpsJournal,
+  discardScopeBatches,
   type JournalStorage,
   liveOwners,
   migrateUnscopedBatches,
@@ -173,6 +174,26 @@ describe("batches belong to the replica they were written for (B-611)", () => {
     const local = createUnappliedOpsJournal({ scope: "~", storage, owner: "load-3" });
     await expect(replayOrphanedBatches(local, fakeLocks([]), apply)).resolves.toBe(1);
     expect(storage.length).toBe(0);
+  });
+});
+
+describe("discardScopeBatches (B-631)", () => {
+  it("drops every batch of the discarded replica and nothing of any other", () => {
+    const storage = new MemoryStorage();
+    createUnappliedOpsJournal({ scope: "~", storage, owner: "local-load" }).record([
+      textOp("local-only note"),
+    ]);
+    const remote = createUnappliedOpsJournal({ scope: "g-remote", storage, owner: "load-2" });
+    remote.record([textOp("one")]);
+    remote.record([textOp("two")]);
+    createUnappliedOpsJournal({ scope: "g-remote-2", storage, owner: "load-3" }).record([
+      textOp("another graph"),
+    ]);
+    storage.setItem(`${QUARANTINE_KEY_PREFIX}old:00000000`, "{}");
+
+    expect(discardScopeBatches(storage, "g-remote")).toBe(2);
+    expect([...storage.map.keys()].some((k) => k.includes("g-remote:"))).toBe(false);
+    expect(storage.length).toBe(3);
   });
 });
 

@@ -14,6 +14,7 @@
 import { createSignal, type JSX, Show } from "solid-js";
 import { describeError } from "../data/api-client.js";
 import { rememberActiveGraphInstanceId } from "../data/bootstrap.js";
+import { discardActiveReplica } from "../data/discard-replica.js";
 import "./connect.css";
 
 export function GraphMismatchView(props: { graphId: string }): JSX.Element {
@@ -24,12 +25,9 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      // Clear OPFS wholesale rather than picking out SQLite's files: the `opfs-sahpool` VFS spreads
-      // one database over a pool of opaquely named files, so there is nothing safe to select.
-      const root = await navigator.storage.getDirectory();
-      for await (const name of (root as unknown as { keys(): AsyncIterable<string> }).keys()) {
-        await root.removeEntry(name, { recursive: true }).catch(() => undefined);
-      }
+      // This graph's replica only (B-631). Clearing OPFS wholesale, as this once did, deleted every
+      // graph's replica on the device — the pool is shared — local-only notes included.
+      await discardActiveReplica();
       rememberActiveGraphInstanceId(props.graphId);
       location.reload();
     } catch (err) {
@@ -66,9 +64,10 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
       </Show>
 
       <p class="connect-why">
-        This deletes this device's local copy and downloads the server's graph fresh. Anything typed
-        on this device that was never synced to a server will be lost. If that might matter, point
-        the server back at the old data directory first and let it sync.
+        This deletes this device's local copy of this graph and downloads the server's graph fresh.
+        Other graphs on this device are not touched. Anything typed into this graph on this device
+        that was never synced to a server will be lost. If that might matter, point the server back
+        at the old data directory first and let it sync.
       </p>
     </main>
   );

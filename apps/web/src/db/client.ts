@@ -12,12 +12,15 @@ import { replicaScope, soleLegacyStateOwner } from "../data/bootstrap.js";
 import { platform } from "../platform/index.js";
 import type { SyncStatus } from "../sync/types.js";
 import {
+  type CheckpointScheduler,
   createCheckpointScheduler,
+  deleteCheckpoint,
   migrateUnscopedCheckpoint,
   readCheckpoint,
 } from "./capacitor-checkpoint.js";
 import {
   createUnappliedOpsJournal,
+  discardScopeBatches,
   holdOwnerLock,
   migrateUnscopedBatches,
   type OwnerLocks,
@@ -66,6 +69,7 @@ holdOwnerLock(browserLocks(), pageLoadOwner);
  */
 let unapplied: UnappliedOpsJournal | undefined;
 let scope: string | undefined;
+let checkpoints: CheckpointScheduler | undefined;
 
 /** The replica this page load opened, as `data/bootstrap.ts#replicaScope` (set by `initDb`). For
  * main-thread state that belongs to one graph, like the journal draft copy (B-619). */
@@ -118,6 +122,7 @@ export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
     }
     if (platform.name === "capacitor") {
       const scheduler = createCheckpointScheduler(() => api.exportSnapshot(), replicaScopeNow);
+      checkpoints = scheduler;
       onChange(() => scheduler.onChange());
       platform.lifecycle.on("pause", () => scheduler.onPause());
     }
@@ -176,6 +181,26 @@ export async function applyOps(ops: Op[]): Promise<ApplyOpsResult> {
     () => {},
   );
   return result;
+}
+
+/**
+ * B-631: "Discard the local copy and re-sync" — delete the replica THIS page load opened and the
+ * client state kept for it here (its B-247 batches, its native checkpoint), and nothing else on the
+ * device: every other graph's replica, local-only ones included, stays exactly as it was. The
+ * caller also clears the journal-draft and shelf copies (`data/discard-replica.ts`) and reloads.
+ * Rejects, having deleted nothing, when this page load does not own its replica's file.
+ */
+export async function discardThisReplica(): Promise<void> {
+  const worker = await readyWorker();
+  // Before the worker closes the file, so an export racing the close cannot write a checkpoint
+  // of it afterwards.
+  checkpoints?.stop();
+  await worker.discardReplica();
+  // Nothing more is recorded for a replica that no longer exists.
+  unapplied = undefined;
+  const thisScope = currentReplicaScope();
+  discardScopeBatches(browserStorage(), thisScope);
+  if (platform.name === "capacitor") await deleteCheckpoint(thisScope);
 }
 
 /** Mint an HLC from the worker's single clock (see `worker-api.ts#nextHlc`). */

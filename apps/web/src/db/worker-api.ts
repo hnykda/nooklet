@@ -131,4 +131,12 @@ export interface WorkerApi {
    * `@capacitor/filesystem` — `undefined` when there is nothing durable to export (`"memory"`/
    * `"follower"` storage). Reads live state on every call; not cached here or in the worker. */
   exportSnapshot(): Promise<Uint8Array | undefined>;
+
+  /**
+   * B-631: stop syncing, close this worker's replica and delete its file from the OPFS pool — that
+   * ONE file; every other graph's replica on the device is left alone. Rejects, deleting nothing,
+   * when this worker does not own a file (`"memory"`/`"follower"`), with a message fit to show.
+   * The worker is unusable afterwards; the caller reloads. Resolves to the pool names removed.
+   */
+  discardReplica(): Promise<string[]>;
 }
