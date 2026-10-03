@@ -853,7 +853,9 @@ saying why (§9.14 notes why this is a soft-fail, not an error).
 
 **Description**: "Lists blocks that reference a page or block: `[[page]]` links, `#tags`,
 `((block refs))`, and — if `include_unlinked` — plain-text mentions of the page's name that are
-not already a link. Each item has the referencing block's id, page, and text. For a page it also
+not already a link. Each item has the referencing block's id, page, and text, and `direct: true`
+when the block links the target itself rather than only sitting under a block that does
+(`linked_direct_total` counts those — the number Logseq shows as N Linked References). For a page it also
 lists `tagged_pages`: the pages that carry it as a page-level tag — a `tags::` page property naming
 it (source `property`), or every journal day under `Journal` (source `intrinsic`) — with
 `tagged_total`, so asking about `Person` or `Journal` returns its members. Linked references and
@@ -872,8 +874,12 @@ export const pageBacklinks = defineOp({
   }).strict(),
   output: z.object({
     target: z.string(),
-    linked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string() })),
+    // `direct`: the block's own refs name the target (or an alias); false = listed only because an
+    // ancestor's do (path_ref, rule 12). Block targets: always true.
+    linked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string(), updated_at: z.string(),
+      direct: z.boolean() })),
     linked_total: z.number().int(),          // across every page of results
+    linked_direct_total: z.number().int(),   // the direct ones: Logseq's heading count (refs-count)
     unlinked: z.array(z.object({ id: BlockId, page: z.string(), text: z.string() })).default([]),
     unlinked_truncated: z.boolean().default(false),
     // ADR 017 (B-111): pages carrying the target as a page-level tag, from `page_tag`. Matched on
@@ -903,9 +909,10 @@ export const pageBacklinks = defineOp({
 {
   "target": "Projects/Aurora",
   "linked": [
-    { "id": "1k7f3qc4d8ktv6", "page": "2026-09-10", "text": "Reviewed [[Projects/Aurora]] launch checklist with the team", "updated_at": "2026-09-10T08:00:00.000Z" }
+    { "id": "1k7f3qc4d8ktv6", "page": "2026-09-10", "text": "Reviewed [[Projects/Aurora]] launch checklist with the team", "updated_at": "2026-09-10T08:00:00.000Z", "direct": true }
   ],
   "linked_total": 1,
+  "linked_direct_total": 1,
   "unlinked": [
     { "id": "1k7f3qc59mgxr4", "page": "Vendors/Acme Supply", "text": "Quoted pricing for the Aurora launch" }
   ],

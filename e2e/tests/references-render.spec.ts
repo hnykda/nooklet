@@ -46,9 +46,10 @@ test("a referencing block renders nested and formatted under a breadcrumb; a chi
 
   await page.goto(pagePath(target));
   const linked = page.locator(".linked-references");
-  // The heading counts blocks, as `page.backlinks` does: the linking block and its five descendants.
-  await expect(linked.locator(".references-toggle .reference-count")).toHaveText("6");
-  // …but they are ONE reference on screen, not six flat lines.
+  // The heading counts what Logseq counts (refs-count): blocks that link the page themselves. The
+  // linking block's five descendants are linked references too (path_ref), but only inherit it.
+  await expect(linked.locator(".references-toggle .reference-count")).toHaveText("1");
+  // …and they are ONE reference on screen, not six flat lines.
   const item = linked.locator(".reference-item");
   await expect(item).toHaveCount(1);
 
@@ -118,7 +119,8 @@ test("with nested references, the filter, the sort and Link all still work", asy
   const linked = page.locator(".linked-references");
   const count = linked.locator(".references-toggle .reference-count");
   const groups = linked.locator(".reference-group-page");
-  await expect(count).toHaveText("4");
+  // Four linked blocks, three of which link the page themselves ("child mentions" only inherits).
+  await expect(count).toHaveText("3");
   // "child mentions" sits inside "about": three rows, not four.
   await expect(linked.locator(".reference-item")).toHaveCount(3);
   await expect(groups).toHaveText(["RRF Beta", "RRF Alpha"]);
@@ -135,7 +137,8 @@ test("with nested references, the filter, the sort and Link all still work", asy
   const popover = page.getByRole("dialog", { name: "Filter linked references" });
   const other = popover.locator(".references-filter-option", { hasText: "RRF Other" });
   await other.click();
-  await expect(count).toHaveText("1");
+  // Only the child passes, and Logseq counts the linking block it sits in: 1 of 3.
+  await expect(count).toHaveText("1 of 3");
   const only = linked.locator(".reference-item");
   await expect(only).toHaveCount(1);
   await expect(only.locator(".reference-breadcrumb-item")).toHaveText(["about RRF Target"]);
@@ -143,14 +146,14 @@ test("with nested references, the filter, the sort and Link all still work", asy
   // Exclude it: the other three blocks, three rows — and "about" still shows its real child, since
   // a reference renders the block's subtree as it is, not a filtered one.
   await other.click();
-  await expect(count).toHaveText("3");
+  await expect(count).toHaveText("3 of 3");
   await expect(linked.locator(".reference-item")).toHaveCount(3);
   await expect(
     linked.locator(".reference-item", { hasText: "about" }).locator(".vr-embed-item"),
   ).toHaveCount(2);
   await other.click();
   await page.keyboard.press("Escape");
-  await expect(count).toHaveText("4");
+  await expect(count).toHaveText("3");
   await expect(linked.locator(".reference-item")).toHaveCount(3);
 
   // Unlinked: the mention renders with its child, and Link all links it.
@@ -164,8 +167,8 @@ test("with nested references, the filter, the sort and Link all still work", asy
   await unlinked.getByRole("button", { name: "Link all" }).click();
   await expect(page.locator(".references-status")).toContainText("Linked 1 mention(s)");
   await expect(page.locator(".unlinked-references")).toHaveCount(0);
-  // Now linked: the mention and its child are two more blocks, one more row.
-  await expect(count).toHaveText("6");
+  // Now linked: the mention and its child are two more blocks, one more direct link, one more row.
+  await expect(count).toHaveText("4");
   await expect(linked.locator(".reference-item")).toHaveCount(4);
   await expect(
     linked.locator(".reference-item", { hasText: "nested plain child" }).locator(".vr-embed-item"),
@@ -173,7 +176,7 @@ test("with nested references, the filter, the sort and Link all still work", asy
 
   await page.locator(".references-status").getByRole("button", { name: "Undo" }).click();
   await expect(page.locator(".references-status")).toContainText("Put 1 mention(s) back");
-  await expect(count).toHaveText("4");
+  await expect(count).toHaveText("3");
   await expect(linked.locator(".reference-item")).toHaveCount(3);
 });
 

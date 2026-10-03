@@ -49,13 +49,14 @@ test("the filter popover includes, then excludes, and the count follows", async 
   const aurora = popover.locator(".references-filter-option", { hasText: "Filt Aurora" });
   await aurora.click();
   await expect(aurora).toHaveAttribute("data-state", "include");
-  await expect(section.locator(".references-toggle .reference-count")).toHaveText("1");
+  // Filtered, the heading reads as Logseq's does: "F of T" (refs-count).
+  await expect(section.locator(".references-toggle .reference-count")).toHaveText("1 of 3");
   await expect(groupNames(page)).toHaveText(["Filt Alpha"]);
 
   // Exclude: everything but that block.
   await aurora.click();
   await expect(aurora).toHaveAttribute("data-state", "exclude");
-  await expect(section.locator(".references-toggle .reference-count")).toHaveText("2");
+  await expect(section.locator(".references-toggle .reference-count")).toHaveText("2 of 3");
   await expect(groupNames(page)).toHaveCount(2);
   await expect(groupNames(page)).not.toContainText(["Filt Alpha"]);
 
@@ -71,7 +72,7 @@ test("the filter popover includes, then excludes, and the count follows", async 
 
   // Remembered per page across a reload (localStorage, this device only).
   await page.reload();
-  await expect(linked(page).locator(".references-toggle .reference-count")).toHaveText("2");
+  await expect(linked(page).locator(".references-toggle .reference-count")).toHaveText("2 of 3");
   await expect(linked(page).locator(".references-chip", { hasText: "Filt Aurora" })).toBeVisible();
 
   // The chip's own click removes it.
@@ -89,7 +90,7 @@ test("a filter that matches nothing says so instead of hiding the section", asyn
   // Aurora AND filtdone: no single block mentions both.
   await popover.locator(".references-filter-option", { hasText: "Filt Aurora" }).click();
   await popover.locator(".references-filter-option", { hasText: "filtdone" }).click();
-  await expect(section.locator(".references-toggle .reference-count")).toHaveText("0");
+  await expect(section.locator(".references-toggle .reference-count")).toHaveText("0 of 3");
   await expect(section.locator(".references-empty")).toContainText("No references match");
 
   await popover.getByRole("button", { name: "Clear filter" }).click();

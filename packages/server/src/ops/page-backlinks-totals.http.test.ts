@@ -59,3 +59,55 @@ describe("page.backlinks totals", () => {
     expect(json.unlinked_truncated).toBe(false);
   });
 });
+
+/**
+ * refs-count (owner decision 2026-10-03): the heading counts what Logseq counts — blocks whose own
+ * refs name the page — so each linked item says whether it is one, and `linked_direct_total`
+ * counts them. Children of a linking block are still linked references (path_ref), just not direct.
+ */
+describe("page.backlinks direct references", () => {
+  beforeEach(async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Direct Target",
+      markdown: "- alias:: Direct Alias",
+    });
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Direct Source",
+      markdown: [
+        "- parent links [[Direct Target]]",
+        "  - child only inherits",
+        "    - grandchild #[[Direct Target]] again",
+        "- via the alias [[Direct Alias]]",
+        "  - under the alias link",
+      ].join("\n"),
+    });
+  });
+
+  it("marks blocks that link the page themselves, aliases included, and counts them", async () => {
+    const { json } = await post(s.app, "/api/v1/page.backlinks", s.writeToken, {
+      target: "Direct Target",
+    });
+    const byText = new Map(
+      (json.linked as Array<{ text: string; direct: boolean }>).map((r) => [r.text, r.direct]),
+    );
+    expect(json.linked_total).toBe(5);
+    expect(byText.get("parent links [[Direct Target]]")).toBe(true);
+    expect(byText.get("child only inherits")).toBe(false);
+    expect(byText.get("grandchild #[[Direct Target]] again")).toBe(true);
+    expect(byText.get("via the alias [[Direct Alias]]")).toBe(true);
+    expect(byText.get("under the alias link")).toBe(false);
+    expect(json.linked_direct_total).toBe(3);
+  });
+
+  it("counts direct references for a page that does not exist yet", async () => {
+    await post(s.app, "/api/v1/page.create", s.writeToken, {
+      name: "Unmade Source",
+      markdown: "- see [[Not Made Yet]]\n  - nested under it",
+    });
+    const { json } = await post(s.app, "/api/v1/page.backlinks", s.writeToken, {
+      target: "Not Made Yet",
+    });
+    expect(json.linked_total).toBe(2);
+    expect(json.linked_direct_total).toBe(1);
+  });
+});

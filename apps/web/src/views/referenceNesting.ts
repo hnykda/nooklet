@@ -109,3 +109,35 @@ export function breadcrumbLabel(content: string): string {
   }
   return "(empty)";
 }
+
+/**
+ * The linked-references heading count, Logseq's way (refs-count, owner decision 2026-10-03;
+ * Logseq 0.10.9 `frontend/components/reference.cljs`, quoted in docs/progress/refs-count.md).
+ *
+ * Logseq counts the blocks that link the page THEMSELVES (`top-level-blocks`: own `:block/refs`
+ * name the page or an alias), not every block under them that inherits the link — a journal block
+ * linking `[[@Alex]]` with ten children is 1, not 11. A direct link nested under another direct
+ * link still counts; this is not the row count after folding.
+ *
+ * With a filter, Logseq filters every listed block, adds back each survivor's listed ancestors
+ * (`get-filtered-ref-blocks-with-parents`), and counts the direct ones among that: a direct block
+ * counts when it passes the filter or anything listed under it does. The filter itself is
+ * nooklet's (ADR 021, `referenceGrouping.ts#applyReferenceFilter`); only the counting is Logseq's.
+ *
+ * Without trees (not read yet, or the read failed) ancestors are unknown, so only the direct
+ * blocks that pass the filter themselves are counted — never more than Logseq would say.
+ */
+export function countDirectReferences(
+  all: readonly { id: string; direct?: boolean }[],
+  filtered: readonly { id: string; direct?: boolean }[],
+  trees: LoadedReferenceTrees | undefined,
+): number {
+  const directIds = new Set<string>();
+  for (const r of all) if (r.direct !== false) directIds.add(r.id);
+  const counted = new Set<string>();
+  for (const r of filtered) {
+    if (directIds.has(r.id)) counted.add(r.id);
+    for (const a of trees?.ancestors.get(r.id) ?? []) if (directIds.has(a)) counted.add(a);
+  }
+  return counted.size;
+}
