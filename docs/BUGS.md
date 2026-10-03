@@ -837,6 +837,23 @@ may be a real takeover race or a test timing issue.
 One run's client build breaks the other's server (`web_client_missing`); separate ports do not
 isolate them. Use separate worktrees for parallel e2e runs.
 
+### B-639 · Desktop app showed a white screen after adding the test server; fine after relaunching
+**Status:** open, cause suspected (not confirmed) · **Severity:** medium · **Found:** 2026-10-03, owner, real-device test step 6 · **Test:** none
+
+Owner: after Switch Server… → Add a server → `http://127.0.0.1:6200`, the app restarted into a
+white screen; running `pnpm desktop` again showed the app fine. No console was captured. The same
+URL rendered fine in Playwright WebKit and Chromium, with and without a service worker and with
+the desktop bridge (`__NOOKLET_DESKTOP__`) emulated exactly.
+
+Suspected cause (timing only): `nooklet serve` serves the web client live from the repo's
+`apps/web/dist`, and the owner's `pnpm ios:sync` (step 4) rebuilt that folder at 21:45–21:47,
+around when the desktop window loaded it. A build deletes the old hashed chunks and writes new
+ones; a page loaded in between gets an `index.html` whose scripts 404 → blank page. Same class as
+B-637 (concurrent e2e runs sharing `dist`). If confirmed, candidate fixes: `serve` snapshots the
+client dir at startup (or serves a versioned copy), and/or the runbook says not to build while a
+test server is serving. To confirm next time it happens: Inspect Element → Console/Network (404s on
+`/static/*.js` would confirm).
+
 ## Fixed
 
 ### B-638 · `nooklet serve --data <dir that does not exist yet>` dies at once: `ENOENT … root.token`
