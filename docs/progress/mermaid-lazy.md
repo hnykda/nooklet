@@ -19,7 +19,7 @@ Status: **done** (both parts committed). Branch: `worktree-agent-a585a35147c7628
      diagram rendered once → chunk in `lazy-chunks` cache → offline reload renders it again.
    - Negative checks run: with the rule as RegExp `/^\/static\//` the cache assertion fails; with
      the cache assertion removed too, the offline render fails. So both steps are load-bearing.
-2. (second commit) — sidecar: `packageBundledPlugins(..., { clientImportUrls })` →
+2. `05ac71e` — sidecar: `packageBundledPlugins(..., { clientImportUrls })` →
    `bundleClientEntry(..., importUrls)` resolves `mermaid` to the web build's
    `/static/mermaid.core-<hash>.js` as an external URL import. `build-sidecar.mjs` finds that chunk
    in `sidecar/web/static`, and fails the build if the packaged mermaid client.js exceeds 512 KiB.
