@@ -1,6 +1,6 @@
 # nooklet — plan and design
 
-Date: 2026-09-10 (status updated 2026-09-11). Status: all milestones implemented. Decisions are recorded in `adr/`; the reasoning behind
+Date: 2026-09-10 (status updated 2026-10-03). Status: M0–M4, M6, M7 and M12 done; M5 (mobile) partial — see §15. M2's exit criterion "replaces Logseq … on desktop and phone" is not met yet on the phone (`docs/review/2026-10-03-sweep-scope.md`). Decisions are recorded in `adr/`; the reasoning behind
 them is in `research/` (eight reports, ~350 KB, produced by parallel research agents on this
 date). This document is the readable synthesis: what we build, how, and in what order.
 
@@ -43,7 +43,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 | Properties | Typed properties (text, number, date, checkbox, page, url, list) on blocks and on pages; a properties panel; tag pages can declare a property template |
 | Search | Fuzzy page switcher (accent-insensitive), full-text search with snippets, semantic and hybrid search, "related pages/blocks" |
 | Commands | Command palette for every operation, `/` slash menu while typing, user-customizable keybindings (JSON), plugins contribute commands |
-| Sync | Self-hosted Node server; op-log sync with offline queue on every client; device pairing by link/QR |
+| Sync | Self-hosted Node server; op-log sync with offline queue on every client; device pairing by pasting a token (link/QR pairing not built as of 2026-10-03) |
 | API and MCP | One operation registry that mounts as HTTP endpoints (with OpenAPI), MCP tools (Streamable HTTP + a stdio bridge), and a typed client; scoped tokens; audit trail of agent writes |
 | Embeddings | Any Ollama embedding model (bge-m3 default: multilingual, covers Czech); server-side index kept fresh incrementally; model switch re-indexes |
 | Plugins | One package format with an optional server half and client half; commands, slash commands, hooks, block renderers, panels, routes, MCP tools, providers |
@@ -106,14 +106,15 @@ Packages (pnpm workspace):
 
 - `packages/core` — pure TypeScript, runs everywhere: data model, ids, HLC, op types,
   `applyOps` against a tiny SQL driver interface, outline parser/serializer, inline markdown
-  tokenizer, reference extraction, journal dates, page-name rules. Exists today (46 tests).
+  tokenizer, reference extraction, journal dates, page-name rules. 423 tests as of 2026-10-03.
 - `packages/server` — Node: `node:sqlite` store, sync endpoints, operation registry, HTTP API,
   OpenAPI, MCP server, importer/mirror, embeddings worker, assets, auth tokens, plugin host, CLI
   (`nooklet serve`, `nooklet import`, `nooklet export`, `nooklet mcp --stdio`, `nooklet token`).
 - `packages/plugin-api` — the public types plugins compile against (`nooklet.d.ts` in spirit).
 - `apps/web` — the client (Vite + SolidJS + CodeMirror 6), PWA, later wrapped by Capacitor.
-- `plugins/*` — built-in plugins that dogfood the plugin API (Ollama provider, mermaid,
-  tweet/video embeds, Logseq importer).
+- `plugins/*` — built-in plugins that dogfood the plugin API. Shipped: mermaid, word-count,
+  daily-summary. (Planned here originally: Ollama provider, tweet/video embeds, Logseq importer —
+  the provider and importer ended up in the server, embeds were not built.)
 
 ## 4. Data model
 
@@ -157,12 +158,12 @@ devices, the change audit, and the mirror bookkeeping. Derived tables (`ref`, `p
 Markdown mirror (server side, opt-in, on by default for a fresh install):
 
 ```
-$DATA/
-  nooklet.sqlite
+$DATA/graphs/<graphId>/        # one directory per graph since ADR 025
+  graph.sqlite
   pages/<Page Name>.md          # our clean outline format, Logseq/Obsidian readable
   journals/2026_09_10.md
   assets/<id>.<ext>
-  plugins/<id>/...
+$DATA/plugins/<id>/...
 ```
 
 Our outline format: page properties as `key:: value` lines at the top; one `- ` bullet per
@@ -191,7 +192,7 @@ server as the single validator of tree structure with corrective ops, `push/pull
 endpoints plus a WebSocket poke, and a `rebuild()` that replays the log to prove the state
 tables are a pure function of it. Every client keeps pending ops in the same transaction as its
 local state change. Assets are not in the op log: the server stores them, clients fetch on view
-and cache. v1.1 adds a 3-way text merge for the rare same-block collision; per-block text CRDTs
+and cache. A 3-way text merge for the rare same-block collision shipped in M6 (planned as v1.1); per-block text CRDTs
 remain a documented, migration-free upgrade path if live co-editing is ever wanted.
 
 ## 7. Editor (ADR 006)
@@ -226,8 +227,8 @@ Properties:
   checkbox, page, url, list). Definitions sync like any page. Unknown keys default to text.
 - Blocks and pages both carry properties; the page header shows a properties panel; the block
   editor shows properties as chips under the block with an inline editor per type.
-- A tag page (kind `tag`) may declare `template::` listing property keys; tagging a block or page
-  offers those properties. This covers most of what Tana calls supertags with Logseq syntax.
+- *Not built (2026-10-03):* a tag page (kind `tag`) declaring property keys that tagging a block
+  or page offers. Note `template::` now means block templates (ADR 019), so this needs another key. This covers most of what Tana calls supertags with Logseq syntax.
 - Special keys: `alias::` (list of pages), `tags::` (list), `scheduled::`/`deadline::` (date with optional time and repeater),
   `collapsed`, `marker`, `priority`, `list:: number` are stored in dedicated columns.
 
@@ -344,7 +345,7 @@ Namespaces:
   every operation (navigation, editing, tasks, properties, search, sync, settings).
 - Keybindings are user-editable JSON (`keybindings.json`, synced as a setting): `{ key,
   command, when }`, with a settings UI that lists all commands, shows conflicts, and records
-  chords. Mobile shows the same commands in the keyboard toolbar and long-press menus.
+  chords (*not built as of 2026-10-03*: user keybinding rows are not loaded and there is no such UI). Mobile shows the same commands in the keyboard toolbar and long-press menus.
 - The palette (Cmd/Ctrl+K) searches commands and pages; the slash menu shows commands whose
   `when` includes the editor context, plus inserts (today's date, page ref, task states, headings,
   code block, embed, image, table, property).
@@ -397,7 +398,7 @@ Status is tracked in the first column. Effort assumed one developer directing co
 | M4 | Plugins | **done** | `@nooklet/plugin-api` package and docs (done); loader for both halves, extension points, built-ins as plugins |
 | M5 | Mobile polish | **partial** | Keyboard toolbar, gestures and the quick-capture route are done in the PWA. iOS Capacitor shell (`apps/web/ios/`, committed): builds with Xcode 26.6 and runs on the iOS 26.5 Simulator (2026-09-14) — boots, "Just this device" local-only mode works (B-563/B-569), a server address can be entered (B-561 session), deep-link scheme registered, `pnpm ios:sync`/`ios:open`. Local-only storage durability: `persist()`, reopen-on-resume, native-file checkpoint (B-573, proposal 004). **Not verified**: any physical device, any `@capacitor/*` plugin call reaching its native bridge, a completed connect to a real server from the Simulator, a real background/resume or eviction/restore cycle. No Android project; icons, signing and privacy manifest untouched. macOS is the shipping target (ADR 016) and phone is a stated later bet |
 | M6 | Hardening | **done** | Multi-device simulation tests, rebuild parity, 3-way text merge, op GC, backups/restore, docs |
-| M7 | What Logseq users use most and ask for most (research/13 §4.2) | **done** (2026-09-12) | All ten landed, each with tests: 1. ```` ```query ```` fence (ADR 011 amended; `core/query.ts`, `/query`) · 2. templates: `/template`, journal template, `<% today %>` (ADR 019) · 3. turn block into page, move block to page, merge pages (ADR 020; ops + MCP + context menu) · 4. find and replace (`graph.replace`, `/replace` view) · 5. linked-reference filters and sort, per device (ADR 021) · 6. appearance: font size, width, custom CSS · 7. page outline card in the shelf · 8. trash/restore, page history with undo and restore-this-version (ADR 022; no expiry) · 9. highlight.js and KaTeX behind lazy seams (research/14) · 10. orphan-asset GC (`gc --asset-grace`) and "link all unlinked references" (`mentions.link`). Not done, logged: B-85 cross-page `block.move` strands descendants (core), B-86 `[[Page|label]]` refs, B-88 editing row outlives its block, B-94 query `today` after midnight, B-108 template insert not in Cmd+Z. |
+| M7 | What Logseq users use most and ask for most (research/13 §4.2) | **done** (2026-09-12) | All ten landed, each with tests: 1. ```` ```query ```` fence (ADR 011 amended; `core/query.ts`, `/query`) · 2. templates: `/template`, journal template, `<% today %>` (ADR 019) · 3. turn block into page, move block to page, merge pages (ADR 020; ops + MCP + context menu) · 4. find and replace (`graph.replace`, `/replace` view) · 5. linked-reference filters and sort, per device (ADR 021) · 6. appearance: font size, width, custom CSS · 7. page outline card in the shelf · 8. trash/restore, page history with undo and restore-this-version (ADR 022; no expiry) · 9. highlight.js and KaTeX behind lazy seams (research/14) · 10. orphan-asset GC (`gc --asset-grace`) and "link all unlinked references" (`mentions.link`). Logged at the time and since fixed: B-85, B-86, B-88, B-94, B-108. |
 | M12 | Multi-graph hosting; desktop and phone as clients (ADR 025) | **done** except its M7 (2026-09-16) | Server hosts N graphs under `/g/:graphId/` with a graph registry, one-time storage migration, root token and `/graphs`; client keeps a list of graphs (OPFS/lock namespaced) with a graph switcher; desktop `desktop.json` holds a list of remote graphs plus its own sidecar, picker auto-restarts the app and re-checks an unreachable server every 3 s. Progress and evidence: `docs/progress/multi-graph-hosting.md`. Open: ADR 025's M7 (confirm the switcher on the iOS Simulator), a human click-through of the desktop picker (never done), B-585, B-587. (M8–M11 were QA/fix runs, recorded in `docs/progress/coordinator.md`, not scope.) |
 
 Milestone exit criteria: M1 imports the user's real graph and answers MCP queries from Claude
