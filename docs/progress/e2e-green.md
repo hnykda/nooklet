@@ -121,3 +121,18 @@ seedPage reason); repeat 0 is green. Not fixed — logged below.
   `search-local-only.spec.ts` since `c58ede4` (red on main).
 - NEW (process): concurrent e2e runs in one checkout share `apps/web/dist`. One run's build breaks
   the other's server (`web_client_missing`), and separate ports do not isolate them.
+
+## Final full runs (merged tree `96de5e4` = main `885543b` + this branch; 742 tests, Chromium+WebKit)
+
+- Run C: **739 passed, 1 failed, 2 skipped** (24.2 m). Failed: `sw-update.spec.ts:86` (B-537's
+  test) at its last poll: `{controlled: true, installing: false, waiting: true}` for 60 s after
+  the reload. It passed in every other full run (run 1, the `885543b` run, run D) and 10/10 alone
+  (`--repeat-each 5`). That makes it a NEW intermittent failure. Not investigated: the test's own
+  comment says the reloaded app registers `/sw.js` again, which is one more update, so a worker
+  stuck in `waiting` there may be a real takeover race or a test timing issue. Unknown.
+- Run D: **740 passed, 0 failed, 2 skipped** (19.7 m).
+- The 2 skips are the same in every run.
+
+To fold in: NEW (low, flaky): `sw-update.spec.ts` "a newer worker that takes the page over before
+the page registered its own still reloads it (B-537)" failed 1 time in 4 full runs, with a worker
+left `waiting`. Open, not investigated.
