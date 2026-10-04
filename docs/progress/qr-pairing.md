@@ -129,8 +129,8 @@ instructions when the app is not installed.
 - `pnpm -r test`: core 25 files / 479, plugin-api 3 / 17, server 102 / 833, web 185 / 1632 — all pass.
 - `pnpm -r typecheck`: clean. `pnpm exec biome check . --diagnostic-level=error`: clean.
 - e2e on 6470 (`qr-pairing remote-device graph-switcher insecure-context appearance`, chromium):
-  13 passed. Full e2e: see the line below.
-- `node tools/leak-check.mjs --tree`: see the line below.
+  13 passed. Full e2e (port 6472, chromium + webkit projects): 789 passed, 2 skipped, 0 failed (23.5 min).
+- `node tools/leak-check.mjs --tree`: clean.
 - Simulator (iOS 26.5): both XCUITest flows passed (screenshots in `tools/probes/pairing-link-ui/`).
 
 ## Owner's physical-phone test
