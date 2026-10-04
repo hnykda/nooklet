@@ -1,0 +1,138 @@
+# Homebrew tap: points hnykda/homebrew-nooklet's cask at a published release.
+#
+#   workflow_call       from release.yml, right after its `release` job published the release
+#   release: published  a human published a release by hand (the RELEASE_KEEP_DRAFT path)
+#   workflow_dispatch   re-run for a tag by hand (Actions → Homebrew tap → Run workflow)
+#
+# Why three triggers: release.yml publishes with GITHUB_TOKEN, and events caused by GITHUB_TOKEN
+# never start other workflows (docs.github.com, "Triggering a workflow from a workflow"), so
+# `release: published` alone would never fire for an automatic release. The paths cannot both run
+# for one release: release.yml calls this only when it published, and a human publishing a draft
+# is the only thing that fires `release: published`.
+#
+# What it does: copies packaging/homebrew/ from the TAGGED commit into the tap, stamps the version
+# and both .dmg checksums from the release's own SHA256SUMS (tools/ci/homebrew-cask.mjs), and
+# commits to the tap's default branch. Final releases only; never a prerelease, never an older
+# version than the tap already has.
+#
+# Secret: HOMEBREW_TAP_TOKEN, a fine-grained PAT with Contents: read and write on
+# hnykda/homebrew-nooklet ONLY (RELEASING.md, "Homebrew tap"). Without it the job says so and
+# skips; the release itself is unaffected.
+#
+# Safety: no pull_request trigger, and the job runs only in hnykda/nooklet, so a fork never runs it
+# or sees the secret. This repository's own token is read-only here. The tag reaches shell only
+# through env and is checked against vX.Y.Z before use.
+name: Homebrew tap
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.1.0
+        required: true
+        type: string
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: false
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.1.0 (must be published)
+        required: true
+        type: string
+
+permissions: {}
+
+# One tap update at a time, in order; two releases racing would otherwise push over each other.
+concurrency:
+  group: homebrew-tap
+  cancel-in-progress: false
+
+env:
+  TAP_REPO: hnykda/homebrew-nooklet
+
+jobs:
+  cask:
+    name: Update the cask
+    if: github.repository == 'hnykda/nooklet'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - id: v
+        name: Resolve the release
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          HAS_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::not a release tag: $TAG"
+            exit 1
+          fi
+          if [[ "$TAG" == *-* ]]; then
+            echo "::notice::$TAG is a prerelease; the cask follows final releases only"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif [ "$HAS_TOKEN" != true ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set; the tap was not updated (RELEASING.md, \"Homebrew tap\")"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - if: steps.v.outputs.skip == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.v.outputs.tag }}
+          path: nooklet
+          persist-credentials: false
+      - if: steps.v.outputs.skip == 'false'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - if: steps.v.outputs.skip == 'false'
+        name: Fetch SHA256SUMS from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+      - if: steps.v.outputs.skip == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - if: steps.v.outputs.skip == 'false'
+        name: Stamp, commit and push
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          cask=tap/Casks/nooklet.rb
+          # Re-running an old tag (or a patch on an older line) must not move users backwards.
+          if [ -f "$cask" ]; then
+            current=$(sed -n 's/^  version "\(.*\)"$/\1/p' "$cask")
+            newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n1)
+            if [ -n "$current" ] && [ "$current" != "$VERSION" ] && [ "$newest" = "$current" ]; then
+              echo "::notice::the tap already has $current, newer than $VERSION; left unchanged"
+              exit 0
+            fi
+          fi
+          # The tap mirrors packaging/homebrew/ at this tag; files removed there are not removed
+          # from the tap (rare enough to do by hand).
+          cp -R nooklet/packaging/homebrew/. tap/
+          node nooklet/tools/ci/homebrew-cask.mjs "$VERSION" "$RUNNER_TEMP/SHA256SUMS" \
+            nooklet/packaging/homebrew/Casks/nooklet.rb "$cask"
+          cd tap
+          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "the tap already has nooklet $VERSION"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "nooklet $VERSION"
+          git push origin HEAD
+          git show --stat HEAD
