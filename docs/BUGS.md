@@ -892,25 +892,10 @@ Open by design; with no rate limit, a public server's asset links can be brute-f
 
 2026-10-04: entropy measured (25 random bits + ms time) — not practically guessable blind; the real gap is that a revoked device keeps every asset URL it has seen. Recommendation H5: short-lived signed URLs.
 
-### B-661 · A tap on the task marker does nothing in Chromium touch emulation
-**Status:** open · **Severity:** low (iOS-only app today) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
-
-Its `onPointerDown preventDefault` swallows the click (probe `tools/probes/phone-ui/marker-tap-chromium.spec.ts`). iOS is fine (Simulator). Would affect Chromium on Android, and probably the R61 toolbar buttons (same pattern).
-
-### B-662 · iOS: Return in an empty day's draft inserts a newline instead of creating a block
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, phone-ui agent · **Test:** none
-
-Simulator event log: `keydown Enter` then `beforeinput insertLineBreak`, draft `"ab\n"`; the keydown `preventDefault` does not stop it on iOS. Unverified on a physical iPhone.
-
 ### B-663 · `tasks.spec.ts` Mod+Enter tests are order-dependent since empty graphs default to `now`
 **Status:** open · **Severity:** low (test) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
 
 Run alone (fresh server, empty graph) they expect TODO and get LATER (`7641c43`); in the full suite earlier specs leave TODO markers so the workflow is inferred `todo`.
-
-### B-664 · After the toolbar's hide-keyboard button the toolbar stays at the bottom, scrolled sideways
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, phone-ui agent · **Test:** none
-
-Phone UI agent, Simulator.
 
 ### B-666 · A page rename leaves its own blocks' `path_ref` under the old key
 **Status:** open · **Severity:** low · **Found:** 2026-10-04 · **Test:** none
@@ -960,35 +945,10 @@ Owner: like B-648 (Properties), the viewport grows beyond the screen width after
 `spawnSync("pnpm")` without a shell (pnpm.cmd), esbuild.exe looked up under `bin/`, zip extracted
 with `unzip`. Fixed by reading; no Windows machine.
 
-### B-699 · The pairing confirm screen shows the server address twice
-**Status:** open (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
-
-Read-only box and the editable field, for token and code links (pre-existing from B-603).
-
 ### B-700 · Behind a same-machine proxy, one client can lock out pairing for a minute
 **Status:** open (2026-10-04, qr-pairing) · **Severity:** low (security) · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
 
 Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
-
-### B-705 · iOS zooms in when focusing the add-graph server URL field and the page stays too wide
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
-
-Same mechanism as B-648: iOS auto-zooms on focusing a form control whose font-size is under 16px
-and never zooms back, leaving the viewport wider than the screen. B-648's fix covered specific
-fields (properties, search, task filter); every new form (here the graph switcher's server URL)
-reintroduces it. Owner: "try to fix this globally".
-
-### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
-**Status:** open · **Severity:** medium (blocked the owner pairing a phone) · **Found:** 2026-10-04, owner adding `alpha` on the iPhone · **Test:** none yet
-
-The owner copied a device token with a trailing `.` (it followed the token in a chat message). The
-app sent it as is; the server answered 401 and the connect screen said "That token was rejected.
-Check it was copied whole, and not revoked." — while the real token was valid (its `last used` never
-moved, confirmed on the server). Every token has a fixed shape (`nk_` + hex, see
-`packages/server/src/auth/tokens.ts`; root `nkroot_`). Fix: strip surrounding whitespace, quotes,
-backticks and trailing punctuation from a pasted token, and if what remains does not match the
-shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
-with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
 
 ### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
 **Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
@@ -1113,6 +1073,58 @@ B-712's "export first" can only point at per-page Export as markdown and promote
 `removeGraph` drops the list entry only; the OPFS file `/nooklet-<id>.sqlite3` and its journal/draft keys stay, unreachable: a storage leak.
 
 ## Fixed
+
+### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `token-input.test.ts`, `GraphSwitcher.test.tsx` "B-706: …" ×2
+
+The owner copied a device token with a trailing `.` (it followed the token in a chat message). The
+app sent it as is; the server answered 401 and the connect screen said "That token was rejected.
+Check it was copied whole, and not revoked." — while the real token was valid (its `last used` never
+moved, confirmed on the server). Every token has a fixed shape (`nk_` + hex, see
+`packages/server/src/auth/tokens.ts`; root `nkroot_`). Fix: strip surrounding whitespace, quotes,
+backticks and trailing punctuation from a pasted token, and if what remains does not match the
+shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
+with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
+
+**Fix (phone-input):** `data/token-input.ts`: normalise (whitespace, quotes, backticks, trailing punctuation) and check the shape (`nk_`/`vrt_` + 48 hex = 51; `nkroot_` + 48 hex = 55) before any request; a root token in a device field (and the reverse) is named. **Test:** `token-input.test.ts`, `GraphSwitcher.test.tsx` "B-706: …" ×2; Simulator: token typed with a trailing `.` connects (server `last used`).
+
+### B-705 · iOS zooms in when focusing the add-graph server URL field and the page stays too wide
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `phone-fields.spec.ts` (every form
+
+Same mechanism as B-648: iOS auto-zooms on focusing a form control whose font-size is under 16px
+and never zooms back, leaving the viewport wider than the screen. B-648's fix covered specific
+fields (properties, search, task filter); every new form (here the graph switcher's server URL)
+reintroduces it. Owner: "try to fix this globally".
+
+**Fix (phone-input):** One `(pointer: coarse)` rule, `!important`, in `shell.css`; B-648's per-field rules removed; the iOS app also gets `maximum-scale=1` (pinch is already off in Capacitor's WKWebView; not on the web, where Android Chrome would lose pinch-zoom). **Test:** `phone-fields.spec.ts` (every form; focus keeps scale 1); `viewport-meta.test.ts`; Simulator `8-b705-*`, `9-b705-*`.
+
+### B-699 · The pairing confirm screen shows the server address twice
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `PairingLinkPrompt.test.tsx` (token and code link)
+
+Read-only box and the editable field, for token and code links (pre-existing from B-603).
+
+**Fix (phone-input):** **Test:** `PairingLinkPrompt.test.tsx` (token and code link); Simulator `10/11-b699-*`.
+
+### B-661 · A tap on the task marker does nothing in Chromium touch emulation
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** see below
+
+Its `onPointerDown preventDefault` swallows the click (probe `tools/probes/phone-ui/marker-tap-chromium.spec.ts`). iOS is fine (Simulator). Would affect Chromium on Android, and probably the R61 toolbar buttons (same pattern).
+
+**Fix (phone-input):** Focus is kept by cancelling `mousedown` (and `pointerdown` only for a mouse or pen); cancelling a touch `pointerdown` made Chromium drop the tap's `click`. Marker, bullet, collapse arrow and the R61 toolbar (all four were affected). `editor/keep-focus.ts`. **Test:** `phone-input.spec.ts` "B-661: …" ×4 with real `tap()`, Chromium + WebKit (red before in Chromium); Simulator: marker and toolbar taps keep the keyboard (`2-b661-*`). Android itself unverified (no device/emulator run).
+
+### B-664 · After the toolbar's hide-keyboard button the toolbar stays at the bottom, scrolled sideways
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `phone-input.spec.ts` "B-664: …"
+
+Phone UI agent, Simulator.
+
+**Fix (phone-input):** A blur ends nothing in `BlockTree`, so `editorFocused` stayed true. "Hide keyboard" now ends the editing session (`requestEditingEnd`) then blurs; the toolbar unmounts and comes back at its start. **Test:** `phone-input.spec.ts` "B-664: …"; Simulator `3/4/5-b664-*`.
+
+### B-662 · iOS: Return in an empty day's draft inserts a newline instead of creating a block
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** see below
+
+Simulator event log: `keydown Enter` then `beforeinput insertLineBreak`, draft `"ab\n"`; the keydown `preventDefault` does not stop it on iOS. Unverified on a physical iPhone.
+
+**Fix (phone-input):** Cause (Simulator log with `shiftKey`): iOS's soft keyboard reports its auto-capitalisation shift as `shiftKey=true`, so Return arrived as Shift+Enter — the draft's soft line break, and `block.newline` in a block (the command layer takes Enter before CodeMirror, which has the same workaround internally). The draft's keydown never ran its `preventDefault`; iOS did not ignore it. Fix: `platform/ios-enter-shift.ts` (iOS + soft keyboard up + field auto-capitalises → drop the Shift), used by the draft and the command layer; the draft also handles `beforeinput insertLineBreak`. **Test:** `phone-input.spec.ts` "B-662: the iOS soft keyboard's Return (auto-capitalisation Shift) starts a block from the draft" / "…splits a block" (red without the fix), plus the beforeinput and hardware-Enter tests; `ios-enter-shift.test.ts`; Simulator `tools/probes/phone-input/0-…before…`, `1-…fixed`. Also a block's Return on the Simulator — previously a newline in the block when shift was lit. How often shift is lit for a real thumb on a physical iPhone is unverified.
 
 ### B-742 · On the Mac app, typing shows an iOS-style autocorrect bubble under the word
 **Status:** fixed 2026-10-04 (verified with Chromium e2e for the attribute; the bubble itself not re-checked in a real desktop window) · **Test:** `e2e/tests/editor-autocorrect.spec.ts` (fails without the fix)
@@ -1390,6 +1402,8 @@ and nothing re-checks until the next input; B-646 added re-detection on `input`,
 reached for the `/` itself in the block editor.
 
 Cause addressed: trigger detection ran only on DOM events, and CodeMirror can take a typed character in after them (iOS composition, `DOMObserver.flushSoon`). Now also re-detected on every CodeMirror update that changes the text or the caret.
+
+**2026-10-04, phone-input:** confirmed on the Simulator: the menu opens on the `/` itself in a block (10 ms) and in an empty day's draft (150 ms, before keyup). Event sequences in `docs/progress/phone-input.md`. A physical iPhone with predictive text is still the owner's check.
 
 ### B-698 · `isPairPath` matched any path ending in `/pair` (pre-ship)
 **Status:** fixed (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** `apps/web/src/data/pairing.test.ts`
