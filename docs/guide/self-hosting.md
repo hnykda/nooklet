@@ -241,6 +241,9 @@ trust, not as a setup.
     pages/ journals/      the markdown mirror
     plugins/              installed plugins for this graph
     backups/              default destination of `nooklet backup`
+  graphs-retired/<id>-<UTC timestamp>/   a retired graph, whole (see below)
+  graphs-incoming/        staging for `nooklet graph replace`; empty between runs
+  serve.pid               written by a running `serve`; the graph commands check it
 ```
 
 What you must keep is `graph.sqlite` and `assets/` for each graph, plus `root.token`. The mirror is
@@ -248,7 +251,7 @@ regenerated from the database.
 
 Every CLI command except `serve` works on one graph: `--graph <id>`, default `default`. Each is a
 short-lived process that opens the same database file, safe to run while `serve` is up (except
-`restore`).
+`restore`, and `graph retire`/`replace`, which refuse to run while it is up).
 
 ## Backups and restore
 
@@ -295,6 +298,83 @@ The op log grows forever by default. `nooklet gc --dry-run` shows what `nooklet 
 ops every device has already pulled, and uploaded files nothing references for 7 days
 (`--asset-grace <days>`). A real run takes a backup first. `gc` refuses to trim while a device that
 has never synced holds a token; revoke tokens of devices you no longer use.
+
+## Retiring, restoring and replacing a graph
+
+Never move or delete `graphs/<id>/` by hand while the server runs. The server keeps each graph's
+database open, and an open file follows the folder it was moved to, so the server goes on writing
+to the moved copy. (Since B-713 it notices on the next request and lets go, but a write can still
+land in between.) Use the commands below.
+
+Retiring moves a graph out of service and deletes nothing. `graphs/<id>/` becomes
+`graphs-retired/<id>-<UTC timestamp>/`, whole: database, assets, mirror, tokens. When you are sure
+you will not need it again, delete that folder yourself.
+
+**While the server runs**, use the API with the root token (`nooklet token root`):
+
+```sh
+curl -X DELETE -H "Authorization: Bearer $ROOT_TOKEN" https://nooklet.example.ts.net/graphs/work
+# {"id":"work","retired":"work-20261004T153012Z","path":"graphs-retired/work-20261004T153012Z",
+#  "restore":"nooklet graph unretire work-20261004T153012Z"}
+```
+
+The server closes the graph's database and its open sync sockets (close code 4410) before it moves
+the folder, and `/g/work/...` answers 404 from then on. Devices that had the graph show it as
+offline. `default` is refused with a 409 unless you add `?force=true`, because the bare server
+address redirects to it. There is no MCP tool for this, on purpose: no graph token can retire a
+graph.
+
+**With the server stopped**, use the CLI:
+
+```sh
+nooklet graph retire work [--force] [--data <dir>]    # --force is needed only for "default"
+nooklet graph list --retired [--data <dir>]           # name, id, retired at, label
+nooklet graph unretire work-20261004T153012Z [--as <id>] [--data <dir>]
+```
+
+`retire` and `replace` refuse to run while a `serve` is using the data directory (they read
+`<data>/serve.pid`): stop the server, or use the API. `unretire` is safe while the server runs. If the server was killed and left the
+file behind, the commands notice that its process is gone and go ahead. A file written on another
+host, such as inside a container, always counts as live. Run the command in the same container, or
+delete the file once you have checked that no server is running.
+
+`unretire` puts the folder back as it was: same data, same tokens, same graph instance, so devices
+carry on syncing as if nothing had happened. It never overwrites a graph that exists. `--as <id>`
+restores under another id, for example to look at an old copy beside its replacement. A running
+server picks up an unretired graph on its next request; no restart is needed.
+
+### Re-importing a graph (replace)
+
+To rebuild a graph from its Logseq source, for example after an importer fix, import into a
+scratch data directory and swap the result in:
+
+```sh
+nooklet import ~/notes-graph --data /tmp/scratch      # into the scratch dir's "default"
+nooklet verify --data /tmp/scratch
+# stop the server
+nooklet graph replace work --from /tmp/scratch [--data <dir>]
+nooklet verify --graph work [--data <dir>]
+# start the server
+```
+
+`replace` copies the new graph in beside `graphs/`, copies every token row over from the old graph
+(tokens live in each graph's own database, so without this every device would need pairing
+again), keeps the old label, retires the old graph, and renames the new one into place. The scratch
+directory is left as it was. `--from` takes a scratch data dir, or a graph folder directly (one
+that contains `graph.sqlite`).
+
+**What devices see.** The replacement is a new graph instance, even with the same id, address and
+tokens. Each device that synced the old graph shows "This device holds a different graph" and
+offers **Discard the local copy and re-sync**. This is expected. The discard affects only that
+graph's copy on that device; other graphs on the device are not touched. Edits on that device that
+had not reached the server are lost with the discard. So before you replace a graph, let every
+device sync, and import from a source that already has those edits. Edits made after the scratch
+import was taken are not in the replacement, but the retired copy still holds them.
+
+To do the same by hand (as was done on a production server on 2026-10-04, before these commands
+existed): stop the server, copy the `token` rows from the old `graph.sqlite` into the new one, move
+`graphs/<id>/` to `graphs-retired/`, move the new folder to `graphs/<id>/`, fix the `id` in its
+`graph.json`, and start the server.
 
 ## Upgrades
 

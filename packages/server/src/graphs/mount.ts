@@ -21,6 +21,7 @@ import { limitBody, securityHeaders } from "../http/guards.js";
 import { serveStaticFile } from "../http/web-client.js";
 import { graphDbPath } from "./paths.js";
 import type { GraphRegistry } from "./registry.js";
+import { GraphRetireError } from "./retire.js";
 
 /** `Hono#fetch`'s own env/executionCtx parameter types, taken from its type rather than
  * re-declared as `any` — they're opaque platform bindings whose exact shape only matters to
@@ -188,6 +189,29 @@ export function createMultiGraphApp(opts: CreateMultiGraphAppOptions): Hono {
       { id: handle.id, label: label ?? id, token: created.token, graphId: handle.config.graphId },
       201,
     );
+  });
+  // B-713: retire a graph while the server runs. The registry closes the graph's sockets (4410)
+  // and database before its folder moves to `graphs-retired/`; nothing is deleted. Root token
+  // only, like the rest of `/graphs`, and never an MCP tool: an agent holding a graph token must
+  // not be able to make a graph disappear.
+  graphs.delete("/:id", async (c) => {
+    const id = c.req.param("id");
+    const force = c.req.query("force") === "true";
+    try {
+      const r = await registry.retire(id, { force });
+      return c.json({
+        id: r.id,
+        retired: r.retiredName,
+        path: `graphs-retired/${r.retiredName}`,
+        restore: `nooklet graph unretire ${r.retiredName}`,
+      });
+    } catch (err) {
+      if (err instanceof GraphRetireError) {
+        const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : 400;
+        return c.json(errorJson(err.code, err.message), status);
+      }
+      throw err;
+    }
   });
   app.route("/graphs", graphs);
 

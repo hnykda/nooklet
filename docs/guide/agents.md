@@ -19,7 +19,7 @@ Each graph has its own endpoints under `/g/<graph-id>/`. The first graph is `def
 | MCP (Streamable HTTP, stateless) | `POST /g/<id>/mcp` |
 | HTTP API | `POST /g/<id>/api/v1/<op>` such as `/g/default/api/v1/page.read` |
 | OpenAPI 3 document | `GET /g/<id>/openapi.json` |
-| List or create graphs (root token) | `GET /graphs`, `POST /graphs` |
+| List, create or retire graphs (root token) | `GET /graphs`, `POST /graphs`, `DELETE /graphs/<id>` |
 
 All of them except the OpenAPI document need `Authorization: Bearer <token>`. Requests to bare paths
 (`/mcp`, `/api/v1/...`) answer with a 307 redirect to `/g/default/...`. Use the full path; not every

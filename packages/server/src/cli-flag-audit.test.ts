@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { GC_FLAGS, PAIR_FLAGS, REPAIR_FLAGS, RESTORE_FLAGS } from "./cli-args.js";
+import { GC_FLAGS, GRAPH_FLAGS, PAIR_FLAGS, REPAIR_FLAGS, RESTORE_FLAGS } from "./cli-args.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cliSrc = readFileSync(join(here, "cli.ts"), "utf8");
@@ -64,6 +64,7 @@ const STRICT: Record<string, readonly string[]> = {
   gc: GC_FLAGS,
   repair: REPAIR_FLAGS,
   pair: PAIR_FLAGS,
+  graph: GRAPH_FLAGS,
 };
 
 describe("strict CLI flag allowlists match what each command reads (B-671)", () => {

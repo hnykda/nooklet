@@ -15,6 +15,25 @@ export interface OpenDbOptions {
   path: string;
 }
 
+/** The raw connection behind each driver this module opened, so `closeDb` can close it. `SqlDriver`
+ * itself has no `close()` (core's interface is shared with the browser drivers, and a one-shot
+ * command simply exits); only retiring a graph from a running server needs one (B-713). */
+const rawConnections = new WeakMap<SqlDriver, ReturnType<typeof openNodeSqlite>>();
+
+/** Close the SQLite connection behind `driver` (opened by `openDb`). Idempotent. Any later call on
+ * the driver throws, which is the point: a retired graph's handle must not keep writing to a file
+ * that has been moved aside. */
+export function closeDb(driver: SqlDriver): void {
+  const raw = rawConnections.get(driver);
+  if (!raw) return;
+  rawConnections.delete(driver);
+  try {
+    raw.close();
+  } catch {
+    // Already closed.
+  }
+}
+
 export interface OpenedDb {
   driver: SqlDriver;
   vecStatus: VecStatus;
@@ -31,6 +50,7 @@ export function openDbWithStatus(opts: OpenDbOptions): OpenedDb {
   const raw = openNodeSqlite(opts.path, { allowExtension: true });
   const vecStatus = loadSqliteVec(raw);
   const driver = createNodeSqliteDriver(raw);
+  rawConnections.set(driver, raw);
   setVecStatus(driver, vecStatus);
   const isNew = driver.get<{ n: number }>(
     "SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'page'",

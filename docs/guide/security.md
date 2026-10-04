@@ -94,7 +94,7 @@ traffic never reach the server.
 | Device or agent token (`nk_…`) | `nooklet token create`, or pairing a device (below) | Access to **one graph**, at its scope and capabilities |
 | Web-client token | The server, for a browser on the same machine (below) | `admin` + sync on that graph |
 | Pairing code (`nkp_…`) | Settings → Devices → Add a device, or `nooklet pair` | Nothing by itself. Traded once, within 10 minutes, for a new device token (`write` + sync by default, never `admin`) |
-| Root token (`nkroot_…`) | Minted on first `serve`, kept in `<data>/root.token` (mode 0600) | `GET /graphs` and `POST /graphs` only: list graphs, create a graph. No access to graph content by itself. |
+| Root token (`nkroot_…`) | Minted on first `serve`, kept in `<data>/root.token` (mode 0600) | `GET /graphs`, `POST /graphs` and `DELETE /graphs/<id>` only: list graphs, create a graph, retire a graph (moved aside, not deleted). No access to graph content by itself. |
 
 A token belongs to one graph: it lives in that graph's own database and cannot verify against
 another graph.

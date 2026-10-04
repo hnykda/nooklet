@@ -8,7 +8,8 @@ anything but 401 without being on the public allowlist in code:
 route, it is private unless you put it on that list with a reason, and then you update this page.
 
 Last checked against the code: 2026-10-04 (security review, `docs/progress/security-review.md`;
-QR pairing and `admin`-gated device management, `docs/progress/qr-pairing.md`).
+QR pairing and `admin`-gated device management, `docs/progress/qr-pairing.md`; `DELETE /graphs/:id`,
+`docs/progress/graph-retire.md`).
 
 ## How auth is laid out (deny by default)
 
@@ -60,6 +61,7 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 | GET | `/healthz` | none | constant JSON |
 | GET | `/sw.js`, `/manifest.webmanifest`, `/workbox-*` | none | build output (a service worker script must not be a redirect) |
 | GET/POST | `/graphs` | root token (`<data>/root.token`, compared timing-safe) | 401 |
+| DELETE | `/graphs/:id` | root token. Retires the graph (B-713): closes its database and every `/sync/live`/`/ui/live` socket on it (close code 4410), then moves `graphs/<id>/` to `graphs-retired/<id>-<UTC timestamp>/`. Deletes nothing. `default` needs `?force=true` (409 otherwise). A graph's own tokens, `admin` included, get 401, and there is no MCP tool or op for it | 401 |
 | * | `/g/<id>/...` | the graph's own guards above | 404 `No graph "<id>"` for an unknown id (this reveals which ids exist) |
 | * | anything else | none | 307 to `/g/default/...` (or 404 when there is no default graph) |
 | OPTIONS | any, from `capacitor://localhost` only | none | the CORS preflight answer; no other origin is reflected |

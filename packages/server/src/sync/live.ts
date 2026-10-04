@@ -14,7 +14,12 @@
 import { upgradeWebSocket } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
-import { trackTokenSocket, untrackTokenSocket } from "../auth/token-sockets.js";
+import {
+  trackGraphSocket,
+  trackTokenSocket,
+  untrackGraphSocket,
+  untrackTokenSocket,
+} from "../auth/token-sockets.js";
 import { verifyToken } from "../auth/tokens.js";
 import { registerLiveConnection, unregisterLiveConnection, wirePokeOnCommit } from "./realtime.js";
 
@@ -36,6 +41,10 @@ export function registerSyncLive(app: Hono, serverCtx: ServerContext): void {
   app.get(
     "/sync/live",
     upgradeWebSocket(() => ({
+      // B-713: so retiring this graph can close the socket, hello or not.
+      onOpen(_evt, ws) {
+        trackGraphSocket(serverCtx.driver, ws);
+      },
       onMessage(evt, ws) {
         let parsed: unknown;
         try {
@@ -56,6 +65,7 @@ export function registerSyncLive(app: Hono, serverCtx: ServerContext): void {
       onClose(_evt, ws) {
         unregisterLiveConnection(serverCtx, ws);
         untrackTokenSocket(serverCtx.driver, ws);
+        untrackGraphSocket(serverCtx.driver, ws);
       },
     })),
   );

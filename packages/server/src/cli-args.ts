@@ -96,6 +96,18 @@ export const GRAPH_COMMAND_FLAGS = ["data", "graph"] as const;
 
 export const GC_FLAGS = [...GRAPH_COMMAND_FLAGS, "dry-run", "backup", "asset-grace"] as const;
 export const RESTORE_FLAGS = [...GRAPH_COMMAND_FLAGS, "force"] as const;
+/** `nooklet graph <sub>`: each subcommand's own flags (B-713). `graph` takes `--data` only, never
+ * `--graph`: the graph is the positional argument. A typo must stop a command that moves folders. */
+export const GRAPH_SUBCOMMAND_FLAGS = {
+  create: ["data", "label"],
+  list: ["data", "retired"],
+  retire: ["data", "force"],
+  unretire: ["data", "as"],
+  replace: ["data", "from"],
+} as const satisfies Record<string, readonly string[]>;
+/** Every flag any `graph` subcommand reads; what `cli-flag-audit.test.ts` checks the case against. */
+export const GRAPH_FLAGS = [...new Set(Object.values(GRAPH_SUBCOMMAND_FLAGS).flat())] as const;
+
 /** `nooklet pair` (B-655). */
 export const PAIR_FLAGS = [...GRAPH_COMMAND_FLAGS, "link", "scope", "sync", "minutes"] as const;
 
