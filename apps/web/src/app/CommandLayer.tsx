@@ -76,6 +76,7 @@ import {
   activeContextSnapshot,
   buildContextBase,
   liveEditorHost,
+  onEditorChange,
   withoutOutliner,
 } from "./editor-host.js";
 import {
@@ -255,7 +256,7 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     buildContextBase(store, platform, mobile, pageFindAvailable());
 
   const [triggers, setTriggers] = createSignal<Triggers>(NO_TRIGGERS);
-  const [caretPos, setCaretPos] = createSignal({ top: 0, left: 0 });
+  const [caretPos, setCaretPos] = createSignal({ top: 0, bottom: 0, left: 0 });
   // Escape closes a popup but leaves the text that opened it, and the next keyup re-detects that
   // text and reopens it — so Escape did nothing you could see (part of B-65). A dismissal is
   // therefore remembered per trigger kind by the offset it was opened at, and a re-detection at
@@ -296,7 +297,8 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       }
       setTriggers(next);
       const rect = window.getSelection()?.getRangeAt(0)?.getBoundingClientRect();
-      if (rect && (rect.top || rect.left)) setCaretPos({ top: rect.bottom, left: rect.left });
+      if (rect && (rect.top || rect.left))
+        setCaretPos({ top: rect.top, bottom: rect.bottom, left: rect.left });
     };
     document.addEventListener("keyup", onKeyUp, true);
     // A pointer can also change what is under the caret — most importantly a click away, which
@@ -328,7 +330,14 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
     };
     document.addEventListener("focusin", onLater, true);
     document.addEventListener("input", onLater, true);
+    // B-684: and whenever the editor's own state changes, which is the one signal that cannot
+    // come too early. On the iPhone the `/` could reach CodeMirror after its keyup and `input`
+    // had both fired (and their deferred re-detections had run, seeing no `/`), so the menu
+    // waited for the next character. Deferred like the others, so the popup's own state is
+    // never updated from inside a CodeMirror dispatch.
+    const stopEditorChange = onEditorChange(() => setTimeout(onKeyUp, 0));
     onCleanup(() => {
+      stopEditorChange();
       document.removeEventListener("keyup", onKeyUp, true);
       document.removeEventListener("pointerup", onPointerUp, true);
       document.removeEventListener("focusin", onLater, true);

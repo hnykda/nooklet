@@ -8,6 +8,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { EditorHost } from "../hosts/editor-host.js";
 import { claimPopupKeys } from "../popup-keys.js";
+import { type CaretRect, createCaretPopupStyle } from "../popup-position.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import type { CommandContext } from "../types.js";
@@ -19,7 +20,8 @@ export interface SlashMenuProps {
   editor: EditorHost;
   /** `null` means closed. */
   trigger: SlashMatch | null;
-  position: { top: number; left: number };
+  /** The caret line (viewport px): the popup opens below it, or above it when there is no room. */
+  position: CaretRect;
   getContext: () => Omit<CommandContext, "exec" | "args">;
   onDismiss: () => void;
 }
@@ -89,11 +91,15 @@ export function SlashMenu(props: SlashMenuProps) {
     if (handleKey(e.key)) e.preventDefault();
   }
 
+  // B-681: at the caret, flipped above it and kept on screen (`../popup-position.ts`).
+  const placement = createCaretPopupStyle(() => props.position);
+
   return (
     <Show when={props.trigger !== null}>
       <div
         class="cmd-popup"
-        style={{ top: `${props.position.top}px`, left: `${props.position.left}px` }}
+        ref={placement.ref}
+        style={placement.style()}
         role="listbox"
         onKeyDown={onKeyDown}
       >

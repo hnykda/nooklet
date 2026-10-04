@@ -52,6 +52,7 @@ import {
 import { blockMenuRequest, openBlockMenu } from "../app/context-menu.js";
 import {
   createEditorHost,
+  notifyEditorChange,
   registerEditorHost,
   releaseEditorHost,
   setActiveContextSnapshot,
@@ -1289,7 +1290,12 @@ export function BlockTree(props: {
     return true;
   }
 
-  const surface: Surface = createSurface({ onTextChange, dispatchKey, onPaste });
+  const surface: Surface = createSurface({
+    onTextChange,
+    dispatchKey,
+    onPaste,
+    onEditorChange: notifyEditorChange,
+  });
   onCleanup(() => surface.detach());
 
   // A typed edit is only written after a ~500 ms pause (`onTextChange`'s debounce). Without the

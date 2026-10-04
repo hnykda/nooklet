@@ -18,7 +18,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={null}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={() => {}}
         />
@@ -36,7 +36,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 0, query: "Rec" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={() => {}}
         />
@@ -55,7 +55,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 0, query: "recipes" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={() => {}}
         />
@@ -75,7 +75,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 0, query: "Rec" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={onDismiss}
         />
@@ -97,7 +97,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 6, query: "Rec" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={onDismiss}
         />
@@ -127,7 +127,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 6, query: "Walkin Unm" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={onDismiss}
         />
@@ -151,7 +151,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 0, query: "Rec" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={() => {}}
         />
@@ -178,7 +178,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 4, query: "Jan" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={onDismiss}
         />
@@ -205,7 +205,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 4, query: "" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={onDismiss}
         />
@@ -232,7 +232,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 4, query: "" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={() => {}}
         />
@@ -257,7 +257,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 0, query: "Walkin Oth" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={() => {}}
         />
@@ -280,7 +280,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 0, query: "new/page" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={onDismiss}
         />
@@ -306,7 +306,7 @@ describe("<AutocompletePopup> — page variant (R56)", () => {
           variant="page"
           editor={editor}
           trigger={{ from: 0, query: "Rec" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={onDismiss}
         />
@@ -332,7 +332,7 @@ describe("<AutocompletePopup> — tag variant (R57)", () => {
           variant="tag"
           editor={editor}
           trigger={{ from: 0, query: "pro" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           pages={pages}
           onDismiss={() => {}}
         />
@@ -360,7 +360,7 @@ describe("<AutocompletePopup> — block variant (R58)", () => {
           variant="block"
           editor={editor}
           trigger={{ from: 4, query: "blk" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           blocks={blocks}
           onDismiss={onDismiss}
         />
@@ -387,7 +387,7 @@ describe("<AutocompletePopup> — block variant (R58)", () => {
           variant="block"
           editor={editor}
           trigger={{ from: 0, query: "snip" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           blocks={blocks}
           onDismiss={onDismiss}
         />

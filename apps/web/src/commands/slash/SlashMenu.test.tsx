@@ -31,7 +31,7 @@ describe("<SlashMenu>", () => {
         <SlashMenu
           editor={editor}
           trigger={null}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           getContext={baseContext}
           onDismiss={() => {}}
         />
@@ -47,7 +47,7 @@ describe("<SlashMenu>", () => {
         <SlashMenu
           editor={editor}
           trigger={{ from: 0, query: "" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           getContext={baseContext}
           onDismiss={() => {}}
         />
@@ -69,7 +69,7 @@ describe("<SlashMenu>", () => {
           <SlashMenu
             editor={editor}
             trigger={{ from: 0, query: "" }}
-            position={{ top: 0, left: 0 }}
+            position={{ top: 0, bottom: 0, left: 0 }}
             getContext={baseContext}
             onDismiss={() => {}}
           />
@@ -91,7 +91,7 @@ describe("<SlashMenu>", () => {
         <SlashMenu
           editor={editor}
           trigger={{ from: 0, query: "tab" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           getContext={baseContext}
           onDismiss={() => {}}
         />
@@ -113,7 +113,7 @@ describe("<SlashMenu>", () => {
         <SlashMenu
           editor={editor}
           trigger={{ from: 0, query: "tab" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           getContext={baseContext}
           onDismiss={onDismiss}
         />
@@ -142,7 +142,7 @@ describe("<SlashMenu>", () => {
         <SlashMenu
           editor={editor}
           trigger={{ from: 0, query: "" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           getContext={baseContext}
           onDismiss={() => {}}
         />
@@ -179,7 +179,7 @@ describe("<SlashMenu>", () => {
         <SlashMenu
           editor={editor}
           trigger={{ from: 0, query: "" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           getContext={baseContext}
           onDismiss={onDismiss}
         />
@@ -196,7 +196,7 @@ describe("<SlashMenu>", () => {
         <SlashMenu
           editor={editor}
           trigger={{ from: 0, query: "" }}
-          position={{ top: 0, left: 0 }}
+          position={{ top: 0, bottom: 0, left: 0 }}
           getContext={baseContext}
           onDismiss={() => {}}
         />
