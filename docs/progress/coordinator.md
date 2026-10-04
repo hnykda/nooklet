@@ -32,7 +32,9 @@ writer now.
 
 | Slug | Task | Ports |
 |---|---|---|
-| desktop-graphs | Proposal 005 (accepted): one shell-owned graph list, one add form verified from Rust, tokens in Keychain, no restarts, launcher only "Connecting…", ADR 032. Progress: `docs/progress/desktop-graphs.md` (in its worktree). Bug numbers from B-780. | 6480-6484 |
+| desktop-graphs | **merged + pushed** (`e0874df3`), app built not installed; owner click-through pending (docs/progress/desktop-graphs.md steps 1-12). Was: Proposal 005 (accepted): one shell-owned graph list, one add form verified from Rust, tokens in Keychain, no restarts, launcher only "Connecting…", ADR 032. Progress: `docs/progress/desktop-graphs.md` (in its worktree). Bug numbers from B-780. | 6480-6484 |
+| zoom-root | B-788: zoomed block is the fixed top; Enter makes a child; nothing escapes the zoomed subtree (phone + desktop). Bug numbers from B-820. | 6500 |
+| image-sizing | B-789: Logseq-style resize handle (Logseq `{:height …, :width …}` syntax, ADR 034), ⋯ menu (Download, Copy, Show in Finder on This Mac), optional alignment. Bug numbers from B-840. | 6510 |
 | phone-capture | Proposal 006 Phase 1 (accepted): `nooklet://capture` pre-fill, quick actions (iOS+Android), iOS App Intent "Add to nooklet" with a native queue drained on launch/resume (Action Button), Android share target; ADR 033. Simulator iPhone 17e only. Bug numbers from B-800. | 6490 |
 | e2e-flaky | **merged + pushed** (`0ca331e9`): B-760..B-765; full e2e 855/0 with retries off | — |
 
