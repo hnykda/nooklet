@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { openGraphMenu } from "../helpers/index.js";
 
 function rootToken(): string {
   const port = process.env.NOOKLET_E2E_PORT ?? "6188";
@@ -144,7 +145,7 @@ test("B-611/B-612: local-only notes never reach a server graph added right after
 
     // 3. Straight to "Add a graph" on the relaunched page: no set-up screen any more (B-612).
     await expect(page.locator(".connect")).toHaveCount(0);
-    await page.getByRole("button", { name: "Switch graph" }).click();
+    await openGraphMenu(page);
     await page.getByText("Add a graph").click();
     await page.getByRole("button", { name: /Sync with a server/s }).click();
     await page.getByLabel("Server address").fill(`${base}/g/${graphId}`);
@@ -160,7 +161,7 @@ test("B-611/B-612: local-only notes never reach a server graph added right after
     if (leaked > 0) leaks++;
 
     // 4. The local-only graph is still listed, and both notes are in it.
-    await page.getByRole("button", { name: "Switch graph" }).click();
+    await openGraphMenu(page);
     const rows = page.locator(".graph-switcher-row");
     await expect(rows).toHaveCount(2);
     // B-644: the local graph has a generated name now; it is the row with no server address.
@@ -284,7 +285,7 @@ test('B-612: an install stranded by the old "Just this device" gets its local gr
     timeout: 20_000,
   });
 
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   await page.getByRole("button", { name: "This device", exact: true }).click();
   await expect(today(page)).toContainText(note, { timeout: 15_000 });
   expect(await hits(base, graphId, token, note)).toBe(0);

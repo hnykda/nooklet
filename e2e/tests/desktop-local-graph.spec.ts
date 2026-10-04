@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
 import { GRAPH_NAMES } from "../../apps/web/src/data/graph-names.js";
+import { openGraphMenu } from "../helpers/index.js";
 
 function rootToken(): string {
   const port = process.env.NOOKLET_E2E_PORT ?? "6188";
@@ -81,7 +82,7 @@ test.describe("desktop app", () => {
     await page.goto("/journals");
     await expect(page.locator(".app-topbar")).toBeVisible();
 
-    await page.getByRole("button", { name: "Switch graph" }).click();
+    await openGraphMenu(page);
     const mac = page.getByRole("list", { name: "On this Mac" });
     await expect(mac.getByRole("button")).toHaveText([/This Mac/, /Quiet Otter/]);
 
@@ -102,7 +103,7 @@ test.describe("desktop app", () => {
     await injectShell(page, 6100, [{ id: "quiet-otter", label: "Quiet Otter" }]);
     const requests = await catchShellRequests(page);
     await page.goto("/journals");
-    await page.getByRole("button", { name: "Switch graph" }).click();
+    await openGraphMenu(page);
     await page.getByRole("list", { name: "On this Mac" }).getByRole("button").click();
     await expect
       .poll(() => requests.map((u) => u.toString()))
@@ -144,12 +145,43 @@ test.describe("desktop app", () => {
     expect(apiPaths.length).toBeGreaterThan(0);
     expect(apiPaths.filter((p) => !p.startsWith(`/g/${id}/`))).toEqual([]);
 
-    await page.getByRole("button", { name: "Switch graph" }).click();
+    await openGraphMenu(page);
     const active = page.locator(".graph-switcher-row.active");
     await expect(active).toContainText(label, { timeout: 10_000 });
     await expect(page.locator(".graph-switcher-row")).toHaveCount(2);
-    // Both This-Mac graphs are rows already, so there is no separate "On this Mac" group.
-    await expect(page.getByRole("list", { name: "On this Mac" })).toHaveCount(0);
+    // B-709: both are This Mac's (this page IS the bundled server), so both sit under "On this
+    // Mac", listed once each, with the open one marked, and nothing under "On a server".
+    const mac = page.getByRole("list", { name: "On this Mac" });
+    await expect(mac.locator(".graph-switcher-row")).toHaveCount(2);
+    await expect(mac.locator("[aria-current='true']")).toContainText(label);
+    await expect(page.getByRole("list", { name: "On a server" })).toHaveCount(0);
+  });
+
+  test("B-704: adding a server on another origin asks the shell, with no cross-origin request", async ({
+    page,
+  }) => {
+    await injectShell(page, 6100, []);
+    const requests = await catchShellRequests(page);
+    // The address is never contacted by the page: the shell (not here) does the switching.
+    const elsewhere = "http://127.0.0.1:6549";
+    const contacted: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().startsWith(elsewhere)) contacted.push(r.url());
+    });
+    await page.goto("/journals");
+    await openGraphMenu(page);
+    await page.getByRole("button", { name: "Add a graph" }).click();
+    await page.getByRole("button", { name: /Sync with a server/ }).click();
+    await page.getByLabel("Server address").fill(`${elsewhere}/g/work`);
+    // The token is the server's own page's business after the restart.
+    await expect(page.getByLabel("Device token")).toBeHidden();
+    await page.getByRole("button", { name: "Add and restart" }).click();
+    await expect
+      .poll(() => requests.map((u) => u.toString()))
+      .toEqual([
+        `http://nooklet-desktop.invalid/add-server-graph?url=${encodeURIComponent(`${elsewhere}/g/work`)}`,
+      ]);
+    expect(contacted).toEqual([]);
   });
 });
 
@@ -196,12 +228,12 @@ test("B-644: on the phone, new local graphs get distinct friendly names, and can
   await page.getByRole("button", { name: /Just this device/s }).click();
   await expect(page.locator(".app-topbar")).toBeVisible();
 
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   await page.getByRole("button", { name: "Add a graph" }).click();
   await page.getByRole("button", { name: /Just this device/ }).click();
   await expect(page.locator(".app-topbar")).toBeVisible();
 
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   const labels = page.locator(".graph-switcher-row .graph-switcher-label");
   await expect(labels).toHaveCount(2);
   const names = await labels.allTextContents();

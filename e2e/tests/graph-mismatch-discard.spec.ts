@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { openGraphMenu } from "../helpers/index.js";
 
 function rootToken(): string {
   const port = process.env.NOOKLET_E2E_PORT ?? "6188";
@@ -142,7 +143,7 @@ test("B-631: discarding a mismatched graph's local copy keeps every other graph'
   await waitForWritesApplied(page);
 
   // 2. A server graph next to it, with a note the server has.
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   await page.getByText("Add a graph").click();
   await page.getByRole("button", { name: /Sync with a server/s }).click();
   await page.getByLabel("Server address").fill(`${base}/g/${graphId}`);
@@ -208,7 +209,7 @@ test("B-631: discarding a mismatched graph's local copy keeps every other graph'
   ).not.toBe("an-earlier-graph-instance");
 
   // 7. The local-only graph's note is still there.
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   // B-644: the local graph has a generated name now; it is the row with no server address.
   await page
     .locator(".graph-switcher-row")

@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 /**
- * ADR 025: the graph list as a top-bar icon+popover, mirroring `CalendarButton.test.tsx`'s shape
- * for the same kind of control. Covers the client-only parts of all three legal moves (switch,
+ * ADR 025: the graph list — since B-709 the left sidebar's title (the open graph's name) and the
+ * menu it opens. Covers the client-only parts of all three legal moves (switch,
  * rename, remove; "just this device"; the add-a-server and promote forms' wiring to `fetch` and
  * the graph list) — not `connect-graph.ts`'s own request-shaping, which has no test of its own yet
  * but is exercised here through real (mocked) `fetch` calls, and not the server's own `/graphs`
  * behavior, which `packages/server/src/graphs/mount.test.ts` already covers.
  */
-import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activeGraph,
@@ -58,13 +58,18 @@ afterEach(() => {
 });
 
 function openSwitcher(): void {
-  fireEvent.click(screen.getByRole("button", { name: "Switch graph" }));
+  fireEvent.click(screen.getByRole("button", { name: /switch graph$/i }));
+}
+
+/** The open menu: the title above it carries the active graph's name too. */
+function menu(): ReturnType<typeof within> {
+  return within(screen.getByRole("dialog", { name: "Switch graph" }));
 }
 
 describe("GraphSwitcher", () => {
-  it("is an icon-only top-bar button, closed until clicked, empty list when nothing is stored", () => {
+  it("is a title button, closed until clicked, empty list when nothing is stored", () => {
     render(() => <GraphSwitcher />);
-    const button = screen.getByRole("button", { name: "Switch graph" });
+    const button = screen.getByRole("button", { name: /switch graph$/i });
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
 
@@ -81,10 +86,10 @@ describe("GraphSwitcher", () => {
     render(() => <GraphSwitcher />);
     openSwitcher();
 
-    expect(screen.getByText("Graph A")).toBeTruthy();
-    expect(screen.getByText("Graph B")).toBeTruthy();
+    expect(menu().getByText("Graph A")).toBeTruthy();
+    expect(menu().getByText("Graph B")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("Graph B"));
+    fireEvent.click(menu().getByText("Graph B"));
     expect(activeGraph()?.id).toBe("b");
     // B-586: navigates to the NEW graph's own prefix, not just a reload of the current path.
     expect(assign).toHaveBeenCalledWith("/g/b/");
@@ -97,7 +102,7 @@ describe("GraphSwitcher", () => {
     render(() => <GraphSwitcher />);
     openSwitcher();
 
-    fireEvent.click(screen.getByText("Graph A"));
+    fireEvent.click(menu().getByText("Graph A"));
     expect(assign).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -113,7 +118,9 @@ describe("GraphSwitcher", () => {
     fireEvent.input(input, { target: { value: "New Name" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(screen.getByText("New Name")).toBeTruthy();
+    expect(menu().getByText("New Name")).toBeTruthy();
+    // The sidebar's title follows the rename.
+    expect(screen.getByRole("button", { name: "New Name, switch graph" })).toBeTruthy();
     expect(listGraphs().find((g) => g.id === "a")?.label).toBe("New Name");
   });
 
@@ -245,11 +252,14 @@ describe("GraphSwitcher", () => {
   });
 
   it("add-a-server form: verifies against the typed address, adds a new entry, and navigates there", async () => {
+    // Capacitor: its origin is on every server's CORS allowlist, so any server is added in-page.
+    fakePlatform.name = "capacitor";
     fetchMock.mockResolvedValueOnce(ok({}));
     const assign = mockAssign();
     render(() => <GraphSwitcher />);
     openSwitcher();
     fireEvent.click(screen.getByText("Add a graph"));
+    fireEvent.click(screen.getByText("Sync with a server"));
 
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: "https://nooklet.example.com" },
@@ -257,11 +267,10 @@ describe("GraphSwitcher", () => {
     fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    // B-586: the new graph's own server address, not wherever the browser happened to be.
-    // A bare origin means that server's default graph (`connect-graph.ts#graphBaseUrl`).
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith("https://nooklet.example.com/g/default/"),
-    );
+    // Capacitor reloads its own bundle in place (`bootstrap.ts#graphEntryUrl`); the new entry is
+    // what `apiBaseUrl()` follows. A bare origin means that server's default graph
+    // (`connect-graph.ts#graphBaseUrl`).
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
     const [url] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("https://nooklet.example.com/g/default/api/v1/graph.overview");
     expect(listGraphs().some((g) => g.baseUrl === "https://nooklet.example.com/g/default")).toBe(
@@ -274,8 +283,9 @@ describe("GraphSwitcher", () => {
     render(() => <GraphSwitcher />);
     openSwitcher();
     fireEvent.click(screen.getByText("Add a graph"));
+    // A graph on this page's own server: the one kind a browser tab can add in-page (B-704).
     fireEvent.input(screen.getByLabelText("Server address"), {
-      target: { value: "https://nooklet.example.com" },
+      target: { value: `${location.origin}/g/work` },
     });
     fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_bad" } });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
@@ -333,5 +343,154 @@ describe("GraphSwitcher", () => {
     expect(entry?.kind).toBe("remote");
     expect(entry?.baseUrl).toBe("https://home.example.com/g/promoted");
     expect(entry?.token).toBe("nk_new_token");
+  });
+
+  describe("B-709: the sidebar's title and grouped rows", () => {
+    afterEach(() => {
+      delete (window as { __NOOKLET_DESKTOP__?: unknown }).__NOOKLET_DESKTOP__;
+    });
+
+    it("the title is the open graph's name, and its row is marked as the open one", () => {
+      addGraph({ id: "a", label: "Garden Notes", kind: "remote", baseUrl: "/g/a" });
+      addGraph({ id: "b", label: "Work", kind: "remote", baseUrl: "/g/b" });
+      setActiveGraphId("a");
+      render(() => <GraphSwitcher />);
+      const title = screen.getByRole("button", { name: "Garden Notes, switch graph" });
+      expect(title.textContent).toContain("Garden Notes");
+      openSwitcher();
+      const current = menu().getByRole("button", { current: true });
+      expect(current.textContent).toContain("Garden Notes");
+      expect(menu().getByRole("button", { name: /^Work/ }).getAttribute("aria-current")).toBeNull();
+    });
+
+    it("groups this device's local graphs apart from server graphs (Capacitor)", () => {
+      fakePlatform.name = "capacitor";
+      addGraph({ id: "l", label: "Pocket", kind: "local" });
+      addGraph({ id: "r", label: "Home", kind: "remote", baseUrl: "https://home.example.com/g/x" });
+      setActiveGraphId("l");
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      expect(menu().getByRole("list", { name: "On this device" }).textContent).toContain("Pocket");
+      const servers = menu().getByRole("list", { name: "On a server" });
+      expect(servers.textContent).toContain("Home");
+      expect(servers.textContent).not.toContain("Pocket");
+    });
+
+    it("desktop: This Mac's graphs, listed or not, sit under 'On this Mac', apart from servers", () => {
+      Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
+        configurable: true,
+        value: Object.freeze({
+          platform: "macos",
+          port: 6100,
+          localGraphs: [
+            { id: "default", label: "default" },
+            { id: "quiet-otter", label: "Quiet Otter" },
+          ],
+        }),
+      });
+      addGraph({
+        id: "m",
+        label: "Mac default",
+        kind: "remote",
+        baseUrl: "http://127.0.0.1:6100/g/default",
+      });
+      addGraph({ id: "s", label: "Remote", kind: "remote", baseUrl: "/g/s" });
+      setActiveGraphId("s");
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      const mac = menu().getByRole("list", { name: "On this Mac" });
+      expect(mac.textContent).toContain("Mac default");
+      expect(mac.textContent).toContain("Quiet Otter");
+      expect(menu().getByRole("list", { name: "On a server" }).textContent).toContain("Remote");
+    });
+  });
+
+  describe("B-704: a server on another origin", () => {
+    function injectShell(): void {
+      Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
+        configurable: true,
+        value: Object.freeze({ platform: "macos", port: 6100, localGraphs: [] }),
+      });
+    }
+    afterEach(() => {
+      delete (window as { __NOOKLET_DESKTOP__?: unknown }).__NOOKLET_DESKTOP__;
+    });
+
+    it("a browser tab says it cannot add it here and links it in a new tab, sending nothing", () => {
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      fireEvent.click(screen.getByText("Add a graph"));
+      fireEvent.input(screen.getByLabelText("Server address"), {
+        target: { value: "https://other.example.com/g/work" },
+      });
+      expect(screen.getByRole("note").textContent).toContain("can only add graphs on");
+      const link = screen.getByRole("link", { name: /Open other\.example\.com in a new tab/ });
+      expect(link.getAttribute("href")).toBe("https://other.example.com/g/work");
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+      expect((screen.getByLabelText("Device token").closest("label") as HTMLElement).hidden).toBe(
+        true,
+      );
+      fireEvent.submit(screen.getByLabelText("Server address").closest("form") as HTMLFormElement);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a graph on this page's own server is still added in-page", async () => {
+      fetchMock.mockResolvedValueOnce(ok({ graph: { label: "Work" } }));
+      const assign = mockAssign();
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      fireEvent.click(screen.getByText("Add a graph"));
+      fireEvent.input(screen.getByLabelText("Server address"), {
+        target: { value: `${location.origin}/g/work` },
+      });
+      expect(screen.queryByRole("note")).toBeNull();
+      fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+      await waitFor(() => expect(assign).toHaveBeenCalledOnce());
+      expect(String(assign.mock.calls[0]?.[0])).toMatch(/\/g\/work\/$/);
+    });
+
+    it("the desktop app hands it to the shell, with no token and no fetch", () => {
+      injectShell();
+      const assign = mockAssign();
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      fireEvent.click(screen.getByText("Add a graph"));
+      fireEvent.click(screen.getByText("Sync with a server"));
+      fireEvent.input(screen.getByLabelText("Server address"), {
+        target: { value: "https://other.example.com" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add and restart" }));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(assign).toHaveBeenCalledOnce();
+      const url = new URL(assign.mock.calls[0]?.[0] as string);
+      expect(url.origin).toBe("http://nooklet-desktop.invalid");
+      expect(url.pathname).toBe("/add-server-graph");
+      // A bare origin is its default graph, as everywhere else (`connect-graph.ts#graphBaseUrl`).
+      expect(url.searchParams.get("url")).toBe("https://other.example.com/g/default");
+      expect(listGraphs()).toEqual([]);
+      expect(screen.getByRole("status").textContent).toContain("other.example.com");
+    });
+
+    it("the desktop app shows the shell's refusal", async () => {
+      injectShell();
+      mockAssign();
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      fireEvent.click(screen.getByText("Add a graph"));
+      fireEvent.click(screen.getByText("Sync with a server"));
+      fireEvent.input(screen.getByLabelText("Server address"), {
+        target: { value: "https://other.example.com" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add and restart" }));
+      window.dispatchEvent(
+        new CustomEvent("nooklet:desktop-error", { detail: "could not save that" }),
+      );
+      await waitFor(() =>
+        expect(screen.getByRole("alert").textContent).toBe("could not save that"),
+      );
+    });
   });
 });

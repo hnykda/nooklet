@@ -1,18 +1,67 @@
-/* ADR 025: mirrors `./calendar-button.css`'s shape — an ordinary `.app-icon-button` plus a
-   left-anchored popover (B-583's lesson: this icon sits left-of-center in the top bar, a
-   right-anchored popover overflows off the viewport entirely). */
+/* ADR 025's graph list. Since B-709 its trigger is the left sidebar's title: the open graph's name,
+   set a step larger and heavier than the nav under it so the sidebar reads as "this graph's"
+   rather than as one more list. No box until hover — it is a title that happens to be pressable,
+   not a button bar. The menu is `position: fixed` with its box set inline from the title's rect
+   (`GraphSwitcher.tsx#placeUnder`): the sidebar scrolls, and would clip an absolute popover. */
 
 .graph-switcher-wrap {
-  position: relative;
   display: flex;
 }
 
+.graph-switcher-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.graph-switcher-title:hover,
+.graph-switcher-title[aria-expanded="true"] {
+  background: var(--surface-2);
+}
+
+.graph-switcher-title-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent);
+}
+
+.graph-switcher-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-switcher-title-chevron {
+  flex: none;
+  color: var(--muted);
+}
+
+.sidebar-graph {
+  margin: 0 0 var(--space-md);
+}
+
 .graph-switcher-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
+  position: fixed;
   z-index: 60;
-  width: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--surface-1);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
@@ -24,8 +73,6 @@
   list-style: none;
   margin: 0 0 var(--space-sm);
   padding: 0;
-  max-height: 16rem;
-  overflow-y: auto;
 }
 
 .graph-switcher-row {
@@ -63,6 +110,19 @@
 .graph-switcher-row.active .graph-switcher-name {
   font-weight: var(--weight-semibold);
   color: var(--accent);
+}
+
+/* The open graph: accent ink plus a check, so "which one am I in" does not rest on colour alone. */
+.graph-switcher-current {
+  flex: none;
+  margin-left: auto;
+  color: var(--accent);
+}
+
+/* B-709: one section per place a graph lives (this device / this Mac / a server). */
+.graph-switcher-section + .graph-switcher-section {
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--space-xs);
 }
 
 .graph-switcher-rename-input {
@@ -284,12 +344,45 @@
   color: var(--muted);
 }
 
-/* B-643: the desktop's "On this Mac" group, under the device's own list. */
+/* B-709: a section's heading — where these graphs live, with the same glyph the title uses. */
 .graph-switcher-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   margin: var(--space-xs) var(--space-sm);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--muted);
+}
+
+/* B-704: a server on another origin, from a browser tab — said plainly, with the way there. */
+.graph-switcher-elsewhere {
+  margin: 0 0 var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--text-xs);
+  color: var(--fg-soft);
+}
+
+.graph-switcher-elsewhere p {
+  margin: 0 0 var(--space-sm);
+  line-height: var(--leading-normal);
+}
+
+.graph-switcher-elsewhere a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+
+/* `hidden` must win over the display these set (B-704 hides the token field and the root-token
+   link for a server this page cannot reach). */
+.graph-switcher-field[hidden],
+.graph-switcher-link[hidden] {
+  display: none;
 }
 
 .graph-switcher-hint code {
