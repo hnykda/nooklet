@@ -1037,38 +1037,6 @@ block or require the typed confirmation when there are any. Applies on every pla
 desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
 the bundled server's data without the same confirmation.
 
-### B-713 · There is no supported way to retire/delete a graph on the server
-**Status:** open · **Severity:** medium (operators delete folders by hand while the server runs) · **Found:** 2026-10-04, owner asked; coordinator had to swap production `alpha` by hand · **Test:** none yet
-
-CLI has only `graph create`/`graph list`; the API only `POST /graphs` and `GET /graphs`. Removing a
-graph today means moving `graphs/<id>/` by hand, which is unsafe while the server runs (the
-registry caches an open handle; clients hold replicas) and undocumented. Proposal: `nooklet graph
-retire <id>` (moves to `graphs-retired/<id>-<date>`, reversible; refuses while a server holds it
-unless the server does it), a root-token `DELETE /graphs/<id>` that closes the handle first and
-retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10-04's manual swap
-did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
-encode.
-
-### B-715 · Images from a Logseq DB-version graph import as their timestamp names, not images
-**Status:** open · **Severity:** high for DB-version users (every pasted image is lost as an image) · **Found:** 2026-10-04, owner on the phone (a block from yesterday shows `2026-10-03-15-56-42` instead of the picture) · **Test:** none yet
-
-Logseq's DB version stores a pasted image as an asset entity (title = a timestamp like
-`YYYY-MM-DD-HH-MM-SS`, file = `assets/<entity uuid>.<ext>`). Its markdown mirror writes only the
-entity's title as a plain line: no `![](…)` link and no `id::`; 0 of 177 asset files are referenced
-anywhere in the mirror. The mapping exists only in the graph's `db.sqlite` (table `kvs`: Datascript
-storage nodes, transit-encoded datoms `[e, attr, value, tx]`). Fix: a Logseq DB-version import path
-that reads `db.sqlite` (read-only copy) for asset entities (and anything else the mirror loses),
-turning those title lines into image embeds.
-
-### B-716 · Favorite pages are not preserved by the Logseq import
-**Status:** open (in progress with the Logseq DB-import agent) · **Severity:** medium · **Found:** 2026-10-04, owner after the production re-import · **Test:** none yet
-
-The owner's favorites did not come over. File-based graphs keep them in `logseq/config.edn :favorites`
-(already parsed by `parseLogseqConfigEdn`; whether the import applies them is to be checked);
-DB-version graphs keep them in `db.sqlite`, which the markdown mirror does not carry. Owner decision
-the same day: support BOTH Logseq formats explicitly (auto-detected), and document what carries over
-from each.
-
 ### B-718 · self-hosting.md still says to restart the server after revoking a token
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, ws-hardening · **Test:** none
 
@@ -1109,7 +1077,72 @@ A data guard landed (`updateGraph` refuses a `baseUrl` for a `detachedFrom` entr
 
 `body` is `overflow: hidden` and `.connect` has no scroll container (the mismatch screen hit exactly this). Not reproduced.
 
+### B-728 · DB-version `:default` property values and block embeds import as copies
+**Status:** open (2026-10-04, logseq-db-import) · **Severity:** low · **Found:** 2026-10-04, logseq-db-import audit · **Test:** none
+
+249 property values that are themselves blocks stay as child blocks; 7 embeds arrive as copies rather than embeds. Real-graph counts from the dry run.
+
 ## Fixed
+
+### B-727 · A DB-version mirror's properties imported as empty blocks
+**Status:** fixed (2026-10-04, logseq-db-import) · **Severity:** medium · **Found:** 2026-10-04, logseq-db-import audit · **Test:** logseq-db-import.test.ts
+
+168 properties in the real graph arrived as empty blocks; they now fold back into properties. Scheduled dates came in the display format and are now taken from the database.
+
+### B-716 · Favorite pages are not preserved by the Logseq import
+**Status:** fixed (2026-10-04, logseq-db-import) · **Test:** `logseq-db-import.test.ts` favourites cases (both formats)
+
+The owner's favorites did not come over. File-based graphs keep them in `logseq/config.edn :favorites`
+(already parsed by `parseLogseqConfigEdn`; whether the import applies them is to be checked);
+DB-version graphs keep them in `db.sqlite`, which the markdown mirror does not carry. Owner decision
+the same day: support BOTH Logseq formats explicitly (auto-detected), and document what carries over
+from each.
+
+**Fixed.** Favourites were never imported for EITHER format. Now from `config.edn :favorites` (file) or the hidden favourites page (DB), stored as `favorite:: true`.
+
+### B-715 · Images from a Logseq DB-version graph import as their timestamp names, not images
+**Status:** fixed (2026-10-04, logseq-db-import `fcca888c`, ADR 030) · **Test:** `packages/server/src/importer/logseq-db-import.test.ts` (synthetic DB fixtures)
+
+Logseq's DB version stores a pasted image as an asset entity (title = a timestamp like
+`YYYY-MM-DD-HH-MM-SS`, file = `assets/<entity uuid>.<ext>`). Its markdown mirror writes only the
+entity's title as a plain line: no `![](…)` link and no `id::`; 0 of 177 asset files are referenced
+anywhere in the mirror. The mapping exists only in the graph's `db.sqlite` (table `kvs`: Datascript
+storage nodes, transit-encoded datoms `[e, attr, value, tx]`). Fix: a Logseq DB-version import path
+that reads `db.sqlite` (read-only copy) for asset entities (and anything else the mirror loses),
+turning those title lines into image embeds.
+
+**Fixed.** A read-only Logseq DB reader (`importer/logseq-db.ts`, `transit-js` 0.8.874 pinned, server
+only) walks Datascript's kvs storage (plus unsaved WAL changes) on a temp COPY. Wider than reported:
+151/154 images were raw `[[asset uuid]]` refs (each had become a uuid-named page) — matched by uuid;
+3 were bare timestamp lines — matched by outline position; title matching only as a unique-on-page
+fallback. Real-graph dry run (counts only): 154/154 images resolved (1 asset file missing from
+`assets/`), 2 page + 36 block uuid refs resolved, 3 dangling, 23 scheduled dates restored, 2
+favourites, verify OK. `nooklet import <dir>` auto-detects file vs DB format and says which; guide:
+`docs/guide/importing-from-logseq.md`.
+
+### B-713 · There is no supported way to retire/delete a graph on the server
+**Status:** fixed (2026-10-04, graph-retire `663c7ba`) · **Severity:** medium · **Test:** retire/unretire/replace CLI tests, `DELETE /graphs` API tests, `retire.test.ts`, e2e `graph-retired.spec.ts`
+
+CLI has only `graph create`/`graph list`; the API only `POST /graphs` and `GET /graphs`. Removing a
+graph today means moving `graphs/<id>/` by hand, which is unsafe while the server runs (the
+registry caches an open handle; clients hold replicas) and undocumented. Proposal: `nooklet graph
+retire <id>` (moves to `graphs-retired/<id>-<date>`, reversible; refuses while a server holds it
+unless the server does it), a root-token `DELETE /graphs/<id>` that closes the handle first and
+retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10-04's manual swap
+did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
+encode.
+
+**Fixed.** `nooklet graph retire <id> [--force]` moves `graphs/<id>` to `graphs-retired/<id>-<UTC timestamp>/`
+(nothing deleted; `default` needs --force); `graph unretire <name> [--as <id>]`; `graph list
+--retired`; `graph replace <id> --from <scratch>` (carries token rows, retires the old, swaps the
+new in). Retire/replace refuse while `<data>/serve.pid` names a live server. Root-token
+`DELETE /graphs/<id>` retires from a running server: closes the graph's sockets (4410), plugins,
+mirror, indexer and SQLite handle first. The registry also drops a cached handle whose
+`graph.sqlite` was moved or replaced underneath it (dev/inode check per request). Sockets close
+through the WS hardening's one registry (`live-limits.ts`), pre-hello and capped ones included.
+The client treats 4410 (or a sync request's "No graph" 404) as terminal: no reconnect, indicator
+"This graph was retired on the server" + "Graph retired" pill (`e2e/tests/graph-retired.spec.ts`).
+Docs: self-hosting.md "Retiring, restoring and replacing a graph", faq.md.
 
 ### B-714 · The "different graph" screen is a dead end: discard is the only way out, and its wording assumes localhost
 **Status:** fixed (2026-10-04, `2316556e`) · **Test:** `e2e/tests/graph-mismatch-choices.spec.ts` (3), `graph-mismatch-discard.spec.ts`, `data/bootstrap.test.ts` "B-714: …" (5)

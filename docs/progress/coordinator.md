@@ -14,7 +14,7 @@ import into a scratch data dir, carry the `token` rows over (devices keep their 
 a tar stream, checksum, move the old dir to `/data/graphs-retired/alpha-stale-import-20261004`,
 rename the new one into place, `rollout restart`, `verify` in the pod. Devices then see
 GraphMismatch → "Discard the local copy and re-sync". B-713 (agent `graph-retire`) is turning
-this into a supported command. Deploys: every push to `main` redeploys; the pre-deploy backup
+this into a supported command (merged 2026-10-04: `nooklet graph replace alpha --from <scratch>`). Deploys: every push to `main` redeploys; the pre-deploy backup
 needed a 2Gi limit (B-710; streaming fix in progress). Where the real graph lives is in the
 coordinator's private memory, never in this repo.
 
