@@ -1074,6 +1074,29 @@ file's identity wins, page properties keep the first value per key, and both fil
 19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
 stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
 
+### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
+**Status:** open · **Severity:** high (one tap can destroy the only copy of a local-only graph) · **Found:** 2026-10-04, owner on the iPhone ("removing a graph seems to be dangerously easy on mobile phone (and maybe elsewhere?)") · **Test:** none yet
+
+Owner's requirement: a huge warning that removing deletes this device's copy, which may be the
+only one, and the user must type "delete" to confirm. Distinguish: (a) a local-only graph — the
+device's copy IS the graph; removal is irreversible; offer export/backup first; (b) a server graph
+— the server keeps it, but unsynced local changes (pending ops) would be lost; say how many, and
+block or require the typed confirmation when there are any. Applies on every platform (phone,
+desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
+the bundled server's data without the same confirmation.
+
+### B-713 · There is no supported way to retire/delete a graph on the server
+**Status:** open · **Severity:** medium (operators delete folders by hand while the server runs) · **Found:** 2026-10-04, owner asked; coordinator had to swap production `alpha` by hand · **Test:** none yet
+
+CLI has only `graph create`/`graph list`; the API only `POST /graphs` and `GET /graphs`. Removing a
+graph today means moving `graphs/<id>/` by hand, which is unsafe while the server runs (the
+registry caches an open handle; clients hold replicas) and undocumented. Proposal: `nooklet graph
+retire <id>` (moves to `graphs-retired/<id>-<date>`, reversible; refuses while a server holds it
+unless the server does it), a root-token `DELETE /graphs/<id>` that closes the handle first and
+retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10-04's manual swap
+did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
+encode.
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
