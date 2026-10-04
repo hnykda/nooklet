@@ -197,3 +197,19 @@ export async function clickAway(page: Page): Promise<void> {
 /** The platform's `Mod` key for `page.keyboard.press`. The app resolves `Mod` from `navigator`,
  * which in headless Chromium is the HOST platform's. */
 export const MOD = process.platform === "darwin" ? "Meta" : "Control";
+
+/**
+ * Settings → Tasks → Task workflow, pinned for this browser context (stored per graph on the
+ * device, read at the next load). Without a choice the workflow is inferred from the markers on
+ * the shared e2e server, and an empty or tied graph is `now` (`7641c43`): a spec expecting
+ * Mod+Enter or the slash menu to say TODO passed after specs that seed TODOs and failed run alone
+ * or after specs that seed LATER/NOW (B-663). A test that depends on the workflow pins it.
+ */
+export async function pinTaskWorkflow(page: Page, value: "now" | "todo"): Promise<void> {
+  await page.goto("/journals");
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.locator("#set-task-workflow").selectOption(value);
+  await expect(page.locator("#set-task-workflow")).toHaveValue(value);
+  await page.getByRole("button", { name: "Close" }).click();
+}

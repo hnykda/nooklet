@@ -222,6 +222,41 @@ test("Open plugin manager opens Settings at the list of running plugins, not a b
   await expect(section.locator(".set-plugin .set-label")).toHaveText(running);
 });
 
+// The scroll used to happen once, at mount, while the sections above were still loading: they
+// grew afterwards and pushed Plugins down, out of view with enough devices on the server (the
+// test above failed that way in a full run; `tools/probes/settings-section-scroll.spec.ts`). Made
+// deterministic here: the device list answers late, and long.
+test("Open plugin manager keeps Plugins in view while the sections above it load (B-98)", async ({
+  page,
+}) => {
+  await openPage(page, "Commands Plugin Manager Late", "- here");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/token.list", async (route) => {
+    const res = await route.fetch();
+    const body = (await res.json()) as { tokens: Array<Record<string, unknown>> };
+    const [first] = body.tokens;
+    const tokens = Array.from({ length: 40 }, (_, i) => ({
+      ...first,
+      id: `late-device-${i}`,
+      label: `Late device ${i}`,
+      current: false,
+      revoked_at: null,
+    }));
+    await gate;
+    await route.fulfill({ response: res, json: { ...body, tokens } });
+  });
+  await runFromPalette(page, "Open plugin manager");
+  const section = page.locator(".set-panel #set-plugins");
+  await expect(section).toBeInViewport();
+
+  release();
+  await expect(page.locator(".set-panel")).toContainText("Late device 39");
+  await expect(section).toBeInViewport();
+});
+
 // ── B-160: Open on shelf ────────────────────────────────────────────────────────────────────────
 
 function shelfCards(page: Page): Locator {

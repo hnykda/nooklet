@@ -13,6 +13,7 @@ import {
   openEditing,
   openPage,
   pagePath,
+  pinTaskWorkflow,
   readBlocks,
   seedPage,
 } from "../helpers/index.js";
@@ -25,6 +26,20 @@ async function markerOf(page: Page, name: string): Promise<string | null> {
   return r.tree[0]?.marker ?? null;
 }
 
+/** This run's own page name. Every page here is left changed (a marker cycled, a task ticked), and
+ * `seedPage` returns an existing page untouched, so a second run (`--repeat-each`, a retry) met
+ * the first run's state: "make me" already TODO, "tick me" already DONE. */
+function nm(base: string): string {
+  const info = test.info();
+  return `${base} ${info.repeatEachIndex}-${info.retry}`;
+}
+
+// Mod+Enter from nothing, a reopened DONE and the Tasks view's state filters all say TODO only in
+// the `todo` workflow; unpinned, it is inferred from whatever else is on the shared server (B-663).
+test.beforeEach(async ({ page }) => {
+  await pinTaskWorkflow(page, "todo");
+});
+
 function marker(outliner: Locator): Locator {
   return outliner.locator(".vr-marker");
 }
@@ -32,14 +47,14 @@ function marker(outliner: Locator): Locator {
 test("Cmd/Ctrl+Enter cycles the marker through null, TODO, DOING, DONE and back (R34)", async ({
   page,
 }) => {
-  const outliner = await openEditing(page, "Tasks Cycle Keys", "- ship it");
+  const outliner = await openEditing(page, nm("Tasks Cycle Keys"), "- ship it");
   await expect(marker(outliner)).toHaveCount(0);
 
   await page.keyboard.press(`${MOD}+Enter`);
   await expect(marker(outliner)).toHaveClass(/vr-marker-TODO/);
   await expect(marker(outliner).locator("[data-marker-icon=TODO]")).toHaveCount(1);
   await expect(marker(outliner)).toHaveAttribute("aria-checked", "false");
-  await expect.poll(() => markerOf(page, "Tasks Cycle Keys")).toBe("TODO");
+  await expect.poll(() => markerOf(page, nm("Tasks Cycle Keys"))).toBe("TODO");
 
   await page.keyboard.press(`${MOD}+Enter`);
   await expect(marker(outliner)).toHaveClass(/vr-marker-DOING/);
@@ -50,19 +65,21 @@ test("Cmd/Ctrl+Enter cycles the marker through null, TODO, DOING, DONE and back 
   await expect(marker(outliner)).toHaveClass(/vr-marker-DONE/);
   await expect(marker(outliner).locator("[data-marker-icon=DONE]")).toHaveCount(1);
   await expect(marker(outliner)).toHaveAttribute("aria-checked", "true");
-  await expect.poll(() => markerOf(page, "Tasks Cycle Keys")).toBe("DONE");
+  await expect.poll(() => markerOf(page, nm("Tasks Cycle Keys"))).toBe("DONE");
 
   await page.keyboard.press(`${MOD}+Enter`);
   await expect(marker(outliner)).toHaveCount(0);
-  await expect.poll(() => markerOf(page, "Tasks Cycle Keys")).toBeNull();
+  await expect.poll(() => markerOf(page, nm("Tasks Cycle Keys"))).toBeNull();
 
   // The marker is state, never text: the block's content stayed exactly what was typed.
   await expect(editor(page)).toHaveText("ship it");
-  expect((await readBlocks(page, "Tasks Cycle Keys")).map((b) => b.content)).toEqual(["ship it"]);
+  expect((await readBlocks(page, nm("Tasks Cycle Keys"))).map((b) => b.content)).toEqual([
+    "ship it",
+  ]);
 });
 
 test("cycling never leaves the editor: focus and caret survive every step", async ({ page }) => {
-  await openEditing(page, "Tasks Cycle Focus", "- focus");
+  await openEditing(page, nm("Tasks Cycle Focus"), "- focus");
   for (let i = 0; i < 4; i++) {
     await page.keyboard.press(`${MOD}+Enter`);
     await expect(editor(page)).toBeFocused();
@@ -74,20 +91,20 @@ test("cycling never leaves the editor: focus and caret survive every step", asyn
 test("clicking the rendered marker toggles done, and clicking a DONE marker reopens it (R36)", async ({
   page,
 }) => {
-  const outliner = await openPage(page, "Tasks Click Marker", "- TODO click me");
+  const outliner = await openPage(page, nm("Tasks Click Marker"), "- TODO click me");
   await marker(outliner).click();
   await expect(marker(outliner)).toHaveClass(/vr-marker-DONE/);
-  await expect.poll(() => markerOf(page, "Tasks Click Marker")).toBe("DONE");
+  await expect.poll(() => markerOf(page, nm("Tasks Click Marker"))).toBe("DONE");
   // The click did not open the editor (R36: "does not enter edit mode").
   await expect(editor(page)).toHaveCount(0);
 
   await marker(outliner).click();
   await expect(marker(outliner)).toHaveClass(/vr-marker-TODO/);
-  await expect.poll(() => markerOf(page, "Tasks Click Marker")).toBe("TODO");
+  await expect.poll(() => markerOf(page, nm("Tasks Click Marker"))).toBe("TODO");
 });
 
 test("a DOING task completed by the marker click is DONE, not TODO", async ({ page }) => {
-  const outliner = await openPage(page, "Tasks Doing Click", "- DOING half way");
+  const outliner = await openPage(page, nm("Tasks Doing Click"), "- DOING half way");
   await marker(outliner).click();
   await expect(marker(outliner)).toHaveClass(/vr-marker-DONE/);
 });
@@ -95,7 +112,7 @@ test("a DOING task completed by the marker click is DONE, not TODO", async ({ pa
 test("DONE renders struck through and CANCELED too; open states do not", async ({ page }) => {
   const outliner = await openPage(
     page,
-    "Tasks Strike",
+    nm("Tasks Strike"),
     "- DONE finished\n- CANCELED dropped\n- TODO open\n- plain",
   );
   const decoration = (index: number) =>
@@ -113,11 +130,11 @@ test("DONE renders struck through and CANCELED too; open states do not", async (
 test("the Tasks view lists open tasks grouped by page and filters by state", async ({ page }) => {
   await seedPage(
     page,
-    "Tasks View Page",
+    nm("Tasks View Page"),
     "- TODO first thing\n- DOING second thing\n- DONE third thing\n- not a task",
   );
   await page.goto("/tasks");
-  const group = page.locator(".task-group", { hasText: "Tasks View Page" });
+  const group = page.locator(".task-group", { hasText: nm("Tasks View Page") });
   await expect(group).toHaveCount(1);
   await expect(group.locator(".task-row")).toHaveCount(2);
   await expect(group).toContainText("first thing");
@@ -134,37 +151,39 @@ test("the Tasks view lists open tasks grouped by page and filters by state", asy
 test("the Tasks view checkbox completes a task and removes it from the open list", async ({
   page,
 }) => {
-  await seedPage(page, "Tasks View Done", "- TODO tick me");
+  await seedPage(page, nm("Tasks View Done"), "- TODO tick me");
   await page.goto("/tasks");
-  const group = page.locator(".task-group", { hasText: "Tasks View Done" });
+  const group = page.locator(".task-group", { hasText: nm("Tasks View Done") });
   await group.locator(".task-checkbox").click();
-  await expect.poll(() => markerOf(page, "Tasks View Done")).toBe("DONE");
+  await expect.poll(() => markerOf(page, nm("Tasks View Done"))).toBe("DONE");
   await expect(group).toHaveCount(0);
 });
 
 test("the Tasks view checkbox writes DONE to the database", async ({ page }) => {
-  await seedPage(page, "Tasks View Done Data", "- TODO tick me");
+  await seedPage(page, nm("Tasks View Done Data"), "- TODO tick me");
   await page.goto("/tasks");
   await page
-    .locator(".task-group", { hasText: "Tasks View Done Data" })
+    .locator(".task-group", { hasText: nm("Tasks View Done Data") })
     .locator(".task-checkbox")
     .click();
-  await expect.poll(() => markerOf(page, "Tasks View Done Data")).toBe("DONE");
+  await expect.poll(() => markerOf(page, nm("Tasks View Done Data"))).toBe("DONE");
   // After a reload the completed task is gone from the open list.
   await page.reload();
   await expect(page.locator(".tasks-view h1")).toBeVisible();
-  await expect(page.locator(".task-group", { hasText: "Tasks View Done Data" })).toHaveCount(0);
+  await expect(page.locator(".task-group", { hasText: nm("Tasks View Done Data") })).toHaveCount(0);
 });
 
 test("the Tasks view links each task to its block, zoomed", async ({ page }) => {
-  await seedPage(page, "Tasks View Jump", "- TODO jump here");
-  const [block] = await readBlocks(page, "Tasks View Jump");
+  await seedPage(page, nm("Tasks View Jump"), "- TODO jump here");
+  const [block] = await readBlocks(page, nm("Tasks View Jump"));
   await page.goto("/tasks");
   await page
-    .locator(".task-group", { hasText: "Tasks View Jump" })
+    .locator(".task-group", { hasText: nm("Tasks View Jump") })
     .locator(".task-content")
     .click();
-  await expect(page).toHaveURL(new RegExp(`/page/Tasks%20View%20Jump\\?block=${block?.id}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/page/${encodeURIComponent(nm("Tasks View Jump"))}\\?block=${block?.id}$`),
+  );
   await expect(page.locator(".page-view-back")).toContainText("Tasks View Jump");
   await expect(page.locator(".vr-outliner").first()).toContainText("jump here");
 });
@@ -178,12 +197,12 @@ test("the Tasks view says so when nothing matches", async ({ page }) => {
 test("a task shows up in the Task page's linked references without #Task in its text", async ({
   page,
 }) => {
-  await seedPage(page, "Tasks Ref Source", "- TODO reference the task page");
+  await seedPage(page, nm("Tasks Ref Source"), "- TODO reference the task page");
   await api(page, "page.create", { name: "Task", if_exists: "return" });
   await page.goto(pagePath("Task"));
   const linked = page.locator(".linked-references");
   await expect(linked).toBeVisible({ timeout: 15_000 });
-  const group = linked.locator(".reference-group", { hasText: "Tasks Ref Source" });
+  const group = linked.locator(".reference-group", { hasText: nm("Tasks Ref Source") });
   await expect(group).toHaveCount(1);
   await expect(group.locator(".reference-item")).toContainText("reference the task page");
   await expect(group).not.toContainText("#Task");
@@ -192,7 +211,7 @@ test("a task shows up in the Task page's linked references without #Task in its 
 test("Cmd/Ctrl+Enter on a second block does not touch the first block's marker", async ({
   page,
 }) => {
-  const outliner = await openEditing(page, "Tasks Isolated", "- TODO keep\n- make me");
+  const outliner = await openEditing(page, nm("Tasks Isolated"), "- TODO keep\n- make me");
   await clickRow(page, outliner, 1);
   await page.keyboard.press(`${MOD}+Enter`);
   await expect(outliner.locator(".vr-row").nth(1).locator(".vr-marker-TODO")).toHaveCount(1);

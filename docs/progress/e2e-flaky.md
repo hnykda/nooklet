@@ -26,12 +26,41 @@ default off CI) and port 6500.
    runner and rewrote `server.log` on every chunk; output arriving after teardown deleted the
    temp dir threw ENOENT. The server now writes to the log file's fd directly.
 
+4. **commands.spec.ts:202 "Open plugin manager…" (B-98)**: failed in full run 1 (`viewport ratio
+   0`). An app race. Probe `tools/probes/settings-section-scroll.spec.ts`: the scroll at mount
+   lands clamped at the end of a still-short panel (scrollTop 620 of 620, section top 369), then
+   the sections above load and push Plugins to top=699 of a 720 px viewport; with more devices on
+   the shared server it leaves the view. New `apps/web/src/views/scroll-section.ts` re-applies the
+   scroll on every panel resize until the person scrolls/clicks/types; used by Plugins and by
+   "Search & embeddings" (same pattern). New test `commands.spec.ts` "Open plugin manager keeps
+   Plugins in view while the sections above it load (B-98)" (device list answers late, 40 rows):
+   red 3/3 with the old one-off scroll, green with the fix.
+5. **mermaid-lazy-cache.spec.ts:30**: an app bug. The service worker's `lazy-chunks` rule matched
+   `url.pathname.startsWith("/static/")` only; a document loaded at `/g/<slug>/…` (ADR 025) asks
+   for `/g/<slug>/static/…`, so mermaid's 34 chunks never reached the runtime cache, and the offline
+   render worked only while Chromium's HTTP cache still held them. The test checked only that the
+   core chunk was cached. It now waits for every non-precached chunk the diagram loaded: red 10/10
+   with the old rule (lists the 34 `/g/default/static/…` chunks), 20/20 green with the rule
+   matching `^(\/g\/[^/]+)?\/static\/` (`apps/web/vite.config.ts`).
+6. **tasks.spec.ts (B-663)**: every test pins the `todo` workflow (`pinTaskWorkflow`, new helper
+   in `e2e/helpers/editor.ts`), and page names are per run (`nm()`).
+7. **popups.spec.ts (B-635)**: pages the tests edit are per run (`nm()`); pages the tests create
+   by typing (`Popup Wiki Created Fresh …`, `PopupTagFreshOne…`) carry per-run letters.
+8. **journal-agenda.spec.ts:182**: same lost poke as (1); the test's page and task text are per run
+   so `--repeat-each` works.
+9. **shelf.test.ts (B-669)**: the first test paid the cold transform of `shelf.js` and its imports
+   inside its 5 s timeout (0.66 s alone, 1.0 s in the web suite beside an e2e run; the second test,
+   re-importing the same files, 4 ms). A `beforeAll` import warms it. Believed fixed: the original
+   failure message was not recorded and it did not recur here.
+
+Full run 1 (before 4–9, on `1ad2ffd`): 790 passed, 2 failed, 2 skipped, exit 1. Failed:
+commands.spec.ts:202 (above) and phone-images.spec.ts:163 with `ENOSPC: no space left on device`
+writing its trace (the disk had 1 GB free; environment, not a flake).
+
 ## In flight / next
 
-- journal-agenda.spec.ts:182 (live update after an API write): very likely the same lost poke as
-  (1). To confirm with `--repeat-each` and full runs.
-- sw-update.spec.ts:86 (B-636), mermaid-lazy-cache.spec.ts:30, popups.spec.ts (B-635),
-  tasks.spec.ts (B-663), shelf.test.ts (B-669).
+- `--repeat-each 10` of tasks, popups, mermaid-lazy-cache, commands.
+- sw-update.spec.ts:86 (B-636): not reproduced (20/20 alone). Try under load.
 - Then three full `pnpm e2e --retries=0` runs, `pnpm -r test` twice, typecheck, biome, leak-check.
 
 ## BUGS.md updates to fold in
@@ -51,6 +80,23 @@ default off CI) and port 6500.
   teardown).
 - B-624 follow-up: the B-382 test's remaining flake was the pages list loading after the walk
   (evidence above); fixed in the test.
+- NEW (low, fixed): **"Open plugin manager" (and "Search & embeddings" from the search view) can
+  leave the section out of view**: the one scroll at mount ran before the sections above loaded.
+  Fixed (`views/scroll-section.ts`). Test: `commands.spec.ts` "Open plugin manager keeps Plugins in
+  view while the sections above it load (B-98)" (red 3/3 before). Probe:
+  `tools/probes/settings-section-scroll.spec.ts`.
+- B-663: fixed (test): `tasks.spec.ts` pins the workflow (`pinTaskWorkflow`).
+- B-635: fixed (test): per-run names in `popups.spec.ts`.
+- B-669: believed fixed (test): cold import moved out of the test's timeout.
+- NEW (medium, fixed): **mermaid diagrams seen under `/g/<slug>/` were not kept for offline use**:
+  the service worker's lazy-chunk rule ignored the graph prefix, so offline rendering depended on
+  the HTTP cache. Fixed (`apps/web/vite.config.ts`). Test: `mermaid-lazy-cache.spec.ts` "a diagram
+  rendered once renders again offline" now checks every chunk (red 10/10 before, 20/20 after).
+  Also `packages/server/src/http/web-client.ts#cacheControl` checks `startsWith("/static/")`:
+  whether `/g/<slug>/static/…` gets the immutable header depends on whether the pathname it sees
+  still has the prefix; not checked.
+- Pre-existing, not fixed: `commands.spec.ts:159` (Collapse all + selection) fails on every
+  `--repeat-each` repeat after the first (fixed page name left collapsed). Passes once per run.
 - Observation (not filed as a bug): the autocomplete highlight is an index, so rows that arrive
   later (the pages list) move a different row under it. A person who presses Enter in the first
   ~100 ms gets "New page", later the top match.
