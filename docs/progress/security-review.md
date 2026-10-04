@@ -32,13 +32,23 @@ Scratch servers on ports 6455-6457 only, `NOOKLET_DATA` always a fresh `mktemp -
   from the app (KaTeX, code fence, mermaid fence, links, reload); an injected inline script was
   blocked.
 
+- Committed `654a105`; merged `main`; filled the two `TODO (security review)` blocks in
+  `docs/guide/self-hosting.md` and `docs/guide/security.md` (only those blocks).
+- After the merge: server unit 100 files / 809 tests green, `tsc` clean.
+- First e2e attempt is void: a sibling agent wrote to the same scratchpad log name, so the
+  output could not be attributed. Re-running with a unique log name.
+
 ## In flight
-- Full `pnpm e2e` on port 6457 with the CSP + guards in place.
+- Full `pnpm e2e` on port 6457 against the merged tree (log `secrev-e2e-a81e.log` in scratch).
 
 ## Next steps
-1. e2e result -> record here. 2. Commit. 3. `git merge main`, fill the two
-   `TODO (security review)` blocks in `docs/guide/self-hosting.md` and `docs/guide/security.md`
-   (only those blocks). 4. Re-run server tests after the merge. 5. Commit.
+1. e2e result -> record here, commit.
+
+## For the docs agent (outside the TODO blocks, not edited by me)
+- `docs/guide/self-hosting.md` flag table (`--no-loopback-token` row) and `docs/guide/security.md`
+  around line 133 describe the auto-token as on unless `--no-loopback-token`. Since this branch,
+  it is **off by default for a non-loopback `--host`** (`--loopback-token` turns it back on).
+  The `serve` synopsis should gain `[--loopback-token]`.
 
 ## How to resume
 Re-read this file; `git log 02fa3dc..HEAD`; `git status` for uncommitted files listed above.
