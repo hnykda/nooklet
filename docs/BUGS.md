@@ -927,6 +927,26 @@ Owner.
 Owner: "not sure how to cycle through the In progress on a task. Also the empty square checkbox looks
 like an error of unrendered char than what it does. Maybe with the checkmark it would be better."
 
+### B-652 · The repo quotes the owner's real notes and home infrastructure, and it is about to go public
+**Status:** open (internal docs scrubbed; code, deploy/ and history pending) · **Severity:** high ·
+**Found:** 2026-10-04, pre-publication leak audit · **Test:** `node tools/leak-check.mjs --tree`
+(with the private denylist) — not wired into CI yet
+
+Agents testing against the real graph copied what they saw into BUGS.md, progress notes, probes and
+tests: people's full names, page names about health, relationships and drug use, a Czech task
+list, the graph's absolute path, the tailnet name, the LAN address, the home server's name, and
+one scratch-server token. Most of it is only in the ~770 unpushed commits; a little is already in
+the public `origin/main` (the graph path, a LAN address, the scratch token, one drug-related page
+name in a code comment). Full inventory, the history options and the guard are in
+`docs/progress/leak-audit.md`.
+
+**Done so far:** every internal doc and probe rewritten with stand-ins that keep the shape
+(`@Alex`, a Czech heading with diacritics, `Sprouts/Growing/Sixth Try`, `192.168.1.5`,
+`<tailnet>.ts.net`, `~/notes-graph`); comments in 10 source files likewise; `.gitleaks.toml`,
+`tools/leak-check.mjs`, `tools/git-hooks/pre-commit`; CLAUDE.md "Public repo hygiene". **Still
+open:** test strings in ~25 files under `apps/`, `packages/`, `e2e/` (feature agents), `deploy/k8s`
+(infra agent), and the history decision (owner).
+
 ## Fixed
 
 ### B-638 · `nooklet serve --data <dir that does not exist yet>` dies at once: `ENOENT … root.token`

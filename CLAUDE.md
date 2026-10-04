@@ -72,6 +72,31 @@ or was skipped, say that. Don't describe a plan as finished when it's believed-f
 
 ---
 
+## Public repo hygiene
+
+This repo is public. The real graph you test against is the owner's private notes, and the
+machines it runs on are the owner's home network. Neither belongs in a file, a test, a probe, a
+screenshot or a commit message.
+
+- **Never paste real note content.** No page names, block text, people (`@Name`), tags, or Czech
+  sentences taken from the real graph. Describe the shape instead ("a 201-block page", "a person
+  page with 756 linked references", "a Czech heading with diacritics") or invent a stand-in with
+  the same shape (`Plánování zahradních úprav`, `@Alex`, `Sprouts/Growing/Sixth Try`).
+- **Never write infra names.** Use placeholders: `~/notes-graph` for the real graph's path,
+  `<repo>` for a checkout path, `192.168.1.5` for a LAN address, `<tailnet>.ts.net` /
+  `example.ts.net` for a tailnet host, `100.101.102.103` for a Tailscale IP, "the home server"
+  for the owner's cluster, "the infra repo" for its config repo. No `/Users/<name>/` paths.
+- **Never commit a token**, even one from a scratch server. Write `nk_…`.
+- **Screenshots** only of seeded fixture data, never of the real graph. Look at the PNG before
+  committing it.
+- **Guard:** `git config core.hooksPath tools/git-hooks` once per clone runs
+  `node tools/leak-check.mjs --staged` before every commit (shape rules from `.gitleaks.toml`, plus
+  the owner's private denylist of real names if `~/.config/nooklet/leak-denylist.txt` exists). Run
+  `node tools/leak-check.mjs --tree` before handing work back. A deliberate example that trips it
+  gets a trailing `leak-check: allow` comment; don't weaken the rules.
+
+---
+
 ## Code conventions
 
 - TypeScript throughout, latest standards, no backward-compatibility baggage. Biome for lint/format.
