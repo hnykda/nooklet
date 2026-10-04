@@ -297,9 +297,93 @@ describe("classifyBlockContent: table edge cases (CLS-T)", () => {
     expect(bc.align).toEqual(["left", "right", "center"]);
   });
 
-  it("a ragged row falls back to paragraph", () => {
-    const bc = classifyBlockContent("| a | b |\n| --- | --- |\n| only one |");
-    expect(bc.kind).toBe("paragraph");
+  /** The text each cell's tokens cover, sliced out of the whole content as the renderer does. */
+  const cellTexts = (content: string) => {
+    const bc = classifyBlockContent(content) as Extract<BlockContent, { kind: "table" }>;
+    expect(bc.kind).toBe("table");
+    const text = (cell: InlineToken[]) =>
+      cell.map((t) => (t.kind === "escape" ? t.char : content.slice(t.start, t.end))).join("");
+    return { header: bc.header.map(text), rows: bc.rows.map((r) => r.map(text)), bc };
+  };
+
+  it("B-702: cell tokens are offsets into the whole content, with leading and trailing pipes", () => {
+    expect(cellTexts("| a | b |\n|---|---|\n| 1 | 2 |")).toMatchObject({
+      header: ["a", "b"],
+      rows: [["1", "2"]],
+    });
+  });
+
+  it("B-702: the same without outer pipes, and with only a leading pipe", () => {
+    expect(cellTexts("a|b\n-|-:\n1|2")).toMatchObject({ header: ["a", "b"], rows: [["1", "2"]] });
+    expect(cellTexts("| a | b\n| - | -\n| 1 | 2")).toMatchObject({
+      header: ["a", "b"],
+      rows: [["1", "2"]],
+    });
+  });
+
+  it("B-702: inline markup inside a cell keeps absolute offsets", () => {
+    const content = "| Page | Note |\n| :--- | ---: |\n| [[Alpha]] | **bold** and `x` |";
+    const { bc } = cellTexts(content);
+    const link = bc.rows[0]?.[0]?.[0];
+    expect(link?.kind).toBe("wikilink");
+    expect(content.slice(link?.start, link?.end)).toBe("[[Alpha]]");
+    const bold = bc.rows[0]?.[1]?.[0];
+    expect(bold?.kind).toBe("strong");
+    expect(content.slice(bold?.start, bold?.end)).toBe("**bold**");
+  });
+
+  it("B-702: an escaped pipe renders as a literal pipe in its cell", () => {
+    expect(cellTexts("| a \\| b | c |\n| --- | --- |\n| x | y \\| z |")).toMatchObject({
+      header: ["a | b", "c"],
+      rows: [["x", "y | z"]],
+    });
+  });
+
+  it("a ragged row is padded or truncated to the header width (GFM)", () => {
+    const { rows } = cellTexts("| a | b |\n| --- | --- |\n| only one |\n| 1 | 2 | 3 |");
+    expect(rows).toEqual([
+      ["only one", ""],
+      ["1", "2"],
+    ]);
+  });
+
+  it("a header/delimiter cell-count mismatch is not a table", () => {
+    expect(classifyBlockContent("| a | b |\n| --- |\n| 1 | 2 |").kind).toBe("paragraph");
+  });
+
+  it("a body line with no pipe ends the table; the rest is prose", () => {
+    const bc = classifyBlockContent("| a | b |\n| --- | --- |\nplain");
+    expect(bc).toMatchObject({
+      kind: "mixed",
+      parts: [{ kind: "table" }, { kind: "paragraph", firstLine: 2 }],
+    });
+  });
+
+  it("B-702: prose, a blank line, then a table (the shape real Logseq tables have)", () => {
+    const content = "Some prose:\n\n| a | b |\n| --- | --- |\n| 1 | |\n\nafter";
+    const bc = classifyBlockContent(content) as Extract<BlockContent, { kind: "mixed" }>;
+    expect(bc.kind).toBe("mixed");
+    expect(bc.parts.map((p) => p.kind)).toEqual(["paragraph", "table", "paragraph"]);
+    const [prose, table, after] = bc.parts;
+    const slice = (t: InlineToken | undefined) => content.slice(t?.start, t?.end);
+    expect(prose?.kind === "paragraph" && prose.lines).toHaveLength(1); // the blank is dropped
+    expect(after?.kind === "paragraph" && after.firstLine).toBe(6);
+    if (table?.kind !== "table") throw new Error("expected a table");
+    expect(table.header.map((c) => slice(c[0]))).toEqual(["a", "b"]);
+    expect(table.rows).toHaveLength(1);
+    expect(slice(table.rows[0]?.[0]?.[0])).toBe("1");
+    expect(table.rows[0]?.[1]).toEqual([]); // an empty cell
+    // Snippets (search hits, backlinks) keep showing the whole text inline.
+    expect(tokenizeContent(content).length).toBeGreaterThan(0);
+  });
+
+  it("a trailing blank line after a table leaves it a table", () => {
+    expect(classifyBlockContent("| a |\n| --- |\n| 1 |\n").kind).toBe("table");
+  });
+
+  it("prose with pipes but no delimiter row stays a paragraph", () => {
+    expect(classifyBlockContent("a | b\nc | d").kind).toBe("paragraph");
+    expect(classifyBlockContent("x | y\n---").kind).toBe("paragraph");
   });
 
   it("an escaped pipe inside a cell is not a separator", () => {

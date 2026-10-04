@@ -17,7 +17,12 @@
  */
 
 import { z } from "zod";
-import { assetMarkdownPath, MAX_ASSET_BYTES, storeAssetBytes } from "../assets/store.js";
+import {
+  assetMarkdownPath,
+  assetSizes,
+  MAX_ASSET_BYTES,
+  storeAssetBytes,
+} from "../assets/store.js";
 import { defineOp, OpError } from "./registry.js";
 
 /** 25 MB decoded, per the task's size cap recommendation. */
@@ -81,6 +86,8 @@ export const assetUpload = defineOp({
       .describe(
         "true when identical bytes were already uploaded; this returned that existing asset",
       ),
+    width: z.number().int().nullable().describe("Pixel width for a PNG/JPEG/GIF/WebP, else null"),
+    height: z.number().int().nullable().describe("Pixel height for a PNG/JPEG/GIF/WebP, else null"),
   }),
   annotations: {
     readOnlyHint: false,
@@ -127,6 +134,57 @@ export const assetUpload = defineOp({
       mime_type: stored.mimeType,
       byte_size: stored.byteSize,
       deduped: stored.deduped,
+      width: stored.width,
+      height: stored.height,
     };
   },
+});
+
+/** Ids per `asset.sizes` call: a page of images, with room to spare. */
+const MAX_SIZE_IDS = 500;
+
+/**
+ * `asset.sizes` (B-703): the recorded pixel sizes of image assets, so the client can give an image
+ * its box before the lazily loaded bytes arrive and the rows below it do not jump when they do.
+ * Fills in, from the file, the size of any asset stored before sizes were recorded
+ * (`../assets/store.ts#assetSizes` says why on read rather than in a migration).
+ *
+ * HTTP-only: it exists for the renderer. An agent embedding an image gets the size back from
+ * `asset.upload`, and has no layout to keep still.
+ */
+export const assetSizesOp = defineOp({
+  name: "asset.sizes",
+  summary: "Pixel sizes of image assets",
+  description:
+    "Returns the pixel width and height recorded for each asset id given (PNG, JPEG, GIF, WebP; " +
+    "null for anything else). Unknown or deleted ids are left out. Used by the web client to " +
+    "reserve an image's space before it loads.",
+  input: z
+    .object({
+      ids: z
+        .array(z.string().min(1).max(64))
+        .max(MAX_SIZE_IDS)
+        .describe("Asset ids, as in assets/<id>.<ext>"),
+    })
+    .strict(),
+  output: z.object({
+    assets: z.array(
+      z.object({
+        id: z.string(),
+        width: z.number().int().nullable(),
+        height: z.number().int().nullable(),
+      }),
+    ),
+  }),
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  scopes: ["read"],
+  expose: { mcp: false },
+  handler: (input, ctx) => ({
+    assets: assetSizes(ctx.db, ctx.config.dataDir, [...new Set(input.ids)]),
+  }),
 });

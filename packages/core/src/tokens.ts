@@ -63,7 +63,12 @@ export type InlineToken =
 export type Align = "left" | "center" | "right" | null;
 
 export type BlockContent =
-  | { kind: "paragraph"; lines: InlineToken[][] }
+  | {
+      kind: "paragraph";
+      lines: InlineToken[][];
+      /** Index of `lines[0]` among the content's lines, when not 0 (a `mixed` part). */
+      firstLine?: number;
+    }
   | {
       kind: "heading";
       level: 1 | 2 | 3 | 4 | 5 | 6;
@@ -73,7 +78,15 @@ export type BlockContent =
   | { kind: "fence"; lang: string; code: string }
   | { kind: "quote"; lines: InlineToken[][] }
   | { kind: "table"; align: Align[]; header: InlineToken[][]; rows: InlineToken[][][] }
-  | { kind: "hr" };
+  | { kind: "hr" }
+  /** Prose with one or more tables in it, in order (CLS-T). */
+  | {
+      kind: "mixed";
+      parts: (
+        | Extract<BlockContent, { kind: "paragraph" }>
+        | Extract<BlockContent, { kind: "table" }>
+      )[];
+    };
 
 // ---------------------------------------------------------------------------------------------
 // Shared constants (mirroring refs.ts's private constants; kept in sync by hand, refs.ts §8/9).
@@ -789,31 +802,43 @@ function classifyQuote(content: string): BlockContent | null {
   return { kind: "quote", lines: outLines };
 }
 
-/** Split a table row on unescaped `|`, trim cells, and drop the optional outer pipes. */
-function splitTableRow(line: string): string[] {
-  const cells: string[] = [];
-  let cur = "";
+interface TableCell {
+  text: string;
+  /** Offset of `text` within its row line. */
+  start: number;
+}
+
+/**
+ * Split a table row on unescaped `|`, trim cells, and drop the optional outer pipes.
+ *
+ * Each cell keeps its offset within the line, because inline tokens are offsets into the block's
+ * whole `content` and the renderer slices `content` with them. Tokenizing every cell at offset 0
+ * made each cell of `| a | b |` render `content[0..1]`, the leading `|` (B-702).
+ */
+function splitTableRow(line: string): TableCell[] {
+  const raw: TableCell[] = [];
+  let cellStart = 0;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i] as string;
     if (ch === "\\" && i + 1 < line.length) {
-      cur += ch + (line[i + 1] as string);
       i++;
       continue;
     }
     if (ch === "|") {
-      cells.push(cur);
-      cur = "";
-      continue;
+      raw.push({ text: line.slice(cellStart, i), start: cellStart });
+      cellStart = i + 1;
     }
-    cur += ch;
   }
-  cells.push(cur);
-  const trimmed = cells.map((c) => c.trim());
-  if (trimmed.length > 0 && trimmed[0] === "" && line.trimStart().startsWith("|")) trimmed.shift();
-  if (trimmed.length > 0 && trimmed[trimmed.length - 1] === "" && line.trimEnd().endsWith("|")) {
-    trimmed.pop();
+  raw.push({ text: line.slice(cellStart), start: cellStart });
+  const cells = raw.map((c) => {
+    const lead = c.text.length - c.text.trimStart().length;
+    return { text: c.text.trim(), start: c.start + lead };
+  });
+  if (cells.length > 0 && cells[0]?.text === "" && line.trimStart().startsWith("|")) cells.shift();
+  if (cells.length > 0 && cells[cells.length - 1]?.text === "" && line.trimEnd().endsWith("|")) {
+    cells.pop();
   }
-  return trimmed;
+  return cells;
 }
 
 function cellAlign(cell: string): Align {
@@ -826,33 +851,104 @@ function cellAlign(cell: string): Align {
   return null;
 }
 
-function classifyTable(content: string): BlockContent | null {
-  const lines = content.split("\n");
-  if (lines.length < 2) return null;
-  const line0 = lines[0] as string;
-  const line1 = lines[1] as string;
-  if (!line0.includes("|") || !line1.includes("|")) return null;
-  if (!DELIM_ROW_RE.test(line1)) return null;
+type TableContent = Extract<BlockContent, { kind: "table" }>;
+type ParagraphContent = Extract<BlockContent, { kind: "paragraph" }>;
 
-  const header = splitTableRow(line0);
-  const delims = splitTableRow(line1);
+/**
+ * The GFM table whose header row is `lines[at]`, or `null`. `bases[i]` is line i's offset in the
+ * whole content. The table runs until the first blank line, line without a `|`, or the end.
+ */
+function tableAt(
+  lines: readonly string[],
+  bases: readonly number[],
+  at: number,
+): { table: TableContent; end: number } | null {
+  const headLine = lines[at];
+  const delimLine = lines[at + 1];
+  if (headLine === undefined || delimLine === undefined) return null;
+  if (!headLine.includes("|") || !delimLine.includes("|")) return null;
+  if (!DELIM_ROW_RE.test(delimLine)) return null;
+  const header = splitTableRow(headLine);
+  const delims = splitTableRow(delimLine);
+  // GFM: the header and delimiter rows must agree; body rows need not (see below).
   if (delims.length !== header.length || header.length === 0) return null;
+  const width = header.length;
 
-  const rows: string[][] = [];
-  for (let i = 2; i < lines.length; i++) {
-    const line = lines[i] as string;
-    if (!line.includes("|")) return null;
-    const cells = splitTableRow(line);
-    if (cells.length !== header.length) return null;
+  const tokenizeRow = (cells: TableCell[], lineBase: number): InlineToken[][] =>
+    cells.map((c) => tokenizeLine(c.text, lineBase + c.start));
+
+  const rows: InlineToken[][][] = [];
+  let end = at + 2;
+  for (; end < lines.length; end++) {
+    const line = lines[end] as string;
+    if (line.trim() === "" || !line.includes("|")) break;
+    // GFM ragged rows: a short row is padded with empty cells, a long row's excess is dropped
+    // from the rendering (the stored text is untouched, so nothing is lost from the mirror).
+    const cells = tokenizeRow(splitTableRow(line).slice(0, width), bases[end] as number);
+    while (cells.length < width) cells.push([]);
     rows.push(cells);
   }
-
   return {
-    kind: "table",
-    align: delims.map(cellAlign),
-    header: header.map((c) => tokenizeLine(c)),
-    rows: rows.map((r) => r.map((c) => tokenizeLine(c))),
+    table: {
+      kind: "table",
+      align: delims.map((d) => cellAlign(d.text)),
+      header: tokenizeRow(header, bases[at] as number),
+      rows,
+    },
+    end,
   };
+}
+
+/**
+ * CLS-T: a block that is one table, or prose with tables in it. The second is the shape every
+ * table in a real Logseq graph had (B-702): a line of prose, a blank line, then the table — and
+ * requiring the table to start on line 1 rendered all of them as pipes. Blank lines next to a
+ * table only separate it from the prose and are not rendered.
+ */
+function classifyTables(content: string): BlockContent | null {
+  if (!content.includes("|")) return null;
+  const lines = content.split("\n");
+  const bases: number[] = [];
+  let pos = 0;
+  for (const line of lines) {
+    bases.push(pos);
+    pos += line.length + 1;
+  }
+  const parts: (ParagraphContent | TableContent)[] = [];
+  let pending: number[] = []; // line indexes of the prose run being collected
+  const flush = (): void => {
+    while (pending.length > 0 && (lines[pending.at(-1) as number] as string).trim() === "") {
+      pending.pop();
+    }
+    if (pending.length > 0) {
+      const first = pending[0] as number;
+      parts.push({
+        kind: "paragraph",
+        lines: pending.map((i) => tokenizeLine(lines[i] as string, bases[i])),
+        ...(first > 0 ? { firstLine: first } : {}),
+      });
+    }
+    pending = [];
+  };
+  let afterTable = false;
+  for (let i = 0; i < lines.length; ) {
+    const found = tableAt(lines, bases, i);
+    if (found) {
+      flush();
+      parts.push(found.table);
+      i = found.end;
+      afterTable = true;
+      continue;
+    }
+    if (!(afterTable && pending.length === 0 && (lines[i] as string).trim() === "")) {
+      pending.push(i);
+    }
+    i++;
+  }
+  if (parts.length === 0) return null;
+  flush();
+  if (parts.length === 1 && parts[0]?.kind === "table") return parts[0];
+  return { kind: "mixed", parts };
 }
 
 function classifyHr(content: string): BlockContent | null {
@@ -877,7 +973,7 @@ export function classifyBlockContent(content: string): BlockContent {
     classifyFence(content) ??
     classifyHeading(content) ??
     classifyQuote(content) ??
-    classifyTable(content) ??
+    classifyTables(content) ??
     classifyHr(content) ??
     classifyParagraph(content)
   );
@@ -888,7 +984,10 @@ export function classifyBlockContent(content: string): BlockContent {
  * whole `content` string, `br` tokens inserted at every `\n`. `[]` for fence/table/hr/heading.
  */
 export function tokenizeContent(content: string): InlineToken[] {
-  const bc = classifyBlockContent(content);
+  let bc = classifyBlockContent(content);
+  // A snippet of prose-with-a-table (search hit, backlink, block ref) stays the one inline run it
+  // was before tables inside prose were recognized; a table can't be laid out inline anyway.
+  if (bc.kind === "mixed") bc = classifyParagraph(content);
   if (bc.kind !== "paragraph" && bc.kind !== "quote") return [];
 
   const rawLines = content.split("\n");
