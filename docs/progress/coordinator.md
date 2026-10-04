@@ -10,6 +10,9 @@ Owner: bring nooklet to production. Plan agreed: the app server tailnet-only (Ta
 single replica, PVC, SOPS root token, `--no-loopback-token`, nightly backup); a public static
 landing+docs site at nooklet.danielalder.cz (Next.js static export, docs/guide as single source,
 search, llms.txt); deploy through the owner's Woodpecker + infra-repo (draft PR there).
+**Deployment tiers (owner decision 2026-10-04):** (1) recommended default — tailnet-only + HTTPS +
+per-device tokens; (2) possible with a checklist — public behind a TLS reverse proxy (pending the
+security review); (3) unsupported — plain http beyond localhost.
 **The GitHub repo is already public; local main is ~770 commits unpushed and contains personal
 data — do NOT push until the leak audit's remediation is decided by the owner.**
 
@@ -18,6 +21,7 @@ data — do NOT push until the leak audit's remediation is decided by the owner.
 | leak-audit | secrets/personal data in tree + unpushed + public history; scrub internal docs; history plan; guards | — |
 | public-docs | docs/guide/* (features, architecture, sync, getting started, self-hosting, security, agents, FAQ), README, SECURITY, CONTRIBUTING | 6440-6444 |
 | site | apps/site (`@nooklet/site`), landing + docs + animations + search + llms.txt | 6445-6449 |
+| security-review | public-exposure review: route inventory, tokens, brute force/DoS, headers, XSS, plugins; small fixes; tier-2 checklist | 6455-6459 |
 | infra | generic deploy/ + Woodpecker in nooklet; draft PR in infra-repo (branch `nooklet-deploy`, worktree `<infra-repo>-nooklet`) | 6450-6454 |
 
 Incident: the first launch of these four ran in **infra-repo** worktrees, because the coordinator's
