@@ -854,6 +854,79 @@ client dir at startup (or serves a versioned copy), and/or the runbook says not 
 test server is serving. To confirm next time it happens: Inspect Element → Console/Network (404s on
 `/static/*.js` would confirm).
 
+### B-640 · A synced block's text is invisible until the block is opened for editing
+**Status:** open · **Severity:** high (data looks lost) · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner: text typed on the iPhone reached the Mac app, but on the iPhone it was not visible, "almost
+like the same font color was chosen as background". Seen on the Mac too after syncing the offline
+edits: the top bullet "Ok these ones are added on mobile in airplane mode" shows as an empty row
+with no bullet (its children render, indented) until the block is clicked into edit mode, where
+the text and a collapse arrow appear. Screenshots in the session (2026-10-04). The block is in the
+test graph `~/nooklet-test`.
+
+### B-641 · Offline, the references panel says "Couldn't load references · Retry"
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner on the iPhone in airplane mode: references fail instead of working from the device. "I think
+it should just work, not work only online." The replica has no `ref` table (B-626); references
+are server-only (B-577's references branch).
+
+### B-642 · A same-block edit conflict is kept as a `conflict_copy::` property instead of something readable
+**Status:** open · **Severity:** medium (UX) · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner edited one block on both devices; the loser's text became `conflict_copy: There is this`
+under the winning text. "Shouldn't it be smarter than that, and e.g. added that as extra line?"
+
+### B-643 · The desktop app cannot add a local graph ("This device") from the graph switcher
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Works on the phone; in the Mac app (remote mode, `http://127.0.0.1:6200`) the switcher's add flow
+does not offer "This device".
+
+### B-644 · New local graphs are all named "This device"
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner: generate a whimsical name from a list of ~100, adding a number if taken; renaming exists but
+every new graph showing "This device" is confusing.
+
+### B-645 · The All pages view has no block/word counts and no row actions
+**Status:** open · **Severity:** low (feature) · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner: extra columns such as word count or block count, and actions such as delete (with confirm).
+
+### B-646 · Typing `/` on the phone does not open the slash menu
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner on the iPhone app.
+
+### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner: on the phone it just inserts a default smiling face; typing inputs raw characters instead of
+searching emoji. Same on desktop.
+
+### B-648 · On the phone, opening Properties makes the page wider than the screen until the app is restarted
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner: the viewport grows past the phone width and the page is centred, so content is cut off;
+only an app restart restored the width.
+
+### B-649 · Go forward is not greyed out when there is nowhere to go
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner, on the phone.
+
+### B-650 · On the phone, the graph switcher does not close when tapping elsewhere
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner.
+
+### B-651 · On the phone, no visible way to set a task to DOING, and the empty checkbox looks like a missing glyph
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
+
+Owner: "not sure how to cycle through the In progress on a task. Also the empty square checkbox looks
+like an error of unrendered char than what it does. Maybe with the checkmark it would be better."
+
 ## Fixed
 
 ### B-638 · `nooklet serve --data <dir that does not exist yet>` dies at once: `ENOENT … root.token`
