@@ -1143,7 +1143,13 @@ B-669 believed fixed (test: `shelf.test.ts` warms its cold import outside the 5 
 fixed (`e2e/global-setup.ts`: the server writes its log fd directly); B-636 (`sw-update.spec.ts:86`)
 not reproduced: 20/20 alone, 30/30 under CPU load. `focus-log.spec.ts:76` fixed (test: recording
 off before Clear). Pre-existing and not fixed: `commands.spec.ts:159`, `focus-log.spec.ts:36/:106`
-fail on `--repeat-each` repeats after the first (fixed page names).
+fail on `--repeat-each` repeats after the first (fixed page names). `packages/server`
+`host.test.ts` B-406 timed out (5 s) in `pnpm -r test` twice beside an e2e run and passes alone in
+1.3 s: three fixtures, each a newly written plugin transpiled at load. It and the two-plugin B-402
+test now have 20 s. Coordinator reports from main `aa2b942f` (autocomplete-inside-link:85,
+commands:202, mermaid-lazy-cache:30, desktop-local-graph:113, sync-connection-states:60 under load):
+main did not contain this branch's fixes for any of them (B-382 test, B-762, B-761/B-763, B-765,
+B-761).
 
 ### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
 **Status:** fixed 2026-10-04 (phone-input) · **Test:** `token-input.test.ts`, `GraphSwitcher.test.tsx` "B-706: …" ×2
