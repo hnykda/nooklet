@@ -1107,14 +1107,18 @@ miss. Fix: every bare positive word is a prefix term; quoted phrases and `-exclu
 Infix matching (`ationali`) is out of scope here: the server has `block_tri`/`page_tri` trigram
 tables but the client replica does not (index cost, `tools/probes/client-fts-cost.mjs`).
 
-### B-737 · e2e: "Open plugin manager … (B-98)" failed once in a full run: Plugins section not scrolled into view
+### B-737 · e2e: "Open plugin manager … (B-98)" fails after earlier specs (main too): Plugins section not scrolled into view
 **Status:** open · **Severity:** low (test flake, or a real race in the scroll) · **Found:** 2026-10-04, image-viewer agent, full `pnpm e2e` on port 6470 · **Test:** `e2e/tests/commands.spec.ts` "Open plugin manager opens Settings at the list of running plugins, not a blank page (B-98)"
 
-In a full Chromium run (807 passed) this test failed at `expect(section).toBeInViewport()`: the
-`.set-panel #set-plugins` section existed but its viewport ratio stayed 0 for 10 s, so Settings opened
-but did not scroll to Plugins. The same spec passed straight after, run alone. Not caused by the
-B-736 change, which touches nothing in Settings or the command. Not investigated: whether the scroll
-runs before the panel's content has laid out under load.
+This test fails at `expect(section).toBeInViewport()`: the `.set-panel #set-plugins` section exists
+but its viewport ratio stays 0 for 10 s, so Settings opens but does not scroll to Plugins. It failed
+in both full Chromium runs on the B-736 branch, and in a run of just the 14 specs up to and including
+`commands.spec.ts` (alphabetical order, Chromium) on the branch AND on main at `bb5eec39`. So it is
+not caused by B-736. It passed when `commands.spec.ts` ran together with only the image specs, so it
+depends on what ran before it. The cause has not been investigated. In those same runs,
+`sync-connection-states.spec.ts` "a refused token says so…" failed once (second full run, passed on
+re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. Both look like
+flakes and are noted here rather than logged separately.
 
 ## Fixed
 
