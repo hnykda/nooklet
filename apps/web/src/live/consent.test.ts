@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type ConsentStorageAdapter, createConsentStore } from "./consent.js";
+import { type ConsentStorageAdapter, createConsentStore, liveBadgeShown } from "./consent.js";
+import { liveOffByDefaultFor } from "./device-default.js";
 
 function fakeStorage(): ConsentStorageAdapter & { values: Map<string, string> } {
   const values = new Map<string, string>();
@@ -66,5 +67,31 @@ describe("createConsentStore (ADR 015 §2.6)", () => {
     expect(store.get()).toEqual({ viewEnabled: true, controlEnabled: false });
     expect(() => store.setControlEnabled(true)).not.toThrow();
     expect(store.get().controlEnabled).toBe(true);
+  });
+});
+
+describe("B-708: a phone starts with agent access off", () => {
+  it("an unset view switch follows the device default; a stored choice wins either way", () => {
+    expect(createConsentStore(fakeStorage(), { viewEnabled: false }).get()).toEqual({
+      viewEnabled: false,
+      controlEnabled: false,
+    });
+    const optedIn = fakeStorage();
+    optedIn.values.set("nooklet.live.viewEnabled", "true");
+    expect(createConsentStore(optedIn, { viewEnabled: false }).get().viewEnabled).toBe(true);
+  });
+
+  it("Capacitor and touch-only devices are off by default; a desktop is not", () => {
+    expect(liveOffByDefaultFor({ capacitor: true, touchOnly: false })).toBe(true);
+    expect(liveOffByDefaultFor({ capacitor: false, touchOnly: true })).toBe(true);
+    expect(liveOffByDefaultFor({ capacitor: false, touchOnly: false })).toBe(false);
+  });
+
+  it("the badge shows on a desktop always, on a phone only while access is on", () => {
+    const off = { viewEnabled: false, controlEnabled: false };
+    expect(liveBadgeShown(off, false)).toBe(true);
+    expect(liveBadgeShown(off, true)).toBe(false);
+    expect(liveBadgeShown({ ...off, viewEnabled: true }, true)).toBe(true);
+    expect(liveBadgeShown({ ...off, controlEnabled: true }, true)).toBe(true);
   });
 });

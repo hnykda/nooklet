@@ -89,3 +89,32 @@ typed JSON snapshot and a command id in tens of milliseconds instead.
 - A desktop shell could later add OS-level extras a browser tab cannot have (raising the window
   when a remote command fires), through ADR 005's existing `platform` adapter. Explicitly optional
   and not required by this design.
+
+## Amendment (2026-10-04, B-708): off and hidden by default on a phone
+
+Owner: "agents control should probably be off for mobile? that doesn't make much sense."
+
+**Change.** On the Capacitor app and on any touch-only device (what the command system already
+calls `mobile`: an iOS/Android user agent, or a coarse pointer with no hover), "let agents view
+this window" now defaults **off**, and the top-bar badge is not drawn while both switches are off.
+Both switches are also in Settings → Agent access, on every device; on a phone that is where the
+channel is turned on, and turning it on brings the badge back. A choice the device already stored
+wins either way. Desktop behaviour is unchanged (view on, control off, badge always shown).
+Code: `apps/web/src/live/device-default.ts`, `consent.ts#liveBadgeShown`.
+
+**Why.** This channel exists for an agent working beside a window someone is looking at — the same
+computer, the next terminal (§"Why" above). A phone is rarely that: nobody runs an agent next to
+it, it is one more socket to hold open on a radio that sleeps, and the badge took a slot in a top
+bar with little room. "Discoverable by default" (§6) was the argument for view-on, and it is
+weakest exactly where the feature is least useful.
+
+**What stays true.** "The socket being open *is* the feature being active" (§1): with view off,
+`app/CommandLayer.tsx#LiveConnection` never calls `connectLiveSocket`, so the device opens no
+`/ui/live` at all — checked by `e2e/tests/phone-ui.spec.ts` "B-708…" (Chromium and WebKit, iPhone
+viewport with touch), which watches the page's WebSockets before and after the Settings opt-in. And
+the badge is shown whenever an agent can see the window (§6): hiding it is tied to the switches
+being off, never to the device alone.
+
+**Cost.** Someone who does want an agent on their phone or tablet must find the switch in Settings.
+A touch-screen laptop with a mouse attached reports hover, so it keeps the desktop default; an
+iPad with a keyboard but no pointer gets the phone default.
