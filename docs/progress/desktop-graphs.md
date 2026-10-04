@@ -6,10 +6,11 @@ Design: `docs/proposals/005-one-graph-list-on-desktop.md` (accepted 2026-10-04).
 ## Status
 
 - [x] Read proposal 005, ADR 025/028/029, `graph-menu.md`, `main.rs`, launcher, web switcher.
-- [x] BUGS.md: B-780 (umbrella) + B-781..B-785 logged before any fix.
-- [ ] Rust: shell-owned list (`graph_list.rs`), migration, Keychain (`token_store.rs`), verify
+- [x] BUGS.md: B-780 (umbrella) + B-781..B-785 logged before any fix (`d4053b9f`).
+- [x] Rust: shell-owned list (`graph_list.rs`), migration, Keychain (`token_store.rs`), verify
       (`connect.rs`), always-on sidecar, per-target window, door requests with a request key.
-- [ ] Launcher shrinks to Connecting… / Couldn't reach.
+      `c47acd84`. `cargo test`: 33 passed, 1 ignored (the real-keychain round trip).
+- [x] Launcher shrinks to Connecting… / Couldn't reach (`c47acd84`).
 - [ ] Web: desktop data source + menu + add form + no-token screen; bootstrap token from shell;
       mismatch on desktop; phone wording; remove dead code.
 - [ ] ADR 032, ADR 028 amendment, user docs.
@@ -50,6 +51,13 @@ Design: `docs/proposals/005-one-graph-list-on-desktop.md` (accepted 2026-10-04).
   localStorage, if any).
 - "Show graphs on this server (root token)" is not offered on desktop: it is a cross-origin
   request, and the shell has no use for a root token. Phone/web keep it.
+
+## In flight
+
+- Web side (next): `platform/desktop-shell.ts` new shape (`graphs`, `key`, `graphToken`,
+  `connect`), requests `new-local-graph` / `connect-server` / `rename` / `remove` with `key` + `req`,
+  replies on `nooklet:desktop-reply`. Switching = `location.assign(graph.address)`.
+  Between `c47acd84` and the web commit the desktop app is NOT usable (page expects the old shape).
 
 ## How to resume
 
