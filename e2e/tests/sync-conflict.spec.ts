@@ -93,3 +93,72 @@ test("a block rewritten on an offline device and an online one keeps both texts,
     await onlineCtx.close();
   }
 });
+
+/**
+ * B-652: the same, with the returning device's pull responses held back 1.5 s while its push goes
+ * straight through — so its push response is applied first, the order that used to delete its
+ * own edit from the outbox before the other device's edit arrived, and LWW then dropped one text
+ * with no copy. Both ways round: the returning device's text losing LWW, and winning it.
+ */
+for (const returningWins of [false, true]) {
+  test(`a reconnecting device whose push response lands before its pull keeps both texts (B-652, its text ${returningWins ? "wins" : "loses"})`, async ({
+    browser,
+  }, info) => {
+    const name = runName(`Sync Race ${returningWins ? "Wins" : "Loses"}`, info);
+    const offlineCtx = await browser.newContext();
+    const onlineCtx = await browser.newContext();
+    try {
+      const a = await offlineCtx.newPage();
+      const b = await onlineCtx.newPage();
+      await seedPage(b, name, "- Something\n- the next block");
+      for (const p of [a, b]) {
+        await p.goto(pagePath(name));
+        await expect(p.locator(".vr-outliner .vr-row")).toHaveCount(2);
+      }
+
+      await offlineCtx.setOffline(true);
+      const [aText, bText] = ["There is this", "Nothing"];
+      // Whoever edits later has the newer HLC and wins LWW.
+      if (returningWins) {
+        await rewriteFirstBlock(b, bText);
+        await expect
+          .poll(async () => (await readBlocks(b, name)).map((x) => x.content), { timeout: 10_000 })
+          .toEqual([bText, "the next block"]);
+        await rewriteFirstBlock(a, aText);
+        await a.waitForTimeout(800);
+      } else {
+        await rewriteFirstBlock(a, aText);
+        await a.waitForTimeout(800);
+        await rewriteFirstBlock(b, bText);
+        await expect
+          .poll(async () => (await readBlocks(b, name)).map((x) => x.content), { timeout: 10_000 })
+          .toEqual([bText, "the next block"]);
+      }
+
+      // The server answers A's pulls at once; A gets the answer 1.5 s later.
+      await offlineCtx.route("**/sync/pull**", async (route) => {
+        const response = await route.fetch();
+        await new Promise((r) => setTimeout(r, 1500));
+        await route.fulfill({ response });
+      });
+      await offlineCtx.setOffline(false);
+      await a.evaluate(() => window.dispatchEvent(new Event("online")));
+
+      const [winner, loser] = returningWins ? [aText, bText] : [bText, aText];
+      await expect
+        .poll(async () => (await readBlocks(b, name)).map((x) => x.content), { timeout: 20_000 })
+        .toEqual([winner, loser, "the next block"]);
+      const want = [
+        { text: winner, conflict: false },
+        { text: loser, conflict: true },
+        { text: "the next block", conflict: false },
+      ];
+      for (const p of [a, b]) {
+        await expect.poll(() => rows(p), { timeout: 20_000 }).toEqual(want);
+      }
+    } finally {
+      await offlineCtx.close();
+      await onlineCtx.close();
+    }
+  });
+}

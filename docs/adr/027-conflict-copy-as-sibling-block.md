@@ -197,3 +197,9 @@ clients built before this change.
   mode by default; 5000 per mode passed. 20 of these fail on `59aa77b`.
 - `apps/web/src/sync/sync-client.test.ts`: `sent_text` kept on push, merged against, dropped when
   pulled back / when the cursor passes a noop / never written when a pull already passed it.
+- `e2e/tests/sync-conflict.spec.ts` "a reconnecting device whose push response lands before its
+  pull keeps both texts (B-652, …)": real browsers, the returning device's pull responses held
+  1.5 s with `context.route`; both fail with the `59aa77b` client.
+- `tools/probes/b652-race-http.ts`: three devices against a real `nooklet serve`; with the
+  `59aa77b` client four edits vanished and every replica agreed on the loss, and `nooklet verify`
+  still said OK — verify cannot see this kind of loss, only the tests above can.
