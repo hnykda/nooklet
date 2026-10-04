@@ -32,7 +32,8 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
   `page_fts`/`page_tri`, `embedding`, `embedding_vec_<n>`.
 - **Bookkeeping table**: server-side operational data that is neither state nor derived from
   content: `device`, `token`, `changes`, `mirror_file`, `embed_dirty`, `embedding_model`, `asset`.
-- **Client-only table**: exists only in the browser/Capacitor replica: `pending_op`, `sync_state`.
+- **Client-only table**: exists only in the browser/Capacitor replica: `pending_op`, `sync_state`,
+  `sent_text`.
 - **Row HLC**: a column ending `_hlc` holding the HLC (`hlc.ts` format) of the last write accepted
   for that field, per ADR 003. SQL comparison is plain `TEXT` comparison (`op.hlc > row.foo_hlc`);
   HLC strings are constructed to sort correctly this way (`hlc.ts` `compareHlc`).
@@ -50,7 +51,7 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
    (SQLite WASM) for every table not explicitly marked server-only or client-only below.
    Server-only: `device`, `token`, `changes`, `mirror_file`, `embed_dirty`, `embedding`,
    `embedding_model`, `embedding_vec_<n>`, `asset`. Client-only: `pending_op`, `sync_state`,
-   and the index `block_dated ON block(due_day) WHERE deleted_at IS NULL AND due_day IS NOT NULL`
+   `sent_text` (B-652; created `IF NOT EXISTS` on every replica open), and the index `block_dated ON block(due_day) WHERE deleted_at IS NULL AND due_day IS NOT NULL`
    (the journal agenda's read; created `IF NOT EXISTS` on every replica open,
    `apps/web/src/db/schema-client.ts`).
    Everything else — `page`, `block`, `block_prop`, `page_prop`, `op`, `setting`, `keybinding`,
@@ -940,7 +941,19 @@ CREATE TABLE pending_op (
   hlc     TEXT NOT NULL,
   kind    TEXT NOT NULL,
   entity  TEXT NOT NULL,
-  payload_json TEXT NOT NULL
+  payload_json TEXT NOT NULL,
+  base    TEXT              -- block.text only: the block's text before this device diverged
+);
+
+-- B-652: this device's block.text ops the server accepted (at `seq`) but that no pull has
+-- returned yet. Conflict detection reads them with pending_op; a pull reaching `seq` drops them.
+CREATE TABLE sent_text (
+  id      TEXT PRIMARY KEY,
+  hlc     TEXT NOT NULL,
+  entity  TEXT NOT NULL,
+  content TEXT NOT NULL,
+  base    TEXT,
+  seq     INTEGER NOT NULL
 );
 
 CREATE TABLE sync_state (

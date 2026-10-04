@@ -94,7 +94,8 @@ How conflicts worked until now (read from code, `c3302f6`):
 - A report naming a deleted winner still makes a copy beside the tombstone, where it is as hidden
   as the winner. Rare (the merge ran against a live block moments earlier), accepted.
 - Conflict *detection* is unchanged and still needs the device's own edit to be pending when the
-  other device's arrives (see `docs/progress/b642.md`, "Found in passing").
+  other device's arrives (see `docs/progress/b642.md`, "Found in passing"). **Superseded by the
+  amendment below (B-652):** that dependence silently lost text, and detection no longer has it.
 
 ## Verification
 
@@ -107,3 +108,98 @@ How conflicts worked until now (read from code, `c3302f6`):
   both devices reporting the same conflict → one copy.
 - `e2e/tests/sync-conflict.spec.ts`: two browser contexts, one offline, both show the winner, the
   copy with the badge, and no `conflict_copy` chip.
+
+## Amendment 1 (2026-10-04, B-652): detection no longer depends on which response lands first
+
+### Context
+
+Detection ran only in `SyncClient.pull()`, and only against this device's `block.text` rows still
+in `pending_op`. A push response deletes them. `worker-core.ts` starts push and pull together on
+`online`/`resume`/`visible` (and `connectLive`'s `onOpen` does too), so whenever the push response
+was applied first, the other device's edit, pulled a moment later, met nothing: plain LWW, one text
+gone, no copy, no trace outside the op log. Proven, not suspected: `apps/web/src/sync/e2e.test.ts`
+"… whichever response a reconnecting device gets first (B-652)" holds each response until the test
+releases it. On `59aa77b`, 11 of 15 scenarios lost a text — every push-response-first case,
+whichever device's text won LWW and whichever device came back first, three devices, and two
+devices that were both *online* and each pushed before pulling (no reconnect needed).
+
+The server sees both ops but cannot tell them apart from sequential edits: a `block.text` payload
+is `{ content }` only, and `serverApplyOps` → core `applyOps` is per-field LWW — the second op
+either overwrites (`applied`) or loses (`noop`), silently either way.
+
+### Decision
+
+The client keeps what detection needs until its own pull has gone past it.
+
+1. `applyPushResponse` moves each accepted `block.text` (with a base) from `pending_op` to a new
+   client-only table `sent_text`, with the `seq` the server gave it — unless a pull already passed
+   that `seq`. A pull drops a row when the op comes back, or once `server_cursor >= seq` (a `noop`
+   never comes back). Created `IF NOT EXISTS` on every open; no migration.
+2. Detection walks a pulled batch in the server's `seq` order. A foreign `block.text` meets this
+   device's "unseen" text: `pending_op` and `sent_text` rows newer than the newest op of ours seen
+   so far in the batch. An op of ours appearing in the batch means everything after it was written
+   by a device that may have seen it (and everything of ours older than it was pushed earlier, HLC
+   order) — so exactly one device detects a given conflict: the one whose op is later in the log.
+3. Merge base = the base of the OLDEST unseen row (the text before this device diverged), not the
+   newest row's. The newest row's base is an earlier local edit the other device never saw; merging
+   against it quietly reverted that earlier edit wherever the other device touched nearby (found in
+   passing, reproduced: "two local edits of one block before the other device's edit arrives").
+4. A merge op keeps that base in `pending_op` (it was NULL, which made the block look base-less, so
+   the next foreign edit won by LWW over the merge); a clean merge is this device's text for the
+   rest of the batch, so a third device's edit merges into it.
+5. When the base fails to merge, `mergeBase` tries an ancestor the incoming edit certainly or
+   verifiably descends from: its author's previous text, or a text it contains (a third device's
+   or an older one of ours, from the batch or this replica's op log) — and only if `mine` already
+   contains everything that ancestor's author has written. Otherwise a merge op carrying a stale
+   word (another device's first edit, since changed again) read as a conflict: 477 of 2000 random
+   merge-mode schedules made a spurious copy before this, 0 after. A third device's *newer* text
+   is not a safe ancestor — the merge is clean and silently reverts that device's word
+   (`tools/probes/b652-merge-base.ts`); the containment check excludes it.
+
+ADR 027's server side is unchanged: clients still report `conflict_copy`, the server mints the
+block. Since only one device now detects a given conflict, the derived-id dedup matters mainly for
+clients built before this change.
+
+### Alternatives
+
+- **Server-side detection** (the server sees every op). Without a base it can catch only half: an
+  incoming `block.text` that *loses* LWW was certainly concurrent (its author's clock would be past
+  the winner had it seen it), but one that *wins* looks exactly like an edit made after seeing the
+  current text. Catching that needs the edit's parent (e.g. the `content_hlc` it was written on) in
+  the push — a wire change old clients never send, so "works for old clients" holds for half the
+  cases. It would also make two detectors (old clients still merge on pull) racing to mint merge
+  ops, and a server-side merge needs base *text* from an op log that GC trims. Rejected for now;
+  the client fix covers both halves for every updated client. Worth revisiting only if a client we
+  cannot update keeps losing text.
+- **Pull before push on reconnect.** Fixes reconnect only: two online devices that each push before
+  pulling still lose a text (the "both online" test), and every reconnect would wait a round trip
+  longer to push.
+- **Keep acknowledged rows in `pending_op` with an `acked_seq` flag.** Same mechanism, but every
+  reader of the outbox (`flush`, the pending count the indicator shows, refused-page cleanup) would
+  have to learn to skip them; a separate table keeps `pending_op` meaning "not yet pushed".
+
+### Costs
+
+- One small row per pushed `block.text` until the next pull passes it (normally milliseconds).
+- A pull with a candidate conflict reads up to 20 recent `block.text`s of that block from the local
+  op log and runs a few extra word-diff3s. Only when this device has unseen text on that block.
+- Still a heuristic for clean merges: a merge three or more devices deep can, in shapes the tests
+  did not generate, fall back to a conflict copy (fail closed — no text lost).
+
+### Verification
+
+- `apps/web/src/sync/e2e.test.ts` "… whichever response a reconnecting device gets first (B-652)":
+  15 fixed scenarios (2 response orders × 2 server orders × who wins LWW; both offline either order;
+  both online; three devices in four orders) + three-device clean merges + two local edits; and
+  seeded random schedules (2–3 devices, random clock offsets, 1–2 edits each, random flush / pull /
+  reconnect with random request and response order) in a conflict mode (every device's last text
+  on the page) and a merge mode (one text with every device's last word, no copy). 120 seeds per
+  mode by default; 5000 per mode passed. 20 of these fail on `59aa77b`.
+- `apps/web/src/sync/sync-client.test.ts`: `sent_text` kept on push, merged against, dropped when
+  pulled back / when the cursor passes a noop / never written when a pull already passed it.
+- `e2e/tests/sync-conflict.spec.ts` "a reconnecting device whose push response lands before its
+  pull keeps both texts (B-652, …)": real browsers, the returning device's pull responses held
+  1.5 s with `context.route`; both fail with the `59aa77b` client.
+- `tools/probes/b652-race-http.ts`: three devices against a real `nooklet serve`; with the
+  `59aa77b` client four edits vanished and every replica agreed on the loss, and `nooklet verify`
+  still said OK — verify cannot see this kind of loss, only the tests above can.

@@ -886,7 +886,10 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
         }),
       ]);
       await a.client.flush();
-      const b = makeReplicaClient(server.app, server.token);
+      // B's clock runs a second ahead, so B's edit is the newer one and wins LWW. With both on
+      // the wall clock the two edits often landed in one millisecond and the HLC tie went to
+      // whichever random device id sorted higher: 6 runs in 20 failed with the texts swapped.
+      const b = makeReplicaClient(server.app, server.token, { now: () => Date.now() + 1000 });
       await b.client.pull();
       return { a, b, pageId, blockId };
     }
@@ -966,13 +969,19 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
       // B pulls A's edit while its own is pending: conflict, reported.
       await b.client.pull();
       await b.client.flush();
-      // A pulls B's edit while its own is (as far as it knows) still pending: the same conflict,
-      // reported again with a newer clock.
+      // A pulls its own edit and then B's. Since B-652 a client takes an op that comes after its
+      // own in the server's log as written by a device that may have seen its own — the device
+      // with the later op (B) is the one that reports — so A does not report it again...
       await lossy.pull();
-      const reports = a.driver.all<{ payload: string }>(
-        "SELECT payload FROM pending_op WHERE kind = 'block.prop'",
-      );
-      expect(reports.map((r) => JSON.parse(r.payload).key)).toEqual(["conflict_copy"]);
+      expect(a.driver.all("SELECT 1 FROM pending_op WHERE kind = 'block.prop'")).toEqual([]);
+      // ...but a client built before B-652 did, with a newer clock: same report, A's side.
+      lossy.applyLocal([
+        makeOp(lossy.nextHlc(), lossy.getDeviceId(), blockId, {
+          kind: "block.prop",
+          key: "conflict_copy",
+          value: "There is this",
+        }),
+      ]);
       const aReal = new SyncClient({ driver: a.driver, transport: real });
       aReal.init();
       await aReal.flush();
@@ -985,5 +994,369 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
       expect(dumpState(b.driver)).toEqual(dumpState(s));
       expect(verifyRebuildParity(s).divergences).toEqual([]);
     });
+  });
+
+  /**
+   * B-652: conflict detection used to need this device's own `block.text` still in `pending_op`
+   * when the other device's op was pulled. `worker-core.ts` runs push and pull concurrently on
+   * `online`/`resume`/`visible` (and `connectLive`'s onOpen does too), so when the push response
+   * was applied first the row was gone, the pulled op met no local edit, and LWW dropped one text
+   * with no copy. The transport below holds each response until the test releases it, so the
+   * order is exact; the server handles the requests in the order they were sent.
+   */
+  describe("a same-block conflict is kept whichever response a reconnecting device gets first (B-652)", () => {
+    type Kind = "push" | "pull";
+    type Order = readonly [Kind, Kind];
+    interface Device {
+      name: string;
+      driver: SqlDriver;
+      client: SyncClient;
+      /** While `on`, push/pull responses wait in `held` for the test to release them. */
+      gate: { on: boolean; held: Array<{ what: Kind; release: () => void }> };
+    }
+
+    function makeDevice(name: string, offsetMs: number, clock: () => number = Date.now): Device {
+      const real = makeInProcessTransport(server.app, server.token);
+      const gate: Device["gate"] = { on: false, held: [] };
+      // One request at a time reaches the server, in the order the client sent them.
+      let serverQueue: Promise<unknown> = Promise.resolve();
+      function wrap<T>(what: Kind, call: () => Promise<T>): Promise<T> {
+        const done = serverQueue.then(call);
+        serverQueue = done.catch(() => {});
+        if (!gate.on) return done;
+        return new Promise<T>((resolve, reject) => {
+          const hold = () =>
+            gate.held.push({ what, release: () => void done.then(resolve, reject) });
+          void done.then(hold, hold);
+        });
+      }
+      const driver = makeReplicaDriver();
+      const client = new SyncClient({
+        driver,
+        // A per-device clock offset decides who wins LWW, independent of test timing.
+        now: () => clock() + offsetMs,
+        transport: {
+          ...real,
+          push: (body) => wrap("push", () => real.push(body)),
+          pull: (d, since, limit) => wrap("pull", () => real.pull(d, since, limit)),
+        },
+      });
+      // A fixed device id (`init` keeps one it finds): HLC ties break on it, so a random one
+      // would make the random schedules below not replay.
+      driver.run("INSERT INTO sync_state(key, value) VALUES ('device_id', ?)", [
+        `d${name.toLowerCase()}`.padStart(8, "0"),
+      ]);
+      client.init();
+      // No debounced background push: it fired whenever a run happened to last 300 ms, at a
+      // different point each time. The tests push explicitly (`flush`, `reconnect`), which is
+      // what that timer does.
+      client.schedulePush = () => {};
+      return { name, driver, client, gate };
+    }
+
+    /** What `notifyLifecycle("online")` does — push and pull at once — with the server handling
+     * `sent[0]` then `sent[1]`, and the device applying the responses in `applied` order. */
+    async function reconnect(d: Device, sent: Order, applied: Order): Promise<void> {
+      d.gate.on = true;
+      // An empty outbox sends no push at all.
+      const requests = sent.filter((w) => w === "pull" || d.client.getStatus().pendingCount > 0);
+      const running = new Map<Kind, Promise<void>>();
+      for (const what of sent)
+        running.set(what, what === "push" ? d.client.flush() : d.client.pull());
+      for (let i = 0; i < 100 && d.gate.held.length < requests.length; i++) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      expect(d.gate.held.map((h) => h.what)).toEqual(requests);
+      d.gate.on = false;
+      for (const what of applied) {
+        d.gate.held.find((h) => h.what === what)?.release();
+        await running.get(what);
+      }
+      d.gate.held = [];
+    }
+
+    /** Everyone pushes and pulls until nothing moves (merge ops, conflict reports, the server's
+     * copies): a round in which no device had anything to push and the log did not grow. */
+    async function settle(devices: readonly Device[]): Promise<void> {
+      const head = () =>
+        server.serverCtx.driver.get<{ n: number }>("SELECT COALESCE(MAX(seq), 0) AS n FROM op")
+          ?.n ?? 0;
+      for (let round = 0; round < 10; round++) {
+        const before = head();
+        let pushed = false;
+        for (const d of devices) {
+          pushed ||= d.client.getStatus().pendingCount > 0;
+          await d.client.flush();
+          await d.client.pull();
+        }
+        const queued = devices.some((d) => d.client.getStatus().pendingCount > 0);
+        if (!pushed && !queued && head() === before) return;
+      }
+      throw new Error("sync did not settle in 10 rounds");
+    }
+
+    function contents(driver: SqlDriver, pageId: string): string[] {
+      return driver
+        .all<{ content: string }>(
+          "SELECT content FROM block WHERE page_id = ? AND deleted_at IS NULL ORDER BY content",
+          [pageId],
+        )
+        .map((b) => b.content);
+    }
+
+    async function seed(devices: readonly Device[]): Promise<{ pageId: string; blockId: string }> {
+      const first = devices[0];
+      if (!first) throw new Error("no devices");
+      const pageId = newId();
+      const blockId = newId();
+      const c = first.client;
+      c.applyLocal([
+        makeOp(c.nextHlc(), c.getDeviceId(), pageId, {
+          kind: "page.create",
+          name: "Race Page",
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+        makeOp(c.nextHlc(), c.getDeviceId(), blockId, {
+          kind: "block.create",
+          place: { pageId, parentId: null, order: "a0" },
+          content: "Something",
+          createdAt: Date.now(),
+        }),
+      ]);
+      await c.flush();
+      for (const d of devices) await d.client.pull();
+      return { pageId, blockId };
+    }
+
+    function edit(d: Device, blockId: string, content: string): void {
+      const c = d.client;
+      c.applyLocal([
+        makeOp(c.nextHlc(), c.getDeviceId(), blockId, { kind: "block.text", content }),
+      ]);
+    }
+
+    function expectAllKept(devices: readonly Device[], pageId: string, texts: string[]): void {
+      const s = server.serverCtx.driver;
+      expect(contents(s, pageId)).toEqual([...texts].sort());
+      expect(
+        s.all("SELECT 1 FROM block_prop WHERE key = 'conflict_copy' AND value IS NOT NULL"),
+      ).toEqual([]);
+      for (const d of devices) expect(dumpState(d.driver), d.name).toEqual(dumpState(s));
+      expect(verifyRebuildParity(s).divergences).toEqual([]);
+    }
+
+    const PUSH_FIRST: Order = ["push", "pull"];
+    const PULL_FIRST: Order = ["pull", "push"];
+
+    for (const sent of [PUSH_FIRST, PULL_FIRST]) {
+      for (const applied of [PUSH_FIRST, PULL_FIRST]) {
+        for (const aWins of [false, true]) {
+          it(`one device offline; server takes the ${sent[0]} first, the device applies the ${applied[0]} response first; its text ${aWins ? "wins" : "loses"}`, async () => {
+            // A's clock is ahead when its text should win LWW, behind when it should lose.
+            const a = makeDevice("A", aWins ? 2000 : 0);
+            const b = makeDevice("B", 1000);
+            const { pageId, blockId } = await seed([a, b]);
+
+            edit(a, blockId, "There is this"); // A is offline
+            edit(b, blockId, "Nothing");
+            await b.client.flush();
+            await b.client.pull();
+
+            await reconnect(a, sent, applied);
+            await settle([a, b]);
+            expectAllKept([a, b], pageId, ["Nothing", "There is this"]);
+          });
+        }
+      }
+    }
+
+    for (const firstBack of ["A", "B"]) {
+      it(`both devices offline, each reconnects push response first, ${firstBack} first`, async () => {
+        const a = makeDevice("A", 0);
+        const b = makeDevice("B", 1000);
+        const { pageId, blockId } = await seed([a, b]);
+        edit(a, blockId, "There is this");
+        edit(b, blockId, "Nothing");
+        const [x, y] = firstBack === "A" ? [a, b] : [b, a];
+        await reconnect(x, PUSH_FIRST, PUSH_FIRST);
+        await reconnect(y, PUSH_FIRST, PUSH_FIRST);
+        await settle([a, b]);
+        expectAllKept([a, b], pageId, ["Nothing", "There is this"]);
+      });
+    }
+
+    it("both online: each pushes before it has pulled the other's edit", async () => {
+      const a = makeDevice("A", 0);
+      const b = makeDevice("B", 1000);
+      const { pageId, blockId } = await seed([a, b]);
+      edit(a, blockId, "There is this");
+      edit(b, blockId, "Nothing");
+      await a.client.flush();
+      await b.client.flush();
+      await a.client.pull();
+      await b.client.pull();
+      await settle([a, b]);
+      expectAllKept([a, b], pageId, ["Nothing", "There is this"]);
+    });
+
+    for (const order of [
+      ["A", "B", "C"],
+      ["C", "B", "A"],
+      ["B", "C", "A"],
+      ["A", "C", "B"],
+    ]) {
+      it(`three devices offline, reconnecting ${order.join(", ")} push response first: all three texts survive`, async () => {
+        const devs = new Map(
+          (["A", "B", "C"] as const).map((n, i) => [n as string, makeDevice(n, i * 1000)]),
+        );
+        const all = [...devs.values()];
+        const { pageId, blockId } = await seed(all);
+        for (const [n, text] of [
+          ["A", "Alpha"],
+          ["B", "Beta"],
+          ["C", "Gamma"],
+        ] as const) {
+          edit(devs.get(n) as Device, blockId, text);
+        }
+        for (const n of order) await reconnect(devs.get(n) as Device, PUSH_FIRST, PUSH_FIRST);
+        await settle(all);
+        expectAllKept(all, pageId, ["Alpha", "Beta", "Gamma"]);
+      });
+    }
+
+    /** Text edits that touch different words merge cleanly; the block holds every one of them. */
+    async function seedText(devices: readonly Device[], text: string) {
+      const seeded = await seed(devices);
+      const first = devices[0] as Device;
+      edit(first, seeded.blockId, text);
+      await first.client.flush();
+      for (const d of devices) await d.client.pull();
+      return seeded;
+    }
+
+    for (const order of [
+      ["A", "B", "C"],
+      ["C", "B", "A"],
+      ["B", "A", "C"],
+    ]) {
+      it(`three devices edit different words offline, reconnecting ${order.join(", ")} push response first: one text with all three edits`, async () => {
+        const devs = new Map(
+          (["A", "B", "C"] as const).map((n, i) => [n as string, makeDevice(n, i * 1000)]),
+        );
+        const all = [...devs.values()];
+        const { pageId, blockId } = await seedText(all, "one two three");
+        edit(devs.get("A") as Device, blockId, "ONE two three");
+        edit(devs.get("B") as Device, blockId, "one TWO three");
+        edit(devs.get("C") as Device, blockId, "one two THREE");
+        for (const n of order) await reconnect(devs.get(n) as Device, PUSH_FIRST, PUSH_FIRST);
+        await settle(all);
+        expectAllKept(all, pageId, ["ONE TWO THREE"]);
+      });
+    }
+
+    it("two local edits of one block before the other device's edit arrives: the merge keeps the first one too", async () => {
+      // The merge base is the text before this device's FIRST unseen edit. Merging against the
+      // second edit's base (the first edit's text) made the other device's text look like it had
+      // reverted "ONE", and the merge quietly put "one" back.
+      const a = makeDevice("A", 0);
+      const b = makeDevice("B", 1000);
+      const { pageId, blockId } = await seedText([a, b], "one two three");
+      edit(a, blockId, "ONE two three");
+      edit(a, blockId, "ONE two THREE");
+      edit(b, blockId, "one TWO three");
+      await b.client.flush();
+      await a.client.pull();
+      await settle([a, b]);
+      expectAllKept([a, b], pageId, ["ONE TWO THREE"]);
+    });
+
+    /**
+     * Random schedules, seeded (this package has no fast-check; a failing seed is named in the
+     * assertion and replays exactly). Every device edits the block — once or twice — before any
+     * other device's edit has reached it, then they push, pull and reconnect in random order with
+     * random response order, then sync until nothing moves. Clock offsets are random, so any
+     * device may win LWW and any of their ops may be a noop on the server.
+     *
+     * - "conflict": each edit replaces the whole text. Each device's last text must be on the page
+     *   (as the block, or as a conflict copy next to it).
+     * - "merge": device i only ever changes word i. The block must end with every device's last
+     *   word, in one text, and no conflict copy.
+     *
+     * Either way every replica must equal the server, and `verify` must be clean. 120 seeds per
+     * mode by default; `B652_RUNS=5000` for a long run (passed, 2026-10-04).
+     */
+    for (const mode of ["conflict", "merge"] as const) {
+      it(`random reconnect schedules (${mode}): no device's edit is lost, every replica converges`, async () => {
+        function rng(seed: number): () => number {
+          let a = seed >>> 0;
+          return () => {
+            a = (a + 0x6d2b79f5) >>> 0;
+            let t = a;
+            t = Math.imul(t ^ (t >>> 15), t | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+        const orders: Order[] = [PUSH_FIRST, PULL_FIRST];
+        const runs = Number(process.env.B652_RUNS ?? 120);
+        for (let run = 1; run <= runs; run++) {
+          const r = rng(run);
+          const pick = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)] as T;
+          server = makeE2eServer();
+          // A virtual clock, one millisecond per reading, so the HLCs — and with them every LWW
+          // decision — depend on the seed alone and a failing seed replays exactly.
+          let t = Date.now();
+          const clock = () => t++;
+          const n = 2 + Math.floor(r() * 2);
+          const devices = Array.from({ length: n }, (_, i) =>
+            makeDevice(String.fromCharCode(65 + i), Math.floor(r() * 3000), clock),
+          );
+          const words = ["w0", "w1", "w2"];
+          const { pageId, blockId } =
+            mode === "merge" ? await seedText(devices, words.join(" ")) : await seed(devices);
+          const last = new Map<string, string>();
+          devices.forEach((d, i) => {
+            const edits = 1 + Math.floor(r() * 2);
+            for (let e = 0; e < edits; e++) {
+              const mine = `${d.name}${e}`;
+              const text =
+                mode === "merge"
+                  ? words.map((w, j) => (j === i ? mine : w)).join(" ")
+                  : `text-${mine}`;
+              edit(d, blockId, text);
+              last.set(d.name, mine);
+            }
+          });
+          const steps = 3 + Math.floor(r() * 8);
+          for (let s = 0; s < steps; s++) {
+            const d = pick(devices);
+            const step = pick(["flush", "pull", "reconnect"] as const);
+            if (step === "flush") await d.client.flush();
+            else if (step === "pull") await d.client.pull();
+            else await reconnect(d, pick(orders), pick(orders));
+          }
+          await settle(devices);
+
+          const s = server.serverCtx.driver;
+          const live = contents(s, pageId);
+          const at = `${mode} seed ${run}`;
+          if (mode === "merge") {
+            const want = words.map((w, j) => last.get(String.fromCharCode(65 + j)) ?? w).join(" ");
+            // One block holding every device's last word — no conflict copy either: the edits
+            // touch different words, so a copy here would mean a merge picked the wrong ancestor
+            // (`mergeBase` in sync-client.ts; 0 copies in 2000 seeds per mode once own and
+            // third-device texts were candidates, 477 before).
+            expect(live, at).toEqual([want]);
+          } else {
+            for (const text of last.values()) expect(live, at).toContain(`text-${text}`);
+          }
+          for (const d of devices) {
+            expect(dumpState(d.driver), `${at}, ${d.name}`).toEqual(dumpState(s));
+          }
+          expect(verifyRebuildParity(s).divergences, at).toEqual([]);
+        }
+      }, 300_000);
+    }
   });
 });

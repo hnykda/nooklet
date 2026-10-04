@@ -36,6 +36,29 @@ export const CLIENT_SCHEMA_STATEMENTS: readonly string[] = [
 ];
 
 /**
+ * Client tables added after replicas already existed, run on EVERY open (`IF NOT EXISTS`; a
+ * replica has no migration table).
+ *
+ *  - `sent_text` (B-652): a `block.text` of this device's that the server has accepted but this
+ *    device has not yet seen come back in a pull. A pending row used to be the only thing conflict
+ *    detection looked at, and a push response applied before the pull response deleted it — so
+ *    the other device's concurrent edit, pulled a moment later, met nothing and LWW silently
+ *    dropped one text. The row lives until a pull reaches `seq` (the server's log position of the
+ *    op, from the push response), then goes. Same `base` meaning as `pending_op.base`.
+ */
+export const CLIENT_LATE_TABLE_STATEMENTS: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS sent_text (
+    id      TEXT PRIMARY KEY,
+    hlc     TEXT NOT NULL,
+    entity  TEXT NOT NULL,
+    content TEXT NOT NULL,
+    base    TEXT,
+    seq     INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS sent_text_entity ON sent_text(entity)`,
+];
+
+/**
  * Indexes only this replica's own reads need, run on EVERY open (not just a fresh database's),
  * each `IF NOT EXISTS`: a replica has no migration table, so this is how one created before an
  * index existed gets it.
@@ -129,12 +152,16 @@ export function ensureClientSearchIndex(driver: SqlDriver): boolean {
   }
 }
 
-/** Create `pending_op`/`sync_state` on an already-core-schema'd database. Safe to call twice. */
+/** Create `pending_op`/`sync_state`/`sent_text` on an already-core-schema'd database. Safe to call
+ * twice. */
 export function initClientSchema(driver: { exec(sql: string): void }): void {
   for (const stmt of CLIENT_SCHEMA_STATEMENTS) driver.exec(stmt);
+  for (const stmt of CLIENT_LATE_TABLE_STATEMENTS) driver.exec(stmt);
 }
 
-/** `CLIENT_INDEX_STATEMENTS`, on a database that has the core tables. Safe on every open. */
+/** `CLIENT_LATE_TABLE_STATEMENTS` and `CLIENT_INDEX_STATEMENTS`, on a database that has the core
+ * tables. Safe on every open. */
 export function ensureClientIndexes(driver: { exec(sql: string): void }): void {
+  for (const stmt of CLIENT_LATE_TABLE_STATEMENTS) driver.exec(stmt);
   for (const stmt of CLIENT_INDEX_STATEMENTS) driver.exec(stmt);
 }

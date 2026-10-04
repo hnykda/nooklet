@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { CORE_SCHEMA_STATEMENTS, makeOp, type Op, type SqlDriver } from "@nooklet/core";
 import { createNodeSqliteDriver } from "@nooklet/core/node-sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CLIENT_SCHEMA_STATEMENTS } from "../db/schema-client.js";
+import { initClientSchema } from "../db/schema-client.js";
 import { LIVE_DOWN_GRACE_MS, PUSH_DEBOUNCE_MS, SyncClient } from "./sync-client.js";
 import {
   type PullResponse,
@@ -27,7 +27,7 @@ import {
 
 function schemaOn(driver: SqlDriver): void {
   for (const stmt of CORE_SCHEMA_STATEMENTS) driver.exec(stmt);
-  for (const stmt of CLIENT_SCHEMA_STATEMENTS) driver.exec(stmt);
+  initClientSchema(driver);
 }
 
 function memoryDriver(): SqlDriver {
@@ -476,6 +476,87 @@ describe("SyncClient three-way text merge (ADR 003 v1.1)", () => {
     );
     expect(prop?.value).toBeDefined();
     expect(["the SLOW brown fox", "the FAST brown fox"]).toContain(prop?.value);
+  });
+
+  /** B-652: our edit, pushed and acknowledged at `seq` before the other device's edit is pulled. */
+  async function pushedEdit(blockId: string, content: string, seq: number): Promise<Op> {
+    const op = makeOp(client.nextHlc(), client.getDeviceId(), blockId, {
+      kind: "block.text",
+      content,
+    });
+    client.applyLocal([op]);
+    transport.nextPush = {
+      accepted: [{ id: op.id, seq }],
+      rejected: [],
+      corrections: [],
+      server_seq: seq,
+    };
+    await client.flush();
+    expect(driver.all("SELECT 1 FROM pending_op")).toEqual([]);
+    return op;
+  }
+
+  const theirs = (blockId: string, content: string) =>
+    makeOp("2026-01-01T00:00:00.010Z-0000-deadbeef", "deadbeef", blockId, {
+      kind: "block.text",
+      content,
+    });
+
+  it("merges an edit pulled after our own edit's push was acknowledged (B-652)", async () => {
+    const blockId = seedBlock("the quick brown fox jumps");
+    const mine = await pushedEdit(blockId, "the quick red fox jumps", 10);
+    expect(driver.all("SELECT id, seq FROM sent_text")).toEqual([{ id: mine.id, seq: 10 }]);
+
+    // The server's log: their edit (seq 9) came before ours (seq 10).
+    transport.nextPull = {
+      ops: [theirs(blockId, "the quick brown fox leaps"), mine],
+      cursor: 10,
+      has_more: false,
+    };
+    await client.pull();
+
+    const row = driver.get<{ content: string }>("SELECT content FROM block WHERE id = ?", [
+      blockId,
+    ]);
+    expect(row?.content).toBe("the quick red fox leaps");
+    // Seen back, so it is forgotten; the merge is queued, with the merge's base kept.
+    expect(driver.all("SELECT 1 FROM sent_text")).toEqual([]);
+    expect(driver.all("SELECT kind, base FROM pending_op")).toEqual([
+      { kind: "block.text", base: "the quick brown fox jumps" },
+    ]);
+  });
+
+  it("does not merge an edit that comes after our own in the server's log (B-652)", async () => {
+    const blockId = seedBlock("the quick brown fox jumps");
+    const mine = await pushedEdit(blockId, "the quick red fox jumps", 9);
+    // Their edit is later in the log: written by a device that could have seen ours.
+    transport.nextPull = {
+      ops: [mine, theirs(blockId, "the quick red fox leaps")],
+      cursor: 10,
+      has_more: false,
+    };
+    await client.pull();
+    expect(driver.all("SELECT 1 FROM pending_op")).toEqual([]);
+    expect(driver.all("SELECT 1 FROM sent_text")).toEqual([]);
+  });
+
+  it("forgets an acknowledged edit the pull never returns (a noop) once the cursor passes it (B-652)", async () => {
+    const blockId = seedBlock("the quick brown fox");
+    await pushedEdit(blockId, "the SLOW brown fox", 10);
+    transport.nextPull = { ops: [], cursor: 9, has_more: false };
+    await client.pull();
+    expect(driver.all("SELECT seq FROM sent_text")).toEqual([{ seq: 10 }]);
+    transport.nextPull = { ops: [], cursor: 12, has_more: false };
+    await client.pull();
+    expect(driver.all("SELECT 1 FROM sent_text")).toEqual([]);
+  });
+
+  it("keeps nothing for an acknowledged edit a pull already went past (B-652)", async () => {
+    const blockId = seedBlock("the quick brown fox");
+    transport.nextPull = { ops: [], cursor: 20, has_more: false };
+    await client.pull();
+    await pushedEdit(blockId, "the SLOW brown fox", 15);
+    expect(driver.all("SELECT 1 FROM sent_text")).toEqual([]);
   });
 });
 
