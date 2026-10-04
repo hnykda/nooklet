@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nooklet
+description: nooklet server (local-first outliner) — one replica, SQLite on a PersistentVolumeClaim
+type: application
+version: 0.2.0
+appVersion: "0.0.1"

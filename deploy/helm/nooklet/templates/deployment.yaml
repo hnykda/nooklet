@@ -1,4 +1,6 @@
-# DRAFT — not applied. See deploy/k8s/README.md.
+{{- if not .Values.allowHosts }}
+{{- fail "allowHosts is required: the Host name(s) clients use to reach this server" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,7 +8,7 @@ metadata:
   labels:
     {{- include "nooklet.labels" . | nindent 4 }}
 spec:
-  replicas: 1                # SQLite, one writer process — never scale this
+  replicas: 1                # SQLite, one writer process: never scale this
   revisionHistoryLimit: 3
   strategy:
     type: Recreate           # a RollingUpdate would briefly run two servers on one database
@@ -18,22 +20,27 @@ spec:
       labels:
         {{- include "nooklet.selectorLabels" . | nindent 8 }}
       annotations:
+        {{- if not .Values.existingSecret }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      # The server never talks to the Kubernetes API; don't hand it a credential that could.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
       securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
-        runAsNonRoot: true
-        fsGroup: 1000
-        seccompProfile:
-          type: RuntimeDefault
+        {{- include "nooklet.podSecurityContext" . | nindent 8 }}
       initContainers:
       # The server reads <data>/root.token (minting one if absent). Copying the Secret over it on
-      # every start makes SOPS the source of truth, so rotating means editing the secret + restart.
+      # every start makes the Secret the source of truth: rotating = edit the Secret + restart.
       - name: root-token
         image: {{ include "nooklet.image" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["/bin/sh", "-c", "cp /secret/root-token /data/root.token && chmod 600 /data/root.token"]
+        securityContext:
+          {{- include "nooklet.containerSecurityContext" . | nindent 10 }}
         volumeMounts:
         - name: data
           mountPath: /data
@@ -56,21 +63,21 @@ spec:
         - /app/web
         - --allow-host
         - {{ join "," .Values.allowHosts | quote }}
-        # B-600/D3: no auto-issued token for "this machine". The Tailscale ingress is a separate
-        # pod (peer = pod IP, never loopback), but `kubectl port-forward` and any future sidecar
+        # No auto-issued token for "this machine" (B-600, decision D3). An ingress proxy in another
+        # pod connects from a pod IP, never loopback, but `kubectl port-forward` and any sidecar
         # proxy arrive over the pod's loopback and would otherwise be handed a write + sync token.
-        # Nothing legitimate needs it here — no browser runs inside the pod.
+        # Nothing legitimate needs it: no browser runs inside the pod.
         - --no-loopback-token
         ports:
         - name: http
           containerPort: 6100
           protocol: TCP
+        securityContext:
+          {{- include "nooklet.containerSecurityContext" . | nindent 10 }}
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
-        # `Host: localhost`: bound to 0.0.0.0 with --allow-host, nooklet 403s any Host not on the
-        # list under /g/<id>/ and kubelet's default Host is the pod IP. The bare /healthz probed here
-        # sits outside that guard today (checked against the image: 200 with a pod-IP Host), so
-        # this header is belt-and-braces, not load-bearing.
+        # `/healthz` sits outside the Host guard (kubelet's Host is the pod IP); `Host: localhost`
+        # is belt-and-braces in case that ever changes.
         readinessProbe:
           httpGet:
             path: /healthz
@@ -102,7 +109,7 @@ spec:
           claimName: {{ include "nooklet.fullname" . }}
       - name: root-token
         secret:
-          secretName: {{ include "nooklet.fullname" . }}
+          secretName: {{ include "nooklet.secretName" . }}
           items:
           - key: root-token
             path: root-token

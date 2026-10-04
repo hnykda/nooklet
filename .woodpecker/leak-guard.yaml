@@ -1,0 +1,14 @@
+# Leak guard: gitleaks on every push, tag and pull request (tools/ci/leak-guard.sh, .gitleaks.toml).
+#
+# This workflow must stay safe to run on code from a fork: it uses NO secrets and NO privileged
+# plugin, so an untrusted pull request that edits it gains nothing it could not get by running the
+# same container on its own laptop. (A pull request can rewrite any file in .woodpecker/, so the
+# real protections are server-side settings, not this YAML: see deploy/README.md, "CI and forks".)
+when:
+  - event: [push, tag, pull_request, manual]
+
+steps:
+  - name: gitleaks
+    image: zricethezav/gitleaks:v8.28.0
+    commands:
+      - sh tools/ci/leak-guard.sh

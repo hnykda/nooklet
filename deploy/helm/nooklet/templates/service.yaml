@@ -1,4 +1,5 @@
-# DRAFT — not applied. ClusterIP only: exposure is the Tailscale Ingress (tailscale-services chart).
+# ClusterIP only. Exposure (an Ingress, a tailnet proxy, a port-forward) is the deployer's choice
+# and lives outside this chart; whatever it is, the Host name clients use goes in allowHosts.
 apiVersion: v1
 kind: Service
 metadata:
@@ -12,5 +13,5 @@ spec:
   ports:
   - name: http
     port: 80
-    targetPort: 6100
+    targetPort: http
     protocol: TCP

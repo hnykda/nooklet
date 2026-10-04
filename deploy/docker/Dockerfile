@@ -1,7 +1,12 @@
-# nooklet server image: `nooklet serve` + the built web client, for a self-hosted server (e.g. the
-# owner's MicroK8s cluster — deploy/k8s/). Build from the REPO ROOT:
+# nooklet server image: `nooklet serve` + the built web client, for a self-hosted server (any
+# container runtime; deploy/helm/nooklet is an example Kubernetes chart). Build from the REPO ROOT:
 #
 #   docker buildx build --platform linux/amd64 -f deploy/docker/Dockerfile -t nooklet:dev .
+#
+# Run (the --allow-host name is whatever clients type; see deploy/README.md):
+#
+#   docker run -p 6100:6100 -v nooklet-data:/data nooklet:dev \
+#     serve --host 0.0.0.0 --port 6100 --web /app/web --no-loopback-token --allow-host notes.example.com
 #
 # Reuses apps/desktop/build-sidecar.mjs rather than a second packaging path: run on Linux it
 # produces the same self-contained bundle the desktop app ships (server.mjs, the official Node

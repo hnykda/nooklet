@@ -1,10 +1,9 @@
-# DRAFT — not applied.
+# A consistent snapshot of every graph into <volume>/backups/, for whatever copies the volume
+# off-site (a file-level copy of a live SQLite database mid-write is not guaranteed consistent; this
+# archive is). `nooklet backup` is a VACUUM INTO snapshot + assets and is safe while the server runs.
 #
-# A consistent snapshot of every graph into /data/backups/, for the home server's 02:00 duplicacy run (which
-# copies every PVC directory as live files — fine for these archives, not guaranteed consistent for
-# a SQLite file mid-write). `nooklet backup` is a VACUUM INTO snapshot + assets and is safe while
-# the server is running. Mounting the same ReadWriteOnce volume works because homeserver is a single
-# node (RWO is per-node); on a multi-node cluster this would need pod affinity to the server pod.
+# It mounts the server's ReadWriteOnce volume. RWO is per NODE, so this works on a single-node
+# cluster; on a multi-node cluster add pod affinity to the server pod, or the job stays Pending.
 {{- if .Values.backup.enabled }}
 apiVersion: batch/v1
 kind: CronJob
@@ -23,17 +22,16 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
           securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-            runAsNonRoot: true
-            fsGroup: 1000
-            seccompProfile:
-              type: RuntimeDefault
+            {{- include "nooklet.podSecurityContext" . | nindent 12 }}
           containers:
           - name: backup
             image: {{ include "nooklet.image" . }}
             imagePullPolicy: {{ .Values.image.pullPolicy }}
+            securityContext:
+              {{- include "nooklet.containerSecurityContext" . | nindent 14 }}
             command:
             - /bin/sh
             - -c
@@ -42,6 +40,7 @@ spec:
               mkdir -p /data/backups
               stamp=$(date +%Y-%m-%d)
               for dir in /data/graphs/*/; do
+                [ -d "$dir" ] || continue
                 id=$(basename "$dir")
                 /app/node /app/server.mjs backup --data /data --graph "$id" \
                   --out "/data/backups/nooklet-$id-$stamp.tar"
