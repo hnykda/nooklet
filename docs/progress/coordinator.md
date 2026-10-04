@@ -21,6 +21,7 @@ data — do NOT push until the leak audit's remediation is decided by the owner.
 | leak-audit | secrets/personal data in tree + unpushed + public history; scrub internal docs; history plan; guards | — |
 | public-docs | docs/guide/* (features, architecture, sync, getting started, self-hosting, security, agents, FAQ), README, SECURITY, CONTRIBUTING | 6440-6444 |
 | site | apps/site (`@nooklet/site`), landing + docs + animations + search + llms.txt | 6445-6449 |
+| b652 | B-652: prove/fix the push-before-pull conflict race (silent text loss?) | 6460-6464 |
 | security-review | public-exposure review: route inventory, tokens, brute force/DoS, headers, XSS, plugins; small fixes; tier-2 checklist | 6455-6459 |
 | infra | generic deploy/ + Woodpecker in nooklet; draft PR in infra-repo (branch `nooklet-deploy`, worktree `<infra-repo>-nooklet`) | 6450-6454 |
 
