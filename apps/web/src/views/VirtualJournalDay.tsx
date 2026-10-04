@@ -29,6 +29,7 @@ import {
   requestBlockFocus,
 } from "../editor/focus-request.js";
 import type { Clock } from "../editor/types.js";
+import { enterShiftIsAutoCaps } from "../platform/ios-enter-shift.js";
 
 /**
  * Where the draft goes while the journal stream does not yet know whether the day exists
@@ -416,13 +417,12 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
                   }}
                   onBlur={() => !disposed && void commit()}
                   onBeforeInput={(e) => {
-                    // B-662: iOS's soft keyboard Return reached this textarea as `keydown Enter`
-                    // then `beforeinput insertLineBreak`, and the line break went in: Return put
-                    // a newline in the draft instead of starting a block (Simulator log). The
-                    // line break is the one event every way of pressing Return sends (hardware,
-                    // soft keyboard, dictation), so it is handled here, not only on keydown —
-                    // as an editor that owns its text does (CodeMirror reads iOS's Enter back
-                    // from the DOM change for the same reason).
+                    // B-662: the line break itself is the one event every way of pressing Return
+                    // sends (hardware, soft keyboard, a keyboard that sends no usable keydown), so
+                    // it is the draft's Enter too, not only the keydown — as an editor that owns
+                    // its text does (CodeMirror reads iOS's Enter back from the DOM change). A
+                    // keydown that already decided (Enter ran `onEnter`, or Shift+Enter is a
+                    // soft break) is not decided twice.
                     if (e.inputType !== "insertLineBreak" && e.inputType !== "insertParagraph") {
                       return;
                     }
@@ -436,9 +436,12 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
                     if (e.key === "Enter") enterKey = undefined;
                   }}
                   onKeyDown={(e) => {
-                    enterKey = e.key === "Enter" && e.shiftKey ? "soft" : undefined;
+                    // B-662: iOS reports its soft keyboard's auto-capitalisation as Shift, so
+                    // Return arrived as Shift+Enter and went in as this line's soft line break.
+                    const shift = e.shiftKey && !enterShiftIsAutoCaps(e);
+                    enterKey = e.key === "Enter" && shift ? "soft" : undefined;
                     if (e.isComposing) return;
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    if (e.key === "Enter" && !shift) {
                       e.preventDefault();
                       enterKey = "handled";
                       onEnter();

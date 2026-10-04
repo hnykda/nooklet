@@ -26,14 +26,27 @@ additions.
 - e2e `e2e/tests/phone-input.spec.ts` (iPhone 13, `tap()`), added to the webkit project:
   14/14 (7 × Chromium + WebKit) on port 6520.
 
+- Coordinator additions (commits `8a835048` and the one before it):
+  - B-705: `shell.css` one `(pointer: coarse)` rule, `max(16px, var(--field-font-size, 1em))
+    !important` for input/textarea/select; per-field B-648 overrides removed; page title keeps
+    26px via `--field-font-size`. iOS app only: `maximum-scale=1` (`platform/viewport-meta.ts`).
+    e2e `phone-fields.spec.ts` (all forms; red with the rule's `!important` removed: the draft at
+    15px). CodeMirror's contenteditable deliberately not included (pending Simulator check).
+  - Server-URL fields: web ones already had inputmode=url, autocapitalize=none (same as "off"),
+    autocorrect off, spellcheck false; the desktop launcher's two had none — added.
+  - Bare address + refused token: `connect-graph.ts#rejectedTokenMessage`.
+  - B-706: `data/token-input.ts` (normalise + shape check, `vrt_` legacy prefix accepted —
+    tokens.ts says pre-rename tokens still work). ConnectView (incl. repair) and GraphSwitcher
+    (connect: device; "Show graphs" and promote: root).
+- Simulator probe `tools/probes/phone-input/` (run.sh, overlay.js, XCUITest). Private device
+  `phone-input-probe-afd1` UDID 25877DD0-F61B-4DDB-8E3D-627B0F0423BD (delete when done). Scratch
+  server port 6521, data in the scratchpad (graphs default + second).
+
 ## Next
 
-1. Commit; merge main (B-705).
-2. B-705 global 16px rule, viewport meta check, e2e guard, Simulator proof.
-3. Server-URL inputs: autocapitalize/autocorrect/spellcheck/inputmode; bare-address 401 message.
-4. Simulator: B-662, B-664, B-684 event sequence, B-661 marker/toolbar tap keeps keyboard,
-   B-699 via `simctl openurl`.
-5. Full verification list.
+1. Simulator runs: A (enter, blockenter, blockslash, marker, toolbar, hide); delete today's page;
+   B (draftslash); C (switcher with second graph + `.`-suffixed token, small); D (B-699 openurl).
+2. Full verification list; fold-in section; delete the device; `pnpm ios:sync`.
 
 ## BUGS.md updates to fold in
 

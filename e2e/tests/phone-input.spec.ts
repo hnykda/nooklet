@@ -85,6 +85,41 @@ test("B-662: a hardware Enter in the draft still makes exactly one new block; Sh
   expect(await outliner.locator(".vr-row").first().innerText()).toMatch(/^one\n+two$/);
 });
 
+/**
+ * What iOS's soft keyboard sends for Return at the start of a sentence (and, on the Simulator,
+ * whenever its shift is lit): Shift+Enter (`tools/probes/phone-input/`, `keydown "Enter" 13
+ * shift=true`). The iPhone 13 descriptor's user agent is iOS; `kb-open` is what the keyboard inset
+ * watcher sets while the soft keyboard is up.
+ */
+async function softKeyboardUp(page: Page) {
+  await page.evaluate(() => document.documentElement.classList.add("kb-open"));
+}
+
+test("B-662: the iOS soft keyboard's Return (auto-capitalisation Shift) starts a block from the draft", async ({
+  page,
+}) => {
+  const draft = await openEmptyDay(page, 3);
+  await draft.tap();
+  await page.keyboard.type("ab");
+  await softKeyboardUp(page);
+  await page.keyboard.press("Shift+Enter");
+  await expect(editor(page)).toBeFocused();
+  await expect(editor(page)).toHaveText("");
+  const outliner = page.locator(".page-view .vr-outliner").first();
+  expect(await rowTexts(page, outliner)).toEqual(["ab", ""]);
+});
+
+test("B-662: the iOS soft keyboard's Return (auto-capitalisation Shift) splits a block", async ({
+  page,
+}) => {
+  const outliner = await openEditing(page, "Phone Soft Return", "- first");
+  await softKeyboardUp(page);
+  await page.keyboard.press("Shift+Enter");
+  await expect.poll(() => rowTexts(page, outliner)).toEqual(["first", ""]);
+  await page.keyboard.type("second");
+  await expect(editor(page)).toHaveText("second");
+});
+
 test("B-664: the toolbar's hide-keyboard button ends editing and hides the toolbar; it comes back unscrolled", async ({
   page,
 }) => {
