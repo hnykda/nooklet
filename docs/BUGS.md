@@ -870,15 +870,6 @@ No rate limiting or lockout exists anywhere. The public-tier checklist says to r
 
 2026-10-04: confirmed by the security review; recommendation H1 (token-bucket per token id, per-IP for 401s only via a configured trusted proxy hop). Until then the tier-2 docs require proxy-level limits.
 
-### B-655 · The `admin` token scope grants nothing beyond `write`
-**Status:** open (decided 2026-10-04: `admin` gates server administration) · **Severity:** low (security model clarity) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
-
-No operation requires `admin`, so an admin token can do exactly what a write token can.
-
-2026-10-04: confirmed (0 ops require it). Recommendation H6: gate server-administration ops (token list/create/revoke over the API, plugin settings, gc/backup triggers) on `admin`; keep content ops at `write`. **Owner decision pending.**
-
-**Owner decision 2026-10-04:** `admin` gates server administration — token list/create/revoke over the API (revoke a lost phone from another device), plugin settings, gc/backup triggers. Editing/deleting content stays at `write`. Not implemented yet (PLAN M13, H6).
-
 ### B-656 · ADR 015's live-UI tool names differ from what the server exposes
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
 
@@ -956,6 +947,8 @@ Failed once in `pnpm -r test` while an e2e build ran; passed 3/3 alone.
 
 Revoked sockets keep receiving sync pokes (sequence numbers only, no note content). Recommendations H3 (re-check the token on each send, close 4401) and H4 (10 s hello timeout, per-token and total caps, `maxPayload` 64 KB). Probe `tools/probes/security/ws-revocation.mjs`.
 
+2026-10-04: H3 fixed by qr-pairing — `token.revoke` closes the token's sockets at once (4401); a CLI revoke is caught at the next commit. Tests: `ops/pairing.http.test.ts` (2), e2e `qr-pairing.spec.ts`. **H4 (hello timeout, caps, maxPayload) still open.**
+
 ### B-677 · Dependency advisories via the mermaid plugin (lodash-es, dompurify)
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** none
 
@@ -996,7 +989,38 @@ with `unzip`. Fixed by reading; no Windows machine.
 
 `mcp/server.ts` default; `cli.ts` never passes the package version.
 
+### B-699 · The pairing confirm screen shows the server address twice
+**Status:** open (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
+
+Read-only box and the editable field, for token and code links (pre-existing from B-603).
+
+### B-700 · Behind a same-machine proxy, one client can lock out pairing for a minute
+**Status:** open (2026-10-04, qr-pairing) · **Severity:** low (security) · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
+
+Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
+
 ## Fixed
+
+### B-698 · `isPairPath` matched any path ending in `/pair` (pre-ship)
+**Status:** fixed (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** `apps/web/src/data/pairing.test.ts`
+
+A page named "pair" would have opened the pairing page. Anchored on `/g/<id>/pair`.
+
+### B-697 · The pairing page kept a cancelled code when a second pairing URL opened in the same tab
+**Status:** fixed (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** e2e `qr-pairing.spec.ts` "a second pairing URL opened in the same tab shows the new code…" (red without the fix)
+
+Fragment-only navigation after the page had stripped its fragment. Fixed in `apps/web/src/pair/PairLanding.tsx` (reload on `hashchange`).
+
+### B-655 · The `admin` token scope grants nothing beyond `write`
+**Status:** fixed (2026-10-04, qr-pairing, ADR 029) · **Test:** `packages/server/src/ops/pairing.http.test.ts` "scope enforcement" (3), `mcp/server.test.ts` "B-655: lists the server-administration tools only for an admin token"
+
+No operation requires `admin`, so an admin token can do exactly what a write token can.
+
+2026-10-04: confirmed (0 ops require it). Recommendation H6: gate server-administration ops (token list/create/revoke over the API, plugin settings, gc/backup triggers) on `admin`; keep content ops at `write`. **Owner decision pending.**
+
+**Owner decision 2026-10-04:** `admin` gates server administration — token list/create/revoke over the API (revoke a lost phone from another device), plugin settings, gc/backup triggers. Editing/deleting content stays at `write`. Not implemented yet (PLAN M13, H6).
+
+**Fixed.** `admin` gates `pairing.create`, `token.list`, `token.revoke`; the loopback web-client token is `admin`; pairing codes never grant `admin`; the root token is not a graph admin. Plugin settings and gc/backup have no ops yet.
 
 ### B-689 · `capacitor.config.ts` has a stale comment
 **Status:** fixed (2026-10-04, releases agent `822be67`)
@@ -1617,6 +1641,8 @@ A `0.0.0.0` bind prints the LAN addresses (skipping VM/Docker bridges) and the e
 `platform.deepLinks.onOpen` has no subscriber anywhere in `apps/web/src` (grep), so opening `nooklet://anything` just foregrounds the app. A `nooklet://connect?url=…&token=…` link (or QR) would also remove the token-pasting step.
 
 `nooklet://connect?url=…&token=…` opens ConnectView pre-filled and connects only on a tap; it adds a server graph and keeps local ones. Parsing rejects non-http(s) URLs, user-info and missing params. `nooklet token create --link <url>` prints the link. No QR (no library in the tree; adding one is an owner decision). The token sits in the URL: it can leak via clipboard/history — documented.
+
+2026-10-04: follow-up done — QR pairing with one-time, expiring codes (ADR 029; `uqr`, 4 KB gz lazy). Token links still work but are documented as less safe; deprecate `token create --link` once a physical phone has paired with codes.
 
 ### B-602 · A WebSocket upgrade to an unrouted bare path hangs instead of failing
 **Status:** fixed (2026-10-03, `27baa2e`) · **Test:** `graphs/mount.test.ts` "answers a failed upgrade with 404 at once … (B-602)" and "survives a client resetting the TCP connection mid-upgrade (B-589, kept by the new guard)"
