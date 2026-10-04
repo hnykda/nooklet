@@ -362,6 +362,36 @@ input {
   font-size: 16px; /* below 16px triggers iOS auto-zoom on focus */
 }
 
+/* B-705: the ONE rule that keeps iOS from zooming in on a focused field. iOS zooms the page when a
+   text field under 16px takes focus and never zooms back, leaving the page wider than the screen
+   (B-648: `visualViewport.scale` 1.23 for a 13px field). The plain rule above loses to any
+   component rule that sets a field's size (`.graph-switcher-field input` at 12px did, B-705), and
+   per-field fixes (B-648) missed every form written after them. So on a touch screen this one wins
+   over all of them: `!important` because no selector here can outrank every component's, and the
+   `pointer: coarse` query keeps the desktop's compact sizes.
+   `--field-font-size` is a field's own size when it is bigger than 16px (the page title): an
+   `!important` override replaces it, and without the variable `1em` would be the parent's size.
+   Not CodeMirror's `contenteditable` (15px): on the Simulator focusing it leaves the scale at 1.00
+   (docs/progress/phone-input.md), and 16px there would make the line jump between reading and
+   editing. Guarded by `e2e/tests/phone-fields.spec.ts`. */
+@media (pointer: coarse) {
+  input:not(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="color"],
+      [type="file"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"],
+      [type="image"]
+    ),
+  textarea,
+  select {
+    font-size: max(16px, var(--field-font-size, 1em)) !important;
+  }
+}
+
 /* Numbers that sit in a column — dates, counts, ordinals — must not jiggle as they change. */
 time,
 kbd,
