@@ -181,6 +181,7 @@ from source. None of the downloads is code-signed yet, so each OS warns the firs
 
   On some macOS versions right-click → **Open** → **Open** works instead, or System Settings →
   Privacy & Security → **Open Anyway** after the first refused launch. The Intel build is untested.
+- **macOS with Homebrew**: see [Homebrew](#homebrew-macos) below.
 - **Linux** (`-linux-x64.AppImage` or `.deb`). Built in CI, not yet tested by the maintainer.
   AppImage: `chmod +x nooklet-*.AppImage && ./nooklet-*.AppImage`. Debian/Ubuntu:
   `sudo apt install ./nooklet-*.deb`. Both need WebKitGTK 4.1, which current Ubuntu and Debian
@@ -188,6 +189,32 @@ from source. None of the downloads is code-signed yet, so each OS warns the firs
 - **Windows** (`-windows-x64-setup.exe`). Built in CI, not yet tested by the maintainer. SmartScreen
   shows "Windows protected your PC": **More info** → **Run anyway**. It installs for the current
   user, no administrator needed.
+
+### Homebrew (macOS)
+
+```sh
+brew install --cask hnykda/nooklet/nooklet
+brew trust hnykda/nooklet                                  # once, so `brew upgrade` can load it
+xattr -dr com.apple.quarantine /Applications/nooklet.app   # after every install and upgrade
+```
+
+This installs the same `.dmg` as the Releases page (Apple Silicon or Intel, picked for you) and a
+`nooklet` command: the app's own bundled server, so `nooklet import ~/notes-graph`,
+`nooklet mcp --stdio` and `nooklet token create` work without a source checkout. Both use
+`~/.nooklet`, the same data as the app.
+
+What to know:
+
+- **It is unsigned, and Homebrew will not hide that.** The cask is in our own tap rather than
+  Homebrew's main cask repository because Homebrew no longer accepts apps that fail Gatekeeper
+  there, and Homebrew removed its `--no-quarantine` option. macOS therefore treats the app as an
+  unverified download after every install *and every upgrade*; the `xattr` line above (or **Open
+  Anyway** in System Settings → Privacy & Security) is needed each time. Run it only if you trust
+  the release you just installed; `brew info --cask nooklet` shows where it came from.
+- `brew uninstall --cask --zap nooklet` moves the app's settings, caches and window storage to the
+  Trash. It never removes `~/.nooklet`, where your notes are.
+- The Intel build is untested, and Homebrew itself moved Intel Macs to its lowest support tier in
+  September 2026.
 
 To build it yourself you need Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 in addition to the above:

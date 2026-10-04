@@ -69,6 +69,7 @@ nooklet) and set its visibility to **Public**; new packages start private. The i
 | `android` | GitHub Actions | `tools/ci/android-apk.sh`: `nooklet-X.Y.Z-android-experimental.apk`, signed with your keystore, or `…-experimental-debug.apk` without it. |
 | `image`, `image-manifest` | GitHub Actions | Server image on native amd64 and arm64 runners, merged into one multi-arch `ghcr.io/hnykda/nooklet` tagged `X.Y.Z`, `vX.Y.Z`, `sha-<8>`, and `latest` for a final release. |
 | `release` | GitHub Actions | Creates a **draft** release with every file + `SHA256SUMS` and the notes, then publishes it. It runs only if every job above succeeded. Set the repository variable `RELEASE_KEEP_DRAFT` to `true` to stop at the draft and publish by hand. |
+| `homebrew` | GitHub Actions | `homebrew-tap.yml`: copies `packaging/homebrew/` into `hnykda/homebrew-nooklet`, stamps the version and both `.dmg` checksums from `SHA256SUMS`, commits. Final releases only; needs `HOMEBREW_TAP_TOKEN` (below), skips with a warning without it. |
 | `images.yaml` | Woodpecker (the home server) | Server and site images for the owner's registry, `linux/amd64` + `linux/arm64`, tagged `sha-<8>`, `vX.Y.Z`, `latest` (final releases). No deploy on tags: deploys follow `main`. |
 
 On `main` nothing above runs except Woodpecker's usual amd64 build and deploy.
@@ -137,6 +138,57 @@ and uploads with `xcrun altool --upload-app` (or `fastlane pilot`). Secrets it w
 (`IOS_PROVISIONING_PROFILE`). The bundle id and `nooklet://` URL type are already in the project.
 
 **Windows signing** is not designed yet; the installer is unsigned and SmartScreen warns.
+
+## Homebrew tap
+
+`brew install --cask hnykda/nooklet/nooklet` installs the macOS app from the release's `.dmg`
+files. The tap repository, `hnykda/homebrew-nooklet`, is generated: its contents are
+`packaging/homebrew/` in this repo (README, `Casks/nooklet.rb`), and every final release copies
+that directory over and stamps `version` and the two `sha256` values from the release's own
+`SHA256SUMS` (`tools/ci/homebrew-cask.mjs`, tested by `tools/homebrew-cask.test.mjs`). Change the
+cask here, never in the tap.
+
+How it runs: `release.yml`'s `homebrew` job calls `.github/workflows/homebrew-tap.yml` right after
+publishing. It cannot be triggered by `release: published` instead, because a release published
+with `GITHUB_TOKEN` starts no other workflow; the tap workflow does also listen to
+`release: published`, which fires when *you* publish a kept draft, and has a **Run workflow**
+button taking a tag, for re-running by hand. Prereleases are skipped (the cask follows final
+releases), and it never moves the tap to a version older than the one it has.
+
+**Secret: `HOMEBREW_TAP_TOKEN`.** A fine-grained personal access token that can write to the tap
+and nothing else:
+
+1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** →
+   Generate new token.
+2. Resource owner: `hnykda`. Expiration: a year at most; put the date in your calendar (an expired
+   token makes the job fail after the release is already out, and a re-run fixes it).
+3. Repository access: **Only select repositories** → `hnykda/homebrew-nooklet`.
+4. Permissions → Repository permissions → **Contents: Read and write**. Nothing else (Metadata:
+   read is added automatically).
+5. Save it as the Actions secret `HOMEBREW_TAP_TOKEN` in `hnykda/nooklet`.
+
+A deploy key (an SSH key with write access on the tap repository only) would scope it as tightly
+and never expire, but `actions/checkout` would then need `ssh-key:` instead of `token:`; the PAT
+keeps the workflow simpler.
+
+**Creating the tap (once, after the first release exists):**
+
+1. Create the public repository `hnykda/homebrew-nooklet` **with** "Add a README file" ticked, so
+   it has a `main` branch for the workflow to check out (the workflow overwrites that README).
+2. Create the token and the secret above.
+3. Actions → **Homebrew tap** → Run workflow, tag `v0.1.0`. It checks out the tap, copies
+   `packaging/homebrew/` in, stamps it, and pushes the first commit. (With the secret in place
+   before the tag, `release.yml` does this itself.)
+4. Check it from a clean shell: `brew info --cask hnykda/nooklet/nooklet` shows 0.1.0; then
+   `brew fetch --cask hnykda/nooklet/nooklet` downloads the `.dmg` and verifies its checksum
+   without installing.
+
+**Unsigned.** Homebrew deprecated unsigned casks in 5.0.0 and disables those in homebrew/cask that
+fail Gatekeeper from September 2026; third-party taps are not checked, which is why this is a tap
+and not a homebrew/cask submission. Users clear the quarantine themselves after each install and
+upgrade (`packaging/homebrew/README.md` has the commands and sources). Once macOS signing and
+notarization exist (Secrets above), the caveat can go, and a homebrew/cask submission becomes
+possible.
 
 ## Auto-update (designed, off)
 
