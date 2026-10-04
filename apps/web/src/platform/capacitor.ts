@@ -192,31 +192,39 @@ async function doShareFile(file: { name: string; blob: Blob }): Promise<boolean>
 // dedupes because appUrlOpen can fire twice for one intent."
 // ---------------------------------------------------------------------------------------------
 
-function onOpen(cb: (url: string) => void): () => void {
-  let lastUrl: string | undefined;
-  let lastAt = 0;
-  const notifyOnce = (url: string): void => {
-    const now = Date.now();
-    if (url === lastUrl && now - lastAt < 500) return;
-    lastUrl = url;
-    lastAt = now;
-    cb(url);
-  };
+// One native listener for every subscriber (B-800): the page has two (`PairingLinkPrompt` and
+// `AppLinkHandler`), and each used to run its own `getLaunchUrl()` + `claimLaunchUrl()`. The first
+// to claim a cold-start link marked it handled, so the second never saw it — a cold start from a
+// quick action or a `nooklet://capture` link reached the pairing prompt, which ignores it, and the
+// capture screen never opened. Now the link is claimed once and handed to every subscriber.
+const deepLinkSubscribers = new Set<(url: string) => void>();
+let deepLinksStarted = false;
+let lastDeepUrl: string | undefined;
+let lastDeepAt = 0;
 
-  let stopped = false;
-  let removeListener: (() => void) | undefined;
+function deliverDeepLink(url: string): void {
+  const now = Date.now();
+  if (url === lastDeepUrl && now - lastDeepAt < 500) return;
+  lastDeepUrl = url;
+  lastDeepAt = now;
+  for (const cb of [...deepLinkSubscribers]) {
+    try {
+      cb(url);
+    } catch (err) {
+      console.error("[deep-link] subscriber threw", err);
+    }
+  }
+}
 
+function startDeepLinks(): void {
+  if (deepLinksStarted) return;
+  deepLinksStarted = true;
   void (async () => {
     const { App } = await appPlugin();
-    const handle = await App.addListener("appUrlOpen", (e) => {
+    await App.addListener("appUrlOpen", (e) => {
       markUrlHandled(e.url, globalThis.sessionStorage);
-      notifyOnce(e.url);
+      deliverDeepLink(e.url);
     });
-    if (stopped) {
-      void handle.remove();
-      return;
-    }
-    removeListener = () => void handle.remove();
     // Cold start: the listener above misses the URL the process was launched with, so it must
     // also be checked explicitly (research §4's `App.getLaunchUrl()` call, right after
     // `addListener` so a URL that arrives between the two is never dropped).
@@ -224,13 +232,18 @@ function onOpen(cb: (url: string) => void): () => void {
     // outlives a page reload (see `launch-url.ts`).
     const launch = await App.getLaunchUrl();
     if (launch?.url && claimLaunchUrl(launch.url, globalThis.sessionStorage)) {
-      notifyOnce(launch.url);
+      deliverDeepLink(launch.url);
     }
   })();
+}
 
+/** Subscribers present when the native listener starts all see the cold-start link: both of the
+ * page's subscribers mount synchronously in `App`, before the plugin's async import resolves. */
+function onOpen(cb: (url: string) => void): () => void {
+  deepLinkSubscribers.add(cb);
+  startDeepLinks();
   return () => {
-    stopped = true;
-    removeListener?.();
+    deepLinkSubscribers.delete(cb);
   };
 }
 

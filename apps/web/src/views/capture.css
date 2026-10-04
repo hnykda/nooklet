@@ -10,8 +10,11 @@
   inset: 0;
   display: flex;
   flex-direction: column;
+  /* B-802: `--kb` is the keyboard's height in the iOS app (KeyboardResize.None), so Save stays
+     above the keyboard; the safe-area inset only matters when the keyboard is down. */
   padding: calc(var(--sat, 0px) + var(--space-lg)) calc(var(--sar, 0px) + var(--space-lg))
-    calc(var(--sab, 0px) + var(--space-lg)) calc(var(--sal, 0px) + var(--space-lg));
+    calc(max(var(--kb, 0px), var(--sab, 0px)) + var(--space-lg))
+    calc(var(--sal, 0px) + var(--space-lg));
   gap: var(--space-lg);
   background: var(--bg);
   color: var(--fg);
@@ -44,7 +47,8 @@
 
 .capture-input {
   flex: 1;
-  min-height: 40vh;
+  /* Not 40vh: with the keyboard up that pushed the actions off screen (B-802). */
+  min-height: 6rem;
   resize: none;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
@@ -90,4 +94,34 @@
 .capture-error {
   color: var(--danger);
   font-size: var(--text-sm);
+}
+
+.capture-cancel {
+  min-height: var(--touch);
+  padding: 0 var(--space-xl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--text-md);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ADR 033: a capture that arrives before any graph exists (first launch). */
+.capture-no-graph {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  font-size: var(--text-sm);
+}
+
+.capture-no-graph p {
+  margin: 0;
 }

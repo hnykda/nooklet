@@ -1,12 +1,14 @@
 import { render } from "solid-js/web";
 import { App } from "./App.js";
 import { initFocusLog } from "./app/focus-log.js";
+import { drainNativeCaptureQueue } from "./capture/native-queue.js";
 import {
   activeGraph,
   adoptAddressBarGraph,
   adoptLegacyReplica,
   apiBaseUrl,
   authToken,
+  deviceHasNoGraph,
   hasSyncTarget,
   initBootstrap,
   replicaKey,
@@ -78,6 +80,17 @@ async function start(): Promise<void> {
   void dbReady.then((r) => {
     if (r.unnamespacedReplica === "data") adoptLegacyReplica();
   });
+
+  // ADR 033: captures the "Add to nooklet" App Intent queued while the web view was not running
+  // become blocks now, and on every return to the foreground. Not on a graph mismatch (the replica
+  // is about to be discarded) and not with no graph at all (nowhere to write; the files wait).
+  if (platform.name === "capacitor" && !bootstrap.graphMismatch && !deviceHasNoGraph()) {
+    const drain = (): void => {
+      void dbReady.then(() => drainNativeCaptureQueue());
+    };
+    drain();
+    platform.lifecycle.on("resume", drain);
+  }
 
   // B-608: the graph's task workflow (LATER/NOW or TODO/DOING), before anything renders so the first
   // Mod+Enter already starts a task the way this graph does. After `initDb`, not before: its offline

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Proposal 006 Phase 1 (ADR 033): long-press the launcher icon. Each shortcut opens a nooklet://
+     link, which @capacitor/app delivers to the web layer like any other deep link
+     (src/capture/AppLinkHandler.tsx). The Android twin of UIApplicationShortcutItems in
+     ios/App/App/Info.plist. Untested on a device or emulator. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="capture"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_capture">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="nooklet://capture"
+            android:targetPackage="sh.nooklet.app"
+            android:targetClass="sh.nooklet.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="today"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_today">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="nooklet://today"
+            android:targetPackage="sh.nooklet.app"
+            android:targetClass="sh.nooklet.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_search">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="nooklet://search"
+            android:targetPackage="sh.nooklet.app"
+            android:targetClass="sh.nooklet.app.MainActivity" />
+    </shortcut>
+</shortcuts>

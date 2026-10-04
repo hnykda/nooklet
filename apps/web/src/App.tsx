@@ -13,8 +13,9 @@
  */
 import "./styles/views.css";
 import { Navigate, Route, Router, type RouteSectionProps } from "@solidjs/router";
-import { createSignal, type JSX, Show } from "solid-js";
+import { createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { CommandLayer } from "./app/CommandLayer.js";
+import { AppLinkHandler } from "./capture/AppLinkHandler.js";
 import {
   activeGraph,
   bootstrapConfig,
@@ -48,7 +49,14 @@ function GraphOrRedirect(): JSX.Element {
   return <GraphRoute />;
 }
 
+/** The current path, for `App`'s gate, which sits outside the router: updated by the router's own
+ * navigations (`RouterRoot`) and by `popstate` (`AppLinkHandler`, back/forward). */
+const [appPathname, setAppPathname] = createSignal(globalThis.location?.pathname ?? "");
+
 function RouterRoot(routeProps: RouteSectionProps): JSX.Element {
+  createEffect(() => {
+    setAppPathname(routeProps.location.pathname);
+  });
   // `.endsWith`, not `===`: robust either way to whether the router's `location.pathname` is
   // base-relative or the raw browser path (ADR 025 — the app can be served under `/g/<slug>`).
   if (routeProps.location.pathname.endsWith("/capture")) return <>{routeProps.children}</>;
@@ -73,7 +81,15 @@ export function App() {
   // `/capture` is deliberately exempt: quick capture must open instantly and writes locally. Ends
   // with rather than equals: this runs before `<Router>` exists to strip its own `base` (below),
   // so the raw pathname may still carry a `/g/<slug>` prefix.
-  const isCapture = (): boolean => Boolean(globalThis.location?.pathname?.endsWith("/capture"));
+  // A signal, not a plain read of `location`: `AppLinkHandler` can move to `/capture` while the
+  // connect screen is up (a capture link on a first launch), and the gate must open for it; and
+  // leaving `/capture` from there ("Set up a graph") must close it again.
+  const onPopState = (): void => {
+    setAppPathname(globalThis.location?.pathname ?? "");
+  };
+  globalThis.addEventListener?.("popstate", onPopState);
+  onCleanup(() => globalThis.removeEventListener?.("popstate", onPopState));
+  const isCapture = (): boolean => appPathname().endsWith("/capture");
   // B-612: a local-only list entry has no server, so there is no token to ask for — it is the
   // "Just this device" choice already made, remembered.
   const localOnly = isLocalOnlyEntry(activeGraph());
@@ -99,6 +115,7 @@ export function App() {
       <>
         <GraphMismatchView graphId={config.graphId} />
         <PairingLinkPrompt />
+        <AppLinkHandler />
       </>
     );
   }
@@ -108,6 +125,9 @@ export function App() {
   return (
     <>
       <PairingLinkPrompt />
+      {/* ADR 033: `nooklet://capture|today|search` (links, quick actions, shares), also outside
+          the gate so a capture link on a first launch still reaches the capture screen. */}
+      <AppLinkHandler />
       <Show
         when={config.token !== null || skipped() || localOnly || isCapture()}
         fallback={

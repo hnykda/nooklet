@@ -29,11 +29,16 @@ export interface BuildQuickCaptureOpsInput {
   clock: Clock;
   newId: () => string;
   now?: number;
+  /** The new block's id, when the caller needs a deterministic one (ADR 033: a queued capture's
+   * id is derived from its uuid so a second drain of the same file can tell it already landed).
+   * Defaults to `newId()`. */
+  blockId?: string;
 }
 
 export interface QuickCaptureOpsResult {
   ops: Op[];
   pageId: string;
+  blockId: string;
 }
 
 /**
@@ -61,7 +66,7 @@ export function buildQuickCaptureOps(
     );
   }
 
-  const blockId = input.newId();
+  const blockId = input.blockId ?? input.newId();
   const order = orderBetween(input.target?.lastRootOrder ?? null, null);
   ops.push(
     makeOp(input.clock.next(), input.clock.device, blockId, {
@@ -72,5 +77,5 @@ export function buildQuickCaptureOps(
     }),
   );
 
-  return { ops, pageId };
+  return { ops, pageId, blockId };
 }

@@ -14,6 +14,55 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
+### B-802 · In the iOS app the capture screen's Save button is under the keyboard
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1
+
+Open the capture screen in the iOS app: the text field takes focus, the keyboard comes up, and
+"Save to journal" (and the no-graph notice below the field) sit behind it. "Confirm with one tap"
+became "dismiss the keyboard, then tap". Cause: the app sets `KeyboardResize.None` and owns layout
+through the `--kb` variable, but only `AppShell` started the keyboard watcher that writes it, and
+`/capture` is deliberately mounted outside `AppShell`; `capture.css` never used `--kb` either.
+
+**Fix:** Save, Cancel and the no-graph notice sit above the field, where the keyboard never
+reaches. Also: `CaptureView` starts the keyboard watcher while mounted and the shell pads by
+`--kb`, and the textarea no longer insists on 40vh. The `--kb` part alone did NOT fix it on the
+Simulator: the field takes focus on mount, so `keyboardWillShow` fires before the watcher's
+(async) listener exists; moving the buttons is what made Save visible.
+**Test:** `apps/web/src/views/CaptureView.test.tsx` ("starts the keyboard watcher …") and the
+Simulator screenshots in `tools/probes/phone-capture/` (Save visible above the keyboard).
+
+### B-801 · Queued captures never drain in the iOS app: the plugin lookup never resolves
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1, before it shipped
+
+A capture queued by the "Add to nooklet" intent stayed in `Application Support/captures/` across
+launches and resumes; the console showed no `NookletCapture list` call at all, though the plugin
+answered when called directly. `capture/native-queue.ts` resolved a promise WITH the
+`registerPlugin()` proxy. Capacitor's plugin proxy answers every property with a native-method
+wrapper, `then` included, so promise resolution treated the proxy as a thenable, called its
+`then`, and waited forever. The unit tests used a fake queue and could not see it.
+
+**Fix:** resolve a plain `{ plugin }` box, never the proxy itself. **Test:**
+`apps/web/src/capture/native-queue.test.ts` (a proxy shaped like Capacitor's; hangs on the old
+code), and the Simulator run in `tools/probes/phone-capture/sim-run.sh`.
+
+### B-800 · A second deep-link subscriber never sees the link that launched the app
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** while building proposal 006 Phase 1, before it shipped
+
+`platform/capacitor.ts`'s `deepLinks.onOpen` ran its own `App.getLaunchUrl()` and
+`claimLaunchUrl()` (B-603's reload guard) for every subscriber. The guard is one hash in
+`sessionStorage`, so the first subscriber to claim a cold-start link marked it handled and every
+later subscriber was told it was already delivered. With one subscriber (`PairingLinkPrompt`) that
+was invisible; the capture work adds a second (`AppLinkHandler`), and a cold start from a Home
+Screen quick action or a `nooklet://capture` link would have reached only the pairing prompt, which
+ignores it, so nothing opened.
+
+**Fix:** one native `appUrlOpen` listener and one launch-URL claim per page, fanned out to every
+subscriber. **Test:** `apps/web/src/platform/deep-links-multicast.test.ts` (fails on the old code:
+2 of 3; passes now).
+
 ### B-42 · Typing into the `[[` popup keeps dropping editor focus
 **Status:** open · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
 [[new/page` → then context window open → but when I keep typing then the edit focus keeps
