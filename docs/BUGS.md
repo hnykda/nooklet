@@ -1114,6 +1114,17 @@ B-712's "export first" can only point at per-page Export as markdown and promote
 
 ## Fixed
 
+### B-742 · On the Mac app, typing shows an iOS-style autocorrect bubble under the word
+**Status:** fixed 2026-10-04 (verified with Chromium e2e for the attribute; the bubble itself not re-checked in a real desktop window) · **Test:** `e2e/tests/editor-autocorrect.spec.ts` (fails without the fix)
+
+The block editor sets `autocorrect="on"` on every platform (`apps/web/src/editor/surface.ts`). On a
+phone that is wanted; in WKWebView on macOS (the desktop shell, and Safari) the same attribute
+shows the system autocorrect bubble (`Dad ×` under `dad`), which no other Mac editor the owner uses
+does. Chromium ignores the attribute, so the e2e suite never saw it. Fix: autocorrect and
+writing suggestions only on coarse-pointer (touch) devices; spellcheck underlines stay.
+
+**Fix:** `surface.ts` sets `autocorrect`/`writingsuggestions` on only when `(pointer: coarse)` matches.
+
 ### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
 **Status:** fixed 2026-10-04 (graph-menu) · **Test:** `e2e/tests/graph-remove.spec.ts` (4), `graph-removal.test.ts` (5), `pending-memo.test.ts` (2), `GraphSwitcher.test.tsx` "B-712" (2)
 
