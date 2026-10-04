@@ -4,7 +4,27 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
-## Production round — 2026-10-04 (in flight)
+## Published — 2026-10-04 (READ THIS FIRST)
+
+All agent work is merged; no worktrees or agents are running. Final verification on the scrubbed
+tree (separate worktree): typecheck + biome clean, leak-check clean, unit core 479 / plugin-api 17 /
+server 812 / web 1,623, site build OK, full e2e **777 passed, 0 failed, 2 skipped**.
+
+History: rewritten with `git filter-repo --replace-text/--replace-message` (the leak audit's map,
+kept privately outside the repo); final tree byte-identical to the scrubbed tree; leak-check clean
+over every commit and message; cited commit hashes in docs remapped (1,369 refs). Force-pushed to
+`origin/main` (`41666ee` → `5c665b1`) with lease; repo made public again the same day (owner's
+choice: right after the push). A private backup of the old history is at
+`~/nooklet-pre-rewrite-2026-10-04.bundle` (never push it). Old commits may stay reachable on GitHub
+by exact hash until GitHub GCs them. The leaked `nk_` token (hash prefix `e2409163`) must be
+revoked wherever it exists. `core.hooksPath = tools/git-hooks` runs the leak check before commits.
+
+Owner decisions this round: deployment tiers (tailnet + HTTPS + per-device tokens default);
+`admin` gates server administration (B-655, not implemented yet); empty test graph; Logseq parity
+throughout. Still the owner's to do: the infra repo's draft deployment PR steps (DNS, SOPS root token,
+Woodpecker activation with fork protection, merge, run), and the leaked-token check.
+
+## Production round — 2026-10-04
 
 Owner: bring nooklet to production. Plan agreed: the app server tailnet-only (Tailscale operator,
 single replica, PVC, SOPS root token, `--no-loopback-token`, nightly backup); a public static

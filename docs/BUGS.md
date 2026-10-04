@@ -871,11 +871,13 @@ No rate limiting or lockout exists anywhere. The public-tier checklist says to r
 2026-10-04: confirmed by the security review; recommendation H1 (token-bucket per token id, per-IP for 401s only via a configured trusted proxy hop). Until then the tier-2 docs require proxy-level limits.
 
 ### B-655 · The `admin` token scope grants nothing beyond `write`
-**Status:** open · **Severity:** low (security model clarity) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+**Status:** open (decided 2026-10-04: `admin` gates server administration) · **Severity:** low (security model clarity) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
 
 No operation requires `admin`, so an admin token can do exactly what a write token can.
 
 2026-10-04: confirmed (0 ops require it). Recommendation H6: gate server-administration ops (token list/create/revoke over the API, plugin settings, gc/backup triggers) on `admin`; keep content ops at `write`. **Owner decision pending.**
+
+**Owner decision 2026-10-04:** `admin` gates server administration — token list/create/revoke over the API (revoke a lost phone from another device), plugin settings, gc/backup triggers. Editing/deleting content stays at `write`. Not implemented yet (PLAN M13, H6).
 
 ### B-656 · ADR 015's live-UI tool names differ from what the server exposes
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
