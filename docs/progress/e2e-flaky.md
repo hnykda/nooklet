@@ -57,6 +57,16 @@ Full run 1 (before 4–9, on `1ad2ffd`): 790 passed, 2 failed, 2 skipped, exit 1
 commands.spec.ts:202 (above) and phone-images.spec.ts:163 with `ENOSPC: no space left on device`
 writing its trace (the disk had 1 GB free; environment, not a flake).
 
+Full run A on `5f5123e` (all of the above): **793 passed, 0 failed, 2 skipped, exit 0** (25.1 m).
+Runs B/C were stopped to merge main (coordinator request).
+
+**Coordinator question (page-delete.spec.ts:87 failing even after retry on main `b4fbbf3b`):**
+main does not contain this branch's `sync-client.ts` fix. After `git merge main` (`803296d`):
+with the fix reverted, `--repeat-each 10` fails 2/10 with the same signature ("Start typing…"
+after Restore); with the fix, 10/10 (and 50/50 for the whole spec). At `6d56c8f`, before today's
+merges, it failed 5/10. So it is the lost-poke bug, not B-624's carry-over (names are per-run)
+and not a regression from All pages' Delete, the in-app confirm or the ref index.
+
 ## In flight / next
 
 - `--repeat-each 10` of tasks, popups, mermaid-lazy-cache, commands.
@@ -92,9 +102,8 @@ writing its trace (the disk had 1 GB free; environment, not a flake).
   the service worker's lazy-chunk rule ignored the graph prefix, so offline rendering depended on
   the HTTP cache. Fixed (`apps/web/vite.config.ts`). Test: `mermaid-lazy-cache.spec.ts` "a diagram
   rendered once renders again offline" now checks every chunk (red 10/10 before, 20/20 after).
-  Also `packages/server/src/http/web-client.ts#cacheControl` checks `startsWith("/static/")`:
-  whether `/g/<slug>/static/…` gets the immutable header depends on whether the pathname it sees
-  still has the prefix; not checked.
+  (Checked with curl against the e2e server: `/g/default/static/<chunk>` answers 200 with
+  `immutable`; bare `/static/<chunk>` answers 307.)
 - Pre-existing, not fixed: `commands.spec.ts:159` (Collapse all + selection) fails on every
   `--repeat-each` repeat after the first (fixed page name left collapsed). Passes once per run.
 - Observation (not filed as a bug): the autocomplete highlight is an index, so rows that arrive
