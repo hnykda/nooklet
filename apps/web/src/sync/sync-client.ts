@@ -30,6 +30,7 @@ import {
   applyOps as coreApplyOps,
   Hlc,
   makeOp,
+  merge3,
   newDeviceId,
   type Op,
   resolvePendingTextConflict,
@@ -70,6 +71,52 @@ interface PendingOpRow {
   kind: string;
   entity: string;
   payload: string;
+}
+
+/**
+ * Which ancestor to three-way merge `theirs` into `mine` against. `base` — the text before this
+ * device started diverging — is right whenever the other device's edit started from there too,
+ * and it is what is used unless it fails to merge.
+ *
+ * It fails when `theirs` was written on top of a text this device has already merged, and that
+ * text and `mine` changed the same words. Two shapes, each with a candidate ancestor:
+ *
+ *  - `previous`: the author's own text just before `theirs` — it edited the same words twice.
+ *    `theirs` certainly descends from it.
+ *  - `others`: a text `theirs` merged in — a third device's, or an older one of ours — whose
+ *    words its author has since changed again (a merge op carrying a stale word). `theirs`
+ *    descends from it only if it contains it, so that is checked (merging it into `theirs`
+ *    against `base` changes nothing). Without the check, a third device's NEWER text looked like
+ *    an ancestor, and the merge silently reverted that device's word
+ *    (`tools/probes/b652-merge-base.ts`).
+ *
+ * Either way a candidate is used only when `mine` really contains everything its author has
+ * written (`latest`, merged into `mine` against `base`, changes nothing). Otherwise `mine` would
+ * look like it had reverted the candidate, and that "revert" would be merged in silently. If no
+ * candidate merges, `base` stays and the caller reports a conflict: a spurious conflict copy can
+ * be deleted, a silently dropped edit cannot be found.
+ */
+function mergeBase(
+  base: string,
+  mine: string,
+  theirs: string,
+  previous: string | undefined,
+  others: ReadonlyArray<{ text: string; latest: string }>,
+): string {
+  if (merge3(base, mine, theirs).ok) return base;
+  const contains = (outer: string, inner: string) => {
+    const r = merge3(base, outer, inner);
+    return r.ok && r.merged === outer;
+  };
+  const candidates = [
+    ...(previous === undefined ? [] : [{ text: previous, latest: previous }]),
+    ...others.filter((o) => contains(theirs, o.text)),
+  ];
+  for (const { text, latest } of candidates) {
+    if (text === base || !contains(mine, latest)) continue;
+    if (merge3(text, mine, theirs).ok) return text;
+  }
+  return base;
 }
 
 const SYNC_STATE_DEVICE_ID = "device_id";
@@ -294,7 +341,24 @@ export class SyncClient {
         insertPageSnapshot(this.driver, r);
         if (page) captured.push({ page, winnerId: r.page.id });
       }
-      for (const a of res.accepted) this.driver.run("DELETE FROM pending_op WHERE id = ?", [a.id]);
+      // B-652: an accepted `block.text` moves to `sent_text` instead of vanishing. Conflict
+      // detection in `pull()` needs this device's own text and its base while the other device's
+      // edit is still on its way here, and this response can be applied before the pull response
+      // that carries that edit (worker-core runs push and pull at once on reconnect; and two
+      // online devices can each push before pulling). Not when a pull already passed the op: it
+      // came back and was dropped there, which is the "seen" this table waits for.
+      const cursor = Number(this.getState(SYNC_STATE_SERVER_CURSOR) ?? "0");
+      for (const a of res.accepted) {
+        if (a.seq > cursor) {
+          this.driver.run(
+            `INSERT OR IGNORE INTO sent_text(id, hlc, entity, content, base, seq)
+             SELECT id, hlc, entity, json_extract(payload, '$.content'), base, ?
+             FROM pending_op WHERE id = ? AND kind = 'block.text' AND base IS NOT NULL`,
+            [a.seq, a.id],
+          );
+        }
+        this.driver.run("DELETE FROM pending_op WHERE id = ?", [a.id]);
+      }
       for (const r of res.rejected) this.driver.run("DELETE FROM pending_op WHERE id = ?", [r.id]);
       // The server's own order (ADR 026), like a pull: corrections are logged in the order the
       // server applied them.
@@ -341,7 +405,8 @@ export class SyncClient {
           // 003) so a drifted batch is rejected cleanly instead of applied with a clock that
           // can't represent it — see the identical ordering rationale in `applyPushResponse`.
           for (const op of res.ops) this.hlc.receive(op.hlc);
-          const extraOps = this.resolveTextConflicts(res.ops);
+          const resolved = this.resolveTextConflicts(res.ops);
+          const extraOps = resolved.map((r) => r.op);
           for (const op of extraOps) this.hlc.receive(op.hlc);
           const captured: Array<{ page: CapturedPage; winnerId: string }> = [];
           this.driver.transaction(() => {
@@ -364,16 +429,19 @@ export class SyncClient {
             coreApplyOps(this.driver, [...res.ops, ...extraOps], { order: "seq" });
             for (const op of res.ops) {
               this.driver.run("DELETE FROM pending_op WHERE id = ?", [op.id]);
+              this.driver.run("DELETE FROM sent_text WHERE id = ?", [op.id]);
             }
+            this.forgetSentTextUpTo(res.cursor);
             this.setState(SYNC_STATE_SERVER_CURSOR, String(res.cursor));
           });
           // A merge op is a local edit like any other: queue it so it reaches the server.
-          if (extraOps.length > 0) this.enqueueForPush(extraOps);
+          if (resolved.length > 0) this.enqueueForPush(resolved);
           this.persistHlc();
           this.refreshPendingCount();
           this.onAppliedOpsCb?.(res.ops);
           this.reapplyCaptured(captured);
         } else {
+          this.forgetSentTextUpTo(res.cursor);
           this.setState(SYNC_STATE_SERVER_CURSOR, String(res.cursor));
         }
         this.setStatus({ serverCursor: res.cursor });
@@ -495,6 +563,7 @@ export class SyncClient {
         );
         track(pp.hlc);
       }
+      this.forgetSentTextUpTo(snap.cursor);
       this.setState(SYNC_STATE_SERVER_CURSOR, String(snap.cursor));
       this.setState(SYNC_STATE_BOOTSTRAPPED, "1");
     });
@@ -588,49 +657,158 @@ export class SyncClient {
   }
 
   /**
-   * ADR 003's v1.1 upgrade, wired: when a pulled `block.text` op targets a block that still has
-   * an unpushed local `block.text` of our own, plain last-writer-wins would silently discard one
-   * person's edit. Instead we three-way merge against the pre-edit content captured in
-   * `pending_op.base` (see `applyLocal`). A clean merge yields a fresh `block.text` op carrying
-   * the combined text; a genuine overlapping edit falls back to LWW but preserves the losing
-   * text as a `conflict_copy` property, so nothing is ever lost quietly — a report the server turns
-   * into a block after the winner, clearing the property (ADR 027). Either way the returned
-   * ops carry newer HLCs than both sides, so every device converges on the same result.
+   * ADR 003's v1.1 upgrade, wired: when a pulled `block.text` op targets a block this device also
+   * edited without having seen that op, plain last-writer-wins would silently discard one
+   * person's edit. Instead we three-way merge against the pre-edit content captured in `base`
+   * (see `applyLocal`). A clean merge yields a fresh `block.text` op carrying the combined text; a
+   * genuine overlapping edit falls back to LWW but preserves the losing text as a `conflict_copy`
+   * property, so nothing is ever lost quietly — a report the server turns into a block after the
+   * winner, clearing the property (ADR 027). Either way the returned ops carry newer HLCs than
+   * both sides, so every device converges on the same result.
+   *
+   * "Edited without having seen it" is this device's `block.text` ops that have not yet come
+   * back in a pull: unpushed (`pending_op`) or pushed and acknowledged but not yet pulled back
+   * (`sent_text`, B-652). `incoming` is in the server's `seq` order, so an op of ours appearing in
+   * it marks everything after it as written by a device that may have seen ours; from there on
+   * that op, and every older op of ours (pushed in HLC order, so earlier in the log — including a
+   * noop the pull never returns, whose text our own later op replaced), no longer counts.
    */
-  private resolveTextConflicts(incoming: readonly Op[]): Op[] {
-    const extra: Op[] = [];
+  private resolveTextConflicts(incoming: readonly Op[]): Array<{ op: Op; base: string }> {
+    const extra: Array<{ op: Op; base: string }> = [];
+    let seenOwnUpTo = "";
+    // Per block, what earlier ops in this batch already settled:
+    //  - `mine`: a clean merge is this device's text from then on, so a third device's edit
+    //    later in the batch merges into it — not into the text before it, which would drop the
+    //    second device's change once the newer merge wins. It stays this device's unseen text
+    //    even after our own op shows up later in the batch: the merge is minted here, so nobody
+    //    else has seen it yet.
+    //  - `base`: the ancestor that merge was made against, for the same reason.
+    //  - `seen`: every device's texts met so far, oldest first, starting from this replica's op
+    //    log (our own edits, earlier pulls) — `mergeBase`'s candidates.
+    const settled = new Map<
+      string,
+      {
+        base: string;
+        mine?: { content: string; hlc: string };
+        seen: Array<{ device: string; text: string }>;
+      }
+    >();
     for (const op of incoming) {
+      if (op.device === this.deviceId) {
+        if (op.hlc > seenOwnUpTo) seenOwnUpTo = op.hlc;
+        continue;
+      }
       if (op.payload.kind !== "block.text") continue;
-      const pending = this.driver.get<{ payload: string; hlc: string; base: string | null }>(
-        "SELECT payload, hlc, base FROM pending_op WHERE entity = ? AND kind = 'block.text' ORDER BY hlc DESC LIMIT 1",
-        [op.entity],
-      );
-      if (!pending || pending.base === null) continue;
-      const minePayload = JSON.parse(pending.payload) as { kind: string; content?: string };
-      if (typeof minePayload.content !== "string") continue;
+      let here = settled.get(op.entity);
+      const unseen = this.unseenOwnText(op.entity, seenOwnUpTo);
+      const base = unseen?.base ?? here?.base;
+      const current = here?.mine ?? unseen;
+      if (base === undefined || !current) continue;
+      if (!here) {
+        here = { base, seen: this.recentTexts(op.entity) };
+        settled.set(op.entity, here);
+      }
+      const seen = here.seen;
+      // Everything this device has written is `current`, which contains itself — so an older
+      // text of ours that `theirs` merged in is a candidate whenever `theirs` contains it.
+      const latestOf = (device: string) =>
+        device === this.deviceId
+          ? current.content
+          : seen.findLast((x) => x.device === device)?.text;
+      const previous = latestOf(op.device);
+      const others = seen
+        .filter((x) => x.device !== op.device)
+        .reverse()
+        .map((x) => ({ text: x.text, latest: latestOf(x.device) ?? x.text }));
+      seen.push({ device: op.device, text: op.payload.content });
 
       const outcome = resolvePendingTextConflict({
         entity: op.entity,
         device: this.deviceId,
-        base: pending.base,
-        mine: minePayload.content,
-        mineHlc: pending.hlc,
+        base: mergeBase(base, current.content, op.payload.content, previous, others),
+        mine: current.content,
+        mineHlc: current.hlc,
         theirs: op.payload.content,
         theirsHlc: op.hlc,
         nextHlc: () => this.hlc.next(),
       });
-      extra.push(...outcome.extraOps);
+      for (const extraOp of outcome.extraOps) extra.push({ op: extraOp, base });
+      const [merged] = outcome.extraOps;
+      if (outcome.kind === "merged" && merged?.payload.kind === "block.text") {
+        here.mine = { content: merged.payload.content, hlc: merged.hlc };
+      }
     }
     return extra;
   }
 
-  /** Queue already-applied ops for push (used for merge ops, which are applied inline). */
-  private enqueueForPush(ops: readonly Op[]): void {
+  /** Recent `block.text`s on `entity` from this replica's op log — ours and pulled ones — oldest
+   * first: the texts a newly pulled edit may have been written on top of (`mergeBase`). Bounded:
+   * only the ones near the divergence matter, and `mergeBase` tries each. */
+  private recentTexts(entity: string): Array<{ device: string; text: string }> {
+    return this.driver
+      .all<{ device: string; text: string | null }>(
+        `SELECT device_id AS device, json_extract(payload_json, '$.content') AS text FROM op
+         WHERE entity = ? AND kind = 'block.text'
+         ORDER BY seq DESC LIMIT 20`,
+        [entity],
+      )
+      .filter((r): r is { device: string; text: string } => typeof r.text === "string")
+      .reverse();
+  }
+
+  /**
+   * This device's text for `entity` that the server's log, as pulled so far, has not shown back
+   * to it: the newest such edit's content and HLC, and the base of the OLDEST one — the text
+   * before this device started diverging, which is what the other device edited too. (The newest
+   * row's own base is an earlier local edit the other device never saw; merging against it would
+   * quietly undo that earlier edit wherever the other device touched nearby.) `undefined` when
+   * there is none, or no base to merge against (the block did not exist here yet).
+   */
+  private unseenOwnText(
+    entity: string,
+    seenOwnUpTo: string,
+  ): { content: string; hlc: string; base: string } | undefined {
+    const rows = this.driver
+      .all<{ id: string; hlc: string; content: string | null; base: string | null }>(
+        `SELECT id, hlc, json_extract(payload, '$.content') AS content, base
+           FROM pending_op WHERE entity = ? AND kind = 'block.text'
+         UNION ALL
+         SELECT id, hlc, content, base FROM sent_text WHERE entity = ?
+         ORDER BY hlc`,
+        [entity, entity],
+      )
+      .filter((r) => r.hlc > seenOwnUpTo);
+    const base = rows.find((r) => r.base !== null)?.base;
+    const newest = rows.at(-1);
+    if (base == null || !newest || typeof newest.content !== "string") return undefined;
+    return { content: newest.content, hlc: newest.hlc, base };
+  }
+
+  /** `sent_text` rows the server's log has now been read past: the op came back, or was a noop
+   * the pull never carries (its text lives on in this device's later op or merge, or in a
+   * conflict copy). */
+  private forgetSentTextUpTo(cursor: number): void {
+    this.driver.run("DELETE FROM sent_text WHERE seq <= ?", [cursor]);
+  }
+
+  /** Queue already-applied ops for push (used for merge ops, which are applied inline). A merge
+   * op keeps the base its merge used (B-652): it is this device's newest text for the block, and
+   * an edit from a third device that arrives later must merge into it against that same base.
+   * Stored as NULL it made the block look like it had no base, and that edit then won by plain
+   * LWW over the merge, dropping whatever the merge had folded in. */
+  private enqueueForPush(ops: ReadonlyArray<{ op: Op; base: string | null }>): void {
     this.driver.transaction(() => {
-      for (const op of ops) {
+      for (const { op, base } of ops) {
         this.driver.run(
-          "INSERT OR IGNORE INTO pending_op(id, hlc, kind, entity, payload, base) VALUES (?, ?, ?, ?, ?, NULL)",
-          [op.id, op.hlc, op.payload.kind, op.entity, JSON.stringify(op.payload)],
+          "INSERT OR IGNORE INTO pending_op(id, hlc, kind, entity, payload, base) VALUES (?, ?, ?, ?, ?, ?)",
+          [
+            op.id,
+            op.hlc,
+            op.payload.kind,
+            op.entity,
+            JSON.stringify(op.payload),
+            op.payload.kind === "block.text" ? base : null,
+          ],
         );
       }
     });
