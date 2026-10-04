@@ -82,7 +82,8 @@
       "start": 129,
       "end": 166,
       "alt": "diagram",
-      "src": "assets/1k7f3q9xz2havc.png"
+      "src": "assets/1k7f3q9xz2havc.png",
+      "metaAt": 166
     },
     {
       "kind": "text",
@@ -94,7 +95,8 @@
       "start": 171,
       "end": 199,
       "alt": "old",
-      "src": "../assets/legacy.png"
+      "src": "../assets/legacy.png",
+      "metaAt": 199
     }
   ]
 }

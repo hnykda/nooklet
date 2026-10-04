@@ -62,7 +62,10 @@ describe("importLogseqGraph on a DB-version graph (B-715)", () => {
     expect(stats.errors).toEqual([]);
     const blocks = journalBlocks();
     const image = blocks.find((b) => b.content.startsWith("!["));
-    expect(image?.content).toMatch(/^!\[2026-09-14-10-20-30\]\(assets\/[0-9a-z]+\.png\)$/);
+    // With the size and alignment it had in Logseq (B-789, ADR 034).
+    expect(image?.content).toMatch(
+      /^!\[2026-09-14-10-20-30\]\(assets\/[0-9a-z]+\.png\)\{:width 320, :align "center"\}$/,
+    );
     expect(blocks.some((b) => b.content === "2026-09-14-10-20-30")).toBe(false);
     expect(stats.logseqDb?.assetLinesResolved).toBe(1);
     expect(stats.danglingAssetLinks).toBe(0);

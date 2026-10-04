@@ -1,0 +1,76 @@
+{
+  "description": "ADR 034: a Logseq size map straight after an image belongs to the image (width, height, align); not a map, or a space before it, stays text",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "![shed](../assets/shed.png){:height 236, :width 500} ![x](assets/a.png){:width 412.5, :align \"center\"} ![y](b.png){not a map} ![z](c.png) {:width 3}",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "image",
+      "start": 0,
+      "end": 52,
+      "alt": "shed",
+      "src": "../assets/shed.png",
+      "metaAt": 27,
+      "meta": {
+        "width": 500,
+        "height": 236
+      }
+    },
+    {
+      "kind": "text",
+      "start": 52,
+      "end": 53
+    },
+    {
+      "kind": "image",
+      "start": 53,
+      "end": 102,
+      "alt": "x",
+      "src": "assets/a.png",
+      "metaAt": 71,
+      "meta": {
+        "width": 412.5,
+        "align": "center"
+      }
+    },
+    {
+      "kind": "text",
+      "start": 102,
+      "end": 103
+    },
+    {
+      "kind": "image",
+      "start": 103,
+      "end": 114,
+      "alt": "y",
+      "src": "b.png",
+      "metaAt": 114
+    },
+    {
+      "kind": "text",
+      "start": 114,
+      "end": 126
+    },
+    {
+      "kind": "image",
+      "start": 126,
+      "end": 137,
+      "alt": "z",
+      "src": "c.png",
+      "metaAt": 137
+    },
+    {
+      "kind": "text",
+      "start": 137,
+      "end": 148
+    }
+  ]
+}

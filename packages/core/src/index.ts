@@ -3,6 +3,7 @@ export * from "./blocks.js";
 export * from "./fts-query.js";
 export * from "./hlc.js";
 export * from "./ids.js";
+export * from "./image-meta.js";
 export * from "./journal.js";
 export * from "./live-socket.js";
 export * from "./logseq-archive.js";

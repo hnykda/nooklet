@@ -471,6 +471,13 @@ Each entry: trigger, exact rule, produced token kind (types in §3).
   are just opaque `src` strings to this grammar; path resolution is a rendering-layer/assets-spec
   concern. Trigger `!` followed by `[`; same balanced-bracket/paren capture as a link. `alt` is
   kept as a plain string (not tokenized — CommonMark's rule for image alt text).
+  **Size map (ADR 034).** A `{…}` straight after the `)` (no space) that reads as an EDN map —
+  keyword keys; number, string, keyword, `true`/`false`/`nil` values; commas are whitespace; up
+  to the FIRST `}`, mldoc's rule — belongs to the image: the token's `end` includes it, `metaAt`
+  is the offset of its `{` (or where one would go), and `meta` carries `width`/`height` (positive
+  numbers) and `align` (`"left"`/`"center"`/`"right"`, string or keyword). This is Logseq's
+  `![a](p){:height 236, :width 500}`. A `{…}` that does not read as a map stays text.
+  Corpus case 51.
 - **Strong** `**text**` (only two asterisks — single `*` never means strong in this grammar,
   unlike CommonMark's `**`/`__` symmetry; see Open issues). Run-length detection: at a `*`,
   measure the run length; a run `>= 2` looks for a closing run of `>= 2` on the same line and
@@ -587,7 +594,7 @@ export type InlineToken =
   | (TokBase & { kind: "linkToBlock"; id: string; label: InlineToken[] })
   | (TokBase & { kind: "link"; href: string; label: InlineToken[] })
   | (TokBase & { kind: "autolink"; href: string })
-  | (TokBase & { kind: "image"; alt: string; src: string })
+  | (TokBase & { kind: "image"; alt: string; src: string; metaAt: Offset; meta?: ImageMeta })
   | (TokBase & { kind: "strong"; children: InlineToken[] })
   | (TokBase & { kind: "em"; children: InlineToken[] })
   | (TokBase & { kind: "strike"; children: InlineToken[] })
@@ -677,7 +684,7 @@ export function extractRefs(content: string, properties?: Properties): Extracted
 | `linkToBlock` | as `blockRef` but with the given label instead of the block's own text | `.vr-block-ref` |
 | `link` | `<a href target="_blank" rel="noopener">` | `.vr-link` |
 | `autolink` | `<a href target="_blank" rel="noopener">href</a>` | `.vr-link.vr-autolink` |
-| `image` | `<img alt src loading=lazy>` | `.vr-image` |
+| `image` | `<span class=vr-image-box>` around `<img alt src loading=lazy>`, the box sized by `meta.width` and aligned by `meta.align` (ADR 034); a ⋯ menu and a resize handle on a fine pointer | `.vr-image` |
 | `strong` | `<strong>` | — |
 | `em` | `<em>` | — |
 | `strike` | `<s>` | — |

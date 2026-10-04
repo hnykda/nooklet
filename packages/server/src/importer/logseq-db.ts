@@ -222,6 +222,8 @@ const A = {
   journalDay: "block/journal-day",
   assetType: "logseq.property.asset/type",
   assetExternalUrl: "logseq.property.asset/external-url",
+  assetResizeMetadata: "logseq.property.asset/resize-metadata",
+  assetAlign: "logseq.property.asset/align",
   status: "logseq.property/status",
   priority: "logseq.property/priority",
   scheduled: "logseq.property/scheduled",
@@ -388,6 +390,11 @@ export class LogseqDbGraph {
       const page = ent.get(A.page);
       const parent = ent.get(A.parent);
       const ext = ent.get(A.assetExternalUrl);
+      // ADR 034: the size and alignment Logseq shows the picture at.
+      const resize = ent.get(A.assetResizeMetadata);
+      const width = resize instanceof Map ? resize.get("width") : undefined;
+      const rawAlign = ent.get(A.assetAlign);
+      const align = rawAlign instanceof LogseqKeyword ? rawAlign.name : rawAlign;
       out.push({
         eid,
         uuid,
@@ -397,6 +404,8 @@ export class LogseqDbGraph {
         pageEid: typeof page === "number" ? page : null,
         parentEid: typeof parent === "number" ? parent : null,
         externalUrl: typeof ext === "string" ? ext : null,
+        width: typeof width === "number" && width > 0 ? width : null,
+        align: align === "left" || align === "center" || align === "right" ? align : null,
       });
     }
     return out;
@@ -444,6 +453,10 @@ export interface LogseqDbAsset {
   pageEid: number | null;
   parentEid: number | null;
   externalUrl: string | null;
+  /** `:logseq.property.asset/resize-metadata`'s `:width`: the width it was resized to. */
+  width: number | null;
+  /** `:logseq.property.asset/align`. */
+  align: "left" | "center" | "right" | null;
 }
 
 /** Attribute names, exported for the importer and tests. */
