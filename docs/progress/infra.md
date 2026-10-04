@@ -17,7 +17,7 @@ repo; the owner-specific deployment lives in the owner's private infrastructure 
       `tools/leak-check.mjs` + `.gitleaks.toml` (mine was dropped to avoid an add/add conflict).
 - [x] Private infra PR opened as a **draft** in the owner's infrastructure repo (the owner has the
       link). Not merged, nothing applied.
-- [x] Server image built and run locally (see "Verification"). Site image: pending `apps/site`.
+- [x] Server and site images built and run locally (see "Verification").
 
 ## The private PR, without private details
 
@@ -62,6 +62,13 @@ next morning's backup archive. 8. Mint device tokens with `nooklet token create`
   (`--allow-host notes.example.com --no-loopback-token`): `/healthz` 200; allowed Host →
   `token:null, reason: loopback_token_disabled`; `Host: evil.example` → 403 naming it;
   `Host: localhost` → no token; `backup --data /data --graph default --out …` → archive written.
+- Site image: built from a copy of the site agent's in-progress worktree (its `apps/site` + `docs/guide`,
+  2026-10-04 ~09:55) with this branch's `deploy/docker/site.*` and `.dockerignore`
+  (`pnpm install --filter "@nooklet/site..."` + `pnpm --filter @nooklet/site build`): 71.5 MB.
+  Served on 127.0.0.1:6452: `/`, `/docs`, `/docs/agents` (→ `agents.html`), `/decisions` 200 html;
+  `/docs/agents.md` 200 `text/markdown`; `/llms.txt`, `/search-index.json` 200; `/nope` 404. Re-run
+  once `apps/site` is merged. nginx config alone also checked against a fake export (headers,
+  immutable cache on `/_next/static/`).
 - `woodpecker-cli lint` (v3.18.1, local) → valid for `images.yaml`, `leak-guard.yaml` and the
   infra repo's deploy pipeline.
 - Leak guard (`zricethezav/gitleaks:v8.28.0`, against a clone of this branch): gitleaks-only
@@ -72,7 +79,7 @@ next morning's backup archive. 8. Mint device tokens with `nooklet token create`
   → clean, `--range 727d358~1..727d358` → 2 findings, exit 1; `--tree` fails on the pre-scrub
   docs of this branch (expected, scrubbed on the leak-audit branch).
 - **Not verified:** Helm rendering of either chart (no `helm` run, by instruction); the site
-  image (needs `apps/site`); anything on the real cluster/Woodpecker; Woodpecker's
+  image on the merged tree; anything on the real cluster/Woodpecker; Woodpecker's
   handling of `from_secret` in plugin settings for `registry`/`repo`/`buildkit_config` (documented
   feature, not exercised).
 
@@ -147,6 +154,8 @@ its shape rules (checked with the combined config).
 
 ## How to resume
 
-Branch `worktree-agent-a3b61b4747014a1c8` (never pushed). Remaining: build the site image once
-`apps/site` lands (`docker buildx build --platform linux/amd64 -f deploy/docker/site.Dockerfile .`,
-run on 6450-6454 only).
+Branch `worktree-agent-a3b61b4747014a1c8` (never pushed). Done from this agent's side. After the
+site, docs and leak-audit branches merge: rebuild the site image on the merged tree
+(`docker buildx build --platform linux/amd64 -f deploy/docker/site.Dockerfile .`, ports 6450-6454),
+apply the two `.gitleaks.toml` changes above, and run `sh tools/ci/leak-guard.sh` in the gitleaks
+image (see its header) — it must be clean before the owner activates the repo in Woodpecker.
