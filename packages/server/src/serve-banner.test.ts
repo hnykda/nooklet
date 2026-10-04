@@ -95,3 +95,15 @@ describe("formatServeBanner (B-604)", () => {
     expect(out.stderr).toContain("ONLY requests addressed to");
   });
 });
+
+describe("formatServeBanner version (B-696)", () => {
+  it("names the version on its first line, so a log says which build was running", () => {
+    const { stdout } = formatServeBanner({
+      ...base,
+      host: "127.0.0.1",
+      allowedHosts: undefined,
+      version: "1.2.3",
+    });
+    expect(stdout.split("\n")[0]).toBe("nooklet 1.2.3 serving /d");
+  });
+});

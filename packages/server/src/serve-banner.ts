@@ -44,6 +44,8 @@ export interface ServeBannerInput {
   allowedHosts: readonly string[] | undefined;
   webClientDir: string | undefined;
   interfaces: NodeJS.Dict<NetworkInterfaceInfo[]>;
+  /** `NOOKLET_VERSION` (B-696), so a log says which build was running. */
+  version?: string;
 }
 
 export function formatServeBanner(input: ServeBannerInput): { stdout: string; stderr: string } {
@@ -57,7 +59,7 @@ export function formatServeBanner(input: ServeBannerInput): { stdout: string; st
   const shown = exposed && !wildcard ? host : "127.0.0.1";
   const base = `http://${shown}:${port}`;
   let stdout =
-    `nooklet serving ${input.dataDir}\n` +
+    `nooklet${input.version ? ` ${input.version}` : ""} serving ${input.dataDir}\n` +
     `  graphs ${base}/graphs\n` +
     `  http   ${base}/g/<id>/api/v1\n` +
     `  mcp    ${base}/g/<id>/mcp\n` +

@@ -16,12 +16,16 @@ Everything nooklet owns lives under it (see §2). `--port` defaults to 6100.
 `nooklet serve` prints the URLs it's listening on:
 
 ```
-nooklet serving ~/.nooklet/default
+nooklet 0.1.0 serving ~/.nooklet/default
   graphs http://127.0.0.1:6100/graphs
   http   http://127.0.0.1:6100/g/<id>/api/v1
   mcp    http://127.0.0.1:6100/g/<id>/mcp
   ...
 ```
+
+The first line names the version (`nooklet --version` prints it too). If the port is taken, it
+exits 1 with `nooklet: port 6100 on 127.0.0.1 is in use — stop the other server, or pick another
+with --port <n>`.
 
 ### 1.1 Reaching it from other devices
 
@@ -97,8 +101,10 @@ hand-edit anything there).
 ### Taking a backup
 
 ```sh
-nooklet backup [--out <path>] [--data <dir>]
+nooklet backup [--graph <id>] [--out <path>] [--data <dir>]
 ```
+
+One archive holds one graph (`--graph`, default `default`); back up each graph separately.
 
 Produces one `.tar.gz` file — a real, standard tar archive; `tar tzvf` works on it — containing:
 
@@ -120,11 +126,14 @@ nothing time-based built in.
 ### Restoring a backup
 
 ```sh
-nooklet restore <archive> [--data <dir>] [--force]
+nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
 ```
 
-**Stop `nooklet serve` first.** Restore writes directly to `<data>/graph.sqlite` and
-`<data>/assets/`; doing that while the server holds the database open is asking for trouble.
+**Stop `nooklet serve` first.** Restore writes directly to `<data>/graphs/<id>/graph.sqlite` and
+`<data>/graphs/<id>/assets/`; doing that while the server holds the database open is asking for
+trouble. Only that graph is touched. With `--force` it also deletes the replaced database's
+`graph.sqlite-wal`/`-shm`: a WAL left by a killed server would otherwise be replayed onto the
+restored file and corrupt it (`tools/probes/restore-stale-wal.mjs`).
 
 By default, restore **refuses to overwrite** an existing database or any existing asset at the
 target `--data` directory — you'll get a clear error naming the directory. Pass `--force` once
@@ -134,6 +143,8 @@ migration path (§4) brings it forward the next time it's opened.
 
 ```sh
 nooklet restore ~/backups/nooklet-backup-2026-09-10T12-00-00-000Z.tar.gz --data ~/.nooklet/default --force
+nooklet restore ~/backups/alpha-2026-09-10.tar.gz --data ~/.nooklet/default --graph alpha --force
+nooklet verify --data ~/.nooklet/default --graph alpha
 nooklet serve --data ~/.nooklet/default   # restart once restore reports success
 ```
 
@@ -241,7 +252,7 @@ nooklet gc --no-backup        # skip the automatic pre-GC backup (not recommende
 nooklet gc --asset-grace 30   # only count an asset as orphaned after 30 unreferenced days (default 7)
 ```
 
-`gc` and `restore` refuse a flag they do not know (`nooklet: unknown flag --dryrun`) instead of
+`gc`, `restore`, `repair` and `pair` refuse a flag they do not know (`nooklet: unknown flag --dryrun`) instead of
 ignoring it and running for real; `--flag=value` works too (`--dry-run=true`, `--asset-grace=30`).
 
 `nooklet gc` does two independent things: trim the op log (this section) and remove orphan

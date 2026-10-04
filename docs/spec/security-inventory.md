@@ -66,7 +66,11 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 
 ## What an unauthenticated visitor can learn
 
-- That this is a nooklet server, and its op list (`/openapi.json`).
+- That this is a nooklet server, and its op list (`/openapi.json`). **Not** which version: `/healthz`
+  stays constant JSON on purpose, and `/openapi.json`'s `info.version` is the API version (`"1"`),
+  not the build. The build version (B-696) is reported only to an authenticated MCP client
+  (`initialize` → `serverInfo.version`) and on the local CLI (`nooklet --version`, `serve` banner),
+  so a scanner cannot pick known bugs by version.
 - Whether a guessed pairing code is live (`pairing.redeem`). 128-bit codes, at most 10 attempts a
   minute per peer and 60 in total, a handful live at once: about 2^-120 per attempt.
 - Which graph ids exist (404 vs 401 on `/g/<id>/...`), and the default graph's instance id and
