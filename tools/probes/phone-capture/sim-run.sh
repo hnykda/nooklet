@@ -107,7 +107,7 @@ sleep 12; shot 6b-quick-action-today
 relaunch -NookletDebugQuickAction sh.nooklet.app.capture
 sleep 12; shot 6c-quick-action-new-note
 
-echo "== 7. Open nooklet to add, and a warm capture link"
+echo "== 7. Open nooklet to add, and a link with a url and title"
 relaunch -NookletDebugOpenToAdd "Edit me before saving"
 sleep 12; shot 7a-open-to-add
 relaunch -NookletDebugOpenURL "nooklet://capture?url=https%3A%2F%2Fexample.com%2Fa&title=An%20article"

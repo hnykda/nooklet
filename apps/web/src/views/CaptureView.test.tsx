@@ -159,4 +159,11 @@ describe("CaptureView", () => {
     expect(stop).toHaveBeenCalledTimes(1);
     start.mockRestore();
   });
+
+  it("puts Save above the field, out of the iOS keyboard's way (B-802)", () => {
+    render(() => <CaptureView initialText="x" />);
+    const save = screen.getByText("Save to journal");
+    const field = screen.getByPlaceholderText("Capture a thought…");
+    expect(save.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

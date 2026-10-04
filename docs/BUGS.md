@@ -24,8 +24,11 @@ became "dismiss the keyboard, then tap". Cause: the app sets `KeyboardResize.Non
 through the `--kb` variable, but only `AppShell` started the keyboard watcher that writes it, and
 `/capture` is deliberately mounted outside `AppShell`; `capture.css` never used `--kb` either.
 
-**Fix:** `CaptureView` starts the keyboard watcher while it is mounted; the shell pads its bottom
-by `--kb`; the textarea no longer insists on 40vh; the no-graph notice moved above the field.
+**Fix:** Save, Cancel and the no-graph notice sit above the field, where the keyboard never
+reaches. Also: `CaptureView` starts the keyboard watcher while mounted and the shell pads by
+`--kb`, and the textarea no longer insists on 40vh. The `--kb` part alone did NOT fix it on the
+Simulator: the field takes focus on mount, so `keyboardWillShow` fires before the watcher's
+(async) listener exists; moving the buttons is what made Save visible.
 **Test:** `apps/web/src/views/CaptureView.test.tsx` ("starts the keyboard watcher …") and the
 Simulator screenshots in `tools/probes/phone-capture/` (Save visible above the keyboard).
 

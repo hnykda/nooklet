@@ -133,19 +133,9 @@ export function CaptureView(props: CaptureViewProps): JSX.Element {
           </button>
         </div>
       </Show>
-      <textarea
-        ref={textareaEl}
-        class="capture-input"
-        placeholder="Capture a thought…"
-        autofocus
-        value={text()}
-        onInput={(e) => {
-          setText(e.currentTarget.value);
-          if (props.noGraph) writeDraft(e.currentTarget.value);
-          if (status() !== "idle") setStatus("idle");
-        }}
-        onKeyDown={onKeyDown}
-      />
+      {/* B-802: above the field, not below it. In the iOS app the keyboard comes up over the
+          bottom of the screen as the field takes focus, and a Save button below the field was
+          behind it — "confirm with one tap" must not need the keyboard dismissed first. */}
       <div class="capture-actions">
         <Show when={!props.noGraph}>
           <button
@@ -184,6 +174,19 @@ export function CaptureView(props: CaptureViewProps): JSX.Element {
           </span>
         </Show>
       </div>
+      <textarea
+        ref={textareaEl}
+        class="capture-input"
+        placeholder="Capture a thought…"
+        autofocus
+        value={text()}
+        onInput={(e) => {
+          setText(e.currentTarget.value);
+          if (props.noGraph) writeDraft(e.currentTarget.value);
+          if (status() !== "idle") setStatus("idle");
+        }}
+        onKeyDown={onKeyDown}
+      />
     </div>
   );
 }
