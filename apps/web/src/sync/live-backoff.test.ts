@@ -33,6 +33,10 @@ describe("live socket reconnect policy (B-676 H4)", () => {
     expect(fake().cycle(LIVE_CLOSE.revoked)).toBeNull();
   });
 
+  it("B-713: a retired graph (4410) stops reconnecting", () => {
+    expect(fake().cycle(LIVE_CLOSE.graphRetired)).toBeNull();
+  });
+
   it("a capacity refusal that opens and closes at once does NOT reconnect every second", () => {
     // The bug this replaces: `open` reset the delay to 1 s, so a server accepting and then
     // refusing every socket was retried once a second, forever.

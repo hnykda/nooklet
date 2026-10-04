@@ -73,6 +73,18 @@ export function SyncIndicator() {
           Token rejected
         </button>
       </Show>
+      {/* B-713: nothing on this device can fix it (only the server's operator can unretire the
+          graph), so this explains rather than offers a repair; it opens diagnostics. */}
+      <Show when={view() === "retired"}>
+        <button
+          type="button"
+          class="app-sync-repair"
+          title="This graph was retired on the server"
+          onClick={() => openDiagnostics()}
+        >
+          Graph retired
+        </button>
+      </Show>
       <Show when={repairing()}>
         <Portal>
           <div class="app-sync-repair-overlay">

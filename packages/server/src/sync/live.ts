@@ -40,8 +40,9 @@ export function registerSyncLive(app: Hono, serverCtx: ServerContext): void {
     upgradeWebSocket(() => ({
       // B-676 H4: the hello timeout, connection caps and pre-hello frame limit
       // (`../live-limits.ts`). `maxPayload` is the `ws` server's (`createLiveWebSocketServer`).
+      // Admitted with this graph's driver, so retiring the graph (B-713) closes it, hello or not.
       onOpen(_evt, ws) {
-        admitSocket(ws);
+        admitSocket(ws, serverCtx.driver);
       },
       onMessage(evt, ws) {
         if (!shouldReadFrame(ws, evt.data)) return;

@@ -28,6 +28,7 @@ import {
   LIVE_HELLO_TIMEOUT_MS,
   LIVE_MAX_PAYLOAD_BYTES,
   LIVE_MAX_PRE_HELLO_BYTES,
+  type SqlDriver,
 } from "@nooklet/core";
 import type { WSContext } from "hono/ws";
 import { WebSocketServer } from "ws";
@@ -66,10 +67,12 @@ export function createLiveWebSocketServer(): WebSocketServer {
   return new WebSocketServer({ noServer: true, maxPayload: LIVE_MAX_PAYLOAD_BYTES });
 }
 
-/** Sockets admitted and not yet closed, authenticated or not, across every graph. */
+/** Sockets admitted and not yet closed, authenticated or not, across every graph. The one registry
+ * of open live sockets: `closeGraphSockets` (a graph retired, B-713) closes through it too, so a
+ * socket that never said hello is closed with the rest. `driver` says which graph it is on. */
 const admitted = new Map<
   WSContext,
-  { helloTimer: ReturnType<typeof setTimeout>; authed: boolean }
+  { helloTimer: ReturnType<typeof setTimeout>; authed: boolean; driver: SqlDriver }
 >();
 
 export function openLiveSocketCount(): number {
@@ -85,7 +88,7 @@ function closeQuietly(ws: WSContext, code: number, reason: string): void {
 }
 
 /** `onOpen`. Returns false (and closes the socket) when the server is at its total. */
-export function admitSocket(ws: WSContext): boolean {
+export function admitSocket(ws: WSContext, driver: SqlDriver): boolean {
   if (admitted.size >= limits.maxTotal) {
     closeQuietly(ws, LIVE_CLOSE.overCapacity, "server connection limit");
     return false;
@@ -96,8 +99,25 @@ export function admitSocket(ws: WSContext): boolean {
   );
   // A pending hello timer must not keep a test runner or a shutting-down process alive.
   helloTimer.unref?.();
-  admitted.set(ws, { helloTimer, authed: false });
+  admitted.set(ws, { helloTimer, authed: false, driver });
   return true;
+}
+
+/**
+ * Close every live socket on one graph (`/sync/live` and `/ui/live`, authenticated or not) with
+ * `LIVE_CLOSE.graphRetired`: the graph is being retired or its folder was replaced (B-713,
+ * `graphs/registry.ts#evict`). Each is released here rather than in its `onClose`, so a socket on
+ * a retired graph stops counting toward the total at once. Returns how many.
+ */
+export function closeGraphSockets(driver: SqlDriver, reason: string): number {
+  let closed = 0;
+  for (const [ws, entry] of admitted) {
+    if (entry.driver !== driver) continue;
+    releaseSocket(ws);
+    closeQuietly(ws, LIVE_CLOSE.graphRetired, reason);
+    closed++;
+  }
+  return closed;
 }
 
 /** `onClose`. Safe for a socket that was never admitted. */

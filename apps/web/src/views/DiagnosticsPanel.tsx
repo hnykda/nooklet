@@ -136,7 +136,8 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
                     ok={
                       s().state !== "offline" &&
                       s().state !== "error" &&
-                      s().state !== "unauthorized"
+                      s().state !== "unauthorized" &&
+                      s().state !== "retired"
                     }
                   >
                     {s().state}

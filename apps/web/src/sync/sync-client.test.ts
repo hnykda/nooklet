@@ -21,6 +21,7 @@ import {
   type PushResponse,
   type SnapshotResponse,
   SyncAuthError,
+  SyncGraphRetiredError,
   type SyncLiveHandlers,
   type SyncTransport,
 } from "./types.js";
@@ -789,6 +790,32 @@ describe("SyncClient connection states (B-613 token refused, B-614 live socket d
     client.connectLive();
     transport.liveHandlers?.onClose?.(4403);
     expect(client.getStatus().state).toBe("unauthorized");
+  });
+
+  it("B-713: the live socket closed with 4410 is 'retired' at once, with no probe pull, and stays so", async () => {
+    client.connectLive();
+    await vi.advanceTimersByTimeAsync(0);
+    const pullsBefore = transport.pullCalls.length;
+    transport.liveHandlers?.onClose?.(4410);
+    expect(client.getStatus().state).toBe("retired");
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS * 2);
+    expect(transport.pullCalls.length).toBe(pullsBefore);
+    // An empty outbox flush asks the server nothing, so it must not read as "synced".
+    await client.flush();
+    expect(client.getStatus().state).toBe("retired");
+    transport.failPull = new Error("Failed to fetch");
+    await client.pull();
+    expect(client.getStatus().state).toBe("retired");
+  });
+
+  it("B-713: a sync request answered with the server's 'No graph' 404 is 'retired'", async () => {
+    transport.failPull = new SyncGraphRetiredError();
+    await client.pull();
+    expect(client.getStatus().state).toBe("retired");
+    // Unretired on the server: the next successful pull clears it.
+    transport.failPull = undefined;
+    await client.pull();
+    expect(client.getStatus().state).toBe("idle");
   });
 
   it("the live socket closing probes with a pull after the grace period; failure is 'offline'", async () => {

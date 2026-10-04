@@ -12,11 +12,13 @@
 
 import { createLiveRetry } from "./live-backoff.js";
 import {
+  isGraphGoneResponse,
   type PullResponse,
   type PushRequestBody,
   type PushResponse,
   type SnapshotResponse,
   SyncAuthError,
+  SyncGraphRetiredError,
   type SyncLiveHandlers,
   type SyncTransport,
 } from "./types.js";
@@ -80,8 +82,7 @@ export async function fetchJsonStallAware<T>(
   };
   try {
     const res = await fetch(input, { ...init, signal: controller.signal });
-    if (res.status === 401 || res.status === 403) throw new SyncAuthError(res.status);
-    if (!res.ok) throw new Error(`sync request failed: ${res.status} ${res.statusText}`);
+    await throwForStatus(res);
     arm();
     const reader = res.body?.getReader();
     if (!reader) return (await res.json()) as T;
@@ -117,9 +118,15 @@ export async function fetchJsonStallAware<T>(
   }
 }
 
-async function asJson<T>(res: Response): Promise<T> {
+/** A refused token (B-613), a retired graph (B-713), or any other failure. */
+async function throwForStatus(res: Response): Promise<void> {
   if (res.status === 401 || res.status === 403) throw new SyncAuthError(res.status);
+  if (await isGraphGoneResponse(res)) throw new SyncGraphRetiredError();
   if (!res.ok) throw new Error(`sync request failed: ${res.status} ${res.statusText}`);
+}
+
+async function asJson<T>(res: Response): Promise<T> {
+  await throwForStatus(res);
   return (await res.json()) as T;
 }
 

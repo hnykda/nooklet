@@ -20,6 +20,9 @@ export const LIVE_CLOSE = {
   /** Over a connection cap: this token's (`--ws-max-per-token`) or the server's (`--ws-max-total`).
    * The close reason says which. */
   overCapacity: 4429,
+  /** The graph was retired on the server (`DELETE /graphs/<id>`, B-713), or its folder was replaced
+   * underneath the running server. HTTP's 410 Gone. Terminal: reconnecting gets a 404. */
+  graphRetired: 4410,
   /** A frame over `LIVE_MAX_PAYLOAD_BYTES` (or, before hello, over `LIVE_MAX_PRE_HELLO_BYTES`). */
   tooBig: 1009,
 } as const;

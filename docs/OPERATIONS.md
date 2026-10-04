@@ -96,6 +96,10 @@ result; if it reports a divergence, treat that as a real bug report (see §5's o
 Every command except `serve` works on one graph, `--graph <id>` (default `default`). On a fresh
 data dir any of them creates the default graph, so importing or minting tokens before the first
 `serve` is fine. Any other graph must already exist (create it with `POST /graphs` or from the app).
+To take a graph out of service, retire it (`DELETE /graphs/<id>` while serving, `nooklet graph
+retire <id>` while stopped; it moves to `graphs-retired/`, nothing is deleted), never `mv`/`rm` it
+by hand under a running server. Re-import with `nooklet graph replace`. See
+`docs/guide/self-hosting.md` "Retiring, restoring and replacing a graph".
 
 Everything that matters is `graph.sqlite` + `assets/`. `pages/`/`journals/` are regenerated from
 the database (delete them and they'll be rewritten); `plugins/` is regenerated from whatever

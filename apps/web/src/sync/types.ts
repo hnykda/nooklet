@@ -138,6 +138,51 @@ export function isSyncAuthError(err: unknown): boolean {
   );
 }
 
+/**
+ * B-713: the server no longer serves this graph (`DELETE /graphs/<id>` retired it). The live
+ * socket learns it from close code 4410; after a reload there is no socket to close, so a sync
+ * request's 404 with the server's own "No graph" body says the same. Like a refused token, waiting
+ * never fixes it, so it is not `offline`.
+ */
+export class SyncGraphRetiredError extends Error {
+  constructor() {
+    super("this graph is no longer served by the server (retired)");
+    this.name = "SyncGraphRetiredError";
+  }
+}
+
+export function isSyncGraphRetiredError(err: unknown): boolean {
+  return (
+    err instanceof SyncGraphRetiredError ||
+    (err as { name?: unknown } | null)?.name === "SyncGraphRetiredError"
+  );
+}
+
+/** Whether a failed sync response is the server's own "no such graph" 404
+ * (`packages/server/src/graphs/mount.ts#graphDispatcher`), as opposed to a 404 from a proxy or an
+ * old server that never had the route. Reads the body, so call it only on a 404. */
+export async function isGraphGoneResponse(res: Response): Promise<boolean> {
+  if (res.status !== 404) return false;
+  try {
+    const body = (await res.clone().json()) as { error?: { code?: unknown; message?: unknown } };
+    return (
+      body.error?.code === "not_found" &&
+      typeof body.error.message === "string" &&
+      body.error.message.startsWith("No graph ")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Close codes after which a live socket must not reconnect: the token was refused, or the graph
+ * was retired (B-713). Reconnecting cannot fix either; only re-pairing or a reload can. */
+export const LIVE_TERMINAL_CODES: ReadonlySet<number> = new Set([
+  LIVE_CLOSE.revoked,
+  LIVE_CLOSE.forbidden,
+  LIVE_CLOSE.graphRetired,
+]);
+
 export interface SyncLiveHandlers {
   /** A `{type:'poke', seq}` frame arrived: something changed server-side, go pull. */
   onPoke(seq: number): void;
@@ -183,7 +228,10 @@ export type SyncState =
   | "pulling"
   | "bootstrapping"
   | "error"
-  | "unauthorized";
+  | "unauthorized"
+  /** B-713: the server retired this graph (live close 4410, or a sync request's "No graph" 404).
+   * Terminal like `unauthorized`: local edits stay on this device. */
+  | "retired";
 
 export interface SyncStatus {
   state: SyncState;

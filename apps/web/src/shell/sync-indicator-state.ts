@@ -30,7 +30,10 @@ export type SyncView =
   | "local"
   /** B-613: the server refused this device's token (revoked, or never valid). Not `offline`:
    * waiting never fixes it, and edits pile up locally until someone re-pairs. */
-  | "unauthorized";
+  | "unauthorized"
+  /** B-713: the server retired this graph. Not `offline` either: it is not coming back on its
+   * own, and edits made here stay on this device. */
+  | "retired";
 
 /** Roughly how long a routine edit takes to reach the server, with margin. Below this, pending is
  * noise; above it, something is actually slow or stuck. */
@@ -48,6 +51,7 @@ export function deriveSyncView(
   // B-613: before storage, too — a refused token is the one state here only the reader can fix,
   // and a memory replica (WebKit) with a revoked token used to read as an empty graph with nothing
   // saying why.
+  if (status?.state === "retired") return "retired";
   if (status?.state === "unauthorized") return "unauthorized";
   // Storage first: "synced" would be true and still the wrong thing to say about a session whose
   // local copy evaporates on reload (B-43). Takes priority over `local` too — a device with no
@@ -95,6 +99,8 @@ export function syncLabel(view: SyncView, pendingCount: number, liveNote?: strin
       return "Local only — not syncing to any server";
     case "unauthorized":
       return "Token rejected — changes stay on this device until you enter a new token";
+    case "retired":
+      return "This graph was retired on the server — changes made here stay on this device";
   }
 }
 

@@ -54,6 +54,15 @@ describe("deriveSyncView", () => {
     expect(deriveSyncView("memory", refused, true)).toBe("unauthorized");
     expect(syncLabel("unauthorized", 2)).toMatch(/^Token rejected/);
   });
+
+  it("B-713: a retired graph is its own view, ahead of storage facts and pending changes", () => {
+    const retired = status({ state: "retired", pendingCount: 2 });
+    expect(deriveSyncView("opfs", retired, true)).toBe("retired");
+    expect(deriveSyncView("memory", retired, true)).toBe("retired");
+    expect(syncLabel("retired", 2)).toBe(
+      "This graph was retired on the server — changes made here stay on this device",
+    );
+  });
 });
 
 describe("syncLabel", () => {

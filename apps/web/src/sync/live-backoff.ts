@@ -8,6 +8,7 @@
  * to shed. So:
  *
  *   - 4401 / 4403 (token refused): stop. Only re-pairing fixes it, and that reloads the page.
+ *   - 4410 (graph retired on the server, B-713): stop. Reconnecting would only get a 404.
  *   - 4429 (over capacity) / 1009 (frame too big): a refusal, not a blip. Wait 30 s, doubling to
  *     5 min, with ±20% jitter so a server restart's worth of refused clients does not return in
  *     lockstep.
@@ -20,7 +21,7 @@
  */
 
 import { LIVE_CLOSE, LIVE_HELLO_TIMEOUT_MS } from "@nooklet/core";
-import { LIVE_AUTH_REJECTED_CODES } from "./types.js";
+import { LIVE_TERMINAL_CODES } from "./types.js";
 
 export const LIVE_RETRY_BASE_MS = 1000;
 export const LIVE_RETRY_MAX_MS = 30_000;
@@ -69,7 +70,7 @@ export function createLiveRetry(
         refusals = 0;
       }
       openedAt = undefined;
-      if (LIVE_AUTH_REJECTED_CODES.has(code)) return null;
+      if (LIVE_TERMINAL_CODES.has(code)) return null;
       if (LIVE_REFUSED_CODES.has(code)) {
         const base = Math.min(LIVE_REFUSED_BASE_MS * 2 ** refusals, LIVE_REFUSED_MAX_MS);
         refusals++;

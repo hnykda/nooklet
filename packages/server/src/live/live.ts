@@ -64,9 +64,10 @@ export function registerUiLive(app: Hono, serverCtx: ServerContext): void {
   app.get(
     "/ui/live",
     upgradeWebSocket(() => ({
-      // B-676 H4: same limits as `../sync/live.ts` (`../live-limits.ts`).
+      // B-676 H4: same limits as `../sync/live.ts` (`../live-limits.ts`); and, as there, admitted
+      // with this graph's driver so retiring the graph (B-713) closes it, hello or not.
       onOpen(_evt, ws) {
-        admitSocket(ws);
+        admitSocket(ws, serverCtx.driver);
       },
       onMessage(evt, ws) {
         if (!shouldReadFrame(ws, evt.data)) return;

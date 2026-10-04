@@ -177,6 +177,13 @@ export class PluginHost {
     this.active.delete(id);
   }
 
+  /** Every active plugin, deactivated without touching its `enabled` setting: the graph itself is
+   * going away (retired from a running server, B-713), so its plugins' timers and subscriptions
+   * must not outlive its closed database. */
+  async deactivateAll(): Promise<void> {
+    for (const id of [...this.active.keys()]) await this.deactivate(id);
+  }
+
   async disable(id: string): Promise<void> {
     setPluginEnabled(this.deps.serverCtx, id, false);
     await this.deactivate(id);

@@ -60,6 +60,8 @@ import {
   booleanFlag,
   CliArgError,
   checkFlags,
+  GRAPH_FLAGS,
+  GRAPH_SUBCOMMAND_FLAGS,
   PAIR_FLAGS,
   parseArgs,
   parseGcFlags,
@@ -93,6 +95,14 @@ import {
   GraphSelectionError,
   openGraphForCommand,
 } from "./graphs/registry.js";
+import {
+  GraphRetireError,
+  listRetired,
+  replaceGraph,
+  retireGraph,
+  unretireGraph,
+} from "./graphs/retire.js";
+import { liveServer, liveServerMessage, writeServerLock } from "./graphs/server-lock.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { detectLogseqGraph, importLogseqGraph } from "./importer/logseq.js";
 import {
@@ -245,7 +255,12 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
   nooklet graph create <id> [--label <label>] [--data <dir>]
-  nooklet graph list [--data <dir>]
+  nooklet graph list [--retired] [--data <dir>]
+  nooklet graph retire <id> [--force] [--data <dir>]   move graphs/<id> to graphs-retired/
+                      (nothing is deleted; "default" needs --force; refused while serve runs)
+  nooklet graph unretire <retired-name> [--as <id>] [--data <dir>]
+  nooklet graph replace <id> --from <dir> [--data <dir>]   swap in a re-imported graph,
+                      keeping its tokens; the old one is retired
   nooklet pair --link <public url> [--scope read|write] [--no-sync] [--minutes <1-60>]
                       print a one-time pairing QR code for a phone (default: write + sync, 10 min)
   nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
@@ -302,6 +317,8 @@ async function main(): Promise<void> {
       // the first time something asks for it, not necessarily at boot), so shutdown can stop all
       // of them, not just whichever graph happened to be first.
       const indexers = new Map<string, EmbeddingIndexer>();
+      // Per graph too, so retiring one (B-713) stops its mirror before its database closes.
+      const mirrors = new Map<string, ReturnType<typeof startLiveMirror>>();
       const registry = new GraphRegistry(dir, {
         registry: buildRegistry(),
         baseConfig,
@@ -311,7 +328,9 @@ async function main(): Promise<void> {
           // ADR 002's continuous mirror — the half that never existed (B-95): pages/ and
           // journals/ followed commits only when someone ran `nooklet export`. `--no-mirror`
           // turns it off, for every graph this process hosts.
-          if (handle.config.mirror.enabled) startLiveMirror(handle.ctx, handle.config.dataDir);
+          if (handle.config.mirror.enabled) {
+            mirrors.set(handle.id, startLiveMirror(handle.ctx, handle.config.dataDir));
+          }
 
           // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a
           // scratch database on every start and diff it against the live state tables." Dev-only
@@ -334,6 +353,16 @@ async function main(): Promise<void> {
           });
           indexer.start();
           indexers.set(handle.id, indexer);
+        },
+        onClose: (handle) => {
+          // The mirror's last sweep runs now, while the database is still open, so the retired
+          // folder's markdown copy is as current as its database.
+          const mirror = mirrors.get(handle.id);
+          mirrors.delete(handle.id);
+          mirror?.flush();
+          mirror?.stop();
+          indexers.get(handle.id)?.stop();
+          indexers.delete(handle.id);
         },
       });
 
@@ -392,6 +421,10 @@ async function main(): Promise<void> {
           });
           process.stdout.write(banner.stdout);
           if (banner.stderr) process.stderr.write(banner.stderr);
+          // B-713: lets `nooklet graph retire` (another process) see that this data dir is live.
+          // Written only once listening, so a serve that failed to bind never claims the dir.
+          const removeLock = writeServerLock(dir, info.port);
+          process.on("exit", removeLock);
         },
       );
       guardUpgradeSockets(server);
@@ -452,8 +485,82 @@ async function main(): Promise<void> {
     // adds a graph to This Mac (B-643); the HTTP equivalent is `POST /graphs` with the root token.
     case "graph": {
       const sub = args._[1];
+      if (!sub || !Object.hasOwn(GRAPH_SUBCOMMAND_FLAGS, sub)) {
+        die(
+          `unknown graph subcommand "${sub ?? ""}" (expected create, list, retire, unretire or replace)`,
+        );
+      }
+      cliArg(() =>
+        checkFlags(args, GRAPH_SUBCOMMAND_FLAGS[sub as keyof typeof GRAPH_SUBCOMMAND_FLAGS]),
+      );
+      // `GRAPH_FLAGS` is the union the flag audit checks this case against.
+      cliArg(() => checkFlags(args, GRAPH_FLAGS));
       const dir = dataDir(args);
       migrateLegacyLayoutIfNeeded(dir);
+      // B-713: retire and replace move a graph's folder out from under whoever has it open. A live
+      // `serve` on this data dir keeps its graphs' databases open and cannot be told from here to
+      // let go, so refuse while one runs; `DELETE /graphs/<id>` retires from a running server.
+      // `unretire` is allowed: it only moves a folder into `graphs/` under an id nothing serves
+      // (it refuses an existing one), and a running server opens it on the first request.
+      if (sub === "retire" || sub === "replace") {
+        const live = liveServer(dir);
+        if (live) die(liveServerMessage(dir, live));
+      }
+      if (sub === "retire") {
+        const id = args._[2];
+        if (!id) die("graph retire needs an id, e.g. nooklet graph retire work");
+        try {
+          const r = retireGraph(dir, id, { force: booleanFlag(args, "force", false) });
+          process.stdout.write(
+            `retired "${r.id}": moved to ${r.path}\n` +
+              `Nothing was deleted. To bring it back: nooklet graph unretire ${r.retiredName}` +
+              ` (add --as <id> to restore it under another id).\n`,
+          );
+        } catch (err) {
+          if (err instanceof GraphRetireError) die(err.message);
+          throw err;
+        }
+        return;
+      }
+      if (sub === "unretire") {
+        const name = args._[2];
+        if (!name)
+          die("graph unretire needs a retired graph's name (see: nooklet graph list --retired)");
+        const as = args.flags.get("as");
+        if (as !== undefined && typeof as !== "string") die("--as needs a graph id");
+        try {
+          const r = unretireGraph(dir, name, as);
+          process.stdout.write(
+            `restored "${r.id}" from ${r.from}\nA running server picks it up on its next request for /g/${r.id}/.\n`,
+          );
+        } catch (err) {
+          if (err instanceof GraphRetireError) die(err.message);
+          throw err;
+        }
+        return;
+      }
+      if (sub === "replace") {
+        const id = args._[2];
+        const from = args.flags.get("from");
+        if (!id || typeof from !== "string") {
+          die(
+            "graph replace needs an id and --from <dir>, e.g. nooklet graph replace work --from /tmp/scratch",
+          );
+        }
+        try {
+          const r = replaceGraph(dir, id, from);
+          process.stdout.write(
+            `replaced "${r.id}" with ${r.source} (${r.tokensCarried} token${r.tokensCarried === 1 ? "" : "s"} carried over)\n` +
+              `The old graph is in ${r.retired.path}; nothing was deleted.\n` +
+              `Devices that synced the old graph will show "The server has a different graph now"; ` +
+              `"Discard the local copy and re-sync" is expected: the replacement is a new graph instance.\n`,
+          );
+        } catch (err) {
+          if (err instanceof GraphRetireError) die(err.message);
+          throw err;
+        }
+        return;
+      }
       if (sub === "create") {
         const id = args._[2];
         if (!id) die("graph create needs an id, e.g. nooklet graph create work --label Work");
@@ -473,6 +580,12 @@ async function main(): Promise<void> {
         return;
       }
       if (sub === "list") {
+        if (booleanFlag(args, "retired", false)) {
+          for (const g of listRetired(dir)) {
+            process.stdout.write(`${g.name}\t${g.id}\t${g.retiredAt}\t${g.label ?? ""}\n`);
+          }
+          return;
+        }
         const registry = new GraphRegistry(dir, {
           registry: buildRegistry(),
           baseConfig: baseServerConfig(args),
@@ -480,7 +593,6 @@ async function main(): Promise<void> {
         for (const g of await registry.list()) process.stdout.write(`${g.id}\t${g.label}\n`);
         return;
       }
-      die(`unknown graph subcommand "${sub ?? ""}" (expected create or list)`);
       return;
     }
 
