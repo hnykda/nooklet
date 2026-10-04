@@ -809,6 +809,8 @@ Run without `--data` it would create a stray legacy database beside `graphs/`. D
 
 `local-search.ts` matches `tags` from a block's own text plus `Task` for a marker; a `tags::` block property is not seen (the replica has no `ref` table). The server's answer, when merged, is exact.
 
+2026-10-04: unblocked by B-641 (the replica now has `ref`), still open: `local-search.ts` reads through `queryAs`, which cannot drain the dirty ref queue first; needs the search read moved into the worker (or a drain RPC).
+
 ### B-627 · Search keeps the previous query's rows on screen until the device answers
 **Status:** open · **Severity:** low · **Found:** 2026-10-03, server-search agent · **Test:** none
 
@@ -856,57 +858,6 @@ client dir at startup (or serves a versioned copy), and/or the runbook says not 
 test server is serving. To confirm next time it happens: Inspect Element → Console/Network (404s on
 `/static/*.js` would confirm).
 
-### B-641 · Offline, the references panel says "Couldn't load references · Retry"
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner on the iPhone in airplane mode: references fail instead of working from the device. "I think
-it should just work, not work only online." The replica has no `ref` table (B-626); references
-are server-only (B-577's references branch).
-
-### B-643 · The desktop app cannot add a local graph ("This device") from the graph switcher
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Works on the phone; in the Mac app (remote mode, `http://127.0.0.1:6200`) the switcher's add flow
-does not offer "This device".
-
-### B-644 · New local graphs are all named "This device"
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner: generate a whimsical name from a list of ~100, adding a number if taken; renaming exists but
-every new graph showing "This device" is confusing.
-
-### B-645 · The All pages view has no block/word counts and no row actions
-**Status:** open · **Severity:** low (feature) · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner: extra columns such as word count or block count, and actions such as delete (with confirm).
-
-### B-646 · Typing `/` on the phone does not open the slash menu
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner on the iPhone app.
-
-### B-648 · On the phone, opening Properties makes the page wider than the screen until the app is restarted
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner: the viewport grows past the phone width and the page is centred, so content is cut off;
-only an app restart restored the width.
-
-### B-649 · Go forward is not greyed out when there is nowhere to go
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner, on the phone.
-
-### B-650 · On the phone, the graph switcher does not close when tapping elsewhere
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner.
-
-### B-651 · On the phone, no visible way to set a task to DOING, and the empty checkbox looks like a missing glyph
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner: "not sure how to cycle through the In progress on a task. Also the empty square checkbox looks
-like an error of unrendered char than what it does. Maybe with the checkmark it would be better."
-
 ### B-652 · A reconnecting device can silently lose one side of a same-block conflict (push/pull race)
 **Status:** open, suspected (code read only) · **Severity:** high if real (silent text loss) · **Found:** 2026-10-04, b642 agent · **Test:** none yet
 
@@ -953,14 +904,180 @@ Both describe the pre-ADR-025 layout or older flows.
 
 Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
 
+### B-661 · A tap on the task marker does nothing in Chromium touch emulation
+**Status:** open · **Severity:** low (iOS-only app today) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
+
+Its `onPointerDown preventDefault` swallows the click (probe `tools/probes/phone-ui/marker-tap-chromium.spec.ts`). iOS is fine (Simulator). Would affect Chromium on Android, and probably the R61 toolbar buttons (same pattern).
+
+### B-662 · iOS: Return in an empty day's draft inserts a newline instead of creating a block
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, phone-ui agent · **Test:** none
+
+Simulator event log: `keydown Enter` then `beforeinput insertLineBreak`, draft `"ab\n"`; the keydown `preventDefault` does not stop it on iOS. Unverified on a physical iPhone.
+
+### B-663 · `tasks.spec.ts` Mod+Enter tests are order-dependent since empty graphs default to `now`
+**Status:** open · **Severity:** low (test) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
+
+Run alone (fresh server, empty graph) they expect TODO and get LATER (`34c8d3e`); in the full suite earlier specs leave TODO markers so the workflow is inferred `todo`.
+
+### B-664 · After the toolbar's hide-keyboard button the toolbar stays at the bottom, scrolled sideways
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, phone-ui agent · **Test:** none
+
+Phone UI agent, Simulator.
+
+### B-666 · A page rename leaves its own blocks' `path_ref` under the old key
+**Status:** open · **Severity:** low · **Found:** 2026-10-04 · **Test:** none
+
+Server and replica alike: `reindexRefs` re-resolves references TO the page but never revisits the page's own blocks, so they are listed as linked references of the OLD name, and a full rebuild differs from the per-write path on exactly those rows. Pinned: `ref-index.test.ts` › "differs after a rename only where the per-write path is stale".
+
+### B-667 · "Link all" fails offline when a server is configured
+**Status:** open · **Severity:** low · **Found:** 2026-10-04 · **Test:** none
+
+Fails after `callOp`'s time bound with an error line; local-only hides it. A device-side Link all would be local `block.text` ops.
+
+### B-668 · The sqlite-wasm `SqlDriver` has no statement cache
+**Status:** open · **Severity:** low (perf) · **Found:** 2026-10-04 · **Test:** none
+
+Prepares every statement afresh and runs an extra `SELECT last_insert_rowid()` after every `run` (`apps/web/src/db/sqlite-wasm-driver.ts`); most of the ref index's per-block cost. A cache would speed every write path.
+
+### B-669 · `shelf.test.ts` › "a shelf made before bootstrap set the graph survives the next load" is flaky
+**Status:** open · **Severity:** low (test) · **Found:** 2026-10-04 · **Test:** none
+
+Failed once in `pnpm -r test` while an e2e build ran; passed 3/3 alone.
+
+### B-670 · A full e2e run can exit 1 after all tests pass
+**Status:** open · **Severity:** low (test harness) · **Found:** 2026-10-04 · **Test:** none
+
+`e2e/global-setup.ts:104` writes `<tmp>/server.log` after teardown deleted the temp dir → uncaught ENOENT.
+
+### B-671 · `nooklet restore --graph <id>` is rejected as an unknown flag
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04 · **Test:** none
+
+`RESTORE_FLAGS` in `packages/server/src/cli-args.ts` is `["data", "force"]` but `cli.ts`'s restore reads `graphIdFlag(args)`. Only the default graph can be restored from the CLI. Found by the infra agent.
+
+## Fixed
+
+### B-641 · Offline, the references panel says "Couldn't load references · Retry"
+**Status:** fixed (2026-10-04, branch b641-local-references) · **Severity:** medium
+
+Owner on the iPhone in airplane mode: references fail instead of working from the device. "I think
+it should just work, not work only online." The replica has no `ref` table (B-626); references
+are server-only (B-577's references branch).
+
+**Fixed.** The replica keeps `ref`/`path_ref`/`page_tag`/`page_alias` (core's
+`reindexRefs`, kept current by `ref_dirty` triggers + `drainRefIndex`, `apps/web/src/db/ref-index-client.ts`);
+the worker answers `page.backlinks`'s reading locally; the server only when the replica has no
+index. Tests: `e2e/tests/references-offline.spec.ts` (2), `apps/web/src/db/ref-index-client.test.ts`
+(8), `packages/core/src/sync/ref-index.test.ts` (6), `packages/server/src/ref-index-ddl.test.ts`
+(1), `apps/web/src/data/local-first.test.ts` (2), `views/ReferencesPanel.test.tsx` › "failure and
+local-only (B-641)" (2), `e2e/tests/references.spec.ts` › "answers from the device when the
+server's page.backlinks cannot be reached". Graph view and unlinked mentions also work offline now.
+
+### B-665 · On web/desktop, loading `/g/X` while the active entry was `/g/Y` showed Y's data under X's address
+**Status:** fixed (2026-10-04, desktop-local-graph agent) · **Severity:** medium · **Found:** 2026-10-04, desktop-local-graph agent · **Test:** `bootstrap.test.ts` "adoptAddressBarGraph" (3), e2e "once made, the new graph opens..."
+
+The router followed the URL, every request followed the entry. Fixed by `bootstrap.ts#adoptAddressBarGraph`. Consequence: a bare address (redirected to `/g/default`) now opens default even if another graph was active.
+
+### B-644 · New local graphs are all named "This device"
+**Status:** fixed (2026-10-04, `884f469`)
+
+Owner: generate a whimsical name from a list of ~100, adding a number if taken; renaming exists but
+every new graph showing "This device" is confusing.
+
+**Fixed.** Tests: `data/graph-names.test.ts` (6), `bootstrap.test.ts` "B-644:
+each new local graph gets its own curated name", e2e `desktop-local-graph.spec.ts` "B-644: on the
+phone...". Existing names (including "This device") are never renamed; the B-612 rescue still
+labels the recovered graph "This device".
+
+### B-643 · The desktop app cannot add a local graph ("This device") from the graph switcher
+**Status:** fixed (2026-10-04, `884f469`)
+
+Works on the phone; in the Mac app (remote mode, `http://127.0.0.1:6200`) the switcher's add flow
+does not offer "This device".
+
+**Fixed.** Cause: `GraphSwitcher.tsx` offered a local graph only when
+`platform.name === "capacitor"`; the desktop app is the web platform. Model chosen: a new graph on
+This Mac's bundled server (ADR 028), via a shell request the page makes by navigating to
+`nooklet-desktop.invalid`. Tests: `e2e/tests/desktop-local-graph.spec.ts` (3 desktop cases),
+`e2e/tests/desktop-launcher.spec.ts` two B-643 cases, `GraphSwitcher.test.tsx` "B-643: the
+desktop app" (4), `desktop-shell.test.ts` (2), `cli-first-run.test.ts` "graph create" (2), Rust
+`main.rs` tests (6). Real window unverified.
+
+### B-651 · On the phone, no visible way to set a task to DOING, and the empty checkbox looks like a missing glyph
+**Status:** fixed (2026-10-04, `a1b9e09`)
+
+Owner: "not sure how to cycle through the In progress on a task. Also the empty square checkbox looks
+like an error of unrendered char than what it does. Maybe with the checkmark it would be better."
+
+**Fixed.** (a) Toolbar button 9 is now `task.cycle` (Mod+Enter's command; was
+`task.toggleDone`, which never reaches DOING/NOW and was disabled on a non-task block) — Logseq
+mobile's bar does exactly this: `(editor-handler/cycle-todo!)` with the "checkbox" icon,
+`src/main/frontend/mobile/mobile_bar.cljs` @ 0.10.9. Respects B-608 (LATER→NOW→DONE under `now`).
+(b) Markers drawn as lucide icons (square / square-dot / square-pause / square-check / square-x)
+everywhere a task is drawn; the outliner marker is `role="checkbox"` + `aria-checked`
+(`mixed` = DOING/NOW). **Test:** `phone-ui.spec.ts` "B-651: the toolbar's task button cycles…",
+"B-651: the task checkbox is an icon…"; `navigation.spec.ts` "each task state renders its own
+icon"; Simulator `4-cycled.png`, `6-checkbox-tapped.png`. Spec R60 table updated.
+
+### B-650 · On the phone, the graph switcher does not close when tapping elsewhere
+**Status:** fixed (2026-10-04, `a1b9e09`)
+
+Owner.
+
+**Fixed.** Outside `pointerdown` closes the switcher, as the "⋯" menu does. **Test:**
+`phone-ui.spec.ts` "B-650…".
+
+### B-649 · Go forward is not greyed out when there is nowhere to go
+**Status:** fixed (2026-10-04, `a1b9e09`)
+
+Owner, on the phone.
+
+**Fixed.** Back/Forward `disabled` from the Navigation API (`canGoBack/canGoForward`),
+else the router's `_depth` vs `history.length` (`shell/history-position.ts`). **Test:**
+`phone-ui.spec.ts` "B-649…" (Chromium + WebKit), `history-position.test.ts`.
+
+### B-648 · On the phone, opening Properties makes the page wider than the screen until the app is restarted
+**Status:** fixed (2026-10-04, `a1b9e09`)
+
+Owner: the viewport grows past the phone width and the page is centred, so content is cut off;
+only an app restart restored the width.
+
+**Fixed.** Cause: the property fields' 13px text (overriding the global 16px) made iOS
+zoom the page in on focus (Simulator: `visualViewport.scale` 1.23) and iOS never zooms back;
+plus the inputs' intrinsic width could push the add row past 390px. Fix: 16px under
+`(pointer: coarse)` (also the search and task filter inputs, same override), `min-width: 0`.
+**Test:** `phone-ui.spec.ts` "B-648: …within the screen, fields at 16px"; Simulator
+`8-props-field-focused.png` (scale 1.00). The B-572 viewport meta needed no change.
+
+### B-646 · Typing `/` on the phone does not open the slash menu
+**Status:** fixed (2026-10-04, `a1b9e09`)
+
+Owner on the iPhone app.
+
+**Fixed.** Cause: two. (a) The slash menu only reads the block editor, and
+an empty day's first line is a plain `<textarea>` (`VirtualJournalDay`) — on the phone that is
+the first thing you type into; the iOS soft keyboard itself delivers normal `keydown`/`keyup "/"`
+(Simulator log). (b) The toolbar's `/` needed `atLineStart` (caret at offset 0), so it was greyed
+out anywhere else. Fix: a triggering `/` in the draft starts the day with the caret after it;
+`CommandLayer` re-detects on `focusin` and `input` too; toolbar `/` works anywhere (adds a space
+mid-word). **Test:** `e2e/tests/phone-ui.spec.ts` "B-646: …empty day's first line…", "…`input`
+only…", "…toolbar's `/` works mid-block…" (Chromium + WebKit); `insert-logic.test.ts`
+"insertSlash (R50, B-646)"; Simulator `tools/probes/phone-ui/1-draft-slash.png`.
+
+### B-645 · The All pages view has no block/word counts and no row actions
+**Status:** fixed (2026-10-04, `9407c8b`) · **Severity:** low (feature) · **Test:** `e2e/tests/all-pages.spec.ts`, `e2e/tests/all-pages-phone.spec.ts`, `apps/web/src/data/page-stats.test.ts`
+
+Owner: extra columns such as word count or block count, and actions such as delete (with confirm).
+
+**Done.** Sortable Blocks / Words / Created / Edited columns counted on the local replica (word rule shared with the word-count plugin, `plugins/word-count/src/count.ts`), per-row Delete through `deletePageWithConfirm` + the in-app confirm; name + blocks + a sort menu at phone width. Left out: backlinks column, bulk/orphan delete, pagination. Real-graph copy: counts painted 278 ms after navigation, 207 ms after an edit. Possible follow-up (owner's call): bulk select/delete and "remove orphaned pages" as in Logseq.
+
 ### B-660 · WebKit client logs `SQLITE_CONSTRAINT_FOREIGNKEY` on `INSERT OR REPLACE INTO block` while loading a page
-**Status:** open, not investigated · **Severity:** unknown · **Found:** 2026-10-04, b640 agent · **Test:** none
+**Status:** fixed (2026-10-04, `2cd8b92`) · **Severity:** high (a new device could come up missing data after `nooklet gc`) · **Test:** `apps/web/src/sync/e2e.test.ts` "a block moved under a block created after it (B-660)" (3 tests, red before)
 
 Seen in the replica on a page freshly created via the API (`tools/probes/b640/row-mutations.mjs`
 output). May be harmless ordering in a snapshot apply; worth a look (FK failures can mean a row was
 dropped).
 
-## Fixed
+**Fixed.** `/sync/snapshot` lists blocks in creation order, so a block moved under a later-created one precedes its parent; the replica's immediate `parent_id` FK check failed and rolled back the whole bootstrap (Chromium too). The app then fell back to pulling the op log from 0 — which hides it while the log is complete but loses whatever `nooklet gc` trimmed — and re-downloaded (and failed) the snapshot on every cold start. Fix: `PRAGMA defer_foreign_keys = ON` in the bootstrap transaction. Probe: `tools/probes/b660/snapshot-fk.mjs`.
 
 ### B-640 · A synced block's text is invisible until the block is opened for editing
 **Status:** fixed (2026-10-04, `49ddf1e`) · **Severity:** high (data looked lost; data was intact) · **Test:** `e2e/tests/row-paint-after-enter.spec.ts` (WebKit, red before, green after)
@@ -2177,6 +2294,8 @@ this one further.
 ---
 
 2026-10-03: the Search branch is superseded by local-first search (local-only now searches the device). References/graph branches unchanged.
+
+2026-10-04: its References and Graph branches are superseded too — local-only shows references and draws the graph from the device (B-641). Graph stays hidden on Capacitor (B-578).
 
 ### B-576 · Sidebar drawer cannot be closed by tapping outside it
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-15, owner report: "also it cannot be
