@@ -64,6 +64,7 @@ import {
   parseServerUrl,
   type ServerGraph,
 } from "../data/connect-graph.js";
+import { normalizeToken, tokenShapeProblem } from "../data/token-input.js";
 import {
   DESKTOP_ERROR_EVENT,
   type DesktopLocalGraph,
@@ -256,8 +257,16 @@ export function GraphSwitcher(): JSX.Element {
 
   async function addServer(e: Event): Promise<void> {
     e.preventDefault();
-    const tokenValue = token().trim();
+    // B-706: drop what was copied around the token (a sentence's `.`, backticks, a newline), show
+    // what will be sent, and name a token of the wrong shape before the server can only say 401.
+    const tokenValue = normalizeToken(token());
     if (!tokenValue) return;
+    setToken(tokenValue);
+    const problem = tokenShapeProblem(tokenValue, "device");
+    if (problem) {
+      setError(problem);
+      return;
+    }
     const parsed = parseServerUrl(serverUrl());
     if ("error" in parsed) {
       setError(parsed.error);
@@ -289,9 +298,16 @@ export function GraphSwitcher(): JSX.Element {
       setError(parsed.error);
       return;
     }
+    const rootToken = normalizeToken(token());
+    setToken(rootToken);
+    const problem = tokenShapeProblem(rootToken, "root"); // B-706
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setBusy(true);
     setError(undefined);
-    const result = await listServerGraphs(parsed.url, token().trim());
+    const result = await listServerGraphs(parsed.url, rootToken);
     setBusy(false);
     if (!result.ok) {
       setServerGraphs(undefined);
@@ -354,9 +370,15 @@ export function GraphSwitcher(): JSX.Element {
     e.preventDefault();
     const id = promotingId();
     if (!id) return;
-    const rootToken = promoteRootToken().trim();
+    const rootToken = normalizeToken(promoteRootToken());
     const graphId = promoteGraphId().trim();
     if (!rootToken || !graphId) return;
+    setPromoteRootToken(rootToken);
+    const problem = tokenShapeProblem(rootToken, "root"); // B-706
+    if (problem) {
+      setError(problem);
+      return;
+    }
     const parsed = parseServerUrl(promoteServerUrl());
     if ("error" in parsed) {
       setError(parsed.error);

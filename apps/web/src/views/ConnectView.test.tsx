@@ -51,13 +51,15 @@ describe("web/PWA: unchanged, no server-address field", () => {
     render(() => <ConnectView />);
     expect(screen.queryByLabelText("Server address")).toBeNull();
 
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"a".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     await screen.findByRole("button", { name: "Connect" }); // settles after reload() no-ops
 
     const [url] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("/api/v1/graph.overview");
-    expect(activeGraph()?.token).toBe("nk_abc");
+    expect(activeGraph()?.token).toBe(`nk_${"a".repeat(48)}`);
     expect(activeGraph()?.baseUrl).toBeUndefined();
     expect(reload).toHaveBeenCalled();
   });
@@ -72,7 +74,9 @@ describe("web/PWA: unchanged, no server-address field", () => {
       fakePlatform.name = "web";
       fetchMock.mockResolvedValueOnce(ok());
       render(() => <ConnectView />);
-      fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_work" } });
+      fireEvent.input(screen.getByLabelText("Device token"), {
+        target: { value: `nk_${"b".repeat(48)}` },
+      });
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
       await screen.findByRole("button", { name: "Connect" });
       expect(fetchMock.mock.calls[0]?.[0]).toBe("/g/work/api/v1/graph.overview");
@@ -94,7 +98,9 @@ describe("Capacitor: a server-address field is required first", () => {
     });
     expect(button().disabled).toBe(true); // token still empty
 
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"a".repeat(48)}` },
+    });
     expect(button().disabled).toBe(false);
   });
 
@@ -104,7 +110,9 @@ describe("Capacitor: a server-address field is required first", () => {
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: "nooklet.example.com" },
     });
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"a".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     const alert = await screen.findByRole("alert");
@@ -121,7 +129,9 @@ describe("Capacitor: a server-address field is required first", () => {
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: "https://nooklet.example.com/" },
     });
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"a".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     await screen.findByRole("button", { name: "Connect" });
 
@@ -130,10 +140,10 @@ describe("Capacitor: a server-address field is required first", () => {
     // 307, so storing the bare origin left live sync never connecting.
     expect(url).toBe("https://nooklet.example.com/g/default/api/v1/graph.overview");
     expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
-      "Bearer nk_abc",
+      `Bearer nk_${"a".repeat(48)}`,
     );
     expect(activeGraph()?.baseUrl).toBe("https://nooklet.example.com/g/default");
-    expect(activeGraph()?.token).toBe("nk_abc");
+    expect(activeGraph()?.token).toBe(`nk_${"a".repeat(48)}`);
     expect(reload).toHaveBeenCalled();
   });
 
@@ -145,7 +155,9 @@ describe("Capacitor: a server-address field is required first", () => {
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: "https://unreachable.example.com" },
     });
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"a".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     const alert = await screen.findByRole("alert");
@@ -161,7 +173,9 @@ describe("Capacitor: a server-address field is required first", () => {
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: "https://nooklet.example.com" },
     });
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_bad" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"e".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     const alert = await screen.findByRole("alert");
@@ -179,7 +193,9 @@ describe("Capacitor: a server-address field is required first", () => {
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: "https://nooklet.example.com/g/work" },
     });
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_bad" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"e".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     const alert = await screen.findByRole("alert");

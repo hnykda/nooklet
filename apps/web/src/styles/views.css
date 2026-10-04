@@ -361,15 +361,6 @@
   background: var(--accent);
 }
 
-/* Keyed on the pointer, not the viewport: a tablet is wide and still auto-zooms a sub-16px text
-   field on focus. `--text-md` is 15px, so without this the one field on the journals screen would
-   yank the page into a zoom every time you tapped it. */
-@media (pointer: coarse) {
-  .vr-draft-input {
-    font-size: 16px;
-  }
-}
-
 /* ---------------------------------------------------------------------------------------------
    Page view
 --------------------------------------------------------------------------------------------- */
@@ -381,6 +372,8 @@
 .page-title-input {
   width: 100%;
   font-size: var(--text-2xl);
+  /* Its own size under the touch-screen field floor (B-705, `shell.css`). */
+  --field-font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
@@ -624,7 +617,7 @@
 /* B-648: on a phone these fields made the page wider than the screen until a restart. Two causes.
    First, 13px text: iOS zooms the whole page in when a field under 16px takes focus and does not
    zoom back out — the "wider, centred, cut off" page (Simulator: visualViewport.scale 1.23 after
-   tapping "property"). Second, a flex item's minimum width is its content's, and an <input>'s is
+   tapping "property"); that is now the global touch-screen rule in `shell.css` (B-705). Second, a flex item's minimum width is its content's, and an <input>'s is
    its `size=20` width, so key + value + Add came to more than a 390px screen; `min-width: 0` lets
    them share the row. */
 .page-property-value,
@@ -635,14 +628,6 @@
 
 .page-property-key {
   overflow-wrap: anywhere;
-}
-
-@media (pointer: coarse) {
-  .page-property-value,
-  .page-property-add-key,
-  .page-property-add-value {
-    font-size: 16px;
-  }
 }
 
 .namespace-children {
@@ -917,13 +902,6 @@
   font-size: var(--text-sm);
 }
 
-/* B-648: under 16px, iOS zooms the page in on focus and leaves it zoomed. */
-@media (pointer: coarse) {
-  .search-filters input {
-    font-size: 16px;
-  }
-}
-
 .search-hint,
 .search-loading,
 .search-summary {
@@ -1088,13 +1066,6 @@
   font-size: var(--text-sm);
   font-family: var(--font-sans);
   letter-spacing: normal;
-}
-
-/* B-648: under 16px, iOS zooms the page in on focus and leaves it zoomed. */
-@media (pointer: coarse) {
-  .task-filters input:not([type="checkbox"]) {
-    font-size: 16px;
-  }
 }
 
 .task-group {

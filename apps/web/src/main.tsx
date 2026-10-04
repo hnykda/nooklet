@@ -21,6 +21,7 @@ import {
   renderInsecureContextPage,
 } from "./insecure-context.js";
 import { platform } from "./platform/index.js";
+import { capViewportScale } from "./platform/viewport-meta.js";
 import { registerServiceWorker } from "./sw/register.js";
 
 /**
@@ -34,6 +35,8 @@ import { registerServiceWorker } from "./sw/register.js";
 async function start(): Promise<void> {
   // First, so a log left switched on (Diagnostics → Focus log) sees the page load from the start.
   initFocusLog();
+  // B-705: no zoom-on-focus in the iOS app (see `./platform/viewport-meta.ts` for why app-only).
+  if (platform.name === "capacitor") capViewportScale();
 
   // Credentials first: the sync worker is handed its token once, at startup, and `App` decides
   // whether to show the connect screen from the same config — so both must wait for it. Everything

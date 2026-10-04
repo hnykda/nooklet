@@ -54,6 +54,7 @@ import {
   type RepairTarget,
 } from "../data/connect-graph.js";
 import { defaultDeviceLabel, redeemPairingCode } from "../data/pairing.js";
+import { normalizeToken, tokenShapeProblem } from "../data/token-input.js";
 import { platform } from "../platform/index.js";
 import "./connect.css";
 
@@ -120,8 +121,19 @@ export function ConnectView(props: {
 
   async function connect(e: Event): Promise<void> {
     e.preventDefault();
-    let tokenValue = token().trim();
+    // B-706: what was copied around the token (a sentence's `.`, backticks, a newline) is dropped,
+    // and the field shows what will be sent; a token of the wrong shape is named here, before the
+    // server's 401 could only say "rejected".
+    let tokenValue = normalizeToken(token());
     if (!tokenValue && !pairingCode) return;
+    if (!pairingCode) {
+      setToken(tokenValue);
+      const problem = tokenShapeProblem(tokenValue, "device");
+      if (problem) {
+        setError(problem);
+        return;
+      }
+    }
 
     // Built explicitly from the typed address rather than storing it and reading `apiBaseUrl()`
     // back: a wrong address must fail this fetch, not silently resolve against
