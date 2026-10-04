@@ -64,7 +64,7 @@ export default defineConfig({
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
       testMatch:
-        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link)\.spec\.ts/,
+        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link|row-paint-after-enter)\.spec\.ts/,
     },
   ],
 });

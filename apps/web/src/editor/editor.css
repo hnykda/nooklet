@@ -88,6 +88,14 @@
    way. */
 .vr-row-editing {
   background-color: transparent;
+  /* B-640: the row holding the editor is never `content-visibility: auto`. WebKit (the Mac app,
+     the iPhone) leaves an `auto` element SKIPPED for good when it is inserted with focus moving
+     into it — which is what Enter does: a new row goes in and the single editor is moved into it
+     in the same task. Once the editor moved on, the row stayed blank, bullet and all, though it
+     was on screen, until it was clicked into again. With this, a row only becomes `auto` after
+     the editor has left it, which WebKit handles. Reproduced with plain DOM calls, no app, in
+     `tools/probes/b640/webkit-cv-focus.mjs`; e2e `row-paint-after-enter.spec.ts`. */
+  content-visibility: visible;
 }
 
 .vr-bullet-wrap {
