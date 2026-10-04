@@ -75,8 +75,12 @@ export function flattenVisible(tree: EditorTree, opts: FlattenOptions = {}): Row
   const visit = (id: BlockId, depth: number): void => {
     const b = getBlock(tree, id);
     const kids = childrenIds(tree, id);
-    rows.push({ id, depth, hasChildren: kids.length > 0, collapsed: b.collapsed });
-    if (!b.collapsed || opts.expandAll) for (const c of kids) visit(c, depth + 1);
+    // The zoom root is the fixed top of its view and is always open (B-788), as in Logseq: you
+    // zoom into a block to see what is under it. Folded, the view was one row, and Enter on it —
+    // which makes the root's first child — produced a block nobody could see.
+    const collapsed = id === opts.rootBlockId ? false : b.collapsed;
+    rows.push({ id, depth, hasChildren: kids.length > 0, collapsed });
+    if (!collapsed || opts.expandAll) for (const c of kids) visit(c, depth + 1);
   };
   if (opts.rootBlockId !== undefined) {
     // Tolerate a zoom root that is not in the tree instead of throwing through `getBlock`. It is

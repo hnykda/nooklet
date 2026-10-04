@@ -534,7 +534,7 @@ describe("duplicateBlock (R32)", () => {
       }),
       makeBlock({ id: "A1", parentId: "A", order: a1 as string, content: "child" }),
     );
-    const { ops, focus } = duplicateBlock(t, "A", makeFakeClock(), 9000);
+    const { ops, focus } = duplicateBlock(t, "A", makeFakeClock(), 9000) as OpsFocusResult;
     const creates = ops.filter((op) => op.payload.kind === "block.create");
     expect(creates).toHaveLength(2);
     expect(creates.map((op) => op.entity)).not.toContain("A");
@@ -553,7 +553,8 @@ describe("duplicateBlock (R32)", () => {
     const t = buildTree(
       makeBlock({ id: "A", order: a as string, content: "x", properties: { list: "number" } }),
     );
-    const create = duplicateBlock(t, "A", makeFakeClock(), 9000).ops[0]?.payload;
+    const create = (duplicateBlock(t, "A", makeFakeClock(), 9000) as OpsFocusResult).ops[0]
+      ?.payload;
     expect(create).toMatchObject({ kind: "block.create", properties: { list: "number" } });
   });
 
@@ -569,7 +570,7 @@ describe("duplicateBlock (R32)", () => {
         doneAt: 1_760_000_000_000,
       }),
     );
-    const { ops } = duplicateBlock(t, "A", makeFakeClock(), 9000);
+    const { ops } = duplicateBlock(t, "A", makeFakeClock(), 9000) as OpsFocusResult;
     expect(
       ops.some(
         (op) =>

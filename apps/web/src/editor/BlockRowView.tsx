@@ -25,6 +25,9 @@ export function BlockRowView(props: {
   depth: number;
   hasChildren: boolean;
   collapsed: boolean;
+  /** The zoomed-into block, the fixed top of its view (B-788). It is always open there, so it gets
+   * no collapse arrow: folding it would do nothing on screen. */
+  zoomRoot?: boolean;
   childCount: number;
   block: EditableBlock;
   numbering: number | undefined;
@@ -123,6 +126,7 @@ export function BlockRowView(props: {
         "vr-row-selected": props.selected,
         "vr-row-find-match": props.findMatch === true,
         "vr-row-find-context": props.findMatch === false,
+        "vr-row-zoom-root": props.zoomRoot === true,
       }}
       style={{ "--depth": props.depth }}
       data-block-id={props.id}
@@ -130,7 +134,7 @@ export function BlockRowView(props: {
       onContextMenu={(e) => props.onContextMenu?.(e)}
     >
       <Bullet
-        hasChildren={props.hasChildren}
+        hasChildren={props.hasChildren && props.zoomRoot !== true}
         collapsed={props.collapsed}
         childCount={props.childCount}
         onToggleCollapse={props.onToggleCollapse}

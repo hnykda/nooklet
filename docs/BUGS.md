@@ -1087,7 +1087,7 @@ The phone/browser form can list a server's graphs with its root token. From the 
 call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
 
 ### B-788 · Zoomed into a block, Enter on it creates a sibling outside the view, so new blocks vanish
-**Status:** open · **Severity:** high (looks like lost typing) · **Found:** 2026-10-04, owner on the phone · **Test:** none yet
+**Status:** in progress (agent, worktree; notes in `docs/progress/zoom-root.md`) · **Severity:** high (looks like lost typing) · **Found:** 2026-10-04, owner on the phone · **Test:** none yet
 
 Zoomed into a block (especially one with no children), `flattenVisible` (`editor/tree.ts`) shows the
 zoom root itself as the first row, and Enter at its end splits it into a *sibling*, a block outside

@@ -31,23 +31,37 @@ export interface PasteTreeResult {
 }
 
 /** R33 case 2. `text` MUST contain at least one `\n` (case 1 is the caller's job, not this
- * function's — see file header). */
+ * function's — see file header).
+ *
+ * Pasted into the zoom root (`zoomRootId === targetId`, B-788), the blocks go in as its first
+ * children, where Enter on it puts a new block: as siblings they were outside the zoomed view and
+ * never showed. Nor does an empty root get replaced — deleting it would empty the whole view. */
 export function pasteMarkdownAsTree(
   tree: EditorTree,
   targetId: BlockId,
   text: string,
   clock: Clock,
   now: number = Date.now(),
+  scope: { zoomRootId?: BlockId | null } = {},
 ): PasteTreeResult {
   const parsed = { blocks: pastedBlocks(parseOutline(text)) };
   const target = getBlock(tree, targetId);
-  const targetIsEmpty = target.content === "" && (tree.childrenOf.get(targetId)?.length ?? 0) === 0;
+  const kids = tree.childrenOf.get(targetId) ?? [];
+  const intoRoot = scope.zoomRootId != null && scope.zoomRootId === targetId;
+  const targetIsEmpty = !intoRoot && target.content === "" && kids.length === 0;
 
-  const parentId = target.parentId;
-  const lowerBound = targetIsEmpty
-    ? previousSiblingOrder(tree, target.parentId, targetId)
-    : target.order;
-  const upperBound = nextSiblingOrder(tree, target.parentId, targetId);
+  const parentId = intoRoot ? targetId : target.parentId;
+  const firstKid = kids[0];
+  const lowerBound = intoRoot
+    ? null
+    : targetIsEmpty
+      ? previousSiblingOrder(tree, target.parentId, targetId)
+      : target.order;
+  const upperBound = intoRoot
+    ? firstKid
+      ? getBlock(tree, firstKid).order
+      : null
+    : nextSiblingOrder(tree, target.parentId, targetId);
 
   const topOrders = ordersBetween(lowerBound, upperBound, parsed.blocks.length);
   const ops: Op[] = [];
