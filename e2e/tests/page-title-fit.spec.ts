@@ -60,7 +60,7 @@ test.describe("on a phone", () => {
     await openPage(page, "Title Fit Menu/Child");
     await page.getByRole("button", { name: "Page actions" }).tap();
     await page.getByRole("menuitem", { name: "Add icon" }).tap();
-    const icon = page.locator(".page-icon-input");
+    const icon = page.locator(".emoji-picker-search");
     await expect(icon).toBeFocused();
     await icon.fill("🎲");
     await icon.press("Enter");

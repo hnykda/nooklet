@@ -477,20 +477,6 @@
   color: var(--fg);
 }
 
-.page-icon-input {
-  flex: none;
-  width: 2.2em;
-  height: 1.5em;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--fg);
-  font-size: var(--text-2xl);
-  line-height: 1;
-  text-align: center;
-}
-
 .page-view-loading,
 .page-view-missing {
   color: var(--muted);

@@ -41,7 +41,7 @@ test("setting an icon from the title row shows it there, in All Pages, and in fa
   const button = page.locator(".page-icon-button");
   await expect(button).toHaveClass(/page-icon-button-empty/);
   await button.click();
-  const input = page.locator(".page-icon-input");
+  const input = page.locator(".emoji-picker-search");
   await expect(input).toBeFocused();
   await input.fill("🚀");
   await page.keyboard.press("Enter");
@@ -91,7 +91,7 @@ test("only the first grapheme is kept, and clearing the field removes the icon",
   });
   await openPage(page, name);
   await page.locator(".page-icon-button").click();
-  await page.locator(".page-icon-input").fill("🇨🇿 flag then words");
+  await page.locator(".emoji-picker-search").fill("🇨🇿 flag then words");
   await page.keyboard.press("Enter");
   // A flag is two code points and one grapheme; it must survive whole.
   await expect(page.locator(".page-icon-button")).toHaveText("🇨🇿");
@@ -109,9 +109,9 @@ test("only the first grapheme is kept, and clearing the field removes the icon",
   };
   await expect.poll(serverProperties).toHaveProperty("icon", "🇨🇿");
 
+  // Removing is the picker's own button now (B-647); an empty search no longer means "clear".
   await page.locator(".page-icon-button").click();
-  await page.locator(".page-icon-input").fill("");
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Remove icon" }).click();
   await expect(page.locator(".page-icon-button")).toHaveClass(/page-icon-button-empty/);
 
   // Cleared means the property is gone, not stored as an empty string.
