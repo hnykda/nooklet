@@ -236,6 +236,8 @@ Fix direction (not done, outside this branch's scope): poll the read, and use `h
 
 ---
 
+2026-10-04: `page-icons.spec.ts` "…clearing the field removes the icon" now clears through the emoji picker's Remove button (same server-poll assertions).
+
 ### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
 m10/editor-keys (`/template`: pre-existing; `/mermaid`: reachable since the B-344 fix, `30e9a71`) ·
@@ -871,12 +873,6 @@ Owner on the iPhone in airplane mode: references fail instead of working from th
 it should just work, not work only online." The replica has no `ref` table (B-626); references
 are server-only (B-577's references branch).
 
-### B-642 · A same-block edit conflict is kept as a `conflict_copy::` property instead of something readable
-**Status:** open · **Severity:** medium (UX) · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner edited one block on both devices; the loser's text became `conflict_copy: There is this`
-under the winning text. "Shouldn't it be smarter than that, and e.g. added that as extra line?"
-
 ### B-643 · The desktop app cannot add a local graph ("This device") from the graph switcher
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
 
@@ -898,12 +894,6 @@ Owner: extra columns such as word count or block count, and actions such as dele
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
 
 Owner on the iPhone app.
-
-### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner: on the phone it just inserts a default smiling face; typing inputs raw characters instead of
-searching emoji. Same on desktop.
 
 ### B-648 · On the phone, opening Properties makes the page wider than the screen until the app is restarted
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
@@ -927,7 +917,83 @@ Owner.
 Owner: "not sure how to cycle through the In progress on a task. Also the empty square checkbox looks
 like an error of unrendered char than what it does. Maybe with the checkmark it would be better."
 
+### B-652 · A reconnecting device can silently lose one side of a same-block conflict (push/pull race)
+**Status:** open, suspected (code read only) · **Severity:** high if real (silent text loss) · **Found:** 2026-10-04, b642 agent · **Test:** none yet
+
+Conflict detection in `SyncClient.pull()` needs the device's own `block.text` still in `pending_op`
+when the other device's op is pulled. On `online`/`resume`/`visible`, `worker-core.ts` runs
+`schedulePush(0)` and `pull()` concurrently; if the push response is applied before the pull response,
+the pending row is gone, the pulled op meets no pending edit, and plain LWW drops one text with no
+copy. The B-642 Playwright spec did not hit it in 9 runs (pull went first each time). Candidate fixes:
+keep the base/text of recently acknowledged `block.text` ops until the next pull completes, or pull
+before push on reconnect.
+
+### B-653 · `--graph` and `--no-mirror` are missing from `nooklet --help`
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+The flags work but `--help` does not list them.
+
+### B-654 · Rate limiting is documented (ADR 008, MCP spec) but nothing returns 429
+**Status:** open · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+No rate limiting or lockout exists anywhere. The public-tier checklist says to rate-limit at the proxy; see M13 backlog and the security review.
+
+### B-655 · The `admin` token scope grants nothing beyond `write`
+**Status:** open · **Severity:** low (security model clarity) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+No operation requires `admin`, so an admin token can do exactly what a write token can.
+
+### B-656 · ADR 015's live-UI tool names differ from what the server exposes
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+The server exposes `ui_windows`, `ui_state`, `ui_run`, …; ADR 015 names them differently.
+
+### B-657 · The old README advertised a Homebrew cask, Release downloads and a bare `/mcp` URL
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+No tap and no releases exist; bare `/mcp` answers 307. Fixed in the README rewrite (`36fdac6`).
+
+### B-658 · `apps/web/README.md` and OPERATIONS §3 (restore paths) predate the current code
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+Both describe the pre-ADR-025 layout or older flows.
+
+### B-659 · `/assets/<id>` needs no token
+**Status:** open · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
+
 ## Fixed
+
+### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
+**Status:** fixed (2026-10-04, `f45e6bb`) · **Severity:** low · **Test:** `e2e/tests/page-icon-picker.spec.ts` (3),
+`apps/web/src/views/EmojiPicker.test.tsx`, `apps/web/src/emoji/search.test.ts`
+
+Owner: on the phone it just inserts a default smiling face; typing inputs raw characters instead of
+searching emoji. Same on desktop.
+
+**Fixed 2026-10-04.** The icon slot opens an emoji picker (`views/EmojiPicker.tsx`): search by English
+name/keyword (emojibase-data 17, MIT, build-time trimmed to 1,898 emoji, lazy chunk 38 KB gz,
+precached so it works offline), recents + category grid, arrows/Enter/Escape, touch at phone width,
+Remove, typed/pasted emoji taken as is; stored `icon` property unchanged. Shaped after Logseq's
+`components/icon.cljs` minus Tabler icons/colours/skin tones. Not checked on a real phone or in the
+Capacitor app; no Czech keywords (the dataset has none).
+
+### B-642 · A same-block edit conflict is kept as a `conflict_copy::` property instead of something readable
+**Status:** fixed (2026-10-04, `1827b8c`, ADR 027) · **Severity:** medium (UX) · **Test:** `packages/server/src/conflict-copy.test.ts`,
+`packages/server/src/sync/convergence.property.test.ts` (`conflictReport`), `apps/web/src/sync/e2e.test.ts`
+"a same-block conflict leaves the losing text as a block after the winner (B-642)", `e2e/tests/sync-conflict.spec.ts` (8/8)
+
+Owner edited one block on both devices; the loser's text became `conflict_copy: There is this`
+under the winning text. "Shouldn't it be smarter than that, and e.g. added that as extra line?"
+
+**Fixed 2026-10-04 (ADR 027, option a).** Clients still report `conflict_copy`; the server turns it
+into a sibling block right after the winner, tagged `sync-conflict:: true` (a badge in the UI), and
+clears the property. The id is derived from the winner + text, so two reports make one block and a
+deleted copy doesn't come back; older clients benefit too. Rejected: appending to the winner (changes
+agreed text silently), client-minted blocks (positions diverge). Existing `conflict_copy::` properties
+are not migrated (`prop:conflict_copy` finds them). Cost: typing `conflict_copy::` by hand now makes a
+block.
 
 ### B-638 · `nooklet serve --data <dir that does not exist yet>` dies at once: `ENOENT … root.token`
 **Status:** fixed (2026-10-03, coordinator) · **Severity:** high (first start of any new server failed) · **Found:** 2026-10-03, owner, step 1 of the real-device test ·
@@ -3103,6 +3169,8 @@ replaced by one read failed 3 of 3 (`Received value: "🇨🇿"`); the polled te
 of 8 in the 96-test run under 56 busy loops (load average up to 69).
 
 ---
+
+2026-10-04: `page-icons.spec.ts` "…clearing the field removes the icon" now clears through the emoji picker's Remove button (same server-poll assertions).
 
 ### B-335 · `editing.spec.ts`'s `openJournal` can wait 30 s to blur a journal draft that has already become an outline
 **Status:** fixed · **Severity:** low (test harness) · **Found:** 2026-09-13, m9 cleanup, e2e

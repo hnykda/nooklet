@@ -2,6 +2,7 @@ import type { Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
+import { emojiDataPlugin } from "./src/emoji/build-data.js";
 import { lazyOnlyChunks } from "./src/sw/lazy-only-chunks.js";
 
 /**
@@ -41,6 +42,9 @@ export default defineConfig({
   plugins: [
     solid(),
     mermaidChunks(),
+    // The page-icon picker's emoji list (B-647): its own lazy chunk, and precached on purpose —
+    // ~38 KB gzipped, and an empty picker on a phone that first opens it offline is worse.
+    emojiDataPlugin(),
     VitePWA({
       // generateSW (not injectManifest): this milestone needs offline precaching of the app
       // shell only, nothing custom (no push/share-target handler yet — that's later work, and it

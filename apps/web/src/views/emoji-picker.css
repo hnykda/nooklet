@@ -1,0 +1,184 @@
+/* The page-icon picker (B-647, `EmojiPicker.tsx`). A popover in the page title row, positioned by
+   `PageIcon.tsx` under the icon button. Its width never exceeds the row it sits in: anything wider
+   than the screen would make a phone's page scroll sideways (cf. B-648). */
+
+.emoji-picker {
+  position: absolute;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, 100%);
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  line-height: var(--leading-snug);
+  overflow: hidden;
+}
+
+/* `page-title.css` sets a top margin on every child of the title row to centre it on the first
+   line; not this one. One class more than that rule, so the order the bundle emits them in does not
+   matter. */
+.page-view .page-title-row > .emoji-picker {
+  margin: 0;
+}
+
+.emoji-picker-head {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.emoji-picker-search {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--fg);
+  /* 16px on a phone: iOS zooms the whole page into any focused field set smaller. */
+  font-size: max(16px, var(--text-base));
+}
+
+.emoji-picker-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.emoji-picker-remove:hover,
+.emoji-picker-remove:focus-visible {
+  color: var(--danger);
+  border-color: currentColor;
+}
+
+.emoji-picker-body {
+  height: min(18rem, 45dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--space-sm) var(--space-sm);
+}
+
+.emoji-picker-section-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-sm) var(--space-xs) var(--space-xs);
+  background: var(--surface-1);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* Sections far below the fold skip layout and paint until scrolled near: ~1,900 glyphs. */
+.emoji-picker-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+.emoji-picker-grid {
+  display: grid;
+  /* 8 is also `COLS` in `EmojiPicker.tsx`, which arrow movement depends on. */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.emoji-picker-cell {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.emoji-picker-cell:hover {
+  background: var(--surface-2);
+}
+
+.emoji-picker-cell-active,
+.emoji-picker-cell-active:hover {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.emoji-picker-empty {
+  padding: var(--space-xl) var(--space-md);
+  color: var(--muted);
+  text-align: center;
+}
+
+.emoji-picker-foot {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: var(--space-xs) var(--space-sm);
+  border-top: 1px solid var(--hairline);
+}
+
+.emoji-picker-name {
+  padding: 0 var(--space-xs);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emoji-picker-groups {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+}
+
+.emoji-picker-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.emoji-picker-group:hover {
+  background: var(--surface-2);
+}
+
+@media (pointer: coarse) {
+  .emoji-picker-cell {
+    font-size: 26px;
+  }
+
+  .emoji-picker-group {
+    height: 36px;
+  }
+}
+
+@media print {
+  .emoji-picker {
+    display: none;
+  }
+}

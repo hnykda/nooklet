@@ -40,7 +40,7 @@ test("a phone's title row has no invisible controls; History and Add icon are in
   await expect(row.locator(".page-title-input")).toBeVisible();
   await actions.tap();
   await page.getByRole("menuitem", { name: "Add icon" }).tap();
-  const input = page.locator(".page-icon-input");
+  const input = page.locator(".emoji-picker-search");
   await expect(input).toBeFocused();
   await input.fill("🌱");
   await input.press("Enter");

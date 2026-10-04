@@ -31,5 +31,7 @@ Date: 2026-09-10. Status: accepted.
 ## Consequences
 
 - Concurrent edits to the same block's text on two devices resolve last-writer-wins in v1; a
-  3-way text merge on the client (diff-match-patch) is the planned v1.1 improvement.
+  3-way text merge on the client (diff-match-patch) is the planned v1.1 improvement. (Shipped in
+  M6 as a hand-rolled word diff3, `packages/core/src/sync/text-merge.ts`; when it cannot merge, the
+  losing text becomes a sibling block minted by the server — ADR 027.)
 - Device clocks more than 60 s ahead are rejected with a visible error rather than accepted.

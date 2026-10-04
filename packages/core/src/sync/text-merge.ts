@@ -209,9 +209,11 @@ export type PendingTextConflictOutcome =
  *     already would (by comparing `mineHlc`/`theirsHlc` against whichever is already in the state
  *     table's `content_hlc` column) — this function does not fight that decision. It only adds one
  *     `block.prop` op (`key: "conflict_copy"`) recording the *loser's* full text, so nothing either
- *     device wrote is ever silently discarded (research/03 §6.4). `conflict_copy` is an ordinary
- *     (non-reserved) block property — `applyOps` already routes it through `block_prop` with no
- *     schema change needed.
+ *     device wrote is ever silently discarded (research/03 §6.4). That property is a report, not
+ *     the end state: the server turns it into a sibling block after the winner (tagged
+ *     `sync-conflict:: true`) and clears it (ADR 027, `packages/server/src/conflict-copy.ts`). The
+ *     block is minted there, not here, because both devices can reach this branch for the same
+ *     conflict, and only the server can make one block of two reports.
  *   - "identical": `mine === theirs` — nothing to do.
  */
 export function resolvePendingTextConflict(

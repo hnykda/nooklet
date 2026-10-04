@@ -16,6 +16,8 @@
 /* A two-line title keeps its controls on its first line rather than floating between the lines. */
 .page-view .page-title-row {
   align-items: flex-start;
+  /* The icon picker (`EmojiPicker.tsx`) is positioned against the row (B-647). */
+  position: relative;
 }
 
 /* The first line's box: the title's line plus its own top padding. Each control centres itself on
@@ -27,8 +29,7 @@
   );
 }
 
-.page-title-row > .page-icon-button,
-.page-title-row > .page-icon-input {
+.page-title-row > .page-icon-button {
   --title-control-h: 1.5em;
   /* `1.5em` resolves against the control's own 26px type. */
   font-size: var(--text-2xl);

@@ -48,6 +48,11 @@ const HIDDEN_KEYS = new Set([
   "logseq.macro-arguments",
 ]);
 
+/** Set by the server on the block it makes from a conflict's losing text (ADR 027, B-642). */
+export const SYNC_CONFLICT_KEY = "sync-conflict";
+const SYNC_CONFLICT_TITLE =
+  "This block and the one above were edited on two devices at the same time. The block above kept its own text; this is the other device's. Keep, merge or delete it.";
+
 export function visibleProperties(
   properties: Readonly<Record<string, string>>,
 ): Array<[string, string]> {
@@ -83,14 +88,23 @@ export function BlockProperties(props: {
         }}
       >
         <For each={entries()}>
-          {([key, value]) => (
-            <span class="vr-prop" data-key={key} title={`${key}:: ${value}`}>
-              <span class="vr-prop-key">{key}</span>
-              <span class="vr-prop-value">
-                <InlineContent content={value} onNavigate={props.onNavigate} />
+          {([key, value]) =>
+            key === SYNC_CONFLICT_KEY ? (
+              // ADR 027: the server's marker on the losing side of a same-block edit conflict. A
+              // badge that says what happened, not "sync-conflict: true"; the line stays in the
+              // editing buffer, so deleting it there clears the badge once merged by hand.
+              <span class="vr-prop vr-prop-conflict" data-key={key} title={SYNC_CONFLICT_TITLE}>
+                sync conflict
               </span>
-            </span>
-          )}
+            ) : (
+              <span class="vr-prop" data-key={key} title={`${key}:: ${value}`}>
+                <span class="vr-prop-key">{key}</span>
+                <span class="vr-prop-value">
+                  <InlineContent content={value} onNavigate={props.onNavigate} />
+                </span>
+              </span>
+            )
+          }
         </For>
       </div>
     </Show>
