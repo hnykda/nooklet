@@ -1,6 +1,6 @@
 # Proposal 006: capture from anywhere on the phone (share sheet, quick actions, widgets)
 
-**Status:** proposed 2026-10-04, awaiting the owner's choice of phases · **Prompted by:** the owner:
+**Status:** Phase 1 accepted 2026-10-04 by the owner ("do phase 1"); being built, see `docs/progress/phone-capture.md`. Phases 2-3 not decided · **Prompted by:** the owner:
 "are there some iOS features like 'share with nooklet' so it would get added as a quick capture to
 the current day, or when holding the icon it offers some options, or a widget… plan it? Same in
 Android?"
