@@ -46,7 +46,7 @@ export function SyncIndicator() {
   onCleanup(() => quiet.dispose());
   // The label is the TRUE state, not the delayed one: it is only seen on hover or read by a screen
   // reader, neither of which blinks, and it is what an e2e test waits on for "nothing left to push".
-  const label = () => syncLabel(view(), status()?.pendingCount ?? 0);
+  const label = () => syncLabel(view(), status()?.pendingCount ?? 0, status()?.liveNote);
   // B-712: remembered per graph, so removing this graph later (from another graph, when this one
   // is not loaded) can say how many unsynced changes it would lose. Only a status the engine
   // actually reported is recorded — never a guessed zero.

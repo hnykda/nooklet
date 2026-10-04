@@ -15,10 +15,11 @@
  *                   minting one if it does not exist yet; ignores --graph, it is not per-graph)
  *   nooklet embed   status | run | model <name> [--provider ollama|openai-compat] [--host <url>]
  *                   M3/ADR 010 embeddings: index status, drain the queue now, or switch models.
- *   nooklet backup  [--out <path>] [--data <dir>]    consistent VACUUM INTO snapshot + assets/,
+ *   nooklet backup  [--graph <id>] [--out <path>] [--data <dir>]  VACUUM INTO snapshot + assets/,
  *                   as a single .tar.gz archive (M6, docs/OPERATIONS.md)
- *   nooklet restore <archive> [--data <dir>] [--force]  restore a backup (refuses to clobber an
- *                   existing database unless --force; refuses an archive newer than this build)
+ *   nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]  restore a backup into one
+ *                   graph (refuses to clobber an existing database unless --force; refuses an
+ *                   archive newer than this build)
  *   nooklet gc      [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
  *                   op-log GC down to min(device.acked_seq) across live devices (M6), and
  *                   removal of assets nothing references any more (M7, ./gc.ts)
@@ -42,7 +43,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { renderUnicodeCompact } from "uqr";
-import { WebSocketServer } from "ws";
 import type { ServerContext } from "./apply-ops.js";
 import { createPairingCode } from "./auth/pairing-codes.js";
 import {
@@ -59,6 +59,7 @@ import {
   booleanFlag,
   CliArgError,
   checkFlags,
+  PAIR_FLAGS,
   parseArgs,
   parseGcFlags,
   parseRepairFlags,
@@ -93,6 +94,11 @@ import {
 } from "./graphs/registry.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { importLogseqGraph } from "./importer/logseq.js";
+import {
+  configureLiveLimits,
+  createLiveWebSocketServer,
+  parseLiveLimitFlags,
+} from "./live-limits.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
 import { startLiveMirror } from "./mirror/live.js";
@@ -103,6 +109,7 @@ import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/se
 import { applyOrgDateRepair, formatOrgDateReport, planOrgDateRepair } from "./repair-org-dates.js";
 import { formatServeBanner } from "./serve-banner.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
+import { NOOKLET_VERSION } from "./version.js";
 
 function dataDir(args: Args): string {
   const flag = args.flags.get("data");
@@ -230,6 +237,7 @@ const USAGE = `nooklet — a local-first outliner server
                                          behind a same-host reverse proxy (docs/OPERATIONS.md).
                                          Default: on for a loopback bind, off with a non-loopback
                                          --host (--loopback-token turns it back on)
+                 [--ws-max-per-token <n>] [--ws-max-total <n>]   live-socket caps (default 20, 500)
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
@@ -250,11 +258,14 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet plugin enable <plugin-id>
   nooklet plugin disable <plugin-id>
   nooklet plugin reload <plugin-id>
-  nooklet backup [--out <path>] [--data <dir>]
-  nooklet restore <archive> [--data <dir>] [--force]
-  nooklet gc [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
-  nooklet verify [--data <dir>]
-  nooklet repair org-dates [--apply] [--data <dir>]   dry run unless --apply
+  nooklet backup [--graph <id>] [--out <path>] [--data <dir>]
+  nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
+  nooklet gc [--graph <id>] [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
+  nooklet verify [--graph <id>] [--data <dir>]
+  nooklet repair org-dates [--graph <id>] [--apply] [--data <dir>]   dry run unless --apply
+  nooklet --version | -V
+
+  Every command except serve works on one graph: --graph <id>, default "default".
 `;
 
 async function main(): Promise<void> {
@@ -268,6 +279,12 @@ async function main(): Promise<void> {
     process.stdout.write(USAGE);
     return;
   }
+  // B-696. Like --help, answered before anything opens a data dir. `-V` is not a `--` flag, so it
+  // lands in `args._`; only honoured as the first token, so it can never be a positional value.
+  if (args.flags.has("version") || cmd === "-V" || cmd === "version") {
+    process.stdout.write(`nooklet ${NOOKLET_VERSION}\n`);
+    return;
+  }
 
   switch (cmd) {
     case "serve": {
@@ -275,6 +292,8 @@ async function main(): Promise<void> {
       migrateLegacyLayoutIfNeeded(dir);
       const baseConfig = baseServerConfig(args);
       const webClientDir = resolveWebClientDir(args.flags.get("web"));
+      // B-676 H4: caps on /sync/live and /ui/live sockets (`live-limits.ts`).
+      configureLiveLimits(cliArg(() => parseLiveLimitFlags(args)));
 
       // One indexer per graph this process ends up opening (ADR 025 — a graph is opened lazily,
       // the first time something asks for it, not necessarily at boot), so shutdown can stop all
@@ -338,8 +357,9 @@ async function main(): Promise<void> {
       // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
       // adapter's `serve()` call — `upgradeWebSocket` (used by that route) only handles the Hono
       // side of the handshake; `@hono/node-server` needs a `{ noServer: true }` WebSocketServer
-      // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs.
-      const wss = new WebSocketServer({ noServer: true });
+      // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs. It carries
+      // the frame-size limit (B-676 H12, `live-limits.ts`).
+      const wss = createLiveWebSocketServer();
       const shutdown = (): void => {
         for (const indexer of indexers.values()) indexer.stop();
         process.exit(0);
@@ -365,12 +385,26 @@ async function main(): Promise<void> {
             allowedHosts: baseConfig.allowedHosts,
             webClientDir,
             interfaces: networkInterfaces(),
+            version: NOOKLET_VERSION,
           });
           process.stdout.write(banner.stdout);
           if (banner.stderr) process.stderr.write(banner.stderr);
         },
       );
       guardUpgradeSockets(server);
+      // B-685: a failed listen is an 'error' event on the server; unhandled, Node threw it as a
+      // raw EADDRINUSE stack trace. Say what happened and what to do, in one line.
+      server.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") {
+          die(
+            `port ${baseConfig.port} on ${hostname} is in use — stop the other server, or pick another with --port <n>`,
+          );
+        }
+        if (err.code === "EACCES") {
+          die(`not allowed to listen on port ${baseConfig.port} — pick another with --port <n>`);
+        }
+        die(`could not listen on ${hostname}:${baseConfig.port}: ${err.message}`);
+      });
       return;
     }
 
@@ -445,7 +479,7 @@ async function main(): Promise<void> {
     // server's pairing page. The code goes to stdout for the owner and nowhere else: not to the
     // server's log, not into root.token, not into the database (only its hash).
     case "pair": {
-      cliArg(() => checkFlags(args, ["data", "graph", "link", "scope", "sync", "minutes"]));
+      cliArg(() => checkFlags(args, PAIR_FLAGS));
       const linkFlag = args.flags.get("link");
       if (typeof linkFlag !== "string")
         die(
@@ -773,7 +807,7 @@ async function main(): Promise<void> {
     case "backup": {
       const { ctx, config } = open(args);
       const outFlag = args.flags.get("out");
-      const result = createBackup(ctx.driver, {
+      const result = await createBackup(ctx.driver, {
         dataDir: config.dataDir,
         ...(typeof outFlag === "string" ? { outPath: resolve(outFlag) } : {}),
       });
@@ -796,7 +830,7 @@ async function main(): Promise<void> {
       // Targets this graph's own subdirectory (ADR 025) so a restored archive lands exactly where
       // `serve`/`open()` will look for it — migrateLegacyLayoutIfNeeded never needs to touch it.
       const dir = graphDir(dataDir(args), graphIdFlag(args));
-      const result = restoreBackup(resolve(archivePath), { dataDir: dir, force });
+      const result = await restoreBackup(resolve(archivePath), { dataDir: dir, force });
       // Into a fresh data dir this is the graph's first database; give it its graph.json (B-607).
       ensureGraphMeta(dataDir(args), graphIdFlag(args));
       process.stdout.write(
@@ -811,7 +845,7 @@ async function main(): Promise<void> {
       // Parsed before the database is opened: a flag gc does not understand stops the run.
       const gcFlags = cliArg(() => parseGcFlags(args));
       const { ctx, config } = open(args);
-      const report = runGc(ctx, { dataDir: config.dataDir, ...gcFlags });
+      const report = await runGc(ctx, { dataDir: config.dataDir, ...gcFlags });
       // The op-log half can be refused (no device has synced yet); the asset half never is, so
       // both are always reported.
       if (report.refused) {
@@ -851,8 +885,10 @@ async function main(): Promise<void> {
     }
 
     case "verify": {
-      const { ctx } = open(args);
-      const report = verifyRebuildParity(ctx.driver);
+      const { ctx, config } = open(args);
+      // On disk beside the graph, not in memory: the replica holds the whole replayed op log.
+      const scratchPath = join(config.dataDir, `.verify-scratch-${process.pid}.sqlite`);
+      const report = verifyRebuildParity(ctx.driver, { scratchPath });
       process.stdout.write(`${formatVerifyReport(report)}\n`);
       if (!report.ok) process.exit(1);
       return;

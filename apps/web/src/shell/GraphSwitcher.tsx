@@ -58,6 +58,7 @@ import { confirmDialog } from "../app/confirm-dialog.js";
 import {
   activeGraph,
   activeGraphId,
+  canPromoteGraph,
   createLocalOnlyGraph,
   findGraphByAddress,
   type GraphListEntry,
@@ -508,6 +509,13 @@ export function GraphSwitcher(): JSX.Element {
     e.preventDefault();
     const id = promotingId();
     if (!id) return;
+    // B-714: checked BEFORE the server graph is made — `updateGraph` refuses a detached copy only
+    // after `createGraphOnServer` would already have created an empty graph on the server.
+    const entry = listGraphs().find((g) => g.id === id);
+    if (!entry || !canPromoteGraph(entry)) {
+      setError("This graph cannot be given a server.");
+      return;
+    }
     const rootToken = promoteRootToken().trim();
     const graphId = promoteGraphId().trim();
     if (!rootToken || !graphId) return;
@@ -590,8 +598,25 @@ export function GraphSwitcher(): JSX.Element {
             <Pencil size={13} />
           </button>
           {/* ADR 025 move 2: only a genuinely local-only entry (no baseUrl at all) has anything
-                to promote — one already server-backed is already synced. */}
-          <Show when={entry.kind === "local" && !entry.baseUrl}>
+                to promote — one already server-backed is already synced. B-714: a device-only copy
+                of an earlier server graph holds only this device's unsynced tail, so promoting it
+                would seed a server graph with a fragment; shown disabled, saying why. */}
+          <Show
+            when={canPromoteGraph(entry)}
+            fallback={
+              <Show when={entry.detachedFrom}>
+                <button
+                  type="button"
+                  class="graph-switcher-icon-action"
+                  disabled
+                  aria-label={`Add a server for ${graphDisplayName(entry)} (not available: a device-only copy)`}
+                  title="A device-only copy of an earlier server graph cannot be given a server: it holds only this device's unsynced changes, not the whole graph."
+                >
+                  <UploadCloud size={13} />
+                </button>
+              </Show>
+            }
+          >
             <button
               type="button"
               class="graph-switcher-icon-action"

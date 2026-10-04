@@ -21,3 +21,9 @@ export function assetUrl(src: string): string {
   if (!m) return src;
   return `${apiBaseUrl()}/assets/${m[1]}`;
 }
+
+/** The asset id in an asset path (`assets/<id>.<ext>`), or `undefined` for any other `src`. */
+export function assetIdOf(src: string): string | undefined {
+  const m = ASSET_PATH_RE.exec(src.trim());
+  return m?.[1]?.replace(/\.[^.]*$/, "");
+}

@@ -177,6 +177,26 @@ describe("GraphSwitcher", () => {
     await waitFor(() => expect(listGraphs().map((g) => g.id)).toEqual(["a"]));
   });
 
+  it("B-714: a device-only copy of an earlier server graph cannot be promoted (shown disabled)", () => {
+    fakePlatform.name = "capacitor";
+    addGraph({ id: "a", label: "Open One", kind: "local" });
+    addGraph({
+      id: "copy",
+      label: "Old Copy",
+      kind: "local",
+      detachedFrom: { address: "https://home.example.com/g/x", replacedBy: "other", at: "t" },
+    });
+    setActiveGraphId("a");
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    expect(screen.getByRole("button", { name: "Add a server for Open One" })).toBeTruthy();
+    const blocked = screen.getByRole("button", {
+      name: /Add a server for Old Copy \(not available/,
+    }) as HTMLButtonElement;
+    expect(blocked.disabled).toBe(true);
+    expect(blocked.title).toContain("only this device's unsynced changes");
+  });
+
   it("B-712: a server graph with unsynced changes says how many and needs 'delete'", async () => {
     addGraph({ id: "a", label: "Graph A", kind: "remote", baseUrl: "/g/a" });
     addGraph({ id: "b", label: "Graph B", kind: "remote", baseUrl: "/g/b" });

@@ -50,8 +50,9 @@ import {
   Show,
   Suspense,
 } from "solid-js";
+import { lookupAssetSize } from "../../data/asset-sizes.js";
 import { pageRoutePath, rawAnchorHref } from "../../routes/page-path.js";
-import { assetUrl } from "./asset-url.js";
+import { assetIdOf, assetUrl } from "./asset-url.js";
 import { canHighlight, highlightCode, highlightSync, languageClass } from "./highlight.js";
 import { loadMath, renderTexSync } from "./math.js";
 import { fenceRenderer, PluginFence } from "./PluginFence.js";
@@ -458,16 +459,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               </a>
             );
           case "image":
-            return (
-              <img
-                class="vr-image"
-                alt={tok.alt}
-                src={assetUrl(tok.src)}
-                loading="lazy"
-                data-from={tok.start}
-                data-to={tok.end}
-              />
-            );
+            return <ImageView src={tok.src} alt={tok.alt} from={tok.start} to={tok.end} />;
           case "strong":
             return (
               <strong data-from={tok.start} data-to={tok.end}>
@@ -527,6 +519,41 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
 }
 
 /** A run of inline tokens sharing one `RenderCtx.source`. */
+/**
+ * An image, with its box reserved before it loads when the asset's size is known (B-703).
+ *
+ * `loading="lazy"` leaves an image 0×0 until it is scrolled near, so every row below it jumped by
+ * the picture's height when it arrived. With the size known the box is drawn at once: the width
+ * B-682's rules would give the loaded picture — its own width, scaled down (never up) to the
+ * block's width and to 70vh of height — and the height from the aspect ratio. Written as an inline
+ * `width` because the stylesheet's `width: auto` would win over a `width` attribute, and `auto` on
+ * an image with no bytes yet is 0. The attributes are there too, for anything reading the markup.
+ */
+function ImageView(props: { src: string; alt: string; from: number; to: number }) {
+  const size = createMemo(() => {
+    const id = assetIdOf(props.src);
+    return id === undefined ? undefined : lookupAssetSize(id);
+  });
+  const style = () => {
+    const s = size();
+    if (!s) return undefined;
+    return `width: min(100%, ${s.width}px, calc(70vh * ${s.width} / ${s.height})); aspect-ratio: ${s.width} / ${s.height}`;
+  };
+  return (
+    <img
+      class="vr-image"
+      alt={props.alt}
+      src={assetUrl(props.src)}
+      loading="lazy"
+      width={size()?.width}
+      height={size()?.height}
+      style={style()}
+      data-from={props.from}
+      data-to={props.to}
+    />
+  );
+}
+
 export function InlineTokens(props: { tokens: Tok[]; ctx: RenderCtx }) {
   return <For each={props.tokens}>{(tok) => <InlineTokenView tok={tok} ctx={props.ctx} />}</For>;
 }
@@ -542,14 +569,15 @@ export function InlineTokens(props: { tokens: Tok[]; ctx: RenderCtx }) {
  * the neighbouring tokens: an empty line has no tokens to measure from, and the source is the
  * string these lines were classified from (the invariant `text` tokens already slice by).
  */
-function Lines(props: { lines: Tok[][]; ctx: RenderCtx }) {
+function Lines(props: { lines: Tok[][]; ctx: RenderCtx; firstLine?: number }) {
   const breaks = createMemo(() => {
     const at: number[] = [];
     const source = props.ctx.source;
     for (let i = source.indexOf("\n"); i !== -1; i = source.indexOf("\n", i + 1)) at.push(i);
     return at;
   });
-  const breakAt = (i: number): number => breaks()[i - 1] ?? 0;
+  // `firstLine`: a paragraph that is a part of prose-with-a-table starts mid-content.
+  const breakAt = (i: number): number => breaks()[(props.firstLine ?? 0) + i - 1] ?? 0;
   return (
     <For each={props.lines}>
       {(line, i) => (
@@ -579,8 +607,12 @@ export function BlockContentView(props: { content: BlockContent; ctx: RenderCtx 
           case "paragraph":
             return (
               <p class="vr-paragraph">
-                <Lines lines={c.lines} ctx={ctx} />
+                <Lines lines={c.lines} ctx={ctx} firstLine={c.firstLine} />
               </p>
+            );
+          case "mixed":
+            return (
+              <For each={c.parts}>{(part) => <BlockContentView content={part} ctx={ctx} />}</For>
             );
           case "heading": {
             const level = c.level;

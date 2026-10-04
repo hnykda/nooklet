@@ -46,7 +46,8 @@ describe("fetchJsonStallAware (the first sync of a real graph was aborted mid-do
     vi.spyOn(globalThis, "fetch").mockImplementation(
       (_i, init) =>
         new Promise((_res, rej) => {
-          const signal = init?.signal as AbortSignal;
+          const signal = init?.signal;
+          if (!signal) return;
           signal.addEventListener("abort", () => rej(signal.reason));
         }),
     );

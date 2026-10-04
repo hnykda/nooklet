@@ -155,7 +155,12 @@
   cursor: pointer;
 }
 
-.graph-switcher-icon-action:hover {
+.graph-switcher-icon-action[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.graph-switcher-icon-action:not([disabled]):hover {
   background: var(--surface-2);
   color: var(--fg);
 }

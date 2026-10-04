@@ -1,5 +1,6 @@
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { crc32, deflateSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeTestServer, post, type TestServer } from "../test-helpers.js";
 
@@ -153,3 +154,89 @@ describe("GET /assets/:id", () => {
     }
   });
 });
+
+describe("B-703: image sizes", () => {
+  const upload = (data_base64: string, filename = "pic.png") =>
+    post(s.app, "/api/v1/asset.upload", s.writeToken, {
+      filename,
+      mime_type: "image/png",
+      data_base64,
+    });
+
+  it("asset.upload records and returns the size; asset.sizes reads it back", async () => {
+    const up = await upload(solidPng(120, 45, [10, 20, 30]).toString("base64"));
+    expect(up.json).toMatchObject({ width: 120, height: 45 });
+    const pdf = await post(s.app, "/api/v1/asset.upload", s.writeToken, {
+      filename: "doc.pdf",
+      mime_type: "application/pdf",
+      data_base64: Buffer.from("%PDF-1.7\n").toString("base64"),
+    });
+    expect(pdf.json).toMatchObject({ width: null, height: null });
+
+    const { status, json } = await post(s.app, "/api/v1/asset.sizes", s.writeToken, {
+      ids: [up.json.id, pdf.json.id, "zzzzzzzzzzzzzz"],
+    });
+    expect(status).toBe(200);
+    expect(json.assets).toEqual([
+      { id: up.json.id, width: 120, height: 45 },
+      { id: pdf.json.id, width: null, height: null },
+    ]);
+  });
+
+  it("an asset stored before sizes were recorded gets its size from the file on first read", async () => {
+    const up = await upload(PNG_1PX_BASE64);
+    s.serverCtx.driver.run("UPDATE asset SET width = NULL, height = NULL WHERE id = ?", [
+      up.json.id,
+    ]);
+    const { json } = await post(s.app, "/api/v1/asset.sizes", s.writeToken, { ids: [up.json.id] });
+    expect(json.assets).toEqual([{ id: up.json.id, width: 1, height: 1 }]);
+    const row = s.serverCtx.driver.get<{ width: number; height: number }>(
+      "SELECT width, height FROM asset WHERE id = ?",
+      [up.json.id],
+    );
+    expect(row).toEqual({ width: 1, height: 1 }); // written back, so the file is read only once
+  });
+
+  it("a re-upload of identical bytes fills in a size the first upload did not record", async () => {
+    const up = await upload(PNG_1PX_BASE64);
+    s.serverCtx.driver.run("UPDATE asset SET width = NULL, height = NULL WHERE id = ?", [
+      up.json.id,
+    ]);
+    const again = await upload(PNG_1PX_BASE64, "again.png");
+    expect(again.json).toMatchObject({ deduped: true, width: 1, height: 1 });
+  });
+
+  it("asset.sizes needs a token, like every /api/v1 route", async () => {
+    const res = await s.app.request("/api/v1/asset.sizes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [] }),
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+/** A solid RGB PNG of a known size, built in memory. */
+function solidPng(width: number, height: number, rgb: [number, number, number]): Buffer {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const row = Buffer.alloc(1 + width * 3);
+  for (let x = 0; x < width; x++) row.set(rgb, 1 + x * 3);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: height }, () => row)))),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}

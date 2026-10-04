@@ -6,6 +6,7 @@
  * `../sync/http-transport.ts`'s own "thin, untested wiring around tested logic" split.
  */
 
+import { LIVE_MAX_PAYLOAD_BYTES } from "@nooklet/core";
 import { activityLog, describeCommandActivity } from "./activity-log.js";
 import type { CommandRunResult } from "./command-runner.js";
 import type { UiWindowStateWire } from "./state-snapshot.js";
@@ -44,11 +45,7 @@ export async function handleIncomingFrame(
 
   if (msg.type === "state.get") {
     activityLog.record("Claude looked at this window");
-    return JSON.stringify({
-      type: "state.result",
-      request_id: requestId,
-      state: deps.buildState(),
-    });
+    return stateResultFrame(requestId, deps.buildState());
   }
 
   if (msg.type === "command.run") {
@@ -70,6 +67,39 @@ export async function handleIncomingFrame(
   }
 
   return null;
+}
+
+/** Room left under the server's frame limit for the rest of the frame, generously: everything but
+ * the selected ids is ~1 KB (`tools/probes/security/ws-frame-sizes.mjs`). */
+const STATE_FRAME_BUDGET = LIVE_MAX_PAYLOAD_BYTES - 16 * 1024;
+
+/**
+ * The `state.result` frame, kept under the server's frame limit (B-676 H12). A frame over
+ * `LIVE_MAX_PAYLOAD_BYTES` gets this window's socket closed with 1009, so the agent would get no
+ * answer at all. The only part that grows is `selected_block_ids` (17 bytes an id; a select-all
+ * on a huge page), so that list is cut to fit and `selected_block_count` says how many there
+ * really were. Under ~30,000 selected blocks nothing changes.
+ */
+export function stateResultFrame(requestId: string, state: UiWindowStateWire): string {
+  const frame = JSON.stringify({ type: "state.result", request_id: requestId, state });
+  // Bytes, not string length: the limit is on UTF-8, and a page name may not be ASCII.
+  const bytes = new TextEncoder().encode(frame).length;
+  if (bytes <= STATE_FRAME_BUDGET) return frame;
+  const ids = state.focus.selected_block_ids;
+  // Ids are 14 ASCII chars: 17 bytes each with quotes and comma.
+  const keep = Math.max(0, ids.length - Math.ceil((bytes - STATE_FRAME_BUDGET) / 17));
+  return JSON.stringify({
+    type: "state.result",
+    request_id: requestId,
+    state: {
+      ...state,
+      focus: {
+        ...state.focus,
+        selected_block_ids: ids.slice(0, keep),
+        selected_block_count: ids.length,
+      },
+    },
+  });
 }
 
 /** The `hello` frame a window sends on connect, and re-sends (per ADR 015 §1's "keep it updated")

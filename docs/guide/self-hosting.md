@@ -96,7 +96,8 @@ CLI commands run inside the container:
 ```sh
 docker exec nooklet /app/node /app/server.mjs token create --label phone --scope write --sync
 docker exec nooklet /app/node /app/server.mjs token root
-docker exec nooklet /app/node /app/server.mjs backup
+docker exec nooklet /app/node /app/server.mjs backup --graph default --out /data/backups/default.tar.gz
+docker exec nooklet /app/node /app/server.mjs --version
 ```
 
 ### Kubernetes
@@ -147,8 +148,7 @@ dedicated security review yet.** Treat it as your own risk until that review lan
 
 > **Security review (2026-10-04).** Public exposure behind a TLS proxy is reasonable for one owner
 > with a few devices **if every item below holds**. It is not yet suitable for several users or a
-> high-profile host. What is missing is rate limiting inside nooklet, revoked tokens' WebSockets
-> being closed, and revocable asset URLs. Tailnet-only stays the recommendation. Details are in
+> high-profile host. What is missing is rate limiting inside nooklet and revocable asset URLs. Tailnet-only stays the recommendation. Details are in
 > `docs/progress/security-review.md`, and the route-by-route list is in
 > `docs/spec/security-inventory.md`.
 >
@@ -159,11 +159,14 @@ dedicated security review yet.** Treat it as your own risk until that review lan
 > - HSTS is sent when the proxy sends `X-Forwarded-Proto: https`.
 > - Request bodies are capped at 16 MB, or 48 MB for uploads and sync pushes.
 > - The automatic local token is off whenever `--host` is not loopback.
+> - The sync and live-UI WebSockets close a connection that has not authenticated within 10 s,
+>   allow 20 per token and 500 in total (`--ws-max-per-token`, `--ws-max-total`), and refuse
+>   messages over 512 KiB.
 >
 > In addition to the checklist below:
 > - **Make the proxy send `X-Forwarded-Proto: https`.**
-> - **Limit WebSockets at the proxy:** connections per IP and an idle timeout. nooklet does not
->   time out a socket that never authenticates.
+> - **Limit WebSockets per IP at the proxy.** nooklet's caps are per token and in total, so one
+>   client without a token can still take every free slot for 10 seconds at a time.
 > - **After revoking a device's token, restart the server** if that device may still be connected.
 >   Revocation stops its HTTP requests at once, but not a WebSocket it already has open.
 > - **Assume a revoked device can still read the attachments (`/assets/<id>`) it has seen.** An
@@ -262,18 +265,31 @@ timer: schedule it with cron, a `launchd` job or a CronJob.
 
 Do not rely on a file-level copy of a live `graph.sqlite`. Back up the archives instead.
 
+With several graphs, back up each one; an archive holds exactly one graph:
+
+```sh
+nooklet backup --graph default --out /backups/default-$(date +%F).tar.gz
+nooklet backup --graph alpha   --out /backups/alpha-$(date +%F).tar.gz
+```
+
 To restore:
 
 ```sh
 # stop the server first
 nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
-nooklet verify --data <dir>
+nooklet verify --graph <id> --data <dir>
 # start the server again
 ```
 
+`restore` writes into `graphs/<id>/` only, so restoring `alpha` leaves every other graph as it
+is. Without `--graph` it restores `default`. Restore an archive into the graph it came from: the
+archive does not record which graph that was.
+
 `restore` refuses to overwrite an existing database unless you pass `--force`, and refuses an
-archive from a newer schema than the build understands. Do a drill once: restore into a scratch
-`--data` directory and run `verify`. It should print `OK`.
+archive from a newer schema than the build understands. With `--force` it also discards the old
+database's leftover `-wal`/`-shm` files, which a server that was killed rather than stopped leaves
+behind. Do a drill once: restore into a scratch `--data` directory and run `verify`. It should
+print `OK`.
 
 ### Trimming the op log
 
@@ -284,7 +300,7 @@ has never synced holds a token; revoke tokens of devices you no longer use.
 
 ## Upgrades
 
-1. Take a backup.
+1. Take a backup of each graph, and note the running version (`nooklet --version`).
 2. Update: `git pull && pnpm install && pnpm --filter @nooklet/web build`, or change the image tag
    to the new version (the [Releases page](https://github.com/hnykda/nooklet/releases) and
    `CHANGELOG.md` say what changed).

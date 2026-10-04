@@ -10,8 +10,8 @@
  * it stays deliberately thin — it only shapes HTTP/WS calls to match `./types.ts`.
  */
 
+import { createLiveRetry } from "./live-backoff.js";
 import {
-  LIVE_AUTH_REJECTED_CODES,
   type PullResponse,
   type PushRequestBody,
   type PushResponse,
@@ -154,7 +154,8 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
     connectLive(deviceId: string, handlers: SyncLiveHandlers): () => void {
       let closedByCaller = false;
       let socket: WebSocket | undefined;
-      let retryDelayMs = 1000;
+      // B-676 H4: the delay depends on why the socket closed (`./live-backoff.ts`).
+      const retry = createLiveRetry();
       let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
       const wsUrl = () => {
@@ -165,6 +166,14 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
 
       const connect = () => {
         if (closedByCaller) return;
+        const scheduleReconnect = (code: number) => {
+          handlers.onClose?.(code);
+          // `null`: the server refused the token. Retrying cannot change its answer, and the only
+          // fix (re-pairing) reloads the page and builds a fresh transport anyway.
+          const delay = retry.onClose(code);
+          if (closedByCaller || delay === null) return;
+          retryTimer = setTimeout(connect, delay);
+        };
         // B-569: constructing the URL (`wsUrl()`) or the socket itself can throw synchronously —
         // resolving a relative URL against this worker's own `self.location` does not behave the
         // way it does on web/PWA in the Capacitor iOS shell with no server configured. `connect()`
@@ -174,18 +183,11 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
         try {
           socket = new WebSocket(wsUrl());
         } catch {
-          // `scheduleReconnect` below is defined inside this same function and not yet
-          // initialized the first time `connect()` runs, so its two lines are repeated here
-          // rather than called — the two must stay in sync if either changes.
-          handlers.onClose?.(1006);
-          if (!closedByCaller) {
-            retryTimer = setTimeout(connect, retryDelayMs);
-            retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
-          }
+          scheduleReconnect(1006);
           return;
         }
         socket.addEventListener("open", () => {
-          retryDelayMs = 1000;
+          retry.onOpen();
           // Auth + device identity travel in the WS handshake's first *message*, not the URL or
           // headers (a browser cannot set a bearer header on a WebSocket upgrade) — see
           // `packages/server/src/sync/live.ts`'s `HelloMessage`/`isHello`.
@@ -202,18 +204,7 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
             // ignore malformed frames
           }
         });
-        const scheduleReconnect = () => {
-          if (closedByCaller) return;
-          retryTimer = setTimeout(connect, retryDelayMs);
-          retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
-        };
-        socket.addEventListener("close", (ev) => {
-          handlers.onClose?.(ev.code);
-          // The server refused the token: retrying every 30 s cannot change its answer, and the
-          // only fix (re-pairing) reloads the page and builds a fresh transport anyway.
-          if (LIVE_AUTH_REJECTED_CODES.has(ev.code)) return;
-          scheduleReconnect();
-        });
+        socket.addEventListener("close", (ev) => scheduleReconnect(ev.code));
         socket.addEventListener("error", () => socket?.close());
       };
       connect();

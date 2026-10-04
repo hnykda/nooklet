@@ -36,9 +36,11 @@ Things any deployment has to get right:
 - **Backups.** `nooklet backup --graph <id> --out <file>` takes a consistent snapshot while the
   server runs. A file-level copy of the live `graph.sqlite` + WAL is not guaranteed consistent. The
   chart's CronJob writes `backups/nooklet-<graph>-<date>.tar` into the volume nightly, for whatever
-  copies the volume off-site. Restore: scale to 0, `nooklet restore <tar> --data /data --force`,
-  scale back. (That restores the `default` graph: `restore` rejects `--graph` today even though
-  it reads it, so other graphs can't be restored this way yet. See `docs/progress/infra.md`.)
+  copies the volume off-site. Restore one graph: scale to 0, then in a pod with the volume mounted
+  `nooklet restore /data/backups/nooklet-alpha-<date>.tar --data /data --graph alpha --force` and
+  `nooklet verify --data /data --graph alpha`, then scale back. Only that graph's directory
+  (`/data/graphs/alpha/`) is touched; the other graphs stay as they are. Without `--graph` it
+  restores `default`. (Before B-671 was fixed, `restore` refused `--graph`.)
 - **`/healthz`** is the liveness/readiness endpoint and sits outside the Host guard.
 
 ### Helm chart

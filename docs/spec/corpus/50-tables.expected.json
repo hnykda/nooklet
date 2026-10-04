@@ -1,0 +1,238 @@
+{
+  "description": "GFM tables (CLS-T, B-702): outer pipes, alignment colons, an escaped `\\|`, a short row; prose, a blank line, a table, prose (the shape real Logseq tables have); the no-outer-pipe form. Cell tokens are offsets into the whole content.",
+  "properties": {},
+  "blocks": [
+    {
+      "content": "| Fruit | Count | Note |\n| :--- | ---: | :---: |\n| Pear \\| Quince | 3 | **ripe** |\n| Fig | 12 |",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "A list of weekly chores, laid out below:\n\n| Day | Task |\n|---|---|\n| Mon | [[Laundry]] |\n| Tue |  |\n\nAsk @Alex about the rest.",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    },
+    {
+      "content": "Plain|Pipes\n----|----\na|b",
+      "marker": null,
+      "priority": null,
+      "properties": {},
+      "collapsed": false,
+      "children": []
+    }
+  ],
+  "blockContent": [
+    {
+      "kind": "table",
+      "align": ["left", "right", "center"],
+      "header": [
+        [
+          {
+            "kind": "text",
+            "start": 2,
+            "end": 7
+          }
+        ],
+        [
+          {
+            "kind": "text",
+            "start": 10,
+            "end": 15
+          }
+        ],
+        [
+          {
+            "kind": "text",
+            "start": 18,
+            "end": 22
+          }
+        ]
+      ],
+      "rows": [
+        [
+          [
+            {
+              "kind": "text",
+              "start": 51,
+              "end": 56
+            },
+            {
+              "kind": "escape",
+              "start": 56,
+              "end": 58,
+              "char": "|"
+            },
+            {
+              "kind": "text",
+              "start": 58,
+              "end": 65
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "start": 68,
+              "end": 69
+            }
+          ],
+          [
+            {
+              "kind": "strong",
+              "start": 72,
+              "end": 80,
+              "children": [
+                {
+                  "kind": "text",
+                  "start": 74,
+                  "end": 78
+                }
+              ]
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "kind": "text",
+              "start": 85,
+              "end": 88
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "start": 91,
+              "end": 93
+            }
+          ],
+          []
+        ]
+      ]
+    },
+    {
+      "kind": "mixed",
+      "parts": [
+        {
+          "kind": "paragraph",
+          "lines": [
+            [
+              {
+                "kind": "text",
+                "start": 0,
+                "end": 40
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "table",
+          "align": [null, null],
+          "header": [
+            [
+              {
+                "kind": "text",
+                "start": 44,
+                "end": 47
+              }
+            ],
+            [
+              {
+                "kind": "text",
+                "start": 50,
+                "end": 54
+              }
+            ]
+          ],
+          "rows": [
+            [
+              [
+                {
+                  "kind": "text",
+                  "start": 69,
+                  "end": 72
+                }
+              ],
+              [
+                {
+                  "kind": "wikilink",
+                  "start": 75,
+                  "end": 86,
+                  "target": "Laundry",
+                  "targetStart": 77,
+                  "targetEnd": 84
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "kind": "text",
+                  "start": 91,
+                  "end": 94
+                }
+              ],
+              []
+            ]
+          ]
+        },
+        {
+          "kind": "paragraph",
+          "lines": [
+            [
+              {
+                "kind": "text",
+                "start": 101,
+                "end": 126
+              }
+            ]
+          ],
+          "firstLine": 7
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "align": [null, null],
+      "header": [
+        [
+          {
+            "kind": "text",
+            "start": 0,
+            "end": 5
+          }
+        ],
+        [
+          {
+            "kind": "text",
+            "start": 6,
+            "end": 11
+          }
+        ]
+      ],
+      "rows": [
+        [
+          [
+            {
+              "kind": "text",
+              "start": 22,
+              "end": 23
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "start": 24,
+              "end": 25
+            }
+          ]
+        ]
+      ]
+    }
+  ]
+}

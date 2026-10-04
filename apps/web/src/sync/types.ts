@@ -9,6 +9,7 @@
  */
 
 import type { Op } from "@nooklet/core";
+import { LIVE_CLOSE } from "@nooklet/core";
 
 export interface PushRequestBody {
   device_id: string;
@@ -149,10 +150,12 @@ export interface SyncLiveHandlers {
   onClose?(code: number): void;
 }
 
-/** Close codes `packages/server/src/sync/live.ts` uses when the hello's token does not verify
- * (it sends 4403 today; 4401 is accepted too so a future server distinguishing "unknown token" from
- * "token lacks can_sync" does not silently fall back to "offline" here). */
-export const LIVE_AUTH_REJECTED_CODES: ReadonlySet<number> = new Set([4401, 4403]);
+/** Close codes meaning the server refused the token: 4403 when the hello's token does not verify,
+ * 4401 when it was revoked while the socket was open (B-676 H3). `@nooklet/core`'s `LIVE_CLOSE`. */
+export const LIVE_AUTH_REJECTED_CODES: ReadonlySet<number> = new Set([
+  LIVE_CLOSE.revoked,
+  LIVE_CLOSE.forbidden,
+]);
 
 /** Everything `SyncClient` needs from the network. `http-transport.ts` implements this for real
  * (fetch + WebSocket); tests implement a fake so sync logic runs with no network at all. */
@@ -187,4 +190,8 @@ export interface SyncStatus {
   pendingCount: number;
   serverCursor: number;
   lastError?: string;
+  /** B-676 H4: why the live socket is being refused (over the server's connection cap), while
+   * push and pull still work. Shown in the indicator's tooltip; cleared by the next poke, which
+   * proves the socket was accepted. */
+  liveNote?: string;
 }

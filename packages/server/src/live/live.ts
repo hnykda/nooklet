@@ -15,10 +15,12 @@
  */
 
 import { upgradeWebSocket } from "@hono/node-server";
+import { LIVE_CLOSE } from "@nooklet/core";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
-import { trackTokenSocket, untrackTokenSocket } from "../auth/token-sockets.js";
+import { socketTokenId, trackTokenSocket, untrackTokenSocket } from "../auth/token-sockets.js";
 import { verifyToken } from "../auth/tokens.js";
+import { acceptHello, admitSocket, releaseSocket, shouldReadFrame } from "../live-limits.js";
 import { registerWindow, resolvePending, unregisterWindow } from "./registry.js";
 
 interface HelloMessage {
@@ -62,7 +64,12 @@ export function registerUiLive(app: Hono, serverCtx: ServerContext): void {
   app.get(
     "/ui/live",
     upgradeWebSocket(() => ({
+      // B-676 H4: same limits as `../sync/live.ts` (`../live-limits.ts`).
+      onOpen(_evt, ws) {
+        admitSocket(ws);
+      },
       onMessage(evt, ws) {
+        if (!shouldReadFrame(ws, evt.data)) return;
         let parsed: unknown;
         try {
           parsed = JSON.parse(String(evt.data));
@@ -72,9 +79,13 @@ export function registerUiLive(app: Hono, serverCtx: ServerContext): void {
         if (isHello(parsed)) {
           const verified = verifyToken(serverCtx.driver, parsed.token);
           if (!verified?.canSync) {
-            ws.close(4403, "forbidden");
+            ws.close(LIVE_CLOSE.forbidden, "forbidden");
             return;
           }
+          // A window re-sends hello on every page/focus change; only its first counts against the
+          // token's connection cap.
+          const tracked = socketTokenId(serverCtx.driver, ws) !== undefined;
+          if (!acceptHello(serverCtx, ws, verified.id, tracked)) return;
           // B-676: revoking the token closes this window's socket too.
           trackTokenSocket(serverCtx.driver, verified.id, ws);
           registerWindow(serverCtx.driver, ws, {
@@ -94,6 +105,7 @@ export function registerUiLive(app: Hono, serverCtx: ServerContext): void {
         // Anything else (unrecognized `type`) is ignored, same tolerance as ../sync/live.ts.
       },
       onClose(_evt, ws) {
+        releaseSocket(ws);
         unregisterWindow(serverCtx.driver, ws);
         untrackTokenSocket(serverCtx.driver, ws);
       },

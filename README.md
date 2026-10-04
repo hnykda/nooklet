@@ -48,6 +48,17 @@ docker exec nooklet /app/node /app/server.mjs token create --label me --scope wr
 Open <http://127.0.0.1:6100> and paste that token. The image never hands out a token on its own
 ([Self-hosting](docs/guide/self-hosting.md#docker) explains why, and how to put it behind HTTPS).
 
+On a Mac, Homebrew installs the desktop app, which runs its own server, and a `nooklet` command
+(`nooklet import`, `nooklet mcp --stdio`):
+
+```sh
+brew install --cask hnykda/nooklet/nooklet
+xattr -dr com.apple.quarantine /Applications/nooklet.app   # unsigned: after every install/upgrade
+```
+
+The app is not signed or notarized yet; [Getting started](docs/guide/getting-started.md#homebrew-macos)
+says what that means.
+
 For several devices, run the server on your Tailscale network with HTTPS and give each device its
 own token. [Getting started](docs/guide/getting-started.md) walks through it, plus the desktop apps,
 the iOS app (built from source) and the experimental Android app.
@@ -61,7 +72,7 @@ tag, not that anyone has used it.
 |---|---|---|
 | Server (Docker, from source) | `ghcr.io/hnykda/nooklet`, or `pnpm nooklet serve` | Tested; runs the owner's own notes. The arm64 image has only been smoke-tested (starts, answers `/healthz`). |
 | Web / PWA | Served by the server | Tested; the e2e suite runs it in Chromium and WebKit. |
-| macOS desktop | Releases (`.dmg`) or `pnpm desktop:build` | Used daily (Apple Silicon). **Unsigned**: see [Getting started](docs/guide/getting-started.md#the-desktop-app). The Intel build is untested. |
+| macOS desktop | `brew install --cask hnykda/nooklet/nooklet`, Releases (`.dmg`) or `pnpm desktop:build` | Used daily (Apple Silicon). **Unsigned**: see [Getting started](docs/guide/getting-started.md#the-desktop-app). The Intel build is untested. |
 | iOS | Build from source with Xcode | Tested on the Simulator and one iPhone. No App Store or TestFlight build. |
 | Linux desktop | Releases (AppImage, `.deb`) | Built in CI, not yet tested by the maintainer. |
 | Windows desktop | Releases (setup `.exe`) | Built in CI, not yet tested by the maintainer. Unsigned. |

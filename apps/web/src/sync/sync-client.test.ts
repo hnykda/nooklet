@@ -822,4 +822,20 @@ describe("SyncClient connection states (B-613 token refused, B-614 live socket d
     await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS);
     expect(client.getStatus().state).toBe("idle");
   });
+
+  it("B-676 H4: a socket refused for capacity (4429) stays in sync with a note, not 'unauthorized'", async () => {
+    client.connectLive();
+    transport.liveHandlers?.onClose?.(4429);
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS);
+    expect(client.getStatus().state).toBe("idle");
+    expect(client.getStatus().liveNote).toMatch(/connection limit/);
+    // A poke proves a later socket was accepted; the note goes.
+    transport.liveHandlers?.onPoke(1);
+    expect(client.getStatus().liveNote).toBeUndefined();
+    // So does a close for any other reason: the note would be stale.
+    transport.liveHandlers?.onClose?.(1009);
+    expect(client.getStatus().liveNote).toMatch(/too large/);
+    transport.liveHandlers?.onClose?.(1006);
+    expect(client.getStatus().liveNote).toBeUndefined();
+  });
 });
