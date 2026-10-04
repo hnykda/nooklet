@@ -13,7 +13,8 @@ repo; the owner-specific deployment lives in the owner's private infrastructure 
       infra pipeline) moved to the private repo and is deleted here.
 - [x] Woodpecker: `.woodpecker/leak-guard.yaml` (gitleaks on push/tag/PR/manual, no secrets),
       `.woodpecker/images.yaml` (build + push server and site images on `main`/tags, tags
-      `sha-<8>` + git tag; deploy trigger on `main`). Shell in `tools/ci/`. Config `.gitleaks.toml`.
+      `sha-<8>` + git tag; deploy trigger on `main`). Shell in `tools/ci/`. Uses the leak-audit agent's
+      `tools/leak-check.mjs` + `.gitleaks.toml` (mine was dropped to avoid an add/add conflict).
 - [x] Private infra PR opened as a **draft** in the owner's infrastructure repo (the owner has the
       link). Not merged, nothing applied.
 - [x] Server image built and run locally (see "Verification"). Site image: pending `apps/site`.
@@ -63,10 +64,13 @@ next morning's backup archive. 8. Mint device tokens with `nooklet token create`
   `Host: localhost` → no token; `backup --data /data --graph default --out …` → archive written.
 - `woodpecker-cli lint` (v3.18.1, local) → valid for `images.yaml`, `leak-guard.yaml` and the
   infra repo's deploy pipeline.
-- Leak guard, against a clone of this branch: tree scan finds the 2 token findings (below);
-  with them redacted in the clone, tree + range `e3df44a..HEAD` pass; range from before the token
-  commit (`727d358~1..HEAD`, 714 commits) fails with 2 findings, as it should. Fallback `-1 HEAD`
-  works.
+- Leak guard (`zricethezav/gitleaks:v8.28.0`, against a clone of this branch): gitleaks-only
+  fallback: tree scan flags the known token; with it redacted in the clone, tree + range
+  `e3df44a..HEAD` pass, and a range spanning the token's commit (`727d358~1..HEAD`) fails, as it
+  should. With the leak-audit branch's `tools/leak-check.mjs` + `.gitleaks.toml` dropped into the
+  clone: nodejs installs from apk inside the gitleaks image (node 20), `--range e3df44a..HEAD`
+  → clean, `--range 727d358~1..727d358` → 2 findings, exit 1; `--tree` fails on the pre-scrub
+  docs of this branch (expected, scrubbed on the leak-audit branch).
 - **Not verified:** Helm rendering of either chart (no `helm` run, by instruction); the site
   image (needs `apps/site`); anything on the real cluster/Woodpecker; Woodpecker's
   handling of `from_secret` in plugin settings for `registry`/`repo`/`buildkit_config` (documented
@@ -78,10 +82,8 @@ next morning's backup archive. 8. Mint device tokens with `nooklet token create`
   `RESTORE_FLAGS` in `packages/server/src/cli-args.ts` is `["data", "force"]`, but the `restore`
   case in `cli.ts` reads `graphIdFlag(args)`. Only the `default` graph can be restored from the CLI.
   Found reading the CLI for the backup CronJob; not fixed (out of scope).
-- **(new, open, security hygiene)** A real-shaped token `nk_7960…` is in `docs/BUGS.md` (B-25)
-  and `docs/research/12-multi-user-and-pairing.md`. It came from a throwaway server on port 6198,
-  so it is almost certainly dead, but it is the only finding the leak guard reports. Redact it in
-  both files, and it stays in git history (the guard scans only new commits, by design).
+- The leaked `nk_` token in `docs/BUGS.md`/research 12 is the leak-audit agent's finding (see
+  `leak-audit.md`, "Rotate"); not duplicated here.
 
 ## How the public pipelines avoid leaking to forks
 
@@ -103,15 +105,36 @@ with `BUILD_TARGET=nooklet NOOKLET_TAG=sha-<8>`; that pipeline holds the credent
 
 ## Leak guard
 
-`tools/ci/leak-guard.sh`: gitleaks `dir` over the tree + `git` over the commits the push/PR adds
-(not all history: old findings would fail every pipeline forever). Verified locally with
-`zricethezav/gitleaks:v8.28.0` against this tree: default rules + `.gitleaks.toml` leave exactly
-two findings, both the same **real-shaped nooklet token** `nk_7960…` (rule `nooklet-token`) in
-`docs/BUGS.md` (B-25) and `docs/research/12-multi-user-and-pairing.md` line 123. It came from a
-throwaway server on port 6198 in Sep 2026 — almost certainly dead, but it must be redacted from
-those files (and so the guard fails on `main` until then — deliberately not allowlisted). Five
-default-rule false positives (keymap `key: "Mod+…"` entries, RFC 6455's sample
-`Sec-WebSocket-Key`) are allowlisted narrowly in `.gitleaks.toml`.
+`.woodpecker/leak-guard.yaml` → `tools/ci/leak-guard.sh` in the gitleaks image, on every push, tag
+and PR (no secrets). Scans the tree and the commits the push/PR adds (PR: target branch..HEAD;
+push: `CI_PREV_COMMIT_SHA..HEAD`; fallback `HEAD~1..HEAD`), not all history (old findings would
+fail every pipeline forever). Runs `node tools/leak-check.mjs --tree` / `--range` when that file
+exists (it also runs gitleaks with `.gitleaks.toml`), else plain gitleaks.
+
+**Needed in the leak-audit branch's `.gitleaks.toml` at merge** (checked: gitleaks v8.28 refuses
+to load a config that has both the legacy `[allowlist]` and `[[allowlists]]`):
+
+1. rename its `[allowlist]` table to `[[allowlists]]` (same keys);
+2. append this narrow allowlist for 5 false positives of the default `generic-api-key` rule
+   (keymap entries in `apps/web/src/commands/keymap/build.test.ts` and
+   `docs/spec/commands-and-keymap.md`; RFC 6455's sample nonce in `graphs/mount.test.ts` and
+   `tools/probes/upgrade-socket-error.mjs`), without which the CI tree scan fails:
+
+```toml
+[[allowlists]]
+description = "keymap entries ({ key: \"Mod+Shift+Enter\" }) and RFC 6455's sample Sec-WebSocket-Key nonce"
+regexTarget = "line"
+regexes = [
+  '''(?i)["']?key["']?\s*:\s*["'](?:Mod|Shift|Alt|Ctrl|Meta|Cmd)\+''',
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
+]
+```
+
+With both changes, the combined config loads and leaves none of those 5 (verified against this
+tree). Leak-audit's findings about `deploy/` (tailnet name, host name, infra repo name, backup
+internals, storage class, registry host, host-named secret names) are all resolved here:
+`deploy/k8s/` is gone; nothing under `deploy/`, `.woodpecker/`, `tools/ci/` or this file matches
+its shape rules (checked with the combined config).
 
 ## Notes for the coordinator
 
@@ -126,4 +149,4 @@ default-rule false positives (keymap `key: "Mod+…"` entries, RFC 6455's sample
 
 Branch `worktree-agent-a3b61b4747014a1c8` (never pushed). Remaining: build the site image once
 `apps/site` lands (`docker buildx build --platform linux/amd64 -f deploy/docker/site.Dockerfile .`,
-run on 6450-6454 only), and address `docs/progress/leak-audit.md` findings about `deploy/`.
+run on 6450-6454 only).
