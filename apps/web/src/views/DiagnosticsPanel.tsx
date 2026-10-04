@@ -142,6 +142,7 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
                     {s().state}
                     {s().pendingCount > 0 ? ` · ${s().pendingCount} queued` : ""}
                     {s().lastError ? ` · ${s().lastError}` : ""}
+                    {s().liveNote ? ` · live updates paused: ${s().liveNote}` : ""}
                   </Status>
                 )}
               </Show>

@@ -50,6 +50,12 @@ nooklet serve --host 0.0.0.0 --allow-host 192.168.1.5,my-mac.local [--no-loopbac
   and would get a token. The container image and the Helm chart in `deploy/` set it by default:
   nothing runs a browser inside a container, while a sidecar or `kubectl port-forward` arrives over
   the pod's loopback.
+- **`--ws-max-per-token <n>`** (default 20) and **`--ws-max-total <n>`** (default 500) cap the
+  sync and live-UI WebSockets: per token (the loopback auto-token is exempt) and for the whole
+  process. A socket over either cap is closed with 4429; the app then retries after 30 s, backing
+  off to 5 min, and its sync tooltip says live updates are paused. A socket that has not
+  authenticated within 10 s is closed (4408); a message over 512 KiB closes it (1009).
+  `docs/spec/security-inventory.md` has the table.
 - Plain `http://` is a secure context only on loopback. A browser tab on `http://<LAN-IP>` gets a
   blank page (no `crypto.randomUUID`/OPFS). The iOS app is unaffected (its page is
   `capacitor://localhost`); for a browser on another device, put the server behind HTTPS.

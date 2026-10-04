@@ -65,15 +65,24 @@ export function deriveSyncView(
   return "synced";
 }
 
-/** The sentence behind the icon: its tooltip and its accessible name. */
-export function syncLabel(view: SyncView, pendingCount: number): string {
+/**
+ * The sentence behind the icon: its tooltip and its accessible name.
+ *
+ * `liveNote` (B-676 H4): the server is refusing the live socket (`SyncStatus.liveNote`). The dot
+ * stays green, because push and pull work and the data was in sync at the last pull, but other
+ * devices' changes now arrive only every few minutes instead of at once, and the label says so.
+ */
+export function syncLabel(view: SyncView, pendingCount: number, liveNote?: string): string {
+  const paused = liveNote
+    ? ` — live updates paused (${liveNote}); other devices' changes arrive every few minutes`
+    : "";
   switch (view) {
     case "starting":
       return "Starting sync…";
     case "synced":
-      return "Synced";
+      return `Synced${paused}`;
     case "pending":
-      return `${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting to sync`;
+      return `${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting to sync${paused}`;
     case "offline":
       return "Offline — changes are kept and sent when back online";
     case "error":

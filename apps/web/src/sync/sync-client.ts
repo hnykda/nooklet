@@ -36,6 +36,7 @@ import {
   resolvePendingTextConflict,
   type SqlDriver,
 } from "@nooklet/core";
+import { LIVE_REFUSED_CODES, liveRefusedNote } from "./live-backoff.js";
 import {
   type CapturedPage,
   captureAndRemoveRefusedPage,
@@ -585,7 +586,11 @@ export class SyncClient {
   connectLive(): void {
     this.unsubscribeLive?.();
     this.unsubscribeLive = this.transport.connectLive(this.deviceId, {
-      onPoke: () => void this.pull(),
+      onPoke: () => {
+        // A poke means the server accepted this socket after all.
+        if (this.status.liveNote) this.setStatus({ liveNote: undefined });
+        void this.pull();
+      },
       onOpen: () => {
         this.clearLiveDownTimer();
         void this.pull();
@@ -623,6 +628,12 @@ export class SyncClient {
       this.setStatus({ state: "unauthorized", lastError: `live sync refused the token (${code})` });
       return;
     }
+    // B-676 H4: refused for capacity (or a frame too big). Push and pull still work, so the state
+    // stays whatever the probe below finds; the note says why other devices' changes now arrive
+    // only when the (long, backed-off) reconnect attempt pulls.
+    // Any other close (the server went away) makes the note stale.
+    const liveNote = LIVE_REFUSED_CODES.has(code) ? liveRefusedNote(code) : undefined;
+    if (liveNote !== this.status.liveNote) this.setStatus({ liveNote });
     if (this.authRejected || this.liveDownTimer) return;
     this.liveDownTimer = setTimeout(() => {
       this.liveDownTimer = undefined;

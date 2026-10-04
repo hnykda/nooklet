@@ -1717,6 +1717,8 @@ export const uiState = defineOp({
 Where `UiWindowState` mirrors the client's own `WhenContext`/`CommandContext` (ADR 015 §2.3;
 `apps/web/src/live/state-snapshot.ts` is the client-side builder): `page`, `zoom_root_block_id`,
 `focus` (`mode`/`block_id`/`selected_block_ids`/`cursor`), `viewport`, `panels`, `updated_at`.
+`focus.selected_block_count` appears only when the window cut `selected_block_ids` short to keep its
+answer under the live socket's 512 KiB frame limit (about 30,000 ids; B-676): it is the real count.
 
 **HTTP**: `POST /api/v1/ui.state`.
 

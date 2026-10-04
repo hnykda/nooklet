@@ -8,7 +8,8 @@ anything but 401 without being on the public allowlist in code:
 route, it is private unless you put it on that list with a reason, and then you update this page.
 
 Last checked against the code: 2026-10-04 (security review, `docs/progress/security-review.md`;
-QR pairing and `admin`-gated device management, `docs/progress/qr-pairing.md`).
+QR pairing and `admin`-gated device management, `docs/progress/qr-pairing.md`; WebSocket limits,
+`docs/progress/ws-hardening.md`).
 
 ## How auth is laid out (deny by default)
 
@@ -31,6 +32,24 @@ included. For every request, in order:
 4. **Body size**: 16 MB, or 48 MB for `/api/v1/asset.upload`, `/mcp` and `/sync/push`. Over the
    limit: 413 `too_large`, before the body is buffered.
 
+5. **WebSockets** (`/sync/live`, `/ui/live`; `packages/server/src/live-limits.ts`, B-676 H4/H12).
+   They authenticate in their first message, so they get their own limits, with close codes from
+   `LIVE_CLOSE` (`packages/core/src/live-socket.ts`):
+
+   | Limit | Default | Close code |
+   |---|---|---|
+   | valid `hello` within | 10 s | 4408 |
+   | sockets per token (both endpoints, per graph; the loopback auto-token is exempt) | 20, `--ws-max-per-token` | 4429 `too many connections for this token` |
+   | sockets in total (per process, authenticated or not, counted at open) | 500, `--ws-max-total` | 4429 `server connection limit` |
+   | frame size (`ws` `maxPayload`, default 100 MiB before) | 512 KiB | 1009 |
+   | frame size before `hello` | 16 KiB | 1009 |
+   | token unknown, revoked or without `can_sync` | | 4403 |
+   | token revoked while open (H3) | | 4401 |
+
+   512 KiB is sized by `tools/probes/security/ws-frame-sizes.mjs`: the only frame that grows is
+   `/ui/live`'s `state.result` (17 bytes per selected block id), and the client trims it to fit.
+   Tests: `packages/server/src/live-limits.test.ts`; probe `tools/probes/security/ws-limits.mjs`.
+
 After that, routes still run their own, narrower checks: per-op scopes (`read`/`write`/`admin`/`ui:control`),
 `can_sync` for `/sync/*`, and the MCP library's own bearer gate.
 
@@ -44,7 +63,7 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 | GET | `/assets/:id` | none (capability URL) | the asset bytes if the id exists; served with `CSP: sandbox` + `nosniff` | `<img src>` cannot carry a bearer header (B-659, see below) |
 | GET | `/plugins/:id/:file` | none | a content-hashed client plugin bundle | loaded by `import()`, build output |
 | POST | `/api/v1/pairing.redeem` | none (a one-time pairing code in the body) | 401 for an unknown, expired, used or cancelled code (one answer for all); 400 for a malformed one; 429 + `Retry-After` past 10 attempts/min per TCP peer or 60/min in total | a new device has no token yet. Codes: 128 random bits, sha256-stored, single use (claimed atomically with the token mint), 10 min default, grant at most `write`. Two locks: the op's `auth: "none"` and this list. HTTP only, never MCP |
-| GET (WS) | `/sync/live` | `can_sync` token in the first message | nothing until `hello`; then `{type:"poke",seq}` | browsers cannot set headers on a WS handshake. A plain GET without `Upgrade` needs a token |
+| GET (WS) | `/sync/live` | `can_sync` token in the first message | nothing until `hello`; then `{type:"poke",seq}`. Closed 4408 without a valid hello in 10 s (limits below) | browsers cannot set headers on a WS handshake. A plain GET without `Upgrade` needs a token |
 | GET (WS) | `/ui/live` | `can_sync` token in the first message | as above | as above |
 | GET/HEAD | anything outside the API prefixes | none | the app shell / static build files | the web client |
 | * | `/api/v1/<op>` and REST aliases | token + the op's scopes | 401 | |
@@ -87,8 +106,8 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
   (no secret-dependent string comparison). Revocation is immediate for HTTP: every request
   re-reads the row. `token.revoke` also closes the token's open `/sync/live` and `/ui/live`
   sockets (close code 4401); a revoke from the CLI (another process) closes a `/sync/live` socket
-  at the next commit, before it is poked (B-676 H3). Unauthenticated sockets still never time out
-  (H4, open).
+  at the next commit, before it is poked (B-676 H3). A socket that never sends a valid hello is
+  closed after 10 s (4408, H4).
 - Root token: `nkroot_` + 24 random bytes, file `<data>/root.token` (0600), compared with
   `timingSafeEqual`. No rotation command; delete the file and restart to rotate.
 - `admin` scope (B-655): `write` plus server administration — `pairing.create`, `token.list`,
