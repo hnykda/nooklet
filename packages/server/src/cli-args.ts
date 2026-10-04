@@ -84,8 +84,32 @@ export interface GcFlags {
   assetGraceDays: number | undefined;
 }
 
-export const GC_FLAGS = ["data", "dry-run", "backup", "asset-grace"] as const;
-export const RESTORE_FLAGS = ["data", "force"] as const;
+/**
+ * What every single-graph command reads through `cli.ts`'s `dataDir()` / `graphIdFlag()` (and so
+ * through `open()`): `--data <dir>` and `--graph <id>` (ADR 025). Every strict allowlist below
+ * starts from these. B-671: `RESTORE_FLAGS` was written before ADR 025 added `--graph`, so
+ * `restore --graph <id>` was refused as an unknown flag even though the restore case reads it —
+ * and per-graph nightly backups could only be restored into `default`. `gc` and `repair` had the
+ * same hole. `cli-flag-audit.test.ts` now cross-checks each allowlist against what its case reads.
+ */
+export const GRAPH_COMMAND_FLAGS = ["data", "graph"] as const;
+
+export const GC_FLAGS = [...GRAPH_COMMAND_FLAGS, "dry-run", "backup", "asset-grace"] as const;
+export const RESTORE_FLAGS = [...GRAPH_COMMAND_FLAGS, "force"] as const;
+/** `nooklet graph <sub>`: each subcommand's own flags (B-713). `graph` takes `--data` only, never
+ * `--graph`: the graph is the positional argument. A typo must stop a command that moves folders. */
+export const GRAPH_SUBCOMMAND_FLAGS = {
+  create: ["data", "label"],
+  list: ["data", "retired"],
+  retire: ["data", "force"],
+  unretire: ["data", "as"],
+  replace: ["data", "from"],
+} as const satisfies Record<string, readonly string[]>;
+/** Every flag any `graph` subcommand reads; what `cli-flag-audit.test.ts` checks the case against. */
+export const GRAPH_FLAGS = [...new Set(Object.values(GRAPH_SUBCOMMAND_FLAGS).flat())] as const;
+
+/** `nooklet pair` (B-655). */
+export const PAIR_FLAGS = [...GRAPH_COMMAND_FLAGS, "link", "scope", "sync", "minutes"] as const;
 
 /** `nooklet gc [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]`. */
 export function parseGcFlags(args: Args): GcFlags {
@@ -105,7 +129,7 @@ export function parseGcFlags(args: Args): GcFlags {
   };
 }
 
-export const REPAIR_FLAGS = ["data", "apply", "dry-run"] as const;
+export const REPAIR_FLAGS = [...GRAPH_COMMAND_FLAGS, "apply", "dry-run"] as const;
 
 export interface RepairFlags {
   what: "org-dates";

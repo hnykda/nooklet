@@ -76,12 +76,16 @@ traffic never reach the server.
 >
 > Since then (QR pairing, 2026-10-04): revoking a token closes the WebSockets it has open, the
 > one endpoint that takes no token (redeeming a pairing code) is rate-limited, and the `admin`
-> scope gates device management.
+> scope gates device management. The sync and live-UI WebSockets close a connection that has
+> not authenticated within 10 seconds, cap connections at 20 per token and 500 in total
+> (`--ws-max-per-token`, `--ws-max-total`), and refuse messages over 512 KiB.
 >
 > Known gaps:
 > - **Little rate limiting inside nooklet.** Only pairing-code redemption is limited. Limit
 >   everything else at the proxy.
-> - **WebSockets.** A socket that never authenticates is not timed out.
+> - **WebSockets, per client IP.** nooklet caps sockets per token and in total, so one client
+>   without a token can still hold up to 500 open for 10 seconds at a time and fill the total.
+>   Limit connections per IP at the proxy.
 > - **Attachments.** `/assets/<id>` needs no token. An id holds 25 random bits plus its upload
 >   time, which is impractical to guess, but a revoked device keeps the URLs it has seen.
 > - **Public without a token.** Health checks, the op list (`/openapi.json`) and which graph ids
@@ -94,7 +98,7 @@ traffic never reach the server.
 | Device or agent token (`nk_…`) | `nooklet token create`, or pairing a device (below) | Access to **one graph**, at its scope and capabilities |
 | Web-client token | The server, for a browser on the same machine (below) | `admin` + sync on that graph |
 | Pairing code (`nkp_…`) | Settings → Devices → Add a device, or `nooklet pair` | Nothing by itself. Traded once, within 10 minutes, for a new device token (`write` + sync by default, never `admin`) |
-| Root token (`nkroot_…`) | Minted on first `serve`, kept in `<data>/root.token` (mode 0600) | `GET /graphs` and `POST /graphs` only: list graphs, create a graph. No access to graph content by itself. |
+| Root token (`nkroot_…`) | Minted on first `serve`, kept in `<data>/root.token` (mode 0600) | `GET /graphs`, `POST /graphs` and `DELETE /graphs/<id>` only: list graphs, create a graph, retire a graph (moved aside, not deleted). No access to graph content by itself. |
 
 A token belongs to one graph: it lives in that graph's own database and cannot verify against
 another graph.

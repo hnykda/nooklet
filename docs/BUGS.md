@@ -937,18 +937,6 @@ Failed once in `pnpm -r test` while an e2e build ran; passed 3/3 alone.
 
 `e2e/global-setup.ts:104` writes `<tmp>/server.log` after teardown deleted the temp dir → uncaught ENOENT.
 
-### B-671 · `nooklet restore --graph <id>` is rejected as an unknown flag
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04 · **Test:** none
-
-`RESTORE_FLAGS` in `packages/server/src/cli-args.ts` is `["data", "force"]` but `cli.ts`'s restore reads `graphIdFlag(args)`. Only the default graph can be restored from the CLI. Found by the infra agent.
-
-### B-676 · Revoking a token does not close its open WebSockets; unauthenticated sockets never time out
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** none
-
-Revoked sockets keep receiving sync pokes (sequence numbers only, no note content). Recommendations H3 (re-check the token on each send, close 4401) and H4 (10 s hello timeout, per-token and total caps, `maxPayload` 64 KB). Probe `tools/probes/security/ws-revocation.mjs`.
-
-2026-10-04: H3 fixed by qr-pairing — `token.revoke` closes the token's sockets at once (4401); a CLI revoke is caught at the next commit. Tests: `ops/pairing.http.test.ts` (2), e2e `qr-pairing.spec.ts`. **H4 (hello timeout, caps, maxPayload) still open.**
-
 ### B-677 · Dependency advisories via the mermaid plugin (lodash-es, dompurify)
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** none
 
@@ -966,21 +954,11 @@ Hardening: `.vr-image` max-height 70vh, auto width/height. The owner's report wa
 
 Owner: like B-648 (Properties), the viewport grows beyond the screen width after the image is inserted.
 
-### B-685 · `nooklet serve` on a port already in use dies with a raw `EADDRINUSE` stack trace
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, build-docs agent · **Test:** none
-
-Should print a one-line explanation ("port 6100 is in use; pick --port").
-
 ### B-695 · `build-sidecar.mjs` could not have worked on Windows
 **Status:** believed fixed (2026-10-04, releases agent), unverified · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** none (first real test is the Windows CI job)
 
 `spawnSync("pnpm")` without a shell (pnpm.cmd), esbuild.exe looked up under `bin/`, zip extracted
 with `unzip`. Fixed by reading; no Windows machine.
-
-### B-696 · The server reports version `0.0.1` to MCP clients and has no `nooklet --version`
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** none
-
-`mcp/server.ts` default; `cli.ts` never passes the package version.
 
 ### B-699 · The pairing confirm screen shows the server address twice
 **Status:** open (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
@@ -992,19 +970,287 @@ Read-only box and the editable field, for token and code links (pre-existing fro
 
 Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
 
+### B-704 · In the desktop app, adding a remote server graph from the in-app switcher fails with "Load failed"
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner adding the production server (`https://<tailnet host>/g/alpha`) from the desktop app · **Test:** none yet
+
+"Could not reach https://<tailnet host>/g/alpha: Load failed" (`data/connect-graph.ts`). The page in
+the desktop window is served by another server (the bundled sidecar or a test server on
+`127.0.0.1:<port>`), so the connect check is a cross-origin request; the server's CORS allowlist
+admits only the app-shell origins (`capacitor://localhost`, `https://localhost`), so the preflight
+gets 401 and WebKit reports "Load failed". Verified with curl: preflight from `capacitor://localhost`
+→ 204 with ACAO; from `http://127.0.0.1:6200` / `tauri://localhost` → 401. Workaround: the native
+menu's Switch Server… → Add a server (navigates the window to the server; same-origin). Fix: in the
+desktop shell, the switcher's "add a server graph" should hand the URL to the shell (like B-643's
+`nooklet-desktop.invalid` request) instead of fetching cross-origin; on plain web it should say
+plainly that a different server must be opened in its own tab.
+
+### B-705 · iOS zooms in when focusing the add-graph server URL field and the page stays too wide
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
+
+Same mechanism as B-648: iOS auto-zooms on focusing a form control whose font-size is under 16px
+and never zooms back, leaving the viewport wider than the screen. B-648's fix covered specific
+fields (properties, search, task filter); every new form (here the graph switcher's server URL)
+reintroduces it. Owner: "try to fix this globally".
+
+### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
+**Status:** open · **Severity:** medium (blocked the owner pairing a phone) · **Found:** 2026-10-04, owner adding `alpha` on the iPhone · **Test:** none yet
+
+The owner copied a device token with a trailing `.` (it followed the token in a chat message). The
+app sent it as is; the server answered 401 and the connect screen said "That token was rejected.
+Check it was copied whole, and not revoked." — while the real token was valid (its `last used` never
+moved, confirmed on the server). Every token has a fixed shape (`nk_` + hex, see
+`packages/server/src/auth/tokens.ts`; root `nkroot_`). Fix: strip surrounding whitespace, quotes,
+backticks and trailing punctuation from a pasted token, and if what remains does not match the
+shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
+with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
+
+### B-708 · The live agent-control channel (`/ui/live`) is offered on the phone
+**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
+
+Owner: "agents control should probably be off for mobile? that doesn't make much sense". ADR 015's live UI control lets an agent drive an open window; on a phone that's rarely wanted. Decide: hidden/off by default on Capacitor (and touch), still opt-in in Settings?
+
+### B-709 · Move graph switching into the left sidebar, with the current graph's name at the top
+**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
+
+Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
+
+### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
+
+The DB-version mirror writes some journal days twice: a one-line stub under `pages/` and the real
+day under `journals/`. The importer scans `pages/` first and kept the first file per normalized
+name, skipping the rest with a warning, so 3 real journal days (12 blocks) were dropped while the
+stub survived. Fix: `importer/logseq.ts#resolveFileEntries` merges same-name files — the journal
+file's identity wins, page properties keep the first value per key, and both files' blocks are kept
+(journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
+19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
+stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
+
+### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
+**Status:** open · **Severity:** high (one tap can destroy the only copy of a local-only graph) · **Found:** 2026-10-04, owner on the iPhone ("removing a graph seems to be dangerously easy on mobile phone (and maybe elsewhere?)") · **Test:** none yet
+
+Owner's requirement: a huge warning that removing deletes this device's copy, which may be the
+only one, and the user must type "delete" to confirm. Distinguish: (a) a local-only graph — the
+device's copy IS the graph; removal is irreversible; offer export/backup first; (b) a server graph
+— the server keeps it, but unsynced local changes (pending ops) would be lost; say how many, and
+block or require the typed confirmation when there are any. Applies on every platform (phone,
+desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
+the bundled server's data without the same confirmation.
+
+### B-718 · self-hosting.md still says to restart the server after revoking a token
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, ws-hardening · **Test:** none
+
+Since H3 an in-app revoke closes sockets at once and a CLI revoke closes `/sync/live` at the next commit; a CLI revoke does not reach `/ui/live` until it closes. Say exactly that.
+
+### B-719 · A table-first block's `^id` and properties land inside the table in the markdown mirror
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, tables-images · **Test:** none
+
+nooklet reads it back exactly, but a GFM viewer or Logseq sees a broken table. Same family as OUT-14's fence-first rule. 0 such blocks in the real graph.
+
+### B-720 · `\|` inside a code span in a table cell renders as `\|`
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, tables-images · **Test:** none
+
+GFM unescapes the pipe before inline parsing, even in code spans. Not seen in the real graph.
+
+### B-722 · The client parses the whole `/sync/snapshot` body before inserting any of it
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+The worker reads the body to the end, `JSON.parse`s it, then inserts every row in one transaction (B-660). Recommendation: `GET /sync/snapshot?format=ndjson` (cursor line first, `{"end":true}` last so truncation is detectable) from the same streaming generator, JSON kept as default; the client splits lines over `res.body` and inserts ~1,000 rows per batch inside one savepoint with `defer_foreign_keys`, rolling back on stall/truncation.
+
+### B-723 · The Logseq importer parses every page before importing any, and reads assets whole
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+226 MiB peak for a 12 MB, 1,500-page source (synthetic); one 2 GB video in assets/ would be a 2 GB buffer. Recommendation: a name-resolution pass reading only titles, then parse/import one page at a time; stream assets to a temp file while hashing. Coordinate with in-app import.
+
+### B-724 · `graph.replace` loads every in-scope block's content at once
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+O(graph text) per request, over HTTP and MCP. Recommendation: keyset batches of ~2,000 and accumulate only matches.
+
+### B-725 · "Promote" on a device-only copy (B-714) would seed a new server graph with only its unsynced ops
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+A data guard landed (`updateGraph` refuses a `baseUrl` for a `detachedFrom` entry) but only after `createGraphOnServer` made an empty server graph; the button must be hidden via `canPromoteGraph` (sent to the graph-menu agent).
+
+### B-726 · `ConnectView` may be cut off on a short phone screen
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+`body` is `overflow: hidden` and `.connect` has no scroll container (the mismatch screen hit exactly this). Not reproduced.
+
+### B-728 · DB-version `:default` property values and block embeds import as copies
+**Status:** open (2026-10-04, logseq-db-import) · **Severity:** low · **Found:** 2026-10-04, logseq-db-import audit · **Test:** none
+
+249 property values that are themselves blocks stay as child blocks; 7 embeds arrive as copies rather than embeds. Real-graph counts from the dry run.
+
+## Fixed
+
+### B-727 · A DB-version mirror's properties imported as empty blocks
+**Status:** fixed (2026-10-04, logseq-db-import) · **Severity:** medium · **Found:** 2026-10-04, logseq-db-import audit · **Test:** logseq-db-import.test.ts
+
+168 properties in the real graph arrived as empty blocks; they now fold back into properties. Scheduled dates came in the display format and are now taken from the database.
+
+### B-716 · Favorite pages are not preserved by the Logseq import
+**Status:** fixed (2026-10-04, logseq-db-import) · **Test:** `logseq-db-import.test.ts` favourites cases (both formats)
+
+The owner's favorites did not come over. File-based graphs keep them in `logseq/config.edn :favorites`
+(already parsed by `parseLogseqConfigEdn`; whether the import applies them is to be checked);
+DB-version graphs keep them in `db.sqlite`, which the markdown mirror does not carry. Owner decision
+the same day: support BOTH Logseq formats explicitly (auto-detected), and document what carries over
+from each.
+
+**Fixed.** Favourites were never imported for EITHER format. Now from `config.edn :favorites` (file) or the hidden favourites page (DB), stored as `favorite:: true`.
+
+### B-715 · Images from a Logseq DB-version graph import as their timestamp names, not images
+**Status:** fixed (2026-10-04, logseq-db-import `fcca888c`, ADR 030) · **Test:** `packages/server/src/importer/logseq-db-import.test.ts` (synthetic DB fixtures)
+
+Logseq's DB version stores a pasted image as an asset entity (title = a timestamp like
+`YYYY-MM-DD-HH-MM-SS`, file = `assets/<entity uuid>.<ext>`). Its markdown mirror writes only the
+entity's title as a plain line: no `![](…)` link and no `id::`; 0 of 177 asset files are referenced
+anywhere in the mirror. The mapping exists only in the graph's `db.sqlite` (table `kvs`: Datascript
+storage nodes, transit-encoded datoms `[e, attr, value, tx]`). Fix: a Logseq DB-version import path
+that reads `db.sqlite` (read-only copy) for asset entities (and anything else the mirror loses),
+turning those title lines into image embeds.
+
+**Fixed.** A read-only Logseq DB reader (`importer/logseq-db.ts`, `transit-js` 0.8.874 pinned, server
+only) walks Datascript's kvs storage (plus unsaved WAL changes) on a temp COPY. Wider than reported:
+151/154 images were raw `[[asset uuid]]` refs (each had become a uuid-named page) — matched by uuid;
+3 were bare timestamp lines — matched by outline position; title matching only as a unique-on-page
+fallback. Real-graph dry run (counts only): 154/154 images resolved (1 asset file missing from
+`assets/`), 2 page + 36 block uuid refs resolved, 3 dangling, 23 scheduled dates restored, 2
+favourites, verify OK. `nooklet import <dir>` auto-detects file vs DB format and says which; guide:
+`docs/guide/importing-from-logseq.md`.
+
+### B-713 · There is no supported way to retire/delete a graph on the server
+**Status:** fixed (2026-10-04, graph-retire `663c7ba`) · **Severity:** medium · **Test:** retire/unretire/replace CLI tests, `DELETE /graphs` API tests, `retire.test.ts`, e2e `graph-retired.spec.ts`
+
+CLI has only `graph create`/`graph list`; the API only `POST /graphs` and `GET /graphs`. Removing a
+graph today means moving `graphs/<id>/` by hand, which is unsafe while the server runs (the
+registry caches an open handle; clients hold replicas) and undocumented. Proposal: `nooklet graph
+retire <id>` (moves to `graphs-retired/<id>-<date>`, reversible; refuses while a server holds it
+unless the server does it), a root-token `DELETE /graphs/<id>` that closes the handle first and
+retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10-04's manual swap
+did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
+encode.
+
+**Fixed.** `nooklet graph retire <id> [--force]` moves `graphs/<id>` to `graphs-retired/<id>-<UTC timestamp>/`
+(nothing deleted; `default` needs --force); `graph unretire <name> [--as <id>]`; `graph list
+--retired`; `graph replace <id> --from <scratch>` (carries token rows, retires the old, swaps the
+new in). Retire/replace refuse while `<data>/serve.pid` names a live server. Root-token
+`DELETE /graphs/<id>` retires from a running server: closes the graph's sockets (4410), plugins,
+mirror, indexer and SQLite handle first. The registry also drops a cached handle whose
+`graph.sqlite` was moved or replaced underneath it (dev/inode check per request). Sockets close
+through the WS hardening's one registry (`live-limits.ts`), pre-hello and capped ones included.
+The client treats 4410 (or a sync request's "No graph" 404) as terminal: no reconnect, indicator
+"This graph was retired on the server" + "Graph retired" pill (`e2e/tests/graph-retired.spec.ts`).
+Docs: self-hosting.md "Retiring, restoring and replacing a graph", faq.md.
+
+### B-714 · The "different graph" screen is a dead end: discard is the only way out, and its wording assumes localhost
+**Status:** fixed (2026-10-04, `2316556e`) · **Test:** `e2e/tests/graph-mismatch-choices.spec.ts` (3), `graph-mismatch-discard.spec.ts`, `data/bootstrap.test.ts` "B-714: …" (5)
+
+`GraphMismatchView` offers only "Discard the local copy and re-sync", and its text says "the server at
+localhost" and blames a moved `--data` directory, even for a remote server whose graph was
+re-imported under the same address. Owner: there should be other options, such as keeping this copy
+as a device-only graph and optionally adding the server graph. Wanted: (1) keep the local copy as a
+device-only graph (detached from the server, renamed, never synced; B-633's no-sync rule kept) and add
+the server's graph as a new entry; (2) go to another graph without deciding; (3) discard and re-sync.
+Wording names the real server address and lists the likely causes (re-imported/replaced graph on the
+server, a different data directory).
+
+**Fixed.** Three choices: keep as device-only (no data moves; the entry loses its address and becomes "<name> (old copy)", the server graph is added as a new entry), open another graph, discard (secondary, confirmed when unsynced). Names the real address, lists causes, shows the unsynced count. Fixed in passing: on web/desktop a local-only entry was given the page's graph token and compared against it. Not run on a real device.
+
+### B-721 · `/sync/snapshot`, `nooklet verify` and `nooklet gc` held the whole graph in memory
+**Status:** fixed (2026-10-04, streaming audit `d1107b28`) · **Severity:** medium · **Found:** 2026-10-04, streaming audit · **Test:** `snapshot.test.ts` "streamed from a file-backed database" (4); `verify.test.ts` (batch boundaries); `gc.test.ts` dry-run counts
+
+Snapshot: +332 MiB server RSS per request on a 60,000-block graph → +40 MiB, same bytes, one
+consistent read (old clients unaffected). Verify 582 → 194 MiB. gc no longer loads the op log to
+count it.
+
+### B-710 · `nooklet backup` holds the whole graph in memory: OOMKilled on a 280 MB graph, blocking every deploy and the nightly backup
+**Status:** fixed (2026-10-04, streaming-backup `bc640c0e`; stopgap 2Gi limit stays) · **Severity:** high · **Test:** `backup.test.ts` "streaming backup/restore: compatibility and failure modes" (6), `tar.test.ts` (7); probes `backup-memory.mjs`, `backup-sigkill.mjs`
+
+After importing `alpha` (50 MB db + ~230 MB assets), every pre-deploy backup job (created from the
+`nooklet-backup` CronJob, 512Mi limit) was `OOMKilled`, so the infra repo's nooklet deploy pipeline
+failed and production stayed on an old image while the nooklet pipelines reported success.
+Cause: `backup/index.ts#createBackup` `readFileSync`s the VACUUM'd db and every asset, and
+`backup/tar.ts#createTarGz` `Buffer.concat`s all parts then `gzipSync`s them: several copies of the
+graph in memory. The nightly backup of `alpha` would have failed the same way. Stopgap (owner
+approved): the CronJob limit raised to 2Gi in the infra repo and patched live; deploy re-run →
+pre-deploy backup completed in 17 s, `nooklet-alpha-2026-10-04.tar` (251 MB) exists. Owner: "we can't
+just rely on everything fitting into memory" — streaming backup/restore plus an audit of other
+whole-graph-in-memory paths (snapshot, export, gc, rebuild, assets) is in progress.
+
+**Fixed.** Backup streams 64 KiB chunks through one backpressured gzip into `<out>.partial-*`,
+fsynced then renamed (a SIGKILLed backup leaves nothing at the final path); the VACUUM snapshot sits
+beside the output, not in /tmp; photos/video/zip are stored, not recompressed. Restore extracts into
+`<graph>/.restore-*`, validates manifest, schema, checksums, then swaps. Peak RSS for a 400 MB graph:
+backup 1465 → 183–205 MiB, restore 1382 → 182–230 MiB (137/120 MiB with
+`NODE_OPTIONS=--max-semi-space-size=2`, recommended for the backup jobs only). Old archives restore
+with the new code and vice versa. Behaviour change: `restore --force` leaves `assets/` exactly as the
+archive had it.
+
+### B-703 · Images have no reserved size, so rows below jump when one loads
+**Status:** fixed (2026-10-04, tables-images) · **Test:** `assets/image-size.test.ts`, `asset-upload.http.test.ts` "B-703", `render/image-size.test.tsx`, e2e `image-layout.spec.ts` (red: 396 px / 224 px jump)
+
+An image is `loading="lazy"` with no width/height, so it is 0×0 until scrolled near. Reserving space needs the dimensions, which `asset.upload` does not record.
+
+**Fixed.** Width/height read from the image header at upload and import (PNG, JPEG with EXIF rotation, GIF, WebP; matched `sips` on 147/147 real images); HTTP-only `asset.sizes`; existing assets backfilled lazily on first read (171 in 14 ms).
+
 ### B-702 · A markdown table written with leading pipes renders every cell as `|`
-**Status:** open · **Severity:** medium (the usual table form, and Logseq's) · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** probe `tools/probes/phone-images/table-cells.spec.ts`
+**Status:** fixed (2026-10-04, tables-images) · **Test:** `packages/core/src/tokens.test.ts` "B-702: …" (5), `apps/web/src/editor/render/tokens.test.tsx` (2), corpus 50, `mirror/export.test.ts` "reads back GFM tables exactly", e2e `tables.spec.ts` (2)
 
 `| a | b |` renders each cell as `<span data-from="0" data-to="1">|`; the no-leading-pipe form
 (`a | b`) renders correctly. The unit test `tokens.test.tsx` "table -> …" checks structure only, with
 the no-pipe form.
 
-### B-703 · Images have no reserved size, so rows below jump when one loads
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, phone-images · **Test:** none
+**Fixed.** Cells were tokenized at offset 0, and tables after prose (the real graph's only shape: 4 tables, 0 rendered before) were not recognized at all — new `mixed` content kind (CLS-T-mixed). GFM rules: optional outer pipes, `\|`, alignment, uneven rows.
 
-An image is `loading="lazy"` with no width/height, so it is 0×0 until scrolled near. Reserving space needs the dimensions, which `asset.upload` does not record.
+### B-676 · Revoking a token does not close its open WebSockets; unauthenticated sockets never time out
+**Status:** fixed (2026-10-04; H3 by qr-pairing, H4/H12 by ws-hardening) · **Test:** `packages/server/src/live-limits.test.ts`, `apps/web/src/sync/live-backoff.test.ts`, `http-transport-live.test.ts`, e2e `live-limits.spec.ts`
 
-## Fixed
+Revoked sockets keep receiving sync pokes (sequence numbers only, no note content). Recommendations H3 (re-check the token on each send, close 4401) and H4 (10 s hello timeout, per-token and total caps, `maxPayload` 64 KB). Probe `tools/probes/security/ws-revocation.mjs`.
+
+2026-10-04: H3 fixed by qr-pairing — `token.revoke` closes the token's sockets at once (4401); a CLI revoke is caught at the next commit. Tests: `ops/pairing.http.test.ts` (2), e2e `qr-pairing.spec.ts`. **H4 (hello timeout, caps, maxPayload) still open.**
+
+**H4/H12 fixed.** Hello timeout 10 s (4408); 20 sockets per token / 500 total (4429, `--ws-max-per-token`/`--ws-max-total`; the loopback auto-token is exempt per-token); `maxPayload` 512 KiB (1009), 16 KiB before hello (sized from `ws-frame-sizes.mjs`). Client backs off 30 s → 5 min on 4429/1009 and stops on 4401/4403; reconnect delay resets only after 15 s open (it used to reset on open, reconnecting every second behind a proxy that drops sockets).
+
+### B-717 · `restore --force` over a graph with a stale WAL produced a corrupt database
+**Status:** fixed (2026-10-04, cli-fixes) · **Severity:** high (the restore you reach for after a crash is the one that hits it) · **Found:** 2026-10-04, cli-fixes agent · **Test:** `backup/backup.test.ts` "--force over a database whose writer died with an un-checkpointed WAL…"; probe `tools/probes/restore-stale-wal.mjs`
+
+`restoreBackup` wrote the archive's `graph.sqlite` but left the old `-wal`/`-shm`; SQLite does not tie
+a WAL to its database file, so the next open replayed old frames onto the restored file (`database disk
+image is malformed`). Restore now deletes both first.
+
+### B-696 · The server reports version `0.0.1` to MCP clients and has no `nooklet --version`
+**Status:** fixed (2026-10-04, cli-fixes) · **Test:** `cli-ops.test.ts` (banner + MCP serverInfo + `--version`), `serve-banner.test.ts`
+
+`mcp/server.ts` default; `cli.ts` never passes the package version.
+
+Version from `packages/server/package.json` (`src/version.ts`); deliberately NOT on the unauthenticated `/healthz` (fingerprinting), recorded in security-inventory.md.
+
+### B-685 · `nooklet serve` on a port already in use dies with a raw `EADDRINUSE` stack trace
+**Status:** fixed (2026-10-04, cli-fixes) · **Test:** `cli-ops.test.ts` "prints one line naming the port and --port, and exits 1 — no stack trace"
+
+Should print a one-line explanation ("port 6100 is in use; pick --port").
+
+### B-671 · `nooklet restore --graph <id>` is rejected as an unknown flag
+**Status:** fixed (2026-10-04, cli-fixes) · **Test:** `cli-ops.test.ts` "backup --graph alpha, change alpha, restore --graph alpha --force…"; `cli-flag-audit.test.ts`
+
+`RESTORE_FLAGS` in `packages/server/src/cli-args.ts` is `["data", "force"]` but `cli.ts`'s restore reads `graphIdFlag(args)`. Only the default graph can be restored from the CLI. Found by the infra agent.
+
+**Fixed.** Shared `GRAPH_COMMAND_FLAGS`; `gc --graph` and `repair org-dates --graph` were refused the same way and are fixed too. Round trip with two graphs: `tools/probes/restore-per-graph.mjs`.
+
+### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** high (a large graph could never sync to a new device) · **Found:** 2026-10-04, owner adding the production `alpha` graph to the iPhone ("AbortError: fetch is aborted"; Settings says offline) · **Test:** `apps/web/src/sync/http-transport-stall.test.ts` (3); gzip checked against a scratch server with curl
+
+Measured: `alpha`'s snapshot is 17.3 MB of JSON, sent **uncompressed** even with `Accept-Encoding:
+gzip`, and took 8.4–8.9 s from a laptop over the tailnet. The client bounded every sync request with
+a 10 s *total* deadline (`AbortSignal.timeout`, B-566), so on a phone the download was aborted every
+time and retried forever. Fix: (1) the server gzips `/sync/snapshot` and `/sync/pull` (`hono/compress`;
+push and the WebSocket untouched); (2) the client's pull/snapshot use `fetchJsonStallAware`: no
+headers within 10 s or no body bytes for 20 s aborts (a hung server still fails fast), a slow steady
+download finishes; push gets a 60 s total bound. Not yet confirmed on the owner's phone.
+
+2026-10-04, live on production (`sha-c9d993bb`): `alpha`'s snapshot over the tailnet is now 1.94 MB gzipped (from 17.3 MB) in 1.5 s (from 8.4–8.9 s).
 
 ### B-701 · A long `$$…$$` display formula widened the page at phone width
 **Status:** fixed (2026-10-04, phone-images) · **Severity:** low · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** `phone-images.spec.ts` "phone overflow sweep…"

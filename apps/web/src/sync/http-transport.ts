@@ -10,13 +10,15 @@
  * it stays deliberately thin — it only shapes HTTP/WS calls to match `./types.ts`.
  */
 
+import { createLiveRetry } from "./live-backoff.js";
 import {
-  LIVE_AUTH_REJECTED_CODES,
+  isGraphGoneResponse,
   type PullResponse,
   type PushRequestBody,
   type PushResponse,
   type SnapshotResponse,
   SyncAuthError,
+  SyncGraphRetiredError,
   type SyncLiveHandlers,
   type SyncTransport,
 } from "./types.js";
@@ -48,9 +50,83 @@ function authHeaders(getToken?: () => string | undefined): HeadersInit {
  */
 const SYNC_TIMEOUT_MS = 10_000;
 
-async function asJson<T>(res: Response): Promise<T> {
+/** How long a sync response may stall: no headers within `SYNC_TIMEOUT_MS`, or no body bytes for
+ * `SYNC_IDLE_MS` once it started. A *total* deadline was wrong for downloads: a real graph's first
+ * snapshot is tens of MB (17 MB for a 18.6k-block graph), which took ~9 s over a tailnet from a
+ * laptop and longer on a phone — the 10 s total bound aborted it every time, and the client
+ * retried forever ("fetch is aborted"). A hung server still fails fast; a slow, steady one finishes.
+ * Push is an upload (its progress isn't observable from fetch), so it gets a generous total bound. */
+const SYNC_IDLE_MS = 20_000;
+const SYNC_PUSH_TIMEOUT_MS = 60_000;
+
+/** `fetch` + JSON body with the stall rules above. Exported for tests. */
+export async function fetchJsonStallAware<T>(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timing: { headersMs: number; idleMs: number } = {
+    headersMs: SYNC_TIMEOUT_MS,
+    idleMs: SYNC_IDLE_MS,
+  },
+): Promise<T> {
+  const controller = new AbortController();
+  let timer = setTimeout(
+    () => controller.abort(new DOMException("no response from the server", "TimeoutError")),
+    timing.headersMs,
+  );
+  const arm = (): void => {
+    clearTimeout(timer);
+    timer = setTimeout(
+      () => controller.abort(new DOMException("the download stalled", "TimeoutError")),
+      timing.idleMs,
+    );
+  };
+  try {
+    const res = await fetch(input, { ...init, signal: controller.signal });
+    await throwForStatus(res);
+    arm();
+    const reader = res.body?.getReader();
+    if (!reader) return (await res.json()) as T;
+    // Cancel the read ourselves on a stall: not every body stream (e.g. one a service worker or a
+    // native bridge produced) errors when the request's signal aborts, and a read pending forever is
+    // the very hang this exists to prevent.
+    controller.signal.addEventListener(
+      "abort",
+      () => void reader.cancel(controller.signal.reason),
+      {
+        once: true,
+      },
+    );
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (controller.signal.aborted) throw controller.signal.reason;
+      if (done) break;
+      chunks.push(value);
+      length += value.byteLength;
+      arm();
+    }
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A refused token (B-613), a retired graph (B-713), or any other failure. */
+async function throwForStatus(res: Response): Promise<void> {
   if (res.status === 401 || res.status === 403) throw new SyncAuthError(res.status);
+  if (await isGraphGoneResponse(res)) throw new SyncGraphRetiredError();
   if (!res.ok) throw new Error(`sync request failed: ${res.status} ${res.statusText}`);
+}
+
+async function asJson<T>(res: Response): Promise<T> {
+  await throwForStatus(res);
   return (await res.json()) as T;
 }
 
@@ -63,7 +139,7 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders(opts.getToken) },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
+        signal: AbortSignal.timeout(SYNC_PUSH_TIMEOUT_MS),
       });
       return asJson<PushResponse>(res);
     },
@@ -73,25 +149,20 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
       url.searchParams.set("device_id", deviceId);
       url.searchParams.set("since", String(since));
       url.searchParams.set("limit", String(limit));
-      const res = await fetch(url, {
-        headers: authHeaders(opts.getToken),
-        signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
-      });
-      return asJson<PullResponse>(res);
+      return fetchJsonStallAware<PullResponse>(url, { headers: authHeaders(opts.getToken) });
     },
 
     async snapshot(): Promise<SnapshotResponse> {
-      const res = await fetch(`${base}/sync/snapshot`, {
+      return fetchJsonStallAware<SnapshotResponse>(`${base}/sync/snapshot`, {
         headers: authHeaders(opts.getToken),
-        signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
       });
-      return asJson<SnapshotResponse>(res);
     },
 
     connectLive(deviceId: string, handlers: SyncLiveHandlers): () => void {
       let closedByCaller = false;
       let socket: WebSocket | undefined;
-      let retryDelayMs = 1000;
+      // B-676 H4: the delay depends on why the socket closed (`./live-backoff.ts`).
+      const retry = createLiveRetry();
       let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
       const wsUrl = () => {
@@ -102,6 +173,14 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
 
       const connect = () => {
         if (closedByCaller) return;
+        const scheduleReconnect = (code: number) => {
+          handlers.onClose?.(code);
+          // `null`: the server refused the token. Retrying cannot change its answer, and the only
+          // fix (re-pairing) reloads the page and builds a fresh transport anyway.
+          const delay = retry.onClose(code);
+          if (closedByCaller || delay === null) return;
+          retryTimer = setTimeout(connect, delay);
+        };
         // B-569: constructing the URL (`wsUrl()`) or the socket itself can throw synchronously —
         // resolving a relative URL against this worker's own `self.location` does not behave the
         // way it does on web/PWA in the Capacitor iOS shell with no server configured. `connect()`
@@ -111,18 +190,11 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
         try {
           socket = new WebSocket(wsUrl());
         } catch {
-          // `scheduleReconnect` below is defined inside this same function and not yet
-          // initialized the first time `connect()` runs, so its two lines are repeated here
-          // rather than called — the two must stay in sync if either changes.
-          handlers.onClose?.(1006);
-          if (!closedByCaller) {
-            retryTimer = setTimeout(connect, retryDelayMs);
-            retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
-          }
+          scheduleReconnect(1006);
           return;
         }
         socket.addEventListener("open", () => {
-          retryDelayMs = 1000;
+          retry.onOpen();
           // Auth + device identity travel in the WS handshake's first *message*, not the URL or
           // headers (a browser cannot set a bearer header on a WebSocket upgrade) — see
           // `packages/server/src/sync/live.ts`'s `HelloMessage`/`isHello`.
@@ -139,18 +211,7 @@ export function createHttpTransport(opts: HttpTransportOptions = {}): SyncTransp
             // ignore malformed frames
           }
         });
-        const scheduleReconnect = () => {
-          if (closedByCaller) return;
-          retryTimer = setTimeout(connect, retryDelayMs);
-          retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
-        };
-        socket.addEventListener("close", (ev) => {
-          handlers.onClose?.(ev.code);
-          // The server refused the token: retrying every 30 s cannot change its answer, and the
-          // only fix (re-pairing) reloads the page and builds a fresh transport anyway.
-          if (LIVE_AUTH_REJECTED_CODES.has(ev.code)) return;
-          scheduleReconnect();
-        });
+        socket.addEventListener("close", (ev) => scheduleReconnect(ev.code));
         socket.addEventListener("error", () => socket?.close());
       };
       connect();

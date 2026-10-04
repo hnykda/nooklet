@@ -17,6 +17,8 @@
 #   Android   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
 # Without them: an unsigned macOS app and a debug-signed APK.
 #
+# After publishing, the `homebrew` job updates the Homebrew tap (homebrew-tap.yml, HOMEBREW_TAP_TOKEN).
+#
 # Safety: no pull_request trigger, so no fork ever runs this or sees a secret; tags and manual runs
 # need write access. Permissions default to none and each job asks for what it needs. Every
 # action is pinned to a commit SHA (tag in the comment). Untrusted values (ref names) reach shell
@@ -349,3 +351,19 @@ jobs:
           else
             gh release edit "$TAG" --draft=false
           fi
+
+  # Points the Homebrew cask at this release (.github/workflows/homebrew-tap.yml). Called rather
+  # than triggered: the publish above used GITHUB_TOKEN, which never fires `release: published`.
+  # Skipped for prereleases and kept drafts; publishing a draft by hand fires the tap workflow
+  # itself. Needs secret HOMEBREW_TAP_TOKEN, and skips with a warning without it.
+  homebrew:
+    name: Homebrew tap
+    needs: [meta, release]
+    if: needs.meta.outputs.publish == 'true' && needs.meta.outputs.prerelease == 'false' && vars.RELEASE_KEEP_DRAFT != 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/homebrew-tap.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

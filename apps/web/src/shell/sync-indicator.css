@@ -79,7 +79,8 @@
 
 /* B-613: the server refused this device's token. Full danger, like `error`: nothing fixes it
    without the reader, so unlike the quiet states it is meant to be noticed. */
-.app-sync-indicator[data-state="unauthorized"] {
+.app-sync-indicator[data-state="unauthorized"],
+.app-sync-indicator[data-state="retired"] {
   --sync-dot: color-mix(in srgb, var(--danger) 85%, var(--surface-sunken));
   --sync-ring: var(--sync-dot);
 }

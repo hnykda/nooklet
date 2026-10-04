@@ -203,12 +203,15 @@ export function ConnectView(props: {
         <form onSubmit={(e) => void connect(e)}>
           <label class="connect-field">
             <span>Server address</span>
+            {/* Token fields are plain text, not type="password": a token is pasted, not typed, so
+                masking hides nothing useful, and iOS ignores autocomplete="off" on password fields and
+                offers (or substitutes) a saved password — a valid token then reads as "rejected". */}
             <input type="text" readOnly value={repair.displayUrl} />
           </label>
           <label class="connect-field">
             <span>Device token</span>
             <input
-              type="password"
+              type="text"
               autocomplete="off"
               autocapitalize="none"
               autocorrect="off"
@@ -342,7 +345,7 @@ export function ConnectView(props: {
               <label class="connect-field">
                 <span>Device token</span>
                 <input
-                  type="password"
+                  type="text"
                   autocomplete="off"
                   autocapitalize="none"
                   autocorrect="off"

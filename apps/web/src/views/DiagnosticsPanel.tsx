@@ -136,12 +136,14 @@ export function DiagnosticsPanel(props: { onClose: () => void }): JSX.Element {
                     ok={
                       s().state !== "offline" &&
                       s().state !== "error" &&
-                      s().state !== "unauthorized"
+                      s().state !== "unauthorized" &&
+                      s().state !== "retired"
                     }
                   >
                     {s().state}
                     {s().pendingCount > 0 ? ` · ${s().pendingCount} queued` : ""}
                     {s().lastError ? ` · ${s().lastError}` : ""}
+                    {s().liveNote ? ` · live updates paused: ${s().liveNote}` : ""}
                   </Status>
                 )}
               </Show>

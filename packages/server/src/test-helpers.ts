@@ -30,10 +30,12 @@ export interface TestServerOptions {
   host?: string;
   /** `ServerConfig.loopbackToken` — false is `nooklet serve --no-loopback-token`. */
   loopbackToken?: boolean;
+  /** A file-backed database instead of ":memory:" (paths that open a second connection). */
+  dbPath?: string;
 }
 
 export function makeTestServer(opts: TestServerOptions = {}): TestServer {
-  const serverCtx = createServerContext(openDb({ path: ":memory:" }));
+  const serverCtx = createServerContext(openDb({ path: opts.dbPath ?? ":memory:" }));
   const registry = buildRegistry();
   const config: ServerConfig = {
     // A real (temp) directory, not the ":memory:" sentinel the SQL driver uses -- asset.upload

@@ -159,5 +159,9 @@ describe("route inventory: deny by default (docs/spec/security-inventory.md)", (
     }
     expect(leaks).toEqual([]);
     expect(outer.routes.some((r) => r.path.startsWith("/graphs"))).toBe(true);
+    // B-713: retiring a graph is part of what is checked, not silently absent.
+    expect(outer.routes.some((r) => r.method === "DELETE" && r.path === "/graphs/:id")).toBe(true);
+    const del = await outer.request("/graphs/default", { method: "DELETE" });
+    expect(del.status).toBe(401);
   });
 });

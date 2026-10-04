@@ -32,6 +32,14 @@ export const UiWindowState = z.object({
       .describe("editorFocused / blockSelected / neither, per the WhenContext this mirrors"),
     block_id: BlockId.nullable().describe("Focused block, or the selection anchor"),
     selected_block_ids: z.array(BlockId).describe("[] unless mode is block_selection"),
+    selected_block_count: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        "Present only when selected_block_ids was cut short to fit the live socket's 512 KiB " +
+          "frame limit (about 30,000 ids): how many blocks are really selected",
+      ),
     cursor: z
       .object({
         anchor: z.number().int().describe("Offset into the focused block's content"),

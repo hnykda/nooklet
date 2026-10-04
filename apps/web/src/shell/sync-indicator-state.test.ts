@@ -54,6 +54,15 @@ describe("deriveSyncView", () => {
     expect(deriveSyncView("memory", refused, true)).toBe("unauthorized");
     expect(syncLabel("unauthorized", 2)).toMatch(/^Token rejected/);
   });
+
+  it("B-713: a retired graph is its own view, ahead of storage facts and pending changes", () => {
+    const retired = status({ state: "retired", pendingCount: 2 });
+    expect(deriveSyncView("opfs", retired, true)).toBe("retired");
+    expect(deriveSyncView("memory", retired, true)).toBe("retired");
+    expect(syncLabel("retired", 2)).toBe(
+      "This graph was retired on the server — changes made here stay on this device",
+    );
+  });
 });
 
 describe("syncLabel", () => {
@@ -61,6 +70,14 @@ describe("syncLabel", () => {
     expect(syncLabel("pending", 1)).toBe("1 change waiting to sync");
     expect(syncLabel("pending", 3)).toBe("3 changes waiting to sync");
     expect(syncLabel("synced", 0)).toBe("Synced");
+    // B-676 H4: the live socket refused for capacity; push/pull still work.
+    expect(syncLabel("synced", 0, "the server is at its connection limit")).toBe(
+      "Synced — live updates paused (the server is at its connection limit); other devices' " +
+        "changes arrive every few minutes",
+    );
+    expect(syncLabel("pending", 2, "x")).toMatch(
+      /^2 changes waiting to sync — live updates paused/,
+    );
     expect(syncLabel("offline", 2)).toBe("Offline — changes are kept and sent when back online");
   });
 

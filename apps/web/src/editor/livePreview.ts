@@ -138,7 +138,9 @@ function buildRanges(doc: string, head: number): Built {
       ? bc.lines
       : bc.kind === "heading"
         ? [bc.title, ...(bc.trailing ?? [])]
-        : [];
+        : bc.kind === "mixed"
+          ? bc.parts.flatMap((p) => (p.kind === "paragraph" ? p.lines : []))
+          : [];
 
   if (bc.kind === "heading") {
     const hashLen = bc.level + 1; // "#".repeat(level) + " "

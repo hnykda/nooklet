@@ -614,7 +614,7 @@ export function GraphSwitcher(): JSX.Element {
               <label class="graph-switcher-field">
                 <span>Device token</span>
                 <input
-                  type="password"
+                  type="text"
                   autocomplete="off"
                   autocapitalize="none"
                   autocorrect="off"
@@ -708,7 +708,7 @@ export function GraphSwitcher(): JSX.Element {
               <label class="graph-switcher-field">
                 <span>Root token</span>
                 <input
-                  type="password"
+                  type="text"
                   autocomplete="off"
                   autocapitalize="none"
                   autocorrect="off"
