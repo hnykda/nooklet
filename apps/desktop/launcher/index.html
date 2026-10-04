@@ -7,6 +7,11 @@
       Tauri's `frontendDist` (../src-tauri/tauri.conf.json). It lived in `apps/desktop/dist/`, which
       `.gitignore`'s `dist/` swallowed: it existed in one working copy and nowhere else, and a fresh
       checkout could not even `cargo check` the app (B-490). Hand-written, not built — keep it here.
+
+      Every window the shell opens starts here (ADR 032): "Connecting…" until the graph it was
+      opened for answers, then it goes there. It used to also be the graph picker and the "add a
+      server" form; both moved into the app's own graph menu (proposal 005), so this page only
+      waits, and says so when it can't reach the graph.
     -->
     <style>
       :root { color-scheme: light dark; }
@@ -27,71 +32,13 @@
         user-select: all;
       }
       #detail { max-height: 16rem; white-space: pre-wrap; word-break: break-word; }
-      .row { display: flex; gap: .5rem; justify-content: center; margin-top: 1rem; }
-      button, input {
+      .row { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
+      button {
         font: inherit; padding: .45rem .8rem; border-radius: .45rem;
         border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
-        background: Canvas; color: CanvasText;
+        background: Canvas; color: CanvasText; cursor: pointer;
       }
-      input { min-width: 15rem; text-align: center; }
-      #err, #picker-err, #picker-list-err { color: #c92a2a; min-height: 1.4em; }
-      #picker-list-err:empty { display: none; }
-      #picker-list-err.ok { color: inherit; opacity: .8; }
       .spin { opacity: .6 }
-      .linklike {
-        border: none; background: none; padding: 0; text-decoration: underline; opacity: .7;
-      }
-
-      /* The graph-list picker (`#picker`, ADR 025), styled after the choice screen
-         `apps/web/src/views/ConnectView.tsx`/`connect.css` ships (B-563) — cards, not a form that
-         reads as mandatory. This page has no bundler/SolidJS, so it is hand-rolled rather than
-         shared, but the shape and wording deliberately match; row/remove-button layout mirrors
-         `apps/web/src/shell/GraphSwitcher.tsx`/`graph-switcher.css`'s own list for the same reason. */
-      #picker { text-align: left; }
-      #picker h1 { text-align: center; }
-      .lede { text-align: center; }
-      .choice { display: flex; flex-direction: column; gap: .6rem; margin-top: 1.25rem; }
-      .graph-row { display: flex; align-items: stretch; gap: .4rem; }
-      .choice-option {
-        display: flex; align-items: flex-start; gap: .9rem; flex: 1; min-width: 0;
-        padding: .9rem 1rem; border-radius: .6rem; text-align: left; cursor: pointer;
-        border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
-        background: Canvas; color: inherit; font: inherit;
-      }
-      .choice-option:hover {
-        background: color-mix(in srgb, CanvasText 6%, transparent);
-        border-color: color-mix(in srgb, CanvasText 40%, transparent);
-      }
-      .choice-option.is-active { border-color: color-mix(in srgb, CanvasText 55%, transparent); }
-      .choice-option.is-add {
-        border-style: dashed; justify-content: center; align-items: center; opacity: .85;
-      }
-      .choice-icon {
-        flex: none; display: grid; place-items: center; width: 2.5rem; height: 2.5rem;
-        border-radius: .5rem; background: color-mix(in srgb, CanvasText 8%, transparent);
-      }
-      .choice-icon svg { width: 20px; height: 20px; }
-      .choice-text { min-width: 0; }
-      .choice-text h2 {
-        margin: 0 0 .2rem; font-size: .95rem; overflow: hidden; text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .choice-text p {
-        margin: 0; font-size: .8rem; opacity: .75; overflow: hidden; text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .current-badge { font-size: .72rem; opacity: .6; font-weight: normal; }
-      .row-remove {
-        flex: none; align-self: center; width: 1.8rem; height: 1.8rem; display: grid;
-        place-items: center; border-radius: .4rem; border: none; background: none;
-        color: inherit; opacity: .55; cursor: pointer; font-size: .9rem; padding: 0;
-      }
-      .row-remove:hover { opacity: 1; background: color-mix(in srgb, CanvasText 10%, transparent); }
-      .back {
-        display: block; margin: 0 0 .75rem; padding: 0; border: none; background: none;
-        text-decoration: underline; opacity: .7; font: inherit;
-      }
-      #picker-url { width: 100%; box-sizing: border-box; text-align: left; margin-top: .5rem; }
     </style>
   </head>
   <body>
@@ -101,225 +48,26 @@
       <div id="problem" hidden>
         <p id="message"></p>
         <pre id="detail" hidden></pre>
+        <pre id="serve" hidden>pnpm nooklet serve</pre>
       </div>
-      <div id="help" hidden>
-        <p id="help-message"></p>
-        <pre>pnpm nooklet serve</pre>
-        <div class="row">
-          <input id="url" aria-label="Server address" type="text" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
-          <button id="retry" type="button">Retry</button>
-        </div>
-        <p id="err"></p>
-        <p><button id="open-picker" type="button" class="linklike">Use a different server…</button></p>
-      </div>
-      <!--
-        The graph list (ADR 025 M6: this Mac can remember MULTIPLE servers, not just one — the
-        desktop's half of "solve the desktop"; every entry but "This Mac" itself is a client replica
-        of a server the user already runs elsewhere, the same role the phone's Capacitor build has).
-        Shown outright when `__NOOKLET_DESKTOP__.forcePicker` is set (`MENU_SWITCH_SERVER` in
-        `../src-tauri/src/main.rs`), or when the active entry stops answering. There is no in-place
-        way to apply a change here: which graph to boot into is decided once, at process start, so
-        picking a DIFFERENT one from the currently active entry ends by RESTARTING the app
-        (`finishAndRestart` — automatic, no manual quit-and-reopen) rather than pretending to switch
-        live (`chooseGraph` below) — adding or removing a server does not, since neither changes
-        what is currently loaded.
-      -->
-      <div id="picker" hidden>
-        <div id="picker-list">
-          <h1>Switch graph</h1>
-          <p class="lede">
-            Notes always work on this Mac by itself. Add a server only if you want them to reach
-            your other devices too.
-          </p>
-          <p id="picker-list-err"></p>
-          <div class="choice" id="graph-list"></div>
-        </div>
-        <form id="picker-form" hidden>
-          <button type="button" id="picker-back" class="back">‹ Back</button>
-          <h1>Add a server</h1>
-          <p class="lede">
-            Enter the address of the nooklet server you already run. Add <code>/g/&lt;graph&gt;</code>
-            for a graph other than its default one.
-          </p>
-          <input id="picker-url" aria-label="Server address" type="text" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://nooklet.example.com/g/work" />
-          <div class="row">
-            <button type="submit">Connect</button>
-          </div>
-          <p id="picker-err"></p>
-        </form>
-        <p id="picker-saved" hidden>Saved — restarting nooklet to apply it…</p>
+      <div id="actions" class="row" hidden>
+        <button id="retry" type="button">Try again</button>
+        <button id="open-mac" type="button" hidden>Open a graph on this Mac</button>
       </div>
     </main>
     <script type="module">
-      // The desktop shell is deliberately a thin window onto a server's own origin (ADR 016, and
-      // the remote-client note above): loading that origin directly is what keeps the token
-      // handshake, OPFS storage and the sync WebSocket working exactly as they do in a browser,
-      // with no CORS and no second copy of the client that could drift from what the server
-      // serves — true whether that origin is this Mac's own bundled server or a remote one.
-      import { APP_PORT, describeStatus } from "./status.js";
+      import { describeStatus } from "./status.js";
 
       const desktop = window.__NOOKLET_DESKTOP__ ?? {};
-      // ADR 025: a LIST of remembered servers, not one slot. `graphs` never includes "This Mac"
-      // itself (`main.rs`'s `RemoteGraph` doc comment) — it is id `null` everywhere below, a row
-      // this page synthesizes. Copied into `let`s (not read from `desktop` at each use) because
-      // `add_graph`/`remove_graph` update this page's OWN view of the list in place, without a
-      // relaunch, whenever the change does not affect what is currently loaded (see this file's
-      // `#picker` doc comment).
-      let graphs = Array.isArray(desktop.graphs) ? desktop.graphs : [];
-      const activeGraphId = typeof desktop.activeGraphId === "string" ? desktop.activeGraphId : null;
-      const forcePicker = Boolean(desktop.forcePicker);
-      /** The address this launch is actually trying to reach — fixed for the life of THIS process
-       * (which entry is active only takes effect at the NEXT launch), even though `activeGraphId`
-       * above can still change live from removing/re-adding rows in the picker. */
-      const activeUrl = (() => {
-        const entry = activeGraphId ? graphs.find((g) => g.id === activeGraphId) : null;
-        return entry ? entry.url : null;
-      })();
-
-      const KEY = "nooklet.desktop.serverUrl";
-      const DEFAULT_URL = `http://127.0.0.1:${APP_PORT}`;
-      // B-643: This Mac's own graphs (`main.rs#list_local_graphs`, every graph on the bundled
-      // server) and which one This Mac opens (`null`: its "default" graph, the bare address).
-      const localGraphs = Array.isArray(desktop.localGraphs) ? desktop.localGraphs : [];
-      const activeLocalGraph =
-        typeof desktop.activeLocalGraph === "string" ? desktop.activeLocalGraph : null;
-      /** Where on the local server to land: the active This-Mac graph's own `/g/<id>`, so the
-       * client opens that graph (it adopts the address bar's graph, `adoptAddressBarGraph`). */
-      const LOCAL_GRAPH_PATH = activeLocalGraph ? `/g/${encodeURIComponent(activeLocalGraph)}` : "";
-      // Purely a local-mode recovery memory (unchanged from before remote mode existed): which
-      // fallback address last actually answered, e.g. after `--port` was passed by hand. A remote
-      // entry's address of record lives natively (`desktop.json`, read into `activeUrl` above), not
-      // here — this key is never written to while a remote entry is active.
-      const localServerUrl = () => localStorage.getItem(KEY) || DEFAULT_URL;
+      // What this window was opened for (`main.rs#ConnectTarget`): the graph's own address (or a
+      // page in it), whether it is This Mac's or a server's, and its name.
+      const target = desktop.connect ?? null;
+      const port = typeof desktop.port === "number" ? desktop.port : 6100;
+      const MAC = `http://127.0.0.1:${port}`;
+      const url = typeof target?.url === "string" ? target.url : `${MAC}/g/default`;
+      const onMac = target ? target.place === "mac" : true;
 
       const $ = (id) => document.getElementById(id);
-      const urlInput = $("url");
-      urlInput.value = activeUrl || localServerUrl();
-
-      const SMARTPHONE_ICON =
-        '<svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path></svg>';
-      const SERVER_ICON =
-        '<svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"></rect><rect width="20" height="8" x="2" y="14" rx="2" ry="2"></rect><line x1="6" x2="6.01" y1="6" y2="6"></line><line x1="6" x2="6.01" y1="18" y2="18"></line></svg>';
-      const PLUS_ICON =
-        '<svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>';
-
-      /** The one place a `graphs` entry becomes a row: a clickable `.choice-option` (choose it) plus
-       * a sibling remove button on any non-active remote entry — two sibling buttons, never nested,
-       * unlike the single big card the old two-option picker used (a `<button>` cannot contain
-       * another `<button>`). Mirrors `apps/web/src/shell/GraphSwitcher.tsx`'s own row shape. */
-      /** B-618: an address without `/g/<graph>` opens the server's default graph (its bare origin
-       * redirects there), so the two spellings are one graph — for the row title and for not adding
-       * it twice. Mirrors `apps/web/src/data/connect-graph.ts#graphBaseUrl`. */
-      function graphAddress(url) {
-        try {
-          const u = new URL(url);
-          const path = u.pathname.replace(/\/+$/, "");
-          return `${u.origin}${path || "/g/default"}`;
-        } catch {
-          return url.replace(/\/+$/, "");
-        }
-      }
-
-      /** B-618: "work on 127.0.0.1:6311", not just the host — two graphs on one server used to get
-       * the same title and differ only in the small subtitle. */
-      function graphTitle(url) {
-        try {
-          const u = new URL(graphAddress(url));
-          const slug = /\/g\/([a-z0-9-]+)$/.exec(u.pathname)?.[1];
-          return slug ? `${slug} on ${u.host}` : `${u.host}${u.pathname}`;
-        } catch {
-          return url;
-        }
-      }
-
-      /** `entry === null` is This Mac; `localGraph` then picks which of its graphs (`null`: its
-       * default graph, the row titled "This Mac"; B-643: one row per other graph on it). */
-      function graphRow(entry, localGraph = null) {
-        const isLocal = entry === null;
-        const id = isLocal ? null : entry.id;
-        const localId = isLocal && localGraph ? localGraph.id : null;
-        const isActive = id === activeGraphId && (!isLocal || localId === activeLocalGraph);
-        let title;
-        let subtitle;
-        if (isLocal && localGraph) {
-          title = localGraph.label;
-          subtitle = "On this Mac";
-        } else if (isLocal) {
-          title = "This Mac";
-          subtitle = "Works offline, nothing to set up.";
-        } else {
-          title = graphTitle(entry.url);
-          subtitle = entry.url;
-        }
-
-        const wrap = document.createElement("div");
-        wrap.className = "graph-row";
-
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = `choice-option${isActive ? " is-active" : ""}`;
-
-        const icon = document.createElement("span");
-        icon.className = "choice-icon";
-        icon.innerHTML = isLocal ? SMARTPHONE_ICON : SERVER_ICON; // static markup, never user data
-
-        const text = document.createElement("span");
-        text.className = "choice-text";
-        const h2 = document.createElement("h2");
-        // `textContent`, not `innerHTML`: `title`/`subtitle` can be a URL the user typed (or, for
-        // `title`, its host) — never trusted as markup.
-        h2.textContent = title;
-        if (isActive) {
-          const badge = document.createElement("span");
-          badge.className = "current-badge";
-          badge.textContent = " (current)";
-          h2.appendChild(badge);
-        }
-        const p = document.createElement("p");
-        p.textContent = subtitle;
-        text.append(h2, p);
-        btn.append(icon, text);
-        btn.addEventListener("click", () => chooseGraph(id, localId));
-        wrap.appendChild(btn);
-
-        if (!isLocal && !isActive) {
-          const remove = document.createElement("button");
-          remove.type = "button";
-          remove.className = "row-remove";
-          remove.setAttribute("aria-label", `Remove ${title}`);
-          remove.textContent = "✕";
-          remove.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            try {
-              await invoke("remove_graph", { id });
-            } catch {
-              return; // Best effort: leave the row in place rather than lying that it is gone.
-            }
-            graphs = graphs.filter((g) => g.id !== id);
-            renderGraphList();
-          });
-          wrap.appendChild(remove);
-        }
-
-        return wrap;
-      }
-
-      function renderGraphList() {
-        const list = $("graph-list");
-        list.replaceChildren();
-        list.appendChild(graphRow(null));
-        for (const g of localGraphs) {
-          if (g && typeof g.id === "string" && g.id !== "default") list.appendChild(graphRow(null, g));
-        }
-        for (const entry of graphs) list.appendChild(graphRow(entry));
-
-        const add = document.createElement("button");
-        add.type = "button";
-        add.className = "choice-option is-add";
-        add.innerHTML = `<span class="choice-icon">${PLUS_ICON}</span><span class="choice-text"><h2>Add a server</h2></span>`;
-        add.addEventListener("click", () => showForm());
-        list.appendChild(add);
-      }
 
       /** `@tauri-apps/api`'s `invoke` is a wrapper over the same call; this page has no bundler to
        * import it, so it reads Tauri 2's own injected internals directly. */
@@ -331,18 +79,16 @@
 
       /** `no-cors` because /healthz sends no CORS headers: an opaque response still proves the
        * server answered, and a network failure still throws. That is all we need to know. */
-      async function reachable(base) {
+      async function reachable(address) {
         try {
-          await fetch(new URL("/healthz", base), { mode: "no-cors", cache: "no-store" });
+          await fetch(new URL("/healthz", address), { mode: "no-cors", cache: "no-store" });
           return true;
         } catch {
           return false;
         }
       }
 
-      /** What the app knows about the LOCAL server it may have started (B-430), or null with
-       * nobody to ask. Meaningless when a remote entry is active — nothing local was spawned — so
-       * `attempt()` never calls this once `activeUrl` is set. */
+      /** What the app knows about its bundled server (B-430), or null with nobody to ask. */
       async function serverStatus() {
         try {
           return await invoke("server_status");
@@ -351,242 +97,73 @@
         }
       }
 
-      let shown = "";
-      // True once the picker is showing, for any reason — from then on the background poll loop
-      // stops rendering over it; a choice, a connect, or quitting is the only way out from here.
-      let loopStopped = false;
+      function host(address) {
+        try {
+          return new URL(address).host;
+        } catch {
+          return address;
+        }
+      }
 
+      let shown = "";
       function render(view) {
         // Re-rendered on every poll; only touch the DOM when the words change, so text being
         // selected in the output box is not wiped every few seconds.
         const key = JSON.stringify(view);
         if (key === shown) return;
         shown = key;
-        $("title").hidden = false;
-        $("title").textContent = view.kind === "starting" ? "nooklet" : view.title;
-        $("status").hidden = view.kind !== "starting";
+        const starting = view.kind === "starting";
+        $("title").textContent = starting ? "nooklet" : view.title;
+        $("status").hidden = !starting;
         $("status").textContent = view.title;
-        $("problem").hidden = view.kind !== "problem";
+        $("problem").hidden = starting;
         $("message").textContent = view.message;
         $("detail").hidden = !view.detail;
         $("detail").textContent = view.detail ?? "";
-        $("help").hidden = !view.suggestServe;
-        $("help-message").textContent = view.message;
-        $("picker").hidden = true;
+        $("serve").hidden = !view.suggestServe;
+        $("actions").hidden = starting;
+        // From a server's graph, This Mac is the way out; on This Mac there is nowhere else to go.
+        $("open-mac").hidden = onMac;
       }
-
-      function openPicker() {
-        loopStopped = true;
-        shown = "";
-        $("title").hidden = true;
-        $("status").hidden = true;
-        $("problem").hidden = true;
-        $("help").hidden = true;
-        $("picker").hidden = false;
-        $("picker-saved").hidden = true;
-      }
-
-      function showList(message) {
-        openPicker();
-        renderGraphList();
-        $("picker-list").hidden = false;
-        $("picker-form").hidden = true;
-        $("picker-list-err").textContent = message ?? "";
-        $("picker-list-err").classList.remove("ok");
-      }
-
-      function showForm() {
-        stopRecheck();
-        openPicker();
-        $("picker-list").hidden = true;
-        $("picker-form").hidden = false;
-        $("picker-url").value = "";
-        $("picker-err").textContent = "";
-      }
-
-      /** The picker was opened just to look (`forcePicker`/"Use a different server…"), and nothing
-       * actually needs to change — resume the normal connect flow instead of quitting the app over
-       * a no-op. */
-      function cancelPicker() {
-        stopRecheck();
-        $("picker").hidden = true;
-        loopStopped = false;
-        shown = "";
-        void loop();
-      }
-
-      /** While the picker is showing because `activeUrl` specifically stopped answering (`attempt()`
-       * below, NOT `forcePicker`/"Use a different server…" — nobody asked to leave this screen, so
-       * nothing should silently pull them off it), keep checking in the background so the moment it
-       * comes back, this page moves on by itself. 2026-09-16, owner: "I also ideally want some kind
-       * of a 'periodic check' on a page with selection of mode in case some server becomes available
-       * again." Independent of `loop()`/`loopStopped` on purpose — those exist to reach THIS screen,
-       * not to leave it, and stay stopped for as long as the picker is open for any other reason. */
-      let recheckTimer;
-      const RECHECK_INTERVAL_MS = 3000;
-
-      function stopRecheck() {
-        clearTimeout(recheckTimer);
-        recheckTimer = undefined;
-      }
-
-      function scheduleRecheck() {
-        stopRecheck();
-        recheckTimer = setTimeout(async () => {
-          if (await reachable(activeUrl)) {
-            $("picker-list-err").textContent = `${activeUrl} is back — reconnecting…`;
-            $("picker-list-err").classList.add("ok");
-            // A beat so "reconnecting…" is actually readable, same discipline as
-            // `finishAndRestart`'s own pause — then the exact same navigation a successful
-            // `attempt()` takes on its own (never the `localStorage` write on that path: that is
-            // for the LOCAL fallback address only, and `activeUrl` here is always a remembered
-            // remote entry — `scheduleRecheck` is only ever called from inside `attempt()`'s own
-            // `if (activeUrl)` branch).
-            setTimeout(() => location.replace(activeUrl), 600);
-            return;
-          }
-          scheduleRecheck();
-        }, RECHECK_INTERVAL_MS);
-      }
-
-      /** Picking a row from the list (`graphRow`'s click handler) — "This Mac" (`id === null`) and
-       * any remembered server go through this one path. `localGraph`: which This-Mac graph, when
-       * `id` is `null` (B-643). */
-      async function chooseGraph(id, localGraph = null) {
-        stopRecheck();
-        const alreadyActive =
-          id === activeGraphId && (id !== null || localGraph === activeLocalGraph);
-        if (alreadyActive && !forcePicker) {
-          cancelPicker();
-          return;
-        }
-        if (alreadyActive) {
-          // B-584: `cancelPicker()` (resume polling, no relaunch) is only correct when THIS launch
-          // already spawned or connected to the entry being re-picked. `forcePicker` (`Switch
-          // Server…`) means the opposite: `main.rs`'s `setup()` saw `show_picker` and skipped both
-          // spawning AND connecting for the whole launch, on purpose ("nothing local to spawn" —
-          // see its comment), so resuming the poll loop would watch a status that can never move —
-          // exactly the original bug report: "Just this device" stuck on "nooklet is starting". The
-          // fix is the same one switching to a DIFFERENT entry already needs below — quit and let
-          // the next, normal launch actually spawn/connect.
-        } else {
-          try {
-            await invoke("set_active_graph", { id, localGraph });
-          } catch {
-            // Best effort: worst case they relaunch unchanged and can try again.
-            return;
-          }
-        }
-        finishAndRestart();
-      }
-
-      $("picker-back").addEventListener("click", () => showList());
-      $("open-picker").addEventListener("click", () => showList());
-
-      /** Applies a picker choice. Which graph to boot into is decided once, at process start (this
-       * file's `#picker` doc comment), so a restart is unavoidable — but the owner having to quit
-       * and reopen the app THEMSELVES is not: `main.rs`'s `restart_app` command does that part
-       * automatically (2026-09-16, "why is there this 'nooklet will quit now'... super annoying" —
-       * a real complaint, not a hypothetical one). */
-      function finishAndRestart() {
-        stopRecheck();
-        $("picker-list").hidden = true;
-        $("picker-form").hidden = true;
-        $("picker-saved").hidden = false;
-        // A short pause so "Saved — restarting…" is actually readable before the window closes —
-        // the point of showing it at all is so the owner is not left wondering why the app just
-        // flashed and came back, not to give them time to act on it.
-        setTimeout(() => {
-          invoke("restart_app").catch(() => {});
-        }, 1200);
-      }
-
-      $("picker-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        // Same discipline as `ConnectView.tsx`'s `connect()`: verify before storing, so a typo or
-        // an address that is not actually up yet fails here with a readable reason rather than
-        // silently sticking as a remote config nothing can ever reach.
-        const url = $("picker-url").value.trim().replace(/\/+$/, "");
-        if (!url) {
-          $("picker-err").textContent = "Enter your server's address.";
-          return;
-        }
-        if (!/^https?:\/\//i.test(url)) {
-          $("picker-err").textContent = "Include http:// or https://.";
-          return;
-        }
-        $("picker-err").textContent = "Checking…";
-        if (!(await reachable(url))) {
-          $("picker-err").textContent = `Could not reach ${url}.`;
-          return;
-        }
-        let entry;
-        try {
-          // B-618: the graph is already listed under another spelling (bare origin vs
-          // `/g/default`): switch to that entry instead of remembering it twice.
-          entry = graphs.find((g) => graphAddress(g.url) === graphAddress(url));
-          if (!entry) entry = await invoke("add_graph", { url });
-          await invoke("set_active_graph", { id: entry.id });
-        } catch (err) {
-          $("picker-err").textContent = typeof err === "string" ? err : "Could not save that.";
-          return;
-        }
-        finishAndRestart();
-      });
-
-      let base = activeUrl || localServerUrl();
 
       async function attempt() {
-        if (await reachable(base)) {
-          // A remote entry's address of record is the native config, not this — see
-          // `localServerUrl`.
-          if (!activeUrl) localStorage.setItem(KEY, base);
-          location.replace(activeUrl ? base : `${base.replace(/\/+$/, "")}${LOCAL_GRAPH_PATH}`);
+        if (await reachable(url)) {
+          location.replace(url);
           return true;
         }
-        if (activeUrl) {
-          showList(`Couldn't reach ${activeUrl}. Pick a different graph, or fix the address below.`);
-          scheduleRecheck();
+        if (!onMac) {
+          render({
+            kind: "problem",
+            title: `Couldn't reach ${host(url)}.`,
+            message: target?.label
+              ? `“${target.label}” is on that server. Check this Mac's network connection and that the server is running.`
+              : "Check this Mac's network connection and that the server is running.",
+            suggestServe: false,
+          });
           return false;
         }
-        const status = await serverStatus();
-        // The app's own server is up but the page is pointed elsewhere (a server address typed in
-        // here once, remembered): open the one that answers rather than wait on "Starting" forever.
-        if (status?.state === "ready" && base !== DEFAULT_URL) {
-          base = DEFAULT_URL;
-          return attempt();
-        }
-        render(describeStatus(status));
+        render(describeStatus(await serverStatus()));
         return false;
       }
 
-      $("retry").addEventListener("click", async () => {
-        $("err").textContent = "";
-        try {
-          base = new URL(urlInput.value.trim()).origin;
-        } catch {
-          $("err").textContent = "That doesn't look like a URL.";
-          return;
-        }
-        if (!(await attempt())) $("err").textContent = "Still no answer.";
+      $("retry").addEventListener("click", () => {
+        shown = "";
+        render({ kind: "starting", title: "Connecting…", message: "", suggestServe: false });
+        void attempt();
       });
+      // Any navigation to a graph's address is the shell's to route (`main.rs#on_navigation`):
+      // This Mac's default graph opens in this window, with its bundled server already running.
+      $("open-mac").addEventListener("click", () => location.assign(`${MAC}/g/default`));
 
-      // Keep checking while the window is open: a server that finishes starting, or one started
-      // elsewhere, opens nooklet with no click. Quick while the app's server is starting (a normal
-      // launch takes a second or two), slower once there is a problem on screen. Stops for good
-      // once the picker is showing (`loopStopped`) — see `openPicker`'s doc comment above.
+      // Keep checking while the window is open: a server that finishes starting, or comes back,
+      // opens the graph with no click. Quick while This Mac's server is starting (a normal launch
+      // takes a second or two), slower once there is a problem on screen.
       async function loop() {
         if (await attempt()) return;
-        if (loopStopped) return;
         const starting = shown && JSON.parse(shown).kind === "starting";
         setTimeout(loop, starting ? 300 : 3000);
       }
-
-      if (forcePicker) {
-        showList();
-      } else {
-        void loop();
-      }
+      void loop();
     </script>
   </body>
 </html>

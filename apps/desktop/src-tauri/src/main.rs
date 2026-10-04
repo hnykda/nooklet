@@ -1,49 +1,61 @@
-//! The desktop shell (ADR 016).
+//! The desktop shell (ADR 016, ADR 032).
 //!
-//! Runs nooklet's own server as a child process and points the window at it, so the app is
-//! self-contained: launching it is enough, nothing has to be started first.
+//! Runs nooklet's own server as a child process, keeps the one list of graphs this Mac knows, and
+//! points the window at the graph that is open.
 //!
-//! Three decisions worth knowing:
+//! Decisions worth knowing:
 //!
 //! - **If a nooklet server is already listening, use it.** The obvious alternative — always spawn
 //!   our own — would put two writers on the same SQLite file whenever someone already runs
 //!   `nooklet serve` against the default data directory, which is the normal setup for anyone
 //!   using the MCP endpoint from an editor. Sharing the running one is both safer and what the
 //!   user actually wants.
-//! - **The window loads the server's HTTP origin**, not bundled assets. Same-origin is what keeps
+//! - **The bundled server always runs** (ADR 032), whichever graph is open. It used to be started
+//!   only when This Mac was the active graph, a decision made once per launch, so every switch
+//!   between This Mac and a server restarted the app (B-785). Idle, it costs a Node process.
+//! - **The window loads the graph's own HTTP origin**, not bundled assets. Same-origin is what keeps
 //!   the token handshake, the OPFS replica and the sync socket working exactly as in a browser;
 //!   see ADR 016 for why bundling the frontend would drag CORS into the auth path.
+//! - **The shell owns the graph list** (`graph_list.rs`, proposal 005): This Mac's graphs from disk
+//!   and server graphs from `desktop.json`, with each server graph's token in the system keychain
+//!   (`token_store.rs`). The in-app graph menu reads it from `__NOOKLET_DESKTOP__` and changes it
+//!   through `ShellRequest`s; adding a server is checked here, from Rust (`connect.rs`), because
+//!   from the page it would be a cross-origin request the server refuses (B-704).
+//! - **One window per opened server graph** (`open_window`). The only way to hand the page its
+//!   token before any of its scripts run is the initialization script, and that is fixed when the
+//!   window is built. So opening a server graph builds a fresh window whose script carries that one
+//!   graph's token, scoped to its origin and path (`shell_script`), and closes the old one.
+//!   Navigations among This Mac's graphs stay in the same window.
 //! - **The launcher page is told what happened to the server we started** (`server_status`,
 //!   B-430). Opened from Finder, the child's stderr goes nowhere, so a server that refused to start
 //!   ("database schema version 6 is newer than this build supports") used to look exactly like no
-//!   server at all, and the page advised running `pnpm nooklet serve` — wrong for a self-contained
-//!   app, and silent about the actual reason. The child's stderr is now piped, its tail kept, and
-//!   its exit noticed; the launcher (`../launcher/`) turns that into words.
-//! - **Remote-client mode is a config, not a second architecture.** `DesktopConfig` lets this Mac
-//!   remember MULTIPLE servers it can point at instead of spawning its own (ADR 025) — the same
-//!   client-replica role the phone's Capacitor build has, now a list instead of one slot, so
-//!   switching between two remembered servers (or back to this Mac) never forgets the others.
-//!   Nothing here or in `apps/web` needed to change for that beyond deciding whether to spawn: the
-//!   window still just loads the active entry's own page, so the existing paste-a-token
-//!   `ConnectView` handles auth exactly as it does for any non-loopback device already.
-//!   `MENU_SWITCH_SERVER` is how a running app reaches the picker again.
+//!   server at all. The child's stderr is piped, its tail kept, and its exit noticed; the launcher
+//!   (`../launcher/`) turns that into words. Each window starts on the launcher ("Connecting…"),
+//!   which opens the graph the moment it answers, or says it could not be reached.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 // Two lines, not one `{…}`: `tools/probes/desktop-harness/wire.py` anchors on the second.
 use tauri::webview::DownloadEvent;
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+
+mod connect;
+mod graph_list;
+mod token_store;
+
+use graph_list::{list_local_graphs, slug_for_label, DesktopConfig, GraphKey, PageGraph};
+use token_store::TokenStore;
 
 /// Where the app serves from. Matches the CLI's default, so an already-running `nooklet serve`
 /// is found rather than duplicated.
@@ -341,111 +353,32 @@ fn graph_dir(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Erro
     Ok(app.path().home_dir()?.join(".nooklet").join("default"))
 }
 
-/// Remote-client mode (ADR 025, extending the BUILD item "solve the desktop"): this Mac can either
-/// be its own nooklet server (the default above — self-contained, works offline because there is
-/// nothing to reach) OR a client replica of a server the user already runs elsewhere, exactly the
-/// role the phone's Capacitor build has — and, unlike the single-slot model this replaces, it can
-/// REMEMBER more than one such server and switch between them without forgetting the others. There
-/// is still no server-to-server sync: nooklet is one canonical server plus N client replicas, so
-/// making a remote entry active means this Mac's OWN standalone graph (or whichever OTHER remote
-/// entry was active) is no longer read while it is active — a fresh replica of that graph starts
-/// under its own origin's storage partition instead (different origins never share OPFS, so nothing
-/// is silently deleted, but nothing is merged either).
-///
-/// One entry is never stored here at all: "This Mac" itself (`active_graph_id: None`), since there
-/// is nothing to configure about it — `graph_dir`/`spawn_server` above already know how to run it,
-/// and it can never be removed.
-///
-/// Deliberately just a URL per entry, no token: the window ends up showing that URL's own page, so
-/// the existing paste-a-token `ConnectView` (`apps/web/src/views/ConnectView.tsx`) handles auth
-/// itself inside that origin exactly as it already does for any non-loopback device — the client
-/// needed ZERO changes for this, because a real `https://` origin is not the Capacitor problem
-/// (`capacitor://localhost` can never be a real server's origin; this window navigating to a real
-/// URL already can be, the same way a browser tab can).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct RemoteGraph {
-    /// Opaque, stable, derived from the (normalized) URL — see `graph_id_for_url`. Never shown.
-    id: String,
-    url: String,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-struct DesktopConfig {
-    #[serde(default)]
-    remote_graphs: Vec<RemoteGraph>,
-    /// `None` = "This Mac." `Some(id)` must name an entry in `remote_graphs`; a stale id (the entry
-    /// was removed by hand-editing the file) is treated as `None` rather than erroring — same
-    /// "never fail startup over a config file" rule this whole module follows.
-    #[serde(default)]
-    active_graph_id: Option<String>,
-    /// Which of This Mac's OWN graphs to open while This Mac is active (B-643): a graph id on the
-    /// bundled server (`/g/<id>`). `None` is its "default" graph, the only one there was before.
-    /// Kept while a remote entry is active, so going back to This Mac returns to the graph last
-    /// used there. A stale id (the graph's directory was deleted) is dropped at launch.
-    #[serde(default)]
-    active_local_graph: Option<String>,
-}
-
-impl DesktopConfig {
-    /// The active entry's address, or `None` for "This Mac."
-    fn active_url(&self) -> Option<&str> {
-        let id = self.active_graph_id.as_deref()?;
-        self.remote_graphs.iter().find(|g| g.id == id).map(|g| g.url.as_str())
-    }
-}
-
-/// A stable, opaque id for a remote graph, derived from its (already-normalized) URL: re-adding an
-/// address that is already known resolves to the SAME entry rather than creating a duplicate — the
-/// same dedupe `apps/web/src/data/bootstrap.ts#setConnectedGraphToken`'s Capacitor path already
-/// gives the web client for the equivalent case.
-fn graph_id_for_url(url: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    url.hash(&mut hasher);
-    format!("g{:016x}", hasher.finish())
-}
+// ---------------------------------------------------------------------------------------------
+// The graph list on disk (`desktop.json`).
 
 fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(app.path().app_config_dir()?.join("desktop.json"))
 }
 
-/// Missing, unreadable, or unparseable all mean the same thing: standalone, the default — this
-/// must never fail startup over a config file, which is a convenience, not a dependency.
+/// Reads the list. A file in an older shape is migrated once: the new shape is written and the old
+/// file kept beside it as `desktop.json.v1.bak` (never overwritten, so a second migration cannot
+/// replace the original). Missing or unreadable means an empty list, never a failed launch.
 fn read_config(app: &tauri::AppHandle) -> DesktopConfig {
-    config_path(app)
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .map(|s| parse_config(&s))
-        .unwrap_or_default()
-}
-
-/// Old shape (pre-ADR-025): `{"remote_url": "https://..." | null}`. New: `{"remote_graphs": [...],
-/// "active_graph_id": "..." | null}`. The two are told apart by the `remote_url` key alone — the
-/// new shape never writes one — so an old file reads as an equivalent one-entry (or empty) list;
-/// nothing is rewritten to disk until the next real save, same as every other read-tolerates-old
-/// migration in this repo (`packages/server/src/graphs/migrate-legacy-layout.ts`'s own pattern).
-fn parse_config(text: &str) -> DesktopConfig {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+    let Ok(path) = config_path(app) else {
         return DesktopConfig::default();
     };
-    match value.get("remote_url") {
-        Some(old_url) => migrate_remote_url(old_url.as_str()),
-        None => serde_json::from_value(value).unwrap_or_default(),
-    }
-}
-
-/// Re-normalizes rather than trusting the old value verbatim: it was always normalized by the old
-/// `set_remote_server` before being written, but this file can also be hand-edited, and an invalid
-/// address here must fall back to "This Mac" rather than fail startup, same as `read_config`'s rule.
-fn migrate_remote_url(url: Option<&str>) -> DesktopConfig {
-    match normalize_remote_url(url.unwrap_or_default()) {
-        Ok(Some(url)) => {
-            let entry = RemoteGraph { id: graph_id_for_url(&url), url };
-            let active_graph_id = Some(entry.id.clone());
-            DesktopConfig { remote_graphs: vec![entry], active_graph_id, ..Default::default() }
+    let text = std::fs::read_to_string(&path).ok();
+    let loaded = graph_list::load(text.as_deref());
+    if loaded.migrated {
+        let backup = path.with_file_name("desktop.json.v1.bak");
+        if !backup.exists() {
+            let _ = std::fs::copy(&path, &backup);
         }
-        _ => DesktopConfig::default(),
+        if let Err(err) = write_config(app, &loaded.config) {
+            eprintln!("nooklet: could not write the migrated graph list: {err}");
+        }
     }
+    loaded.config
 }
 
 fn write_config(app: &tauri::AppHandle, config: &DesktopConfig) -> Result<(), String> {
@@ -454,291 +387,15 @@ fn write_config(app: &tauri::AppHandle, config: &DesktopConfig) -> Result<(), St
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
-}
-
-/// Where "Switch Server…" (`MENU_SWITCH_SERVER`) leaves a note for the next launch to show the
-/// picker immediately, before attempting anything — see `on_menu` and its doc comment for why a
-/// relaunch, not a live re-navigation, is how mode changes take effect.
-fn picker_sentinel_path(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(app.path().app_config_dir()?.join("show_picker_once"))
-}
-
-/// True if the sentinel was there (and removes it either way it existed — one-shot, like a flag
-/// day: if this fails to delete, showing the picker one extra launch is a nothing burger, but
-/// showing it forever because deletion silently never happens would not be).
-fn consume_picker_sentinel(app: &tauri::AppHandle) -> bool {
-    let Ok(path) = picker_sentinel_path(app) else {
-        return false;
-    };
-    let existed = path.exists();
-    if existed {
-        let _ = std::fs::remove_file(&path);
-    }
-    existed
-}
-
-/// An empty/blank address normalizes to `None` (never valid for `add_graph`, which rejects it
-/// itself — this alone still returns `Ok(None)` because `normalize_remote_url("")` is also how a
-/// hand-edited config's empty string is tolerated on the migration path); a non-empty one must be
-/// `http(s)://` — validated here, not just in the launcher page, since the config file can also be
-/// hand-edited. A pure function so it is testable without a live `AppHandle`; the launcher's own
-/// `parseServerUrl`-equivalent check exists only so a bad address fails before a round trip, not as
-/// the real gate — this one is.
-fn normalize_remote_url(raw: &str) -> Result<Option<String>, String> {
-    let trimmed = raw.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        Ok(None)
-    } else if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
-        Err("Include http:// or https://".into())
-    } else {
-        Ok(Some(trimmed.to_string()))
-    }
-}
-
-/// Remembers a server (adding it, or resolving to the existing entry if this address is already
-/// known — see `graph_id_for_url`). Does not make it active: the launcher's picker does that as a
-/// separate `set_active_graph` call, so "add" and "switch to" stay two single-purpose commands
-/// rather than one that silently does both. Persists only — like `remove_graph`/`set_active_graph`
-/// below, it takes effect at the NEXT launch (the spawn-or-not decision only happens once, at
-/// process start — see `setup()`).
-#[tauri::command]
-fn add_graph(app: tauri::AppHandle, url: String) -> Result<RemoteGraph, String> {
-    let normalized = normalize_remote_url(&url)?;
-    let url = normalized.ok_or_else(|| "Enter your server's address.".to_string())?;
-    let mut config = read_config(&app);
-    let entry = remember_remote_graph(&mut config, &url);
-    write_config(&app, &config)?;
-    Ok(entry)
-}
-
-/// The graph an address opens, spelled one way: a bare server address is its default graph (the
-/// server's own bare-origin redirect, `apps/web/src/data/connect-graph.ts#graphBaseUrl`), so
-/// `https://h` and `https://h/g/default` are one graph (B-618). An unparseable address is itself.
-fn graph_address(url: &str) -> String {
-    match tauri::Url::parse(url) {
-        Ok(parsed) => {
-            let path = parsed.path().trim_end_matches('/');
-            let path = if path.is_empty() { "/g/default" } else { path };
-            format!("{}{}", parsed.origin().ascii_serialization(), path)
-        }
-        Err(_) => url.trim_end_matches('/').to_string(),
-    }
-}
-
-/// `url`'s entry in `config.remote_graphs`, added if no entry opens the same graph already
-/// (`graph_address`), so the same server added twice is one entry with one replica.
-fn remember_remote_graph(config: &mut DesktopConfig, url: &str) -> RemoteGraph {
-    let wanted = graph_address(url);
-    if let Some(existing) = config.remote_graphs.iter().find(|g| graph_address(&g.url) == wanted) {
-        return existing.clone();
-    }
-    let entry = RemoteGraph { id: graph_id_for_url(url), url: url.to_string() };
-    config.remote_graphs.push(entry.clone());
-    entry
-}
-
-/// Forgets a remembered server. Never removes "This Mac" — that entry is not stored here at all
-/// (`active_graph_id: None`), so there is nothing for this command to target it with. Removing the
-/// currently active entry falls back to "This Mac" for the NEXT launch, the same way
-/// `apps/web/src/data/bootstrap.ts#removeGraph` clears the active pointer when the removed entry
-/// was the active one.
-#[tauri::command]
-fn remove_graph(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let mut config = read_config(&app);
-    config.remote_graphs.retain(|g| g.id != id);
-    if config.active_graph_id.as_deref() == Some(id.as_str()) {
-        config.active_graph_id = None;
-    }
-    write_config(&app, &config)
-}
-
-/// Persists which remembered graph should be active from the NEXT launch — `id: None` for "This
-/// Mac." Rejects an id that names no known entry rather than silently falling back, since here
-/// (unlike `read_config`'s tolerance for a stale ON-DISK id) the launcher just asked for one by id
-/// and deserves to know if that failed.
-///
-/// `local_graph` (B-643) picks which of This Mac's own graphs to open when `id` is `None`; absent
-/// or `None` is its default graph. Ignored when `id` names a remote entry.
-#[tauri::command]
-fn set_active_graph(
-    app: tauri::AppHandle,
-    id: Option<String>,
-    local_graph: Option<String>,
-) -> Result<(), String> {
-    let mut config = read_config(&app);
-    if let Some(id) = &id {
-        if !config.remote_graphs.iter().any(|g| &g.id == id) {
-            return Err("That graph is not in the list any more.".into());
-        }
-    } else {
-        let data_dir = graph_dir(&app).map_err(|e| e.to_string())?;
-        config.active_local_graph = local_graph_choice(&list_local_graphs(&data_dir), local_graph.as_deref())?;
-    }
-    config.active_graph_id = id;
-    write_config(&app, &config)
-}
-
-/// One of This Mac's own graphs (B-643): a graph on the bundled server's data dir, read from its
-/// `graphs/<id>/graph.json` — the same file `nooklet serve`'s `GET /graphs` lists — so a graph made
-/// by the CLI or an agent shows up here too, and this app keeps no second list that could drift.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-struct LocalGraph {
-    id: String,
-    label: String,
-}
-
-#[derive(Deserialize)]
-struct GraphMetaFile {
-    #[serde(default)]
-    label: Option<String>,
-    #[serde(default, rename = "createdAt")]
-    created_at: Option<f64>,
-}
-
-/// `packages/server/src/graphs/paths.ts#isValidGraphId`, the same rule: a URL segment and a
-/// directory name, lowercase so two graphs can never collide on a case-insensitive disk.
-fn is_valid_graph_id(id: &str) -> bool {
-    let bytes = id.as_bytes();
-    !bytes.is_empty()
-        && bytes.len() <= 64
-        && id != "graphs"
-        && bytes.iter().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
-        && bytes[0] != b'-'
-        && bytes[bytes.len() - 1] != b'-'
-}
-
-/// Every graph in `<data_dir>/graphs/`, oldest first (the server's own order). A directory with a
-/// database but no `graph.json` is listed under its id, as the server adopts it (B-607); one with
-/// neither is not a graph. Never fails: a missing or unreadable directory is an empty list.
-fn list_local_graphs(data_dir: &std::path::Path) -> Vec<LocalGraph> {
-    let Ok(entries) = std::fs::read_dir(data_dir.join("graphs")) else {
-        return Vec::new();
-    };
-    let mut graphs: Vec<(f64, LocalGraph)> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let id = entry.file_name().to_str()?.to_string();
-            if !is_valid_graph_id(&id) || !entry.path().is_dir() {
-                return None;
-            }
-            let meta = std::fs::read_to_string(entry.path().join("graph.json"))
-                .ok()
-                .and_then(|text| serde_json::from_str::<GraphMetaFile>(&text).ok());
-            if meta.is_none() && !entry.path().join("graph.sqlite").exists() {
-                return None;
-            }
-            let created = meta.as_ref().and_then(|m| m.created_at).unwrap_or(0.0);
-            let label = meta.and_then(|m| m.label).filter(|l| !l.trim().is_empty()).unwrap_or_else(|| id.clone());
-            Some((created, LocalGraph { id, label }))
-        })
-        .collect();
-    graphs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.id.cmp(&b.1.id)));
-    graphs.into_iter().map(|(_, g)| g).collect()
-}
-
-/// What `active_local_graph` becomes for a requested This-Mac graph: `None` for the default graph
-/// (or no request), the id for any other that exists, an error for one that does not.
-fn local_graph_choice(graphs: &[LocalGraph], requested: Option<&str>) -> Result<Option<String>, String> {
-    match requested {
-        None | Some("default") => Ok(None),
-        Some(id) if graphs.iter().any(|g| g.id == id) => Ok(Some(id.to_string())),
-        Some(_) => Err("That graph is not on this Mac any more.".into()),
-    }
-}
-
-/// A graph id for a new This-Mac graph named `label` ("Quiet Otter" -> `quiet-otter`), not equal to
-/// any id in `taken` nor "default" (`-2`, `-3`, … appended). The label itself is kept as the
-/// graph's display name; the id only has to be a valid, unique URL segment.
-fn slug_for_label(label: &str, taken: &[String]) -> String {
-    let mut slug = String::new();
-    for ch in label.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-        } else if !slug.is_empty() && !slug.ends_with('-') {
-            slug.push('-');
-        }
-    }
-    slug.truncate(56);
-    let slug = slug.trim_matches('-').to_string();
-    let base = if slug.is_empty() || !is_valid_graph_id(&slug) { "graph".to_string() } else { slug };
-    let free = |s: &str| s != "default" && !taken.iter().any(|t| t == s);
-    if free(&base) {
-        return base;
-    }
-    (2..).map(|n| format!("{base}-{n}")).find(|s| free(s)).expect("an unused number exists")
-}
-
-/// What a page in the window can ask of the shell by navigating to an address under
-/// `SHELL_REQUEST_HOST` (B-643). The window shows a SERVER's page — the bundled one or a remote one
-/// — and Tauri gives such a page no IPC at all (no capability is defined; `desktop-remote-mode.md`
-/// proved an `invoke` from there is rejected). A navigation, though, always reaches
-/// `on_navigation`, whatever the origin: this is the one door, and it opens on three actions only
-/// — make an empty graph on This Mac, switch to one that is there, or (B-704) remember a server
-/// graph and switch to it — each of which ends in a visible restart. Nothing is read, deleted or
-/// sent anywhere; no token passes through here (the server's own page asks for one).
-#[derive(Debug, PartialEq)]
-enum ShellRequest {
-    NewLocalGraph { label: String },
-    OpenLocalGraph { id: String },
-    /// B-704: the in-app switcher's "add a server graph". The page cannot check a server on another
-    /// origin itself (CORS refuses it), so the shell does what Switch Server… → Add a server does.
-    AddServerGraph { url: String },
-}
-
-/// `.invalid` is reserved never to resolve (RFC 2606): if this shell is not there to intercept the
-/// address (a browser, an older app), the navigation fails instead of reaching anyone.
-const SHELL_REQUEST_HOST: &str = "nooklet-desktop.invalid";
-const MAX_LABEL_CHARS: usize = 80;
-const MAX_URL_CHARS: usize = 2048;
-
-fn parse_shell_request(url: &tauri::Url) -> Option<ShellRequest> {
-    if url.host_str() != Some(SHELL_REQUEST_HOST) {
-        return None;
-    }
-    let param = |name: &str| url.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.into_owned());
-    match url.path() {
-        "/new-local-graph" => {
-            let label: String = param("label")?.chars().filter(|c| !c.is_control()).take(MAX_LABEL_CHARS).collect();
-            let label = label.trim().to_string();
-            (!label.is_empty()).then_some(ShellRequest::NewLocalGraph { label })
-        }
-        "/open-local-graph" => {
-            let id = param("id")?;
-            is_valid_graph_id(&id).then_some(ShellRequest::OpenLocalGraph { id })
-        }
-        "/add-server-graph" => {
-            let raw = param("url")?;
-            if raw.len() > MAX_URL_CHARS || raw.chars().any(|c| c.is_control()) {
-                return None;
-            }
-            // The same rule as `add_graph`, plus a host: `http://` alone is not a server.
-            let url = normalize_remote_url(&raw).ok()??;
-            tauri::Url::parse(&url).ok()?.host_str()?;
-            Some(ShellRequest::AddServerGraph { url })
-        }
-        _ => None,
-    }
-}
-
-/// The This-Mac graph a navigation to the bundled server's own `/g/<id>` opens, if `url` is one
-/// (`Some(None)` for "default"). Lets the switcher's ordinary same-origin switches between This
-/// Mac's graphs be remembered for the next launch without asking anything of the page.
-fn local_graph_in_url(url: &tauri::Url, port: u16) -> Option<Option<String>> {
-    if url.scheme() != "http" || url.host_str() != Some("127.0.0.1") || url.port() != Some(port) {
-        return None;
-    }
-    let id = url.path().strip_prefix("/g/")?.split('/').next()?;
-    if !is_valid_graph_id(id) {
-        return None;
-    }
-    Some((id != "default").then(|| id.to_string()))
+    // Write-then-rename: a crash mid-write must not leave half a list.
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
 /// Makes a graph on This Mac with the bundled server's own CLI (`nooklet graph create`, the same
-/// thing `POST /graphs` does) — whether or not that server is running: a running one opens a graph
-/// lazily, on its first request.
-fn create_local_graph(resource_dir: &PathBuf, data_dir: &PathBuf, id: &str, label: &str) -> Result<(), String> {
+/// thing `POST /graphs` does). The running server opens it lazily, on its first request.
+fn create_local_graph(resource_dir: &Path, data_dir: &Path, id: &str, label: &str) -> Result<(), String> {
     let sidecar = resource_dir.join("sidecar");
     std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
     let output = Command::new(sidecar.join(format!("node{EXE}")))
@@ -759,22 +416,507 @@ fn create_local_graph(resource_dir: &PathBuf, data_dir: &PathBuf, id: &str, labe
     }
 }
 
-/// Tells the page a shell request failed: the switcher shows `detail` (`apps/web/src/platform/
-/// desktop-shell.ts#DESKTOP_ERROR_EVENT`). Any other page ignores it.
-fn report_to_page(app: &tauri::AppHandle, message: &str) {
-    if let Some(window) = app.get_webview_window("main") {
-        let detail = serde_json::to_string(message).unwrap_or_else(|_| "\"\"".into());
-        let _ = window.eval(format!(
-            "window.dispatchEvent(new CustomEvent(\"nooklet:desktop-error\",{{detail:{detail}}}))"
-        ));
+// ---------------------------------------------------------------------------------------------
+// What a page can ask of the shell.
+
+/// What a page in the window can ask of the shell by navigating to an address under
+/// `SHELL_REQUEST_HOST` (B-643). The window shows a SERVER's page and Tauri gives such a page no
+/// IPC (no capability is defined; `desktop-remote-mode.md` proved an `invoke` from there is
+/// rejected), but every navigation reaches `on_navigation`, whatever its origin: this is the one
+/// door.
+///
+/// Every request must carry the window's `key` (`random_key`), which only that window's
+/// main-frame documents get, from the initialization script. An iframe's navigations reach
+/// `on_navigation` too, but an iframe never runs the script (it is main-frame only), so an
+/// embedded page cannot make requests. Any page the main frame shows can, which is the same
+/// exposure ADR 028 accepted: it can make an empty graph on This Mac, add a server it chooses
+/// (with a token it chooses), rename a graph, or remove a server graph from the list (that graph's
+/// data stays on its server; its unsynced changes stay in this Mac's copy until it is added again).
+#[derive(Debug, PartialEq)]
+enum ShellRequest {
+    NewLocalGraph { req: String, label: String },
+    ConnectServer { req: String, address: String, credential: Credential },
+    Rename { req: String, graph: GraphKey, label: String },
+    Remove { req: String, graph: GraphKey },
+}
+
+#[derive(Debug, PartialEq)]
+enum Credential {
+    Token(String),
+    Code { code: String, device: String },
+}
+
+impl ShellRequest {
+    fn req(&self) -> &str {
+        match self {
+            ShellRequest::NewLocalGraph { req, .. }
+            | ShellRequest::ConnectServer { req, .. }
+            | ShellRequest::Rename { req, .. }
+            | ShellRequest::Remove { req, .. } => req,
+        }
     }
+}
+
+/// `.invalid` is reserved never to resolve (RFC 2606): if this shell is not there to intercept the
+/// address (a browser, an older app), the navigation fails instead of reaching anyone.
+const SHELL_REQUEST_HOST: &str = "nooklet-desktop.invalid";
+const MAX_URL_CHARS: usize = 2048;
+
+fn parse_shell_request(url: &tauri::Url, key: &str) -> Option<ShellRequest> {
+    if url.host_str() != Some(SHELL_REQUEST_HOST) {
+        return None;
+    }
+    let param = |name: &str| url.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.into_owned());
+    if param("key").as_deref() != Some(key) {
+        return None;
+    }
+    let req = param("req").filter(|r| !r.is_empty() && r.len() <= 40 && r.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))?;
+    match url.path() {
+        "/new-local-graph" => {
+            let label = graph_list::clean_label(&param("label")?);
+            (!label.is_empty()).then_some(ShellRequest::NewLocalGraph { req, label })
+        }
+        "/connect-server" => {
+            let address = param("address").filter(|a| a.len() <= MAX_URL_CHARS)?;
+            let credential = match (param("token"), param("code")) {
+                (Some(token), None) => connect::token_is_plausible(&token).then_some(Credential::Token(token))?,
+                (None, Some(code)) => {
+                    let device = graph_list::clean_label(&param("device").unwrap_or_default());
+                    let device = if device.is_empty() { "Mac".to_string() } else { device };
+                    connect::pairing_code_is_valid(&code).then_some(Credential::Code { code, device })?
+                }
+                _ => return None,
+            };
+            Some(ShellRequest::ConnectServer { req, address, credential })
+        }
+        "/rename" => {
+            let graph = GraphKey::parse(&param("graph")?)?;
+            let label = graph_list::clean_label(&param("label")?);
+            (!label.is_empty()).then_some(ShellRequest::Rename { req, graph, label })
+        }
+        "/remove" => Some(ShellRequest::Remove { req, graph: GraphKey::parse(&param("graph")?)? }),
+        _ => None,
+    }
+}
+
+/// 128 random bits as hex: the window's request key.
+fn random_key() -> String {
+    let mut bytes = [0u8; 16];
+    if getrandom::fill(&mut bytes).is_err() {
+        // No randomness at all is not something to limp on with a guessable key.
+        panic!("nooklet: the system random source is unavailable");
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The window.
+
+/// What the shell keeps for the life of the app.
+struct Shell {
+    resource_dir: PathBuf,
+    data_dir: PathBuf,
+    tokens: Box<dyn TokenStore>,
+    http: Box<dyn connect::Http + Send + Sync>,
+    /// Serializes every read-modify-write of `desktop.json`. Never held while waiting on the main
+    /// thread, and the main thread only ever `try_lock`s it.
+    lock: Mutex<()>,
+    /// Serializes window swaps (`open_window`).
+    swap: Mutex<()>,
+    /// The window currently showing (`main-<n>`).
+    window_label: Mutex<String>,
+    window_seq: AtomicU32,
+    /// Bumped on every change to the list; a window built before it shows a stale menu, so its
+    /// next navigation to a graph rebuilds it (`needs_new_window`).
+    list_version: AtomicU64,
+    /// One request at a time: a double click must not make two graphs.
+    busy: AtomicBool,
+}
+
+/// Fixed for one window: what its initialization script was built with.
+#[derive(Clone)]
+struct WindowFacts {
+    key: String,
+    /// The server graph whose token the script carries, if any.
+    token_for: Option<String>,
+    list_version: u64,
+    local_ids: Vec<String>,
+}
+
+/// Whether a navigation to `graph` needs a new window rather than this one: a server graph whose
+/// token this window's script does not carry, a This-Mac graph its list has not heard of (made by
+/// the CLI or an import since), or any graph once the list has changed.
+fn needs_new_window(facts: &WindowFacts, graph: &GraphKey, list_version: u64, on_disk: impl Fn(&str) -> bool) -> bool {
+    if facts.list_version != list_version {
+        return true;
+    }
+    match graph {
+        GraphKey::Server(id) => facts.token_for.as_deref() != Some(id.as_str()),
+        GraphKey::Mac(id) => !facts.local_ids.iter().any(|l| l == id) && on_disk(id),
+    }
+}
+
+/// Where the launcher page goes once the graph answers (`__NOOKLET_DESKTOP__.connect`).
+#[derive(Serialize)]
+struct ConnectTarget<'a> {
+    url: &'a str,
+    place: &'static str,
+    label: &'a str,
+}
+
+/// The token a window hands its page, and exactly where.
+struct ScopedToken<'a> {
+    /// The graph's address, `https://host[:port][/proxy]/g/<id>`.
+    address: &'a str,
+    token: &'a str,
+}
+
+/// Runs before any page script in every main-frame document the window loads — the launcher and
+/// every graph's client alike, whatever their origin. It is how a page learns it is inside this
+/// shell, and it is the only channel from the shell to a page before that page's own code runs.
+///
+/// **The token's scope.** At most one token is in the script: the server graph this window was
+/// built to open. It is exposed as `__NOOKLET_DESKTOP__.graphToken` only when the document's
+/// `location.origin` is that graph's origin AND `location.pathname` is the graph's path or below
+/// it (`/g/work`, `/g/work/…`, never `/g/workshop`); in every other document it is `null`. The
+/// check runs before any page script, so a page cannot fake its location to it. The script is
+/// main-frame only (`initialization_script`, not `_for_all_frames`), so no iframe gets anything.
+/// Other server graphs' tokens are never in this window at all: opening one builds a new window
+/// (`open_window`). What this does not stop: the main frame of this window being navigated to some
+/// other origin still receives the script's text in its web content process, though not the value;
+/// a nooklet page opens external links in the browser (`on_new_window`), so the window only shows
+/// nooklet pages in practice.
+///
+/// `graphs` is the menu's list (`PageGraph`), `connect` the launcher's target, `key` the request
+/// key (`ShellRequest`), `downloads: true` that `<a download>` is saved (B-736).
+fn shell_script(port: u16, key: &str, graphs: &[PageGraph], connect: Option<&ConnectTarget>, token: Option<&ScopedToken>) -> String {
+    let scoped = token.and_then(|t| {
+        let url = tauri::Url::parse(t.address).ok()?;
+        Some(serde_json::json!({
+            "origin": url.origin().ascii_serialization(),
+            "path": url.path().trim_end_matches('/'),
+            "token": t.token,
+        }))
+    });
+    let json = |v: serde_json::Value| serde_json::to_string(&v).unwrap_or_else(|_| "null".into());
+    format!(
+        "(function(){{var t={scoped};var here=t!==null&&location.origin===t.origin&&(location.pathname===t.path||location.pathname.indexOf(t.path+\"/\")===0);Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{os},port:{port},downloads:true,key:{key},graphs:Object.freeze({graphs}),connect:{connect},graphToken:here?t.token:null}})}});}})();",
+        scoped = json(scoped.unwrap_or(serde_json::Value::Null)),
+        os = json(serde_json::Value::from(std::env::consts::OS)),
+        key = json(serde_json::Value::from(key)),
+        graphs = serde_json::to_string(graphs).unwrap_or_else(|_| "[]".into()),
+        connect = connect.map(|c| serde_json::to_string(c).unwrap_or_else(|_| "null".into())).unwrap_or_else(|| "null".into()),
+    )
+}
+
+fn current_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    let label = app.state::<Shell>().window_label.lock().unwrap().clone();
+    app.get_webview_window(&label)
+}
+
+/// Opens `graph` (landing on `land`, default its address) in a new window built for it, then closes
+/// the previous one. Also records it as the graph to open at the next launch.
+fn open_window(app: &tauri::AppHandle, graph: GraphKey, land: Option<String>) -> Result<(), String> {
+    let shell = app.state::<Shell>();
+    // One swap at a time. Held while the window is built, which waits on the main thread, so the
+    // main thread must never wait on it: `on_navigation` does not take it.
+    let _swap = shell.swap.lock().unwrap();
+    let (script, facts) = {
+        let _guard = shell.lock.lock().unwrap();
+        let mut config = read_config(app);
+        let local = list_local_graphs(&shell.data_dir);
+        // A server graph removed meanwhile opens This Mac instead.
+        let graph = match &graph {
+            GraphKey::Server(id) if config.server(id).is_none() => GraphKey::Mac("default".into()),
+            _ => graph,
+        };
+        let rows = config.page_graphs(&local, port());
+        let (address, label, place) = match &graph {
+            GraphKey::Mac(id) => {
+                let label = rows.iter().find(|g| g.key == graph.to_key()).map(|r| r.label.clone()).unwrap_or_else(|| id.clone());
+                (format!("http://127.0.0.1:{}/g/{id}", port()), label, "mac")
+            }
+            GraphKey::Server(id) => {
+                let entry = config.server(id).expect("checked above");
+                (entry.address.clone(), entry.label.clone(), "server")
+            }
+        };
+        let token = match &graph {
+            GraphKey::Server(_) => shell.tokens.get(&address).unwrap_or_else(|err| {
+                eprintln!("nooklet: {err}");
+                None
+            }),
+            GraphKey::Mac(_) => None,
+        };
+        if config.set_open(&graph) {
+            if let Err(err) = write_config(app, &config) {
+                eprintln!("nooklet: could not remember the open graph: {err}");
+            }
+        }
+        let land = land.unwrap_or_else(|| address.clone());
+        let facts = WindowFacts {
+            key: random_key(),
+            token_for: match (&graph, &token) {
+                (GraphKey::Server(id), Some(_)) => Some(id.clone()),
+                _ => None,
+            },
+            list_version: shell.list_version.load(Ordering::SeqCst),
+            local_ids: local.iter().map(|g| g.id.clone()).collect(),
+        };
+        let script = shell_script(
+            port(),
+            &facts.key,
+            &rows,
+            Some(&ConnectTarget { url: &land, place, label: &label }),
+            token.as_deref().map(|token| ScopedToken { address: &address, token }).as_ref(),
+        );
+        (script, facts)
+    };
+    let old = current_window(app);
+    let label = format!("main-{}", shell.window_seq.fetch_add(1, Ordering::SeqCst));
+    build_window(app, &label, script, facts, old.as_ref()).map_err(|e| e.to_string())?;
+    *shell.window_label.lock().unwrap() = label;
+    if let Some(old) = old {
+        let _ = old.destroy();
+    }
+    Ok(())
+}
+
+/// One window: the launcher first (`WebviewUrl::default()`), which opens the graph.
+fn build_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    script: String,
+    facts: WindowFacts,
+    like: Option<&tauri::WebviewWindow>,
+) -> tauri::Result<tauri::WebviewWindow> {
+    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::default())
+        .title("nooklet")
+        .inner_size(1100.0, 800.0)
+        .min_inner_size(480.0, 400.0)
+        .title_bar_style(tauri::TitleBarStyle::Transparent)
+        .hidden_title(true)
+        .initialization_script(script);
+    // The new window takes the old one's place, so a switch reads as the page changing.
+    if let Some(old) = like {
+        let scale = old.scale_factor().unwrap_or(1.0);
+        if let (Ok(pos), Ok(size)) = (old.outer_position(), old.inner_size()) {
+            builder = builder
+                .position(f64::from(pos.x) / scale, f64::from(pos.y) / scale)
+                .inner_size(f64::from(size.width) / scale, f64::from(size.height) / scale);
+        }
+        if old.is_fullscreen().unwrap_or(false) {
+            builder = builder.fullscreen(true);
+        } else if old.is_maximized().unwrap_or(false) {
+            builder = builder.maximized(true);
+        }
+    }
+    let nav_app = app.clone();
+    let download_app = app.clone();
+    builder
+        .on_navigation(move |url| on_navigation(&nav_app, &facts, url))
+        // A link that asks for a new window — every `target="_blank"` link in a note, the
+        // help menu's, `window.open` — did NOTHING: WKWebView asks the UI delegate for a
+        // window, and wry answers "none" unless a handler is set (B-534). The system
+        // browser is where those links belong; the app keeps its one window.
+        .on_new_window(|url, _features| {
+            open_in_browser(url.as_str());
+            NewWindowResponse::Deny
+        })
+        // B-736: without a download handler wry answers every `<a download>` (and every
+        // response WebKit cannot show) with `Cancel`, so "Download" on an image did
+        // nothing. Saved where a browser would save it: ~/Downloads, under the page's
+        // suggested name, de-duplicated by wry. macOS reports no path on `Finished`, so
+        // the chosen one is remembered from `Requested` to tell the page.
+        .on_download({
+            let pending: Arc<Mutex<std::collections::HashMap<String, PathBuf>>> = Default::default();
+            move |_webview, event| {
+                match event {
+                    DownloadEvent::Requested { url, destination } => {
+                        pending.lock().unwrap().insert(url.to_string(), destination.clone());
+                    }
+                    DownloadEvent::Finished { url, success, .. } => {
+                        let path = pending.lock().unwrap().remove(url.as_str());
+                        let name = path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
+                        let shown = path.as_deref().map(display_path);
+                        report_download(&download_app, url.as_str(), success, name.as_deref(), shown.as_deref());
+                    }
+                    _ => {}
+                }
+                true
+            }
+        })
+        .build()
+}
+
+/// Every navigation of the window (main frame and iframes alike: wry does not say which).
+fn on_navigation(app: &tauri::AppHandle, facts: &WindowFacts, url: &tauri::Url) -> bool {
+    if url.host_str() == Some(SHELL_REQUEST_HOST) {
+        if let Some(request) = parse_shell_request(url, &facts.key) {
+            let shell = app.state::<Shell>();
+            if !shell.busy.swap(true, Ordering::SeqCst) {
+                let app = app.clone();
+                // Off the navigation callback: a request may run a process or wait on a server.
+                std::thread::spawn(move || {
+                    handle_shell_request(&app, request);
+                    app.state::<Shell>().busy.store(false, Ordering::SeqCst);
+                });
+            } else {
+                reply(app, request.req(), Err("nooklet is still busy with the last request.".into()), None);
+            }
+        }
+        // Never let it through, request or not: `.invalid` goes nowhere anyway.
+        return false;
+    }
+    let shell = app.state::<Shell>();
+    let config = read_config(app);
+    let Some(graph) = config.graph_of_url(url, port()) else {
+        return true;
+    };
+    let version = shell.list_version.load(Ordering::SeqCst);
+    let data_dir = shell.data_dir.clone();
+    let on_disk = |id: &str| data_dir.join("graphs").join(id).is_dir();
+    if needs_new_window(facts, &graph, version, on_disk) {
+        let app = app.clone();
+        let land = url.to_string();
+        std::thread::spawn(move || {
+            if let Err(err) = open_window(&app, graph, Some(land)) {
+                eprintln!("nooklet: could not open that graph: {err}");
+            }
+        });
+        return false;
+    }
+    // A switch within this window (among This Mac's graphs): remembered for the next launch.
+    // `try_lock`: this is the main thread, which must never wait on a thread that may itself be
+    // waiting on the main thread; missing one such note costs only which graph opens next launch.
+    if let Ok(_guard) = shell.lock.try_lock() {
+        let mut config = read_config(app);
+        if config.set_open(&graph) {
+            let _ = write_config(app, &config);
+        }
+    }
+    true
+}
+
+/// Answers a request (`apps/web/src/platform/desktop-shell.ts#DESKTOP_REPLY_EVENT`): its id, ok or
+/// the reason it failed, and the list as it now is.
+fn reply(app: &tauri::AppHandle, req: &str, result: Result<(), String>, graphs: Option<Vec<PageGraph>>) {
+    if let Some(window) = current_window(app) {
+        let detail = serde_json::json!({
+            "req": req,
+            "ok": result.is_ok(),
+            "error": result.err(),
+            "graphs": graphs,
+        });
+        let _ = window.eval(format!("window.dispatchEvent(new CustomEvent(\"nooklet:desktop-reply\",{{detail:{detail}}}))"));
+    }
+}
+
+fn handle_shell_request(app: &tauri::AppHandle, request: ShellRequest) {
+    let req = request.req().to_string();
+    let shell = app.state::<Shell>();
+    let result = match request {
+        ShellRequest::NewLocalGraph { label, .. } => {
+            let taken: Vec<String> = list_local_graphs(&shell.data_dir).into_iter().map(|g| g.id).collect();
+            let id = slug_for_label(&label, &taken);
+            create_local_graph(&shell.resource_dir, &shell.data_dir, &id, &label).and_then(|()| {
+                shell.list_version.fetch_add(1, Ordering::SeqCst);
+                open_window(app, GraphKey::Mac(id), None)
+            })
+        }
+        ShellRequest::ConnectServer { address, credential, .. } => {
+            connect_server(&*shell.tokens, &*shell.http, &address, credential).and_then(|(address, label)| {
+                let id = {
+                    let _guard = shell.lock.lock().unwrap();
+                    let mut config = read_config(app);
+                    let id = config.upsert_server(&address, label.as_deref());
+                    write_config(app, &config)?;
+                    id
+                };
+                shell.list_version.fetch_add(1, Ordering::SeqCst);
+                open_window(app, GraphKey::Server(id), None)
+            })
+        }
+        ShellRequest::Rename { graph, label, .. } => {
+            let _guard = shell.lock.lock().unwrap();
+            let mut config = read_config(app);
+            let result = config.rename(&graph, &label).and_then(|()| write_config(app, &config));
+            if result.is_ok() {
+                shell.list_version.fetch_add(1, Ordering::SeqCst);
+            }
+            let rows = config.page_graphs(&list_local_graphs(&shell.data_dir), port());
+            reply(app, &req, result, Some(rows));
+            return;
+        }
+        ShellRequest::Remove { graph, .. } => {
+            let _guard = shell.lock.lock().unwrap();
+            let mut config = read_config(app);
+            let showing = current_window(app).and_then(|w| w.url().ok()).and_then(|u| config.graph_of_url(&u, port()));
+            let result = remove_server(&*shell.tokens, &mut config, &graph, showing.as_ref())
+                .and_then(|()| write_config(app, &config));
+            if result.is_ok() {
+                shell.list_version.fetch_add(1, Ordering::SeqCst);
+            }
+            let rows = config.page_graphs(&list_local_graphs(&shell.data_dir), port());
+            reply(app, &req, result, Some(rows));
+            return;
+        }
+    };
+    // A request that opened a graph has no page left to answer when it worked.
+    if let Err(err) = result {
+        eprintln!("nooklet: {err}");
+        reply(app, &req, Err(err), None);
+    }
+}
+
+/// "Connect to a server": checks the address, trades a pairing code for a token if that is what
+/// was given, checks the token against the graph, and stores it. Returns the normalized address
+/// and the graph's own label. Nothing is stored unless the server accepted the token.
+fn connect_server(
+    tokens: &dyn TokenStore,
+    http: &dyn connect::Http,
+    raw_address: &str,
+    credential: Credential,
+) -> Result<(String, Option<String>), String> {
+    let address = graph_list::normalize_server_address(raw_address)?;
+    let named_no_graph = graph_list::names_no_graph(raw_address);
+    let token = match credential {
+        Credential::Token(token) => token,
+        Credential::Code { code, device } => connect::redeem_code(http, &address, &code, &device)?,
+    };
+    let label = connect::verify_token(http, &address, &token, named_no_graph)?;
+    tokens.set(&address, &token)?;
+    Ok((address, label))
+}
+
+/// Takes a server graph off the list and forgets its token. Not the graph on screen (the menu
+/// offers removal only for the others), and never one of This Mac's, which are folders on disk.
+fn remove_server(
+    tokens: &dyn TokenStore,
+    config: &mut DesktopConfig,
+    graph: &GraphKey,
+    showing: Option<&GraphKey>,
+) -> Result<(), String> {
+    let GraphKey::Server(id) = graph else {
+        return Err("A graph on this Mac is a folder in nooklet's data directory; it can't be removed from here.".into());
+    };
+    if showing == Some(graph) {
+        return Err("This graph is open. Open another graph first.".into());
+    }
+    let address = config.remove_server(id).ok_or("That graph is not in the list any more.")?;
+    if let Err(err) = tokens.delete(&address) {
+        // The entry is gone either way; a stray keychain item is harmless and is replaced if the
+        // graph is added again.
+        eprintln!("nooklet: {err}");
+    }
+    Ok(())
 }
 
 /// B-736: tells the page how a download it started ended (`apps/web/src/platform/desktop-shell.ts#
 /// DESKTOP_DOWNLOAD_EVENT`). `name` is the file actually written — wry picks `name (1).ext` when
 /// the suggested one is taken — so the page can say where to look.
 fn report_download(app: &tauri::AppHandle, url: &str, ok: bool, name: Option<&str>, path: Option<&str>) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = current_window(app) {
         let detail = serde_json::json!({ "ok": ok, "url": url, "name": name, "path": path });
         let _ = window.eval(format!(
             "window.dispatchEvent(new CustomEvent(\"nooklet:desktop-download\",{{detail:{detail}}}))"
@@ -793,92 +935,6 @@ fn display_path(path: &std::path::Path) -> String {
     path.display().to_string()
 }
 
-/// Carries out a `ShellRequest`: on success, This Mac becomes active on the chosen graph and the
-/// app restarts into it (`restart_app`'s doc comment: the spawn-or-not decision is made once per
-/// launch, and in remote mode nothing local is running yet).
-fn handle_shell_request(app: &tauri::AppHandle, resource_dir: &PathBuf, data_dir: &PathBuf, request: ShellRequest) {
-    if let ShellRequest::AddServerGraph { url } = &request {
-        // B-704: as the launcher's picker does for "Add a server": remember it, make it active,
-        // restart; the launcher then opens it and that server's page asks for its token.
-        let mut config = read_config(app);
-        let entry = remember_remote_graph(&mut config, url);
-        config.active_graph_id = Some(entry.id);
-        match write_config(app, &config) {
-            Ok(()) => app.request_restart(),
-            Err(err) => {
-                eprintln!("nooklet: {err}");
-                report_to_page(app, &format!("Could not save that server: {err}"));
-            }
-        }
-        return;
-    }
-    let graphs = list_local_graphs(data_dir);
-    let chosen = match request {
-        ShellRequest::NewLocalGraph { label } => {
-            let taken: Vec<String> = graphs.iter().map(|g| g.id.clone()).collect();
-            let id = slug_for_label(&label, &taken);
-            create_local_graph(resource_dir, data_dir, &id, &label).map(|()| Some(id))
-        }
-        ShellRequest::OpenLocalGraph { id } => local_graph_choice(&graphs, Some(&id)),
-        ShellRequest::AddServerGraph { .. } => unreachable!("handled above"),
-    };
-    let result = chosen.and_then(|local| {
-        let mut config = read_config(app);
-        config.active_graph_id = None;
-        config.active_local_graph = local;
-        write_config(app, &config)
-    });
-    match result {
-        Ok(()) => app.request_restart(),
-        Err(err) => {
-            eprintln!("nooklet: {err}");
-            report_to_page(app, &err);
-        }
-    }
-}
-
-/// Applies a picker choice by restarting the app, instead of asking the owner to quit and reopen
-/// it themselves — a real complaint ("why is there this 'nooklet will quit now'... super
-/// annoying", 2026-09-16). `request_restart` (not `exit(0)`, and not the noreturn `restart()`)
-/// is Tauri's own reliable-from-any-thread path: it still delivers `RunEvent::Exit` first — this
-/// app's `run()` closure needs that to kill a spawned local server child — and only then relaunches
-/// the same binary with the same env, which is how a spawned local server correctly stays gone (or
-/// comes back) across the switch. Also used by `MENU_SWITCH_SERVER` below, for the same reason.
-#[tauri::command]
-fn restart_app(app: tauri::AppHandle) {
-    app.request_restart();
-}
-
-/// Runs before any page script in every document the window loads — the launcher and the server's
-/// client alike, whatever their origin. It is how a page learns it is inside this shell; the
-/// launcher (`../dist/index.html`) reads which port to wait for from it, so `NOOKLET_PORT` moves
-/// the launcher too. `graphs`/`activeGraphId`/`forcePicker` are read by the same launcher to render
-/// its picker and decide whether to auto-connect locally, auto-connect to the active remote entry,
-/// or show the picker outright — "This Mac" itself is not one of `graphs` (see `RemoteGraph`'s own
-/// doc comment), so the launcher's JS synthesizes that row itself for `activeGraphId: null`.
-///
-/// A flag we inject rather than sniffing Tauri's own globals: `__TAURI_INTERNALS__` is an
-/// implementation detail of Tauri's IPC, not a statement about this app.
-///
-/// B-643: `localGraphs` (This Mac's own graphs, `list_local_graphs`) and `activeLocalGraph` (which
-/// of them This Mac opens, `null` for its default) are read by the launcher, to open and list them,
-/// and by the client's graph switcher, to list them from whatever server the window is showing.
-///
-/// B-736: `downloads: true` says this shell saves `<a download>` (`on_download` below). The client
-/// reads it to choose how to save an image; a shell without it cancels every download.
-fn shell_script(config: &DesktopConfig, local_graphs: &[LocalGraph], force_picker: bool) -> String {
-    format!(
-        "Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{:?},port:{},graphs:{},activeGraphId:{},localGraphs:{},activeLocalGraph:{},forcePicker:{},downloads:true}})}});",
-        std::env::consts::OS,
-        port(),
-        serde_json::to_string(&config.remote_graphs).unwrap_or_else(|_| "[]".to_string()),
-        serde_json::to_string(&config.active_graph_id).unwrap_or_else(|_| "null".to_string()),
-        serde_json::to_string(local_graphs).unwrap_or_else(|_| "[]".to_string()),
-        serde_json::to_string(&config.active_local_graph).unwrap_or_else(|_| "null".to_string()),
-        force_picker
-    )
-}
-
 const REPO: &str = "https://github.com/hnykda/nooklet";
 
 /// Menu item ids. The ones the CLIENT answers travel to it as a DOM event
@@ -888,11 +944,9 @@ const MENU_SHORTCUTS: &str = "shortcuts";
 const MENU_RELOAD: &str = "reload";
 const MENU_DOCS: &str = "docs";
 const MENU_REPORT_BUG: &str = "report-bug";
-/// Reopens the launcher's picker screen (standalone vs. a remote server) on the NEXT launch — an
-/// automatic restart, not a manual quit-and-reopen (`restart_app`'s doc comment) — see
-/// `on_menu`'s handling and `picker_sentinel_path`'s doc comment for why this restarts rather
-/// than re-navigating the live window.
-const MENU_SWITCH_SERVER: &str = "switch-server";
+/// Opens the in-app graph menu (proposal 005): the client answers it like Settings…. It used to be
+/// "Switch Server…", which restarted the app into a separate picker page (B-784, B-785).
+const MENU_GRAPHS: &str = "graphs";
 
 /// The macOS menu bar (B-533). Tauri's default had nothing that reaches the app: no Settings…, no
 /// Reload, an empty Help. A custom menu REPLACES that default, so everything else in it is carried
@@ -924,7 +978,7 @@ fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri
             &P::about(app, None, Some(about))?,
             &P::separator(app)?,
             &item(MENU_SETTINGS, "Settings…", Some("CmdOrCtrl+,"))?,
-            &item(MENU_SWITCH_SERVER, "Switch Server…", None)?,
+            &item(MENU_GRAPHS, "Graphs…", None)?,
             &P::separator(app)?,
             &P::services(app, None)?,
             &P::separator(app)?,
@@ -982,12 +1036,12 @@ fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri
 }
 
 fn on_menu(app: &tauri::AppHandle, id: &str) {
-    let Some(window) = app.get_webview_window("main") else {
+    let Some(window) = current_window(app) else {
         return;
     };
     match id {
         // The client owns these; a page that is not the client (the launcher) just ignores it.
-        MENU_SETTINGS | MENU_SHORTCUTS => {
+        MENU_SETTINGS | MENU_SHORTCUTS | MENU_GRAPHS => {
             let _ = window.eval(format!(
                 "window.dispatchEvent(new CustomEvent(\"nooklet:desktop-menu\",{{detail:{id:?}}}))"
             ));
@@ -997,22 +1051,6 @@ fn on_menu(app: &tauri::AppHandle, id: &str) {
         }
         MENU_DOCS => open_in_browser(&format!("{REPO}#readme")),
         MENU_REPORT_BUG => open_in_browser(&format!("{REPO}/issues/new?template=bug_report.yml")),
-        // The window may currently be showing the local server's page or a remote one — either
-        // way there is no clean, cross-platform live re-navigation back to the bundled launcher
-        // origin worth the risk here, and the spawn-or-not decision only happens once at process
-        // start anyway. So: leave a one-shot note for next launch (`picker_sentinel_path`) and
-        // restart (`restart_app`'s own doc comment on why `request_restart`, not `exit`) — the
-        // launcher shows the picker immediately on the way back up, before it tries to connect to
-        // anything, with no manual reopen needed.
-        MENU_SWITCH_SERVER => {
-            if let Ok(path) = picker_sentinel_path(app) {
-                if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(path, b"");
-            }
-            app.request_restart();
-        }
         _ => {}
     }
 }
@@ -1052,42 +1090,29 @@ fn main() {
             status: Mutex::new(ServerStatus::Starting),
             stderr: Arc::new(StderrTail::default()),
         })
-        .invoke_handler(tauri::generate_handler![
-            server_status,
-            add_graph,
-            remove_graph,
-            set_active_graph,
-            restart_app
-        ])
+        .invoke_handler(tauri::generate_handler![server_status])
         .setup(|app| {
             let handle = app.handle().clone();
             let resource_dir = app.path().resource_dir()?;
             let data_dir = graph_dir(&handle)?;
+            app.manage(Shell {
+                resource_dir: resource_dir.clone(),
+                data_dir: data_dir.clone(),
+                tokens: Box::new(token_store::Keychain),
+                http: Box::new(connect::Ureq::new()),
+                lock: Mutex::new(()),
+                swap: Mutex::new(()),
+                window_label: Mutex::new(String::new()),
+                window_seq: AtomicU32::new(1),
+                list_version: AtomicU64::new(0),
+                busy: AtomicBool::new(false),
+            });
+
+            // ADR 032: the bundled server runs whichever graph is open, so opening This Mac never
+            // needs a restart. Reuse one that is already running before starting a second one on
+            // the same database.
             let server = app.state::<ServerProcess>();
-
-            // `Switch Server…` (`MENU_SWITCH_SERVER`) leaves this to mean "show the picker before
-            // trying anything," for exactly one launch.
-            let show_picker = consume_picker_sentinel(&handle);
-            let mut config = read_config(&handle);
-            let local_graphs = list_local_graphs(&data_dir);
-            // A This-Mac graph whose directory has gone opens the default graph instead, rather
-            // than a `/g/<id>` the server answers with 404.
-            if let Some(id) = &config.active_local_graph {
-                if !local_graphs.iter().any(|g| &g.id == id) {
-                    config.active_local_graph = None;
-                }
-            }
-            let local_mode = !(show_picker || config.active_url().is_some());
-
-            if !local_mode {
-                // Remote-client mode, or the user is mid-way through choosing it: this Mac is not
-                // the source of truth here, so there is nothing local to spawn — `ServerProcess`
-                // stays at its unused `Starting` default, which is fine, nobody asks it anything
-                // in this branch (the launcher only calls `server_status` when neither of these is
-                // true, see `../launcher/index.html`).
-            } else if nooklet_is_listening() {
-                // Reuse a server that is already running before starting a second one on the same
-                // database.
+            if nooklet_is_listening() {
                 *server.status.lock().unwrap() = ServerStatus::External;
             } else {
                 match spawn_server(&resource_dir, &data_dir, server.stderr.clone()) {
@@ -1107,93 +1132,17 @@ fn main() {
                     }
                     Err(err) => {
                         eprintln!("nooklet: could not start the bundled server: {err}");
-                        *server.status.lock().unwrap() =
-                            ServerStatus::SpawnFailed { error: err.to_string() };
+                        *server.status.lock().unwrap() = ServerStatus::SpawnFailed { error: err.to_string() };
                     }
                 }
             }
 
-            // The window opens on the launcher, which polls and redirects the moment the server
-            // answers — so the app shows something immediately rather than a white rectangle,
-            // whether startup takes 200 ms or the server never comes up at all. Same launcher for
-            // remote mode: it reads `graphs`/`activeGraphId`/`forcePicker` off `shell_script` below
-            // and either tries the active entry's address instead of the local one, or shows the
-            // picker outright.
-            WebviewWindowBuilder::new(&handle, "main", WebviewUrl::default())
-                .title("nooklet")
-                .inner_size(1100.0, 800.0)
-                .min_inner_size(480.0, 400.0)
-                .title_bar_style(tauri::TitleBarStyle::Transparent)
-                .hidden_title(true)
-                .initialization_script(shell_script(&config, &local_graphs, show_picker))
-                // B-643: the one way a server's page reaches the shell (`ShellRequest`), and how a
-                // switch between This Mac's graphs on its own server is remembered for next launch.
-                .on_navigation({
-                    let app = handle.clone();
-                    let busy = Arc::new(AtomicBool::new(false));
-                    move |url| {
-                        if let Some(request) = parse_shell_request(url) {
-                            // One at a time: a double click must not make two graphs.
-                            if !busy.swap(true, Ordering::SeqCst) {
-                                let (app, resource_dir, data_dir, busy) =
-                                    (app.clone(), resource_dir.clone(), data_dir.clone(), busy.clone());
-                                // Off the navigation callback: creating a graph runs a process.
-                                std::thread::spawn(move || {
-                                    handle_shell_request(&app, &resource_dir, &data_dir, request);
-                                    busy.store(false, Ordering::SeqCst);
-                                });
-                            }
-                            return false;
-                        }
-                        if local_mode {
-                            if let Some(local) = local_graph_in_url(url, port()) {
-                                let mut config = read_config(&app);
-                                if config.active_graph_id.is_none() && config.active_local_graph != local {
-                                    config.active_local_graph = local;
-                                    let _ = write_config(&app, &config);
-                                }
-                            }
-                        }
-                        true
-                    }
-                })
-                // A link that asks for a new window — every `target="_blank"` link in a note, the
-                // help menu's, `window.open` — did NOTHING: WKWebView asks the UI delegate for a
-                // window, and wry answers "none" unless a handler is set (B-534). The system
-                // browser is where those links belong; the app keeps its one window.
-                .on_new_window(|url, _features| {
-                    open_in_browser(url.as_str());
-                    NewWindowResponse::Deny
-                })
-                // B-736: without a download handler wry answers every `<a download>` (and every
-                // response WebKit cannot show) with `Cancel`, so "Download" on an image did
-                // nothing. Saved where a browser would save it: ~/Downloads, under the page's
-                // suggested name, de-duplicated by wry. macOS reports no path on `Finished`, so
-                // the chosen one is remembered from `Requested` to tell the page.
-                .on_download({
-                    let app = handle.clone();
-                    let pending: Arc<Mutex<std::collections::HashMap<String, PathBuf>>> = Default::default();
-                    move |_webview, event| {
-                        match event {
-                            DownloadEvent::Requested { url, destination } => {
-                                pending.lock().unwrap().insert(url.to_string(), destination.clone());
-                            }
-                            DownloadEvent::Finished { url, success, .. } => {
-                                let path = pending.lock().unwrap().remove(url.as_str());
-                                let name = path
-                                    .as_ref()
-                                    .and_then(|p| p.file_name())
-                                    .map(|n| n.to_string_lossy().into_owned());
-                                let shown = path.as_deref().map(display_path);
-                                report_download(&app, url.as_str(), success, name.as_deref(), shown.as_deref());
-                            }
-                            _ => {}
-                        }
-                        true
-                    }
-                })
-                .build()?;
-
+            // The graph last open, in a window that starts on the launcher ("Connecting…"), which
+            // opens it the moment it answers — so the app shows something immediately rather than
+            // a white rectangle, whether startup takes 200 ms or the graph never answers at all.
+            let config = read_config(&handle);
+            let first = config.launch_graph(&list_local_graphs(&data_dir));
+            open_window(&handle, first, None)?;
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -1214,6 +1163,7 @@ fn main() {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use token_store::MemoryStore;
 
     /// The contract with the launcher page, shared with `../test/launcher-status.test.mjs`.
     fn fixture(name: &str) -> serde_json::Value {
@@ -1378,22 +1328,6 @@ mod tests {
     }
 
     #[test]
-    fn normalize_remote_url_requires_a_scheme_and_strips_trailing_slashes() {
-        assert_eq!(normalize_remote_url(""), Ok(None));
-        assert_eq!(normalize_remote_url("   "), Ok(None));
-        assert_eq!(
-            normalize_remote_url("https://nooklet.example.com/"),
-            Ok(Some("https://nooklet.example.com".to_string()))
-        );
-        assert_eq!(
-            normalize_remote_url("  http://192.168.1.5:6100  "),
-            Ok(Some("http://192.168.1.5:6100".to_string()))
-        );
-        assert!(normalize_remote_url("nooklet.example.com").is_err());
-        assert!(normalize_remote_url("ftp://nooklet.example.com").is_err());
-    }
-
-    #[test]
     fn the_watch_ends_when_the_app_has_taken_the_child_away() {
         let tail = StderrTail::default();
         let child: Mutex<Option<Child>> = Mutex::new(None);
@@ -1403,243 +1337,255 @@ mod tests {
     }
 
     #[test]
-    fn graph_id_for_url_is_stable_and_distinct() {
-        assert_eq!(
-            graph_id_for_url("https://nooklet.example.com"),
-            graph_id_for_url("https://nooklet.example.com")
-        );
-        assert_ne!(graph_id_for_url("https://a.example.com"), graph_id_for_url("https://b.example.com"));
-    }
-
-    #[test]
-    fn active_url_resolves_the_active_entry_and_falls_back_for_an_unknown_id() {
-        let a = RemoteGraph { id: "a".into(), url: "https://a.example.com".into() };
-        let b = RemoteGraph { id: "b".into(), url: "https://b.example.com".into() };
-        let config = DesktopConfig {
-            remote_graphs: vec![a, b],
-            active_graph_id: Some("b".to_string()),
-            ..Default::default()
-        };
-        assert_eq!(config.active_url(), Some("https://b.example.com"));
-
-        // "This Mac" — the default.
-        assert_eq!(DesktopConfig::default().active_url(), None);
-
-        // A stale id (the entry it named was removed by hand-editing the file) reads as local
-        // rather than erroring — `read_config`'s own "never fail startup over a config file" rule.
-        let stale = DesktopConfig {
-            remote_graphs: vec![],
-            active_graph_id: Some("gone".into()),
-            ..Default::default()
-        };
-        assert_eq!(stale.active_url(), None);
-    }
-
-    #[test]
-    fn parse_config_reads_the_current_shape() {
-        let config = parse_config(
-            r#"{"remote_graphs":[{"id":"g1","url":"https://a.example.com"}],"active_graph_id":"g1"}"#,
-        );
-        assert_eq!(config.remote_graphs.len(), 1);
-        assert_eq!(config.remote_graphs[0].url, "https://a.example.com");
-        assert_eq!(config.active_graph_id, Some("g1".to_string()));
-
-        // Missing keys (a fresh config dir's file wouldn't exist at all, but a hand-crafted `{}`
-        // is still worth tolerating) default to "This Mac", nothing remembered.
-        let empty = parse_config("{}");
-        assert!(empty.remote_graphs.is_empty());
-        assert_eq!(empty.active_graph_id, None);
-
-        // Garbage never panics or fails startup.
-        assert!(parse_config("not json").remote_graphs.is_empty());
-    }
-
-    #[test]
-    fn parse_config_migrates_the_old_single_remote_url_shape() {
-        // Old shape, a real remote address configured: becomes a one-entry list, active.
-        let migrated = parse_config(r#"{"remote_url":"https://nooklet.example.com/"}"#);
-        assert_eq!(migrated.remote_graphs.len(), 1);
-        // Trailing slash stripped by the same normalization a fresh `add_graph` would apply.
-        assert_eq!(migrated.remote_graphs[0].url, "https://nooklet.example.com");
-        assert_eq!(migrated.active_graph_id, Some(migrated.remote_graphs[0].id.clone()));
-        // Re-migrating the SAME address is stable: same derived id both times, matching the dedupe
-        // `add_graph` gives a re-typed address.
-        assert_eq!(
-            migrated.remote_graphs[0].id,
-            parse_config(r#"{"remote_url":"https://nooklet.example.com"}"#).remote_graphs[0].id
-        );
-
-        // Old shape, standalone (the common case — most installs never configured remote mode):
-        // migrates to nothing remembered, same as a fresh install.
-        let standalone = parse_config(r#"{"remote_url":null}"#);
-        assert!(standalone.remote_graphs.is_empty());
-        assert_eq!(standalone.active_graph_id, None);
-    }
-
-    // B-643: This Mac's own graphs.
-
-    #[test]
-    fn active_local_graph_round_trips_and_an_older_file_has_none() {
-        let config = parse_config(r#"{"remote_graphs":[],"active_graph_id":null,"active_local_graph":"quiet-otter"}"#);
-        assert_eq!(config.active_local_graph, Some("quiet-otter".to_string()));
-        let again = parse_config(&serde_json::to_string(&config).unwrap());
-        assert_eq!(again.active_local_graph, Some("quiet-otter".to_string()));
-        assert_eq!(parse_config(r#"{"remote_graphs":[],"active_graph_id":null}"#).active_local_graph, None);
-    }
-
-    #[test]
-    fn graph_ids_follow_the_servers_rule() {
-        for ok in ["default", "quiet-otter", "a", "x2", &"a".repeat(64)] {
-            assert!(is_valid_graph_id(ok), "{ok}");
-        }
-        for bad in ["", "-a", "a-", "Quiet", "a b", "graphs", "ü", &"a".repeat(65), "../x"] {
-            assert!(!is_valid_graph_id(bad), "{bad}");
-        }
-    }
-
-    #[test]
-    fn a_label_becomes_a_unique_valid_id() {
-        assert_eq!(slug_for_label("Quiet Otter", &[]), "quiet-otter");
-        assert_eq!(slug_for_label("  Paper   Lantern 2 ", &[]), "paper-lantern-2");
-        assert_eq!(slug_for_label("Quiet Otter", &["quiet-otter".into()]), "quiet-otter-2");
-        assert_eq!(
-            slug_for_label("Quiet Otter", &["quiet-otter".into(), "quiet-otter-2".into()]),
-            "quiet-otter-3"
-        );
-        // Never "default" (This Mac's own first graph), never empty, never invalid.
-        assert_eq!(slug_for_label("Default", &[]), "default-2");
-        assert_eq!(slug_for_label("Čaj ☕", &[]), "aj");
-        assert_eq!(slug_for_label("☕☕", &[]), "graph");
-        let long = slug_for_label(&"word ".repeat(40), &[]);
-        assert!(is_valid_graph_id(&long) && long.len() <= 56, "{long}");
-    }
-
-    fn url(s: &str) -> tauri::Url {
-        tauri::Url::parse(s).unwrap()
-    }
-
-    #[test]
-    fn shell_requests_are_read_from_the_reserved_host_only() {
-        assert_eq!(
-            parse_shell_request(&url("http://nooklet-desktop.invalid/new-local-graph?label=Quiet%20Otter")),
-            Some(ShellRequest::NewLocalGraph { label: "Quiet Otter".into() })
-        );
-        assert_eq!(
-            parse_shell_request(&url("http://nooklet-desktop.invalid/open-local-graph?id=quiet-otter")),
-            Some(ShellRequest::OpenLocalGraph { id: "quiet-otter".into() })
-        );
-        // A long label is cut, control characters dropped; an empty one is no request.
-        let long = format!("http://nooklet-desktop.invalid/new-local-graph?label={}", "a".repeat(500));
-        match parse_shell_request(&url(&long)) {
-            Some(ShellRequest::NewLocalGraph { label }) => assert_eq!(label.len(), MAX_LABEL_CHARS),
-            other => panic!("{other:?}"),
-        }
-        assert_eq!(
-            parse_shell_request(&url("http://nooklet-desktop.invalid/new-local-graph?label=a%0Ab")),
-            Some(ShellRequest::NewLocalGraph { label: "ab".into() })
-        );
-        for none in [
-            "http://nooklet-desktop.invalid/new-local-graph?label=%20",
-            "http://nooklet-desktop.invalid/new-local-graph",
-            "http://nooklet-desktop.invalid/open-local-graph?id=../etc",
-            "http://nooklet-desktop.invalid/delete-everything",
-            "http://nooklet-desktop.invalid/add-server-graph",
-            "http://nooklet-desktop.invalid/add-server-graph?url=",
-            "http://nooklet-desktop.invalid/add-server-graph?url=ftp%3A%2F%2Fexample.com",
-            "http://nooklet-desktop.invalid/add-server-graph?url=example.com",
-            "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2F",
-            "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fa%0A.example.com",
-            "http://127.0.0.1:6100/new-local-graph?label=x",
-            "https://evil.example/new-local-graph?label=x",
-        ] {
-            assert_eq!(parse_shell_request(&url(none)), None, "{none}");
-        }
-    }
-
-    #[test]
     fn b744_a_saved_file_is_shown_under_the_home_shorthand() {
         let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set in tests"));
         assert_eq!(display_path(&home.join("Downloads/shed (1).png")), "~/Downloads/shed (1).png");
         assert_eq!(display_path(std::path::Path::new("/Volumes/x/a.png")), "/Volumes/x/a.png");
     }
 
+    // Proposal 005 / ADR 032: requests, connecting, removing, the window's script.
+
+    fn url(s: &str) -> tauri::Url {
+        tauri::Url::parse(s).unwrap()
+    }
+
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    fn request(path_and_query: &str) -> Option<ShellRequest> {
+        parse_shell_request(&url(&format!("http://nooklet-desktop.invalid{path_and_query}")), KEY)
+    }
+
     #[test]
-    fn b704_an_add_server_request_carries_a_normalized_address() {
+    fn b780_requests_need_the_windows_key() {
+        let token = format!("nk_{}", "ab".repeat(24));
+        let ok = format!("/connect-server?key={KEY}&req=r1&address=https%3A%2F%2Fnotes.example.com%2Fg%2Fwork&token={token}");
         assert_eq!(
-            parse_shell_request(&url(
-                "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fnotes.example.com%2Fg%2Fwork%2F"
-            )),
-            Some(ShellRequest::AddServerGraph { url: "https://notes.example.com/g/work".into() })
+            request(&ok),
+            Some(ShellRequest::ConnectServer {
+                req: "r1".into(),
+                address: "https://notes.example.com/g/work".into(),
+                credential: Credential::Token(token.clone()),
+            })
         );
-        let long = format!(
-            "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fa.example%2F{}",
-            "a".repeat(MAX_URL_CHARS)
-        );
-        assert_eq!(parse_shell_request(&url(&long)), None);
+        // Without the key, or with another window's, nothing: an iframe never has it.
+        assert_eq!(request(&ok.replace(&format!("key={KEY}&"), "")), None);
+        assert_eq!(request(&ok.replace(KEY, "ffffffffffffffffffffffffffffffff")), None);
+        // Another host is not a request at all.
+        assert_eq!(parse_shell_request(&url(&format!("https://evil.example{ok}")), KEY), None);
     }
 
     #[test]
-    fn b704_adding_a_known_server_again_reuses_its_entry() {
+    fn b780_each_request_kind_is_read_strictly() {
+        assert_eq!(
+            request(&format!("/new-local-graph?key={KEY}&req=a&label=Quiet%20Otter%0A")),
+            Some(ShellRequest::NewLocalGraph { req: "a".into(), label: "Quiet Otter".into() })
+        );
+        assert_eq!(
+            request(&format!("/connect-server?key={KEY}&req=a&address=https%3A%2F%2Fh.example&code=nkp_abcdefghijklmnopqrstuv&device=")),
+            Some(ShellRequest::ConnectServer {
+                req: "a".into(),
+                address: "https://h.example".into(),
+                credential: Credential::Code { code: "nkp_abcdefghijklmnopqrstuv".into(), device: "Mac".into() },
+            })
+        );
+        assert_eq!(
+            request(&format!("/rename?key={KEY}&req=a&graph=server%3As1&label=Work")),
+            Some(ShellRequest::Rename { req: "a".into(), graph: GraphKey::Server("s1".into()), label: "Work".into() })
+        );
+        assert_eq!(
+            request(&format!("/remove?key={KEY}&req=a&graph=mac%3Adefault")),
+            Some(ShellRequest::Remove { req: "a".into(), graph: GraphKey::Mac("default".into()) })
+        );
+        let token = format!("nk_{}", "ab".repeat(24));
+        for bad in [
+            format!("/new-local-graph?key={KEY}&req=a&label=%20"),
+            format!("/new-local-graph?key={KEY}&label=x"),
+            format!("/new-local-graph?key={KEY}&req=a%20b&label=x"),
+            format!("/connect-server?key={KEY}&req=a&address=https%3A%2F%2Fh.example"),
+            format!("/connect-server?key={KEY}&req=a&address=https%3A%2F%2Fh.example&token=bad%0Atoken"),
+            format!("/connect-server?key={KEY}&req=a&address=https%3A%2F%2Fh.example&token={token}&code=nkp_abcdefghijklmnopqrstuv"),
+            format!("/connect-server?key={KEY}&req=a&address=https%3A%2F%2Fh.example&code=nkp_short"),
+            format!("/rename?key={KEY}&req=a&graph=other%3Ax&label=x"),
+            format!("/remove?key={KEY}&req=a"),
+            format!("/add-server-graph?key={KEY}&req=a&url=https%3A%2F%2Fh.example"),
+            format!("/open-local-graph?key={KEY}&req=a&id=default"),
+        ] {
+            assert_eq!(request(&bad), None, "{bad}");
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeServer {
+        accepts: Option<&'static str>,
+        asked: Mutex<Vec<String>>,
+    }
+
+    impl connect::Http for FakeServer {
+        fn post_json(&self, url: &str, bearer: Option<&str>, _body: &str) -> Result<(u16, String), String> {
+            self.asked.lock().unwrap().push(url.to_string());
+            if url.ends_with("/pairing.redeem") {
+                return Ok((200, format!(r#"{{"token":"{}"}}"#, self.accepts.unwrap_or("nk_x"))));
+            }
+            match (self.accepts, bearer) {
+                (Some(good), Some(given)) if good == given => Ok((200, r#"{"graph":{"label":"Work"}}"#.into())),
+                (Some(_), _) => Ok((401, String::new())),
+                (None, _) => Err("Connection refused".into()),
+            }
+        }
+    }
+
+    #[test]
+    fn b782_connecting_stores_the_token_only_when_the_server_accepts_it() {
+        let good = format!("nk_{}", "ab".repeat(24));
+        let tokens = MemoryStore::default();
+        let server = FakeServer { accepts: Some(Box::leak(good.clone().into_boxed_str())), ..Default::default() };
+
+        let wrong = connect_server(&tokens, &server, "https://notes.example.com/g/work", Credential::Token("nk_wrongwrong".into()));
+        assert!(wrong.unwrap_err().contains("rejected"));
+        assert_eq!(tokens.get("https://notes.example.com/g/work"), Ok(None), "nothing stored on a refusal");
+
+        let ok = connect_server(&tokens, &server, "https://notes.example.com/g/work/", Credential::Token(good.clone()));
+        assert_eq!(ok, Ok(("https://notes.example.com/g/work".into(), Some("Work".into()))));
+        assert_eq!(tokens.get("https://notes.example.com/g/work"), Ok(Some(good.clone())));
+
+        // A pairing code is redeemed first, then the token it gave is checked like a typed one.
+        let tokens = MemoryStore::default();
+        let paired = connect_server(
+            &tokens,
+            &server,
+            "https://notes.example.com/g/work",
+            Credential::Code { code: "nkp_abcdefghijklmnopqrstuv".into(), device: "Mac".into() },
+        );
+        assert!(paired.is_ok(), "{paired:?}");
+        assert_eq!(
+            *server.asked.lock().unwrap().iter().rev().take(2).rev().cloned().collect::<Vec<_>>(),
+            [
+                "https://notes.example.com/g/work/api/v1/pairing.redeem".to_string(),
+                "https://notes.example.com/g/work/api/v1/graph.overview".to_string()
+            ]
+        );
+        assert_eq!(tokens.get("https://notes.example.com/g/work"), Ok(Some(good)));
+
+        let down = FakeServer::default();
+        let err = connect_server(&tokens, &down, "http://192.168.1.5:6100", Credential::Token("nk_abcdefgh".into()));
+        assert_eq!(err, Err("Couldn't reach 192.168.1.5:6100: Connection refused".into()));
+        assert!(connect_server(&tokens, &down, "notes.example.com", Credential::Token("nk_abcdefgh".into()))
+            .unwrap_err()
+            .contains("http://"));
+    }
+
+    #[test]
+    fn b781_removing_a_server_forgets_its_token_but_never_the_open_graph_or_this_macs() {
+        let tokens = MemoryStore::default();
         let mut config = DesktopConfig::default();
-        let first = remember_remote_graph(&mut config, "https://notes.example.com");
-        // The bare address and its default graph are one graph (B-618).
-        let again = remember_remote_graph(&mut config, "https://notes.example.com/g/default");
-        assert_eq!(first.id, again.id);
-        let other = remember_remote_graph(&mut config, "https://notes.example.com/g/work");
-        assert_ne!(first.id, other.id);
-        assert_eq!(config.remote_graphs.len(), 2);
-        assert_eq!(graph_address("https://notes.example.com/"), "https://notes.example.com/g/default");
-        assert_eq!(graph_address("http://192.168.1.5:6100/g/x/"), "http://192.168.1.5:6100/g/x");
+        let a = config.upsert_server("https://a.example.com/g/default", None);
+        let b = config.upsert_server("https://b.example.com/g/default", None);
+        tokens.set("https://a.example.com/g/default", "nk_a").unwrap();
+        tokens.set("https://b.example.com/g/default", "nk_b").unwrap();
+
+        let open = GraphKey::Server(b.clone());
+        assert!(remove_server(&tokens, &mut config, &open, Some(&open)).unwrap_err().contains("is open"));
+        assert!(remove_server(&tokens, &mut config, &GraphKey::Mac("default".into()), None).is_err());
+        remove_server(&tokens, &mut config, &GraphKey::Server(a.clone()), Some(&open)).unwrap();
+        assert!(config.server(&a).is_none() && config.server(&b).is_some());
+        assert_eq!(tokens.get("https://a.example.com/g/default"), Ok(None));
+        assert_eq!(tokens.get("https://b.example.com/g/default"), Ok(Some("nk_b".into())));
+        assert!(remove_server(&tokens, &mut config, &GraphKey::Server(a), None).is_err());
     }
 
     #[test]
-    fn a_navigation_on_the_bundled_server_names_the_graph_it_opens() {
-        assert_eq!(local_graph_in_url(&url("http://127.0.0.1:6100/g/quiet-otter/journals"), 6100), Some(Some("quiet-otter".into())));
-        assert_eq!(local_graph_in_url(&url("http://127.0.0.1:6100/g/quiet-otter"), 6100), Some(Some("quiet-otter".into())));
-        assert_eq!(local_graph_in_url(&url("http://127.0.0.1:6100/g/default/page/A"), 6100), Some(None));
-        // Not the bundled server, or no graph in the path: nothing to remember.
-        assert_eq!(local_graph_in_url(&url("http://127.0.0.1:6200/g/x"), 6100), None);
-        assert_eq!(local_graph_in_url(&url("http://localhost:6100/g/x"), 6100), None);
-        assert_eq!(local_graph_in_url(&url("http://127.0.0.1:6100/"), 6100), None);
-        assert_eq!(local_graph_in_url(&url("http://127.0.0.1:6100/gx/y"), 6100), None);
-    }
-
-    #[test]
-    fn local_graphs_are_listed_from_the_data_dir_oldest_first() {
-        let dir = std::env::temp_dir().join(format!("nooklet-local-graphs-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(list_local_graphs(&dir).is_empty(), "a data dir that does not exist yet");
-        let graph = |id: &str, meta: Option<&str>, db: bool| {
-            let d = dir.join("graphs").join(id);
-            std::fs::create_dir_all(&d).unwrap();
-            if let Some(meta) = meta {
-                std::fs::write(d.join("graph.json"), meta).unwrap();
-            }
-            if db {
-                std::fs::write(d.join("graph.sqlite"), b"").unwrap();
-            }
+    fn b785_only_a_new_token_or_a_changed_list_needs_a_new_window() {
+        let facts = WindowFacts {
+            key: KEY.into(),
+            token_for: Some("s1".into()),
+            list_version: 3,
+            local_ids: vec!["default".into(), "quiet-otter".into()],
         };
-        graph("quiet-otter", Some(r#"{"id":"quiet-otter","label":"Quiet Otter","createdAt":300}"#), true);
-        graph("default", Some(r#"{"id":"default","label":"default","createdAt":100}"#), true);
-        graph("adopted", None, true); // B-607: a database with no graph.json yet
-        graph("empty-dir", None, false); // neither: not a graph
-        graph("Bad Name", Some(r#"{"label":"x"}"#), true);
-        graph("corrupt", Some("{not json"), true);
-        let listed = list_local_graphs(&dir);
-        let ids: Vec<&str> = listed.iter().map(|g| g.id.as_str()).collect();
-        assert_eq!(ids, ["adopted", "corrupt", "default", "quiet-otter"]);
-        assert_eq!(listed[3].label, "Quiet Otter");
-        assert_eq!(listed[0].label, "adopted");
+        let never = |_: &str| false;
+        let always = |_: &str| true;
+        assert!(!needs_new_window(&facts, &GraphKey::Server("s1".into()), 3, never));
+        assert!(needs_new_window(&facts, &GraphKey::Server("s2".into()), 3, never));
+        assert!(!needs_new_window(&facts, &GraphKey::Mac("quiet-otter".into()), 3, never));
+        assert!(needs_new_window(&facts, &GraphKey::Mac("new-one".into()), 3, always), "made since, by the CLI");
+        assert!(!needs_new_window(&facts, &GraphKey::Mac("typo".into()), 3, never), "not a graph: let the server say so");
+        assert!(needs_new_window(&facts, &GraphKey::Mac("default".into()), 4, never), "the list changed");
+    }
 
-        assert_eq!(local_graph_choice(&listed, None), Ok(None));
-        assert_eq!(local_graph_choice(&listed, Some("default")), Ok(None));
-        assert_eq!(local_graph_choice(&listed, Some("quiet-otter")), Ok(Some("quiet-otter".into())));
-        assert!(local_graph_choice(&listed, Some("gone")).is_err());
+    /// Runs the window's initialization script in Node with a stand-in `location`, and returns what
+    /// the page would see as `graphToken`. `None` when Node is not installed (it is wherever this
+    /// repo builds, since the sidecar and the web client need it).
+    fn token_seen_at(script: &str, href: &str) -> Option<serde_json::Value> {
+        let harness = format!(
+            "const u=new URL({href});globalThis.window=globalThis;globalThis.location={{origin:u.origin,pathname:u.pathname}};{script};process.stdout.write(JSON.stringify(window.__NOOKLET_DESKTOP__.graphToken))",
+            href = serde_json::to_string(href).unwrap(),
+        );
+        let output = Command::new("node").arg("-e").arg(harness).output().ok()?;
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        Some(serde_json::from_slice(&output.stdout).unwrap())
+    }
 
-        let script = shell_script(&DesktopConfig { active_local_graph: Some("quiet-otter".into()), ..Default::default() }, &listed, false);
-        assert!(script.contains(r#"localGraphs:[{"id":"adopted","label":"adopted"}"#), "{script}");
-        assert!(script.contains(r#"activeLocalGraph:"quiet-otter""#), "{script}");
+    #[test]
+    fn b782_the_token_is_injected_only_into_its_graphs_own_documents() {
+        let graphs = vec![PageGraph {
+            key: "server:s1".into(),
+            place: "server",
+            id: "s1".into(),
+            label: "Work".into(),
+            address: "https://notes.example.com/g/work".into(),
+        }];
+        let token = ScopedToken { address: "https://notes.example.com/g/work", token: "nk_secret" };
+        let target = ConnectTarget { url: "https://notes.example.com/g/work", place: "server", label: "Work" };
+        let script = shell_script(6100, KEY, &graphs, Some(&target), Some(&token));
+        assert_eq!(script.matches("nk_secret").count(), 1, "the one token, once");
+
+        let Some(here) = token_seen_at(&script, "https://notes.example.com/g/work/journals") else {
+            eprintln!("node not found: skipping the scoping check");
+            return;
+        };
+        assert_eq!(here, serde_json::json!("nk_secret"));
+        assert_eq!(token_seen_at(&script, "https://notes.example.com/g/work").unwrap(), serde_json::json!("nk_secret"));
+        for elsewhere in [
+            "https://notes.example.com/g/workshop/journals", // another graph that shares a prefix
+            "https://notes.example.com/g/other",             // another graph on the same server
+            "https://notes.example.com/",                    // the server, no graph
+            "http://notes.example.com/g/work",               // another scheme: another origin
+            "https://notes.example.com:8443/g/work",         // another port: another origin
+            "https://evil.example/g/work",                   // another server, same path
+            "http://127.0.0.1:6100/g/default",               // This Mac
+            "tauri://localhost/index.html",                  // the launcher
+        ] {
+            assert_eq!(token_seen_at(&script, elsewhere).unwrap(), serde_json::Value::Null, "{elsewhere}");
+        }
+
+        // A window built for This Mac carries no token at all.
+        let mac = shell_script(6100, KEY, &graphs, None, None);
+        assert!(!mac.contains("nk_"));
+        assert_eq!(token_seen_at(&mac, "https://notes.example.com/g/work").unwrap(), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn b781_the_script_hands_the_page_the_list_the_key_and_the_launchers_target() {
+        let graphs = vec![PageGraph {
+            key: "mac:default".into(),
+            place: "mac",
+            id: "default".into(),
+            label: "This \"Mac\" </script>".into(),
+            address: "http://127.0.0.1:6100/g/default".into(),
+        }];
+        let target = ConnectTarget { url: "http://127.0.0.1:6100/g/default", place: "mac", label: "This Mac" };
+        let script = shell_script(6100, KEY, &graphs, Some(&target), None);
+        assert!(script.contains(&format!("key:\"{KEY}\"")), "{script}");
         assert!(script.contains("downloads:true"), "{script}");
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(script.contains(r#""connect":"#) || script.contains(r#"connect:{"url":"http://127.0.0.1:6100/g/default","place":"mac","label":"This Mac"}"#), "{script}");
+        assert!(script.contains(r#"\"Mac\""#), "labels are JSON-escaped: {script}");
+        let harness = format!(
+            "globalThis.window=globalThis;globalThis.location={{origin:'tauri://localhost',pathname:'/'}};{script};const d=window.__NOOKLET_DESKTOP__;process.stdout.write(JSON.stringify([d.key,d.port,d.graphs[0].label,d.connect.place,Object.isFrozen(d)]))"
+        );
+        if let Ok(output) = Command::new("node").arg("-e").arg(harness).output() {
+            let seen: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(seen, serde_json::json!([KEY, 6100, "This \"Mac\" </script>", "mac", true]));
+        }
+        assert_eq!(random_key().len(), 32);
+        assert_ne!(random_key(), random_key());
     }
 }
