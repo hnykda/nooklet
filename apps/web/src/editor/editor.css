@@ -305,6 +305,13 @@
 .vr-surface-host .cm-dropCursor {
   border-left-color: var(--fg);
 }
+/* The caret people actually see is the browser's own: there is no `drawSelection()`, so the
+   `.cm-cursor` rule above never applies to it. CodeMirror's base theme sets `caret-color: black`
+   on `.cm-content` for its light theme ((0,2,0)), which in dark mode is a black caret on a
+   near-black page (B-745). One class deeper wins without `!important`. */
+.vr-surface-host .cm-editor .cm-content {
+  caret-color: var(--fg);
+}
 /* Specificity rather than `!important`: CodeMirror's own theme reaches (0, 2, 0) via
    `.cm-editor.cm-focused .cm-selectionBackground`, so a selector one level deeper wins outright. */
 .vr-surface-host .cm-editor .cm-selectionBackground,

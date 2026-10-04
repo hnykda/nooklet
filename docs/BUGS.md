@@ -1078,7 +1078,24 @@ depends on what ran before it. The cause has not been investigated. In those sam
 re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. Both look like
 flakes and are noted here rather than logged separately.
 
+### B-746 · Arrowing through the slash menu moves the highlight out of view; the list does not scroll with it
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the desktop app · **Test:** none yet
+
+With more commands than the popup shows, ArrowDown past the last visible row highlights a row
+that is scrolled out of sight; the list stays put. Expected: the highlighted row is kept in view.
+
 ## Fixed
+
+### B-745 · Dark mode: no visible text cursor in the block editor
+**Status:** fixed 2026-10-04 · **Severity:** medium · **Found:** 2026-10-04, owner on the desktop app · **Test:** `e2e/tests/editor-caret.spec.ts` (2; both fail without the fix)
+
+The editor has no `drawSelection()`, so the caret is the browser's native one, whose colour is
+`caret-color`. CodeMirror's base theme sets `caret-color: black` on `.cm-content` for its light
+theme (the only one it knows), so in dark mode the caret is black on a near-black page. The earlier
+dark-mode rule in `editor.css` colours `.cm-cursor`, which is only drawn by `drawSelection()`, so it
+never applied to the caret people actually see.
+
+**Fix:** `.vr-surface-host .cm-editor .cm-content { caret-color: var(--fg) }` in `editor.css`, one class more specific than CodeMirror's base theme.
 
 ### B-744 · Image viewer: Copy disables both buttons (stuck in the Mac app), and Download does not say where the file went
 **Status:** fixed 2026-10-04 (the Mac-app copy hang itself not reproduced; now bounded) · **Severity:** low (UX) · **Found:** 2026-10-04, owner in the desktop app · **Test:** `image-viewer.test.tsx` "B-744: …" (3), `e2e/tests/image-viewer.spec.ts` copy test (Download right after Copy), Rust `b744_a_saved_file_is_shown_under_the_home_shorthand`
