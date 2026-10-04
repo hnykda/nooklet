@@ -240,6 +240,10 @@ test("phone overflow sweep: nothing in a block widens the page past the screen",
     const view = page.locator(".vr-outliner").first().locator(".vr-row").nth(row);
     await view.scrollIntoViewIfNeeded();
     await view.locator(".vr-block-view").click();
+    // Row 8 is only a full-width picture: a tap on it opens the image viewer (B-736), whose
+    // "Edit block" is the way into that block's editor.
+    const viewer = page.getByRole("dialog");
+    if (row === 8) await viewer.getByRole("button", { name: "Edit block" }).click();
     await expect(page.locator(".cm-content")).toBeFocused();
     expect(await overflowingElements(page), `row ${row} while editing`).toEqual([]);
     await expectWithinScreen(page);

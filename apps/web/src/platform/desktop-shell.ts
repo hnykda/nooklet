@@ -30,7 +30,15 @@ export interface DesktopShell {
   /** B-643: every graph on the bundled server, whichever server the window is showing. Empty from
    * an older shell, which did not send it. */
   localGraphs: DesktopLocalGraph[];
+  /** B-736: the shell saves `<a download>` to ~/Downloads (`main.rs`'s `on_download`) and answers
+   * with `DESKTOP_DOWNLOAD_EVENT`. `false` from an older shell, where WKWebView cancels every such
+   * download silently (wry answers `Cancel` when no download handler is set). */
+  downloads: boolean;
 }
+
+/** B-736: the shell's report on a finished download — `{ ok, name }`, `name` being the file it
+ * wrote in ~/Downloads (wry de-duplicates it, so it may not be the name the page asked for). */
+export const DESKTOP_DOWNLOAD_EVENT = "nooklet:desktop-download";
 
 /** B-643: what a page can ask the shell to do (`main.rs#ShellRequest`). There is no IPC from a
  * server's page, so the request is a navigation the shell intercepts; the host is reserved never
@@ -78,7 +86,7 @@ type ShellWindow = Window & { __NOOKLET_DESKTOP__?: unknown };
 export function desktopShell(win: Window | undefined = globalThis.window): DesktopShell | null {
   const raw = (win as ShellWindow | undefined)?.__NOOKLET_DESKTOP__;
   if (typeof raw !== "object" || raw === null) return null;
-  const { platform, port, localGraphs } = raw as Record<string, unknown>;
+  const { platform, port, localGraphs, downloads } = raw as Record<string, unknown>;
   if (typeof platform !== "string" || typeof port !== "number") return null;
   const graphs = Array.isArray(localGraphs)
     ? localGraphs.filter(
@@ -89,7 +97,7 @@ export function desktopShell(win: Window | undefined = globalThis.window): Deskt
           typeof (g as DesktopLocalGraph).label === "string",
       )
     : [];
-  return { platform, port, localGraphs: graphs };
+  return { platform, port, localGraphs: graphs, downloads: downloads === true };
 }
 
 /**

@@ -95,6 +95,16 @@ export const webPlatform: Platform = {
         return false;
       }
     },
+    async shareFile({ name, blob }) {
+      const file = new File([blob], name, { type: blob.type });
+      if (!navigator.canShare?.({ files: [file] })) return false;
+      try {
+        await navigator.share({ files: [file] });
+        return true;
+      } catch {
+        return false;
+      }
+    },
   },
 
   deepLinks: {

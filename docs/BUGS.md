@@ -1021,15 +1021,6 @@ B-704. Workaround used: edit `desktop.json` (add the remote entry, set `active_g
 `pnpm desktop` again. Fix: in dev, show the picker in place (navigate the window to the bundled
 launcher with forcePicker) instead of restarting, or detect `tauri dev` and print how to relaunch.
 
-### B-736 · Clicking an image only opens the block editor; no way to view, copy or download it
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** none yet
-
-Clicking a rendered `![…](assets/….png)` switches the block to its raw markdown, so the image
-disappears and there is nothing to act on. Expected (Logseq does this): clicking the image itself
-opens it (a lightbox / full view) with Copy image and Download/Save, while clicking the
-rest of the block still edits. Must work in the browser, the desktop shell (WKWebView: a download
-needs the shell, not `<a download>`) and on the phone (long-press / share sheet).
-
 ### B-737 · Tokenless `GET /assets/:id` relies on ids being unguessable, but asset ids are 45 time bits + 25 random bits, sequential within a millisecond
 **Status:** open · **Severity:** high (security) · **Found:** 2026-10-04, checking image load time on the production server · **Test:** none yet
 
@@ -1045,6 +1036,8 @@ Fix options: (a) a separate 128-bit random asset key in the URL (capability URL 
 (b) an HttpOnly same-site cookie set from the bearer token so `<img>` is authenticated,
 (c) short-lived signed URLs. Whichever: the content stays `sandbox`-CSP; existing block content
 keeps its `assets/<id>.<ext>` form, so the mapping happens in `assetUrl()` / the server.
+
+When this is fixed, the image viewer's Download/Copy (`apps/web/src/editor/render/image-actions.ts`, B-736) also fetches assets with no credential and must follow the same scheme.
 
 ### B-738 · Images load slowly, even the second time the same image is shown
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, owner ("probably OK") · **Test:** none yet
@@ -1072,7 +1065,74 @@ B-712's "export first" can only point at per-page Export as markdown and promote
 
 `removeGraph` drops the list entry only; the OPFS file `/nooklet-<id>.sqlite3` and its journal/draft keys stay, unreachable: a storage leak.
 
+### B-743 · e2e: "Open plugin manager … (B-98)" fails after earlier specs (main too): Plugins section not scrolled into view
+**Status:** open · **Severity:** low (test flake, or a real race in the scroll) · **Found:** 2026-10-04, image-viewer agent, full `pnpm e2e` on port 6470 · **Test:** `e2e/tests/commands.spec.ts` "Open plugin manager opens Settings at the list of running plugins, not a blank page (B-98)"
+
+This test fails at `expect(section).toBeInViewport()`: the `.set-panel #set-plugins` section exists
+but its viewport ratio stays 0 for 10 s, so Settings opens but does not scroll to Plugins. It failed
+in both full Chromium runs on the B-736 branch, and in a run of just the 14 specs up to and including
+`commands.spec.ts` (alphabetical order, Chromium) on the branch AND on main at `bb5eec39`. So it is
+not caused by B-736. It passed when `commands.spec.ts` ran together with only the image specs, so it
+depends on what ran before it. The cause has not been investigated. In those same runs,
+`sync-connection-states.spec.ts` "a refused token says so…" failed once (second full run, passed on
+re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. Both look like
+flakes and are noted here rather than logged separately.
+
 ## Fixed
+### B-736 · Clicking an image only opens the block editor; no way to view, copy or download it
+**Status:** fixed (2026-10-04, image-viewer agent) · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** `e2e/tests/image-viewer.spec.ts` ("B-736: clicking an image opens the viewer, not the editor; Download saves it" — Chromium and WebKit; "B-736: Copy image puts a PNG on the clipboard" — Chromium), `apps/web/src/editor/render/image-viewer.test.tsx` (11), `apps/web/src/platform/desktop-shell.test.ts` ("B-736: knows whether the shell saves downloads"), probe `tools/probes/wkwebview-download.swift`
+
+Clicking a rendered `![…](assets/….png)` switches the block to its raw markdown, so the image
+disappears and there is nothing to act on. Expected (Logseq does this): clicking the image itself
+opens it (a lightbox / full view) with Copy image and Download/Save, while clicking the
+rest of the block still edits. Must work in the browser, the desktop shell (WKWebView: a download
+needs the shell, not `<a download>`) and on the phone (long-press / share sheet).
+
+**Cause.** `ImageView` (`editor/render/tokens.tsx`) was a bare `<img>`, so a click on it reached
+the row's `handleContentClick` (`editor/BlockRowView.tsx`) like a click on text and entered the
+editor. And on the desktop nothing could have saved it anyway: wry answers every navigation with
+`shouldPerformDownload` with `Cancel` unless the Tauri shell sets a download handler, and it set
+none.
+
+**Fixed.** The image is now a control (`role="button"`, focusable, Enter/Space): a plain click opens
+`editor/render/ImageViewer.tsx` and stops there; Shift/Cmd/Ctrl/Alt clicks and images inside links
+behave as before; a click on the block's text still edits. The viewer (Escape, backdrop or ✕ closes;
+focus trapped and restored; keys taken at `window` capture so no command runs behind it) offers
+Copy image, Download, Open in new tab and **Edit block**. The last one exists because the first
+full e2e run caught a regression: a block that is only a full-width picture had no spot left to
+click into the editor (`phone-images.spec.ts`'s overflow sweep, row 8, which now goes in through
+"Edit block"). It is passed down as `RenderCtx.onEditBlock` from the outliner row only, and cleared
+for embeds and block-ref previews, whose offsets are into another block's text. `editor/render/image-actions.ts` does the per-host work:
+
+- **Browser:** fetch → blob → `<a download>` (`GET /assets/:id` needs no credential, so a plain
+  fetch works). File name = alt text, else asset id, plus the extension.
+- **Desktop:** the shell now sets `on_download` (`apps/desktop/src-tauri/src/main.rs`): saves to
+  ~/Downloads (wry de-duplicates the name) and reports back with a `nooklet:desktop-download` event,
+  which the viewer shows as "Saved to Downloads as …". The shell advertises this as
+  `__NOOKLET_DESKTOP__.downloads`; an older shell without it gets the image opened in the system
+  browser instead, with a message.
+- **Phone (Capacitor):** bytes written to the cache dir with `@capacitor/filesystem` and handed to
+  the share sheet with `@capacitor/share` (`files`), where Save Image / Save to Files live; both
+  plugins were already dependencies. Open in new tab is hidden there.
+- **Copy:** `navigator.clipboard.write` with an `image/png` `ClipboardItem` whose value is a
+  promise (WebKit needs the write to start inside the click); non-PNG is re-encoded via canvas.
+  Without the API the viewer says so and points at Download.
+
+**Verified:** Chromium e2e (viewer opens, no editor, Download event with the uploaded bytes and the
+alt-text name, Escape/backdrop close without editing or selecting, Enter on the focused picture
+opens it with the global keymap live and focus returns to it, text click still edits;
+clipboard holds `image/png`). Playwright WebKit e2e: the same open/download test passes.
+`tools/probes/wkwebview-download.swift` (macOS 27.0.1, a bare WKWebView given wry's exact delegate
+answers): with the handler an `<a download>` of an http URL (and of a blob URL) becomes a WKDownload
+with the `download` attribute as suggested name and the file is written; with `Cancel` (the old
+shell) nothing happens. Rust: `cargo test` 17/17, including `downloads:true` in the injected script.
+
+**Not verified:** the built desktop app end to end (the real Tauri window, the `on_download` →
+`nooklet:desktop-download` round trip, and Copy image inside WKWebView — no clipboard read-back in
+WebKit, and a remote server over plain http is not a secure context, so there Copy reports
+"isn't supported"). The phone share path was not run on a device or simulator; long-press on the
+picture is untouched, so the OS's own Save Image menu should still be there.
+
 
 ### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
 **Status:** fixed 2026-10-04 (phone-input) · **Test:** `token-input.test.ts`, `GraphSwitcher.test.tsx` "B-706: …" ×2

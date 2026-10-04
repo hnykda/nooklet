@@ -22,6 +22,9 @@ export interface HapticsAdapter {
 export interface ShareAdapter {
   /** Best-effort outbound share; resolves `false` if unsupported or cancelled. */
   share(data: { title?: string; text?: string; url?: string }): Promise<boolean>;
+  /** B-736: share a file's bytes (an image from a note) through the system share sheet, which on
+   * a phone is where "Save Image" lives. Resolves `false` if unsupported or cancelled. */
+  shareFile(file: { name: string; blob: Blob }): Promise<boolean>;
 }
 
 export interface DeepLinkAdapter {

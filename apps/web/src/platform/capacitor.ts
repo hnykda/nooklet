@@ -38,6 +38,12 @@ function sharePlugin(): Promise<typeof import("@capacitor/share")> {
   return shareModule;
 }
 
+let filesystemModule: Promise<typeof import("@capacitor/filesystem")> | undefined;
+function filesystemPlugin(): Promise<typeof import("@capacitor/filesystem")> {
+  if (!filesystemModule) filesystemModule = import("@capacitor/filesystem");
+  return filesystemModule;
+}
+
 let appModule: Promise<typeof import("@capacitor/app")> | undefined;
 function appPlugin(): Promise<typeof import("@capacitor/app")> {
   if (!appModule) appModule = import("@capacitor/app");
@@ -138,6 +144,43 @@ async function doShare(data: { title?: string; text?: string; url?: string }): P
     const can = await Share.canShare();
     if (!can.value) return false;
     await Share.share(data);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A blob's bytes as base64, which is what `Filesystem.writeFile` takes for binary data. */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * B-736: the native share sheet takes `file://` URLs, not bytes — so the file goes to the app's
+ * cache directory first (the OS may clear it; nothing else needs it) and is shared from there.
+ * The sheet is where "Save Image" / "Save to Files" live on both platforms, so this is the phone's
+ * download as well as its share.
+ */
+async function doShareFile(file: { name: string; blob: Blob }): Promise<boolean> {
+  try {
+    const [{ Share }, { Filesystem, Directory }] = await Promise.all([
+      sharePlugin(),
+      filesystemPlugin(),
+    ]);
+    if (!(await Share.canShare()).value) return false;
+    const safeName = file.name.replace(/[^\w.\- ]+/g, "_") || "image";
+    const written = await Filesystem.writeFile({
+      path: `shared/${safeName}`,
+      directory: Directory.Cache,
+      data: await blobToBase64(file.blob),
+      recursive: true,
+    });
+    await Share.share({ files: [written.uri] });
     return true;
   } catch {
     return false;
@@ -280,7 +323,7 @@ export const capacitorPlatform: Platform = {
     },
   },
   haptics: { impact, selection, notify },
-  share: { share: doShare },
+  share: { share: doShare, shareFile: doShareFile },
   deepLinks: { onOpen },
   lifecycle: { on: onLifecycle },
   startKeyboardWatcher: () => startKeyboardWatcher(),
