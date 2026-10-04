@@ -1082,7 +1082,32 @@ A data guard landed (`updateGraph` refuses a `baseUrl` for a `detachedFrom` entr
 
 249 property values that are themselves blocks stay as child blocks; 7 embeds arrive as copies rather than embeds. Real-graph counts from the dry run.
 
+### B-732 · A paired phone cannot start an import
+**Status:** open (2026-10-04, in-app import) · **Severity:** low · **Found:** 2026-10-04, in-app import agent · **Test:** none
+
+Its token is `write`; import is `admin` (ADR 029/031). The phone is told to import from the desktop app.
+
+### B-733 · `leak-check --staged` skips staged files with non-ASCII names but reports clean
+**Status:** open (2026-10-04, in-app import) · **Severity:** medium (the guard silently misses files) · **Found:** 2026-10-04, in-app import agent · **Test:** none
+
+Found while committing fixtures with accented names. Likely `git diff --name-only` quoting (core.quotePath); use `-z`.
+
 ## Fixed
+
+### B-731 · Page names with diacritics turn into mojibake when the graph was zipped on a Mac
+**Status:** fixed (2026-10-04, in-app import) · **Severity:** medium · **Found:** 2026-10-04, in-app import agent · **Test:** server unzip tests
+
+macOS `zip` writes UTF-8 names without the UTF-8 flag; decoded correctly now. Finder's Compress not tested.
+
+### B-730 · An uploaded graph zip with an image over ~768 KB never finishes unpacking
+**Status:** fixed (2026-10-04, in-app import) · **Severity:** high (import hangs) · **Found:** 2026-10-04, in-app import agent · **Test:** probe `tools/probes/zip-stall.mjs` + server tests
+
+yauzl 2.10 stalls on large entries under Node 26; the server now reads those entries itself.
+
+### B-729 · Importing a Logseq graph needed a terminal
+**Status:** fixed (2026-10-04, in-app import) · **Severity:** medium (owner request) · **Found:** 2026-10-04, in-app import agent · **Test:** `e2e/tests/logseq-import.spec.ts`, server import-upload tests (incl. a DB-format zip)
+
+Settings → Import from Logseq (ADR 031): a folder (desktop/web) zipped in the browser or a .zip (phone), uploaded in 4 MiB chunks through `import.*` ops (admin-only, HTTP-only; `serve --import-max-mb`, default 1024); zip-slip/symlink/bomb guards; built in staging, verified, moved into place; into a new graph, or the current graph only while empty. Both Logseq formats via the shared importer core. Local-only graphs cannot import (needs the server).
 
 ### B-727 · A DB-version mirror's properties imported as empty blocks
 **Status:** fixed (2026-10-04, logseq-db-import) · **Severity:** medium · **Found:** 2026-10-04, logseq-db-import audit · **Test:** logseq-db-import.test.ts
