@@ -18,8 +18,10 @@
  * have journals that were not Journals. See ADR 017 for the alternatives and why they lost.
  */
 
-import type { SqlDriver } from "@nooklet/core";
-import { canonicalRefName, normalizePageName, splitList } from "@nooklet/core";
+import { canonicalRefName } from "../journal.js";
+import { normalizePageName } from "../page-name.js";
+import { splitList } from "../refs.js";
+import type { SqlDriver } from "./driver.js";
 
 /** The tag every journal day carries. Capitalised because people see and link to it by hand;
  * lookups normalise case anyway. */

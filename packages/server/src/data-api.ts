@@ -30,10 +30,13 @@ import {
   type Page,
   type PageId,
   type Properties,
+  pageLookupKeys,
+  resolvePageIdForKey,
   type SqlDriver,
   splitList,
   templateInsertOps,
   todayJournalDay,
+  unlinkedMentionRows,
 } from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
 import {
@@ -44,7 +47,6 @@ import {
 } from "./embeddings/semantic-search.js";
 import { suggestedJournalTitleFormat } from "./journal-format.js";
 import { journalTemplateNode } from "./journal-template.js";
-import { pageLookupKeys, resolvePageIdForKey } from "./page-aliases.js";
 import { unclaimedReferencePageForKey } from "./ref-pages.js";
 import {
   BLOCK_COLUMNS,
@@ -735,31 +737,6 @@ function requireBlockPage(driver: SqlDriver, id: string): PageRow {
   const row = getPageRow(driver, id);
   if (!row) throw new Error(`no such page: ${id}`);
   return row;
-}
-
-/**
- * Unlinked mentions of a page (PLAN §4: "full-text hits for the page name in blocks that do not
- * already reference P"): blocks on OTHER pages whose text contains the page's short name as a
- * phrase and whose path refs do not already reach the page by its key or any alias. Shared by
- * `QueryApi.unlinkedRefs` and `page.backlinks`. Names shorter than three characters produce
- * nothing: a two-letter phrase matches half the graph and none of it is a mention.
- */
-export function unlinkedMentionRows(
-  driver: SqlDriver,
-  page: { id: string; name: string; key: string },
-  limit: number,
-): Array<{ block_id: string; page_id: string; content: string }> {
-  const plainName = page.name.split("/").pop() ?? page.name;
-  if (plainName.length < 3) return [];
-  const keys = pageLookupKeys(driver, page);
-  return driver.all(
-    `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
-     FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
-     WHERE block_fts MATCH ? AND b.deleted_at IS NULL AND b.page_id != ?
-       AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key IN (${keys.map(() => "?").join(",")}))
-     LIMIT ?`,
-    [ftsPhrase(plainName), page.id, ...keys, limit],
-  );
 }
 
 function groupByPage(

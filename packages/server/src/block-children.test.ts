@@ -1,7 +1,13 @@
-import { makeOp, newId } from "@nooklet/core";
+import {
+  childLookup,
+  LIVE_CHILDREN_SQL,
+  makeOp,
+  newId,
+  TOMBSTONED_CHILDREN_SQL,
+} from "@nooklet/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "./apply-ops.js";
-import { childLookup, LIVE_CHILDREN_SQL, TOMBSTONED_CHILDREN_SQL } from "./block-children.js";
+
 import { openDb } from "./db.js";
 
 let ctx: ServerContext;

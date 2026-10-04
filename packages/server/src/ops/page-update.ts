@@ -1,7 +1,6 @@
-import { normalizePageName, splitList } from "@nooklet/core";
+import { aliasKeysOf, normalizePageName, splitList } from "@nooklet/core";
 import { z } from "zod";
 import { buildWikilinkRewriteOps } from "../data-api.js";
-import { aliasKeysOf } from "../page-aliases.js";
 import { unclaimedReferencePageForKey } from "../ref-pages.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";

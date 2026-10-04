@@ -13,7 +13,7 @@
  * a state that pass does not change — build a fresh one for each pass.
  */
 
-import type { SqlDriver } from "@nooklet/core";
+import type { SqlDriver } from "./driver.js";
 
 export interface ChildRow {
   id: string;

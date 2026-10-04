@@ -81,16 +81,30 @@ test("refreshes after a local edit adds a link", async ({ page }, info) => {
   });
 });
 
-test("says so when the request fails, and can retry", async ({ page }) => {
+test("answers from the device when the server's page.backlinks cannot be reached (B-641)", async ({
+  page,
+}) => {
+  // This used to be "says so when the request fails": references were a server read, and the
+  // owner saw "Couldn't load references · Retry" on a phone in airplane mode. The replica keeps
+  // its own reference index now; the failure state remains only for a replica that could not
+  // build one (`views/ReferencesPanel.test.tsx` renders it).
   await page.goto("/journals");
   await api(page, "page.create", { name: "Refs Broken", if_exists: "return" });
   await api(page, "page.append", { page: "Refs Broken", markdown: "- content" });
+  await api(page, "page.create", { name: "Refs Broken Source", if_exists: "return" });
+  await api(page, "page.append", {
+    page: "Refs Broken Source",
+    markdown: "- points at [[Refs Broken]]",
+  });
 
-  await page.route("**/api/v1/page.backlinks", (route) => route.abort("failed"));
+  let serverReads = 0;
+  await page.route("**/api/v1/page.backlinks", (route) => {
+    serverReads++;
+    return route.abort("failed");
+  });
   await page.goto("/page/Refs%20Broken");
 
-  const error = page.locator(".references-error");
-  await expect(error).toBeVisible({ timeout: 15_000 });
-  await expect(error).toContainText("Couldn't load references");
-  await expect(error.locator(".references-retry")).toBeVisible();
+  await expect(page.locator(".linked-references .reference-count").first()).toHaveText("1");
+  await expect(page.locator(".references-error")).toHaveCount(0);
+  expect(serverReads).toBe(0);
 });

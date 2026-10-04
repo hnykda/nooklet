@@ -1,8 +1,5 @@
-import { ftsPhrase, refKeyOf } from "@nooklet/core";
+import { type BacklinksTarget, backlinkRows } from "@nooklet/core";
 import { z } from "zod";
-import { unlinkedMentionRows } from "../data-api.js";
-import { pageLookupKeys } from "../page-aliases.js";
-import { pagesTaggedWith, type TaggedPageRow } from "../page-tags.js";
 import { pageWireNameById } from "../rows.js";
 import { defineOp } from "./registry.js";
 import { resolvePageRef, wirePageName } from "./resolve.js";
@@ -98,97 +95,33 @@ export const pageBacklinks = defineOp({
       ? Number.parseInt(Buffer.from(input.cursor, "base64").toString("utf8"), 10)
       : 0;
 
+    // Resolution stays here (it is shared by every op that takes a `PageRef`, errors included);
+    // the reading is `@nooklet/core`'s `backlinkRows`, the same code a client replica answers its
+    // references panel with (B-641), so the two cannot drift.
+    //
+    // A name that is neither a page nor a block is a page that is REFERENCED but not created yet:
+    // an empty list rather than an error — returning 404 here meant every not-yet-created page
+    // rendered as "Couldn't load references".
     const asPage = await resolvePageRef(ctx, input.target);
+    let target: BacklinksTarget;
     let targetWire: string;
-    let linkedRows: Array<{
-      block_id: string;
-      page_id: string;
-      content: string;
-      updated_at: number;
-      direct: number;
-    }>;
-    let unlinkedRows: Array<{ block_id: string; page_id: string; content: string }> = [];
-    // ADR 017: the pages carrying the target as a page-level tag, from the `page_tag` index. A
-    // block target has none — tags are names, and a block has no name to be tagged with.
-    let taggedRows: TaggedPageRow[] = [];
-
     if (asPage) {
+      target = { kind: "page", page: asPage };
       targetWire = wirePageName(asPage);
-      // The page's own key plus its aliases (sql-schema.md rule 13): `[[Nick]]` is a link to
-      // `Real` when `Real` lists `alias:: Nick`.
-      const keys = pageLookupKeys(driver, asPage);
-      const keyList = keys.map(() => "?").join(",");
-      // `direct`: the block's OWN refs name the page (or an alias), as opposed to it being in
-      // `path_ref` only through an ancestor or its page. Logseq's heading counts these
-      // (`reference.cljs` `top-level-blocks`, docs/progress/refs-count.md); the list keeps the rest.
-      linkedRows = driver.all(
-        `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at,
-                EXISTS (SELECT 1 FROM ref r WHERE r.src_block_id = b.id AND r.dst_page_key IN (${keyList})) AS direct
-         FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL
-         WHERE pr.page_key IN (${keyList}) AND b.page_id != ?
-         ORDER BY b.updated_at DESC`,
-        [...keys, ...keys, asPage.id],
-      );
-      // One more than asked for, so the answer can say whether it stopped short (B-253: the
-      // panel showed a silent 50 while Link all rewrote 187).
-      if (input.include_unlinked) {
-        unlinkedRows = unlinkedMentionRows(driver, asPage, input.unlinked_limit + 1);
-      }
-      taggedRows = pagesTaggedWith(driver, keys, asPage.id);
+    } else if (await ctx.data.blocks.get(input.target)) {
+      target = { kind: "block", blockId: input.target };
+      targetWire = input.target;
     } else {
-      const asBlock = await ctx.data.blocks.get(input.target);
-      if (asBlock) {
-        targetWire = input.target;
-        linkedRows = driver.all(
-          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at, 1 AS direct
-           FROM ref r JOIN block b ON b.id = r.src_block_id AND b.deleted_at IS NULL
-           WHERE r.kind = 'block' AND r.dst_block_id = ?
-           ORDER BY b.updated_at DESC`,
-          [asBlock.id],
-        );
-      } else {
-        // A page that is REFERENCED but not created yet is a normal, addressable thing in a wiki:
-        // `[[Lisbon]]` makes that page meaningful the moment you write the link, and opening
-        // it should show what points at it. Refs are stored against `page_key`, so this needs no
-        // page row — and returning 404 here meant every not-yet-created page rendered as
-        // "Couldn't load references", which is both wrong and alarming.
-        //
-        // An unknown name simply has no backlinks, so the answer is an empty list rather than an
-        // error: a caller can tell the difference, and "this page has nothing pointing at it" is a
-        // true and useful answer.
-        //
-        // Keyed the way refs are indexed (`refKeyOf`, ADR 018): a journal day named by any title
-        // format collapses to its ISO key. The raw name found nothing for `Sep 20th, 2026` while
-        // `2026-09-20` worked, and listed blocks linking that day as unlinked mentions (B-322).
-        const key = refKeyOf(input.target);
-        targetWire = input.target;
-        linkedRows = driver.all(
-          `SELECT DISTINCT b.id AS block_id, b.page_id AS page_id, b.content AS content, b.updated_at AS updated_at,
-                  EXISTS (SELECT 1 FROM ref r WHERE r.src_block_id = b.id AND r.dst_page_key = ?) AS direct
-           FROM path_ref pr JOIN block b ON b.id = pr.block_id AND b.deleted_at IS NULL
-           WHERE pr.page_key = ?
-           ORDER BY b.updated_at DESC`,
-          [key, key],
-        );
-        // `Journal` usually has no page of its own, yet every journal day carries it: a tag that
-        // only exists as an index key must still list its pages (B-111).
-        taggedRows = pagesTaggedWith(driver, [key], null);
-        if (input.include_unlinked) {
-          const plainName = input.target.split("/").pop() ?? input.target;
-          if (plainName.length >= 3) {
-            const ftsQuery = ftsPhrase(plainName);
-            unlinkedRows = driver.all(
-              `SELECT b.id AS block_id, b.page_id AS page_id, b.content AS content
-               FROM block_fts JOIN block b ON b.rowid = block_fts.rowid
-               WHERE block_fts MATCH ? AND b.deleted_at IS NULL
-                 AND NOT EXISTS (SELECT 1 FROM path_ref pr WHERE pr.block_id = b.id AND pr.page_key = ?)
-               LIMIT ?`,
-              [ftsQuery, key, input.unlinked_limit + 1],
-            );
-          }
-        }
-      }
+      target = { kind: "key", name: input.target };
+      targetWire = input.target;
     }
+    const rows = backlinkRows(driver, target, {
+      includeUnlinked: input.include_unlinked,
+      unlinkedLimit: input.unlinked_limit,
+    });
+    const linkedRows = rows.linked;
+    const unlinkedRows = rows.unlinked;
+    const taggedRows = rows.tagged;
 
     const end = offset + input.limit;
     const hasMore = linkedRows.length > end || taggedRows.length > end;

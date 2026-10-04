@@ -28,7 +28,7 @@
  */
 
 import type { AppliedOpResult, BlockPlace, Op, SqlDriver } from "@nooklet/core";
-import { childLookup } from "./block-children.js";
+import { childLookup } from "@nooklet/core";
 import type { BlockChangeSnapshot, PageChangeSnapshot } from "./rows.js";
 
 type Snapshots = ReadonlyMap<string, PageChangeSnapshot | BlockChangeSnapshot | null>;

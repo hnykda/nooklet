@@ -4,14 +4,13 @@
  * the server — Settings, References, Diagnostics, Trash/History (`./history.ts`), the refactor ops
  * and `batch.undo` (`./refactor-api.ts`) — calls through it (B-330).
  *
- * Also here: `apiClient`, the typed wrappers for the read ops the local replica cannot answer on
- * its own — `search`, `page.backlinks` (docs/spec/mcp-tools.md §4.3.5/§4.3.6) and `graph.links`.
- * The client-only schema (`@nooklet/core`'s `CORE_SCHEMA_STATEMENTS`, mirrored by
- * `../db/schema-client.ts`) has no `ref`/`path_ref`/`embedding*` tables —
- * those are server-only derived tables (docs/spec/sql-schema.md rule 1) — so references and the
- * link graph must go over HTTP rather than through the worker. Search no longer must: the replica
- * has its own keyword index, and `search` here only adds the server's semantic matches
- * (`./search-session.ts`).
+ * Also here: `apiClient`, typed wrappers for three read ops — `search`, `page.backlinks`
+ * (docs/spec/mcp-tools.md §4.3.5/§4.3.6) and `graph.links`. None of them is the first answer any
+ * more: the replica has its own keyword index (`./search-session.ts`, which only adds the server's
+ * semantic matches) and, since B-641, its own reference index (`../db/ref-index-client.ts`), so
+ * references and the link graph answer from the device (`./store.ts`); the server is asked for
+ * them only when the replica could not build that index. The shapes below are shared by both
+ * answers (`backlinksFromWire`, `graphFromWire`).
  *
  * Auth: `./bootstrap.ts`'s token — handed out by `/api/session` on loopback, pasted into the
  * connect screen and kept in `localStorage` on any other device — read on every call, so a token
@@ -271,7 +270,7 @@ interface SearchWireOutput {
   fallback?: SearchFallback;
 }
 
-interface BacklinksWireOutput {
+export interface BacklinksWireOutput {
   target: string;
   linked: Array<{ id: string; page: string; text: string; updated_at: string; direct?: boolean }>;
   linked_total?: number;
@@ -283,7 +282,7 @@ interface BacklinksWireOutput {
   cursor?: string;
 }
 
-interface GraphLinksWireOutput {
+export interface GraphLinksWireOutput {
   nodes: Array<{ id: string; name: string; is_journal: boolean; ref_count: number }>;
   edges: Array<{ from: string; to: string; count: number }>;
   total_nodes: number;
@@ -364,31 +363,7 @@ export const apiClient: ApiClient = {
       taggedWire.push(...(next.tagged_pages ?? []));
       cursor = next.cursor;
     }
-    // The cursor is an offset into a list an edit can shift between two requests; a row seen
-    // twice would be counted twice.
-    const seen = new Set<string>();
-    const unique = linkedWire.filter((r) => !seen.has(r.id) && seen.add(r.id));
-    const seenTagged = new Set<string>();
-    const uniqueTagged = taggedWire.filter((r) => !seenTagged.has(r.id) && seenTagged.add(r.id));
-    return {
-      target: first.target,
-      linked: unique.slice(0, MAX_LINKED_REFERENCES).map((r) => ({
-        id: r.id,
-        page: r.page,
-        text: r.text,
-        updatedAt: r.updated_at,
-        direct: r.direct ?? true,
-      })),
-      linkedTotal: first.linked_total ?? linkedWire.length,
-      linkedDirectTotal:
-        first.linked_direct_total ??
-        first.linked_total ??
-        linkedWire.filter((r) => r.direct ?? true).length,
-      unlinked: first.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
-      unlinkedTruncated: first.unlinked_truncated ?? false,
-      taggedPages: uniqueTagged,
-      taggedTotal: first.tagged_total ?? uniqueTagged.length,
-    };
+    return backlinksFromWire({ ...first, linked: linkedWire, tagged_pages: taggedWire });
   },
 
   async graphLinks(input: GraphLinksInput = {}): Promise<GraphLinksResult> {
@@ -398,18 +373,56 @@ export const apiClient: ApiClient = {
       include_journals: input.includeJournals ?? false,
       ...(input.limit ? { limit: input.limit } : {}),
     });
-    return {
-      nodes: out.nodes.map((n) => ({
-        id: n.id,
-        name: n.name,
-        isJournal: n.is_journal,
-        refCount: n.ref_count,
-      })),
-      edges: out.edges.map((e) => ({ from: e.from, to: e.to, count: e.count })),
-      totalNodes: out.total_nodes,
-      totalEdges: out.total_edges,
-      truncated: out.truncated,
-      note: out.note,
-    };
+    return graphFromWire(out);
   },
 };
+
+/**
+ * A `page.backlinks` answer — the server's, with every cursor page's `linked`/`tagged_pages`
+ * already concatenated, or the replica's (`../db/worker-api.ts#LocalBacklinks`, same shape) — as
+ * the panel's `BacklinksResult`.
+ */
+export function backlinksFromWire(w: BacklinksWireOutput): BacklinksResult {
+  // The cursor is an offset into a list an edit can shift between two requests; a row seen
+  // twice would be counted twice.
+  const seen = new Set<string>();
+  const unique = w.linked.filter((r) => !seen.has(r.id) && seen.add(r.id));
+  const seenTagged = new Set<string>();
+  const uniqueTagged = (w.tagged_pages ?? []).filter(
+    (r) => !seenTagged.has(r.id) && seenTagged.add(r.id),
+  );
+  return {
+    target: w.target,
+    linked: unique.slice(0, MAX_LINKED_REFERENCES).map((r) => ({
+      id: r.id,
+      page: r.page,
+      text: r.text,
+      updatedAt: r.updated_at,
+      direct: r.direct ?? true,
+    })),
+    linkedTotal: w.linked_total ?? w.linked.length,
+    linkedDirectTotal:
+      w.linked_direct_total ?? w.linked_total ?? w.linked.filter((r) => r.direct ?? true).length,
+    unlinked: w.unlinked.map((r) => ({ id: r.id, page: r.page, text: r.text })),
+    unlinkedTruncated: w.unlinked_truncated ?? false,
+    taggedPages: uniqueTagged,
+    taggedTotal: w.tagged_total ?? uniqueTagged.length,
+  };
+}
+
+/** A `graph.links` answer, the server's or the replica's (`@nooklet/core`'s `LinkGraph`). */
+export function graphFromWire(out: GraphLinksWireOutput): GraphLinksResult {
+  return {
+    nodes: out.nodes.map((n) => ({
+      id: n.id,
+      name: n.name,
+      isJournal: n.is_journal,
+      refCount: n.ref_count,
+    })),
+    edges: out.edges.map((e) => ({ from: e.from, to: e.to, count: e.count })),
+    totalNodes: out.total_nodes,
+    totalEdges: out.total_edges,
+    truncated: out.truncated,
+    note: out.note,
+  };
+}

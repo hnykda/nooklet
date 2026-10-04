@@ -1,9 +1,9 @@
 /**
  * What the references panel needs to show a reference the way its page shows it (B-550): the
  * block's full content, its children, and its parents for a breadcrumb — read from the LOCAL
- * replica. `page.backlinks` answers from the server with each block's id, page and first line only
- * (the client schema has no `ref`/`path_ref` table, so which blocks reference a page has to come
- * from there); everything about how those blocks look is already here.
+ * replica. Which blocks reference a page comes as each block's id, page and first line only (the
+ * `page.backlinks` shape, answered from the replica's own reference index since B-641); everything
+ * about how those blocks look is read here.
  *
  * One read per list of references, whatever its length — the owner's busiest page has 1,074 — in
  * four queries: every reference's ancestor chain, the subtrees under the references no other

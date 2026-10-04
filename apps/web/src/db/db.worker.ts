@@ -220,6 +220,14 @@ const api: WorkerApi = {
     return requireRetry().call((o) => o.db.query(sql, params));
   },
 
+  async pageBacklinks(target, opts) {
+    return requireRetry().call((o) => o.db.pageBacklinks(target, opts));
+  },
+
+  async graphLinks(opts) {
+    return requireRetry().call((o) => o.db.graphLinks(opts));
+  },
+
   async onChange(cb) {
     // `openDb()` already wired `WorkerDb`'s onChange to `(e) => safeCall(changeListener, e)` —
     // `changeListener` is this module's shared mutable binding, so updating it here is enough;

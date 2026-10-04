@@ -6,10 +6,9 @@
  */
 
 import type { Page, SqlDriver } from "@nooklet/core";
-import { isId, isoJournalName, parseJournalTitle } from "@nooklet/core";
+import { isId, isoJournalName, pageLookupKeys, parseJournalTitle } from "@nooklet/core";
 import type { z } from "zod";
 import { journalDayFromWire, WIRE_DATE_RE } from "../data-api.js";
-import { pageLookupKeys } from "../page-aliases.js";
 import { type OpContext, OpError } from "./registry.js";
 import type { PageMeta as PageMetaSchema } from "./schemas.js";
 

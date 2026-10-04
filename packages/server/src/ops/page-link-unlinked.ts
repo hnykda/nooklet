@@ -22,9 +22,8 @@
  * name alone would link to the wrong page, gets the full stored name written in.
  */
 
-import { normalizePageName, type Op } from "@nooklet/core";
+import { normalizePageName, type Op, unlinkedMentionRows } from "@nooklet/core";
 import { z } from "zod";
-import { unlinkedMentionRows } from "../data-api.js";
 import { pageWireNameById } from "../rows.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp } from "./registry.js";

@@ -9,7 +9,7 @@
  * type-only, from both the main-thread `tsconfig.json` project and the worker's
  * `tsconfig.worker.json` project without a `lib` conflict.
  */
-import type { ApplyOpsResult, Op } from "@nooklet/core";
+import type { ApplyOpsResult, LinkGraph, Op } from "@nooklet/core";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult } from "../data/types.js";
 import type { SyncStatus } from "../sync/types.js";
 
@@ -67,6 +67,27 @@ export interface InitResult {
   unnamespacedReplica?: "absent" | "empty" | "synced" | "data";
 }
 
+export interface LocalBacklinksOptions {
+  includeUnlinked: boolean;
+  unlinkedLimit: number;
+  /** Linked rows (and tagged pages) returned at most; the totals count all of them. */
+  linkedLimit: number;
+}
+
+/** `page.backlinks`'s wire answer without a cursor, plus whether unlinked mentions could be looked
+ * for at all (they need the replica's FTS index). */
+export interface LocalBacklinks {
+  target: string;
+  linked: Array<{ id: string; page: string; text: string; updated_at: string; direct: boolean }>;
+  linked_total: number;
+  linked_direct_total: number;
+  unlinked: Array<{ id: string; page: string; text: string }>;
+  unlinked_truncated: boolean;
+  unlinkedAvailable: boolean;
+  tagged_pages: Array<{ id: string; page: string; source: "property" | "intrinsic" }>;
+  tagged_total: number;
+}
+
 export interface WorkerApi {
   /** Open (or reuse) the OPFS-backed replica, apply schema if needed, start the sync client.
    * Safe to call once per worker lifetime; the client wrapper (`client.ts`) does this at startup. */
@@ -107,6 +128,14 @@ export interface WorkerApi {
    * carries plain structurally-cloned data, not type information, so the generic cast belongs at
    * the call site — see `../data/store.ts`/`client.ts`'s typed wrapper around this method. */
   query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
+
+  /** B-641: linked/unlinked references answered from this replica's own reference index — the
+   * server's `page.backlinks` reading, same shape, every linked row at once. Rejects (message
+   * `local_refs_unavailable`) when the replica could not build the index. */
+  pageBacklinks(target: string, opts: LocalBacklinksOptions): Promise<LocalBacklinks>;
+
+  /** B-641: the link graph from this replica (the server's `graph.links` reading). */
+  graphLinks(opts: { includeJournals: boolean; limit: number }): Promise<LinkGraph>;
 
   /** Register the (sole) change listener — a single slot; a second call replaces the first.
    * Call with `Comlink.proxy(cb)`. Only `client.ts` calls this, once, and fans out (B-130). */

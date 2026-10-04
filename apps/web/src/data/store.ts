@@ -38,6 +38,8 @@ import {
 import { noteFocus } from "../app/focus-log.js";
 import {
   getSyncStatus,
+  localGraphLinks,
+  localPageBacklinks,
   onChange,
   onSyncStatus,
   queryAs,
@@ -53,10 +55,15 @@ import type { SyncStatus } from "../sync/types.js";
 import {
   apiClient,
   type BacklinksResult,
+  backlinksFromWire,
   type GraphLinksInput,
   type GraphLinksResult,
+  graphFromWire,
+  MAX_LINKED_REFERENCES,
+  MAX_UNLINKED_MENTIONS,
 } from "./api-client.js";
 import { invalidateBlockRefs } from "./block-ref-cache.js";
+import { localFirst } from "./local-first.js";
 import { type AliasCandidate, findPageByAlias } from "./page-alias.js";
 import { PAGE_STATS_SQL, type PageStats, tallyPageStats } from "./page-stats.js";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult, TaskRow } from "./types.js";
@@ -674,15 +681,16 @@ export function useNamespaceChildren(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Server-backed reads: linked/unlinked references and the link graph. The client-only schema has
-// no ref/path_ref/embedding tables (docs/spec/sql-schema.md rule 1: those are server-only derived
-// tables), so these go over HTTP (search is local-first now: `./search-session.ts`) to `/api/v1/*` via `./api-client.ts` instead of the
-// worker/SqlDriver seam. Not wired into the table/page invalidation bus above (the server, not a
-// local write, is the source of truth here); each exposes `refetch` for a manual "refresh" instead.
+// Linked/unlinked references and the link graph. From the replica (B-641): it keeps the same
+// reference index the server does (`../db/ref-index-client.ts`, `@nooklet/core`'s `reindexRefs`),
+// and reads it with the same code (`backlinkRows`, `linkGraph`), so these work offline and in
+// local-only mode and say what the server would. The server is asked only when the replica could
+// not build its index (a SQLite without what it needs) — the one case where the device really
+// cannot answer.
 // ---------------------------------------------------------------------------------------------
 
-/** Linked references (grouped by source page, most-recently-updated page first — the API already
- * returns rows in that order, views/referenceGrouping.ts does the grouping) and unlinked mentions
+/** Linked references (grouped by source page, most-recently-updated page first — the answer
+ * already comes in that order, views/referenceGrouping.ts does the grouping) and unlinked mentions
  * of `target` (a page name/date or a block id, docs/spec/mcp-tools.md §4.3.6). */
 export function useLinkedReferences(
   target: Accessor<string | undefined>,
@@ -692,38 +700,56 @@ export function useLinkedReferences(
     () => {
       const t = target();
       if (t === undefined) return undefined;
-      // Backlinks are computed server-side, but what invalidates them is a LOCAL edit: typing
-      // `[[Some Page]]` must update that page's panel without navigating away. Stamping on the
-      // same version signals local writes already bump makes this refetch when the graph changes.
-      // Text edits are coalesced into one op per ~500 ms pause upstream (`editor/BlockTree.tsx`),
-      // so this costs roughly one request per pause rather than one per keystroke.
-      // …and on `syncVersion`: a push landing means the server can see a write it could not
-      // when this was last fetched (B-83).
-      syncVersion();
-      // …and on `page_prop`: "Pages tagged X" comes from other pages' `tags::`, and a page's
-      // `alias::` decides which links count. Another device changing either arrives as a pulled
-      // `page.prop` op, which bumps `page_prop` and nothing else — the list stayed stale (B-202).
-      return stamped(t, ["block", "page", "page_prop"]);
+      // Any write can change them: typing `[[Some Page]]` must update that page's panel without
+      // navigating away; a `tags::`/`alias::` on another page changes "Pages tagged X" and which
+      // links count (B-202); a block property can hold a reference. Text edits are coalesced into
+      // one op per ~500 ms pause upstream (`editor/BlockTree.tsx`), so this re-reads roughly once
+      // per pause, from the device. No `syncVersion` any more (B-83): the answer no longer depends
+      // on what the server has seen, and what the server writes back (a page it minted for a new
+      // reference, ADR 024) arrives as a pulled op that bumps these tables anyway.
+      return stamped(t, ["block", "block_prop", "page", "page_prop"]);
     },
-    ({ value: t }) => apiClient.pageBacklinks(t),
+    ({ value: t }) =>
+      localFirst(
+        async () =>
+          backlinksFromWire(
+            await localPageBacklinks(t, {
+              includeUnlinked: true,
+              unlinkedLimit: MAX_UNLINKED_MENTIONS,
+              linkedLimit: MAX_LINKED_REFERENCES,
+            }),
+          ),
+        () => apiClient.pageBacklinks(t),
+      ),
   );
   return [resource, { refetch: () => void refetch() }];
 }
 
-/** The page-to-page link graph behind `views/GraphView.tsx` (`graph.links`). Server-side for the
- * same reason as backlinks above — `ref` is a server-only derived table — and stamped on the same
- * local-write signals, so writing `[[Some Page]]` adds that edge without a reload.
+/** The page-to-page link graph behind `views/GraphView.tsx` (`graph.links`'s reading, from the
+ * replica as above), stamped on the same local-write signals, so writing `[[Some Page]]` adds that
+ * edge without a reload.
  *
- * Unlike backlinks, this refetches the WHOLE graph, so it deliberately does not run per keystroke:
- * the view passes options that only change when a toggle is flipped, and text edits reach here
- * only through the coalesced one-op-per-pause path the editor already batches on. */
+ * This re-reads the WHOLE graph, so it deliberately does not run per keystroke: the view passes
+ * options that only change when a toggle is flipped, and text edits reach here only through the
+ * coalesced one-op-per-pause path the editor already batches on. */
 export function useGraphLinks(
   input: Accessor<GraphLinksInput>,
 ): [Resource<GraphLinksResult | undefined>, { refetch: () => void }] {
   ensureWired();
   const [resource, { refetch }] = createResource(
-    () => stamped(input(), ["block", "page"]),
-    ({ value: i }) => apiClient.graphLinks(i),
+    () => stamped(input(), ["block", "block_prop", "page", "page_prop"]),
+    ({ value: i }) =>
+      localFirst(
+        async () =>
+          graphFromWire(
+            await localGraphLinks({
+              includeJournals: i.includeJournals ?? false,
+              // `graph.links`'s own default: the most-connected 1,500 pages.
+              limit: i.limit ?? 1500,
+            }),
+          ),
+        () => apiClient.graphLinks(i),
+      ),
   );
   return [resource, { refetch: () => void refetch() }];
 }

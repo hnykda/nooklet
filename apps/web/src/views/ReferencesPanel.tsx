@@ -2,8 +2,9 @@
  * Linked and unlinked references (BUILD item 2; PLAN.md §4: "Linked references of page P = blocks
  * whose path refs include P ... grouped by page, most recent page first. Unlinked references =
  * full-text hits for the page name ... in blocks that do not already reference P."). Data comes
- * from `page.backlinks` over HTTP (`../data/store.ts#useLinkedReferences`, since the client-only
- * schema has no `ref`/`path_ref`/FTS tables); grouping, sorting and filtering are
+ * from the device (`../data/store.ts#useLinkedReferences`, B-641): the replica keeps the same
+ * reference index the server does and reads it with the same code as `page.backlinks`, so the
+ * panel works offline and in local-only mode; grouping, sorting and filtering are
  * `views/referenceGrouping.ts`, pure and separately tested; what is remembered between visits is
  * `views/referenceFilters.ts` (per device — ADR 021 says why not a page property).
  *
@@ -13,9 +14,9 @@
  *   yet" and "No unlinked mentions found" on every page is noise; the panel disappears instead.
  * - **Both halves collapse**, and each remembers its state for the session. Linked references
  *   open by default because that is the half people read.
- * - **A failure says so.** This is a network call to `/api/v1/page.backlinks`; when it fails the
- *   panel used to sit on "Loading…" forever, which is indistinguishable from a page that simply
- *   has no backlinks.
+ * - **A failure says so.** When the read fails (the replica could not build its index and no
+ *   server answered) the panel used to sit on "Loading…" forever, which is indistinguishable from
+ *   a page that simply has no backlinks.
  *
  * M7 (research/13 §4.2 items 5 and 10) adds, on the linked half, Logseq's filter popover — the
  * other pages the referencing blocks mention, click to include, again to exclude, again to clear
@@ -42,6 +43,7 @@ import { normalizePageName } from "@nooklet/core";
 import { ArrowDownUp, Filter, Link2, Undo2, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
 import { ApiError, callOp, describeError, NO_SYNC_TARGET_CODE } from "../data/api-client.js";
+import { hasSyncTarget } from "../data/bootstrap.js";
 import { displayRefName } from "../data/page-title.js";
 import { undoBatch } from "../data/refactor-api.js";
 import { useReferenceListTrees } from "../data/reference-trees.js";
@@ -529,18 +531,26 @@ export function ReferencesPanel(props: ReferencesPanelProps): JSX.Element {
                 Unlinked references
                 <span class="reference-count">{unlinkedCountText()}</span>
               </button>
-              <div class="references-tools">
-                <button
-                  type="button"
-                  class="references-tool references-link-all"
-                  title="Turn every plain mention into a [[link]]"
-                  disabled={linkBusy()}
-                  onClick={() => void linkAll()}
-                >
-                  <Link2 size={13} aria-hidden="true" />
-                  <span class="references-tool-label">{linkBusy() ? "Linking…" : "Link all"}</span>
-                </button>
-              </div>
+              {/* `mentions.link` is a server op: with no server at all (local-only) the button
+                  could only fail, so it is not offered. Offline with a server it still tries
+                  and says why it could not (b641 progress: a device-side Link all is a
+                  follow-up). */}
+              <Show when={hasSyncTarget()}>
+                <div class="references-tools">
+                  <button
+                    type="button"
+                    class="references-tool references-link-all"
+                    title="Turn every plain mention into a [[link]]"
+                    disabled={linkBusy()}
+                    onClick={() => void linkAll()}
+                  >
+                    <Link2 size={13} aria-hidden="true" />
+                    <span class="references-tool-label">
+                      {linkBusy() ? "Linking…" : "Link all"}
+                    </span>
+                  </button>
+                </div>
+              </Show>
             </div>
             <Show when={unlinkedOpen()}>
               <Show when={unlinkedTrees()} fallback={<p class="references-loading">Loading…</p>}>
