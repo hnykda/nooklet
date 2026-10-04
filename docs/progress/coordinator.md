@@ -8,6 +8,7 @@ Resume file. If you are reading this because the previous session was cut off, s
 
 | Slug | Task | Ports |
 |---|---|---|
+| releases | `pnpm release <v>`; Woodpecker images (owner registry + public GHCR, multi-arch); GitHub Actions release on `v*` tags: macOS (unsigned, signing-ready), Linux, Windows, Android APK (new Capacitor android project), checksums, draft→publish; RELEASING.md. Owner decisions 2026-10-04: CI split Woodpecker+Actions; no Apple program yet; targets GHCR, Linux, Android, Windows | 6475-6479 |
 | qr-pairing | QR pairing with one-time, expiring pairing codes (not long-lived tokens in links); Settings → Devices (list/revoke, `admin`-gated per B-655); `nooklet pair` terminal QR; iPhone-camera custom-scheme check | 6470-6474 |
 
 ## Published — 2026-10-04 (READ THIS FIRST)
