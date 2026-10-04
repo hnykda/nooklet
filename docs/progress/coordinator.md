@@ -4,6 +4,16 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
+## Note — 2026-10-04 late evening
+
+Another session (the owner's, activating Woodpecker on the home server) pushed two commits to
+`origin/main` directly: untracked `__pycache__` files that embedded a home path, allowlisted three
+gitleaks false positives, and pinned `plugin-docker-buildx:6.1.2` (the only privileged-plugin tag
+the home server allows). Merged, not rebased; the releases agent's tag-build steps were moved to
+6.1.2 too. The `.pyc` files are in the public history (a home-directory username only — low
+sensitivity, not worth another rewrite). Always `git fetch` before pushing: main has more than one
+writer now.
+
 ## In flight — 2026-10-04 evening
 
 | Slug | Task | Ports |
