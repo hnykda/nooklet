@@ -21,9 +21,9 @@
  *      order via `ordersBetween`) and applying them through `serverApplyOps` — the server's own
  *      ref/path_ref indexing, cycle correction, and `changes` audit trail all run for free.
  *
- * Assets: out of scope for this pass (see the TODO below) — correctness of pages/blocks/
- * properties/refs is what M1 needs; copying `assets/*` into the data directory and creating
- * `asset` rows is a follow-up.
+ * Assets: `assets/*` is copied through the same writer `asset.upload` uses (`importAssets`) when
+ * a `dataDir` is given. Two callers: `nooklet import`, and the in-app import (ADR 030,
+ * `./jobs.ts`), which also passes progress, cancellation and a write lock.
  */
 
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";

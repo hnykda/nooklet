@@ -1,0 +1,219 @@
+/* Settings → Import from Logseq (`ImportSection.tsx`). Built from the settings panel's own tokens
+   so it reads as part of it; the one thing given room is the tally, the four numbers someone
+   moving years of notes is actually waiting to see. */
+
+.imp .imp-lede {
+  margin-top: 0;
+}
+
+.imp-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* The file input sits inside its label, invisible but still the thing the label activates. A
+   label styled as a button keeps keyboard focus visible through :focus-within. */
+.imp-pick-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.imp-pick-button:focus-within {
+  outline: 2px solid var(--focus, #2f55d4);
+  outline-offset: 1px;
+}
+
+.imp-file {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.imp-picked {
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.imp-targets {
+  margin: 0.9rem 0 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.imp-targets legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+}
+
+.imp-target {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+}
+
+.imp-target input:disabled + span {
+  opacity: 0.7;
+}
+
+.imp-name {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.2rem 0 0 1.6rem;
+}
+
+.imp-name input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-md, 0.35rem);
+  border: 1px solid var(--border, rgb(0 0 0 / 18%));
+  background: var(--surface-1, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm, 0.8125rem);
+}
+
+.imp-name input:focus-visible {
+  outline: 2px solid var(--focus, #2f55d4);
+  outline-offset: 1px;
+}
+
+.imp .imp-address {
+  margin: 0.25rem 0 0.35rem 1.6rem;
+}
+
+/* ── Running ────────────────────────────────────────────────────────────────────────────────── */
+
+.imp-run,
+.imp-done {
+  margin-top: 0.25rem;
+}
+
+.imp-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each step is a word over a bar: done bars are solid, the current one is the accent. */
+.imp-step {
+  padding-top: 0.45rem;
+  border-top: 3px solid var(--hairline, rgb(0 0 0 / 12%));
+  color: var(--muted);
+  font-size: var(--text-sm, 0.8125rem);
+}
+
+.imp-step-done {
+  border-top-color: color-mix(in srgb, var(--accent, #2f55d4) 45%, transparent);
+}
+
+.imp-step-now {
+  border-top-color: var(--accent, #2f55d4);
+  color: var(--fg, inherit);
+  font-weight: 600;
+}
+
+.imp-status {
+  margin: 0.75rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.imp-tally {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0.9rem 0 0;
+  border-block: 1px solid var(--hairline, rgb(0 0 0 / 12%));
+}
+
+.imp-tally-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.65rem 0.6rem 0.6rem;
+  min-width: 0;
+}
+
+.imp-tally-cell + .imp-tally-cell {
+  border-left: 1px solid var(--hairline, rgb(0 0 0 / 12%));
+}
+
+.imp-tally dd {
+  margin: 0;
+  font-size: 1.6rem;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.imp-tally dt {
+  color: var(--muted);
+  font-size: var(--text-sm, 0.8125rem);
+}
+
+.imp-notes {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  font-size: var(--text-sm, 0.8125rem);
+  line-height: var(--leading-snug, 1.45);
+}
+
+.imp-details {
+  margin-top: 0.6rem;
+  font-size: var(--text-sm, 0.8125rem);
+}
+
+.imp-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.imp-details ul {
+  max-height: 14rem;
+  overflow: auto;
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+/* Phone width: two by two, so a five-digit block count still fits. */
+@media (max-width: 34rem) {
+  .imp-tally {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .imp-tally-cell:nth-child(3) {
+    border-left: none;
+  }
+
+  .imp-tally-cell:nth-child(n + 3) {
+    border-top: 1px solid var(--hairline, rgb(0 0 0 / 12%));
+  }
+
+  .imp-name {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.2rem;
+  }
+}
+
+/* B-705: iOS zooms the page into any focused field under 16px. Touch devices get 16px here
+   whatever the global rule ends up being. */
+@media (pointer: coarse) {
+  .imp-name input {
+    font-size: max(16px, var(--text-sm, 0.8125rem));
+  }
+}

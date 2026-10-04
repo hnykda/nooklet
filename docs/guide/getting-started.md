@@ -67,7 +67,25 @@ graph is `graphs/default/graph.sqlite` inside it, with the markdown mirror next 
 and `journals/`. On first start the server prints a **root token**; save it. You need it to create
 graphs or list them from another device. `pnpm nooklet token root` prints it again.
 
-To bring a Logseq file graph:
+### Bring a Logseq graph
+
+In the app: **Settings → Import from Logseq**.
+
+1. Choose the graph's folder (the one with `pages/` and `journals/` in it), or a .zip of that
+   folder. On a phone, zip it first (Files → long-press → Compress) and choose the zip.
+2. Choose where it goes: a new graph (give it a name), or this graph if it is still empty.
+3. Watch it upload, unpack and import. At the end you see how many pages, journals, blocks and
+   images came across, and anything the importer noticed: block references that point nowhere,
+   images missing from `assets/`, and the date format your journals used.
+4. Open the new graph.
+
+Your Logseq folder is only read. Only `pages/`, `journals/`, `assets/` and `logseq/config.edn` are
+sent; `logseq/bak/` and the rest stay behind. Importing needs the server's owner session: the
+desktop app, or a browser on the server's own machine (a paired phone cannot start one). The largest
+upload the server takes is 1 GB; `serve --import-max-mb <n>` changes that. A graph that lives only
+on a phone ("Just this device") cannot import on its own: import on a server, then add that graph.
+
+From a terminal instead:
 
 ```sh
 pnpm nooklet import ~/notes/my-logseq-graph

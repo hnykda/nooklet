@@ -8,7 +8,8 @@ anything but 401 without being on the public allowlist in code:
 route, it is private unless you put it on that list with a reason, and then you update this page.
 
 Last checked against the code: 2026-10-04 (security review, `docs/progress/security-review.md`;
-QR pairing and `admin`-gated device management, `docs/progress/qr-pairing.md`).
+QR pairing and `admin`-gated device management, `docs/progress/qr-pairing.md`; in-app Logseq
+import, ADR 030).
 
 ## How auth is laid out (deny by default)
 
@@ -29,7 +30,9 @@ included. For every request, in order:
      fallback, which serve build output only.
    Missing or invalid token: 401 with `WWW-Authenticate: Bearer`.
 4. **Body size**: 16 MB, or 48 MB for `/api/v1/asset.upload`, `/mcp` and `/sync/push`. Over the
-   limit: 413 `too_large`, before the body is buffered.
+   limit: 413 `too_large`, before the body is buffered. The in-app Logseq import (ADR 030) did not
+   raise either cap: it arrives as `import.chunk` calls of at most 4 MiB each (~5.6 MB of base64),
+   under the ordinary 16 MB. Its own total is the next section.
 
 After that, routes still run their own, narrower checks: per-op scopes (`read`/`write`/`admin`/`ui:control`),
 `can_sync` for `/sync/*`, and the MCP library's own bearer gate.
@@ -77,6 +80,32 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
   and much harder with one. But **an asset URL is a bearer capability that a revoked token does
   not revoke**: a former device that saw the id keeps access. See the hardening backlog.
 
+## The in-app Logseq import (ADR 030)
+
+`import.info`, `import.begin`, `import.chunk`, `import.start`, `import.status`, `import.cancel`:
+ordinary `/api/v1/` ops, `admin` only, HTTP only (never MCP). A paired phone (`write`) gets 403.
+
+- **Total upload**: `nooklet serve --import-max-mb <n>`, default 1024. Checked when the job opens
+  (if the client says the size) and on every chunk. Over it: 413 and the job fails, bytes deleted.
+- **One job per process.** A second `import.begin` while one runs is a 409. A job is visible only
+  to the graph whose admin token opened it (another graph's admin gets 404 for its id).
+- **Disk**: the upload is written to `<data>/import-staging/<job>/upload.zip`, then unpacked next
+  to it and deleted. An upload with no chunk for 30 minutes is cancelled and deleted. The whole
+  staging dir is deleted when the server starts.
+- **Zip safety** (`packages/server/src/importer/zip.ts`, tests in `zip.test.ts`): absolute, drive
+  letter and `..` names refuse the whole archive; output paths are built from four fixed directory
+  names and one checked file-name component, never from the entry name; symlink entries are
+  skipped; at most 200,000 entries and 4 GiB unpacked; an entry over 1 MiB that would unpack to
+  more than 200x its packed size refuses the archive; inflation stops at each entry's declared
+  size. Only `pages/*.md`, `journals/*.md`, `assets/*` and `logseq/config.edn` are written.
+- **Targets**: a new graph is built in the staging dir and renamed into `graphs/<id>` only after
+  `verify` passes, so a refused or cancelled import leaves no graph. The current graph is a target
+  only while it has no content (409 otherwise).
+- **What it adds to `admin`**: creating a graph on this server, which before needed the root token
+  (`POST /graphs`). The new graph comes with an `admin` + sync token for the caller, as `POST
+  /graphs` does. It cannot list, read or replace other graphs.
+- Imported assets are served at `/assets/:id` like uploaded ones (capability URLs, below).
+
 ## Tokens
 
 - Per-graph tokens: `nk_` + 24 random bytes (192 bits), stored as `sha256` only, looked up by hash
@@ -88,7 +117,7 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 - Root token: `nkroot_` + 24 random bytes, file `<data>/root.token` (0600), compared with
   `timingSafeEqual`. No rotation command; delete the file and restart to rotate.
 - `admin` scope (B-655): `write` plus server administration — `pairing.create`, `token.list`,
-  `token.revoke`. Held by the loopback web-client auto-token (the desktop app), the token
+  `token.revoke`, and the `import.*` ops (ADR 030), which can create a new graph. Held by the loopback web-client auto-token (the desktop app), the token
   `POST /graphs` returns, and `token create --scope admin`. Never by a token from a pairing code.
 - Pairing codes: `nkp_` + 16 random bytes (128 bits), `pairing_code` table, sha256 only. Created
   by an `admin` token (`pairing.create`) or `nooklet pair`; a new code cancels the same creator's

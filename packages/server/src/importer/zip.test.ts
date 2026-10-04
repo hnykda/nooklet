@@ -8,7 +8,7 @@ import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { extractLogseqZip, ZipRejectedError } from "./zip.js";
+import { decodeEntryName, extractLogseqZip, ZipRejectedError } from "./zip.js";
 import { fixtureGraphFiles, rawZip, storeZip, writeZip } from "./zip-test-helpers.js";
 
 let dir: string;
@@ -143,5 +143,31 @@ describe("extractLogseqZip", () => {
     const r = await extractLogseqZip(zip, out());
     expect(r.files).toBe(1);
     expect(r.warnings.join("\n")).toMatch(/duplicate file name/);
+  });
+
+  it("reads UTF-8 names that lack the UTF-8 flag, as macOS writes them", async () => {
+    const zip = writeZip(
+      join(dir, "g.zip"),
+      rawZip([{ name: "g/pages/Plánování úprav.md", data: "- ok", noUtf8Flag: true }]),
+    );
+    await extractLogseqZip(zip, out());
+    expect(readdirSync(join(out(), "pages"))).toEqual(["Plánování úprav.md"]);
+  });
+
+  it("falls back to code page 437 for a name that is not UTF-8", () => {
+    expect(decodeEntryName(Buffer.from([0x41, 0x80, 0x82]), 0)).toBe("AÇé");
+    expect(decodeEntryName(Buffer.from([0xff]), 0)).toBe("\u00a0");
+    expect(decodeEntryName(Buffer.from("é"), 0x800)).toBe("é");
+  });
+
+  it("refuses a backslash traversal (a Windows-written name)", async () => {
+    const zip = writeZip(
+      join(dir, "g.zip"),
+      rawZip([
+        { name: "pages/A.md", data: "- ok" },
+        { name: "..\\..\\escaped.md", data: "- pwned" },
+      ]),
+    );
+    await expect(extractLogseqZip(zip, out())).rejects.toThrow(/unsafe/);
   });
 });

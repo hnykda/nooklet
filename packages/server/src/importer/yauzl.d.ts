@@ -2,22 +2,22 @@
 // Declared here rather than adding `@types/yauzl` for five members.
 declare module "yauzl" {
   import type { EventEmitter } from "node:events";
-  import type { Readable } from "node:stream";
 
   export interface Entry {
-    fileName: string;
+    /** A Buffer with `decodeStrings: false`, which `./zip.ts` uses. */
+    fileName: string | Buffer;
     compressedSize: number;
     uncompressedSize: number;
     externalFileAttributes: number;
     generalPurposeBitFlag: number;
     compressionMethod: number;
+    relativeOffsetOfLocalHeader: number;
     isEncrypted(): boolean;
   }
 
   export interface ZipFile extends EventEmitter {
     entryCount: number;
     readEntry(): void;
-    openReadStream(entry: Entry, callback: (err: Error | null, stream?: Readable) => void): void;
     close(): void;
   }
 

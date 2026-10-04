@@ -130,7 +130,7 @@ describe("import into a new graph", () => {
       graph_id: "garden",
       label: "Garden",
     });
-    expect(job.state, job.error).toBe("done");
+    expect(job.state, job.message).toBe("done");
     const cli = await cliCounts(fixtureGraphFiles());
     expect(job.result).toMatchObject({
       pages: cli.pagesImported,
@@ -184,7 +184,7 @@ describe("import into a new graph", () => {
       { target: "new", graph_id: "evil" },
     );
     expect(job.state).toBe("failed");
-    expect(job.error).toMatch(/unsafe|damaged/);
+    expect(job.message).toMatch(/unsafe|damaged/);
     expect(existsSync(join(s.root, "graphs", "evil"))).toBe(false);
     expect(existsSync(join(s.root, "..", "escaped.md"))).toBe(false);
   });
@@ -224,7 +224,7 @@ describe("import into the current graph", () => {
     await post(s.app, "/api/v1/page.create", s.adminToken, { name: "2026-10-01" });
     const files = fixtureGraphFiles();
     const job = await upload(s, storeZip(files), { target: "current" });
-    expect(job.state, job.error).toBe("done");
+    expect(job.state, job.message).toBe("done");
     const cli = await cliCounts(files);
     expect(job.result).toMatchObject({
       pages: cli.pagesImported,

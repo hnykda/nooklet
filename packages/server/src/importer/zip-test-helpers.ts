@@ -12,6 +12,8 @@ export interface RawEntry {
   mode?: number;
   /** Lie about the unpacked size in both headers. */
   declaredSize?: number;
+  /** Leave the UTF-8 name flag off, as macOS's `zip` and Finder do. */
+  noUtf8Flag?: boolean;
 }
 
 /** A zip with arbitrary names, deflate, modes and declared sizes. */
@@ -28,7 +30,7 @@ export function rawZip(entries: RawEntry[]): Buffer {
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(1 << 11, 6);
+    local.writeUInt16LE(e.noUtf8Flag ? 0 : 1 << 11, 6);
     local.writeUInt16LE(e.deflate ? 8 : 0, 8);
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(body.length, 18);
@@ -39,7 +41,7 @@ export function rawZip(entries: RawEntry[]): Buffer {
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE((3 << 8) | 20, 4);
     central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(1 << 11, 8);
+    central.writeUInt16LE(e.noUtf8Flag ? 0 : 1 << 11, 8);
     central.writeUInt16LE(e.deflate ? 8 : 0, 10);
     central.writeUInt32LE(crc, 16);
     central.writeUInt32LE(body.length, 20);

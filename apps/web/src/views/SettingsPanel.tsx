@@ -52,6 +52,7 @@ import { chooseTaskWorkflow, taskWorkflow } from "../data/task-workflow.js";
 import { listTemplates, setJournalTemplate, type TemplateSummary } from "../data/templates.js";
 import { DevicesSection } from "./DevicesSection.js";
 import { openDiagnostics } from "./DiagnosticsPanel.js";
+import { ImportSection } from "./ImportSection.js";
 import { PluginsSection } from "./PluginsSection.js";
 import "./settings.css";
 
@@ -682,6 +683,9 @@ export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
         <EmbeddingsSection />
         <DevicesSection />
         <PluginsSection />
+        {/* After Plugins: it grows once `import.info` answers, and above Plugins that pushed the
+            plugin list out of view after "Open plugin manager" had scrolled to it (B-98 e2e). */}
+        <ImportSection onClose={props.onClose} />
         <AboutSection onClose={props.onClose} />
       </div>
     </div>

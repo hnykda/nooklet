@@ -93,7 +93,7 @@ const JobView = z.object({
     })
     .nullable(),
   graph: z.object({ id: z.string(), label: z.string(), token: z.string() }).nullable(),
-  error: z.string().nullable(),
+  message: z.string().nullable(),
   started_at: z.number(),
   finished_at: z.number().nullable(),
 });

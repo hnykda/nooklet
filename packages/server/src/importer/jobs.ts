@@ -110,7 +110,9 @@ export interface ImportJobView {
   result: ImportResultView | null;
   /** The new graph and an `admin` + sync token for it, once a "new" import is done. */
   graph: { id: string; label: string; token: string } | null;
-  error: string | null;
+  /** Why it failed or what a cancel undid. Not `error`: the client reads a top-level `error` key
+   *  as a failed call (`apps/web/src/data/api-client.ts#unwrap`). */
+  message: string | null;
   started_at: number;
   finished_at: number | null;
 }
@@ -173,21 +175,19 @@ export function graphContent(driver: ServerContext["driver"]): {
 function trashPages(ctx: ServerContext, pageIds: readonly string[]): void {
   const now = Date.now();
   for (let i = 0; i < pageIds.length; i += 200) {
-    const ops = pageIds
-      .slice(i, i + 200)
-      .flatMap((pageId) => [
-        makeOp(ctx.hlc.next(), IMPORTER_DEVICE_ID, pageId, { kind: "page.delete", deletedAt: now }),
-        ...ctx.driver
-          .all<{ id: string }>("SELECT id FROM block WHERE page_id = ? AND deleted_at IS NULL", [
-            pageId,
-          ])
-          .map((b) =>
-            makeOp(ctx.hlc.next(), IMPORTER_DEVICE_ID, b.id, {
-              kind: "block.delete",
-              deletedAt: now,
-            }),
-          ),
-      ]);
+    const ops = pageIds.slice(i, i + 200).flatMap((pageId) => [
+      makeOp(ctx.hlc.next(), IMPORTER_DEVICE_ID, pageId, { kind: "page.delete", deletedAt: now }),
+      ...ctx.driver
+        .all<{ id: string }>("SELECT id FROM block WHERE page_id = ? AND deleted_at IS NULL", [
+          pageId,
+        ])
+        .map((b) =>
+          makeOp(ctx.hlc.next(), IMPORTER_DEVICE_ID, b.id, {
+            kind: "block.delete",
+            deletedAt: now,
+          }),
+        ),
+    ]);
     serverApplyOps(ctx, ops, { origin: "import", actor: "logseq-import" });
   }
 }
@@ -589,7 +589,7 @@ export class ImportService {
       progress: { ...job.progress },
       result: job.result,
       graph: job.graph,
-      error: job.error,
+      message: job.error,
       started_at: job.startedAt,
       finished_at: job.finishedAt,
     };
