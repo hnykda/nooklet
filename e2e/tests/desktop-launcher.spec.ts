@@ -1,13 +1,14 @@
 /**
- * The desktop app's launcher page (`apps/desktop/launcher/`, B-430) in a real browser: what it
- * shows for what the app reports about its bundled server. Chromium, not the app's WKWebView —
- * this holds the page's wiring (the module import, the element ids, the polling), while the
- * wording for every state is `apps/desktop/test/launcher-status.test.mjs` and the Rust side's
+ * The desktop app's launcher page (`apps/desktop/launcher/`, B-430; since ADR 032 only
+ * "Connecting…") in a real browser: what it shows while the graph its window was opened for
+ * (`__NOOKLET_DESKTOP__.connect`) comes up or doesn't. Chromium, not the app's WKWebView — this
+ * holds the page's wiring (the module import, the element ids, the polling), while the wording for
+ * every bundled-server state is `apps/desktop/test/launcher-status.test.mjs` and the Rust side's
  * exit detection is `cargo test` in `apps/desktop/src-tauri`.
  *
  * No nooklet server is involved. The page is served from a made-up origin through `page.route`,
  * `server_status` is a stub in `__TAURI_INTERNALS__` (what Tauri 2 injects), and every request to
- * the app's port is answered by the test — never by a real server on this machine's 6100.
+ * the app's port or the remote server is answered by the test — never by a real server.
  */
 
 import { readFileSync } from "node:fs";
@@ -27,131 +28,111 @@ const fixtures = JSON.parse(
 // page's fetch to 127.0.0.1 under Chromium's private-network rules, which the app never meets.
 const ORIGIN = "http://localhost:6419";
 const APP_SERVER = "http://127.0.0.1:6100";
+const REMOTE = "https://notes.example.com";
 
-/** Open the launcher with `status` as the app's answer; the app's server refuses connections until
- * `serverAnswers` is called. `desktop` fills `window.__NOOKLET_DESKTOP__` (what `shell_script` in
- * `main.rs` injects, ADR 025 M6: a `graphs`/`activeGraphId` list, not a single `remoteUrl`) —
- * omitted by default, matching every existing case, which is always a normal (no remote entries,
- * non-forced-picker) launch. */
-async function openLauncher(
-  page: Page,
-  status: unknown | "no-tauri",
-  desktop?: {
-    forcePicker?: boolean;
-    graphs?: Array<{ id: string; url: string }>;
-    activeGraphId?: string | null;
-    localGraphs?: Array<{ id: string; label: string }>;
-    activeLocalGraph?: string | null;
-  },
-) {
-  let answering = false;
+interface Target {
+  url: string;
+  place: "mac" | "server";
+  label: string;
+}
+
+/** Open the launcher with `status` as the app's answer and `connect` as the window's target. Both
+ * servers refuse connections until `answers(...)` says otherwise. */
+async function openLauncher(page: Page, status: unknown | "no-tauri", connect?: Target) {
+  const up = new Set<string>();
   await page.route(`${ORIGIN}/**`, (route) => {
     const path = new URL(route.request().url()).pathname;
     return route.fulfill({ path: join(launcherDir, path === "/" ? "index.html" : path) });
   });
-  await page.route(`${APP_SERVER}/**`, (route) =>
-    answering
-      ? route.fulfill({ contentType: "text/html", body: "<title>the app</title>the app" })
-      : route.abort("connectionrefused"),
-  );
+  for (const origin of [APP_SERVER, REMOTE]) {
+    await page.route(`${origin}/**`, (route) =>
+      up.has(origin)
+        ? route.fulfill({ contentType: "text/html", body: "<title>the app</title>the app" })
+        : route.abort("connectionrefused"),
+    );
+  }
   if (status !== "no-tauri") {
     await page.addInitScript(
-      ([initial, desktopInit]) => {
+      ([initial, target]) => {
         const w = window as unknown as {
           __status: unknown;
           __invoked: string[];
-          __args: unknown[];
           __TAURI_INTERNALS__: unknown;
           __NOOKLET_DESKTOP__?: unknown;
         };
         w.__status = initial;
         w.__invoked = [];
-        w.__args = [];
-        if (desktopInit) {
-          const init = desktopInit as {
-            graphs?: Array<{ id: string; url: string }>;
-            activeGraphId?: string | null;
-            localGraphs?: Array<{ id: string; label: string }>;
-            activeLocalGraph?: string | null;
-            forcePicker?: boolean;
-          };
-          w.__NOOKLET_DESKTOP__ = Object.freeze({
-            platform: "macos",
-            port: 6100,
-            graphs: init.graphs ?? [],
-            activeGraphId: init.activeGraphId ?? null,
-            localGraphs: init.localGraphs ?? [],
-            activeLocalGraph: init.activeLocalGraph ?? null,
-            forcePicker: Boolean(init.forcePicker),
-          });
-        }
+        w.__NOOKLET_DESKTOP__ = Object.freeze({
+          platform: "macos",
+          port: 6100,
+          key: "k",
+          graphs: [],
+          graphToken: null,
+          connect: target,
+        });
         w.__TAURI_INTERNALS__ = {
-          invoke: async (cmd: string, args?: { url?: string }) => {
+          invoke: async (cmd: string) => {
             w.__invoked.push(cmd);
-            w.__args.push(args ?? null);
             if (cmd === "server_status") return w.__status;
-            // `add_graph` answers with the entry, as `main.rs` does; the picker then activates it.
-            if (cmd === "add_graph") return { id: "added", url: args?.url ?? "" };
-            if (cmd === "remove_graph") return null;
-            if (cmd === "set_active_graph" || cmd === "restart_app") return null;
             throw new Error(`unexpected command ${cmd}`);
           },
         };
       },
-      [status, desktop ?? null] as const,
+      [status, connect ?? null] as const,
     );
   }
   await page.goto(`${ORIGIN}/`);
   return {
-    serverAnswers: () => {
-      answering = true;
-    },
+    answers: (origin: string) => up.add(origin),
     setStatus: (next: unknown) =>
       page.evaluate((s) => {
         (window as unknown as { __status: unknown }).__status = s;
       }, next),
     invoked: () => page.evaluate(() => (window as unknown as { __invoked: string[] }).__invoked),
-    args: () => page.evaluate(() => (window as unknown as { __args: unknown[] }).__args),
   };
 }
+
+const MAC_TARGET: Target = { url: `${APP_SERVER}/g/default`, place: "mac", label: "This Mac" };
+const SERVER_TARGET: Target = { url: `${REMOTE}/g/work`, place: "server", label: "Work" };
 
 test("a bundled server that refused a newer graph: the page says to update the app, and why", async ({
   page,
 }) => {
-  await openLauncher(page, fixtures.schema_too_new);
+  await openLauncher(page, fixtures.schema_too_new, MAC_TARGET);
   await expect(page.locator("#title")).toHaveText("This graph needs a newer version of nooklet");
   await expect(page.locator("#message")).toContainText("Update the app");
   await expect(page.locator("#detail")).toHaveText(
     "nooklet: database schema version 6 is newer than this build supports (4); upgrade nooklet",
   );
-  // The old page's advice, wrong for an app that brings its own server.
+  // Advice for someone running a server by hand, wrong for an app that brings its own.
   await expect(page.getByText("pnpm nooklet serve")).toBeHidden();
-  await expect(page.locator("#help")).toBeHidden();
+  // On This Mac there is nowhere else to go.
+  await expect(page.getByRole("button", { name: "Open a graph on this Mac" })).toBeHidden();
 });
 
-test("nothing spawned — the server the app was sharing went away: start it, then retry", async ({
+test("nothing spawned — the server the app was sharing went away: start it, then try again", async ({
   page,
 }) => {
-  await openLauncher(page, fixtures.external);
+  await openLauncher(page, fixtures.external, MAC_TARGET);
   await expect(page.locator("#title")).toHaveText("Couldn't reach the nooklet server");
   await expect(page.getByText("pnpm nooklet serve")).toBeVisible();
-  await expect(page.locator("#problem")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
-test("outside the app (nobody to ask), the page still offers a server address", async ({
-  page,
-}) => {
+test("outside the app (nobody to ask) it waits for This Mac's default graph", async ({ page }) => {
   await openLauncher(page, "no-tauri");
   await expect(page.getByText("pnpm nooklet serve")).toBeVisible();
-  await expect(page.locator("#url")).toHaveValue(APP_SERVER);
 });
 
-test("while the app's server starts the page says so, and opens nooklet once it answers", async ({
+test("while This Mac's server starts the page says so, and opens the graph once it answers", async ({
   page,
 }) => {
-  const launcher = await openLauncher(page, fixtures.starting);
+  const launcher = await openLauncher(page, fixtures.starting, {
+    url: `${APP_SERVER}/g/quiet-otter`,
+    place: "mac",
+    label: "Quiet Otter",
+  });
   await expect(page.locator("#status")).toHaveText("Starting nooklet…");
-  await expect(page.locator("#help")).toBeHidden();
   await expect(page.locator("#problem")).toBeHidden();
 
   // A slow start that then fails is reported as the failure, on the same page, with no reload.
@@ -160,99 +141,42 @@ test("while the app's server starts the page says so, and opens nooklet once it 
   await expect(page.locator("#detail")).toContainText("EADDRINUSE");
 
   await launcher.setStatus(fixtures.ready);
-  launcher.serverAnswers();
-  await expect(page).toHaveURL(`${APP_SERVER}/`, { timeout: 10_000 });
+  launcher.answers(APP_SERVER);
+  await expect(page).toHaveURL(`${APP_SERVER}/g/quiet-otter`, { timeout: 10_000 });
 });
 
-test("B-584: re-picking 'This Mac' from a forced picker restarts, rather than polling a server that was never spawned", async ({
+test("B-785: a server graph that answers opens at once, without asking about the bundled server", async ({
   page,
 }) => {
-  // `forcePicker: true` with `activeGraphId: null` is exactly what `Switch Server…` produces when
-  // the app was already local: `main.rs`'s `setup()` skips `spawn_server` for this whole launch, so
-  // `server_status` sits at `starting` no matter how long the page waits — there is nothing here
-  // that will ever become `ready`.
-  const launcher = await openLauncher(page, fixtures.starting, {
-    forcePicker: true,
-    activeGraphId: null,
-  });
-
-  // The forced picker is shown outright, not the "Connecting…" status.
-  await expect(page.locator("#picker")).toBeVisible();
-  await expect(page.locator("#status")).toBeHidden();
-
-  await page.getByRole("button", { name: /This Mac/ }).click();
-  await expect(page.getByText(/Saved.*restarting/i)).toBeVisible();
-
-  // The only way out of a launch that never spawned a server is a restart — confirm the page
-  // actually asked the app to restart, rather than silently resuming a poll loop with nothing to
-  // poll (B-584's original bug) or leaving the owner to quit and reopen it by hand (the 2026-09-16
-  // "super annoying" follow-up this same mechanism now also fixes).
-  await expect.poll(() => launcher.invoked()).toContain("restart_app");
-  // And it never reappeared as a stuck "Starting nooklet…" — the pre-fix behavior.
-  await expect(page.locator("#status")).toBeHidden();
+  const launcher = await openLauncher(page, fixtures.starting, SERVER_TARGET);
+  launcher.answers(REMOTE);
+  await expect(page).toHaveURL(`${REMOTE}/g/work`, { timeout: 10_000 });
+  expect(await launcher.invoked()).toEqual([]);
 });
 
-test("B-618: two graphs on one server get distinct titles, and a bare address for a listed graph is not added again", async ({
+test("proposal 005: a server graph that doesn't answer: Couldn't reach <server>, Try again, Open a graph on this Mac", async ({
   page,
 }) => {
-  const launcher = await openLauncher(page, fixtures.starting, {
-    forcePicker: true,
-    activeGraphId: "w",
-    graphs: [
-      { id: "d", url: `${APP_SERVER}/g/default` },
-      { id: "w", url: `${APP_SERVER}/g/work` },
-    ],
-  });
-  await expect(page.locator("#picker")).toBeVisible();
-  const host = new URL(APP_SERVER).host;
-  await expect(page.locator("#graph-list h2")).toContainText([
-    "This Mac",
-    `default on ${host}`,
-    `work on ${host}`,
-  ]);
+  const launcher = await openLauncher(page, fixtures.ready, SERVER_TARGET);
+  await expect(page.locator("#title")).toHaveText("Couldn't reach notes.example.com.");
+  await expect(page.locator("#message")).toContainText("“Work” is on that server");
+  await expect(page.getByText("pnpm nooklet serve")).toBeHidden();
+  // No list and no add form here any more: those are the app's graph menu.
+  await expect(page.locator("input")).toHaveCount(0);
 
-  // The bare server address is its default graph, already listed: switch to it, add nothing.
-  launcher.serverAnswers();
-  await page.getByRole("button", { name: "Add a server" }).click();
-  await expect(page.locator("#picker-form")).toContainText("/g/<graph>");
-  await page.locator("#picker-url").fill(`${APP_SERVER}/`);
-  await page.locator("#picker-form").getByRole("button", { name: "Connect" }).click();
-  await expect.poll(() => launcher.invoked()).toContain("set_active_graph");
-  expect(await launcher.invoked()).not.toContain("add_graph");
+  // Try again, still down: still the same words; then up: it opens.
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.locator("#title")).toHaveText("Couldn't reach notes.example.com.");
+  launcher.answers(REMOTE);
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page).toHaveURL(`${REMOTE}/g/work`, { timeout: 10_000 });
 });
 
-test("B-643: This Mac opens the graph it was last on, by its own /g/<id>", async ({ page }) => {
-  const launcher = await openLauncher(page, fixtures.ready, {
-    localGraphs: [
-      { id: "default", label: "default" },
-      { id: "quiet-otter", label: "Quiet Otter" },
-    ],
-    activeLocalGraph: "quiet-otter",
-  });
-  launcher.serverAnswers();
-  await page.waitForURL(`${APP_SERVER}/g/quiet-otter`);
-});
-
-test("B-643: the picker lists This Mac's graphs; picking one makes This Mac active on it", async ({
+test("proposal 005: from an unreachable server, Open a graph on this Mac goes to This Mac's default graph", async ({
   page,
 }) => {
-  const launcher = await openLauncher(page, fixtures.ready, {
-    forcePicker: true,
-    localGraphs: [
-      { id: "default", label: "default" },
-      { id: "quiet-otter", label: "Quiet Otter" },
-      { id: "paper-lantern", label: "Paper Lantern" },
-    ],
-    activeLocalGraph: "quiet-otter",
-  });
-  const rows = page.locator("#graph-list .choice-option:not(.is-add) h2");
-  await expect(rows).toHaveText(["This Mac", "Quiet Otter (current)", "Paper Lantern"]);
-  await page.getByRole("button", { name: /Paper Lantern/ }).click();
-  await expect.poll(() => launcher.invoked()).toContain("restart_app");
-  const invoked = await launcher.invoked();
-  const args = await launcher.args();
-  expect(args[invoked.indexOf("set_active_graph")]).toEqual({
-    id: null,
-    localGraph: "paper-lantern",
-  });
+  const launcher = await openLauncher(page, fixtures.ready, SERVER_TARGET);
+  launcher.answers(APP_SERVER);
+  await page.getByRole("button", { name: "Open a graph on this Mac" }).click();
+  await expect(page).toHaveURL(`${APP_SERVER}/g/default`);
 });

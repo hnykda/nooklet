@@ -11,9 +11,9 @@
  * - **On a server**: the server keeps it and other devices are unaffected. Plain confirm when this
  *   device knows it has nothing unsynced; typed when it has some (and says how many) or cannot
  *   tell (`data/pending-memo.ts`).
- * - **On this Mac** (ADR 028): the bundled server keeps it — removing the row never deletes its
- *   folder — and it stays listed under "On this Mac"; typed regardless, as the owner asked, since
- *   "This Mac" reads like "this device".
+ *
+ * The desktop app's menu has its own, simpler removal (`DesktopGraphMenu.tsx`): there only a server
+ * graph can be removed, and its replica stays on the Mac.
  *
  * Pure, so every wording is unit-tested; `GraphSwitcher.tsx` shows it with `app/confirm-dialog`.
  */
@@ -23,7 +23,7 @@ export const REMOVE_CONFIRM_WORD = "delete";
 
 export interface RemovalFacts {
   name: string;
-  place: "device" | "mac" | "server";
+  place: "device" | "server";
   /** Where the server is, for the server wording. */
   host?: string;
   /** Changes not on the server; `undefined` = unknown. Ignored for "device". */
@@ -52,23 +52,10 @@ export function removalDialog(f: RemovalFacts): ConfirmOptions {
 
   const lost =
     f.pending === undefined
-      ? `This device cannot tell whether it has changes to ${quoted} that never reached ${f.place === "mac" ? "this Mac's server" : "the server"}. Any it has are lost.`
+      ? `This device cannot tell whether it has changes to ${quoted} that never reached the server. Any it has are lost.`
       : f.pending > 0
-        ? `${changes(f.pending)} made on this device ${f.pending === 1 ? "has" : "have"} not reached ${f.place === "mac" ? "this Mac's server" : "the server"} yet and will be lost.`
+        ? `${changes(f.pending)} made on this device ${f.pending === 1 ? "has" : "have"} not reached the server yet and will be lost.`
         : undefined;
-
-  if (f.place === "mac") {
-    return {
-      title: `Remove ${quoted} from this list?`,
-      warning: lost,
-      message: [
-        `${quoted} stays on this Mac, in nooklet's own folder, and stays listed under “On this Mac”. Only this window's copy is removed; nothing is deleted from the Mac.`,
-      ],
-      confirmLabel: "Remove",
-      destructive: true,
-      typeToConfirm: REMOVE_CONFIRM_WORD,
-    };
-  }
 
   const server = f.host ? `The server at ${f.host}` : "Its server";
   return {

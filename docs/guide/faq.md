@@ -145,10 +145,11 @@ keeps every device's token. See
 
 The server now serves a different graph instance at this address: it was replaced (re-imported or
 restored from elsewhere), or the server points at another data directory. After a replace this is
-expected. Press **Discard the local copy and re-sync**. It affects only this graph on this device,
-but edits on this device that never reached the server are lost. If that might matter, choose
-**Keep as a device-only graph**, or point the server back at the old graph first (retire the
-replacement, `nooklet graph unretire` the old one), let the device sync, then replace again.
+expected. Press **Discard the local copy and re-sync** (in the desktop app: **Re-sync from the
+server**). It affects only this graph on this device, but edits on this device that never reached
+the server are lost. If that might matter, choose **Keep as a device-only graph** (phone and
+browser only), or point the server back at the old graph first (retire the replacement,
+`nooklet graph unretire` the old one), let the device sync, then replace again.
 
 ## The sync indicator says "Graph retired"
 

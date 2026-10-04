@@ -1050,11 +1050,6 @@ webview is not reusing its HTTP cache. That is unverified: check the Tauri/WKWeb
 whether the URL changes between renders. Possible fixes: server-side resized variants
 (`/assets/:id?w=…`) and `loading="lazy"`/`decoding="async"`.
 
-### B-739 · In the desktop app on a remote server's page, ConnectView's "Just this device" may create a replica inside that server's origin
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, graph-menu agent (B-704) · **Test:** none yet
-
-That is ADR 028's rejected model. Not checked what `App.tsx#skip` does there.
-
 ### B-740 · No whole-graph export or backup in the client
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, graph-menu agent (B-712) · **Test:** none yet
 
@@ -1078,6 +1073,19 @@ depends on what ran before it. The cause has not been investigated. In those sam
 re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. Both look like
 flakes and are noted here rather than logged separately.
 
+### B-786 · Desktop: a graph on This Mac cannot be removed or deleted from the app
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** none yet
+
+The desktop graph menu (ADR 032) removes only server graphs. A This-Mac graph is a folder under
+`~/.nooklet/default/graphs/<id>/`; getting rid of one means `nooklet graph retire` or deleting the
+folder by hand. Needs a decision on what "remove" should do to data on this Mac (retire? trash?).
+
+### B-787 · Desktop: "Show graphs on this server (root token)" is not offered in the add form
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** none yet
+
+The phone/browser form can list a server's graphs with its root token. From the desktop page that
+call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
+
 ## Fixed
 
 ### B-766 · Linked references sorted by "Recent" are not in date order
@@ -1088,6 +1096,70 @@ Sept 14th: newest first, then the rest out of order.
 
 **Cause:** "Recent" ranked each page group by its blocks' latest *edit* time. After an import every block carries the import time, so all days tied except the one edited since, and the name tie-break put the rest oldest first.
 **Fix:** a journal group (wire name = ISO date) is dated by its day (end of day, UTC); other pages keep their latest edit; one timeline, newest first (`views/referenceGrouping.ts#groupTime`).
+### B-780 · Desktop: graphs are confusing (two lists, an add loop, phone words, restarts); build proposal 005
+**Status:** fixed 2026-10-04 (page side and shell logic tested; the real window is the owner's check, `docs/progress/desktop-graphs.md`) · **Severity:** high (UX) · **Reported:** 2026-10-04, owner on the desktop app against a real server ("the graph behaviour on desktop is still super confusing … Is this really the best we can do?") · **Design:** `docs/proposals/005-one-graph-list-on-desktop.md` (accepted), ADR 032 · **Test:** see B-781..B-785
+
+The umbrella for proposal 005. Each confusion it mapped is logged below on its own, with its test.
+
+**Fix:** ADR 032. The shell owns one list (`desktop.json` + This Mac's graph folders; tokens in the
+keychain); the in-app graph menu shows it; one add form, checked from Rust; the token reaches the
+page through a window's initialization script, scoped to that graph's origin and path; the bundled
+server always runs and switching is a navigation; the launcher is only "Connecting…".
+
+### B-781 · Desktop: the launcher and the in-app graph menu keep two lists that never meet
+**Status:** fixed 2026-10-04 · **Severity:** high · **Found:** 2026-10-04, proposal 005 confusion 1 · **Test:** Rust `graph_list::tests` (13, incl. `a_previous_versions_file_migrates_keeping_every_server`), `b781_*` (2); `DesktopGraphMenu.test.tsx` "the desktop graph menu" (5); `desktop-shell.test.ts` "B-781"; e2e `desktop-graphs.spec.ts` "B-781: …", `graph-remove.spec.ts` "B-781: …"
+
+The launcher reads `desktop.json`; the in-app menu reads a list kept in each origin's
+localStorage. A server added in one is not in the other.
+
+**Fix:** one list, the shell's (`graph_list.rs`), handed to every page as
+`__NOOKLET_DESKTOP__.graphs` and shown by `shell/DesktopGraphMenu.tsx`; the launcher has no list.
+An older `desktop.json` migrates once (kept as `desktop.json.v1.bak`), keeping every address.
+
+### B-782 · Desktop: adding a server asks for the address and the token on two screens, a restart apart
+**Status:** fixed 2026-10-04 · **Severity:** high · **Found:** 2026-10-04, proposal 005 confusion 2 · **Test:** Rust `connect::tests` (5, incl. `a_real_socket` against a local listener), `b782_connecting_stores_the_token_only_when_the_server_accepts_it`, `b782_the_token_is_injected_only_into_its_graphs_own_documents` (runs the script in Node); `DesktopGraphMenu.test.tsx` "the desktop add form" (5); `desktop-graphs.test.ts` (6); `bootstrap.test.ts` "ADR 032" (4); e2e `desktop-graphs.spec.ts` "B-782: …" (3) and "ADR 032: a server graph's page starts authenticated…"
+
+In-app "Add a graph" → "Sync with a server" → address → restart → the server's page asks "Just
+this device / Sync with a server" again → a token-only field. A wrong token is reported on the
+second screen, after the restart, not where the address was typed.
+
+**Fix:** `shell/DesktopAddGraph.tsx`: address + token or pairing link, one button; the shell checks
+it (`connect.rs`, the same `graph.overview` call, plus `pairing.redeem` for a code), stores the token
+in the keychain and opens the graph; every error comes back to the form. A server graph without a
+token opens on that form pre-filled (`views/DesktopConnectView.tsx`).
+
+### B-783 · Desktop: phone-only choices and words in the Mac app ("Just this device", "On this device", promote, keep as a device-only graph)
+**Status:** fixed 2026-10-04 · **Severity:** medium · **Found:** 2026-10-04, proposal 005 confusion 3 · **Test:** `DesktopGraphMenu.test.tsx` (no phone words); e2e `desktop-graphs.spec.ts` "B-783: the mismatch screen offers only…", "B-782: a server graph with no token yet…" (no "Just this device")
+
+"Just this device" on desktop is an in-memory flag, unsaved (B-739). "On this device" sits next to
+"On this Mac". "Add a server for this graph" can never be enabled on desktop. The mismatch screen
+makes a device-only graph, which ADR 028 rejected on desktop.
+
+**Fix:** none of these exist on desktop now: no ConnectView, no promote, and the mismatch screen
+offers "Re-sync from the server" and "Open another graph". The phone's headings are "On this phone"
+/ "On servers".
+
+### B-784 · Desktop: one concept, many names (Switch Server…, Switch graph, Add a server, Sync with a server, a phone icon for This Mac)
+**Status:** fixed 2026-10-04 · **Severity:** low · **Found:** 2026-10-04, proposal 005 confusion 4 · **Test:** e2e `desktop-shell.spec.ts` "proposal 005: the native menu's Graphs… opens the graph menu…"; `desktop-shell.test.ts` `listenToDesktopMenu`
+
+**Fix:** "Graphs…" in the menu bar opens the graph menu; "Add a graph" → "Create on this Mac" /
+"Connect to a server"; This Mac is a laptop everywhere.
+
+### B-785 · Desktop: creating, adding or switching a graph restarts the app
+**Status:** fixed 2026-10-04 (no restart in code; the window swap for a server graph is unverified in a real window) · **Severity:** medium · **Found:** 2026-10-04, proposal 005 confusion 5 · **Test:** Rust `b785_only_a_new_token_or_a_changed_list_needs_a_new_window`; e2e `desktop-graphs.spec.ts` "B-785: picking a graph navigates…", `desktop-launcher.spec.ts` (7)
+
+The shell decides once per launch whether to start its bundled server, so every change of graph
+kind is a restart (about two seconds, plus the window closing and reopening).
+
+**Fix:** the bundled server always runs. Switching navigates the window; a server graph the window
+was not built for gets a new window (its script carries that graph's token) in the old one's place.
+
+### B-739 · In the desktop app on a remote server's page, ConnectView's "Just this device" may create a replica inside that server's origin
+**Status:** fixed 2026-10-04 (by removal) · **Severity:** low · **Found:** 2026-10-04, graph-menu agent (B-704) · **Test:** e2e `desktop-graphs.spec.ts` "B-782: a server graph with no token yet…" (no "Just this device" on desktop)
+
+That is ADR 028's rejected model. Not checked what `App.tsx#skip` does there.
+
+**Fix:** B-783: the desktop app shows no ConnectView, so there is no "Just this device" there at all.
 
 ### B-760 · A write from another device or the API can stay invisible until the next unrelated write
 **Status:** fixed 2026-10-04 (e2e-flaky, `1ad2ffd`) · **Severity:** medium · **Test:** `sync-client.test.ts` "a pull asked for while one is in flight runs again after it (no lost poke)" (red before); `page-delete.spec.ts:87` `--repeat-each 10`

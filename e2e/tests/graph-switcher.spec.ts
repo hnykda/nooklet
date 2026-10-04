@@ -267,7 +267,7 @@ test("B-709: the open graph's name heads the sidebar and opens the graph menu; t
   await title.click();
   const menu = page.getByRole("dialog", { name: "Switch graph" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("list", { name: "On a server" })).toContainText("default");
+  await expect(menu.getByRole("list", { name: "On servers" })).toContainText("default");
   await expect(menu.locator("[aria-current='true']")).toContainText("default");
   // Wider than the sidebar it hangs from, and not clipped by it: fully on screen.
   const box = await menu.boundingBox();

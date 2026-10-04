@@ -13,6 +13,11 @@
  *     copy holds unsynced changes;
  *  2. open another graph without deciding (the screen comes back when this one is opened again);
  *  3. discard this copy and re-sync (B-631: only this graph's replica), never the primary action.
+ *
+ * In the desktop app (ADR 028, ADR 032) there are two: "Re-sync from the server" (3, worded for a
+ * Mac) and "Open another graph" from the shell's list. It never makes a device-only graph there:
+ * on desktop a graph lives on This Mac's server or on another server, never only inside one
+ * server's page storage (B-783).
  */
 
 import { createResource, createSignal, For, type JSX, Show } from "solid-js";
@@ -30,6 +35,8 @@ import {
 } from "../data/bootstrap.js";
 import { discardActiveReplica } from "../data/discard-replica.js";
 import { queryAs } from "../db/client.js";
+import { currentDesktopGraph, desktopShell } from "../platform/desktop-shell.js";
+import { hostOf } from "../shell/desktop-graphs.js";
 import "./connect.css";
 import "./graph-mismatch.css";
 
@@ -66,6 +73,10 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
   const address = displayAddress(entry?.baseUrl);
   const name = entry ? entryName(entry) : "this graph";
   const others = listGraphs().filter((g) => g.id !== entry?.id);
+  const desktop = desktopShell();
+  const desktopOthers = desktop
+    ? desktop.graphs.filter((g) => g.key !== currentDesktopGraph(desktop.graphs)?.key)
+    : [];
 
   const [pending] = createResource(unsyncedCount);
   const [busy, setBusy] = createSignal<"keep" | "discard" | null>(null);
@@ -174,111 +185,174 @@ export function GraphMismatchView(props: { graphId: string }): JSX.Element {
         </details>
 
         <section class="graph-mismatch-options" aria-label="What to do with this copy">
-          <div class="graph-mismatch-option is-primary" classList={{ recommended: hasUnsynced() }}>
-            <div class="graph-mismatch-option-head">
-              <h2>Keep this copy as a device-only graph</h2>
-              <Show when={hasUnsynced()}>
-                <span class="graph-mismatch-badge">Recommended</span>
+          <Show when={desktop}>
+            <div class="graph-mismatch-option is-primary">
+              <h2>Re-sync from the server</h2>
+              <p>
+                Deletes this Mac's copy of {name}
+                <Show when={hasUnsynced()}>, including its {changes(count() ?? 0)}</Show>, and
+                downloads the graph <code>{address}</code> serves now in its place. Other graphs are
+                not touched.
+              </p>
+              <Show when={confirmDiscard()}>
+                <p class="connect-error" role="alert">
+                  {changes(count() ?? 0)} on this Mac will be lost for good. Re-sync anyway?
+                </p>
               </Show>
+              <div class="connect-actions">
+                <button
+                  type="button"
+                  class="graph-mismatch-discard"
+                  disabled={busy() !== null}
+                  onClick={() => void discard()}
+                >
+                  {busy() === "discard"
+                    ? "Clearing…"
+                    : confirmDiscard()
+                      ? "Re-sync and lose the changes"
+                      : "Re-sync from the server"}
+                </button>
+              </div>
             </div>
-            <p>
-              This copy stays on this device as {copyName()}, with all its notes
-              <Show when={hasUnsynced()}> and its {changes(count() ?? 0)}</Show>. It never syncs
-              with any server again. Nothing is copied or deleted.
-            </p>
-            <label class="graph-mismatch-check">
-              <input
-                type="checkbox"
-                checked={addServer()}
-                onChange={(e) => setAddServer(e.currentTarget.checked)}
-              />
-              <span>
-                Also add the server's graph as a separate graph and open it. It downloads fresh from{" "}
-                <code>{address}</code>.
-              </span>
-            </label>
-            <div class="connect-actions">
-              <button type="button" disabled={busy() !== null || !entry} onClick={keepCopy}>
-                {busy() === "keep" ? "Keeping…" : "Keep as a device-only graph"}
-              </button>
+            <div class="graph-mismatch-option">
+              <h2>Open another graph</h2>
+              <p>
+                Nothing changes. This copy stays as it is, and this screen comes back the next time
+                you open it.
+              </p>
+              <ul class="graph-mismatch-graphs" aria-label="Other graphs">
+                <For each={desktopOthers}>
+                  {(other) => (
+                    <li>
+                      {/* The shell routes this navigation, as from the graph menu. */}
+                      <button
+                        type="button"
+                        disabled={busy() !== null}
+                        onClick={() => location.assign(other.address)}
+                      >
+                        <span class="graph-mismatch-graph-name">{other.label}</span>
+                        <span class="graph-mismatch-graph-where">
+                          {other.place === "mac" ? "on this Mac" : hostOf(other.address)}
+                        </span>
+                      </button>
+                    </li>
+                  )}
+                </For>
+              </ul>
             </div>
-          </div>
-
-          <div class="graph-mismatch-option">
-            <h2>Open another graph</h2>
-            <p>
-              Nothing changes. This copy stays as it is, and this screen comes back the next time
-              you open it.
-            </p>
-            <Show
-              when={others.length > 0}
-              fallback={<p class="graph-mismatch-none">There is no other graph on this device.</p>}
+          </Show>
+          <Show when={!desktop}>
+            <div
+              class="graph-mismatch-option is-primary"
+              classList={{ recommended: hasUnsynced() }}
             >
+              <div class="graph-mismatch-option-head">
+                <h2>Keep this copy as a device-only graph</h2>
+                <Show when={hasUnsynced()}>
+                  <span class="graph-mismatch-badge">Recommended</span>
+                </Show>
+              </div>
+              <p>
+                This copy stays on this device as {copyName()}, with all its notes
+                <Show when={hasUnsynced()}> and its {changes(count() ?? 0)}</Show>. It never syncs
+                with any server again. Nothing is copied or deleted.
+              </p>
+              <label class="graph-mismatch-check">
+                <input
+                  type="checkbox"
+                  checked={addServer()}
+                  onChange={(e) => setAddServer(e.currentTarget.checked)}
+                />
+                <span>
+                  Also add the server's graph as a separate graph and open it. It downloads fresh
+                  from <code>{address}</code>.
+                </span>
+              </label>
+              <div class="connect-actions">
+                <button type="button" disabled={busy() !== null || !entry} onClick={keepCopy}>
+                  {busy() === "keep" ? "Keeping…" : "Keep as a device-only graph"}
+                </button>
+              </div>
+            </div>
+
+            <div class="graph-mismatch-option">
+              <h2>Open another graph</h2>
+              <p>
+                Nothing changes. This copy stays as it is, and this screen comes back the next time
+                you open it.
+              </p>
               <Show
-                when={picking()}
+                when={others.length > 0}
                 fallback={
-                  <div class="connect-actions">
-                    <button
-                      type="button"
-                      class="connect-skip"
-                      disabled={busy() !== null}
-                      onClick={() => setPicking(true)}
-                    >
-                      Choose a graph
-                    </button>
-                  </div>
+                  <p class="graph-mismatch-none">There is no other graph on this device.</p>
                 }
               >
-                <ul class="graph-mismatch-graphs" aria-label="Other graphs on this device">
-                  <For each={others}>
-                    {(other) => (
-                      <li>
-                        <button
-                          type="button"
-                          disabled={busy() !== null}
-                          onClick={() => openOther(other)}
-                        >
-                          <span class="graph-mismatch-graph-name">{entryName(other)}</span>
-                          <span class="graph-mismatch-graph-where">
-                            {other.baseUrl ? displayAddress(other.baseUrl) : "This device only"}
-                          </span>
-                        </button>
-                      </li>
-                    )}
-                  </For>
-                </ul>
+                <Show
+                  when={picking()}
+                  fallback={
+                    <div class="connect-actions">
+                      <button
+                        type="button"
+                        class="connect-skip"
+                        disabled={busy() !== null}
+                        onClick={() => setPicking(true)}
+                      >
+                        Choose a graph
+                      </button>
+                    </div>
+                  }
+                >
+                  <ul class="graph-mismatch-graphs" aria-label="Other graphs on this device">
+                    <For each={others}>
+                      {(other) => (
+                        <li>
+                          <button
+                            type="button"
+                            disabled={busy() !== null}
+                            onClick={() => openOther(other)}
+                          >
+                            <span class="graph-mismatch-graph-name">{entryName(other)}</span>
+                            <span class="graph-mismatch-graph-where">
+                              {other.baseUrl ? displayAddress(other.baseUrl) : "This device only"}
+                            </span>
+                          </button>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Show>
               </Show>
-            </Show>
-          </div>
-
-          <div class="graph-mismatch-option is-destructive">
-            <h2>Discard this copy and re-sync</h2>
-            <p>
-              Deletes this device's copy of {name}
-              <Show when={hasUnsynced()}>, including its {changes(count() ?? 0)}</Show>, and
-              downloads the server's graph fresh in its place. Other graphs on this device are not
-              touched.
-            </p>
-            <Show when={confirmDiscard()}>
-              <p class="connect-error" role="alert">
-                {changes(count() ?? 0)} on this device will be lost for good. Discard anyway?
-              </p>
-            </Show>
-            <div class="connect-actions">
-              <button
-                type="button"
-                class="connect-skip graph-mismatch-discard"
-                disabled={busy() !== null}
-                onClick={() => void discard()}
-              >
-                {busy() === "discard"
-                  ? "Clearing…"
-                  : confirmDiscard()
-                    ? "Discard and lose the changes"
-                    : "Discard the local copy and re-sync"}
-              </button>
             </div>
-          </div>
+
+            <div class="graph-mismatch-option is-destructive">
+              <h2>Discard this copy and re-sync</h2>
+              <p>
+                Deletes this device's copy of {name}
+                <Show when={hasUnsynced()}>, including its {changes(count() ?? 0)}</Show>, and
+                downloads the server's graph fresh in its place. Other graphs on this device are not
+                touched.
+              </p>
+              <Show when={confirmDiscard()}>
+                <p class="connect-error" role="alert">
+                  {changes(count() ?? 0)} on this device will be lost for good. Discard anyway?
+                </p>
+              </Show>
+              <div class="connect-actions">
+                <button
+                  type="button"
+                  class="connect-skip graph-mismatch-discard"
+                  disabled={busy() !== null}
+                  onClick={() => void discard()}
+                >
+                  {busy() === "discard"
+                    ? "Clearing…"
+                    : confirmDiscard()
+                      ? "Discard and lose the changes"
+                      : "Discard the local copy and re-sync"}
+                </button>
+              </div>
+            </div>
+          </Show>
         </section>
 
         <Show when={error()}>

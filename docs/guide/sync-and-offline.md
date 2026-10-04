@@ -70,7 +70,9 @@ picks a valid placement and sends a correction. For one round trip a block may a
 ## Local-only graphs
 
 A graph can live on one device with no server: the iOS app's "Just this device" option, or a local
-graph in the switcher. It never syncs, and its sync indicator says "Local only".
+graph in the switcher. It never syncs, and its sync indicator says "Local only". (In the desktop app
+a graph "on this Mac" is different: it lives on the app's own bundled server, with a Markdown mirror
+on disk, and the page syncs with that server like any other.)
 
 A local-only graph has one risk a synced one does not: if the device loses it, there is no server
 copy to restore from. The iOS app asks the system to keep its storage and also checkpoints the

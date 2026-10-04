@@ -17,6 +17,7 @@
  * *why* there is no token instead of just showing "disconnected".
  */
 
+import { desktopShell } from "../platform/desktop-shell.js";
 import { platform } from "../platform/index.js";
 import { generateGraphName } from "./graph-names.js";
 
@@ -636,7 +637,11 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
       let entry = activeGraph();
       // A stored device token wins only when the server offers none: on loopback the server mints
       // a fresh token per process, and a token stored by an earlier run would be stale.
-      const token = body.token ?? entry?.token ?? import.meta.env.VITE_NOOKLET_TOKEN ?? null;
+      // ADR 032: in the desktop app a server graph's token is the shell's (from the keychain,
+      // handed to this graph's own documents only), never one this origin stored itself.
+      const shell = desktopShell();
+      const stored = shell ? shell.graphToken : entry?.token;
+      const token = body.token ?? stored ?? import.meta.env.VITE_NOOKLET_TOKEN ?? null;
       if (!entry && base) {
         // First launch with no list yet: adopt this page's own graph, exactly as the pre-ADR-025
         // bare-origin default did.
@@ -646,14 +651,20 @@ export async function initBootstrap(): Promise<BootstrapConfig> {
           label: "This graph",
           kind: platform.name === "capacitor" ? "remote" : "local",
           baseUrl: base,
-          token: token ?? undefined,
+          // The shell's token stays in the keychain, not in this origin's storage.
+          token: shell ? (body.token ?? undefined) : (token ?? undefined),
           graphInstanceId: physicalGraphId,
         };
         addGraph(entry);
         setActiveGraphId(id);
       } else if (entry) {
         const patch: Partial<GraphListEntry> = {};
-        if (token && token !== entry.token) patch.token = token;
+        if (shell) {
+          // Once the keychain has this graph's token, the copy an older version kept in this
+          // origin's storage is dropped (it was only ever read to pre-fill the add form).
+          if (shell.graphToken && entry.token) patch.token = undefined;
+          else if (body.token && body.token !== entry.token) patch.token = body.token;
+        } else if (token && token !== entry.token) patch.token = token;
         // A first run has nothing to compare against, so adopt whatever the server says. Only a
         // CHANGE from an already-known value is a mismatch.
         if (physicalGraphId && !entry.graphInstanceId) patch.graphInstanceId = physicalGraphId;
@@ -687,12 +698,22 @@ export function bootstrapConfig(): BootstrapConfig {
   // Injected first: on loopback the server mints a fresh token per process, so a token stored by
   // an earlier run would be stale. The active entry's token second, which is the path every
   // remote device takes.
-  const token = w?.token ?? activeGraph()?.token ?? envToken ?? null;
+  const shell = desktopShell();
+  const token = w?.token ?? (shell ? shell.graphToken : activeGraph()?.token) ?? envToken ?? null;
   cached = {
     token,
     reason: token ? undefined : (w?.reason ?? "no_token_available"),
   };
   return cached;
+}
+
+/**
+ * ADR 032: the token an older desktop app kept in this origin's storage for the open graph, before
+ * tokens moved to the keychain. Only read to pre-fill the add form the first time such a graph is
+ * opened, so moving it into the keychain is one click; never used to authenticate.
+ */
+export function legacyDesktopToken(): string | undefined {
+  return desktopShell() ? activeGraph()?.token : undefined;
 }
 
 export function authToken(): string | undefined {

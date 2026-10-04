@@ -3,8 +3,8 @@
  *
  * - a server graph with changes this device never pushed: the dialog says how many, and "Remove"
  *   stays disabled until `delete` is typed; with nothing unsynced it is a plain confirm;
- * - the desktop app's This-Mac graphs (ADR 028, shell emulated as in `desktop-local-graph.spec.ts`):
- *   typed confirm, and the graph stays listed under "On this Mac" afterwards;
+ * - the desktop app (shell emulated as in `desktop-graphs.spec.ts`): only a server graph can be
+ *   removed there, through the shell (ADR 032);
  * - the phone's local-only graph (Capacitor emulated, phone viewport with touch): the "only copy"
  *   wording, typed confirm. Runs in WebKit too.
  */
@@ -133,59 +133,68 @@ test.describe("desktop browser", () => {
     );
   });
 
-  test("B-712: removing a This-Mac graph needs 'delete' typed and leaves it on the Mac", async ({
+  test("B-781: in the desktop app only a server graph is removable, and the shell does it", async ({
     page,
     baseURL,
   }) => {
     const base = baseURL as string;
     const port = Number(new URL(base).port);
-    const slug = `rm-mac-${suffix}`;
-    await createGraph(base, slug, "Mac Graph");
+    const mac = (id: string, label: string) => ({
+      key: `mac:${id}`,
+      place: "mac",
+      id,
+      label,
+      address: `${base}/g/${id}`,
+    });
+    const server = {
+      key: "server:s1",
+      place: "server",
+      id: "s1",
+      label: "Far Graph",
+      address: "https://notes.example.com/g/far",
+    };
     await page.addInitScript(
-      ([p, s]) => {
+      ([p, graphs]) => {
         Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
-          value: Object.freeze({
-            platform: "macos",
-            port: p,
-            graphs: [],
-            activeGraphId: null,
-            localGraphs: [
-              { id: "default", label: "default" },
-              { id: s, label: "Mac Graph" },
-            ],
-            activeLocalGraph: null,
-            forcePicker: false,
-          }),
+          value: Object.freeze({ platform: "macos", port: p, key: "k", graphs, graphToken: null }),
         });
       },
-      [port, slug] as const,
+      [port, [mac("default", "This Mac"), mac(`rm-mac-${suffix}`, "Mac Graph"), server]] as const,
     );
-    // This window is the bundled server's own page: both graphs are entries here.
-    await page.goto(`/g/${slug}/journals`);
-    await expect(page.locator(".app-topbar")).toBeVisible();
+    // What the page asks the shell, held back as the shell would (`main.rs` cancels it).
+    const asked: URL[] = [];
+    await page.route("http://nooklet-desktop.invalid/**", (route) => {
+      asked.push(new URL(route.request().url()));
+      return route.abort("aborted");
+    });
     await page.goto("/g/default/journals");
     await openGraphMenu(page);
-    const mac = page.getByRole("list", { name: "On this Mac" });
-    await mac.getByRole("button", { name: "Remove Mac Graph" }).click();
+    const menu = page.getByRole("dialog", { name: "Graphs" });
+    // This Mac's graphs are folders on disk: not removable from here.
+    await expect(menu.getByRole("button", { name: "Remove Mac Graph" })).toHaveCount(0);
+    await expect(menu.getByRole("button", { name: "Remove This Mac" })).toHaveCount(0);
+    await menu.getByRole("button", { name: "Remove Far Graph" }).click();
     const dialog = page.getByRole("alertdialog");
-    await expect(dialog).toContainText("nothing is deleted from the Mac");
-    const remove = dialog.getByRole("button", { name: "Remove" });
-    await expect(remove).toBeDisabled();
-    await dialog.getByRole("textbox").fill("delete");
-    await remove.click();
-    // Still there, as a This-Mac graph this window has no entry for.
-    await expect(mac.getByRole("button", { name: /Mac Graph/ })).toHaveCount(1);
-    await expect(mac.getByRole("button", { name: "Remove Mac Graph" })).toHaveCount(0);
-    // And the server still has it.
-    const res = await fetch(`${base}/graphs`, {
-      headers: { authorization: `Bearer ${rootToken()}` },
-    });
-    expect(JSON.stringify(await res.json())).toContain(slug);
+    await expect(dialog).toContainText("keeps the graph");
+    await dialog.getByRole("button", { name: "Remove" }).click();
+    await expect.poll(() => asked.map((u) => u.pathname)).toEqual(["/remove"]);
+    const request = asked[0] as URL;
+    expect(request.searchParams.get("graph")).toBe("server:s1");
+    expect(request.searchParams.get("key")).toBe("k");
+    // The shell's answer (`main.rs#reply`): the list without it.
+    await page.evaluate(
+      ([req, graphs]) =>
+        window.dispatchEvent(
+          new CustomEvent("nooklet:desktop-reply", { detail: { req, ok: true, graphs } }),
+        ),
+      [request.searchParams.get("req"), [mac("default", "This Mac")]] as const,
+    );
+    await expect(menu).not.toContainText("Far Graph");
   });
 });
 
 async function phoneContext(browser: Browser, base: string): Promise<BrowserContext> {
-  // As `desktop-local-graph.spec.ts#phoneContext`: the app shell with no `/g/` prefix, Capacitor
+  // As `desktop-graphs.spec.ts#phoneContext`: the app shell with no `/g/` prefix, Capacitor
   // stubbed, a phone's viewport and touch.
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },

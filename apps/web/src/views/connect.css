@@ -246,8 +246,8 @@
   overflow-wrap: anywhere;
 }
 
-/* B-704: the desktop app's way to another server, or back to This Mac, from this screen
-   (`DesktopServerSwitch.tsx`). Set apart from the token form: a different action. */
+/* The desktop app's "open another graph instead" on the screens that are not the app
+   (`DesktopConnectView.tsx`, the mismatch screen). Set apart from the form: a different action. */
 .connect-elsewhere {
   margin-top: var(--space-3xl);
   padding-top: var(--space-xl);
