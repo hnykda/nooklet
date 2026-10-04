@@ -1098,7 +1098,7 @@ creates its first child, and nothing typed in the zoomed view can land outside t
 sibling).
 
 ### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
-**Status:** open (owner request) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** none yet
+**Status:** in progress (image-sizing branch, `docs/progress/image-sizing.md`) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** none yet
 
 The owner wants Logseq's image handling: a drag handle on the image's right edge to make it bigger
 or smaller (the size saved with the block), a ⋯ menu with Download and, on desktop, Show in Finder,
