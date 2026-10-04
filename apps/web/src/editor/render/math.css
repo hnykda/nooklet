@@ -9,6 +9,16 @@
   font-size: 1.05em;
 }
 
+/* A long display formula scrolls inside itself, as a code block does, instead of running past the
+   block's edge and making the page scroll sideways at phone width (found in the B-683 sweep).
+   KaTeX lays a display formula out as one unbreakable line; this is KaTeX's own suggested fix.
+   `overflow-y: hidden` because `overflow-x: auto` alone gives the tall glyphs a vertical bar. */
+.vr-math-rendered .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 /* Inside the CodeMirror surface the widget sits inline with the source text. */
 .cm-line .vr-math-rendered {
   vertical-align: baseline;

@@ -38,6 +38,26 @@ export function setActiveEditorHost(host: EditorHost | null): void {
   if (host) recent = host;
 }
 
+const changeListeners = new Set<() => void>();
+
+/**
+ * The block editor's text or caret changed — called by a `BlockTree` from CodeMirror's own update
+ * listener, so it fires however the change arrived (B-684). The slash and `[[`/`#`/`((` triggers
+ * are re-detected on it (`CommandLayer`): key and `input` events alone are not enough, because on
+ * iOS the editor can take in a typed character after the last of them has fired (WebKit's
+ * composition mutations are read a frame later, CodeMirror's `DOMObserver.flushSoon`), and then
+ * nothing looked again until the next key — the menu opened one character late.
+ */
+export function notifyEditorChange(): void {
+  for (const fn of changeListeners) fn();
+}
+
+/** Subscribe to `notifyEditorChange`; returns the unsubscribe. */
+export function onEditorChange(fn: () => void): () => void {
+  changeListeners.add(fn);
+  return () => changeListeners.delete(fn);
+}
+
 /** Called by a `BlockTree` once, at mount: its host may take a command's op batch even while
  * nothing in it is edited or selected (`commitThroughEditor`). */
 export function registerEditorHost(host: EditorHost): void {

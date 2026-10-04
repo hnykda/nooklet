@@ -20,6 +20,7 @@ import { journalTitleFormat } from "../../data/page-title.js";
 import type { EditorHost } from "../hosts/editor-host.js";
 import type { BlockSource, BlockSummary, PageSource, PageSummary } from "../hosts/page-source.js";
 import { claimPopupKeys } from "../popup-keys.js";
+import { type CaretRect, createCaretPopupStyle } from "../popup-position.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import { rankItems } from "../ranking/rank.js";
 import { dateShortcuts } from "./dates.js";
@@ -33,7 +34,8 @@ export interface AutocompletePopupProps {
   editor: EditorHost;
   /** `null` means closed. */
   trigger: AutocompleteMatch | null;
-  position: { top: number; left: number };
+  /** The caret line (viewport px): the popup opens below it, or above it when there is no room. */
+  position: CaretRect;
   pages?: PageSource; // required for "page"/"tag"
   blocks?: BlockSource; // required for "block"
   onDismiss: () => void;
@@ -305,11 +307,15 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
     if (handleKey(e.key)) e.preventDefault();
   }
 
+  // B-681: at the caret, flipped above it and kept on screen (`../popup-position.ts`).
+  const placement = createCaretPopupStyle(() => props.position);
+
   return (
     <Show when={props.trigger !== null}>
       <div
         class="cmd-popup"
-        style={{ top: `${props.position.top}px`, left: `${props.position.left}px` }}
+        ref={placement.ref}
+        style={placement.style()}
         role="listbox"
         onKeyDown={onKeyDown}
       >

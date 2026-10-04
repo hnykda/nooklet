@@ -65,6 +65,9 @@ export interface SurfaceDeps {
   dispatchKey(id: string, kd: KeyDescriptor, view: EditorView): boolean;
   /** `edit.paste` (R33): returns `true` if handled (caller already called `preventDefault`). */
   onPaste(id: string, event: ClipboardEvent, view: EditorView): boolean;
+  /** The text or the caret changed, however it got there (B-684): a key, an `input` event, or a
+   *  DOM change CodeMirror read with no event of its own after it. Optional for tests. */
+  onEditorChange?(): void;
 }
 
 const KEY_BINDINGS: Array<{ cmKey: string; kd: KeyDescriptor }> = [
@@ -121,6 +124,7 @@ export function createSurface(deps: SurfaceDeps): Surface {
     livePreview,
     EditorView.updateListener.of((update) => {
       if (update.docChanged && current) deps.onTextChange(current, update.state.doc.toString());
+      if ((update.docChanged || update.selectionSet) && current) deps.onEditorChange?.();
     }),
     EditorView.domEventHandlers({
       paste(event, v) {
