@@ -1026,6 +1026,18 @@ and never zooms back, leaving the viewport wider than the screen. B-648's fix co
 fields (properties, search, task filter); every new form (here the graph switcher's server URL)
 reintroduces it. Owner: "try to fix this globally".
 
+### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
+**Status:** open · **Severity:** medium (blocked the owner pairing a phone) · **Found:** 2026-10-04, owner adding `alpha` on the iPhone · **Test:** none yet
+
+The owner copied a device token with a trailing `.` (it followed the token in a chat message). The
+app sent it as is; the server answered 401 and the connect screen said "That token was rejected.
+Check it was copied whole, and not revoked." — while the real token was valid (its `last used` never
+moved, confirmed on the server). Every token has a fixed shape (`nk_` + hex, see
+`packages/server/src/auth/tokens.ts`; root `nkroot_`). Fix: strip surrounding whitespace, quotes,
+backticks and trailing punctuation from a pasted token, and if what remains does not match the
+shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
+with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
+
 ## Fixed
 
 ### B-701 · A long `$$…$$` display formula widened the page at phone width
