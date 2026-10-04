@@ -1097,6 +1097,18 @@ retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10
 did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
 encode.
 
+### B-714 · The "different graph" screen is a dead end: discard is the only way out, and its wording assumes localhost
+**Status:** open · **Severity:** medium (UX; pushes users toward a destructive action) · **Found:** 2026-10-04, owner after production `alpha` was re-imported · **Test:** none yet
+
+`GraphMismatchView` offers only "Discard the local copy and re-sync", and its text says "the server at
+localhost" and blames a moved `--data` directory, even for a remote server whose graph was
+re-imported under the same address. Owner: there should be other options, such as keeping this copy
+as a device-only graph and optionally adding the server graph. Wanted: (1) keep the local copy as a
+device-only graph (detached from the server, renamed, never synced; B-633's no-sync rule kept) and add
+the server's graph as a new entry; (2) go to another graph without deciding; (3) discard and re-sync.
+Wording names the real server address and lists the likely causes (re-imported/replaced graph on the
+server, a different data directory).
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
