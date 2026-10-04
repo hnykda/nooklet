@@ -75,6 +75,55 @@ Found on the way and needed for this: loading `/g/X` while this origin's active 
 `/g/Y` showed Y's data under X's URL (`apiBaseUrl()` prefers the active entry). The address bar
 now wins on web/desktop (`adoptAddressBarGraph`).
 
+## Verification (exact, `884f469`)
+
+- `cargo test` (apps/desktop/src-tauri, `CARGO_TARGET_DIR` in scratch, empty `apps/desktop/sidecar/`
+  so the build script finds its resource dir): 17 passed (11 before + 6 new).
+- `pnpm -r test`: core 473, plugin-api 17, server 785, web 1547, all passed.
+  `pnpm --filter @nooklet/desktop test`: 4 passed.
+- `pnpm -r typecheck` clean; `pnpm exec biome check . --diagnostic-level=error` clean (1173 files).
+- e2e (chromium, port 6420): `desktop-local-graph.spec.ts` 4/4, `desktop-launcher.spec.ts` 8/8 (6
+  old + 2 new), and graph-switcher, local-graphs (`LOCAL_GRAPHS_RUNS=2`), graph-mismatch-discard,
+  desktop-shell, remote-device, search-local-only, sync-connection-states, local-page-creation,
+  sync-timeout: all passed after one test fix (below).
+- Full chromium e2e suite: 709 passed, 2 skipped, 2 failed: `pages.spec.ts` "a page created through
+  the API appears in the open sidebar without a reload" and `plugins.spec.ts` "deleting the open
+  page asks word count about it without a 500 (B-610)". Both files re-run alone: 22/22 passed. So
+  order-dependent in the full run; not run on `c3302f6` to show they are pre-existing, and neither
+  touches the graph list, the switcher or `/g/` routing.
+- Red without the fix: "once made, the new graph opens on This Mac's server..." fails with
+  `adoptAddressBarGraph()` commented out (requests went to `/g/default`). The component test
+  "offers a new graph on this Mac" cannot pass on `c3302f6` (no such option there).
+- Behaviour change caught by the suite: `graph-switcher.spec.ts` "adding an existing remote graph"
+  went to a bare `/page/...` after switching to `gs-second`, which the server redirects to
+  `/g/default/...`; it used to show gs-second's data under default's URL, now it opens default. The
+  test now visits `/g/gs-second/page/...`.
+
+## Still unverified
+
+- The real desktop window: no GUI launch (owner was using the app). That WKWebView reports the
+  switcher's `location.assign` to `on_navigation` was read in wry 0.55.1
+  (`wkwebview/navigation.rs`), not observed. Also unobserved: `nooklet graph create` through the
+  bundled sidecar's `node server.mjs` (the CLI itself is tested via tsx), the restart into the new
+  graph, and the error event reaching the switcher from Rust.
+- When the app reuses an external server already on its port, the new graph goes into the app's
+  data dir, which may not be what that server serves.
+
 ## BUGS.md updates to fold in
 
-(filled in as work lands)
+- **B-643** → fixed (`884f469`). Cause: `GraphSwitcher.tsx` offered a local graph only when
+  `platform.name === "capacitor"`; the desktop app is the web platform. Model chosen: a new graph on
+  This Mac's bundled server (ADR 027), via a shell request the page makes by navigating to
+  `nooklet-desktop.invalid`. Tests: `e2e/tests/desktop-local-graph.spec.ts` (3 desktop cases),
+  `e2e/tests/desktop-launcher.spec.ts` two B-643 cases, `GraphSwitcher.test.tsx` "B-643: the
+  desktop app" (4), `desktop-shell.test.ts` (2), `cli-first-run.test.ts` "graph create" (2), Rust
+  `main.rs` tests (6). Real window unverified.
+- **B-644** → fixed (`884f469`). Tests: `data/graph-names.test.ts` (6), `bootstrap.test.ts` "B-644:
+  each new local graph gets its own curated name", e2e `desktop-local-graph.spec.ts` "B-644: on the
+  phone...". Existing names (including "This device") are never renamed; the B-612 rescue still
+  labels the recovered graph "This device".
+- **New, fixed** (medium): on web/desktop, loading `/g/X` while this origin's active entry was `/g/Y`
+  showed Y's data under X's address (router followed the URL, every request followed the entry).
+  Fixed by `bootstrap.ts#adoptAddressBarGraph`. Tests: `bootstrap.test.ts` "adoptAddressBarGraph"
+  (3), e2e "once made, the new graph opens..." (red without it). Consequence: a bare address, which
+  the server redirects to `/g/default`, now opens default even if another graph was active.
