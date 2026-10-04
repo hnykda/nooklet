@@ -475,6 +475,9 @@ export class OpError extends Error {
 | 30 | `trash.list` / `trash_list` | R I | read | deferred | Deleted pages and blocks, newest first, with who deleted them (M7, ADR 022) |
 | 31 | `trash.restore` / `trash_restore` | A I | write | deferred | Bring a deleted page or block back, with what was deleted along with it (M7, ADR 022) |
 | 32 | `page.history` / `page_history` | R I | read | deferred | A page's timeline from the audit log, batch by batch, with before/after images (M7, ADR 022) |
+| 33 | `pairing.create` / `pairing_create` | A | admin | deferred | A one-time code a new device trades for its own token (B-655) |
+| 34 | `token.list` / `token_list` | R I | admin | deferred | This graph's device and agent tokens: label, scope, dates; never the token (B-655) |
+| 35 | `token.revoke` / `token_revoke` | D I | admin | requiresUserInteraction | Revoke a token and close its open sockets (B-655, B-676) |
 
 R = readOnlyHint, A = additive (destructiveHint:false), D = destructiveHint:true, I =
 idempotentHint:true. `openWorldHint:false` on every tool (omitted from the column). Rows 17-18
@@ -492,6 +495,10 @@ no manifest of what a given `command_id` does — the invoked command's own `whe
 `Command.remoteInvocable` flag are enforced client-side instead (ADR 015 §2.4). Admin/sync ops
 (`admin.tokens.*`, `admin.embeddings.reindex`, `sync.*`) exist in the registry with
 `expose.mcp: false`; out of scope for this document.
+
+Rows 33-35 (B-655, 2026-10-04) are the first tools that need `admin`; `tools/list` shows them only
+to an `admin` token. Their counterpart `pairing.redeem` is HTTP-only and the one op with
+`auth: "none"`: its caller is a device that has no token yet, never an MCP client.
 
 The first of those HTTP-only ops have now landed as `embeddings.status` (read),
 `embeddings.configure` (write) and `embeddings.reindex` (write) — the settings panel's way to turn

@@ -150,8 +150,44 @@ test("pair a second device by QR URL, see it listed, revoke it, and its sync sto
   expect(after).toBe(401);
   // The app itself notices at its next sync and says so.
   await b.reload();
-  await expect(b.getByRole("button", { name: "Token rejected", exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(b.getByRole("button", { name: "Token rejected", exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
   await phone.close();
+});
+
+test("a second pairing URL opened in the same tab shows the new code, not the cancelled one", async ({
+  page,
+  browser,
+}) => {
+  // Found on the Simulator: the landing strips the fragment, so the next QR's URL differs only by
+  // fragment, Safari treated it as a hash change, and the page kept the old (cancelled) code.
+  await page.goto("/journals");
+  const adminToken = await page.evaluate(
+    () => (window as unknown as { __NOOKLET__?: { token?: string } }).__NOOKLET__?.token,
+  );
+  const mint = () =>
+    page.evaluate(async (t) => {
+      const res = await fetch("/g/default/api/v1/pairing.create", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
+        body: "{}",
+      });
+      return ((await res.json()) as { code: string }).code;
+    }, adminToken);
+  const ctx = await browser.newContext();
+  await asRemoteDevice(ctx);
+  const b = await ctx.newPage();
+  const first = await mint();
+  await b.goto(`/g/default/pair#code=${first}`);
+  await expect(b.getByTestId("pair-open-app")).toHaveAttribute("href", new RegExp(`code=${first}`));
+  const second = await mint();
+  await b.goto(`/g/default/pair#code=${second}`);
+  await expect(b.getByTestId("pair-open-app")).toHaveAttribute(
+    "href",
+    new RegExp(`code=${second}`),
+  );
+  await ctx.close();
 });
 
 test("a write-scoped session sees no Devices section", async ({ browser }) => {

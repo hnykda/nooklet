@@ -11,9 +11,11 @@ pushed.
       `nooklet://connect?…&code=…`
 - [x] e2e `e2e/tests/qr-pairing.spec.ts` (2 tests, green on port 6470)
 - [x] QR decode probe `tools/probes/qr-decode/` (web QR and terminal QR both decode to the URL)
-- [ ] Simulator: code link via the app, and the https page → "Open in the nooklet app" → app
-- [ ] Docs: security inventory, guide, sql-schema, mcp-tools, ADR
-- [ ] Full verification run
+- [x] Simulator (private device, created and deleted): code link via the app, and the pairing page
+      in Safari → "Open in the nooklet app" → app → Connect; screenshots in
+      `tools/probes/pairing-link-ui/`. Found and fixed the same-tab stale-code bug (below)
+- [x] Docs: security inventory, guide (security.md), sql-schema, mcp-tools, ADR 029
+- [x] Full verification run (results below)
 
 ## Design as built
 
@@ -63,11 +65,17 @@ pushed.
 - **QR library: `uqr` 0.1.3** (unjs, MIT, zero dependencies, ESM, renders SVG *and* terminal
   half-blocks, so one dependency serves both the web and the CLI). `qrcode` 1.5.4 was the other
   candidate: three runtime deps (pngjs, yargs, dijkstrajs), larger, CommonJS. Size: npm unpacked
-  79 KB; the lazy web chunk is measured below. Exact version pinned (0.x).
+  79 KB; in the web build it is its own lazy chunk, **10.6 KB minified / 4.0 KB gzip**, loaded only
+  when a code is shown. The pairing page is another lazy chunk, 1.8 KB / 0.9 KB gzip (+0.35 KB CSS).
+  Exact version pinned (0.x).
 - **Pair page in the SPA bundle, not a server-rendered HTML page**: the server's static fallback
   already serves the shell for `/g/<id>/pair`, and the PWA service worker's navigate fallback would
   serve the cached shell there anyway, so a separate server page would be shadowed for anyone who
   had used the web app on that origin. The landing is its own lazy chunk and boots nothing else.
+- **Found on the Simulator, fixed**: the landing strips the fragment from the address bar, so a
+  second pairing URL opened in the same Safari tab differed only by fragment → same-document hash
+  change → the page kept the old, cancelled code. It now reloads on `hashchange`. e2e "a second
+  pairing URL opened in the same tab shows the new code" is red without the fix.
 - **`isPairPath` is anchored on `/g/<id>/pair`**, so a page named "pair" (`/g/<id>/page/pair`) is not
   swallowed. Found while writing the unit test.
 - **The phone's address is a field** in Settings → Devices: the desktop app reaches its server at
@@ -116,9 +124,41 @@ instructions when the app is not installed.
 - Whether a phone camera reads the colour-inverted terminal QR a light-background terminal shows
   (Core Image does).
 
+## Final verification (2026-10-04, branch head)
+
+- `pnpm -r test`: core 25 files / 479, plugin-api 3 / 17, server 102 / 833, web 185 / 1632 — all pass.
+- `pnpm -r typecheck`: clean. `pnpm exec biome check . --diagnostic-level=error`: clean.
+- e2e on 6470 (`qr-pairing remote-device graph-switcher insecure-context appearance`, chromium):
+  13 passed. Full e2e: see the line below.
+- `node tools/leak-check.mjs --tree`: see the line below.
+- Simulator (iOS 26.5): both XCUITest flows passed (screenshots in `tools/probes/pairing-link-ui/`).
+
 ## Owner's physical-phone test
 
-(written at the end)
+Needs: the server reachable from the phone over https (the tailnet name, e.g.
+`https://nooklet.example.ts.net`), the nooklet iOS app built from this branch on the phone, and a
+desktop session with `admin` (the desktop app, or a browser on the server's own machine).
+
+1. Desktop: Settings → Devices → Add a device. Type the phone's address for the server
+   (`https://<tailnet name>`), press "Show pairing code". A QR, the URL and a 10:00 countdown appear.
+2. iPhone: open the **Camera** app and point it at the QR. Expect a yellow link chip naming the
+   server. Tap it. **Record**: does Camera offer the link? (It should: it is an https URL.)
+3. Safari shows "Pair this device with nooklet" with the server address. Tap
+   **Open in the nooklet app**, then **Open** on iOS's "Open in “nooklet”?" prompt.
+4. The app shows "Connect to this server?" with the address and "Name this device" (prefilled
+   "iPhone"). Change the name if you like, tap **Connect**. Expect Today with both sync dots green.
+5. Desktop: within a few seconds the Devices panel says "Paired: <name>", and the new row shows
+   "write + sync". Edit a block on the phone and see it arrive on the desktop.
+6. Reuse: scan the same QR again and go through to Connect. Expect "This pairing code is no longer
+   valid". Press "New code" on the desktop, scan, and it works (and the old QR stays dead).
+7. Revoke: Devices → Revoke on the phone's row → confirm. Expect the phone's sync dot to go red and
+   "Token rejected" within seconds (the server closes its live connection), and edits made on the
+   phone afterwards stay on the phone.
+8. Optional, CLI: on the server, `nooklet pair --link https://<tailnet name>` and scan the terminal
+   QR, once with a dark terminal theme and once with a light one. **Record** whether the Camera
+   reads the light-theme (colour-inverted) one.
+9. Optional, no app: delete the app, scan a new QR; the page should say what to do, and "Use
+   nooklet in this browser instead" should pair Safari itself (https only).
 
 ## How to resume
 
@@ -126,4 +166,32 @@ Read this file, `git log --oneline 72a2b12..HEAD`, then continue at the first un
 
 ## BUGS.md updates to fold in
 
-(written at the end)
+- **B-655** → fixed (2026-10-04, commits on this branch). `admin` now gates `pairing.create`,
+  `token.list`, `token.revoke`; the loopback web-client token is `admin`; pairing codes never grant
+  `admin`. Plugin settings and gc/backup triggers have no ops yet, so nothing else to gate. Tests:
+  `packages/server/src/ops/pairing.http.test.ts` "scope enforcement" (3), `mcp/server.test.ts`
+  "B-655: lists the server-administration tools only for an admin token". ADR 029.
+- **B-676** → H3 fixed (revocation closes the token's sockets, 4401; CLI revokes are caught at the
+  next poke). Tests: `ops/pairing.http.test.ts` "token.revoke closes it at once with 4401", "a
+  revoke from another process (the CLI) closes it at the next commit instead of poking it"; e2e
+  `qr-pairing.spec.ts`. H4 (hello timeout, caps, maxPayload) still open → keep B-676 open for H4,
+  or split it.
+- **B-603** → follow-up done: QR pairing with one-time codes (the "No QR" note is obsolete). Token
+  links still work; documented as less safe. Recommend deprecating `token create --link` once the
+  owner has paired a physical phone with codes.
+- **(new, fixed, found here)** The pairing page kept a cancelled code when a second pairing URL was
+  opened in the same tab (fragment-only navigation after the page had stripped its fragment).
+  Fixed in `apps/web/src/pair/PairLanding.tsx` (reload on `hashchange`). Test: e2e
+  `qr-pairing.spec.ts` "a second pairing URL opened in the same tab shows the new code, not the
+  cancelled one" (red without the fix). Found by `tools/probes/pairing-link-ui/`.
+- **(new, fixed, found here, pre-ship)** `isPairPath` first matched any path ending in `/pair`,
+  which would have turned a page named "pair" (`/g/<id>/page/pair`) into the pairing page. Anchored
+  on `/g/<id>/pair`. Test: `apps/web/src/data/pairing.test.ts`.
+- **(new, open, low)** The pairing confirm screen shows the server address twice (the read-only box
+  and the editable "Server address" field) for both token and code links; pre-existing layout from
+  B-603, visible in `tools/probes/pairing-link-ui/pair-code-confirm.png`.
+- **(new, open, low, security)** Only `pairing.redeem` is rate-limited; behind a same-machine proxy
+  every client shares one peer address, so a flood from one client can lock out pairing for a
+  minute. Acceptable (pairing is rare, owner-initiated), noted.
+- The guide's "Known gaps" no longer lists "`admin` means `write`" or "revoke does not close
+  WebSockets".

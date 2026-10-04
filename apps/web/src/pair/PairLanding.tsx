@@ -94,6 +94,11 @@ export function mountPairLanding(root: HTMLElement, loc: Location, browserCanRun
   const appPath = loc.pathname.replace(/\/pair\/?$/, "");
   const graphAddress = `${loc.origin}${appPath}`;
   history.replaceState(null, "", loc.pathname);
+  // A second pairing URL opened in the same tab (scanning a new QR after a regenerate) differs
+  // from this one only in its fragment, now that the fragment has been stripped above — so the
+  // browser treats it as a same-document hash change and this page kept showing the OLD, cancelled
+  // code (found on the Simulator: Safari reused the tab, the app got a dead code). Re-read it.
+  window.addEventListener("hashchange", () => location.reload());
   render(
     () => (
       <PairLanding

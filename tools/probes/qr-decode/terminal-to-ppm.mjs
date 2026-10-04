@@ -26,14 +26,16 @@ const pad = 4; // extra quiet zone, light
 const W = (width + 2 * pad) * S;
 const H = (rows.length + 2 * pad) * S;
 const px = Buffer.alloc(W * H * 3, 255);
-rows.forEach((row, y) =>
-  row.forEach((light, x) => {
+for (const [y, row] of rows.entries()) {
+  for (const [x, light] of row.entries()) {
     const v = light !== invert ? 255 : 0;
     for (let dy = 0; dy < S; dy++)
       for (let dx = 0; dx < S; dx++) {
         const i = (((y + pad) * S + dy) * W + (x + pad) * S + dx) * 3;
-        px[i] = px[i + 1] = px[i + 2] = v;
+        px[i] = v;
+        px[i + 1] = v;
+        px[i + 2] = v;
       }
-  }),
-);
+  }
+}
 process.stdout.write(Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`), px]));

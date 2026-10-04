@@ -7,7 +7,8 @@ anything but 401 without being on the public allowlist in code:
 `PUBLIC_ROUTES` / `OUTER_PUBLIC_ROUTES` in `packages/server/src/http/guards.ts`. If you add a
 route, it is private unless you put it on that list with a reason, and then you update this page.
 
-Last checked against the code: 2026-10-04 (security review, `docs/progress/security-review.md`).
+Last checked against the code: 2026-10-04 (security review, `docs/progress/security-review.md`;
+QR pairing and `admin`-gated device management, `docs/progress/qr-pairing.md`).
 
 ## How auth is laid out (deny by default)
 
@@ -30,7 +31,7 @@ included. For every request, in order:
 4. **Body size**: 16 MB, or 48 MB for `/api/v1/asset.upload`, `/mcp` and `/sync/push`. Over the
    limit: 413 `too_large`, before the body is buffered.
 
-After that, routes still run their own, narrower checks: per-op scopes (`read`/`write`/`ui:control`),
+After that, routes still run their own, narrower checks: per-op scopes (`read`/`write`/`admin`/`ui:control`),
 `can_sync` for `/sync/*`, and the MCP library's own bearer gate.
 
 ## Per graph: `/g/<graph-id>/...`
@@ -42,6 +43,7 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 | GET | `/openapi.json` | none | the full op list and schemas (no data) | API description for agents |
 | GET | `/assets/:id` | none (capability URL) | the asset bytes if the id exists; served with `CSP: sandbox` + `nosniff` | `<img src>` cannot carry a bearer header (B-659, see below) |
 | GET | `/plugins/:id/:file` | none | a content-hashed client plugin bundle | loaded by `import()`, build output |
+| POST | `/api/v1/pairing.redeem` | none (a one-time pairing code in the body) | 401 for an unknown, expired, used or cancelled code (one answer for all); 400 for a malformed one; 429 + `Retry-After` past 10 attempts/min per TCP peer or 60/min in total | a new device has no token yet. Codes: 128 random bits, sha256-stored, single use (claimed atomically with the token mint), 10 min default, grant at most `write`. Two locks: the op's `auth: "none"` and this list. HTTP only, never MCP |
 | GET (WS) | `/sync/live` | `can_sync` token in the first message | nothing until `hello`; then `{type:"poke",seq}` | browsers cannot set headers on a WS handshake. A plain GET without `Upgrade` needs a token |
 | GET (WS) | `/ui/live` | `can_sync` token in the first message | as above | as above |
 | GET/HEAD | anything outside the API prefixes | none | the app shell / static build files | the web client |
@@ -65,6 +67,8 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 ## What an unauthenticated visitor can learn
 
 - That this is a nooklet server, and its op list (`/openapi.json`).
+- Whether a guessed pairing code is live (`pairing.redeem`). 128-bit codes, at most 10 attempts a
+  minute per peer and 60 in total, a handful live at once: about 2^-120 per attempt.
 - Which graph ids exist (404 vs 401 on `/g/<id>/...`), and the default graph's instance id and
   journal/task-workflow settings (`/api/session`).
 - An asset, if they already know or guess its id. Ids are 14 characters: 45 bits of millisecond
@@ -77,9 +81,20 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 
 - Per-graph tokens: `nk_` + 24 random bytes (192 bits), stored as `sha256` only, looked up by hash
   (no secret-dependent string comparison). Revocation is immediate for HTTP: every request
-  re-reads the row. **Open WebSockets are not closed on revocation** (see backlog).
+  re-reads the row. `token.revoke` also closes the token's open `/sync/live` and `/ui/live`
+  sockets (close code 4401); a revoke from the CLI (another process) closes a `/sync/live` socket
+  at the next commit, before it is poked (B-676 H3). Unauthenticated sockets still never time out
+  (H4, open).
 - Root token: `nkroot_` + 24 random bytes, file `<data>/root.token` (0600), compared with
   `timingSafeEqual`. No rotation command; delete the file and restart to rotate.
-- `admin` scope: today grants nothing beyond `write`; no op requires it (B-655).
+- `admin` scope (B-655): `write` plus server administration — `pairing.create`, `token.list`,
+  `token.revoke`. Held by the loopback web-client auto-token (the desktop app), the token
+  `POST /graphs` returns, and `token create --scope admin`. Never by a token from a pairing code.
+- Pairing codes: `nkp_` + 16 random bytes (128 bits), `pairing_code` table, sha256 only. Created
+  by an `admin` token (`pairing.create`) or `nooklet pair`; a new code cancels the same creator's
+  earlier unused one. The QR carries `<graph>/pair#code=…`: the code is in the URL fragment, so it
+  never reaches a server or proxy log.
+- Token links (`token create --link`): the link contains a long-lived token. Still accepted;
+  `nooklet pair` replaces it for phones.
 - Loopback auto-token: on only for a loopback bind; off with a non-loopback `--host` unless
   `--loopback-token` is passed; off always with `--no-loopback-token`.
