@@ -15,6 +15,7 @@ import {
   orderBetween,
 } from "@nooklet/core";
 import { createEffect, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { matchSlashTrigger } from "../commands/slash/trigger.js";
 import { describeError } from "../data/api-client.js";
 import { appendToJournalDay } from "../data/journal-day.js";
 import { clearDraftLines, readDraftLines, saveDraftLines } from "../data/journal-draft-store.js";
@@ -262,7 +263,13 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
       // `startOps` — before this handler returns, so the next key already has an editor.
       if (document.activeElement === textarea) {
         focusId = lastBlockId;
-        requestBlockFocus(lastBlockId);
+        // Where the caret is in the line, not always its end: `/` typed mid-line (B-646) commits
+        // with the caret right after it, and that is where the menu has to open.
+        const at = textarea?.selectionStart ?? null;
+        requestBlockFocus(
+          lastBlockId,
+          at !== null && at < draft().length ? { offset: at } : undefined,
+        );
       }
       startOps = ops;
       setPageId(newPageId);
@@ -388,7 +395,20 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
                   rows={1}
                   placeholder="Start typing…"
                   onFocus={() => void prepare(0).catch(() => {})}
-                  onInput={(e) => setDraft(e.currentTarget.value)}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    setDraft(el.value);
+                    // B-646: the slash menu belongs to the block editor, and this textarea is not
+                    // one — `/` typed into a day's first line opened nothing, on the phone (where
+                    // an empty day is the first thing you type into) and on the desktop alike. A
+                    // `/` that would open the menu in a block starts the day instead, with the
+                    // caret where it was; the menu then opens in the block's editor
+                    // (`CommandLayer` re-detects on focus).
+                    const at = el.selectionStart;
+                    if (at === el.selectionEnd && matchSlashTrigger(el.value.slice(0, at))) {
+                      void commit();
+                    }
+                  }}
                   onBlur={() => !disposed && void commit()}
                   onKeyDown={(e) => {
                     if (e.isComposing) return;

@@ -341,6 +341,31 @@
   transition: color var(--dur-fast) var(--ease);
 }
 
+/* B-651: the marker is an icon now (`TaskMarkerIcon.tsx`), not a glyph from whatever font had one
+   — the empty glyph box read as a missing character on iOS. Block-level, so its own line box adds
+   nothing to the row's. */
+.vr-marker .task-marker-icon,
+.shelf-marker .task-marker-icon,
+.task-checkbox .task-marker-icon {
+  display: block;
+  flex: none;
+}
+
+@media (hover: hover) {
+  .vr-marker:hover {
+    color: var(--accent);
+  }
+}
+
+/* A fingertip is wider than a 17px box: a bigger target, same position for the text after it. */
+@media (pointer: coarse) {
+  .vr-marker {
+    min-width: 1.6em;
+    margin-left: -0.2em;
+    margin-right: 0;
+  }
+}
+
 .vr-marker-DOING,
 .vr-marker-NOW {
   color: var(--marker-doing);

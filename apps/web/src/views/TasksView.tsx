@@ -13,6 +13,7 @@ import { displayRefName } from "../data/page-title.js";
 import { applyOps, getOpClock, useOpenTasks } from "../data/store.js";
 import type { TaskRow } from "../data/types.js";
 import { InlineContent } from "../editor/InlineContent.js";
+import { TaskMarkerIcon } from "../editor/TaskMarkerIcon.js";
 import { toggleDone } from "../editor/task.js";
 import type { EditableBlock } from "../editor/types.js";
 import { pageRoutePath, pageZoomRoutePath } from "../routes/page-path.js";
@@ -160,7 +161,7 @@ export function TasksView(): JSX.Element {
                       classList={{ checked: t.marker === "DONE" }}
                       onClick={() => void onToggle(t)}
                     >
-                      {t.marker === "DONE" ? "☑" : "☐"}
+                      <TaskMarkerIcon marker={t.marker === "DONE" ? "DONE" : "TODO"} />
                     </button>
                     <button
                       type="button"

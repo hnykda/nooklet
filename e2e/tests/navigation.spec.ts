@@ -120,7 +120,9 @@ test("a task references the Task page without polluting its text", async ({ page
   expect(backlinks.linked.some((r) => r.text.includes("write the report"))).toBe(true);
 });
 
-test("each task state renders its own glyph", async ({ page }) => {
+// B-651: an icon per state, not a text glyph (the empty `☐` read as a missing character on iOS),
+// and a checkbox to assistive tech, "mixed" while in progress.
+test("each task state renders its own icon", async ({ page }) => {
   await page.goto("/journals");
   await api(page, "page.create", { name: "Task Glyphs", if_exists: "return" });
   await api(page, "page.append", {
@@ -130,7 +132,22 @@ test("each task state renders its own glyph", async ({ page }) => {
 
   await page.goto("/page/Task%20Glyphs");
   const outliner = page.locator(".vr-outliner").first();
-  await expect(outliner.locator(".vr-marker-TODO")).toHaveText("☐");
-  await expect(outliner.locator(".vr-marker-DOING")).toHaveText("◐");
-  await expect(outliner.locator(".vr-marker-DONE")).toHaveText("☑");
+  await expect(outliner.locator(".vr-marker-TODO svg[data-marker-icon=TODO]")).toHaveCount(1);
+  await expect(outliner.locator(".vr-marker-TODO")).toHaveText("");
+  await expect(outliner.getByRole("checkbox", { name: "Task: TODO" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await expect(outliner.locator(".vr-marker-DOING svg[data-marker-icon=DOING]")).toHaveCount(1);
+  await expect(outliner.locator(".vr-marker-DOING")).toHaveText("");
+  await expect(outliner.getByRole("checkbox", { name: "Task: DOING" })).toHaveAttribute(
+    "aria-checked",
+    "mixed",
+  );
+  await expect(outliner.locator(".vr-marker-DONE svg[data-marker-icon=DONE]")).toHaveCount(1);
+  await expect(outliner.locator(".vr-marker-DONE")).toHaveText("");
+  await expect(outliner.getByRole("checkbox", { name: "Task: DONE" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
 });

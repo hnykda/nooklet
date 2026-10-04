@@ -3,6 +3,7 @@
  * `mobile && editorFocused`. Each tap runs the same command a keyboard shortcut would, through
  * the shared `exec` (so MRU tracking and everything else stay consistent, R71).
  */
+import SquareCheck from "lucide-solid/icons/square-check";
 import { createMemo, For, Show } from "solid-js";
 import { useCommands } from "../provider/CommandProvider.js";
 import type { CommandContext, ToolbarButton } from "../types.js";
@@ -19,7 +20,12 @@ export const TOOLBAR_BUTTONS: readonly ToolbarButton[] = [
   { icon: "#", command: "format.insertTag" },
   { icon: "(( ))", command: "format.insertBlockRef" },
   { icon: "/", command: "block.openSlashMenu" },
-  { icon: "☐", command: "task.toggleDone" },
+  // B-651: `task.cycle` (Mod+Enter), not `task.toggleDone`. A phone has no Mod+Enter, so this was
+  // the only way to DOING/NOW, and toggleDone never goes there — it was also disabled on a block
+  // that is not yet a task, so no task could be started from the toolbar. Logseq's mobile bar has
+  // the same button: `(editor-handler/cycle-todo!)` with the "checkbox" icon
+  // (src/main/frontend/mobile/mobile_bar.cljs, 0.10.9).
+  { icon: "☑", command: "task.cycle" },
   { icon: "↺", command: "edit.undo" },
   { icon: "↻", command: "edit.redo" },
   { icon: "⌄", command: "app.hideKeyboard" },
@@ -65,7 +71,12 @@ export function MobileKeyboardToolbar(props: MobileKeyboardToolbarProps) {
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => void tap(button.command)}
             >
-              {button.icon}
+              {/* An icon, not the text glyph: `☐`/`☑` read as a missing character on iOS (B-651). */}
+              {button.command === "task.cycle" ? (
+                <SquareCheck size={18} aria-hidden="true" />
+              ) : (
+                button.icon
+              )}
             </button>
           )}
         </For>

@@ -506,7 +506,7 @@ select:focus-visible {
     color var(--dur-fast) var(--ease);
 }
 
-.app-icon-button:hover {
+.app-icon-button:hover:not(:disabled) {
   background: var(--surface-2);
   color: var(--fg);
 }

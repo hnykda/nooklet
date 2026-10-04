@@ -5,6 +5,7 @@ import {
   insertCodeFence,
   insertProperty,
   insertQueryFence,
+  insertSlash,
   insertTable,
   insertToday,
   onContent,
@@ -172,5 +173,18 @@ describe("onContent (B-153): whole-block commands leave property lines alone", (
 
   it("is the command itself for a block without properties", () => {
     expect(onContent("plain", insertCodeFence)).toEqual(insertCodeFence("plain"));
+  });
+});
+
+describe("insertSlash (R50, B-646)", () => {
+  it("types a bare `/` at the block's start and after whitespace", () => {
+    expect(insertSlash("", 0, 0)).toEqual({ from: 0, to: 0, text: "/", caretOffset: 1 });
+    expect(insertSlash("ab ", 3, 3)).toEqual({ from: 3, to: 3, text: "/", caretOffset: 1 });
+    expect(insertSlash("ab\ncd", 3, 3)).toEqual({ from: 3, to: 3, text: "/", caretOffset: 1 });
+  });
+
+  it("puts a space before it mid-word, where a bare `/` would not open the menu", () => {
+    expect(insertSlash("abc", 3, 3)).toEqual({ from: 3, to: 3, text: " /", caretOffset: 2 });
+    expect(insertSlash("abc def", 1, 2)).toEqual({ from: 1, to: 2, text: " /", caretOffset: 2 });
   });
 });

@@ -60,11 +60,12 @@ export default defineConfig({
     // being edited, which WebKit alone lost (B-501, B-502). And `ref-label-flash` (B-500): what a refresh
     // leaves on screen between two renders does not depend on the storage tier. And where a click or
     // End puts the caret around a hidden `]]` (B-606): hit testing is the engine's own.
+    // And the phone UI fixes (B-646..B-651): the closest stand-in for iOS a desktop can run.
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
       testMatch:
-        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link|row-paint-after-enter)\.spec\.ts/,
+        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link|row-paint-after-enter|phone-ui)\.spec\.ts/,
     },
   ],
 });

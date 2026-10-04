@@ -161,12 +161,23 @@ export function GraphSwitcher(): JSX.Element {
     setOpen(true);
   }
 
+  let wrap: HTMLDivElement | undefined;
   onMount(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape" && open()) setOpen(false);
     };
+    // B-650: a tap or click outside closes it, as the "⋯" menu does (`./MoreMenu.tsx`). On a phone
+    // there is no Escape, so the only way out was the button that opened it. `pointerdown`, so a
+    // press on another top-bar control both closes this and works there.
+    const onDown = (e: PointerEvent): void => {
+      if (open() && wrap && !wrap.contains(e.target as Node)) setOpen(false);
+    };
     document.addEventListener("keydown", onKey);
-    onCleanup(() => document.removeEventListener("keydown", onKey));
+    document.addEventListener("pointerdown", onDown);
+    onCleanup(() => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    });
   });
 
   function switchTo(id: string): void {
@@ -298,7 +309,7 @@ export function GraphSwitcher(): JSX.Element {
   }
 
   return (
-    <div class="graph-switcher-wrap">
+    <div class="graph-switcher-wrap" ref={wrap}>
       <button
         type="button"
         class="app-icon-button"

@@ -701,7 +701,7 @@ exist for the palette, the slash menu ("page ref" / "tag" items), and the mobile
 | `block.insertTemplate` | Insert template… | — | — | `editorFocused` |
 | `block.insertQueryFence` | Query | — | — | `editorFocused` |
 | `block.toggleNumberedList` | Numbered list | — | — | `editorFocused` |
-| `block.openSlashMenu` | Open slash menu | — | — | `editorFocused && atLineStart` |
+| `block.openSlashMenu` | Open slash menu | — | — | `editorFocused` |
 
 **R48.** `block.setHeading1/2/3` prefix the block's content with `# `/`## `/`### ` (replacing any
 existing leading heading-marker run of 1–6 `#` characters, so re-applying a different level
@@ -741,9 +741,10 @@ line.
 
 **R50.** `block.openSlashMenu` inserts the literal character `/` at the caret and lets the normal
 slash-trigger matcher (§ F) pick it up — it exists solely so the mobile toolbar can offer a `/`
-button without the user first tapping to position the caret at a valid trigger spot; its `when`
-requires `atLineStart` so it only fires where `/` would actually trigger (§ R51), matching desktop
-behavior exactly rather than special-casing mobile.
+button without the user first tapping to position the caret at a valid trigger spot. Where a bare
+`/` would not trigger (mid-word), it inserts ` /` instead, so the button works anywhere in the block
+(B-646; it used to require `atLineStart`, which is the block's offset 0, and was greyed out
+everywhere else).
 
 #### E.6 App-level (categories `App`)
 
@@ -974,7 +975,7 @@ stays reachable through the slash menu or a long-press menu):
 | 6 | `#` | `format.insertTag` |
 | 7 | `(( ))` | `format.insertBlockRef` |
 | 8 | `/` | `block.openSlashMenu` |
-| 9 | ☐ | `task.toggleDone` |
+| 9 | ☑ (an icon) | `task.cycle` |
 | 10 | ↺ | `edit.undo` |
 | 11 | ↻ | `edit.redo` |
 | 12 | ⌄ | `app.hideKeyboard` |
@@ -983,8 +984,7 @@ stays reachable through the slash menu or a long-press menu):
 focus never leaves the mounted `Surface` — losing focus for even one frame drops the iOS keyboard
 (research 08 §3.3/§3.4). Each button's tap runs the same command `run(ctx)` a keyboard shortcut
 would, with `ctx` built from the currently-focused block exactly as § C describes; buttons whose
-`when` is false for the current context (e.g. `task.toggleDone` when the focused block is not a
-task) render disabled rather than being hidden, so the row's width/layout never shifts as the
+`when` is false for the current context render disabled rather than being hidden, so the row's width/layout never shifts as the
 user types.
 
 **R62.** Touch gestures on a block row (research 08 §3.5/§3.6), independent of the toolbar:
