@@ -18,3 +18,9 @@ interface ImportMeta {
 
 /** Injected by `vite.config.ts` — see `shell/HelpMenu.tsx`. */
 declare const __APP_VERSION__: string;
+
+/** The page-icon picker's emoji list, built from `emojibase-data` by `emoji/build-data.ts`. */
+declare module "virtual:emoji-data" {
+  const data: import("./emoji/types.js").EmojiData;
+  export default data;
+}
