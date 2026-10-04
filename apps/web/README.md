@@ -196,11 +196,16 @@ everything below the CLI layer is genuinely unverified, not just unattempted):
 6. Share-sheet *receiving* (a Share Extension + App Group) needs either the `send-intent` plugin
    wired into `ios/` or hand-written native code — research/08 §4; not attempted, this is real
    native-project work, not a CLI step.
-7. **Android not started**: no `npx cap add android` run, no `android/` directory, no `@capacitor/
-   android` dependency. Same shape of work as above (`AndroidManifest.xml` intent-filter for the
-   `nooklet://` scheme, icons, signing, plus its own server-address entry point — the new field in
-   `ConnectView.tsx` is gated on `platform.name === "capacitor"`, which is also true on Android, so
-   it already covers this once the Android project exists) once picked up.
+7. **Android: generated 2026-10-04, experimental, never run.** `npx cap add android` with
+   `@capacitor/android` 8.5.1 created `apps/web/android/` (committed). Hand edits `cap sync` leaves
+   alone: the `nooklet://` intent filter in `AndroidManifest.xml`, `res/xml/network_security_config.xml`
+   (cleartext allowed, the counterpart of iOS's `NSAllowsLocalNetworking`; the trade-off is in the
+   file), the launcher icons (copied from `apps/desktop/src-tauri/icons/android`), and
+   `android.allowMixedContent` in `capacitor.config.ts`. The server's CORS allowlist gained
+   `https://localhost`, the Android WebView's origin (`packages/server/src/graphs/mount.ts`).
+   `pnpm android:sync` / `pnpm android:open`; the release workflow builds the APK
+   (`tools/ci/android-apk.sh`). Never built on this machine (no Android SDK) nor run on any device
+   or emulator. What to expect: `docs/guide/getting-started.md`, "Android (experimental)".
 
 ## What's stubbed for other agents
 
@@ -266,8 +271,8 @@ Nothing here can be unit-tested in Node; each is structured so the surrounding l
     Xcode, which this environment doesn't have — no build, no simulator launch, no plugin call ever
     actually reaching the native bridge. The adapter code itself typechecks against the real
     `@capacitor/*` type packages (installed as real dependencies, not stubbed) but every plugin call
-    inside it is exercised for the first time on a real device. Android has no generated project yet
-    at all.
+    inside it is exercised for the first time on a real device. The Android project exists (item 7
+    above) but has never been built locally or run anywhere.
 
 ## Scripts
 

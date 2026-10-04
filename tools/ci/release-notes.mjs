@@ -37,7 +37,7 @@ process.stdout.write(`## Downloads
 | Linux x64 | \`nooklet-${v}-linux-x64.AppImage\`, \`.deb\` | Built in CI, not tested by the maintainer. |
 | Windows x64 | \`nooklet-${v}-windows-x64-setup.exe\` | Built in CI, not tested by the maintainer. Unsigned (SmartScreen warns). |
 | Android | \`nooklet-${v}-android-experimental*.apk\` | **Experimental.** Generated and built in CI, but never run on a device or emulator by the maintainer. [Help test it](${report}). |
-| Server | \`docker pull ghcr.io/hnykda/nooklet:${v}\` | Tested on linux/amd64. Also built for linux/arm64, which is untested. |
+| Server | \`docker pull ghcr.io/hnykda/nooklet:${v}\` | Tested on linux/amd64. linux/arm64 only smoke-tested. |
 | iOS | none | Build from source with Xcode; no App Store or TestFlight build yet. |
 
 **macOS: the app is not signed or notarized yet**, so macOS says it "is damaged" or "cannot be

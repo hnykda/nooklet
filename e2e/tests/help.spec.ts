@@ -2,7 +2,12 @@
  * The corner `?`: the route to shortcuts and to filing a bug or feature request — the things
  * people want at the moment something confuses them.
  */
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+
+const webPackage = JSON.parse(
+  readFileSync(new URL("../../apps/web/package.json", import.meta.url), "utf8"),
+) as { version: string };
 
 test("the help menu opens and links to the issue templates", async ({ page }) => {
   await page.goto("/journals");
@@ -12,8 +17,11 @@ test("the help menu opens and links to the issue templates", async ({ page }) =>
   await expect(menu).toBeVisible();
   await expect(menu.locator("a[href*='bug_report.yml']")).toBeVisible();
   await expect(menu.locator("a[href*='feature_request.yml']")).toBeVisible();
-  // The build identifies itself, so a bug report can name it without anyone remembering.
-  await expect(menu).toContainText("nooklet 0.1.0");
+  // The build identifies itself, so a bug report can name it without anyone remembering. The
+  // version is apps/web/package.json's (which `pnpm release` bumps), not a literal: this assertion
+  // once pinned "0.1.0" to match a literal in vite.config.ts that disagreed with every package.
+  await expect(menu).toContainText(`nooklet ${webPackage.version}`);
+  await expect(menu.locator("a[href$='/nooklet/releases']")).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);

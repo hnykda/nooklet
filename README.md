@@ -59,7 +59,7 @@ tag, not that anyone has used it.
 
 | Platform | How to get it | Status |
 |---|---|---|
-| Server (Docker, from source) | `ghcr.io/hnykda/nooklet`, or `pnpm nooklet serve` | Tested; runs the owner's own notes. The arm64 image is built but untested. |
+| Server (Docker, from source) | `ghcr.io/hnykda/nooklet`, or `pnpm nooklet serve` | Tested; runs the owner's own notes. The arm64 image has only been smoke-tested (starts, answers `/healthz`). |
 | Web / PWA | Served by the server | Tested; the e2e suite runs it in Chromium and WebKit. |
 | macOS desktop | Releases (`.dmg`) or `pnpm desktop:build` | Used daily (Apple Silicon). **Unsigned**: see [Getting started](docs/guide/getting-started.md#the-desktop-app). The Intel build is untested. |
 | iOS | Build from source with Xcode | Tested on the Simulator and one iPhone. No App Store or TestFlight build. |

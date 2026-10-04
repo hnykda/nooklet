@@ -66,8 +66,8 @@ it cleanly.
 
 ### Docker
 
-Each release publishes the server image for `linux/amd64` and `linux/arm64` (the arm64 one is
-untested so far) at `ghcr.io/hnykda/nooklet`, tagged with the version (`0.1.0` and `v0.1.0`),
+Each release publishes the server image for `linux/amd64` and `linux/arm64` (the arm64 one is only
+smoke-tested so far) at `ghcr.io/hnykda/nooklet`, tagged with the version (`0.1.0` and `v0.1.0`),
 `sha-<8 hex>` and `latest`. Pin a version rather than `latest`, so an upgrade happens when you
 choose it. The image bundles Node, the server, the web client, `sqlite-vec` and the built-in
 plugins; there is no `node_modules` at runtime.
