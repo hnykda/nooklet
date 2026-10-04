@@ -30,12 +30,14 @@ writer now.
 
 ## In flight — 2026-10-04 night
 
+Full e2e on `0d9c683f`: 884 passed, 0 failed, 6 skipped (retries off). Desktop app with ADR 032 + Show in Finder built but NOT installed (owner's app running); owner click-through pending.
+
 | Slug | Task | Ports |
 |---|---|---|
 | desktop-graphs | **merged + pushed** (`e0874df3`), app built not installed; owner click-through pending (docs/progress/desktop-graphs.md steps 1-12). Was: Proposal 005 (accepted): one shell-owned graph list, one add form verified from Rust, tokens in Keychain, no restarts, launcher only "Connecting…", ADR 032. Progress: `docs/progress/desktop-graphs.md` (in its worktree). Bug numbers from B-780. | 6480-6484 |
-| zoom-root | B-788: zoomed block is the fixed top; Enter makes a child; nothing escapes the zoomed subtree (phone + desktop). Bug numbers from B-820. | 6500 |
-| image-sizing | B-789: Logseq-style resize handle (Logseq `{:height …, :width …}` syntax, ADR 034), ⋯ menu (Download, Copy, Show in Finder on This Mac), optional alignment. Bug numbers from B-840. | 6510 |
-| phone-capture | Proposal 006 Phase 1 (accepted): `nooklet://capture` pre-fill, quick actions (iOS+Android), iOS App Intent "Add to nooklet" with a native queue drained on launch/resume (Action Button), Android share target; ADR 033. Simulator iPhone 17e only. Bug numbers from B-800. | 6490 |
+| zoom-root | **merged + pushed** (`d973ba34`); B-820 template-on-root, B-821 root-as-title open | 6500 |
+| image-sizing | **merged + pushed** (`0d9c683f`), ADR 034; B-841 marker-click undo open | 6510 |
+| phone-capture | **merged + pushed** (`940653fb`), ADR 033, installed on the owner's iPhone; Action Button/Siri/real long-press unverified; Android not compiled | 6490 |
 | e2e-flaky | **merged + pushed** (`0ca331e9`): B-760..B-765; full e2e 855/0 with retries off | — |
 
 Merged and pushed tonight: graph-menu (B-704/708/709/712), phone-input (B-661/662/664/699/705/706), image viewer (B-736, B-744), search prefixes (B-735), Mac autocorrect (B-742), dark caret (B-745), popup scroll (B-746). Open: B-737 (guessable public asset ids; owner to decide the scheme), B-738 slow images.
