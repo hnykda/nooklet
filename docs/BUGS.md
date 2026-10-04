@@ -1107,8 +1107,19 @@ miss. Fix: every bare positive word is a prefix term; quoted phrases and `-exclu
 Infix matching (`ationali`) is out of scope here: the server has `block_tri`/`page_tri` trigram
 tables but the client replica does not (index cost, `tools/probes/client-fts-cost.mjs`).
 
+### B-737 · e2e: "Open plugin manager … (B-98)" failed once in a full run: Plugins section not scrolled into view
+**Status:** open · **Severity:** low (test flake, or a real race in the scroll) · **Found:** 2026-10-04, image-viewer agent, full `pnpm e2e` on port 6470 · **Test:** `e2e/tests/commands.spec.ts` "Open plugin manager opens Settings at the list of running plugins, not a blank page (B-98)"
+
+In a full Chromium run (807 passed) this test failed at `expect(section).toBeInViewport()`: the
+`.set-panel #set-plugins` section existed but its viewport ratio stayed 0 for 10 s, so Settings opened
+but did not scroll to Plugins. The same spec passed straight after, run alone. Not caused by the
+B-736 change, which touches nothing in Settings or the command. Not investigated: whether the scroll
+runs before the panel's content has laid out under load.
+
+## Fixed
+
 ### B-736 · Clicking an image only opens the block editor; no way to view, copy or download it
-**Status:** in progress (2026-10-04, image-viewer agent) · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** none yet
+**Status:** fixed (2026-10-04, image-viewer agent) · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** `e2e/tests/image-viewer.spec.ts` ("B-736: clicking an image opens the viewer, not the editor; Download saves it" — Chromium and WebKit; "B-736: Copy image puts a PNG on the clipboard" — Chromium), `apps/web/src/editor/render/image-viewer.test.tsx` (11), `apps/web/src/platform/desktop-shell.test.ts` ("B-736: knows whether the shell saves downloads"), probe `tools/probes/wkwebview-download.swift`
 
 Clicking a rendered `![…](assets/….png)` switches the block to its raw markdown, so the image
 disappears and there is nothing to act on. Expected (Logseq does this): clicking the image itself
@@ -1116,7 +1127,50 @@ opens it (a lightbox / full view) with Copy image and Download/Save, while click
 rest of the block still edits. Must work in the browser, the desktop shell (WKWebView: a download
 needs the shell, not `<a download>`) and on the phone (long-press / share sheet).
 
-## Fixed
+**Cause.** `ImageView` (`editor/render/tokens.tsx`) was a bare `<img>`, so a click on it reached
+the row's `handleContentClick` (`editor/BlockRowView.tsx`) like a click on text and entered the
+editor. And on the desktop nothing could have saved it anyway: wry answers every navigation with
+`shouldPerformDownload` with `Cancel` unless the Tauri shell sets a download handler, and it set
+none.
+
+**Fixed.** The image is now a control (`role="button"`, focusable, Enter/Space): a plain click opens
+`editor/render/ImageViewer.tsx` and stops there; Shift/Cmd/Ctrl/Alt clicks and images inside links
+behave as before; a click on the block's text still edits. The viewer (Escape, backdrop or ✕ closes;
+focus trapped and restored; keys taken at `window` capture so no command runs behind it) offers
+Copy image, Download, Open in new tab and **Edit block**. The last one exists because the first
+full e2e run caught a regression: a block that is only a full-width picture had no spot left to
+click into the editor (`phone-images.spec.ts`'s overflow sweep, row 8, which now goes in through
+"Edit block"). It is passed down as `RenderCtx.onEditBlock` from the outliner row only, and cleared
+for embeds and block-ref previews, whose offsets are into another block's text. `editor/render/image-actions.ts` does the per-host work:
+
+- **Browser:** fetch → blob → `<a download>` (`GET /assets/:id` needs no credential, so a plain
+  fetch works). File name = alt text, else asset id, plus the extension.
+- **Desktop:** the shell now sets `on_download` (`apps/desktop/src-tauri/src/main.rs`): saves to
+  ~/Downloads (wry de-duplicates the name) and reports back with a `nooklet:desktop-download` event,
+  which the viewer shows as "Saved to Downloads as …". The shell advertises this as
+  `__NOOKLET_DESKTOP__.downloads`; an older shell without it gets the image opened in the system
+  browser instead, with a message.
+- **Phone (Capacitor):** bytes written to the cache dir with `@capacitor/filesystem` and handed to
+  the share sheet with `@capacitor/share` (`files`), where Save Image / Save to Files live; both
+  plugins were already dependencies. Open in new tab is hidden there.
+- **Copy:** `navigator.clipboard.write` with an `image/png` `ClipboardItem` whose value is a
+  promise (WebKit needs the write to start inside the click); non-PNG is re-encoded via canvas.
+  Without the API the viewer says so and points at Download.
+
+**Verified:** Chromium e2e (viewer opens, no editor, Download event with the uploaded bytes and the
+alt-text name, Escape/backdrop close without editing or selecting, Enter on the focused picture
+opens it with the global keymap live and focus returns to it, text click still edits;
+clipboard holds `image/png`). Playwright WebKit e2e: the same open/download test passes.
+`tools/probes/wkwebview-download.swift` (macOS 27.0.1, a bare WKWebView given wry's exact delegate
+answers): with the handler an `<a download>` of an http URL (and of a blob URL) becomes a WKDownload
+with the `download` attribute as suggested name and the file is written; with `Cancel` (the old
+shell) nothing happens. Rust: `cargo test` 17/17, including `downloads:true` in the injected script.
+
+**Not verified:** the built desktop app end to end (the real Tauri window, the `on_download` →
+`nooklet:desktop-download` round trip, and Copy image inside WKWebView — no clipboard read-back in
+WebKit, and a remote server over plain http is not a secure context, so there Copy reports
+"isn't supported"). The phone share path was not run on a device or simulator; long-press on the
+picture is untouched, so the OS's own Save Image menu should still be there.
 
 ### B-733 · `leak-check --staged` skips staged files with non-ASCII names but reports clean
 **Status:** fixed (2026-10-04, coordinator) · **Severity:** medium (the guard silently missed files) · **Test:** manual repro: a staged `pokus-ščř.md` with a home path — old guard "clean", new guard 1 finding

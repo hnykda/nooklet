@@ -62,11 +62,12 @@ export default defineConfig({
     // End puts the caret around a hidden `]]` (B-606): hit testing is the engine's own.
     // And the phone UI fixes (B-646..B-651): the closest stand-in for iOS a desktop can run.
     // And image boxes reserved before load (B-703): found on the phone, where layout is WebKit's.
+    // And the image viewer (B-736): the click that opens it, and a download, in the Mac app's engine.
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
       testMatch:
-        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link|row-paint-after-enter|phone-ui|phone-images|image-layout)\.spec\.ts/,
+        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link|row-paint-after-enter|phone-ui|phone-images|image-layout|image-viewer)\.spec\.ts/,
     },
   ],
 });

@@ -219,6 +219,8 @@ export function BlockRowView(props: {
                     onShelfOpen: props.onShelfOpen,
                     // So an `{{embed}}` that would render this very row again stops (render/EmbedView.tsx).
                     embedPath: [props.id],
+                    // B-736: the image viewer's "Edit block" — an image takes its own click.
+                    onEditBlock: props.readOnly ? undefined : (offset) => props.onEnterEdit(offset),
                     // `((id))` renders the referenced block's own text rather than an opaque id.
                     // Resolved through a cache that fetches on a miss and re-renders when the
                     // text lands (`../data/block-ref-cache.ts`).

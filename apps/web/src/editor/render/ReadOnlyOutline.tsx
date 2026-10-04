@@ -230,6 +230,8 @@ function OutlineRow(props: {
             ctx={{
               ...props.ctx,
               source: text(),
+              // An offset into THIS row's text would land in the host block's (B-736).
+              onEditBlock: undefined,
               refDepth: (props.ctx.refDepth ?? 0) + 1,
               // This row's own block joins the path, so an embed written inside it that would
               // render this row again is caught (`embedRows.ts#embedReachesPath`).
