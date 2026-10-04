@@ -1074,6 +1074,77 @@ B-712's "export first" can only point at per-page Export as markdown and promote
 
 ## Fixed
 
+### B-760 · A write from another device or the API can stay invisible until the next unrelated write
+**Status:** fixed 2026-10-04 (e2e-flaky, `1ad2ffd`) · **Severity:** medium · **Test:** `sync-client.test.ts` "a pull asked for while one is in flight runs again after it (no lost poke)" (red before); `page-delete.spec.ts:87` `--repeat-each 10`
+
+Seen as `page-delete.spec.ts:87` failing on first try, and on main `b4fbbf3b` even after its retry:
+after Restore from the Trash the page showed "Start typing…" for 10 s. `SyncClient.pull()` returned
+at once when a pull was already running, so a poke (or the live socket's `onOpen` pull) that
+arrived mid-pull was dropped, while the running pull had read the server before the commit. Fixed:
+a pull asked for mid-pull runs once more after it. Evidence: 5/10 failures at `6d56c8f` and 2/10 on
+the merged tree with the fix reverted, 50/50 with it. Not B-624's carry-over (names are per run)
+and not today's merges. `journal-agenda.spec.ts:182` (a task finished over the API staying on
+today's list) is the same shape. `remote-rewrite.spec.ts:163` (an agent's `block.update` never
+reached the editing tab in 20 s, v5 run, main without this fix) fits too; not re-verified under
+load. Left open: the server registers a `/sync/live` socket only when `hello` arrives, so a commit
+between a pull's answer and that registration gets no poke; a poke on registration would close it
+(`sync/live.ts`).
+
+### B-761 · After a reload, a page seen online can say "doesn't exist yet" once the server is unreachable
+**Status:** fixed 2026-10-04 (e2e-flaky) · **Severity:** medium · **Test:** `e2e/tests/reload-leader.spec.ts` (red with the wait at 0: `data-state="follower"`), `leader-tab.test.ts`
+
+A server graph's worker takes the replica's writer lock only if it is free at once (B-81). A reload
+or navigation in the same tab can find the previous page load's worker still holding it, so the
+page comes up as a follower on an in-memory replica; what it pulls is gone at the next load. Seen in
+full e2e runs as `mermaid-lazy-cache.spec.ts:30` (offline) and `sync-connection-states.spec.ts:60`
+(token refused) both showing "This page doesn't exist yet". The mermaid trace has two device ids
+in one test: the page load that showed the page bootstrapped a fresh replica. Fixed
+(`apps/web/src/db/leader-tab.ts`): a tab that led the replica marks `sessionStorage` and its next
+page load waits up to 3 s for the lock, as local-only graphs already did. A new tab still follows
+at once.
+
+### B-762 · "Open plugin manager" can leave Plugins out of view
+**Status:** fixed 2026-10-04 (e2e-flaky) · **Severity:** low · **Test:** `commands.spec.ts` "Open plugin manager keeps Plugins in view while the sections above it load (B-98)" (red 3/3 before)
+
+The scroll ran once at mount; the templates, embeddings and devices sections above loaded after it
+and pushed Plugins down (probe `tools/probes/settings-section-scroll.spec.ts`: top 369 → 699 of a
+720 px viewport). Failed `commands.spec.ts:202` in a full run. Fixed (`views/scroll-section.ts`,
+also used by "Search & embeddings"): re-applied on every panel resize until the person scrolls,
+clicks or types.
+
+### B-763 · A mermaid diagram seen under `/g/<slug>/` is not kept for offline use
+**Status:** fixed 2026-10-04 (e2e-flaky) · **Severity:** medium · **Test:** `mermaid-lazy-cache.spec.ts` "a diagram rendered once renders again offline" now checks every chunk (red 10/10 before, 20/20 after)
+
+The service worker's `lazy-chunks` rule matched `pathname.startsWith("/static/")`; a document
+loaded at `/g/<slug>/…` asks for `/g/<slug>/static/…`, so mermaid's 34 chunks never reached the
+cache and offline rendering depended on the HTTP cache. Rule now `^(\/g\/[^/]+)?\/static\/`
+(`apps/web/vite.config.ts`).
+
+### B-764 · `phone-ui.spec.ts` B-651 toolbar cycle test fails about 1 run in 3 ("mixed" where "false")
+**Status:** fixed 2026-10-04 (test, e2e-flaky) · **Test:** the test, per-project and per-run page name
+
+A test race, not the app: the page name was fixed, the server is shared by both projects and every
+repeat, and a run's last writes (DOING, DONE) were often still in its closing browser context's
+outbox. The next run started from whatever had been pushed: from TODO one tap gives DOING
+("mixed", the v5 WebKit failure); from DONE it gives no marker (seen in another full run). No lost
+click: the command is serialized (`createSerialRun`) and reads the marker from the replica.
+
+### B-765 · `desktop-local-graph.spec.ts:113` (B-643) saw a request to the previous graph
+**Status:** fixed 2026-10-04 (test, e2e-flaky) · **Test:** the test
+
+`/g/default/api/v1/asset.sizes` in the v5 run was the OLD `/g/default/journals` page asking for an
+image on its own journal, sent 4 ms before the navigation request (trace). Not a cross-graph
+request from the new page. The test now counts only requests from the new document (its frame is
+already at `/g/<id>`), which still catches the leak it guards against.
+
+Also from e2e-flaky (2026-10-04): B-663 fixed (test: `tasks.spec.ts` pins the workflow with the new
+`pinTaskWorkflow` helper, per-run names); B-635 fixed (test: per-run names in `popups.spec.ts`);
+B-669 believed fixed (test: `shelf.test.ts` warms its cold import outside the 5 s timeout); B-670
+fixed (`e2e/global-setup.ts`: the server writes its log fd directly); B-636 (`sw-update.spec.ts:86`)
+not reproduced: 20/20 alone, 30/30 under CPU load. `focus-log.spec.ts:76` fixed (test: recording
+off before Clear). Pre-existing and not fixed: `commands.spec.ts:159`, `focus-log.spec.ts:36/:106`
+fail on `--repeat-each` repeats after the first (fixed page names).
+
 ### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
 **Status:** fixed 2026-10-04 (phone-input) · **Test:** `token-input.test.ts`, `GraphSwitcher.test.tsx` "B-706: …" ×2
 

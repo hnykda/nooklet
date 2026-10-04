@@ -135,6 +135,18 @@ test.describe("desktop app", () => {
     const apiPaths: string[] = [];
     page.on("request", (r) => {
       const path = new URL(r.url()).pathname;
+      // Only the new document's requests. The old `/g/default/journals` page can still be sending
+      // its own as the navigation starts — an `asset.sizes` for an image on its journal went out
+      // 4 ms before the navigation request in a full run and failed this check, though it was
+      // that page asking its own graph. A request the NEW page sends to the old graph is still
+      // caught: its frame is already at `/g/<id>`.
+      let frameUrl = "";
+      try {
+        frameUrl = r.frame().url();
+      } catch {
+        // a service worker's own request: no frame
+      }
+      if (frameUrl.includes("/g/default/")) return;
       if (/\/api\/|\/sync\//.test(path)) apiPaths.push(path);
     });
     await page.goto(`/g/${id}`);

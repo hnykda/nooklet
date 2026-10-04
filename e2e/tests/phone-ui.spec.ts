@@ -197,7 +197,16 @@ test("B-708: on a phone the agent channel stays shut and its badge hidden until 
 test("B-651: the toolbar's task button cycles a block through the workflow, DOING/NOW included", async ({
   page,
 }) => {
-  const outliner = await openEditing(page, "Phone Task Cycle", "- ship it");
+  // This project's and this run's own page. With one fixed name, the next run (the WebKit project
+  // after Chromium on the same server, or a `--repeat-each` repeat) met the block in whatever state
+  // the previous run had pushed before its browser context closed — often not its final DONE, so
+  // the first tap moved TODO to DOING and the test read "mixed" where it expects "false".
+  const { project, repeatEachIndex, retry } = test.info();
+  const outliner = await openEditing(
+    page,
+    `Phone Task Cycle ${project.name} ${repeatEachIndex}-${retry}`,
+    "- ship it",
+  );
   const cycle = page.locator(".cmd-toolbar button[aria-label='task.cycle']");
   // Enabled on a block that is not a task yet: this is how a task is started from the phone.
   await expect(cycle).toBeEnabled();
