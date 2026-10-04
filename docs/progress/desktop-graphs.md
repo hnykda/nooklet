@@ -19,7 +19,7 @@ Design: `docs/proposals/005-one-graph-list-on-desktop.md` (accepted 2026-10-04).
       graph-remove, graph-switcher (`99885785`).
 - [x] ADR 032, ADR 028 amendment, PLAN M12 line, user guide (getting-started, features, faq,
       sync-and-offline) (`f918638a`).
-- [ ] Full verification runs (see "Verification" below), `pnpm desktop:build --bundles app`.
+- [x] Merged main `0ca331e9` (`6efdb0ae`); full verification below; `pnpm desktop:build --bundles app` builds and bundles.
 
 ## Design decisions (and deviations from the proposal)
 
@@ -59,7 +59,7 @@ Design: `docs/proposals/005-one-graph-list-on-desktop.md` (accepted 2026-10-04).
 
 ## In flight
 
-- Final verification runs. Nothing half-written in the tree.
+- Nothing. Done except the owner's real-window check below.
 
 ## Owner's check in the real app (not done by any agent: no GUI run)
 
@@ -95,7 +95,19 @@ launch migrates `~/Library/Application Support/com.nooklet.desktop/desktop.json`
 
 ## Verification (exact)
 
-(filled in below as runs finish)
+On the merge with main (`6efdb0ae` + the B-788 drop):
+- `pnpm e2e` (full, port 6480): **857 passed, 0 failed, 6 skipped** (27.9 min).
+  An earlier full run before the merge (on `28db1e3f`): 853 passed, 2 failed — `commands.spec.ts:202`
+  (B-98, known) and `sync-connection-states.spec.ts:60`; both passed when re-run alone after the
+  merge (14 passed), and both were in the coordinator's list of flakes main fixed.
+- `pnpm -r test`: core 506, plugin-api 17, server 951, web 1744, desktop (node) 4 — all passed.
+- `cargo test` (src-tauri): 33 passed, 1 ignored (`the_real_keychain_round_trips`, writes to the
+  login keychain; not run).
+- `pnpm -r typecheck` clean; `pnpm exec biome check . --diagnostic-level=error` clean;
+  `node tools/leak-check.mjs --tree` clean.
+- `pnpm desktop:build --bundles app`: built and bundled `nooklet.app` (not installed, not launched).
+- NOT verified: anything in a real WKWebView window (navigation interception, window swap, the
+  Keychain prompt, the Graphs… menu item, migration of the owner's real `desktop.json`).
 
 ## How to resume
 
