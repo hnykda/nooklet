@@ -6,15 +6,20 @@ Design: `docs/proposals/005-one-graph-list-on-desktop.md` (accepted 2026-10-04).
 ## Status
 
 - [x] Read proposal 005, ADR 025/028/029, `graph-menu.md`, `main.rs`, launcher, web switcher.
-- [x] BUGS.md: B-780 (umbrella) + B-781..B-785 logged before any fix (`d4053b9f`).
+- [x] BUGS.md: B-780 (umbrella) + B-781..B-785 logged before any fix (`d4053b9f`); marked fixed
+      with their tests; B-739 closed; follow-ups B-786, B-787, B-788 (pre-existing lint error).
 - [x] Rust: shell-owned list (`graph_list.rs`), migration, Keychain (`token_store.rs`), verify
-      (`connect.rs`), always-on sidecar, per-target window, door requests with a request key.
-      `c47acd84`. `cargo test`: 33 passed, 1 ignored (the real-keychain round trip).
+      (`connect.rs`), always-on sidecar, per-target window, door requests with a request key
+      (`c47acd84`); no self-rebuild loop for a token-less server window (`28db1e3f`).
 - [x] Launcher shrinks to Connecting… / Couldn't reach (`c47acd84`).
-- [ ] Web: desktop data source + menu + add form + no-token screen; bootstrap token from shell;
-      mismatch on desktop; phone wording; remove dead code.
-- [ ] ADR 032, ADR 028 amendment, user docs.
-- [ ] Tests: Rust, web unit, e2e; full runs; desktop build; leak check.
+- [x] Web: `DesktopGraphMenu`, `DesktopAddGraph`, `DesktopConnectView`, bootstrap token from the
+      shell, desktop mismatch screen, phone wording, `DesktopServerSwitch` removed (`e00f40e0`,
+      `17b927db`).
+- [x] e2e: `desktop-graphs.spec.ts` (was `desktop-local-graph.spec.ts`), launcher, desktop-shell,
+      graph-remove, graph-switcher (`99885785`).
+- [x] ADR 032, ADR 028 amendment, PLAN M12 line, user guide (getting-started, features, faq,
+      sync-and-offline) (`f918638a`).
+- [ ] Full verification runs (see "Verification" below), `pnpm desktop:build --bundles app`.
 
 ## Design decisions (and deviations from the proposal)
 
@@ -54,10 +59,43 @@ Design: `docs/proposals/005-one-graph-list-on-desktop.md` (accepted 2026-10-04).
 
 ## In flight
 
-- Web side (next): `platform/desktop-shell.ts` new shape (`graphs`, `key`, `graphToken`,
-  `connect`), requests `new-local-graph` / `connect-server` / `rename` / `remove` with `key` + `req`,
-  replies on `nooklet:desktop-reply`. Switching = `location.assign(graph.address)`.
-  Between `c47acd84` and the web commit the desktop app is NOT usable (page expects the old shape).
+- Final verification runs. Nothing half-written in the tree.
+
+## Owner's check in the real app (not done by any agent: no GUI run)
+
+Build: `pnpm desktop:build --bundles app`, then run
+`apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app` (or install it as usual). The first
+launch migrates `~/Library/Application Support/com.nooklet.desktop/desktop.json` once and leaves
+`desktop.json.v1.bak` beside it.
+
+1. Launch. It opens the graph that was active (your real server). Because its token is not in the
+   Keychain yet, the window shows "Connect to <name>" with the address filled in and, if the old
+   version had stored it in that page, the token too. Press **Connect**. Expect: a Keychain prompt
+   ("nooklet wants to use…"): **Always Allow**; the window swaps once and the graph opens synced.
+2. Quit and relaunch: it opens that graph directly, no form, no prompt (or one more prompt if
+   macOS asks again for this build).
+3. Click the graph name at the top of the sidebar. Expect: **On this Mac** (This Mac + any other
+   local graphs) and **On servers** with one sub-heading per host (your real server, and the two
+   dead 127.0.0.1 test servers from the old file). No "device" wording anywhere.
+4. Pick **This Mac**: the page changes to This Mac with no restart (no window close/reopen).
+5. Pick your server graph again: a window swap (brief flash) and it opens, synced. No token asked.
+6. Remove the two dead 127.0.0.1 servers with the trash icon (confirm dialog). They disappear.
+7. **Add a graph → Connect to a server**: type your server's address and a wrong token
+   (`nk_` + 48 zeros). Expect "That token was rejected…" on the same form. Then an address
+   nothing listens on (`http://127.0.0.1:6549`). Expect "Couldn't reach 127.0.0.1:6549: …". Then a
+   token of the wrong shape (`abc`): named before anything is sent.
+8. **Add a graph → Create on this Mac**: keep the suggested name, **Create**. The new graph opens
+   (no restart) and is listed under On this Mac.
+9. Rename a row with the pencil; reload (Cmd+R); the new name is still there.
+10. Menu bar **nooklet → Graphs…**, with the sidebar closed: the sidebar opens with the menu.
+11. Turn Wi-Fi off and pick your server graph: "Couldn't reach <host>." with **Try again** and
+    **Open a graph on this Mac**; the latter opens This Mac.
+12. Keychain Access → search `com.nooklet.desktop`: one item per server graph you connected,
+    account = the graph's address. `desktop.json` contains no token.
+
+## Verification (exact)
+
+(filled in below as runs finish)
 
 ## How to resume
 
