@@ -1105,6 +1105,33 @@ opens it (a lightbox / full view) with Copy image and Download/Save, while click
 rest of the block still edits. Must work in the browser, the desktop shell (WKWebView: a download
 needs the shell, not `<a download>`) and on the phone (long-press / share sheet).
 
+### B-737 · Tokenless `GET /assets/:id` relies on ids being unguessable, but asset ids are 45 time bits + 25 random bits, sequential within a millisecond
+**Status:** open · **Severity:** high (security) · **Found:** 2026-10-04, checking image load time on the production server · **Test:** none yet
+
+`PUBLIC_ROUTES` (`packages/server/src/http/guards.ts`) lets `/assets/:id` through without a token
+because `<img src>` cannot carry a bearer header, on the stated grounds that "ids are unguessable".
+They are not: assets use `newId()` (`packages/core/src/ids.ts`, ADR 004), whose only randomness is
+25 bits, re-rolled per millisecond and **incremented by one** for every further id inside the same
+millisecond. A bulk import creates many assets per millisecond, so one known asset URL leads
+straight to its neighbours, and the time part narrows any search to an import window. Verified:
+a production asset answered 200 to a request with no token. Exposure is limited by where the server is reachable
+(tailnet-only for the owner), but the default must be safe without that.
+Fix options: (a) a separate 128-bit random asset key in the URL (capability URL done properly),
+(b) an HttpOnly same-site cookie set from the bearer token so `<img>` is authenticated,
+(c) short-lived signed URLs. Whichever: the content stays `sandbox`-CSP; existing block content
+keeps its `assets/<id>.<ext>` form, so the mapping happens in `assetUrl()` / the server.
+
+### B-738 · Images load slowly, even the second time the same image is shown
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner ("probably OK") · **Test:** none yet
+
+Imported photos are stored and served at full size (the largest images on the production graph are 2.7 to 4 MB),
+and there are no thumbnails, so each one is several MB to download. Measured from the Mac over a
+direct tailnet path: about 1.6 MB/s (a 67 MB asset in 41 s). `/assets/:id` already sends
+`cache-control: public, max-age=31536000, immutable`, so a slow *second* load means the
+webview is not reusing its HTTP cache. That is unverified: check the Tauri/WKWebView and Capacitor caches, and
+whether the URL changes between renders. Possible fixes: server-side resized variants
+(`/assets/:id?w=…`) and `loading="lazy"`/`decoding="async"`.
+
 ## Fixed
 
 ### B-735 · Keyword search matches whole words only: `rationalit` does not find `rationality`
