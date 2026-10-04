@@ -1109,6 +1109,17 @@ the server's graph as a new entry; (2) go to another graph without deciding; (3)
 Wording names the real server address and lists the likely causes (re-imported/replaced graph on the
 server, a different data directory).
 
+### B-715 · Images from a Logseq DB-version graph import as their timestamp names, not images
+**Status:** open · **Severity:** high for DB-version users (every pasted image is lost as an image) · **Found:** 2026-10-04, owner on the phone (a block from yesterday shows `2026-10-03-15-56-42` instead of the picture) · **Test:** none yet
+
+Logseq's DB version stores a pasted image as an asset entity (title = a timestamp like
+`YYYY-MM-DD-HH-MM-SS`, file = `assets/<entity uuid>.<ext>`). Its markdown mirror writes only the
+entity's title as a plain line: no `![](…)` link and no `id::`; 0 of 177 asset files are referenced
+anywhere in the mirror. The mapping exists only in the graph's `db.sqlite` (table `kvs`: Datascript
+storage nodes, transit-encoded datoms `[e, attr, value, tx]`). Fix: a Logseq DB-version import path
+that reads `db.sqlite` (read-only copy) for asset entities (and anything else the mirror loses),
+turning those title lines into image embeds.
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
