@@ -107,6 +107,12 @@ test("Enter on New page inside a link to a page that does not exist keeps the wh
   // The row names the whole link, not the fragment before the caret — B-382's fix, visible.
   const create = popup.locator(".cmd-row", { hasText: `New page "${unmade}"` });
   await expect(create).toHaveCount(1);
+  // Wait for the pages list before walking. Until it loads, "New page" is the only page row, so
+  // it sat at index 0 already highlighted, the walk below stopped at once, and then the list
+  // arrived and pushed the row down under a highlight that stays on index 0 — the first-try
+  // failure in full runs ("New page" row present, not active). The holder page is in the list
+  // only once it has loaded.
+  await expect(popup.locator(".cmd-row", { hasText: `Walkin Alias Holder ${tag}` })).toHaveCount(1);
   // Ranking may put fuzzy page matches (other "Walkin …" pages, earlier runs' "Walkin Unmade …")
   // first; walk to the row. Bounded by the rows on offer, not a fixed 10: each run adds two
   // rows above it, and the sixth run under --repeat-each had eleven.
