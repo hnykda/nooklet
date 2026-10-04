@@ -4,7 +4,7 @@ Branch: the agent's own worktree branch, based on `6d56c8f`. Not merged, not pus
 
 ## Status
 
-**Done**, in one commit on top of `6d56c8f` (hash in the coordinator report / `git log`). Nothing
+**Done**: `0ab83d2` on top of `6d56c8f`. Nothing
 in flight. Coordinator: fold the section at the bottom into BUGS.md.
 
 ## What changed
