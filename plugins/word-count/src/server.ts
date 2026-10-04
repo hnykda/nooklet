@@ -19,6 +19,7 @@
 import type { BlockNode, ServerPluginModule } from "@nooklet/plugin-api";
 import { defineOp, OpError } from "@nooklet/plugin-api";
 import { z } from "zod";
+import { countWords } from "./count.js";
 
 interface WordCountResult {
   page: string;
@@ -49,7 +50,7 @@ async function countPage(
   const walk = (nodes: BlockNode[]): void => {
     for (const n of nodes) {
       blockCount++;
-      wordCount += n.content.split(/\s+/).filter(Boolean).length;
+      wordCount += countWords(n.content);
       walk(n.children);
     }
   };
