@@ -38,11 +38,18 @@ Scratch servers on ports 6455-6457 only, `NOOKLET_DATA` always a fresh `mktemp -
 - First e2e attempt is void: a sibling agent wrote to the same scratchpad log name, so the
   output could not be attributed. Re-running with a unique log name.
 
+- Full `pnpm e2e` (port 6457, merged tree, CSP + guards): 746 passed, 2 skipped, 2 failed:
+  `journal-agenda.spec.ts:182` and `mermaid-lazy-cache.spec.ts:30`. Both pass when re-run alone
+  (12/12), and mermaid-lazy-cache passes `--repeat-each=3` (6/6). A sibling agent's full run
+  without these changes failed the same mermaid-lazy-cache test, so both look load-flaky, not
+  caused by this branch. Believed, not proven.
+- Scratch servers on 6455/6456 stopped.
+
 ## In flight
-- Full `pnpm e2e` on port 6457 against the merged tree (log `secrev-e2e-a81e.log` in scratch).
+- Nothing. Done.
 
 ## Next steps
-1. e2e result -> record here, commit.
+- Coordinator: fold "BUGS.md updates" and the backlog into BUGS.md / PLAN.md; merge the branch.
 
 ## For the docs agent (outside the TODO blocks, not edited by me)
 - `docs/guide/self-hosting.md` flag table (`--no-loopback-token` row) and `docs/guide/security.md`
