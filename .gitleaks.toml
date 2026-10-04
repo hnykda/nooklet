@@ -1,0 +1,64 @@
+# gitleaks config for nooklet — the public repo. Run through tools/leak-check.sh, which also works
+# without gitleaks installed (same patterns, grep fallback) and adds the owner's PRIVATE denylist.
+#
+# What this file must NOT contain: the real strings it protects (a tailnet name, a LAN address, a
+# person's name). Patterns here are shapes; literal personal terms live only in the private
+# denylist outside the repo (see docs/progress/leak-audit.md, "Guards").
+title = "nooklet"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "nooklet-token"
+description = "A nooklet device, root or bootstrap token (nk_/nkroot_/nkb_ + 48 hex)"
+regex = '''\bnk(?:root|b)?_[0-9a-f]{32,}\b'''
+keywords = ["nk_", "nkroot_", "nkb_"]
+
+[[rules]]
+id = "home-path"
+description = "An absolute path into someone's home directory; write ~/… or <repo>/… instead"
+regex = '''(?:/Users|/home)/[A-Za-z][A-Za-z0-9._-]+/'''
+keywords = ["/users/", "/home/"]
+[rules.allowlist]
+regexes = ['''/(?:Users|home)/(?:me|you|user|runner|example|<[^>]+>)/''']
+
+[[rules]]
+id = "tailnet-host"
+description = "A real Tailscale MagicDNS name; write <tailnet>.ts.net or example.ts.net"
+regex = '''\b[a-z0-9][a-z0-9-]*\.[a-z0-9-]+\.ts\.net\b'''
+keywords = [".ts.net"]
+[rules.allowlist]
+regexes = ['''\.(?:example|tailnet|tailnet-name|your-tailnet)\.ts\.net''']
+
+[[rules]]
+id = "tailscale-ip"
+description = "A Tailscale CGNAT address (100.64.0.0/10); use 100.101.102.103 as the example"
+regex = '''\b100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b'''
+keywords = ["100."]
+[rules.allowlist]
+regexes = ['''100\.101\.102\.103''', '''100\.64\.0\.[0-9]+''']
+
+[[rules]]
+id = "lan-ip"
+description = "A private LAN address; use the documented examples 192.168.1.5 / 192.168.1.6"
+regex = '''\b(?:192\.168|10\.[0-9]{1,3})\.[0-9]{1,3}\.[0-9]{1,3}\b'''
+keywords = ["192.168.", "10."]
+[rules.allowlist]
+regexes = ['''192\.168\.1\.[56]\b''', '''192\.168\.139\.3\b''', '''192\.168\.0\.0''', '''10\.0\.0\.[0-9]+''']
+
+[[rules]]
+id = "personal-email"
+description = "A personal mailbox address"
+regex = '''\b[A-Za-z0-9._%+-]+@(?:gmail|googlemail|icloud|me|outlook|hotmail|proton|protonmail|seznam|email)\.(?:com|cz|me)\b'''
+keywords = ["@"]
+
+[[rules]]
+id = "sops-plaintext"
+description = "Decrypted SOPS material or an age secret key"
+regex = '''AGE-SECRET-KEY-1[0-9A-Z]{58}'''
+keywords = ["age-secret-key"]
+
+[allowlist]
+description = "Lockfile integrity hashes and generated Tauri schemas are not secrets"
+paths = ['''pnpm-lock\.yaml''', '''apps/desktop/src-tauri/gen/''', '''\.png$''']

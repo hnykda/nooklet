@@ -32,7 +32,7 @@ write decided by HLC (`content_hlc` against this tab's last text write), never b
   `--repeat-each=2`: 18/18.
 - `45029a3` Real graph (copy of `~/.nooklet/default/graph.sqlite` via `.backup`, served on 6413, killed after):
   `tools/probes/remote-rewrite-real-graph.mjs` on 2026-08-17 (20 rows, Czech block
-  `[[@Robin]] co juli jí, jídlo, dieta`) — all 7 checks ok, no console errors (first run's 3 FAILs
+  `[[@Robin]] co robin jí, jídlo, dieta`) — all 7 checks ok, no console errors (first run's 3 FAILs
   were the probe reading DOM text where live preview hides `[[ ]]`; fixed in the probe).
   `pnpm nooklet verify` on the copy: 20484 ops replayed, OK.
 - `99f54ff` (skew): "Keep mine" under clock skew lost the typing — the editor clock never observed

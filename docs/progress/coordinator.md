@@ -10,14 +10,20 @@ Owner: bring nooklet to production. Plan agreed: the app server tailnet-only (Ta
 single replica, PVC, SOPS root token, `--no-loopback-token`, nightly backup); a public static
 landing+docs site at nooklet.danielalder.cz (Next.js static export, docs/guide as single source,
 search, llms.txt); deploy through the owner's Woodpecker + infra-repo (draft PR there).
+**Deployment tiers (owner decision 2026-10-04):** (1) recommended default — tailnet-only + HTTPS +
+per-device tokens; (2) possible with a checklist — public behind a TLS reverse proxy (pending the
+security review); (3) unsupported — plain http beyond localhost.
 **The GitHub repo is already public; local main is ~770 commits unpushed and contains personal
 data — do NOT push until the leak audit's remediation is decided by the owner.**
 
 | Slug | Task | Ports |
 |---|---|---|
 | leak-audit | secrets/personal data in tree + unpushed + public history; scrub internal docs; history plan; guards | — |
-| public-docs | docs/guide/* (features, architecture, sync, getting started, self-hosting, security, agents, FAQ), README, SECURITY, CONTRIBUTING | 6440-6444 |
+| public-docs | docs/guide (9 pages), README, SECURITY, CONTRIBUTING, **merged** (`36fdac6`); mismatches B-653..B-659 | 6440-6444 |
 | site | apps/site (`@nooklet/site`), landing + docs + animations + search + llms.txt | 6445-6449 |
+| b660 | B-660: replica FK constraint error on page load — data lost or benign? | 6465-6469 |
+| b652 | B-652: prove/fix the push-before-pull conflict race (silent text loss?) | 6460-6464 |
+| security-review | public-exposure review: route inventory, tokens, brute force/DoS, headers, XSS, plugins; small fixes; tier-2 checklist | 6455-6459 |
 | infra | generic deploy/ + Woodpecker in nooklet; draft PR in infra-repo (branch `nooklet-deploy`, worktree `<infra-repo>-nooklet`) | 6450-6454 |
 
 Incident: the first launch of these four ran in **infra-repo** worktrees, because the coordinator's
@@ -36,13 +42,13 @@ B-640..B-651 from the owner's feedback. Agents in flight (worktrees, all based o
 
 | Slug | Task | Ports |
 |---|---|---|
-| b640 | invisible block text until edited (high) — reproduces from a backup of the test graph | 6400-6404 |
+| b640 | invisible text = WebKit content-visibility paint bug, **merged** (`49ddf1e`); B-660 FK log | 6400-6404 |
 | b641 | references (and other server-only views) offline/local-only from the replica | 6405-6409 |
-| b642 | readable conflict copies instead of `conflict_copy::` (ADR) | 6410-6414 |
+| b642 | readable conflict copies, **merged** (`1827b8c`, ADR 027); B-652 race logged | 6410-6414 |
 | phone-ui | B-646 `/` on phone, B-648 properties overflow, B-649 forward greyed, B-650 switcher outside-tap, B-651 task cycling + checkbox | 6415-6419 |
 | desktop-local-graph | B-643 local graph from the desktop app, B-644 whimsical names | 6420-6424 |
 | all-pages | B-645 counts + delete in All pages | 6425-6429 |
-| icon-picker | B-647 searchable emoji picker | 6430-6434 |
+| icon-picker | B-647 emoji picker, **merged** (`f45e6bb`) | 6430-6434 |
 
 ## Ready for the first real-device test — 2026-10-03 evening (READ THIS FIRST)
 

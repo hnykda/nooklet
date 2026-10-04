@@ -26,7 +26,8 @@ xcrun simctl delete <udid>
 ```
 
 Result 2026-10-03 (iOS 26.5, `pairing-confirm.png`, `pairing-after-connect.png`): the confirm
-screen showed the address; nothing was contacted before the tap; Connect led to Today with both
+screen showed the address (blanked in the committed PNG on 2026-10-04: it was the test machine's
+real LAN address — see `docs/progress/leak-audit.md`); nothing was contacted before the tap; Connect led to Today with both
 sync dots green. The first run found a real bug: after Connect's `location.reload()`,
 `App.getLaunchUrl()` returned the same link again (it is Capacitor's `lastURL`, which outlives a
 reload), so the confirm screen came back after every connect. Fixed by

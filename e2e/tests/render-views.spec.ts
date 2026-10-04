@@ -89,7 +89,7 @@ test("on a desktop the title row keeps History and the icon slot behind hover; t
   );
   await page.getByRole("menuitem", { name: "Add icon" }).click();
   await expect(page.locator(".page-actions-menu")).toHaveCount(0);
-  await expect(page.locator(".page-icon-input")).toBeFocused();
+  await expect(page.locator(".emoji-picker-search")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(slot).toHaveCount(1);
 });

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Public-repo leak guard (see CLAUDE.md, "Public repo hygiene"). Enable once per clone:
+#   git config core.hooksPath tools/git-hooks
+# Bypass only for a false positive you have looked at: git commit --no-verify
+exec node "$(git rev-parse --show-toplevel)/tools/leak-check.mjs" --staged
