@@ -1080,6 +1080,15 @@ flakes and are noted here rather than logged separately.
 
 ## Fixed
 
+### B-766 · Linked references sorted by "Recent" are not in date order
+**Status:** fixed 2026-10-04 · **Severity:** medium · **Found:** 2026-10-04, owner on the production graph · **Test:** `referenceGrouping.test.ts` "B-766: …" (2; both fail without the fix)
+
+On a page referenced from several journal days, "Recent" listed the groups as Oct 4th, Sept 5th,
+Sept 14th: newest first, then the rest out of order.
+
+**Cause:** "Recent" ranked each page group by its blocks' latest *edit* time. After an import every block carries the import time, so all days tied except the one edited since, and the name tie-break put the rest oldest first.
+**Fix:** a journal group (wire name = ISO date) is dated by its day (end of day, UTC); other pages keep their latest edit; one timeline, newest first (`views/referenceGrouping.ts#groupTime`).
+
 ### B-760 · A write from another device or the API can stay invisible until the next unrelated write
 **Status:** fixed 2026-10-04 (e2e-flaky, `1ad2ffd`) · **Severity:** medium · **Test:** `sync-client.test.ts` "a pull asked for while one is in flight runs again after it (no lost poke)" (red before); `page-delete.spec.ts:87` `--repeat-each 10`
 

@@ -116,6 +116,21 @@ export function isFilterEmpty(filter: ReferenceFilter): boolean {
 /** Group `linked` by `page`. `"recent"` (the default) orders pages by their most-recently-updated
  * ref first (ties broken by page name for determinism) and refs within a page the same way;
  * `"name"` orders pages alphabetically and keeps refs most-recent first within each. */
+const ISO_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * When a group happened, for "Recent" (B-766). A journal day (its wire name is the ISO date) is
+ * dated by the DAY, not by its blocks' edit times: an imported graph stamps every block with the
+ * import time, so by edit time every day tied and the name tie-break listed them oldest first
+ * (Oct 4th, Sept 5th, Sept 14th). The end of the day, so a page edited that day sorts with it
+ * rather than ahead of it. Any other page has no date of its own and keeps its latest edit.
+ */
+function groupTime(page: string, latestEdit: number): number {
+  const m = ISO_DAY_RE.exec(page);
+  if (!m) return latestEdit;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1) - 1;
+}
+
 export function groupLinkedReferences(
   linked: readonly BacklinkRef[],
   sort: ReferenceSort = "recent",
@@ -131,6 +146,7 @@ export function groupLinkedReferences(
     g.refs.push(r);
     if (t > g.mostRecent) g.mostRecent = t;
   }
+  for (const [page, g] of byPage) g.mostRecent = groupTime(page, g.mostRecent);
   const entries = [...byPage.entries()];
   entries.sort(
     sort === "name"

@@ -36,6 +36,32 @@ describe("groupLinkedReferences", () => {
     expect(groups.map((g) => g.page)).toEqual(["A", "B"]);
   });
 
+  it("B-766: journal days sort by their date, newest first, whatever their blocks' edit times", () => {
+    // An imported graph: every block carries the import time, and one was edited since.
+    const imported = "2026-10-04T12:00:00.000Z";
+    const groups = groupLinkedReferences([
+      { id: "s5", page: "2026-09-05", text: "x", updatedAt: imported },
+      { id: "o4", page: "2026-10-04", text: "x", updatedAt: "2026-10-04T18:00:00.000Z" },
+      { id: "s14", page: "2026-09-14", text: "x", updatedAt: imported },
+      { id: "a20", page: "2025-08-20", text: "x", updatedAt: imported },
+    ]);
+    expect(groups.map((g) => g.page)).toEqual([
+      "2026-10-04",
+      "2026-09-14",
+      "2026-09-05",
+      "2025-08-20",
+    ]);
+  });
+
+  it("B-766: an ordinary page sits on the same timeline by its latest edit", () => {
+    const groups = groupLinkedReferences([
+      { id: "j1", page: "2026-09-14", text: "x", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: "p1", page: "Garden", text: "x", updatedAt: "2026-09-20T09:00:00.000Z" },
+      { id: "j2", page: "2026-09-25", text: "x", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+    expect(groups.map((g) => g.page)).toEqual(["2026-09-25", "Garden", "2026-09-14"]);
+  });
+
   it("returns nothing for no refs", () => {
     expect(groupLinkedReferences([])).toEqual([]);
   });
