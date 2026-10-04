@@ -5,16 +5,120 @@ pushed.
 
 ## Status
 
-- [ ] Server: `pairing_code` table (schema v8), `pairing.create` / `pairing.redeem` /
-      `token.list` / `token.revoke` ops, rate limiter, socket close on revoke
-- [ ] Web: Settings → Devices, QR (lazy), `/pair` landing page, `nooklet://connect?…&code=…`
-- [ ] CLI: `nooklet pair`
-- [ ] Docs: security inventory, guide, sql-schema, ADR
-- [ ] Verification
+- [x] Server (`1a556a8`): `pairing_code` table (schema v8), ops `pairing.create` / `pairing.redeem`
+      / `token.list` / `token.revoke`, rate limiter, socket close on revoke, `nooklet pair`
+- [x] Web (`cfb9c19`): Settings → Devices, QR (lazy `uqr`), `/g/<id>/pair` landing page,
+      `nooklet://connect?…&code=…`
+- [x] e2e `e2e/tests/qr-pairing.spec.ts` (2 tests, green on port 6470)
+- [x] QR decode probe `tools/probes/qr-decode/` (web QR and terminal QR both decode to the URL)
+- [ ] Simulator: code link via the app, and the https page → "Open in the nooklet app" → app
+- [ ] Docs: security inventory, guide, sql-schema, mcp-tools, ADR
+- [ ] Full verification run
+
+## Design as built
+
+- **Code**: `nkp_` + 16 random bytes base64url (128 bits). Stored as sha256 only. Single use,
+  10 min default (1–60 min), at most `write` scope (+sync by default). A new code from the same
+  creator (same token, or the CLI) cancels that creator's earlier unused code ("regenerate").
+- **Redeem** (`pairing.redeem`, the one `auth: "none"` op): claims the code with
+  `UPDATE … WHERE code_hash=? AND used_at IS NULL AND expires_at > now`, mints the token in the same
+  transaction. Unknown / expired / used / cancelled all answer the same 401. Two locks are needed
+  for it to be public: the op's `auth: "none"` (else `buildOpCtx` refuses) and its route on
+  `PUBLIC_ROUTES` (else the guard 401s first). `OpRegistry.register` refuses an `auth: "none"` op
+  that is a plugin op, has scopes, or is MCP-exposed.
+- **Rate limit** (`http/rate-limit.ts`): sliding 60 s window, 10 attempts per TCP peer, 60 in
+  total, 429 + `Retry-After`. Peer = socket address, never `X-Forwarded-For`.
+- **Admin ops**: `pairing.create`, `token.list` (label, scope, sync, created, last used, revoked,
+  `current`; never the token or hash), `token.revoke` (closes the token's `/sync/live` and
+  `/ui/live` sockets with 4401; MCP `requiresUserInteraction`). MCP lists them only for `admin`.
+- **Revocation and sockets (B-676 H3, done)**: `auth/token-sockets.ts` tracks socket → token per
+  graph driver. `token.revoke` closes at once. A CLI revoke (another process) is caught at the next
+  poke: `sync/realtime.ts` re-reads `revoked_at` before sending and closes instead. `/ui/live` only
+  closes on `token.revoke` (no poke there). H4 (hello timeout, caps) not done.
+- **QR target**: `https://<server>/g/<id>/pair#code=…` — code in the fragment, so never in a request
+  line or access log. The page (`apps/web/src/pair/PairLanding.tsx`) renders before the app boots
+  and before the insecure-context check; it offers "Open in the nooklet app"
+  (`nooklet://connect?url=…&code=…`) and, where the browser can run nooklet, "Use nooklet in this
+  browser instead" (`<graph>/#pair=<code>` → the connect screen in the app). The fragment is
+  removed from the address bar and history entry once read.
+- **CLI**: `nooklet pair --link <public url> [--scope read|write] [--no-sync] [--minutes n]` prints
+  a half-block terminal QR + the URL. Codes go to stdout only: never the server log (redeem logs
+  label + token id), never `root.token`, never the DB in plain text.
 
 ## Decisions
 
-(filled in as made)
+- **Who holds `admin`** (B-655): (1) the loopback web-client auto-token, changed from `write` to
+  `admin` — anything that can load the page as this machine can already read `graph.sqlite` and
+  `root.token`, so `admin` adds nothing, and it is what lets the desktop app pair devices; it is off
+  entirely with `--no-loopback-token` (containers). (2) The token `POST /graphs` returns (already
+  `admin`; its caller holds the root token). (3) `token create --scope admin`. **Never** a token a
+  pairing code produces (codes grant at most `write`), so a phone, or a leaked QR, can never manage
+  devices. The root token does NOT act as a graph admin token: it is process-level, and making it
+  one would be a second auth path into every graph.
+- **Old token links (`token create --link`)**: kept working (app and CLI), not removed. They are
+  less safe — the link *is* a long-lived credential wherever it travels (clipboard, Universal
+  Clipboard, chat, screenshots, history) — so `--link` help now points to `nooklet pair` and the
+  docs call it deprecated for phones. Recommend removing `--link` once the owner has paired with
+  codes on a physical phone.
+- **QR library: `uqr` 0.1.3** (unjs, MIT, zero dependencies, ESM, renders SVG *and* terminal
+  half-blocks, so one dependency serves both the web and the CLI). `qrcode` 1.5.4 was the other
+  candidate: three runtime deps (pngjs, yargs, dijkstrajs), larger, CommonJS. Size: npm unpacked
+  79 KB; the lazy web chunk is measured below. Exact version pinned (0.x).
+- **Pair page in the SPA bundle, not a server-rendered HTML page**: the server's static fallback
+  already serves the shell for `/g/<id>/pair`, and the PWA service worker's navigate fallback would
+  serve the cached shell there anyway, so a separate server page would be shadowed for anyone who
+  had used the web app on that origin. The landing is its own lazy chunk and boots nothing else.
+- **`isPairPath` is anchored on `/g/<id>/pair`**, so a page named "pair" (`/g/<id>/page/pair`) is not
+  swallowed. Found while writing the unit test.
+- **The phone's address is a field** in Settings → Devices: the desktop app reaches its server at
+  127.0.0.1, which means nothing to a phone. Prefilled with the page's own address when not
+  loopback; remembered per graph in `localStorage`.
+
+## Camera finding (iOS Camera and custom-scheme QR codes)
+
+Apple documents only that the Camera "can quickly access websites, apps, tickets, and more"
+(<https://support.apple.com/en-us/HT208843>) — nothing on custom schemes. Developer reports:
+- InvenTree (issue opened 2026-09-04, <https://github.com/inventree/inventree-app/issues/877>): non-URL
+  QR payloads "work in the InvenTree mobile scanner, but the iOS Camera app treats them as plain
+  text"; web URLs work.
+- Corona-Warn-App (2020-10-22, <https://github.com/corona-warn-app/cwa-wishlist/issues/224>): the
+  camera "attempts to open the URL in a browser".
+- Apple Developer Forums (2023, <https://developer.apple.com/forums/thread/733022>): a QR with an
+  **https Universal Link** opens the installed app from the Camera.
+
+Universal Links need an `apple-app-site-association` file on a domain listed in the app's
+entitlements — impossible for a self-hosted server on each owner's own tailnet name. So the QR
+encodes the https pairing page, which every camera opens, and the custom scheme is reached by a tap
+on the page, which iOS routes to the installed app (with its "Open in nooklet?" prompt). That path
+works whether or not the Camera handles custom schemes, and degrades to a readable page with
+instructions when the app is not installed.
+
+## Verification so far
+
+- Server: `pnpm vitest run` in packages/server — 102 files / 833 tests pass (after commit 1).
+  New: `ops/pairing.http.test.ts` (16: single use, hash-only storage, expiry, unknown vs malformed,
+  regenerate cancels, the race — 8 concurrent redeems → 1 token, admin not requestable, rate limit
+  429 + Retry-After, limiter window, write token 403 on all three admin ops, no-token 401, loopback
+  web-client token is admin, list never leaks token/hash, revoke + 404, revoke closes WS with 4401,
+  CLI-style revoke closes at next commit without a poke); `mcp/server.test.ts` (admin tools listed
+  only for admin, redeem never); `auth/pairing-link.test.ts` (+3); `cli-first-run.test.ts` (+1:
+  `nooklet pair` → real `serve` redeems once).
+- Web: 185 files / 1632 tests pass. New: `data/pairing.test.ts`, `views/DevicesSection.test.tsx`,
+  `PairingLinkPrompt.test.tsx` (+2), `connect-graph.test.ts` (+1).
+- e2e (port 6470) `qr-pairing`: 2 passed.
+- QR decode with Core Image (`tools/probes/qr-decode/decode.swift`): the Settings QR screenshot
+  from the e2e decodes to exactly the shown URL; the `nooklet pair` terminal QR decodes too, in
+  both dark- and light-terminal renderings.
+
+## Still unverified
+
+- A physical iPhone camera on the QR (the owner's test, steps below).
+- Whether a phone camera reads the colour-inverted terminal QR a light-background terminal shows
+  (Core Image does).
+
+## Owner's physical-phone test
+
+(written at the end)
 
 ## How to resume
 
@@ -22,4 +126,4 @@ Read this file, `git log --oneline 72a2b12..HEAD`, then continue at the first un
 
 ## BUGS.md updates to fold in
 
-(filled in at the end)
+(written at the end)
