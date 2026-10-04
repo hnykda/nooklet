@@ -42,7 +42,7 @@ B-640..B-651 from the owner's feedback. Agents in flight (worktrees, all based o
 |---|---|---|
 | b640 | invisible block text until edited (high) — reproduces from a backup of the test graph | 6400-6404 |
 | b641 | references (and other server-only views) offline/local-only from the replica | 6405-6409 |
-| b642 | readable conflict copies instead of `conflict_copy::` (ADR) | 6410-6414 |
+| b642 | readable conflict copies, **merged** (`1827b8c`, ADR 027); B-652 race logged | 6410-6414 |
 | phone-ui | B-646 `/` on phone, B-648 properties overflow, B-649 forward greyed, B-650 switcher outside-tap, B-651 task cycling + checkbox | 6415-6419 |
 | desktop-local-graph | B-643 local graph from the desktop app, B-644 whimsical names | 6420-6424 |
 | all-pages | B-645 counts + delete in All pages | 6425-6429 |

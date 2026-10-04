@@ -871,12 +871,6 @@ Owner on the iPhone in airplane mode: references fail instead of working from th
 it should just work, not work only online." The replica has no `ref` table (B-626); references
 are server-only (B-577's references branch).
 
-### B-642 · A same-block edit conflict is kept as a `conflict_copy::` property instead of something readable
-**Status:** open · **Severity:** medium (UX) · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner edited one block on both devices; the loser's text became `conflict_copy: There is this`
-under the winning text. "Shouldn't it be smarter than that, and e.g. added that as extra line?"
-
 ### B-643 · The desktop app cannot add a local graph ("This device") from the graph switcher
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
 
@@ -927,7 +921,34 @@ Owner.
 Owner: "not sure how to cycle through the In progress on a task. Also the empty square checkbox looks
 like an error of unrendered char than what it does. Maybe with the checkmark it would be better."
 
+### B-652 · A reconnecting device can silently lose one side of a same-block conflict (push/pull race)
+**Status:** open, suspected (code read only) · **Severity:** high if real (silent text loss) · **Found:** 2026-10-04, b642 agent · **Test:** none yet
+
+Conflict detection in `SyncClient.pull()` needs the device's own `block.text` still in `pending_op`
+when the other device's op is pulled. On `online`/`resume`/`visible`, `worker-core.ts` runs
+`schedulePush(0)` and `pull()` concurrently; if the push response is applied before the pull response,
+the pending row is gone, the pulled op meets no pending edit, and plain LWW drops one text with no
+copy. The B-642 Playwright spec did not hit it in 9 runs (pull went first each time). Candidate fixes:
+keep the base/text of recently acknowledged `block.text` ops until the next pull completes, or pull
+before push on reconnect.
+
 ## Fixed
+
+### B-642 · A same-block edit conflict is kept as a `conflict_copy::` property instead of something readable
+**Status:** fixed (2026-10-04, `1827b8c`, ADR 027) · **Severity:** medium (UX) · **Test:** `packages/server/src/conflict-copy.test.ts`,
+`packages/server/src/sync/convergence.property.test.ts` (`conflictReport`), `apps/web/src/sync/e2e.test.ts`
+"a same-block conflict leaves the losing text as a block after the winner (B-642)", `e2e/tests/sync-conflict.spec.ts` (8/8)
+
+Owner edited one block on both devices; the loser's text became `conflict_copy: There is this`
+under the winning text. "Shouldn't it be smarter than that, and e.g. added that as extra line?"
+
+**Fixed 2026-10-04 (ADR 027, option a).** Clients still report `conflict_copy`; the server turns it
+into a sibling block right after the winner, tagged `sync-conflict:: true` (a badge in the UI), and
+clears the property. The id is derived from the winner + text, so two reports make one block and a
+deleted copy doesn't come back; older clients benefit too. Rejected: appending to the winner (changes
+agreed text silently), client-minted blocks (positions diverge). Existing `conflict_copy::` properties
+are not migrated (`prop:conflict_copy` finds them). Cost: typing `conflict_copy::` by hand now makes a
+block.
 
 ### B-638 · `nooklet serve --data <dir that does not exist yet>` dies at once: `ENOENT … root.token`
 **Status:** fixed (2026-10-03, coordinator) · **Severity:** high (first start of any new server failed) · **Found:** 2026-10-03, owner, step 1 of the real-device test ·
