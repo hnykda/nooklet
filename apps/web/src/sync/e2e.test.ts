@@ -309,6 +309,90 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
   });
 
   /**
+   * B-660. `/sync/snapshot` lists blocks in the server table's rowid order, which is creation
+   * order, so a block moved under one created AFTER it arrives before its parent. The replica
+   * enforces `block.parent_id REFERENCES block(id)` immediately, the insert failed with
+   * SQLITE_CONSTRAINT_FOREIGNKEY, and the whole bootstrap rolled back. The app hid that by pulling
+   * the op log from 0 instead, which only works while the server still has every op: after
+   * `nooklet gc` trims the log, the fresh device silently came up without the trimmed rows.
+   */
+  describe("a block moved under a block created after it (B-660)", () => {
+    function seedMovedUnderNewer() {
+      const { client: clientA } = makeReplicaClient(server.app, server.token);
+      const pageId = newId();
+      const older = newId();
+      const newer = newId();
+      clientA.applyLocal([
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), pageId, {
+          kind: "page.create",
+          name: "Moved Under Newer",
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), older, {
+          kind: "block.create",
+          place: { pageId, parentId: null, order: "a0" },
+          content: "older",
+          createdAt: Date.now(),
+        }),
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), newer, {
+          kind: "block.create",
+          place: { pageId, parentId: null, order: "a1" },
+          content: "newer",
+          createdAt: Date.now(),
+        }),
+        makeOp(clientA.nextHlc(), clientA.getDeviceId(), older, {
+          kind: "block.place",
+          place: { pageId, parentId: newer, order: "a0" },
+        }),
+      ]);
+      return { clientA, older, newer };
+    }
+
+    it("bootstraps a fresh replica whose snapshot lists the child before its parent", async () => {
+      const { clientA, older, newer } = seedMovedUnderNewer();
+      await clientA.flush();
+      // The precondition this test is about: the snapshot really does put the child first.
+      const snap = (await makeInProcessTransport(server.app, server.token).snapshot()).blocks;
+      expect(snap.findIndex((b) => b.id === older)).toBeLessThan(
+        snap.findIndex((b) => b.id === newer),
+      );
+
+      const { driver: driverC, client: clientC } = makeReplicaClient(server.app, server.token);
+      await clientC.bootstrap();
+
+      expect(clientC.isBootstrapped()).toBe(true);
+      expect(dumpState(driverC)).toEqual(dumpState(server.serverCtx.driver));
+    });
+
+    it("a fresh replica gets every row even after the server's op log was trimmed", async () => {
+      const { clientA } = seedMovedUnderNewer();
+      await clientA.flush();
+      // What `nooklet gc` does once every live device has acked past these ops (`gc.ts`).
+      server.serverCtx.driver.run("DELETE FROM op");
+
+      // The app's own start-up sequence (`worker-core.ts#start`): bootstrap, tolerate a
+      // failure, then pull.
+      const { driver: driverC, client: clientC } = makeReplicaClient(server.app, server.token);
+      await clientC.bootstrap().catch(() => {});
+      await clientC.pull();
+
+      expect(dumpState(driverC)).toEqual(dumpState(server.serverCtx.driver));
+    });
+
+    it("re-bootstrapping over a replica that already holds the rows replaces them cleanly", async () => {
+      const { clientA } = seedMovedUnderNewer();
+      await clientA.flush();
+      const { driver: driverC, client: clientC } = makeReplicaClient(server.app, server.token);
+      await clientC.bootstrap();
+      // `INSERT OR REPLACE` deletes and re-inserts a parent its children still point at.
+      await clientC.bootstrap();
+
+      expect(dumpState(driverC)).toEqual(dumpState(server.serverCtx.driver));
+    });
+  });
+
+  /**
    * ADR 024's two-device race. Device B writes `[[Race Page]]`, so the server creates that page;
    * device A, which has not heard of it, creates "Race Page" itself and types into it. Whichever
    * A does first after that — push (the server refuses A's page and names its own) or pull (the

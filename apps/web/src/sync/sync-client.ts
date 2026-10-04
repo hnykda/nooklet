@@ -408,6 +408,14 @@ export class SyncClient {
       if (hlc && (!maxHlc || hlc > maxHlc)) maxHlc = hlc;
     };
     this.driver.transaction(() => {
+      // B-660: check foreign keys at COMMIT, not per row. The snapshot lists blocks in the
+      // server's rowid (creation) order, so a block moved under one created after it arrives
+      // before its parent; checked per row, that insert failed and rolled back the whole
+      // bootstrap. The app then fell back to pulling the op log from 0, which silently drops
+      // whatever `nooklet gc` has trimmed from it. Sorting the snapshot here would also work, but
+      // deferring holds for any order and still refuses a snapshot that is inconsistent as a
+      // whole. SQLite resets this pragma itself when the transaction ends.
+      this.driver.exec("PRAGMA defer_foreign_keys = ON");
       for (const p of snap.pages) {
         this.driver.run(
           `INSERT OR REPLACE INTO page(id, name, key, journal_day, created_at, updated_at, deleted_at, name_hlc, deleted_hlc)
