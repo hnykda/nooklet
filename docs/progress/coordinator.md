@@ -41,7 +41,7 @@ B-640..B-651 from the owner's feedback. Agents in flight (worktrees, all based o
 
 | Slug | Task | Ports |
 |---|---|---|
-| b640 | invisible block text until edited (high) — reproduces from a backup of the test graph | 6400-6404 |
+| b640 | invisible text = WebKit content-visibility paint bug, **merged** (`49ddf1e`); B-660 FK log | 6400-6404 |
 | b641 | references (and other server-only views) offline/local-only from the replica | 6405-6409 |
 | b642 | readable conflict copies, **merged** (`1827b8c`, ADR 027); B-652 race logged | 6410-6414 |
 | phone-ui | B-646 `/` on phone, B-648 properties overflow, B-649 forward greyed, B-650 switcher outside-tap, B-651 task cycling + checkbox | 6415-6419 |

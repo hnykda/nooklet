@@ -856,16 +856,6 @@ client dir at startup (or serves a versioned copy), and/or the runbook says not 
 test server is serving. To confirm next time it happens: Inspect Element → Console/Network (404s on
 `/static/*.js` would confirm).
 
-### B-640 · A synced block's text is invisible until the block is opened for editing
-**Status:** open · **Severity:** high (data looks lost) · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner: text typed on the iPhone reached the Mac app, but on the iPhone it was not visible, "almost
-like the same font color was chosen as background". Seen on the Mac too after syncing the offline
-edits: the top bullet "Ok these ones are added on mobile in airplane mode" shows as an empty row
-with no bullet (its children render, indented) until the block is clicked into edit mode, where
-the text and a collapse arrow appear. Screenshots in the session (2026-10-04). The block is in the
-test graph `~/nooklet-test`.
-
 ### B-641 · Offline, the references panel says "Couldn't load references · Retry"
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
 
@@ -963,7 +953,31 @@ Both describe the pre-ADR-025 layout or older flows.
 
 Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
 
+### B-660 · WebKit client logs `SQLITE_CONSTRAINT_FOREIGNKEY` on `INSERT OR REPLACE INTO block` while loading a page
+**Status:** open, not investigated · **Severity:** unknown · **Found:** 2026-10-04, b640 agent · **Test:** none
+
+Seen in the replica on a page freshly created via the API (`tools/probes/b640/row-mutations.mjs`
+output). May be harmless ordering in a snapshot apply; worth a look (FK failures can mean a row was
+dropped).
+
 ## Fixed
+
+### B-640 · A synced block's text is invisible until the block is opened for editing
+**Status:** fixed (2026-10-04, `49ddf1e`) · **Severity:** high (data looked lost; data was intact) · **Test:** `e2e/tests/row-paint-after-enter.spec.ts` (WebKit, red before, green after)
+
+Owner: text typed on the iPhone reached the Mac app, but on the iPhone it was not visible, "almost
+like the same font color was chosen as background". Seen on the Mac too after syncing the offline
+edits: the top bullet "Ok these ones are added on mobile in airplane mode" shows as an empty row
+with no bullet (its children render, indented) until the block is clicked into edit mode, where
+the text and a collapse arrow appear. Screenshots in the session (2026-10-04). The block is in the
+test graph `~/nooklet-test`.
+
+**Fixed 2026-10-04.** The data was correct throughout (the test graph's block was plain: one line,
+no properties, not collapsed). Cause: WebKit leaves a `content-visibility: auto` row unpainted when
+it is inserted while focus moves into it, which is every Enter. Reproduced in a plain-DOM WebKit probe
+(`tools/probes/b640/webkit-cv-focus.mjs`) and by replaying the owner's two-device session in two
+WebKit contexts. Chromium unaffected. Fix: `.vr-row-editing { content-visibility: visible }`; rows
+revert to `auto` once the editor leaves. Not verified on the real iPhone/Mac app.
 
 ### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
 **Status:** fixed (2026-10-04, `f45e6bb`) · **Severity:** low · **Test:** `e2e/tests/page-icon-picker.spec.ts` (3),
