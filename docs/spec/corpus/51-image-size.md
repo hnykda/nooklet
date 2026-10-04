@@ -1,0 +1,1 @@
+- ![shed](../assets/shed.png){:height 236, :width 500} ![x](assets/a.png){:width 412.5, :align "center"} ![y](b.png){not a map} ![z](c.png) {:width 3}

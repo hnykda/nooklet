@@ -517,6 +517,169 @@
   outline-offset: 2px;
 }
 
+/* B-789: the box around a picture carries its width (`ImageView.tsx` says why), its alignment and
+   its two controls. With no width known it shrinks to the picture, which keeps B-682's rules. */
+.vr-image-box {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.vr-image-box.vr-image-center {
+  margin-inline: auto;
+}
+
+.vr-image-box.vr-image-right {
+  margin-left: auto;
+}
+
+/* The box has the width: the picture fills it at its own aspect ratio. A width the person chose
+   is not capped at 70vh — they dragged it there. */
+.vr-image-sized > .vr-image {
+  width: 100%;
+}
+
+.vr-image-chosen > .vr-image {
+  max-height: none;
+}
+
+.vr-image-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  color: var(--fg);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+/* Beside a small picture rather than over it: over it, it covers where a click opens the picture.
+   No gap, so the pointer can reach it without leaving the box's hover. */
+.vr-image-narrow > .vr-image-more {
+  right: auto;
+  left: 100%;
+  top: 0;
+}
+
+.vr-image-handle {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: min(48px, 40%);
+  min-height: 20px;
+  transform: translateY(-50%);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  cursor: ew-resize;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+/* A wider grab area than the pill itself. */
+.vr-image-handle::before {
+  content: "";
+  position: absolute;
+  inset: -8px -8px;
+}
+
+.vr-image-handle-right {
+  right: 4px;
+}
+
+.vr-image-handle-left {
+  left: 4px;
+}
+
+.vr-image-box:hover > .vr-image-more,
+.vr-image-box:hover > .vr-image-handle,
+.vr-image-box:focus-within > .vr-image-more,
+.vr-image-box > .vr-image-more.vr-image-more-open,
+.vr-image-box.vr-image-dragging > .vr-image-handle {
+  opacity: 1;
+}
+
+/* While a drag is on, nothing else on the page reacts to the pointer or selects text. */
+.vr-image-resizing,
+.vr-image-resizing * {
+  cursor: ew-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vr-image-menu {
+  position: fixed;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.vr-image-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.vr-image-menu-item:hover,
+.vr-image-menu-item:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.vr-image-menu-check {
+  margin-left: auto;
+}
+
+.vr-image-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--hairline);
+  border: 0;
+}
+
+.vr-image-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sab) + 24px);
+  z-index: 1100;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+
 /* B-736: the full-size view an image opens into. */
 .image-viewer-backdrop {
   position: fixed;

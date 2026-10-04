@@ -19,7 +19,9 @@ export type FixtureValue =
   | boolean
   | { kw: string }
   | { uuid: string }
-  | { ref: number };
+  | { ref: number }
+  /** A map with keyword keys (`:logseq.property.asset/resize-metadata`). */
+  | { map: Record<string, string | number> };
 
 /** `[e, attr, value]`; tx is filled in. */
 export type FixtureDatom = [number, string, FixtureValue];
@@ -30,6 +32,7 @@ function encode(v: FixtureValue): unknown {
   if (typeof v !== "object") return v;
   if ("kw" in v) return kw(v.kw);
   if ("uuid" in v) return transit.uuid(v.uuid);
+  if ("map" in v) return transit.map(Object.entries(v.map).flatMap(([k, val]) => [kw(k), val]));
   return v.ref;
 }
 
@@ -181,6 +184,9 @@ export function fixtureDatoms(): FixtureDatom[] {
     ...block(32, U.photoAsset, "2026-09-14-10-20-30", 30, 30, "a1", [
       [32, "block/tags", { ref: 1 }],
       [32, "logseq.property.asset/type", "png"],
+      // B-789: resized to 320 px and centred in Logseq (ADR 034).
+      [32, "logseq.property.asset/resize-metadata", { map: { width: 320 } }],
+      [32, "logseq.property.asset/align", { kw: "center" }],
     ]),
     ...block(33, U.photoNote, "Photo of seedlings", 30, 30, "a2"),
     // A ref to an asset that lives on the Asset class page.

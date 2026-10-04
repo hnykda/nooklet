@@ -52,6 +52,7 @@ describe("desktopShell", () => {
       platform: "macos",
       port: 6420,
       downloads: false,
+      reveal: false,
       key: "",
       graphs: [],
       graphToken: null,
@@ -61,6 +62,19 @@ describe("desktopShell", () => {
   it("B-736: knows whether the shell saves downloads", () => {
     injectShell(Object.freeze({ platform: "macos", port: 6420, downloads: true }));
     expect(desktopShell(window)?.downloads).toBe(true);
+  });
+
+  it("B-789: knows whether the shell can show an asset in Finder (an older one cannot)", () => {
+    injectShell(Object.freeze({ platform: "macos", port: 6420, downloads: true }));
+    expect(desktopShell(window)?.reveal).toBe(false);
+    delete (window as ShellWindow).__NOOKLET_DESKTOP__;
+    injectShell(Object.freeze({ platform: "macos", port: 6420, downloads: true, reveal: true }));
+    expect(desktopShell(window)?.reveal).toBe(true);
+    expect(
+      shellRequestUrl({ kind: "reveal-asset", graph: "mac:default", asset: "abc1" }, "k", "r"),
+    ).toBe(
+      "http://nooklet-desktop.invalid/reveal-asset?key=k&req=r&graph=mac%3Adefault&asset=abc1",
+    );
   });
 
   it("B-781: reads the shell's graph list, its request key and the graph's token, dropping malformed rows", () => {
@@ -129,6 +143,7 @@ describe("shellRequest (ADR 032)", () => {
       platform: "macos",
       port: 6100,
       downloads: true,
+      reveal: true,
       key: "k",
       graphs: [],
       graphToken: null,

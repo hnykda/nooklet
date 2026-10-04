@@ -33,6 +33,7 @@ import {
   type OutlineNode,
   type ParsedPage,
   parseJournalTitle,
+  setImageMeta,
 } from "@nooklet/core";
 import { LOGSEQ_DB_ATTRS as A, type LogseqDbAsset, type LogseqDbGraph } from "./logseq-db.js";
 
@@ -99,7 +100,14 @@ const UUID_REF_RE = /!?\[\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 function assetLink(asset: LogseqDbAsset, path: string): string {
   // `]` in a title would end the label early; the title is a label, nothing depends on it.
   const label = asset.title.replace(/[[\]]/g, "");
-  return IMAGE_TYPES.has(asset.type.toLowerCase()) ? `![${label}](${path})` : `[${label}](${path})`;
+  if (!IMAGE_TYPES.has(asset.type.toLowerCase())) return `[${label}](${path})`;
+  const link = `![${label}](${path})`;
+  // ADR 034: the DB keeps the size and alignment on the asset; nooklet keeps them where a Logseq
+  // file graph keeps the size, in the `{:width …}` map after the image.
+  return setImageMeta(link, link.length, {
+    ...(asset.width !== null ? { width: asset.width } : {}),
+    ...(asset.align !== null ? { align: asset.align } : {}),
+  });
 }
 
 /** Letters and digits only, case-folded: what survives every rewrite the mirror makes. */

@@ -1,11 +1,20 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { isId, newId } from "@nooklet/core";
+import { isId, newId, parseOutline, tokenizeLine } from "@nooklet/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { openDb } from "../db.js";
 import { suggestedJournalTitleFormat } from "../journal-format.js";
+import { exportPage } from "../mirror/export.js";
 import { recordedTaskWorkflow, suggestedTaskWorkflow } from "../task-workflow.js";
 import { importLogseqGraph, parseLogseqConfigEdn } from "./logseq.js";
 
@@ -495,6 +504,37 @@ describe("importLogseqGraph: assets", () => {
       `![photo](assets/${photo.id}.png)`,
       `[the report](assets/${pdf.id}.pdf)`,
     ]);
+  });
+
+  it("B-789 / ADR 034: keeps a Logseq image size, which renders as a size and mirrors back unchanged", async () => {
+    writeGraphFile("assets/shed_1715428076165_0.png", "PNGBYTES");
+    writeGraphFile(
+      "pages/Garden.md",
+      "- ![shed](../assets/shed_1715428076165_0.png){:height 236, :width 500} beside it\n",
+    );
+    const stats = await importLogseqGraph(ctx, graphDir, { dataDir });
+    expect(stats.errors).toEqual([]);
+    const asset = ctx.driver.get<{ id: string }>("SELECT id FROM asset") as { id: string };
+    const content = ctx.driver.get<{ content: string }>("SELECT content FROM block")?.content ?? "";
+    expect(content).toBe(`![shed](assets/${asset.id}.png){:height 236, :width 500} beside it`);
+    // The size is the image's, not text after it.
+    const tokens = tokenizeLine(content);
+    expect(tokens[0]).toMatchObject({ kind: "image", meta: { width: 500, height: 236 } });
+    expect(tokens[0]?.end).toBe(content.indexOf(" beside"));
+
+    // The Markdown mirror writes it back exactly as Logseq wrote it.
+    const page = getPage("garden") as { id: string };
+    const mirrorDir = mkdtempSync(join(tmpdir(), "nooklet-mirror-"));
+    try {
+      const out = exportPage(ctx.driver, mirrorDir, page.id);
+      const file = readFileSync(join(mirrorDir, out.path), "utf8");
+      expect(file).toContain(
+        `- ![shed](assets/${asset.id}.png){:height 236, :width 500} beside it`,
+      );
+      expect(parseOutline(file).blocks[0]?.content).toBe(content);
+    } finally {
+      rmSync(mirrorDir, { recursive: true, force: true });
+    }
   });
 
   it("leaves a link alone and counts it when the file is not in assets/", async () => {

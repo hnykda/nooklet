@@ -20,7 +20,14 @@
  */
 
 import { describeError } from "../../data/api-client.js";
-import { DESKTOP_DOWNLOAD_EVENT, desktopShell } from "../../platform/desktop-shell.js";
+import {
+  currentDesktopGraph,
+  DESKTOP_DOWNLOAD_EVENT,
+  type DesktopShell,
+  desktopShell,
+  onBundledServer,
+  shellRequest,
+} from "../../platform/desktop-shell.js";
 import { platform } from "../../platform/index.js";
 import { assetIdOf } from "./asset-url.js";
 
@@ -209,4 +216,52 @@ export async function downloadImage(
   } catch (err) {
     return { ok: false, message: `Couldn't download the image (${describeError(err)}).` };
   }
+}
+
+/**
+ * B-789: where "Show in Finder" can find the picture's file, or `null` where there is none to
+ * show. Only in the desktop app, only on a graph on This Mac served by the bundled server (a
+ * server graph's files are on the server), only for an uploaded asset (`assets/<id>.<ext>`; an
+ * external URL has no file), and only with a shell that answers the request (`reveal`).
+ */
+export function revealTarget(
+  src: string,
+  shell: DesktopShell | null = desktopShell(),
+  loc: Location = location,
+): { shell: DesktopShell; graph: string; asset: string } | null {
+  if (!shell?.reveal || !onBundledServer(shell, loc)) return null;
+  const graph = currentDesktopGraph(shell.graphs, loc);
+  const asset = assetIdOf(src);
+  if (graph?.place !== "mac" || !asset || !/^[a-z0-9]{1,64}$/.test(asset)) return null;
+  return { shell, graph: graph.key, asset };
+}
+
+/** "Show in Finder" on a Mac — the label for this shell's file manager. */
+export function revealLabel(shell: DesktopShell): string {
+  if (shell.platform === "macos") return "Show in Finder";
+  if (shell.platform === "windows") return "Show in Explorer";
+  return "Show in folder";
+}
+
+/** How long the shell has to answer before the menu says it did not. */
+const REVEAL_REPLY_MS = 10_000;
+
+export async function revealImage(src: string): Promise<ActionResult> {
+  const target = revealTarget(src);
+  if (!target) return { ok: false, message: "This picture has no file on this Mac." };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const reply = await Promise.race([
+    shellRequest(target.shell, { kind: "reveal-asset", graph: target.graph, asset: target.asset }),
+    new Promise<null>((r) => {
+      timer = setTimeout(() => r(null), REVEAL_REPLY_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (reply === null) return { ok: false, message: "The app didn't answer. Try again." };
+  return reply.ok
+    ? {
+        ok: true,
+        message: `Shown in ${target.shell.platform === "macos" ? "Finder" : "the file manager"}.`,
+      }
+    : { ok: false, message: reply.error ?? "Couldn't show the file." };
 }

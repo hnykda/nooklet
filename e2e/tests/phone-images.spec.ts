@@ -249,3 +249,55 @@ test("phone overflow sweep: nothing in a block widens the page past the screen",
     await expectWithinScreen(page);
   }
 });
+
+test("B-789: a chosen size never takes a picture past the screen; no handle or ⋯ on a phone, the tap opens it", async ({
+  page,
+}, info) => {
+  await page.goto("/journals");
+  const pic = await uploadPng(page, "sized", 1200, 600);
+  const small = await uploadPng(page, "sized-small", 160, 80);
+  // A width wider than any phone (written on a desktop), and a small one aligned right.
+  await openPage(
+    page,
+    `Phone Image Sized ${info.project.name}`,
+    `- ${pic.markdown}{:height 1000, :width 2000}\n- ${small.markdown}{:width 100, :align "right"}`,
+  );
+  const imgs = page.locator("img.vr-image");
+  await expect(imgs).toHaveCount(2);
+  for (const i of [0, 1]) {
+    await expect
+      .poll(() => imgs.nth(i).evaluate((el) => (el as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+  }
+  const [big, right] = await imgs.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      const content = el.closest(".vr-content")?.getBoundingClientRect();
+      return {
+        w: r.width,
+        h: r.height,
+        right: r.right,
+        contentW: content?.width ?? 0,
+        contentRight: content?.right ?? 0,
+      };
+    }),
+  );
+  if (!big || !right) throw new Error("images missing");
+  // As wide as the block allows, at its own ratio — not 2000 px.
+  expect(Math.abs(big.w - big.contentW)).toBeLessThan(1);
+  expect(big.w / big.h).toBeCloseTo(2, 1);
+  // 100 px, against the right edge of the block.
+  expect(right.w).toBeCloseTo(100, 0);
+  expect(Math.abs(right.right - right.contentRight)).toBeLessThan(2);
+  await expectWithinScreen(page);
+  expect(await overflowingElements(page)).toEqual([]);
+
+  // Touch gets neither control (ADR 034): the tap opens the viewer and its actions (in the
+  // Capacitor app the button reads "Save / Share…"; this is a browser on a phone).
+  await expect(page.locator(".vr-image-handle")).toHaveCount(0);
+  await expect(page.locator(".vr-image-more")).toHaveCount(0);
+  await imgs.first().tap();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Download" })).toBeVisible();
+});

@@ -52,6 +52,7 @@ import {
 import { blockMenuRequest, openBlockMenu } from "../app/context-menu.js";
 import {
   createEditorHost,
+  noteUndoTarget,
   notifyEditorChange,
   registerEditorHost,
   releaseEditorHost,
@@ -79,6 +80,7 @@ import {
   moveBlock,
   outdentBlock,
   outdentSelectedBlocks,
+  setBlockText,
   setCollapsed,
   splitBlock,
   type ZoomScope,
@@ -1615,6 +1617,20 @@ export function BlockTree(props: {
     commitOne(setCollapsed(id, !block.collapsed, clock));
   }
 
+  /** B-789: a rendered row rewrote its own text (an image's size or alignment, ADR 034): one
+   * undo step, like a marker click. */
+  function onRewrite(id: BlockId, content: string): void {
+    if (readOnly()) {
+      readOnlyNotice.show();
+      return;
+    }
+    const clock = clockSig();
+    const block = editorTree().byId.get(id);
+    if (!clock || !block || block.content === content) return;
+    commitStep([setBlockText(id, content, clock)]);
+    noteUndoTarget(editorHost);
+  }
+
   function onToggleMarker(id: BlockId): void {
     if (readOnly()) {
       readOnlyNotice.show();
@@ -1776,6 +1792,7 @@ export function BlockTree(props: {
                         onToggleCollapse={() => onToggleCollapse(id)}
                         onZoomIn={() => setLocalZoomRoot(id)}
                         onToggleMarker={() => onToggleMarker(id)}
+                        onRewrite={(content) => onRewrite(id, content)}
                         onSelectClick={() => onSelectClick(id)}
                         onContextMenu={(e) => {
                           e.preventDefault();

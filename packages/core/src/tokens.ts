@@ -18,6 +18,7 @@
  */
 
 import { isId } from "./ids.js";
+import { type ImageMeta, readImageMeta } from "./image-meta.js";
 
 /** 0-based, half-open, UTF-16 code unit offset into the string that was tokenized. */
 export type Offset = number;
@@ -50,7 +51,15 @@ export type InlineToken =
   | (TokBase & { kind: "linkToBlock"; id: string; label: InlineToken[] })
   | (TokBase & { kind: "link"; href: string; label: InlineToken[] })
   | (TokBase & { kind: "autolink"; href: string })
-  | (TokBase & { kind: "image"; alt: string; src: string })
+  | (TokBase & {
+      kind: "image";
+      alt: string;
+      src: string;
+      /** Offset just past the `)`: where a Logseq size map is, or would be written (ADR 034). */
+      metaAt: Offset;
+      /** The `{:width …}` map after the image, when there is one; `end` then includes it. */
+      meta?: ImageMeta;
+    })
   | (TokBase & { kind: "strong"; children: InlineToken[] })
   | (TokBase & { kind: "em"; children: InlineToken[] })
   | (TokBase & { kind: "strike"; children: InlineToken[] })
@@ -456,14 +465,20 @@ export function tokenizeLine(line: string, base: Offset = 0): InlineToken[] {
       const bp = tryBracketParen(line, i + 1);
       if (bp) {
         flushText(i);
+        // ADR 034: Logseq's `{:height 236, :width 500}` straight after the `)` belongs to the
+        // image — rendered as its size, never as text.
+        const meta = readImageMeta(line, bp.end);
+        const end = meta ? meta.end : bp.end;
         out.push({
           kind: "image",
           start: base + i,
-          end: base + bp.end,
+          end: base + end,
           alt: bp.label,
           src: bp.href,
+          metaAt: base + bp.end,
+          ...(meta ? { meta: meta.meta } : {}),
         });
-        i = bp.end;
+        i = end;
         textStart = i;
         continue;
       }

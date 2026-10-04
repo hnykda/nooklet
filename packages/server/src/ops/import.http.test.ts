@@ -267,7 +267,8 @@ describe("import a DB-version graph through the app", () => {
     const image = db.get<{ content: string }>(
       "SELECT content FROM block WHERE content LIKE '![%' AND deleted_at IS NULL",
     );
-    expect(image?.content).toMatch(/\]\(assets\/[0-9a-z]+\.png\)$/);
+    // …at the size and alignment the fixture gave it in Logseq (B-789, ADR 034).
+    expect(image?.content).toMatch(/\]\(assets\/[0-9a-z]+\.png\)\{:width 320, :align "center"\}$/);
   });
 });
 
