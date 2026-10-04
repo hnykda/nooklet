@@ -1,7 +1,7 @@
 # phone-ui — B-646, B-648, B-649, B-650, B-651 (owner's iPhone test, 2026-10-04)
 
-Branch: the agent worktree branch (not merged). Status: **fixes committed; full e2e run pending**
-— see "Next".
+Branch: the agent worktree branch (not merged). Status: **done** (`a1b9e09` fixes + tests,
+then this file's results commit). Not merged.
 
 ## Done
 
@@ -40,10 +40,8 @@ Branch: the agent worktree branch (not merged). Status: **fixes committed; full 
   textarea inserted a newline (`keydown Enter` → `beforeinput insertLineBreak` → draft `"ab\n"`),
   so the line was not committed as a block; the draft's keydown `preventDefault` does not stop
   iOS's line break. CodeMirror has its own iOS Enter workaround (the log shows its re-dispatched
-  second `keydown Enter`), the plain textarea has none. (3) `e2e/tests/tasks.spec.ts` "Cmd/Ctrl+Enter
-  cycles…" and "clicking the rendered marker…" fail on a fresh server: they expect TODO, and since
-  `34c8d3e` an empty graph starts at LATER. Fails with or without this branch's changes (the
-  assertion that fails is the class after the first Mod+Enter). (4) After the toolbar's "hide
+  second `keydown Enter`), the plain textarea has none. (3) `e2e/tests/tasks.spec.ts` two tests are
+  order-dependent (see the fold-in section). (4) After the toolbar's "hide
   keyboard", the toolbar stays on screen at the bottom, scrolled sideways (`6-checkbox-tapped.png`).
 
 ## Fixes
@@ -88,10 +86,20 @@ Screenshots kept in `tools/probes/phone-ui/` (overlay at the top: header line is
   `vv=402@1.00` (no zoom), `docW=402 innerW=402`, key/value/Add all within the screen. Before the
   fix the same step gave `vv=326@1.23` (run 1). Back is enabled, Forward greyed (B-649).
 
+## Verification (2026-10-04, on `a1b9e09`)
+
+- `pnpm --filter @nooklet/web test`: 176 files, 1536 tests passed.
+- `pnpm -r typecheck`: clean. `pnpm exec biome check . --diagnostic-level=error`: clean.
+- `pnpm e2e` (port 6415): Chromium **707 passed, 2 skipped, 0 failed** (23.3 min). The run then
+  died before the WebKit project with `ENOENT … nooklet-e2e-p5Fn9R/server.log` thrown from ANOTHER
+  worktree's `global-setup.ts` (agent-a745b5c…) — a port/state-file collision between agents, not
+  a test failure. WebKit re-run alone (port 6417): **43 passed, 0 failed**.
+- `phone-ui.spec.ts`: 16/16 (8 tests × Chromium + WebKit).
+- Simulator device deleted; `pnpm ios:sync` re-run so the built iOS bundle has no probe overlay.
+
 ## Next
 
-- Full e2e run (both projects) and record the result here.
-- Delete the Simulator device when done (`xcrun simctl delete 9AF07D62-…`).
+Nothing in flight. Coordinator: fold the section below into BUGS.md.
 
 ## BUGS.md updates to fold in
 
@@ -133,7 +141,9 @@ Screenshots kept in `tools/probes/phone-ui/` (overlay at the top: header line is
   instead of committing the line as a block (Simulator event log: `keydown Enter` then
   `beforeinput insertLineBreak`, draft `"ab\n"`). The keydown `preventDefault` does not stop it on
   iOS. Severity medium (a fresh day on the phone). Unverified on a physical iPhone.
-- **New (open):** `e2e/tests/tasks.spec.ts` two tests expect TODO after the first Mod+Enter on a
-  fresh server; since `34c8d3e` (empty graph → `now`) it is LATER. Test lagging the decision.
+- **New (open):** `e2e/tests/tasks.spec.ts` "Cmd/Ctrl+Enter cycles…" and "clicking the rendered
+  marker…" expect TODO after the first Mod+Enter. Run alone (fresh server, empty graph) they fail
+  with LATER, since `34c8d3e` (empty graph → `now`); in the full suite they pass because earlier
+  specs leave TODO markers and the workflow is inferred `todo`. Order-dependent tests.
 - **New (open, low):** after the toolbar's hide-keyboard button the toolbar stays at the bottom of
   the screen, scrolled sideways.
