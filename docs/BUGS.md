@@ -970,20 +970,6 @@ Read-only box and the editable field, for token and code links (pre-existing fro
 
 Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
 
-### B-704 · In the desktop app, adding a remote server graph from the in-app switcher fails with "Load failed"
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner adding the production server (`https://<tailnet host>/g/alpha`) from the desktop app · **Test:** none yet
-
-"Could not reach https://<tailnet host>/g/alpha: Load failed" (`data/connect-graph.ts`). The page in
-the desktop window is served by another server (the bundled sidecar or a test server on
-`127.0.0.1:<port>`), so the connect check is a cross-origin request; the server's CORS allowlist
-admits only the app-shell origins (`capacitor://localhost`, `https://localhost`), so the preflight
-gets 401 and WebKit reports "Load failed". Verified with curl: preflight from `capacitor://localhost`
-→ 204 with ACAO; from `http://127.0.0.1:6200` / `tauri://localhost` → 401. Workaround: the native
-menu's Switch Server… → Add a server (navigates the window to the server; same-origin). Fix: in the
-desktop shell, the switcher's "add a server graph" should hand the URL to the shell (like B-643's
-`nooklet-desktop.invalid` request) instead of fetching cross-origin; on plain web it should say
-plainly that a different server must be opened in its own tab.
-
 ### B-705 · iOS zooms in when focusing the add-graph server URL field and the page stays too wide
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
 
@@ -1004,16 +990,6 @@ backticks and trailing punctuation from a pasted token, and if what remains does
 shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
 with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
 
-### B-708 · The live agent-control channel (`/ui/live`) is offered on the phone
-**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
-
-Owner: "agents control should probably be off for mobile? that doesn't make much sense". ADR 015's live UI control lets an agent drive an open window; on a phone that's rarely wanted. Decide: hidden/off by default on Capacitor (and touch), still opt-in in Settings?
-
-### B-709 · Move graph switching into the left sidebar, with the current graph's name at the top
-**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
-
-Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
-
 ### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
 **Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
 
@@ -1025,17 +1001,6 @@ file's identity wins, page properties keep the first value per key, and both fil
 (journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
 19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
 stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
-
-### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
-**Status:** open · **Severity:** high (one tap can destroy the only copy of a local-only graph) · **Found:** 2026-10-04, owner on the iPhone ("removing a graph seems to be dangerously easy on mobile phone (and maybe elsewhere?)") · **Test:** none yet
-
-Owner's requirement: a huge warning that removing deletes this device's copy, which may be the
-only one, and the user must type "delete" to confirm. Distinguish: (a) a local-only graph — the
-device's copy IS the graph; removal is irreversible; offer export/backup first; (b) a server graph
-— the server keeps it, but unsynced local changes (pending ops) would be lost; say how many, and
-block or require the typed confirmation when there are any. Applies on every platform (phone,
-desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
-the bundled server's data without the same confirmation.
 
 ### B-718 · self-hosting.md still says to restart the server after revoking a token
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, ws-hardening · **Test:** none
@@ -1132,7 +1097,66 @@ webview is not reusing its HTTP cache. That is unverified: check the Tauri/WKWeb
 whether the URL changes between renders. Possible fixes: server-side resized variants
 (`/assets/:id?w=…`) and `loading="lazy"`/`decoding="async"`.
 
+### B-739 · In the desktop app on a remote server's page, ConnectView's "Just this device" may create a replica inside that server's origin
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, graph-menu agent (B-704) · **Test:** none yet
+
+That is ADR 028's rejected model. Not checked what `App.tsx#skip` does there.
+
+### B-740 · No whole-graph export or backup in the client
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, graph-menu agent (B-712) · **Test:** none yet
+
+B-712's "export first" can only point at per-page Export as markdown and promote-to-server; a local-only graph on a phone has no one-step way out.
+
+### B-741 · A removed graph's client replica is never deleted
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, graph-menu agent (B-712) · **Test:** none yet
+
+`removeGraph` drops the list entry only; the OPFS file `/nooklet-<id>.sqlite3` and its journal/draft keys stay, unreachable: a storage leak.
+
 ## Fixed
+
+### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
+**Status:** fixed 2026-10-04 (graph-menu) · **Test:** `e2e/tests/graph-remove.spec.ts` (4), `graph-removal.test.ts` (5), `pending-memo.test.ts` (2), `GraphSwitcher.test.tsx` "B-712" (2)
+
+Owner's requirement: a huge warning that removing deletes this device's copy, which may be the
+only one, and the user must type "delete" to confirm. Distinguish: (a) a local-only graph — the
+device's copy IS the graph; removal is irreversible; offer export/backup first; (b) a server graph
+— the server keeps it, but unsynced local changes (pending ops) would be lost; say how many, and
+block or require the typed confirmation when there are any. Applies on every platform (phone,
+desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
+the bundled server's data without the same confirmation.
+
+**Fix:** an in-app dialog; typing `delete` is required for local-only, This-Mac, and server graphs with unsynced (or unknown) changes; a fully synced server graph gets a plain confirm.
+
+### B-704 · In the desktop app, adding a remote server graph from the in-app switcher fails with "Load failed"
+**Status:** fixed 2026-10-04 (graph-menu; page side tested, a real desktop window not yet) · **Test:** `desktop-local-graph.spec.ts` "B-704: …" (incl. remote-server page with no token), `graph-switcher.spec.ts` "B-704: …", `GraphSwitcher.test.tsx` "B-704" (4), `desktop-shell.test.ts`, Rust `b704_*`
+
+"Could not reach https://<tailnet host>/g/alpha: Load failed" (`data/connect-graph.ts`). The page in
+the desktop window is served by another server (the bundled sidecar or a test server on
+`127.0.0.1:<port>`), so the connect check is a cross-origin request; the server's CORS allowlist
+admits only the app-shell origins (`capacitor://localhost`, `https://localhost`), so the preflight
+gets 401 and WebKit reports "Load failed". Verified with curl: preflight from `capacitor://localhost`
+→ 204 with ACAO; from `http://127.0.0.1:6200` / `tauri://localhost` → 401. Workaround: the native
+menu's Switch Server… → Add a server (navigates the window to the server; same-origin). Fix: in the
+desktop shell, the switcher's "add a server graph" should hand the URL to the shell (like B-643's
+`nooklet-desktop.invalid` request) instead of fetching cross-origin; on plain web it should say
+plainly that a different server must be opened in its own tab.
+
+**Fix:** in the desktop app, a server on another origin is handed to the shell (`add-server-graph`); `main.rs` remembers it, activates it and restarts. A browser tab says the graph opens in its own tab and links it. ADR 028 amendment.
+**Why the owner reached the token-only screen:** the window showed the remote server's page with no token for it, so `App.tsx` rendered `ConnectView`, whose "Sync with a server" only asks for a token for `location.host` outside Capacitor. That screen now offers "Open a different graph instead" and "Back to This Mac" in the desktop app (`DesktopServerSwitch`).
+
+### B-708 · The live agent-control channel (`/ui/live`) is offered on the phone
+**Status:** fixed 2026-10-04 (graph-menu) · **Test:** `phone-ui.spec.ts` "B-708: …" (Chromium + WebKit), `agent-access.spec.ts`, `consent.test.ts` "B-708" (3)
+
+Owner: "agents control should probably be off for mobile? that doesn't make much sense". ADR 015's live UI control lets an agent drive an open window; on a phone that's rarely wanted. Decide: hidden/off by default on Capacitor (and touch), still opt-in in Settings?
+
+**Fix:** on Capacitor/touch-only devices `/ui/live` is not opened and the agent badge is hidden until Settings → Agent access turns it on. ADR 015 amendment.
+
+### B-709 · Move graph switching into the left sidebar, with the current graph's name at the top
+**Status:** fixed 2026-10-04 (graph-menu) · **Test:** `e2e/tests/graph-switcher.spec.ts` "B-709: …", `phone-ui.spec.ts` "B-709: on the phone …" (Chromium + WebKit), `GraphSwitcher.test.tsx` "B-709" (3)
+
+Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
+
+**Fix:** the open graph's name heads the left sidebar; clicking it opens the graph menu, grouped On this device / On this Mac / On a server, the open one checked. Top-bar icon removed.
 
 ### B-735 · Keyword search matches whole words only: `rationalit` does not find `rationality`
 **Status:** fixed 2026-10-04 · **Severity:** high · **Found:** 2026-10-04, owner on the production graph · **Test:** `packages/core/src/fts-query.test.ts` › finds a half-typed word without a `*`
