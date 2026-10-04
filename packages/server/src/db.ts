@@ -18,6 +18,9 @@ export interface OpenDbOptions {
 export interface OpenedDb {
   driver: SqlDriver;
   vecStatus: VecStatus;
+  /** Closes the connection (checkpointing the WAL). Long-lived graphs never call it; the in-app
+   *  import does, before it moves a finished staging graph into place (ADR 030). */
+  close: () => void;
 }
 
 /**
@@ -37,7 +40,7 @@ export function openDbWithStatus(opts: OpenDbOptions): OpenedDb {
   );
   if (!isNew || isNew.n === 0) {
     initFullSchema(driver);
-    return { driver, vecStatus };
+    return { driver, vecStatus, close: () => raw.close() };
   }
   const version = driver.get<{ user_version: number }>("PRAGMA user_version")?.user_version ?? 0;
   if (version > SCHEMA_VERSION) {
@@ -46,7 +49,7 @@ export function openDbWithStatus(opts: OpenDbOptions): OpenedDb {
     );
   }
   if (version < SCHEMA_VERSION) runMigrations(driver, version);
-  return { driver, vecStatus };
+  return { driver, vecStatus, close: () => raw.close() };
 }
 
 /**
