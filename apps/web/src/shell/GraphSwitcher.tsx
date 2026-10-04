@@ -54,6 +54,7 @@ import Smartphone from "lucide-solid/icons/smartphone";
 import Trash2 from "lucide-solid/icons/trash-2";
 import UploadCloud from "lucide-solid/icons/upload-cloud";
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { confirmDialog } from "../app/confirm-dialog.js";
 import {
   activeGraph,
   activeGraphId,
@@ -79,6 +80,7 @@ import {
   parseServerUrl,
   type ServerGraph,
 } from "../data/connect-graph.js";
+import { forgetPendingCount, knownPendingCount } from "../data/pending-memo.js";
 import {
   DESKTOP_ERROR_EVENT,
   type DesktopLocalGraph,
@@ -89,6 +91,7 @@ import {
   shellRequestUrl,
 } from "../platform/desktop-shell.js";
 import { platform } from "../platform/index.js";
+import { removalDialog } from "./graph-removal.js";
 import "./graph-switcher.css";
 
 /** The desktop's This-Mac graph as a row title: its default graph is "This Mac" itself, the name
@@ -185,7 +188,6 @@ export function GraphSwitcher(): JSX.Element {
   const [graphs, setGraphs] = createSignal<GraphListEntry[]>(listGraphs());
   const [renamingId, setRenamingId] = createSignal<string | undefined>();
   const [renameDraft, setRenameDraft] = createSignal("");
-  const [confirmRemoveId, setConfirmRemoveId] = createSignal<string | undefined>();
   const [serverUrl, setServerUrl] = createSignal("");
   const [token, setToken] = createSignal("");
   const [error, setError] = createSignal<string | undefined>();
@@ -294,7 +296,6 @@ export function GraphSwitcher(): JSX.Element {
     refresh();
     void refreshPlaceholderLabels();
     setMode("list");
-    setConfirmRemoveId(undefined);
     setRenamingId(undefined);
     setError(undefined);
     setPendingNote(undefined);
@@ -312,7 +313,10 @@ export function GraphSwitcher(): JSX.Element {
     // there is no Escape, so the only way out was the button that opened it. `pointerdown`, so a
     // press on another top-bar control both closes this and works there.
     const onDown = (e: PointerEvent): void => {
-      if (open() && wrap && !wrap.contains(e.target as Node)) setOpen(false);
+      // The removal dialog (B-712) is rendered outside this component; working in it is not an
+      // outside tap, so the menu is still there, updated, when it closes.
+      const inDialog = (e.target as Element | null)?.closest?.(".confirm-dialog-overlay");
+      if (open() && wrap && !inDialog && !wrap.contains(e.target as Node)) setOpen(false);
     };
     const onResize = (): void => {
       if (open()) place();
@@ -360,9 +364,28 @@ export function GraphSwitcher(): JSX.Element {
     refresh();
   }
 
-  function doRemove(id: string): void {
-    removeGraph(id);
-    setConfirmRemoveId(undefined);
+  /** B-712: never one tap. What is lost, said plainly, and `delete` typed wherever data can be
+   * lost (`./graph-removal.ts`). The in-app dialog, never `window.confirm` (B-491). */
+  async function confirmRemove(entry: GraphListEntry): Promise<void> {
+    const where = graphPlace(entry, shell);
+    const address = resolvedGraphAddress(entry.baseUrl);
+    let host: string | undefined;
+    try {
+      host = address ? new URL(address).host : undefined;
+    } catch {
+      host = undefined;
+    }
+    const ok = await confirmDialog(
+      removalDialog({
+        name: graphDisplayName(entry),
+        place: where,
+        host,
+        pending: where === "device" ? undefined : knownPendingCount(entry),
+      }),
+    );
+    if (!ok) return;
+    removeGraph(entry.id);
+    forgetPendingCount(entry.id);
     refresh();
   }
 
@@ -556,55 +579,41 @@ export function GraphSwitcher(): JSX.Element {
             onBlur={() => commitRename(entry.id)}
           />
         </Show>
-        <Show
-          when={confirmRemoveId() !== entry.id}
-          fallback={
-            <span class="graph-switcher-confirm">
-              <button type="button" onClick={() => doRemove(entry.id)}>
-                Remove
-              </button>
-              <button type="button" onClick={() => setConfirmRemoveId(undefined)}>
-                Cancel
-              </button>
-            </span>
-          }
-        >
-          <span class="graph-switcher-row-actions">
+        <span class="graph-switcher-row-actions">
+          <button
+            type="button"
+            class="graph-switcher-icon-action"
+            aria-label={`Rename ${graphDisplayName(entry)}`}
+            title="Rename"
+            onClick={() => startRename(entry)}
+          >
+            <Pencil size={13} />
+          </button>
+          {/* ADR 025 move 2: only a genuinely local-only entry (no baseUrl at all) has anything
+                to promote — one already server-backed is already synced. */}
+          <Show when={entry.kind === "local" && !entry.baseUrl}>
             <button
               type="button"
               class="graph-switcher-icon-action"
-              aria-label={`Rename ${graphDisplayName(entry)}`}
-              title="Rename"
-              onClick={() => startRename(entry)}
+              aria-label={`Add a server for ${graphDisplayName(entry)}`}
+              title="Add a server for this graph"
+              onClick={() => startPromote(entry)}
             >
-              <Pencil size={13} />
+              <UploadCloud size={13} />
             </button>
-            {/* ADR 025 move 2: only a genuinely local-only entry (no baseUrl at all) has anything
-                to promote — one already server-backed is already synced. */}
-            <Show when={entry.kind === "local" && !entry.baseUrl}>
-              <button
-                type="button"
-                class="graph-switcher-icon-action"
-                aria-label={`Add a server for ${graphDisplayName(entry)}`}
-                title="Add a server for this graph"
-                onClick={() => startPromote(entry)}
-              >
-                <UploadCloud size={13} />
-              </button>
-            </Show>
-            <Show when={!isActive}>
-              <button
-                type="button"
-                class="graph-switcher-icon-action"
-                aria-label={`Remove ${graphDisplayName(entry)}`}
-                title="Remove from this device"
-                onClick={() => setConfirmRemoveId(entry.id)}
-              >
-                <Trash2 size={13} />
-              </button>
-            </Show>
-          </span>
-        </Show>
+          </Show>
+          <Show when={!isActive}>
+            <button
+              type="button"
+              class="graph-switcher-icon-action"
+              aria-label={`Remove ${graphDisplayName(entry)}`}
+              title="Remove from this device"
+              onClick={() => void confirmRemove(entry)}
+            >
+              <Trash2 size={13} />
+            </button>
+          </Show>
+        </span>
       </li>
     );
   };

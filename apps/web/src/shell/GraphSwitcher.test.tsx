@@ -124,20 +124,75 @@ describe("GraphSwitcher", () => {
     expect(listGraphs().find((g) => g.id === "a")?.label).toBe("New Name");
   });
 
-  it("removes a non-active graph after a confirm step, but offers no remove action on the active one", () => {
+  it("removes a non-active graph after a confirm step, but offers no remove action on the active one", async () => {
     addGraph({ id: "a", label: "Graph A", kind: "remote", baseUrl: "/g/a" });
     addGraph({ id: "b", label: "Graph B", kind: "remote", baseUrl: "/g/b" });
     setActiveGraphId("a");
+    // B-712: Graph B was last open here with nothing unsynced, so a plain confirm.
+    localStorage.setItem("nooklet.pendingCount.b", "0");
     render(() => <GraphSwitcher />);
     openSwitcher();
 
     expect(screen.queryByRole("button", { name: "Remove Graph A" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Graph B" }));
-    expect(screen.getByText("Remove")).toBeTruthy();
-    fireEvent.click(screen.getByText("Remove"));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("keeps “Graph B”");
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
 
-    expect(listGraphs().map((g) => g.id)).toEqual(["a"]);
+    await waitFor(() => expect(listGraphs().map((g) => g.id)).toEqual(["a"]));
+    // The menu stays open and shows the change.
+    expect(menu().queryByText("Graph B")).toBeNull();
+  });
+
+  it("B-712: a local-only graph needs 'delete' typed; Cancel keeps it", async () => {
+    fakePlatform.name = "capacitor";
+    addGraph({ id: "a", label: "Open One", kind: "local" });
+    addGraph({ id: "b", label: "Pocket", kind: "local" });
+    setActiveGraphId("a");
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Pocket" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("only copy");
+    const go = within(dialog).getByRole("button", { name: "Delete forever" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    const field = within(dialog).getByRole("textbox");
+    fireEvent.input(field, { target: { value: "delet" } });
+    expect(go.disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(listGraphs()).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Pocket" }));
+    const again = await screen.findByRole("alertdialog");
+    fireEvent.input(within(again).getByRole("textbox"), { target: { value: " Delete " } });
+    const armed = within(again).getByRole("button", {
+      name: "Delete forever",
+    }) as HTMLButtonElement;
+    expect(armed.disabled).toBe(false);
+    fireEvent.click(armed);
+    await waitFor(() => expect(listGraphs().map((g) => g.id)).toEqual(["a"]));
+  });
+
+  it("B-712: a server graph with unsynced changes says how many and needs 'delete'", async () => {
+    addGraph({ id: "a", label: "Graph A", kind: "remote", baseUrl: "/g/a" });
+    addGraph({ id: "b", label: "Graph B", kind: "remote", baseUrl: "/g/b" });
+    setActiveGraphId("a");
+    localStorage.setItem("nooklet.pendingCount.b", "4");
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Graph B" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain(
+      "4 changes made on this device have not reached the server",
+    );
+    expect(
+      (within(dialog).getByRole("button", { name: "Remove" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
   });
 
   it("a plain browser tab: 'Add a graph' goes straight to the server form, no local-only choice", () => {
