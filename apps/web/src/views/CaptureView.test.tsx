@@ -2,9 +2,12 @@
 
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CaptureView } from "./CaptureView.js";
+import { CAPTURE_DRAFT_KEY, CaptureView } from "./CaptureView.js";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 describe("CaptureView", () => {
   it("disables save while the textarea is empty", () => {
@@ -81,5 +84,68 @@ describe("CaptureView", () => {
     render(() => <CaptureView initialText="shared text" />);
     const textarea = screen.getByPlaceholderText("Capture a thought…") as HTMLTextAreaElement;
     expect(textarea.value).toBe("shared text");
+  });
+
+  it("a prefill is never saved on its own: nothing is written until Save (ADR 033)", async () => {
+    const submit = vi.fn(async () => ({ pageId: "p" }));
+    render(() => <CaptureView initialText="from a link" submit={submit} />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Save to journal"));
+    await screen.findByText("Saved to today's journal.");
+    expect(submit).toHaveBeenCalledWith("from a link");
+  });
+
+  it("Cancel discards the prefill without writing", () => {
+    const submit = vi.fn();
+    const onCancel = vi.fn();
+    render(() => <CaptureView initialText="from a link" submit={submit} onCancel={onCancel} />);
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
+    expect((screen.getByPlaceholderText("Capture a thought…") as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+  });
+
+  it("with no graph: says so, cannot save, and keeps the text as a draft", () => {
+    const submit = vi.fn();
+    const onSetUpGraph = vi.fn();
+    render(() => (
+      <CaptureView
+        initialText="first thought"
+        noGraph
+        submit={submit}
+        onSetUpGraph={onSetUpGraph}
+      />
+    ));
+    expect(screen.getByText(/no graph on this device yet/)).toBeTruthy();
+    expect(screen.queryByText("Save to journal")).toBeNull();
+    const textarea = screen.getByPlaceholderText("Capture a thought…") as HTMLTextAreaElement;
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(submit).not.toHaveBeenCalled();
+    expect(localStorage.getItem(CAPTURE_DRAFT_KEY)).toBe("first thought");
+    fireEvent.input(textarea, { target: { value: "first thought, edited" } });
+    expect(localStorage.getItem(CAPTURE_DRAFT_KEY)).toBe("first thought, edited");
+    fireEvent.click(screen.getByText("Set up a graph"));
+    expect(onSetUpGraph).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores a kept draft once there is a graph, and clears it after saving", async () => {
+    localStorage.setItem(CAPTURE_DRAFT_KEY, "kept from before");
+    const submit = vi.fn(async () => ({ pageId: "p" }));
+    render(() => <CaptureView submit={submit} />);
+    const textarea = screen.getByPlaceholderText("Capture a thought…") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("kept from before");
+    fireEvent.click(screen.getByText("Save to journal"));
+    await screen.findByText("Saved to today's journal.");
+    expect(localStorage.getItem(CAPTURE_DRAFT_KEY)).toBeNull();
+  });
+
+  it("a new prefill does not overwrite a kept draft: both are kept", () => {
+    localStorage.setItem(CAPTURE_DRAFT_KEY, "older");
+    render(() => <CaptureView initialText="newer" />);
+    const textarea = screen.getByPlaceholderText("Capture a thought…") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("older\nnewer");
   });
 });

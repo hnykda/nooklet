@@ -72,6 +72,18 @@ export const defaultQuickCaptureDeps: QuickCaptureDeps = {
 
 export interface QuickCaptureResult {
   pageId: string;
+  blockId: string;
+  /** What `applyOps` reported. A queued capture is deleted only when nothing was rejected. */
+  rejected: number;
+}
+
+/** For a capture made earlier than it is written (ADR 033's native queue): which moment it
+ * belongs to, and the block id to use. */
+export interface QuickCaptureOptions {
+  /** Epoch ms the capture was made. Picks the journal day (local time) and the block's
+   * `createdAt`. Defaults to now. */
+  at?: number;
+  blockId?: string;
 }
 
 /**
@@ -85,8 +97,9 @@ export interface QuickCaptureResult {
 export async function submitQuickCapture(
   text: string,
   deps: QuickCaptureDeps = defaultQuickCaptureDeps,
+  options: QuickCaptureOptions = {},
 ): Promise<QuickCaptureResult | null> {
-  const day = deps.today();
+  const day = options.at === undefined ? deps.today() : todayJournalDay(new Date(options.at));
   const [target, clock] = await Promise.all([deps.findTarget(day), deps.getClock()]);
   const built = buildQuickCaptureOps({
     target,
@@ -94,9 +107,10 @@ export async function submitQuickCapture(
     text,
     clock,
     newId: deps.newId,
-    now: deps.now(),
+    now: options.at ?? deps.now(),
+    ...(options.blockId === undefined ? {} : { blockId: options.blockId }),
   });
   if (!built) return null;
-  await deps.applyOps(built.ops);
-  return { pageId: built.pageId };
+  const applied = await deps.applyOps(built.ops);
+  return { pageId: built.pageId, blockId: built.blockId, rejected: applied.rejected };
 }

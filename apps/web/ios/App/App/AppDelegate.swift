@@ -7,7 +7,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        #if DEBUG
+        DebugLaunchHooks.run()
+        #endif
         return true
     }
 
@@ -42,3 +44,36 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return config
     }
 }
+
+#if DEBUG
+/// Simulator verification hooks (ADR 033), compiled into Debug builds only and reachable only
+/// through launch arguments, which only whoever launches the process can set (Xcode, or
+/// `xcrun simctl launch <udid> sh.nooklet.app -NookletDebugEnqueue "text"`). Never a URL: a link
+/// that wrote silently is exactly what the capture design forbids.
+///
+/// - `-NookletDebugEnqueue <text>` runs `AddToNookletIntent.enqueue`, the code the App Intent
+///   runs, before any web view exists.
+/// - `-NookletDebugExitAfterEnqueue YES` then exits, so the web layer never starts: the file is
+///   left in the queue for inspection, as after an intent run with the app closed.
+/// - `-NookletDebugQuickAction <type>` runs the quick-action handler for that
+///   `UIApplicationShortcutItemType` once the app is up (`xcrun simctl` cannot long-press).
+enum DebugLaunchHooks {
+    static func run() {
+        let defaults = UserDefaults.standard
+        if let text = defaults.string(forKey: "NookletDebugEnqueue"), #available(iOS 16.0, *) {
+            do {
+                try AddToNookletIntent.enqueue(text)
+                NSLog("[nooklet-debug] enqueued a capture")
+            } catch {
+                NSLog("[nooklet-debug] enqueue failed: \(error)")
+            }
+            if defaults.bool(forKey: "NookletDebugExitAfterEnqueue") { exit(0) }
+        }
+        if let type = defaults.string(forKey: "NookletDebugQuickAction") {
+            DispatchQueue.main.async {
+                NSLog("[nooklet-debug] quick action \(type): \(QuickActions.handle(type: type))")
+            }
+        }
+    }
+}
+#endif

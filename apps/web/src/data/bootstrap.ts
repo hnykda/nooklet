@@ -703,6 +703,13 @@ export function authToken(): string | undefined {
  * active entry chosen yet — the state `initBootstrap()` resolves on its very first call), then the
  * build-time dev env vars, then same-origin with no prefix at all (nothing configured anywhere,
  * e.g. Capacitor before `ConnectView.tsx` has ever run). */
+/** A device with no graph at all: nothing in the graph list, and no server handing it a token
+ * (a first launch of the phone app). A local-only graph or a server graph both count. ADR 033:
+ * the capture screen says so instead of writing, and the native capture queue waits. */
+export function deviceHasNoGraph(): boolean {
+  return activeGraph() === undefined && bootstrapConfig().token === null;
+}
+
 export function apiBaseUrl(): string {
   const entry = activeGraph();
   return (

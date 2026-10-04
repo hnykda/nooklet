@@ -14,6 +14,22 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
+### B-800 · A second deep-link subscriber never sees the link that launched the app
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** while building proposal 006 Phase 1, before it shipped
+
+`platform/capacitor.ts`'s `deepLinks.onOpen` ran its own `App.getLaunchUrl()` and
+`claimLaunchUrl()` (B-603's reload guard) for every subscriber. The guard is one hash in
+`sessionStorage`, so the first subscriber to claim a cold-start link marked it handled and every
+later subscriber was told it was already delivered. With one subscriber (`PairingLinkPrompt`) that
+was invisible; the capture work adds a second (`AppLinkHandler`), and a cold start from a Home
+Screen quick action or a `nooklet://capture` link would have reached only the pairing prompt, which
+ignores it, so nothing opened.
+
+**Fix:** one native `appUrlOpen` listener and one launch-URL claim per page, fanned out to every
+subscriber. **Test:** `apps/web/src/platform/deep-links-multicast.test.ts` (fails on the old code:
+2 of 3; passes now).
+
 ### B-42 · Typing into the `[[` popup keeps dropping editor focus
 **Status:** open · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
 [[new/page` → then context window open → but when I keep typing then the edit focus keeps

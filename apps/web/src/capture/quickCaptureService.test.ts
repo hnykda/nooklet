@@ -86,4 +86,28 @@ describe("submitQuickCapture", () => {
     await submitQuickCapture("atomic please", deps);
     expect(applied).toHaveLength(1);
   });
+
+  it("ADR 033: a queued capture lands on the day it was made, with its own time and block id", async () => {
+    let lookedUpDay: number | undefined;
+    const { deps, applied } = fakeDeps({
+      today: () => 20991231,
+      findTarget: async (day) => {
+        lookedUpDay = day;
+        return null;
+      },
+    });
+    // Local noon, so the day is the same in every time zone the suite runs in.
+    const at = new Date(2026, 9, 2, 12, 0, 0).getTime();
+    const result = await submitQuickCapture("from the queue", deps, {
+      at,
+      blockId: "0000000000abcd",
+    });
+    expect(lookedUpDay).toBe(20261002);
+    expect(result?.blockId).toBe("0000000000abcd");
+    expect(result?.rejected).toBe(0);
+    expect(applied[0]?.[1]).toMatchObject({
+      entity: "0000000000abcd",
+      payload: { kind: "block.create", createdAt: at, content: "from the queue" },
+    });
+  });
 });

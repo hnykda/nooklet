@@ -91,3 +91,33 @@
   color: var(--danger);
   font-size: var(--text-sm);
 }
+
+.capture-cancel {
+  min-height: var(--touch);
+  padding: 0 var(--space-xl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--text-md);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ADR 033: a capture that arrives before any graph exists (first launch). */
+.capture-no-graph {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  font-size: var(--text-sm);
+}
+
+.capture-no-graph p {
+  margin: 0;
+}
