@@ -858,17 +858,6 @@ client dir at startup (or serves a versioned copy), and/or the runbook says not 
 test server is serving. To confirm next time it happens: Inspect Element → Console/Network (404s on
 `/static/*.js` would confirm).
 
-### B-652 · A reconnecting device can silently lose one side of a same-block conflict (push/pull race)
-**Status:** open, suspected (code read only) · **Severity:** high if real (silent text loss) · **Found:** 2026-10-04, b642 agent · **Test:** none yet
-
-Conflict detection in `SyncClient.pull()` needs the device's own `block.text` still in `pending_op`
-when the other device's op is pulled. On `online`/`resume`/`visible`, `worker-core.ts` runs
-`schedulePush(0)` and `pull()` concurrently; if the push response is applied before the pull response,
-the pending row is gone, the pulled op meets no pending edit, and plain LWW drops one text with no
-copy. The B-642 Playwright spec did not hit it in 9 runs (pull went first each time). Candidate fixes:
-keep the base/text of recently acknowledged `block.text` ops until the next pull completes, or pull
-before push on reconnect.
-
 ### B-653 · `--graph` and `--no-mirror` are missing from `nooklet --help`
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
 
@@ -971,6 +960,41 @@ Revoked sockets keep receiving sync pokes (sequence numbers only, no note conten
 Reachability unverified. Recommendation H9: `pnpm.overrides` now; weekly `pnpm audit --prod --audit-level high` in CI; grouped monthly updates.
 
 ## Fixed
+
+### B-680 · `e2e.test.ts` B-642 "one device offline" was flaky (6/20): a same-millisecond HLC tie
+**Status:** fixed (2026-10-04, `d7d6586`) · **Severity:** low (test) · **Found:** 2026-10-04, b652 agent · **Test:** the test itself
+
+Test-only; B's clock now 1 s ahead.
+
+### B-679 · A merge op was queued without a base, so the next concurrent edit won by LWW over the merge
+**Status:** fixed (2026-10-04, `d7d6586`) · **Severity:** high · **Found:** 2026-10-04, b652 agent · **Test:** "three devices edit different words offline …"
+
+A third device's change was lost.
+
+### B-678 · A three-way merge used the newest pending edit's base and could silently revert an earlier local edit
+**Status:** fixed (2026-10-04, `d7d6586`) · **Severity:** high · **Found:** 2026-10-04, b652 agent · **Test:** "two local edits of one block before the other device's edit arrives: the merge keeps the first one too"
+
+Two offline edits of one block, then another device's edit to a nearby word: the first local edit vanished.
+
+### B-652 · A reconnecting device can silently lose one side of a same-block conflict (push/pull race)
+**Status:** fixed (2026-10-04, `d7d6586` + `1164ed3`, ADR 027 amendment 1) · **Severity:** high (silent text loss) ·
+**Test:** `apps/web/src/sync/e2e.test.ts` "a same-block conflict is kept whichever response a reconnecting device gets first (B-652)" (15 scenarios + random schedules; 20 tests fail on `59aa77b`), `apps/web/src/sync/sync-client.test.ts` (B-652 cases), `e2e/tests/sync-conflict.spec.ts` (2 new, red before)
+
+Conflict detection in `SyncClient.pull()` needs the device's own `block.text` still in `pending_op`
+when the other device's op is pulled. On `online`/`resume`/`visible`, `worker-core.ts` runs
+`schedulePush(0)` and `pull()` concurrently; if the push response is applied before the pull response,
+the pending row is gone, the pulled op meets no pending edit, and plain LWW drops one text with no
+copy. The B-642 Playwright spec did not hit it in 9 runs (pull went first each time). Candidate fixes:
+keep the base/text of recently acknowledged `block.text` ops until the next pull completes, or pull
+before push on reconnect.
+
+**Confirmed real and fixed.** 11/15 deterministic scenarios lost a text on `59aa77b`, including two
+*online* devices each pushing before pulling; a three-device probe against a real server lost four
+edits silently while `nooklet verify` said OK (a `block.text` carries no base, so the server just
+overwrites). Fix: an acknowledged `block.text` moves to a new client table `sent_text` until a pull
+passes its `seq`; detection walks the pull in `seq` order. Rejected: server-side detection (half the
+cases without a wire change old clients don't send), pull-before-push (two online devices), an acked
+flag in `pending_op`. Merges across ≥3 devices rely on a heuristic tested with 2–3 devices only.
 
 ### B-675 · The loopback auto-token was on by default for a non-loopback bind
 **Status:** fixed (2026-10-04, security review) · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** `security-defaults.test.ts` "loopback auto-token default"
