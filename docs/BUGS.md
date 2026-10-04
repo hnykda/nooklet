@@ -937,18 +937,6 @@ Failed once in `pnpm -r test` while an e2e build ran; passed 3/3 alone.
 
 `e2e/global-setup.ts:104` writes `<tmp>/server.log` after teardown deleted the temp dir → uncaught ENOENT.
 
-### B-671 · `nooklet restore --graph <id>` is rejected as an unknown flag
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04 · **Test:** none
-
-`RESTORE_FLAGS` in `packages/server/src/cli-args.ts` is `["data", "force"]` but `cli.ts`'s restore reads `graphIdFlag(args)`. Only the default graph can be restored from the CLI. Found by the infra agent.
-
-### B-676 · Revoking a token does not close its open WebSockets; unauthenticated sockets never time out
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** none
-
-Revoked sockets keep receiving sync pokes (sequence numbers only, no note content). Recommendations H3 (re-check the token on each send, close 4401) and H4 (10 s hello timeout, per-token and total caps, `maxPayload` 64 KB). Probe `tools/probes/security/ws-revocation.mjs`.
-
-2026-10-04: H3 fixed by qr-pairing — `token.revoke` closes the token's sockets at once (4401); a CLI revoke is caught at the next commit. Tests: `ops/pairing.http.test.ts` (2), e2e `qr-pairing.spec.ts`. **H4 (hello timeout, caps, maxPayload) still open.**
-
 ### B-677 · Dependency advisories via the mermaid plugin (lodash-es, dompurify)
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** none
 
@@ -966,21 +954,11 @@ Hardening: `.vr-image` max-height 70vh, auto width/height. The owner's report wa
 
 Owner: like B-648 (Properties), the viewport grows beyond the screen width after the image is inserted.
 
-### B-685 · `nooklet serve` on a port already in use dies with a raw `EADDRINUSE` stack trace
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, build-docs agent · **Test:** none
-
-Should print a one-line explanation ("port 6100 is in use; pick --port").
-
 ### B-695 · `build-sidecar.mjs` could not have worked on Windows
 **Status:** believed fixed (2026-10-04, releases agent), unverified · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** none (first real test is the Windows CI job)
 
 `spawnSync("pnpm")` without a shell (pnpm.cmd), esbuild.exe looked up under `bin/`, zip extracted
 with `unzip`. Fixed by reading; no Windows machine.
-
-### B-696 · The server reports version `0.0.1` to MCP clients and has no `nooklet --version`
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** none
-
-`mcp/server.ts` default; `cli.ts` never passes the package version.
 
 ### B-699 · The pairing confirm screen shows the server address twice
 **Status:** open (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
@@ -991,18 +969,6 @@ Read-only box and the editable field, for token and code links (pre-existing fro
 **Status:** open (2026-10-04, qr-pairing) · **Severity:** low (security) · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
 
 Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
-
-### B-702 · A markdown table written with leading pipes renders every cell as `|`
-**Status:** open · **Severity:** medium (the usual table form, and Logseq's) · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** probe `tools/probes/phone-images/table-cells.spec.ts`
-
-`| a | b |` renders each cell as `<span data-from="0" data-to="1">|`; the no-leading-pipe form
-(`a | b`) renders correctly. The unit test `tokens.test.tsx` "table -> …" checks structure only, with
-the no-pipe form.
-
-### B-703 · Images have no reserved size, so rows below jump when one loads
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, phone-images · **Test:** none
-
-An image is `loading="lazy"` with no width/height, so it is 0×0 until scrolled near. Reserving space needs the dimensions, which `asset.upload` does not record.
 
 ### B-704 · In the desktop app, adding a remote server graph from the in-app switcher fails with "Load failed"
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner adding the production server (`https://<tailnet host>/g/alpha`) from the desktop app · **Test:** none yet
@@ -1129,7 +1095,73 @@ DB-version graphs keep them in `db.sqlite`, which the markdown mirror does not c
 the same day: support BOTH Logseq formats explicitly (auto-detected), and document what carries over
 from each.
 
+### B-718 · self-hosting.md still says to restart the server after revoking a token
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, ws-hardening · **Test:** none
+
+Since H3 an in-app revoke closes sockets at once and a CLI revoke closes `/sync/live` at the next commit; a CLI revoke does not reach `/ui/live` until it closes. Say exactly that.
+
+### B-719 · A table-first block's `^id` and properties land inside the table in the markdown mirror
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, tables-images · **Test:** none
+
+nooklet reads it back exactly, but a GFM viewer or Logseq sees a broken table. Same family as OUT-14's fence-first rule. 0 such blocks in the real graph.
+
+### B-720 · `\|` inside a code span in a table cell renders as `\|`
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, tables-images · **Test:** none
+
+GFM unescapes the pipe before inline parsing, even in code spans. Not seen in the real graph.
+
 ## Fixed
+
+### B-703 · Images have no reserved size, so rows below jump when one loads
+**Status:** fixed (2026-10-04, tables-images) · **Test:** `assets/image-size.test.ts`, `asset-upload.http.test.ts` "B-703", `render/image-size.test.tsx`, e2e `image-layout.spec.ts` (red: 396 px / 224 px jump)
+
+An image is `loading="lazy"` with no width/height, so it is 0×0 until scrolled near. Reserving space needs the dimensions, which `asset.upload` does not record.
+
+**Fixed.** Width/height read from the image header at upload and import (PNG, JPEG with EXIF rotation, GIF, WebP; matched `sips` on 147/147 real images); HTTP-only `asset.sizes`; existing assets backfilled lazily on first read (171 in 14 ms).
+
+### B-702 · A markdown table written with leading pipes renders every cell as `|`
+**Status:** fixed (2026-10-04, tables-images) · **Test:** `packages/core/src/tokens.test.ts` "B-702: …" (5), `apps/web/src/editor/render/tokens.test.tsx` (2), corpus 50, `mirror/export.test.ts` "reads back GFM tables exactly", e2e `tables.spec.ts` (2)
+
+`| a | b |` renders each cell as `<span data-from="0" data-to="1">|`; the no-leading-pipe form
+(`a | b`) renders correctly. The unit test `tokens.test.tsx` "table -> …" checks structure only, with
+the no-pipe form.
+
+**Fixed.** Cells were tokenized at offset 0, and tables after prose (the real graph's only shape: 4 tables, 0 rendered before) were not recognized at all — new `mixed` content kind (CLS-T-mixed). GFM rules: optional outer pipes, `\|`, alignment, uneven rows.
+
+### B-676 · Revoking a token does not close its open WebSockets; unauthenticated sockets never time out
+**Status:** fixed (2026-10-04; H3 by qr-pairing, H4/H12 by ws-hardening) · **Test:** `packages/server/src/live-limits.test.ts`, `apps/web/src/sync/live-backoff.test.ts`, `http-transport-live.test.ts`, e2e `live-limits.spec.ts`
+
+Revoked sockets keep receiving sync pokes (sequence numbers only, no note content). Recommendations H3 (re-check the token on each send, close 4401) and H4 (10 s hello timeout, per-token and total caps, `maxPayload` 64 KB). Probe `tools/probes/security/ws-revocation.mjs`.
+
+2026-10-04: H3 fixed by qr-pairing — `token.revoke` closes the token's sockets at once (4401); a CLI revoke is caught at the next commit. Tests: `ops/pairing.http.test.ts` (2), e2e `qr-pairing.spec.ts`. **H4 (hello timeout, caps, maxPayload) still open.**
+
+**H4/H12 fixed.** Hello timeout 10 s (4408); 20 sockets per token / 500 total (4429, `--ws-max-per-token`/`--ws-max-total`; the loopback auto-token is exempt per-token); `maxPayload` 512 KiB (1009), 16 KiB before hello (sized from `ws-frame-sizes.mjs`). Client backs off 30 s → 5 min on 4429/1009 and stops on 4401/4403; reconnect delay resets only after 15 s open (it used to reset on open, reconnecting every second behind a proxy that drops sockets).
+
+### B-717 · `restore --force` over a graph with a stale WAL produced a corrupt database
+**Status:** fixed (2026-10-04, cli-fixes) · **Severity:** high (the restore you reach for after a crash is the one that hits it) · **Found:** 2026-10-04, cli-fixes agent · **Test:** `backup/backup.test.ts` "--force over a database whose writer died with an un-checkpointed WAL…"; probe `tools/probes/restore-stale-wal.mjs`
+
+`restoreBackup` wrote the archive's `graph.sqlite` but left the old `-wal`/`-shm`; SQLite does not tie
+a WAL to its database file, so the next open replayed old frames onto the restored file (`database disk
+image is malformed`). Restore now deletes both first.
+
+### B-696 · The server reports version `0.0.1` to MCP clients and has no `nooklet --version`
+**Status:** fixed (2026-10-04, cli-fixes) · **Test:** `cli-ops.test.ts` (banner + MCP serverInfo + `--version`), `serve-banner.test.ts`
+
+`mcp/server.ts` default; `cli.ts` never passes the package version.
+
+Version from `packages/server/package.json` (`src/version.ts`); deliberately NOT on the unauthenticated `/healthz` (fingerprinting), recorded in security-inventory.md.
+
+### B-685 · `nooklet serve` on a port already in use dies with a raw `EADDRINUSE` stack trace
+**Status:** fixed (2026-10-04, cli-fixes) · **Test:** `cli-ops.test.ts` "prints one line naming the port and --port, and exits 1 — no stack trace"
+
+Should print a one-line explanation ("port 6100 is in use; pick --port").
+
+### B-671 · `nooklet restore --graph <id>` is rejected as an unknown flag
+**Status:** fixed (2026-10-04, cli-fixes) · **Test:** `cli-ops.test.ts` "backup --graph alpha, change alpha, restore --graph alpha --force…"; `cli-flag-audit.test.ts`
+
+`RESTORE_FLAGS` in `packages/server/src/cli-args.ts` is `["data", "force"]` but `cli.ts`'s restore reads `graphIdFlag(args)`. Only the default graph can be restored from the CLI. Found by the infra agent.
+
+**Fixed.** Shared `GRAPH_COMMAND_FLAGS`; `gc --graph` and `repair org-dates --graph` were refused the same way and are fixed too. Round trip with two graphs: `tools/probes/restore-per-graph.mjs`.
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
 **Status:** fixed (2026-10-04, coordinator) · **Severity:** high (a large graph could never sync to a new device) · **Found:** 2026-10-04, owner adding the production `alpha` graph to the iPhone ("AbortError: fetch is aborted"; Settings says offline) · **Test:** `apps/web/src/sync/http-transport-stall.test.ts` (3); gzip checked against a scratch server with curl
