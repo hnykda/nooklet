@@ -1078,13 +1078,15 @@ depends on what ran before it. The cause has not been investigated. In those sam
 re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. Both look like
 flakes and are noted here rather than logged separately.
 
+## Fixed
+
 ### B-746 · Arrowing through the slash menu moves the highlight out of view; the list does not scroll with it
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the desktop app · **Test:** none yet
+**Status:** fixed 2026-10-04 · **Severity:** medium · **Found:** 2026-10-04, owner on the desktop app · **Test:** `e2e/tests/popup-follow-highlight.spec.ts` (slash menu, command palette; both fail without the fix)
 
 With more commands than the popup shows, ArrowDown past the last visible row highlights a row
 that is scrolled out of sight; the list stays put. Expected: the highlighted row is kept in view.
 
-## Fixed
+**Fix:** `commands/keep-active-in-view.ts` scrolls the `aria-selected` row into view (`block: "nearest"`) whenever the highlight changes; used by the slash menu, the `[[`/`#` autocomplete, the template picker, the command palette and the refactor page picker. The emoji picker already did this.
 
 ### B-745 · Dark mode: no visible text cursor in the block editor
 **Status:** fixed 2026-10-04 · **Severity:** medium · **Found:** 2026-10-04, owner on the desktop app · **Test:** `e2e/tests/editor-caret.spec.ts` (2; both fail without the fix)

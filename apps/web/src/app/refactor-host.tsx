@@ -16,6 +16,7 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { render } from "solid-js/web";
 import { rememberFocus } from "../commands/focus-return.js";
+import { keepActiveInView } from "../commands/keep-active-in-view.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
 import type { RefactorHost } from "../commands/registrations/refactor.js";
 import { describeError } from "../data/api-client.js";
@@ -51,6 +52,8 @@ function PagePicker(props: {
   const pages = useAllPages();
   const [query, setQuery] = createSignal("");
   const [highlight, setHighlight] = createSignal(0);
+  let listEl: HTMLDivElement | undefined;
+  keepActiveInView(() => listEl, highlight); // B-746
 
   const rows = createMemo<PickerRow[]>(() => {
     const q = query().trim();
@@ -126,7 +129,7 @@ function PagePicker(props: {
           aria-controls="page-picker-listbox"
           aria-label={props.title}
         />
-        <div id="page-picker-listbox" class="cmd-list" role="listbox">
+        <div ref={listEl} id="page-picker-listbox" class="cmd-list" role="listbox">
           <For each={rows()}>
             {(row, i) => (
               // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard selection is on the input (Up/Down/Enter).

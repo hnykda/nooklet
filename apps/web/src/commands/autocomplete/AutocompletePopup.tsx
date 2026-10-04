@@ -26,6 +26,7 @@ import { rankItems } from "../ranking/rank.js";
 import { dateShortcuts } from "./dates.js";
 import { type AutocompleteMatch, existingRefTailLength } from "./trigger.js";
 import "../styles.css";
+import { keepActiveInView } from "../keep-active-in-view.js";
 
 export type AutocompleteVariant = "page" | "tag" | "block";
 
@@ -309,12 +310,17 @@ export function AutocompletePopup(props: AutocompletePopupProps) {
 
   // B-681: at the caret, flipped above it and kept on screen (`../popup-position.ts`).
   const placement = createCaretPopupStyle(() => props.position);
+  let listEl: HTMLElement | undefined;
+  keepActiveInView(() => listEl, highlight); // B-746
 
   return (
     <Show when={props.trigger !== null}>
       <div
         class="cmd-popup"
-        ref={placement.ref}
+        ref={(el) => {
+          placement.ref(el);
+          listEl = el;
+        }}
         style={placement.style()}
         role="listbox"
         onKeyDown={onKeyDown}

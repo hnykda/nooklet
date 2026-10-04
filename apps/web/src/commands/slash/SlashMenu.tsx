@@ -15,6 +15,7 @@ import type { CommandContext } from "../types.js";
 import { slashItems } from "./contributed.js";
 import type { SlashMatch } from "./trigger.js";
 import "../styles.css";
+import { keepActiveInView } from "../keep-active-in-view.js";
 
 export interface SlashMenuProps {
   editor: EditorHost;
@@ -93,12 +94,17 @@ export function SlashMenu(props: SlashMenuProps) {
 
   // B-681: at the caret, flipped above it and kept on screen (`../popup-position.ts`).
   const placement = createCaretPopupStyle(() => props.position);
+  let listEl: HTMLElement | undefined;
+  keepActiveInView(() => listEl, highlight); // B-746
 
   return (
     <Show when={props.trigger !== null}>
       <div
         class="cmd-popup"
-        ref={placement.ref}
+        ref={(el) => {
+          placement.ref(el);
+          listEl = el;
+        }}
         style={placement.style()}
         role="listbox"
         onKeyDown={onKeyDown}

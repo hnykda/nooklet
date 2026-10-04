@@ -22,6 +22,7 @@ import type { TemplateSummary } from "../../data/templates.js";
 import { claimPopupKeys, POPUP_OWNED_KEYS } from "../popup-keys.js";
 import "../styles.css";
 import "./template-picker.css";
+import { keepActiveInView } from "../keep-active-in-view.js";
 
 export interface TemplatePickerOptions {
   templates: readonly TemplateSummary[];
@@ -46,6 +47,7 @@ function TemplatePicker(props: TemplatePickerOptions & { close: () => void }) {
   const [query, setQuery] = createSignal("");
   const [highlight, setHighlight] = createSignal(0);
   let el: HTMLDivElement | undefined;
+  keepActiveInView(() => el, highlight); // B-746
 
   const rows = createMemo(() => {
     const q = query().trim().toLowerCase();
