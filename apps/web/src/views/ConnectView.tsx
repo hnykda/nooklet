@@ -34,6 +34,11 @@
  * open a URL on the phone can craft such a link, so the address is shown in plain view and nothing
  * happens until the owner taps Connect. `onCancel` dismisses it.
  *
+ * B-655: the link may carry a one-time pairing `code` instead of a token (from the QR pairing page,
+ * `../pair/PairLanding.tsx`). The form then asks for this device's name, and Connect first trades
+ * the code for a token (`pairing.redeem`, the one op callable without a token). `sameOrigin` is
+ * the pairing page opened in a browser: it pairs with this page's own graph.
+ *
  * Both at once: `repair` wins. The address stays the entry's own — a pairing link can never move a
  * repaired entry to another server or graph. Its token is used to pre-fill the token field only
  * when the link names that same graph (`sameGraphAddress`); otherwise the link is ignored here.
@@ -48,6 +53,7 @@ import {
   parseServerUrl,
   type RepairTarget,
 } from "../data/connect-graph.js";
+import { defaultDeviceLabel, redeemPairingCode } from "../data/pairing.js";
 import { platform } from "../platform/index.js";
 import "./connect.css";
 
@@ -73,7 +79,14 @@ export function ConnectView(props: {
   // A plain read, not a signal: the shell this build runs in cannot change mid-session. A pairing
   // link always names a server, so it needs the field wherever it was opened. Never in repair mode,
   // where the address is fixed and shown read-only.
-  const showServerField = !props.repair && (platform.name === "capacitor" || prefill !== undefined);
+  // B-655: a pairing page opened in this browser pairs with this page's own graph (`sameOrigin`),
+  // exactly as the web connect screen does, so there is no address to type or show as editable.
+  const showServerField =
+    !props.repair &&
+    (platform.name === "capacitor" || (prefill !== undefined && !prefill.sameOrigin));
+  // B-655: a one-time code instead of a token. The form asks for this device's name instead of a
+  // token; Connect trades the code for a token (`pairing.redeem`), then connects with it as usual.
+  const pairingCode = prefill?.code;
 
   // B-613, loopback only: the server hands a browser on its own machine a fresh token on every
   // start and retires the old one, so a tab left open across a `nooklet serve` restart is refused
@@ -101,13 +114,14 @@ export function ConnectView(props: {
 
   const [serverUrl, setServerUrl] = createSignal(prefill?.serverUrl ?? "");
   const [token, setToken] = createSignal(repairToken ?? prefill?.token ?? "");
+  const [deviceName, setDeviceName] = createSignal(defaultDeviceLabel(navigator.userAgent));
   const [error, setError] = createSignal<string | undefined>();
   const [busy, setBusy] = createSignal(false);
 
   async function connect(e: Event): Promise<void> {
     e.preventDefault();
-    const tokenValue = token().trim();
-    if (!tokenValue) return;
+    let tokenValue = token().trim();
+    if (!tokenValue && !pairingCode) return;
 
     // Built explicitly from the typed address rather than storing it and reading `apiBaseUrl()`
     // back: a wrong address must fail this fetch, not silently resolve against
@@ -126,6 +140,20 @@ export function ConnectView(props: {
 
     setBusy(true);
     setError(undefined);
+    if (pairingCode) {
+      const label = deviceName().trim();
+      if (!label) {
+        setBusy(false);
+        return;
+      }
+      const redeemed = await redeemPairingCode(showServerField ? base : "", pairingCode, label);
+      if (!redeemed.ok) {
+        setBusy(false);
+        setError(redeemed.error);
+        return;
+      }
+      tokenValue = redeemed.token;
+    }
     // Verify before storing, so a typo fails here with a readable message rather than becoming a
     // silent permanent "offline" three screens later — which is exactly how the missing-token bug
     // presented before any of this existed.
@@ -285,6 +313,10 @@ export function ConnectView(props: {
           </Show>
           <pre class="connect-cmd">nooklet token create --label phone --scope write --sync</pre>
           <p class="connect-note">The token is shown once. Paste it here.</p>
+          <p class="connect-note">
+            Easier: open a pairing QR code or link from Settings → Devices → Add a device on the
+            server's own machine, or from <code>nooklet pair</code>.
+          </p>
         </Show>
 
         <form onSubmit={(e) => void connect(e)}>
@@ -304,19 +336,38 @@ export function ConnectView(props: {
               />
             </label>
           </Show>
-          <label class="connect-field">
-            <span>Device token</span>
-            <input
-              type="password"
-              autocomplete="off"
-              autocapitalize="none"
-              autocorrect="off"
-              spellcheck={false}
-              placeholder="nk_…"
-              value={token()}
-              onInput={(e) => setToken(e.currentTarget.value)}
-            />
-          </label>
+          <Show
+            when={pairingCode}
+            fallback={
+              <label class="connect-field">
+                <span>Device token</span>
+                <input
+                  type="password"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  autocorrect="off"
+                  spellcheck={false}
+                  placeholder="nk_…"
+                  value={token()}
+                  onInput={(e) => setToken(e.currentTarget.value)}
+                />
+              </label>
+            }
+          >
+            <label class="connect-field">
+              <span>Name this device</span>
+              <input
+                type="text"
+                autocomplete="off"
+                maxLength={80}
+                value={deviceName()}
+                onInput={(e) => setDeviceName(e.currentTarget.value)}
+              />
+            </label>
+            <p class="connect-note">
+              Shown in Settings → Devices on your other devices, where it can be revoked.
+            </p>
+          </Show>
           <Show when={error()}>
             <p class="connect-error" role="alert">
               {error()}
@@ -326,7 +377,9 @@ export function ConnectView(props: {
             <button
               type="submit"
               disabled={
-                busy() || token().trim() === "" || (showServerField && serverUrl().trim() === "")
+                busy() ||
+                (pairingCode ? deviceName().trim() === "" : token().trim() === "") ||
+                (showServerField && serverUrl().trim() === "")
               }
             >
               {busy() ? "Checking…" : "Connect"}

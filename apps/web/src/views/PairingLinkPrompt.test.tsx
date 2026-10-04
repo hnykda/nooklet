@@ -108,6 +108,56 @@ describe("PairingLinkPrompt (B-603)", () => {
     expect(screen.queryByLabelText("Device token")).toBeNull();
   });
 
+  it("B-655: a link with a one-time code asks for a device name, redeems the code, then connects with the new token", async () => {
+    const CODE = "nkp_abcdefghijklmnopqrstuv";
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ token: TOKEN, token_id: "t1", scope: "write", sync: true }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    const reload = mockReload();
+    render(() => <PairingLinkPrompt />);
+    deepLink.cb?.(
+      `nooklet://connect?url=${encodeURIComponent("https://n.example.ts.net/g/default")}&code=${CODE}`,
+    );
+    await screen.findByRole("dialog");
+    expect(screen.queryByLabelText("Device token")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled(); // never by itself
+    const name = screen.getByLabelText("Name this device") as HTMLInputElement;
+    fireEvent.input(name, { target: { value: "Test phone" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await vi.waitFor(() => expect(reload).toHaveBeenCalled());
+
+    const [redeemUrl, redeemInit] = fetchMock.mock.calls[0] ?? [];
+    expect(redeemUrl).toBe("https://n.example.ts.net/g/default/api/v1/pairing.redeem");
+    expect(JSON.parse(String(redeemInit?.body))).toEqual({ code: CODE, label: "Test phone" });
+    // No credential on the redeem: it is the one call made without one.
+    expect(new Headers(redeemInit?.headers).has("authorization")).toBe(false);
+    expect(activeGraph()).toMatchObject({
+      kind: "remote",
+      baseUrl: "https://n.example.ts.net/g/default",
+      token: TOKEN,
+    });
+  });
+
+  it("B-655: an expired or used code says so and stores nothing", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: "unauthorized", message: "x" } }), {
+        status: 401,
+      }),
+    );
+    render(() => <PairingLinkPrompt />);
+    deepLink.cb?.(
+      `nooklet://connect?url=${encodeURIComponent("https://n.example.ts.net")}&code=nkp_abcdefghijklmnopqrstuv`,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("no longer valid");
+    expect(listGraphs()).toEqual([]);
+  });
+
   it("ignores nooklet:// links that are not pairing links", () => {
     render(() => <PairingLinkPrompt />);
     deepLink.cb?.("nooklet://page/Foo");
