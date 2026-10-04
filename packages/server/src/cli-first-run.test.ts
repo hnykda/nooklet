@@ -167,6 +167,31 @@ describe("first run: a command before the first serve (B-607)", () => {
     expect(list).not.toMatch(/ x\n/);
   }, 60_000);
 
+  it("pair prints a terminal QR of the pairing page, with the code only in the fragment, and a served graph redeems it once (B-655)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nooklet-first-run-"));
+    expect(() => run(dir, "pair")).toThrow(); // --link is required
+    expect(() => run(dir, "pair", "--link", "https://h.example", "--scope", "admin")).toThrow();
+    const out = run(dir, "pair", "--link", "https://n.example.ts.net");
+    expect(out).toMatch(/[▀▄█]/); // the QR itself
+    const page = /https:\/\/n\.example\.ts\.net\/g\/default\/pair#code=(nkp_[A-Za-z0-9_-]+)/.exec(
+      out,
+    );
+    expect(page).not.toBeNull();
+    const code = page?.[1] as string;
+    const port = await serve(dir);
+    const redeem = () =>
+      fetch(`http://127.0.0.1:${port}/g/default/api/v1/pairing.redeem`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code, label: "cli-paired" }),
+      });
+    const first = await redeem();
+    expect(first.status).toBe(200);
+    const { token } = (await first.json()) as { token: string };
+    expect(token).toMatch(/^nk_/);
+    expect((await redeem()).status).toBe(401);
+  }, 60_000);
+
   it("import, then serve: serve starts and the imported page is there", async () => {
     const dir = mkdtempSync(join(tmpdir(), "nooklet-first-run-"));
     const graph = mkdtempSync(join(tmpdir(), "nooklet-first-run-graph-"));

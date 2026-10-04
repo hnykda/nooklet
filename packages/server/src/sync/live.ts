@@ -14,6 +14,7 @@
 import { upgradeWebSocket } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
+import { trackTokenSocket, untrackTokenSocket } from "../auth/token-sockets.js";
 import { verifyToken } from "../auth/tokens.js";
 import { registerLiveConnection, unregisterLiveConnection, wirePokeOnCommit } from "./realtime.js";
 
@@ -49,9 +50,12 @@ export function registerSyncLive(app: Hono, serverCtx: ServerContext): void {
           return;
         }
         registerLiveConnection(serverCtx, ws, parsed.device_id);
+        // B-676: so `token.revoke` can close it, and the poke can re-check the token.
+        trackTokenSocket(serverCtx.driver, verified.id, ws);
       },
       onClose(_evt, ws) {
         unregisterLiveConnection(serverCtx, ws);
+        untrackTokenSocket(serverCtx.driver, ws);
       },
     })),
   );

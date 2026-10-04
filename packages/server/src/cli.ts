@@ -6,6 +6,8 @@
  *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
+ *   nooklet pair    --link <public url> [--scope read|write] [--no-sync] [--minutes <n>]
+ *                   one-time pairing code as a terminal QR (B-655; `./auth/pairing-codes.ts`)
  *   nooklet token   create --label <l> [--scope read|write|admin] [--sync] [--ui-control]
  *                   [--link <public url>] (B-603: also prints a nooklet://connect pairing link) |
  *                   list | revoke <id> | root  (--ui-control grants ADR 015's live-UI-control
@@ -39,9 +41,16 @@ import { homedir, networkInterfaces } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
+import { renderUnicodeCompact } from "uqr";
 import { WebSocketServer } from "ws";
 import type { ServerContext } from "./apply-ops.js";
-import { PairingLinkError, pairingLink } from "./auth/pairing-link.js";
+import { createPairingCode } from "./auth/pairing-codes.js";
+import {
+  graphAddress,
+  PairingLinkError,
+  pairingLink,
+  pairingPageUrl,
+} from "./auth/pairing-link.js";
 import { ensureRootToken } from "./auth/root-token.js";
 import { createToken, revokeToken } from "./auth/tokens.js";
 import { createBackup, restoreBackup } from "./backup/index.js";
@@ -226,8 +235,11 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet mcp --stdio [--token <token>] [--data <dir>]
   nooklet graph create <id> [--label <label>] [--data <dir>]
   nooklet graph list [--data <dir>]
+  nooklet pair --link <public url> [--scope read|write] [--no-sync] [--minutes <1-60>]
+                      print a one-time pairing QR code for a phone (default: write + sync, 10 min)
   nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
-                      [--link <public url>]   also print a nooklet://connect pairing link
+                      [--link <public url>]   also print a nooklet://connect link CONTAINING the
+                                              token (prefer "nooklet pair")
   nooklet token list
   nooklet token revoke <token-id>
   nooklet token root
@@ -426,6 +438,53 @@ async function main(): Promise<void> {
         return;
       }
       die(`unknown graph subcommand "${sub ?? ""}" (expected create or list)`);
+      return;
+    }
+
+    // QR pairing for a headless server (B-655): a one-time code, shown as a terminal QR of the
+    // server's pairing page. The code goes to stdout for the owner and nowhere else: not to the
+    // server's log, not into root.token, not into the database (only its hash).
+    case "pair": {
+      cliArg(() => checkFlags(args, ["data", "graph", "link", "scope", "sync", "minutes"]));
+      const linkFlag = args.flags.get("link");
+      if (typeof linkFlag !== "string")
+        die(
+          "pair needs --link <the address phones use to reach this server>, e.g. --link https://nooklet.example.ts.net",
+        );
+      const scope = args.flags.get("scope") ?? "write";
+      if (scope !== "read" && scope !== "write")
+        die(`pair grants read or write only (got "${String(scope)}"); admin is never pairable`);
+      const minutesFlag = args.flags.get("minutes");
+      const minutes = minutesFlag === undefined ? 10 : Number(minutesFlag);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60)
+        die("--minutes must be a whole number from 1 to 60");
+      const canSync = cliArg(() => booleanFlag(args, "sync", true));
+      const graphId = graphIdFlag(args);
+      // Validate the address BEFORE minting, so a typo leaves no live code behind.
+      let pageFor: (code: string) => string;
+      try {
+        graphAddress(linkFlag, graphId);
+        pageFor = (code) => pairingPageUrl(linkFlag, code, graphId);
+      } catch (err) {
+        if (err instanceof PairingLinkError) die(err.message);
+        throw err;
+      }
+      const { ctx } = open(args);
+      const created = createPairingCode(ctx.driver, {
+        scope,
+        canSync,
+        ttlMs: minutes * 60_000,
+        createdBy: null,
+      });
+      const url = pageFor(created.code);
+      process.stdout.write(
+        `${renderUnicodeCompact(url, { border: 2 })}\n\n` +
+          `Scan with the phone's camera, then tap "Open in the nooklet app".\n` +
+          `Or open this address on the device:\n  ${url}\n\n` +
+          `Single use, expires at ${new Date(created.expiresAt).toLocaleTimeString()} ` +
+          `(${minutes} min). Grants ${scope}${canSync ? " + sync" : ""} on graph "${graphId}".\n` +
+          `Running "nooklet pair" again cancels this code.\n`,
+      );
       return;
     }
 

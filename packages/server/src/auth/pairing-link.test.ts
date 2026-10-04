@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PairingLinkError, pairingLink } from "./pairing-link.js";
+import { PairingLinkError, pairingCodeLink, pairingLink, pairingPageUrl } from "./pairing-link.js";
 
 const TOKEN = `nk_${"c".repeat(48)}`;
 
@@ -37,5 +37,29 @@ describe("pairingLink (B-603)", () => {
     ]) {
       expect(() => pairingLink(bad, TOKEN, "default"), bad).toThrow(PairingLinkError);
     }
+  });
+});
+
+describe("QR pairing links with a one-time code (B-655)", () => {
+  const CODE = "nkp_abcdefghijklmnopqrstuv";
+
+  it("the page URL keeps the code in the fragment, which no browser sends to a server", () => {
+    const url = new URL(pairingPageUrl("https://n.example.ts.net", CODE, "default"));
+    expect(url.origin + url.pathname).toBe("https://n.example.ts.net/g/default/pair");
+    expect(url.search).toBe("");
+    expect(url.hash).toBe(`#code=${CODE}`);
+  });
+
+  it("the app link carries code=, not token=", () => {
+    const u = new URL(pairingCodeLink("http://192.168.1.5:6100", CODE, "work"));
+    expect(u.searchParams.get("url")).toBe("http://192.168.1.5:6100/g/work");
+    expect(u.searchParams.get("code")).toBe(CODE);
+    expect(u.searchParams.has("token")).toBe(false);
+  });
+
+  it("refuses the same addresses as the token link", () => {
+    expect(() => pairingPageUrl("https://u:p@h.example", CODE, "default")).toThrow(
+      PairingLinkError,
+    );
   });
 });

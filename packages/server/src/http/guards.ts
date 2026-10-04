@@ -60,6 +60,11 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
     why: "client plugin bundles loaded by import(); content-hashed build output, no graph data",
   },
   {
+    method: "POST",
+    path: "/api/v1/pairing.redeem",
+    why: 'a new device trades a one-time pairing code for its first token; it has no token yet. 128-bit single-use codes, 10-minute expiry, rate-limited (./rate-limit.ts). The op is also marked auth: "none"; both are needed',
+  },
+  {
     method: "GET",
     path: "/sync/live",
     websocket: true,
