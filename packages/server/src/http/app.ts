@@ -8,7 +8,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
-import { bearerAuth, createSoleToken } from "../auth/tokens.js";
+import { createSoleToken } from "../auth/tokens.js";
 import { graphInstanceId } from "../graph-identity.js";
 import { suggestedJournalTitleFormat } from "../journal-format.js";
 import { mountUiLive } from "../live/index.js";
@@ -23,7 +23,8 @@ import {
 import { mountSync } from "../sync/index.js";
 import { suggestedTaskWorkflow } from "../task-workflow.js";
 import { mountAssetRoutes } from "./assets.js";
-import { allowedHostNames, hostName, isLoopbackName, rejectHost } from "./host-names.js";
+import { installRequestGuards } from "./guards.js";
+import { hostName, isLoopbackName } from "./host-names.js";
 import { mountWebClient } from "./web-client.js";
 
 export { isLoopbackName } from "./host-names.js";
@@ -124,7 +125,7 @@ function buildClientBootstrap(ctx: ServerContext, config: ServerConfig, c: Conte
   // `--no-loopback-token` (B-600, decision D3): behind a same-machine reverse proxy that rewrites
   // `Host` to its upstream and adds no forwarding header, every remote client is indistinguishable
   // from a local browser — the only safe answer there is to never auto-mint at all.
-  if (config.loopbackToken === false)
+  if (!loopbackTokenEnabled(config))
     return {
       token: null,
       reason: "loopback_token_disabled",
@@ -135,6 +136,18 @@ function buildClientBootstrap(ctx: ServerContext, config: ServerConfig, c: Conte
   if (!isLoopbackRequest(c))
     return { token: null, reason: "non_loopback_host", graphId, journalTitleFormat, taskWorkflow };
   return { token: webClientToken(ctx), graphId, journalTitleFormat, taskWorkflow };
+}
+
+/**
+ * Whether the loopback auto-token is on. An explicit `--loopback-token` / `--no-loopback-token`
+ * wins; otherwise it is on only for a loopback bind. A server bound to a LAN, tailnet or `0.0.0.0`
+ * is one other machines reach, typically through a proxy, and every same-host proxy that rewrites
+ * `Host` without a forwarding header makes remote clients look local (B-600). Fail closed there.
+ * The desktop app's sidecar binds 127.0.0.1 (`apps/desktop/src-tauri/src/main.rs#spawn_server`
+ * passes no `--host`), so it keeps its zero-config token.
+ */
+export function loopbackTokenEnabled(config: ServerConfig): boolean {
+  return config.loopbackToken ?? isLoopbackName(config.host ?? "127.0.0.1");
 }
 
 /** Per-process web-client token, minted lazily on the first page load. `write` + `can_sync` is
@@ -163,27 +176,9 @@ export function createApp(opts: CreateAppOptions): Hono {
   const app = opts.app ?? new Hono();
   const { serverCtx, registry, config } = opts;
 
-  /**
-   * DNS-rebinding / unexpected-Host guard, registered BEFORE every route so that it actually
-   * covers them.
-   *
-   * `@modelcontextprotocol/hono` ships its own equivalent, but `mountMcp` merges that sub-app at
-   * the END of this function — and Hono composes handlers in registration order, so a terminal
-   * handler registered earlier short-circuits before the merged middleware ever runs. It was
-   * therefore guarding only the paths that had no earlier route, while `cli.ts` printed that
-   * requests with an unexpected `Host` "are refused". They were not.
-   *
-   * Only enforced when bound to a non-loopback address: on loopback the peer is already this
-   * machine, and a stricter default would break `nooklet serve` for everyone.
-   */
-  const boundHost = config.host ?? "127.0.0.1";
-  if (!isLoopbackName(boundHost)) {
-    const allowed = allowedHostNames(config);
-    app.use("*", async (c, next) => {
-      if (!allowed.has(hostName(c.req.header("host")))) return rejectHost(c, c.req.header("host"));
-      return next();
-    });
-  }
+  // Host allowlist, security headers, body limit and deny-by-default auth (`./guards.ts`).
+  // Normally already installed by `createAppWithPlugins`, before any plugin route; a no-op then.
+  installRequestGuards(app, serverCtx, config);
 
   // `/healthz` is the stable, machine-readable liveness probe. `/` answers the same JSON only
   // when no web client is being served — once there is one, `/` belongs to the app, and a JSON
@@ -207,7 +202,8 @@ export function createApp(opts: CreateAppOptions): Hono {
   app.get("/openapi.json", (c) => c.json(buildOpenApi(registry)));
   mountAssetRoutes(app, serverCtx, config); // GET /assets/:id (asset.upload, ADR 013)
 
-  app.use("/api/v1/*", bearerAuth(serverCtx.driver));
+  // `/api/v1/*` is authenticated by the guard above (`./guards.ts`), which also sets
+  // `authScopes`/`authActorLabel`/`authTokenId` for `buildOpContext` here.
 
   mountHttp(app, registry, async (c) => {
     const scopes = c.get("authScopes");

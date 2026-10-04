@@ -11,6 +11,7 @@
 import { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { createApp } from "../http/app.js";
+import { installRequestGuards } from "../http/guards.js";
 import type { OpRegistry, ServerConfig } from "../ops/registry.js";
 import { PluginHost } from "./host.js";
 import { mountPluginClientRoute, mountPluginListRoute } from "./http.js";
@@ -33,6 +34,9 @@ export async function createAppWithPlugins(
   opts: CreateAppWithPluginsOptions,
 ): Promise<{ app: Hono; pluginHost: PluginHost }> {
   const app = new Hono();
+  // Before ANY route, plugin routes included: Hono runs handlers in registration order, so a guard
+  // added later (inside `createApp`) never ran for routes mounted here (`../http/guards.ts`).
+  installRequestGuards(app, opts.serverCtx, opts.config);
   const pluginHost = new PluginHost({
     serverCtx: opts.serverCtx,
     config: opts.config,

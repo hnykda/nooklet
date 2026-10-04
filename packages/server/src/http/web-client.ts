@@ -23,6 +23,7 @@
  * survive a reload or a pasted link.
  */
 
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join, normalize, resolve, sep } from "node:path";
@@ -117,6 +118,36 @@ export interface WebClientOptions {
   bootstrap?: (c: Context) => object | null;
 }
 
+/**
+ * The app shell's Content-Security-Policy. It targets script injection: no inline script except
+ * the exact ones this document carries (by hash, so the per-request `window.__NOOKLET__` payload and
+ * the build's own service-worker snippet both run, and nothing else inline does), no `javascript:`
+ * URLs or inline event handlers, no plugins, no `<base>` hijack, no framing.
+ *
+ * Deliberately NOT restricted: `connect-src` (the desktop shell's Tauri IPC and a user-chosen
+ * server all need it), `img-src`/`media-src` (notes embed remote images), `style-src` (Solid,
+ * KaTeX and the user's custom CSS set inline styles). `'wasm-unsafe-eval'` is for SQLite WASM.
+ * Checked against the production build with the Playwright suite (`pnpm e2e`).
+ */
+export function shellCsp(html: string): string {
+  const hashes: string[] = [];
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    if (/\bsrc\s*=/i.test(m[1] ?? "")) continue;
+    hashes.push(
+      `'sha256-${createHash("sha256")
+        .update(m[2] ?? "", "utf8")
+        .digest("base64")}'`,
+    );
+  }
+  return [
+    `script-src 'self' 'wasm-unsafe-eval'${hashes.length ? ` ${hashes.join(" ")}` : ""}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
 /** `</head>`-insertion, with the payload JSON-escaped so a token or path can never break out of
  * the script element. `<` is the only character that can start a tag; escaping it is sufficient
  * and leaves the JSON valid. */
@@ -146,10 +177,17 @@ export function mountWebClient(app: Hono, opts: WebClientOptions): void {
     const pathname = new URL(c.req.url).pathname;
     const file = await resolveFile(root, pathname);
     if (file) {
-      const headers = {
+      const headers: Record<string, string> = {
         "content-type": contentType(file),
         "cache-control": cacheControl(pathname),
       };
+      // A built HTML file (index.html itself, which the service worker precaches) gets the same
+      // CSP as the injected shell, computed from its own inline scripts.
+      if (file.endsWith(".html")) {
+        const html = await readFile(file, "utf8");
+        headers["content-security-policy"] = shellCsp(html);
+        return new Response(method === "HEAD" ? null : html, { headers });
+      }
       return method === "HEAD"
         ? new Response(null, { headers })
         : new Response(bodyOf(file), { headers });
@@ -175,9 +213,14 @@ export function mountWebClient(app: Hono, opts: WebClientOptions): void {
         404,
       );
     }
-    const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" };
+    const html = await shellHtml(indexPath, opts, c);
+    const headers = {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache",
+      "content-security-policy": shellCsp(html),
+    };
     if (method === "HEAD") return new Response(null, { headers });
-    return new Response(await shellHtml(indexPath, opts, c), { headers });
+    return new Response(html, { headers });
   });
 }
 

@@ -158,14 +158,10 @@ export function bearerAuth(driver: SqlDriver): MiddlewareHandler {
   return async (c, next) => {
     const header = c.req.header("authorization");
     const raw = header?.match(/^Bearer\s+(.+)$/i)?.[1];
-    if (!raw) {
-      return c.json(
-        { error: { code: "unauthorized", message: "missing or invalid bearer token" } },
-        401,
-      );
-    }
-    const verified = verifyToken(driver, raw);
+    const verified = raw ? verifyToken(driver, raw) : null;
     if (!verified) {
+      // RFC 6750 §3: a 401 for a bearer-protected resource names the scheme.
+      c.header("www-authenticate", 'Bearer realm="nooklet"');
       return c.json(
         { error: { code: "unauthorized", message: "missing or invalid bearer token" } },
         401,

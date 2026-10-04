@@ -109,6 +109,11 @@ function graphIdFlag(args: Args): string {
   return typeof flag === "string" ? flag : "default";
 }
 
+function loopbackTokenFlag(flag: unknown): boolean | undefined {
+  if (flag === undefined) return undefined;
+  return flag !== false && flag !== "false";
+}
+
 function baseServerConfig(args: Args): BaseServerConfig {
   const portFlag = args.flags.get("port");
   const hostFlag = args.flags.get("host");
@@ -127,7 +132,8 @@ function baseServerConfig(args: Args): BaseServerConfig {
             .filter(Boolean)
         : undefined,
     // `--no-loopback-token` parses as `loopback-token: false` (cli-args.ts). Only `serve` reads it.
-    loopbackToken: args.flags.get("loopback-token") !== false,
+    // Absent: on for a loopback bind only (`http/app.ts#loopbackTokenEnabled`).
+    loopbackToken: loopbackTokenFlag(args.flags.get("loopback-token")),
   };
 }
 
@@ -211,7 +217,9 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet serve  [--data <dir>] [--port <n>] [--web <dir>]
                  [--host <addr>] [--allow-host <h,h>]   expose on a LAN/tailnet
                  [--no-loopback-token]   never auto-issue a token to "this machine"; use
-                                         behind a same-host reverse proxy (docs/OPERATIONS.md)
+                                         behind a same-host reverse proxy (docs/OPERATIONS.md).
+                                         Default: on for a loopback bind, off with a non-loopback
+                                         --host (--loopback-token turns it back on)
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
