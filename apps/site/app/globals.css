@@ -14,7 +14,7 @@
   --paper-sunk: #e8ece8;
   --ink: #17201c;
   --ink-soft: #4b5751;
-  --ink-faint: #6b7770;
+  --ink-faint: #5f6b64;
   --thread: #c3ccc6;
   --rule: #d6ddd8;
   --indigo: #3245a6;
@@ -29,7 +29,7 @@
   --code-background: #e8ece8;
   --code-token-constant: #3245a6;
   --code-token-string: #2f6b3c;
-  --code-token-comment: #6b7770;
+  --code-token-comment: #5f6b64;
   --code-token-keyword: #8f3f6b;
   --code-token-parameter: #8f5300;
   --code-token-function: #3245a6;
@@ -566,6 +566,13 @@ kbd {
 
 .shot {
   margin: 3rem 0 0;
+}
+
+/* The hero's screenshot hangs off the spine like every other child, instead of covering it. */
+@media (min-width: 560px) {
+  .hero .shot {
+    margin-left: calc(var(--thread-x) * 2 + 0.6rem);
+  }
 }
 
 .shot__frame {
@@ -1296,6 +1303,11 @@ pre.shiki code {
   color: var(--ink);
   font: inherit;
   font-size: 1.05rem;
+}
+
+.search-input-row input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .search-results {

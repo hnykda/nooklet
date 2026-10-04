@@ -140,6 +140,31 @@ function remarkLinks(page: DocPage) {
   };
 }
 
+const BLOCK_TAGS = new Set([
+  "p",
+  "li",
+  "td",
+  "th",
+  "tr",
+  "pre",
+  "blockquote",
+  "div",
+  "dt",
+  "dd",
+  "br",
+]);
+
+/**
+ * Text for the search index. `hast-util-to-string` joins table cells and list items with nothing
+ * between them ("back onlineThe device"), which breaks both matching and snippets.
+ */
+function plainText(node: ElementContent | HastRoot): string {
+  if (node.type === "text") return node.value;
+  if (node.type !== "element" && node.type !== "root") return "";
+  const inner = node.children.map((c) => plainText(c as ElementContent)).join("");
+  return node.type === "element" && BLOCK_TAGS.has(node.tagName) ? ` ${inner} ` : inner;
+}
+
 /** Heading ids for the TOC, a hover anchor on each heading, and scrollable tables. */
 function rehypeStructure(toc: TocItem[], sections: SearchSection[]) {
   return () => (tree: HastRoot) => {
@@ -168,7 +193,7 @@ function rehypeStructure(toc: TocItem[], sections: SearchSection[]) {
         };
         node.children.push(anchor);
       } else {
-        current.text += ` ${hastToString(node)}`;
+        current.text += ` ${plainText(node)}`;
       }
     }
     visit(tree, "element", (node: Element, index, parent) => {

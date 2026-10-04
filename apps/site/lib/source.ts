@@ -176,7 +176,7 @@ export function resolveLink(href: string, from: DocPage): string {
   for (const p of [...docs, ...decisions]) {
     if (p.repoPath === target) return `${pageUrl(p)}${anchor}`;
   }
-  // A guide link written against the fixture names still resolves once the real guide lands.
+  // A bare file name ("02-sync.md") still finds the page whose slug it names.
   if (from.collection === "docs" && !path.includes("/")) {
     const hit = docs.find((p) => p.slug === slugFromFile(path));
     if (hit) return `${pageUrl(hit)}${anchor}`;
