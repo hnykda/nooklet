@@ -1078,6 +1078,41 @@ depends on what ran before it. The cause has not been investigated. In those sam
 re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. Both look like
 flakes and are noted here rather than logged separately.
 
+### B-780 · Desktop: graphs are confusing (two lists, an add loop, phone words, restarts); build proposal 005
+**Status:** open (in progress, `docs/progress/desktop-graphs.md`) · **Severity:** high (UX) · **Reported:** 2026-10-04, owner on the desktop app against a real server ("the graph behaviour on desktop is still super confusing … Is this really the best we can do?") · **Design:** `docs/proposals/005-one-graph-list-on-desktop.md` (accepted), ADR 032 · **Test:** see B-781..B-785
+
+The umbrella for proposal 005. Each confusion it maps is logged below on its own, so each fix can
+name its test.
+
+### B-781 · Desktop: the launcher and the in-app graph menu keep two lists that never meet
+**Status:** open · **Severity:** high · **Found:** 2026-10-04, proposal 005 confusion 1 · **Test:** none yet
+
+The launcher reads `desktop.json`; the in-app menu reads a list kept in each origin's
+localStorage. A server added in one is not in the other.
+
+### B-782 · Desktop: adding a server asks for the address and the token on two screens, a restart apart
+**Status:** open · **Severity:** high · **Found:** 2026-10-04, proposal 005 confusion 2 · **Test:** none yet
+
+In-app "Add a graph" → "Sync with a server" → address → restart → the server's page asks "Just
+this device / Sync with a server" again → a token-only field. A wrong token is reported on the
+second screen, after the restart, not where the address was typed.
+
+### B-783 · Desktop: phone-only choices and words in the Mac app ("Just this device", "On this device", promote, keep as a device-only graph)
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, proposal 005 confusion 3 · **Test:** none yet
+
+"Just this device" on desktop is an in-memory flag, unsaved (B-739). "On this device" sits next to
+"On this Mac". "Add a server for this graph" can never be enabled on desktop. The mismatch screen
+makes a device-only graph, which ADR 028 rejected on desktop.
+
+### B-784 · Desktop: one concept, many names (Switch Server…, Switch graph, Add a server, Sync with a server, a phone icon for This Mac)
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, proposal 005 confusion 4 · **Test:** none yet
+
+### B-785 · Desktop: creating, adding or switching a graph restarts the app
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, proposal 005 confusion 5 · **Test:** none yet
+
+The shell decides once per launch whether to start its bundled server, so every change of graph
+kind is a restart (about two seconds, plus the window closing and reopening).
+
 ## Fixed
 
 ### B-746 · Arrowing through the slash menu moves the highlight out of view; the list does not scroll with it
