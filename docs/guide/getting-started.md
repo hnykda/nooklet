@@ -34,6 +34,8 @@ directory, so pass absolute paths to `import`, `--data` and similar flags.
 
 `pnpm nooklet --help` lists every command.
 
+[Building from source](building.md) covers every build target, the tests and the toolchain.
+
 ## One machine
 
 ```sh
@@ -171,6 +173,8 @@ right-click → Open the first time.
 
 There is no App Store build. You build it with Xcode on a Mac and install it on your own phone. A
 free Apple ID works; apps it signs expire after 7 days and need a rebuild.
+[Build and install nooklet on your iPhone](ios-from-source.md) has the full walkthrough and fixes for
+the usual signing errors.
 
 ```sh
 pnpm ios:sync     # builds the web client and copies it into the Xcode project
