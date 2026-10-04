@@ -126,6 +126,22 @@ Produces one `.tar.gz` file — a real, standard tar archive; `tar tzvf` works o
 Without `--out`, it lands at `<data>/backups/nooklet-backup-<timestamp>.tar.gz`. Copy that file
 somewhere off-machine (that's the whole point of a backup) — nooklet doesn't do this for you.
 
+The archive is streamed: memory use does not grow with the graph. Measured on a 400 MB graph
+(169 MB database, 230 MB of photo-like assets), peak RSS was about 180–230 MB with Node's default
+flags, against ~1.4 GB before 2026-10-04 (`tools/probes/backup-memory.mjs`). Most of what is left
+is the garbage collector letting freed buffers pile up; `NODE_OPTIONS=--max-semi-space-size=2`
+on a backup job brings it to ~120–140 MB. Give a backup job at least 512 MiB.
+
+While it runs, the backup writes `<out>.partial-<random>` and a `.nooklet-snapshot-<random>.sqlite`
+beside it, then renames the finished, fsynced archive to `<out>`. A backup that is killed leaves
+those two files and never a truncated archive under the final name
+(`tools/probes/backup-sigkill.mjs`); the next backup into the same directory deletes such
+leftovers once they are six hours old. The snapshot needs free disk space about the size of the
+database, in the output directory rather than `/tmp`.
+
+Already-compressed assets (JPEG, PNG, video, zip, …) are stored in the archive without
+recompressing them; the database and everything else is gzipped at level 6.
+
 Run it on a schedule (cron, a `launchd` plist, whatever) if you want regular backups; there's
 nothing time-based built in.
 
@@ -140,6 +156,13 @@ nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
 trouble. Only that graph is touched. With `--force` it also deletes the replaced database's
 `graph.sqlite-wal`/`-shm`: a WAL left by a killed server would otherwise be replayed onto the
 restored file and corrupt it (`tools/probes/restore-stale-wal.mjs`).
+
+Restore extracts into `<data>/graphs/<id>/.restore-<random>/` first, checks the manifest, that
+`graph.sqlite` is there and opens as a database no newer than this build, and that the gzip
+checksum matches. Only then does it move the new `assets/` and `graph.sqlite` into place. A
+truncated or corrupt archive is refused and the graph is left exactly as it was. After a restore
+the graph's `assets/` holds exactly what the archive held: an asset added since the backup is
+removed.
 
 By default, restore **refuses to overwrite** an existing database or any existing asset at the
 target `--data` directory — you'll get a clear error naming the directory. Pass `--force` once

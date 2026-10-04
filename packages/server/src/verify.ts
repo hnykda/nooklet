@@ -27,6 +27,7 @@
  * regression alarm.
  */
 
+import { rmSync } from "node:fs";
 import { applyOps, initSchema, type Op, type OpPayload, type SqlDriver } from "@nooklet/core";
 import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 
@@ -58,7 +59,7 @@ export interface VerifyReport {
    * diverge for older entities -- see file header. Divergences are still reported in full; this
    * just flags that they may be GC artifacts rather than real bugs. */
   logTrimmed: boolean;
-  /** Ops in the log the server rejected, left out of the replay (see `loadOps`). */
+  /** Ops in the log the server rejected, left out of the replay (see `loadOpBatch`). */
   rejectedSkipped: number;
   divergences: Divergence[];
   /** Wall-clock time the replay + diff took, for the startup log line. */
@@ -87,18 +88,36 @@ interface OpRow {
  * keeps `seq` order, which alone would also re-reject them; skipping them stays the cheaper and
  * more obviously-right of the two.)
  */
-function loadOps(driver: SqlDriver): Op[] {
-  const rows = driver.all<OpRow>(
-    "SELECT id, hlc, device_id, entity, payload_json FROM op WHERE status != 'rejected' ORDER BY seq",
+function loadOpBatch(
+  driver: SqlDriver,
+  afterSeq: number,
+  batch: number,
+): { ops: Op[]; lastSeq: number } {
+  const rows = driver.all<OpRow & { seq: number }>(
+    "SELECT seq, id, hlc, device_id, entity, payload_json FROM op " +
+      "WHERE status != 'rejected' AND seq > ? ORDER BY seq LIMIT ?",
+    [afterSeq, batch],
   );
-  return rows.map((r) => ({
-    id: r.id,
-    hlc: r.hlc,
-    device: r.device_id,
-    entity: r.entity,
-    payload: JSON.parse(r.payload_json) as OpPayload,
-  }));
+  return {
+    ops: rows.map((r) => ({
+      id: r.id,
+      hlc: r.hlc,
+      device: r.device_id,
+      entity: r.entity,
+      payload: JSON.parse(r.payload_json) as OpPayload,
+    })),
+    lastSeq: rows.at(-1)?.seq ?? afterSeq,
+  };
 }
+
+/**
+ * Rows per query, for both the op replay and the table diff. Memory is O(batch), not O(graph):
+ * the first version loaded every op and every row of both databases at once, and peaked at
+ * 582 MiB RSS on a 61,500-op graph (docs/progress/streaming-backup.md). Replaying in `seq`-ordered
+ * batches is the same replay — `applyOps` with `order: "seq"` applies its input one op at a time,
+ * in the given order; only the transaction boundaries differ, and the scratch database is private.
+ */
+const DEFAULT_BATCH = 2000;
 
 function keyOf(row: Record<string, unknown>, pk: readonly string[]): string {
   return pk.map((c) => JSON.stringify(row[c])).join("\u0000");
@@ -148,12 +167,69 @@ function diffTable(
 }
 
 /**
- * Replay the live database's `op` log (minus the ops it rejected, see `loadOps`) into a fresh
- * scratch database via `@nooklet/core`'s `rebuild()`, then diff every state table row-for-row (and column-for-column) against the live
- * driver. Read-only on `driver` -- the scratch database is a brand-new in-memory one, never the
- * live database itself.
+ * Diff one state table in primary-key order, `batch` live rows at a time. Each step takes the next
+ * live rows after `prev`, then exactly the rebuilt rows in the same key range `(prev, last]`;
+ * a final pass collects rebuilt rows past the last live key. The ranges are compared by SQLite on
+ * both sides (row values, BINARY collation), never by JavaScript string order, which differs from
+ * SQLite's for characters outside the BMP — so no row can fall between two batches unseen.
  */
-export function verifyRebuildParity(driver: SqlDriver): VerifyReport {
+function diffTableBatched(
+  live: SqlDriver,
+  rebuilt: SqlDriver,
+  table: string,
+  pk: readonly string[],
+  batch: number,
+): Divergence[] {
+  const cols = pk.join(", ");
+  const tuple = `(${cols})`;
+  const marks = `(${pk.map(() => "?").join(", ")})`;
+  const divergences: Divergence[] = [];
+  let prev: unknown[] | null = null;
+  for (;;) {
+    const after: string = prev ? `WHERE ${tuple} > ${marks}` : "";
+    const liveRows: Record<string, unknown>[] = live.all<Record<string, unknown>>(
+      `SELECT * FROM ${table} ${after} ORDER BY ${cols} LIMIT ?`,
+      [...(prev ?? []), batch],
+    );
+    if (liveRows.length === 0) break;
+    const last: unknown[] = pk.map((c): unknown => (liveRows.at(-1) as Record<string, unknown>)[c]);
+    const rebuiltRows = rebuilt.all<Record<string, unknown>>(
+      `SELECT * FROM ${table} WHERE ${prev ? `${tuple} > ${marks} AND ` : ""}${tuple} <= ${marks}`,
+      [...(prev ?? []), ...last],
+    );
+    divergences.push(...diffTable(table, pk, liveRows, rebuiltRows));
+    prev = last;
+  }
+  // Rebuilt rows beyond the last live key (all of them, if the live table is empty).
+  for (;;) {
+    const after = prev ? `WHERE ${tuple} > ${marks}` : "";
+    const extra = rebuilt.all<Record<string, unknown>>(
+      `SELECT * FROM ${table} ${after} ORDER BY ${cols} LIMIT ?`,
+      [...(prev ?? []), batch],
+    );
+    if (extra.length === 0) break;
+    divergences.push(...diffTable(table, pk, [], extra));
+    prev = pk.map((c) => (extra.at(-1) as Record<string, unknown>)[c]);
+  }
+  return divergences;
+}
+
+export interface VerifyOptions {
+  /** Put the scratch replica in this file instead of in memory (the CLI does, beside the graph):
+   * an in-memory replica holds the whole op log plus every state table and index. The file is
+   * created fresh and deleted afterwards. */
+  scratchPath?: string;
+  /** Rows per query (default 2000). Tests shrink it to put batch boundaries everywhere. */
+  batchSize?: number;
+}
+
+/**
+ * Replay the live database's `op` log (minus the ops it rejected, see `loadOpBatch`) into a fresh
+ * scratch database via `@nooklet/core`'s `applyOps`, then diff every state table row-for-row (and
+ * column-for-column) against the live driver. Read-only on `driver` -- the scratch database is a
+ * brand-new one (in memory, or `opts.scratchPath`), never the live database itself.
+ */
+export function verifyRebuildParity(driver: SqlDriver, opts: VerifyOptions = {}): VerifyReport {
   const start = Date.now();
   const seqRow = driver.get<{ n: number | null; min: number | null }>(
     "SELECT MAX(seq) AS n, MIN(seq) AS min FROM op",
@@ -162,32 +238,51 @@ export function verifyRebuildParity(driver: SqlDriver): VerifyReport {
   const minSeq = seqRow?.min ?? null;
   const opCount = driver.get<{ n: number }>("SELECT COUNT(*) AS n FROM op")?.n ?? 0;
 
-  const ops = loadOps(driver);
-  const rejectedSkipped = opCount - ops.length;
-  const scratch = createNodeSqliteDriver(openNodeSqlite(":memory:"));
-  initSchema(scratch);
-  // In `seq` order, as the server applied them (rule 26, ADR 026) — not re-sorted by HLC: an op
-  // minted before its device heard of an older-seq op has the smaller HLC, and replaying it first
-  // can re-decide a name collision the server decided the other way (B-587).
-  applyOps(scratch, ops, { order: "seq" });
+  const batch = opts.batchSize ?? DEFAULT_BATCH;
+  const scratchFile = opts.scratchPath;
+  if (scratchFile) removeSqliteFiles(scratchFile);
+  const scratchDb = openNodeSqlite(scratchFile ?? ":memory:");
+  try {
+    // A throwaway file: durability is worthless, and fsyncs nearly doubled the run time.
+    if (scratchFile) scratchDb.exec("PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF");
+    const scratch = createNodeSqliteDriver(scratchDb);
+    initSchema(scratch);
+    // In `seq` order, as the server applied them (rule 26, ADR 026) — not re-sorted by HLC: an op
+    // minted before its device heard of an older-seq op has the smaller HLC, and replaying it
+    // first can re-decide a name collision the server decided the other way (B-587).
+    let replayed = 0;
+    for (let after = 0; ; ) {
+      const { ops, lastSeq } = loadOpBatch(driver, after, batch);
+      if (ops.length === 0) break;
+      applyOps(scratch, ops, { order: "seq" });
+      replayed += ops.length;
+      after = lastSeq;
+    }
+    const rejectedSkipped = opCount - replayed;
 
-  const divergences: Divergence[] = [];
-  for (const { table, pk } of STATE_TABLES) {
-    const liveRows = driver.all<Record<string, unknown>>(`SELECT * FROM ${table}`);
-    const rebuiltRows = scratch.all<Record<string, unknown>>(`SELECT * FROM ${table}`);
-    divergences.push(...diffTable(table, pk, liveRows, rebuiltRows));
+    const divergences: Divergence[] = [];
+    for (const { table, pk } of STATE_TABLES) {
+      divergences.push(...diffTableBatched(driver, scratch, table, pk, batch));
+    }
+    return {
+      ok: divergences.length === 0,
+      opCount,
+      minSeq,
+      maxSeq,
+      logTrimmed: minSeq !== null && minSeq > 1,
+      rejectedSkipped,
+      divergences,
+      durationMs: Date.now() - start,
+    };
+  } finally {
+    scratchDb.close();
+    if (scratchFile) removeSqliteFiles(scratchFile);
   }
+}
 
-  return {
-    ok: divergences.length === 0,
-    opCount,
-    minSeq,
-    maxSeq,
-    logTrimmed: minSeq !== null && minSeq > 1,
-    rejectedSkipped,
-    divergences,
-    durationMs: Date.now() - start,
-  };
+function removeSqliteFiles(path: string): void {
+  for (const suffix of ["", "-wal", "-shm", "-journal"])
+    rmSync(`${path}${suffix}`, { force: true });
 }
 
 const MAX_REPORTED_DIVERGENCES = 20;
