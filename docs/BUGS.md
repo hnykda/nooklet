@@ -1062,6 +1062,18 @@ pre-deploy backup completed in 17 s, `nooklet-alpha-2026-10-04.tar` (251 MB) exi
 just rely on everything fitting into memory" — streaming backup/restore plus an audit of other
 whole-graph-in-memory paths (snapshot, export, gc, rebuild, assets) is in progress.
 
+### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
+
+The DB-version mirror writes some journal days twice: a one-line stub under `pages/` and the real
+day under `journals/`. The importer scans `pages/` first and kept the first file per normalized
+name, skipping the rest with a warning, so 3 real journal days (12 blocks) were dropped while the
+stub survived. Fix: `importer/logseq.ts#resolveFileEntries` merges same-name files — the journal
+file's identity wins, page properties keep the first value per key, and both files' blocks are kept
+(journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
+19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
+stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever

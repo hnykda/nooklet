@@ -65,7 +65,11 @@ entry. "Fixed" without a test means "believed fixed" — say so if that's what i
 
 Independently re-run anything you're about to report as working. Where a real graph can be used,
 use one — bugs hide in the shape of real data (952 pages, mixed Czech/English, heavy task markers),
-not in fixtures. Import with `pnpm nooklet import <logseq-graph-dir> --data <dir>`.
+not in fixtures. Import with `pnpm nooklet import <logseq-graph-dir> --data <dir>`. The owner's
+real graph is a **Logseq DB-version** graph: import from its markdown mirror (`mirror/markdown`)
+plus its `assets/` folder, copied to a scratch dir first — never from an older file-based copy
+lying around, which silently lacks recent notes (this happened once, in production). Where it
+lives is private; ask the owner or use your local notes, never write the path here.
 
 Report outcomes faithfully. If tests fail, say so and show the output. If something is unverified
 or was skipped, say that. Don't describe a plan as finished when it's believed-finished.

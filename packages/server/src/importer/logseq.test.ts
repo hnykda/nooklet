@@ -605,3 +605,28 @@ describe("importLogseqGraph guards", () => {
     await expect(importLogseqGraph(ctx, missing)).rejects.toThrow(/not a directory/);
   });
 });
+
+describe("importLogseqGraph: a page and a journal file that name the same day", () => {
+  it("merges them, keeping the journal identity and every block (no file is dropped)", async () => {
+    // The shape Logseq's DB-version mirror produced on a real graph: a one-line stub under pages/
+    // (scanned first) and the real day under journals/. The old first-file-wins rule kept the stub
+    // and skipped the day's notes.
+    writeGraphFile("pages/2025-11-18.md", "- stub line\n");
+    writeGraphFile("journals/2025_11_18.md", "- morning note\n- afternoon note\n\t- detail\n");
+    const stats = await importLogseqGraph(ctx, graphDir);
+
+    expect(stats.errors).toEqual([]);
+    expect(stats.warnings.some((w) => w.includes("merged"))).toBe(true);
+    expect(stats.warnings.some((w) => w.includes("skipped"))).toBe(false);
+    const page = getPage("2025-11-18");
+    expect(page?.journal_day).toBe(20251118);
+    const contents = ctx.driver
+      .all<{ content: string }>(
+        "SELECT content FROM block WHERE page_id = ? AND deleted_at IS NULL",
+        [page?.id ?? ""],
+      )
+      .map((r) => r.content)
+      .sort();
+    expect(contents).toEqual(["afternoon note", "detail", "morning note", "stub line"]);
+  });
+});
