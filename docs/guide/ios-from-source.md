@@ -131,6 +131,25 @@ membership makes the signature last a year.
 After the first install you can rebuild without the cable: in **Window → Devices and Simulators**,
 select the phone and tick **Connect via network**. The phone and the Mac must share a network.
 
+### Without opening Xcode
+
+Once the phone has been paired and is reachable over the network, the whole update runs from a
+terminal. The UDID comes from the first command; `-allowProvisioningUpdates` lets Xcode renew the
+free 7-day profile, so this also restarts the 7-day clock.
+
+```sh
+xcrun devicectl list devices             # the phone shows as "connected"
+pnpm ios:sync
+cd apps/web/ios/App
+xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+  -destination 'id=<phone UDID>' -derivedDataPath /tmp/nooklet-ios \
+  -allowProvisioningUpdates build
+xcrun devicectl device install app --device <phone UDID> \
+  /tmp/nooklet-ios/Build/Products/Debug-iphoneos/App.app
+```
+
+The app's data survives the reinstall.
+
 ## 7. Connect to a server
 
 The app talks to a server over its HTTP API and a WebSocket. Its own page comes from
