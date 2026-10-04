@@ -69,6 +69,17 @@ describe("parseQueuedCapture", () => {
     ).toEqual({ id: U1, text: "hello", created_at: "2026-10-04T08:15:30.123Z" });
   });
 
+  it("reads a file exactly as CaptureQueue.swift wrote it (tools/probes/phone-capture)", () => {
+    // Verbatim from `capture-queue-probe.swift`'s "sample file" line, 2026-10-04.
+    const fromSwift =
+      '{"created_at":"2026-10-04T07:46:40.123Z","text":"Plánování zahradních úprav\\nřádek dva"}';
+    expect(parseQueuedCapture("bbbbbbbb-1111-4111-8111-111111111111", fromSwift)).toEqual({
+      id: "bbbbbbbb-1111-4111-8111-111111111111",
+      text: "Plánování zahradních úprav\nřádek dva",
+      created_at: "2026-10-04T07:46:40.123Z",
+    });
+  });
+
   it("rejects bad JSON, a missing or bad created_at, wrong field types and non-uuid names", () => {
     expect(parseQueuedCapture(U1, "{not json")).toBeUndefined();
     expect(parseQueuedCapture(U1, '{"text":"x"}')).toBeUndefined();
