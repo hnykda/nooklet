@@ -223,6 +223,36 @@ describe("renderPageToOutline / exportPage: basic round trip", () => {
     expect(parseOutline(text)).toEqual(written);
   });
 
+  // B-702: tables must survive the mirror byte for byte — outer pipes, alignment colons, `\|`,
+  // ragged rows, inline markup — and the `^id` suffix must not land inside the header row.
+  it("reads back GFM tables exactly as written", () => {
+    const pageId = createPage("Mirror Tables");
+    const tables = [
+      "| Name | Age |\n| --- | --- |\n| Ada | 32 |",
+      "| L | R | C |\n| :-- | --: | :-: |\n| [[Alpha]] | **2** | `c` |",
+      // No outer pipes. Not `- | -`: a continuation line starting `- ` is B-470.
+      "a | b\n--- | ---\n1 | 2",
+      "Intro line:\n\n| a | b |\n|---|---|\n| 1 | |\n\nAfter.",
+      "| a \\| b | c |\n|---|---|\n| only one |\n| 1 | 2 | 3 |",
+    ];
+    const ids = tables.map((t, i) => createBlock(pageId, t, { order: `a${i}` }));
+    const ownedTask = createBlock(pageId, tables[0] as string, {
+      order: "a9",
+      marker: "TODO",
+      properties: { foo: "bar" },
+    });
+
+    const result = exportPage(ctx.driver, dataDir, pageId);
+    const text = readFileSync(join(dataDir, result.path), "utf8");
+    const parsed = parseOutline(text);
+    expect(parsed).toEqual(renderPageToOutline(ctx.driver, pageId).parsed);
+    expect(parsed.blocks.map((b) => b.content)).toEqual([...tables, tables[0]]);
+    expect(parsed.blocks.map((b) => b.id)).toEqual([...ids, ownedTask]);
+    // The id rides on the header row's line; the header still reads as a table to Logseq because
+    // a `^id` after the closing pipe is outside every cell.
+    expect(text).toContain(`- | Name | Age | ^${ids[0]}\n  | --- | --- |\n  | Ada | 32 |\n`);
+  });
+
   it("exports a journal page to journals/<file>.md", () => {
     const day = 20260910;
     const pageId = createPage("2026-09-10", { journalDay: day });

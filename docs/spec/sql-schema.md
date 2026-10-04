@@ -897,8 +897,9 @@ CREATE TABLE asset (
   mime_type  TEXT NOT NULL,
   byte_size  INTEGER NOT NULL,
   sha256     TEXT NOT NULL,
-  width      INTEGER,
-  height     INTEGER,
+  width      INTEGER,  -- B-703: displayed pixel size (EXIF orientation applied) for PNG/JPEG/GIF/WebP;
+  height     INTEGER,  -- NULL for other types, and for rows stored before sizes were recorded until
+                       -- the first `asset.sizes` read fills them from the file (no migration)
   created_at INTEGER NOT NULL,
   deleted_at INTEGER
 );

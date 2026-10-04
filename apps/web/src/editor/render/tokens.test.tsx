@@ -92,6 +92,27 @@ describe("BlockContentView — content kinds (markdown-grammar.md §2.7 / §4)",
     expect(rightAligned.style.textAlign).toBe("right");
   });
 
+  // B-702: the old test above checked only the structure, so every cell of a leading-pipe table
+  // rendering as "|" passed it.
+  it("B-702: a leading-pipe table renders each cell's own text, escaped pipes as pipes", () => {
+    const { container } = renderContent(
+      "| Name | **Age** |\n| :-: | --- |\n| A \\| B | [[Alpha]] |\n| short |",
+    );
+    const cells = [...container.querySelectorAll("table.vr-table th, table.vr-table td")].map(
+      (c) => c.textContent,
+    );
+    expect(cells).toEqual(["Name", "Age", "A | B", "Alpha", "short", ""]);
+    expect((container.querySelector("th") as HTMLElement).style.textAlign).toBe("center");
+    expect(container.querySelector("td a.vr-page-ref")).not.toBeNull();
+  });
+
+  it("B-702: prose then a table renders a paragraph and a table", () => {
+    const { container } = renderContent("Intro line\n\n| a | b |\n|---|---|\n| 1 | 2 |");
+    expect(container.querySelector("p.vr-paragraph")?.textContent).toBe("Intro line");
+    const cells = [...container.querySelectorAll("table.vr-table td")].map((c) => c.textContent);
+    expect(cells).toEqual(["1", "2"]);
+  });
+
   it("hr -> <hr class=vr-hr>", () => {
     const { container } = renderContent("---");
     expect(container.querySelector("hr.vr-hr")).not.toBeNull();

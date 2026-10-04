@@ -100,6 +100,8 @@ const HTTP_ONLY_OP_NAMES = [
   "embeddings.status",
   "embeddings.configure",
   "embeddings.reindex",
+  // B-703: image sizes for the renderer's layout; an agent gets them from `asset.upload`.
+  "asset.sizes",
   // The one tokenless op: its caller is a device with no credential, never an MCP client.
   "pairing.redeem",
 ];
