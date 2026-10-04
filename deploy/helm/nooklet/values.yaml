@@ -1,0 +1,42 @@
+# Generic defaults. Every value marked PLACEHOLDER must be overridden for a real deployment; the
+# chart refuses to render without image.tag, allowHosts and a root token.
+
+image:
+  repository: registry.example.com/nooklet   # PLACEHOLDER: where you pushed deploy/docker/Dockerfile
+  tag: ""                                    # required. Pin an immutable tag (sha-<8 chars>), never `latest`
+  pullPolicy: IfNotPresent
+
+# Every Host name clients use to reach the server (hostname only, no port). nooklet answers 403 to
+# any other on its graph routes (a DNS-rebinding guard), and the 403 names the host it saw, so a
+# proxy that forwards a different Host shows up at once. A reverse proxy that keeps the client's
+# Host (most do, including Tailscale's serve/Ingress proxy) needs only the public name here.
+allowHosts: []                               # PLACEHOLDER, e.g. [notes.example.com]
+
+# The operator credential. Either the chart creates the Secret from `rootToken`, or point
+# `existingSecret` at a Secret you manage yourself (key `root-token`). Generate a token with
+#   echo "nkroot_$(openssl rand -hex 24)"
+rootToken: ""
+existingSecret: ""
+
+podAnnotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 160Mi
+  limits:
+    cpu: "1"
+    memory: 768Mi
+
+persistence:
+  storageClassName: ""   # empty = the cluster's default StorageClass
+  size: 5Gi
+  # Keep the volume on `helm uninstall`. This must be in the chart from the FIRST install: Helm
+  # reads the annotation from the stored release manifest, so adding it later protects nothing.
+  keepOnUninstall: true
+
+# Nightly consistent snapshot of every graph into <volume>/backups/ (see backup-cronjob.yaml).
+backup:
+  enabled: true
+  schedule: "30 1 * * *"
+  keepDays: 7

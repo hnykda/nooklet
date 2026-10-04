@@ -1,4 +1,4 @@
-# Keeps the deploy/docker/Dockerfile build context small and platform-clean: host node_modules
+# Keeps the deploy/docker/*Dockerfile build contexts small and platform-clean: host node_modules
 # (macOS native binaries) must never reach the Linux build stage.
 **/node_modules
 .git
@@ -10,3 +10,5 @@ apps/desktop/src-tauri/target
 apps/web/ios
 e2e/test-results
 e2e/playwright-report
+apps/site/out
+apps/site/.next

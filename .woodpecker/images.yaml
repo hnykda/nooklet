@@ -1,0 +1,86 @@
+# Builds and pushes the two images, then (main only) asks the deployment side to roll them out.
+#
+#   server  deploy/docker/Dockerfile       -> <server_image>:sha-<8>  (+ :<git tag> on tags)
+#   site    deploy/docker/site.Dockerfile  -> <site_image>:sha-<8>    (+ :<git tag> on tags)
+#
+# Never runs for pull requests: the `when` below has no pull_request event, and every secret it
+# reads must be configured in Woodpecker for the push/tag/manual events only. A pull request can
+# rewrite this file, so that server-side secret filter, plus "require approval" for pull requests,
+# is the actual protection: deploy/README.md, "CI and forks".
+#
+# Registry and image names are secrets so this public file names no infrastructure. Secret NAMES:
+#   registry                  registry host[:port] the plugin logs in to / pushes to
+#   registry_buildkit_config  buildkitd.toml for that registry (e.g. `http = true` for a plain-HTTP one)
+#   server_image              full repository for the server image, without tag
+#   site_image                full repository for the site image, without tag
+#   deploy_trigger_url, deploy_trigger_token   see tools/ci/trigger-deploy.sh
+when:
+  - event: push
+    branch: main
+  - event: tag
+  - event: manual
+    branch: main
+
+depends_on:
+  - leak-guard
+
+steps:
+  - name: tags
+    image: alpine:3.22
+    commands:
+      - sh tools/ci/image-tags.sh
+
+  - name: server-image
+    depends_on: [tags]
+    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    settings:
+      registry:
+        from_secret: registry
+      repo:
+        from_secret: server_image
+      buildkit_config:
+        from_secret: registry_buildkit_config
+      insecure: true
+      tags_file: .image-tags
+      platforms: linux/amd64
+      provenance: false
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    # pnpm install of the whole workspace + the web build + the sidecar bundle; the default 2Gi
+    # step limit is not enough for the Vite build.
+    backend_options:
+      kubernetes:
+        resources:
+          limits:
+            memory: 4Gi
+
+  - name: site-image
+    depends_on: [tags]
+    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    settings:
+      registry:
+        from_secret: registry
+      repo:
+        from_secret: site_image
+      buildkit_config:
+        from_secret: registry_buildkit_config
+      insecure: true
+      tags_file: .image-tags
+      platforms: linux/amd64
+      provenance: false
+      context: .
+      dockerfile: deploy/docker/site.Dockerfile
+
+  - name: deploy
+    depends_on: [server-image, site-image]
+    when:
+      - event: [push, manual]
+        branch: main
+    image: curlimages/curl:8.16.0
+    environment:
+      DEPLOY_TRIGGER_URL:
+        from_secret: deploy_trigger_url
+      DEPLOY_TRIGGER_TOKEN:
+        from_secret: deploy_trigger_token
+    commands:
+      - sh tools/ci/trigger-deploy.sh
