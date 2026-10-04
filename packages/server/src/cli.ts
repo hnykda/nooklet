@@ -15,10 +15,11 @@
  *                   minting one if it does not exist yet; ignores --graph, it is not per-graph)
  *   nooklet embed   status | run | model <name> [--provider ollama|openai-compat] [--host <url>]
  *                   M3/ADR 010 embeddings: index status, drain the queue now, or switch models.
- *   nooklet backup  [--out <path>] [--data <dir>]    consistent VACUUM INTO snapshot + assets/,
+ *   nooklet backup  [--graph <id>] [--out <path>] [--data <dir>]  VACUUM INTO snapshot + assets/,
  *                   as a single .tar.gz archive (M6, docs/OPERATIONS.md)
- *   nooklet restore <archive> [--data <dir>] [--force]  restore a backup (refuses to clobber an
- *                   existing database unless --force; refuses an archive newer than this build)
+ *   nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]  restore a backup into one
+ *                   graph (refuses to clobber an existing database unless --force; refuses an
+ *                   archive newer than this build)
  *   nooklet gc      [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
  *                   op-log GC down to min(device.acked_seq) across live devices (M6), and
  *                   removal of assets nothing references any more (M7, ./gc.ts)
@@ -59,6 +60,7 @@ import {
   booleanFlag,
   CliArgError,
   checkFlags,
+  PAIR_FLAGS,
   parseArgs,
   parseGcFlags,
   parseRepairFlags,
@@ -103,6 +105,7 @@ import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/se
 import { applyOrgDateRepair, formatOrgDateReport, planOrgDateRepair } from "./repair-org-dates.js";
 import { formatServeBanner } from "./serve-banner.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
+import { NOOKLET_VERSION } from "./version.js";
 
 function dataDir(args: Args): string {
   const flag = args.flags.get("data");
@@ -250,11 +253,14 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet plugin enable <plugin-id>
   nooklet plugin disable <plugin-id>
   nooklet plugin reload <plugin-id>
-  nooklet backup [--out <path>] [--data <dir>]
-  nooklet restore <archive> [--data <dir>] [--force]
-  nooklet gc [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
-  nooklet verify [--data <dir>]
-  nooklet repair org-dates [--apply] [--data <dir>]   dry run unless --apply
+  nooklet backup [--graph <id>] [--out <path>] [--data <dir>]
+  nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
+  nooklet gc [--graph <id>] [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
+  nooklet verify [--graph <id>] [--data <dir>]
+  nooklet repair org-dates [--graph <id>] [--apply] [--data <dir>]   dry run unless --apply
+  nooklet --version | -V
+
+  Every command except serve works on one graph: --graph <id>, default "default".
 `;
 
 async function main(): Promise<void> {
@@ -266,6 +272,12 @@ async function main(): Promise<void> {
   // on — an agent reading the flags did exactly that to the owner's real graph for ten minutes.
   if (wantsHelp(args, process.argv.slice(2))) {
     process.stdout.write(USAGE);
+    return;
+  }
+  // B-696. Like --help, answered before anything opens a data dir. `-V` is not a `--` flag, so it
+  // lands in `args._`; only honoured as the first token, so it can never be a positional value.
+  if (args.flags.has("version") || cmd === "-V" || cmd === "version") {
+    process.stdout.write(`nooklet ${NOOKLET_VERSION}\n`);
     return;
   }
 
@@ -365,12 +377,26 @@ async function main(): Promise<void> {
             allowedHosts: baseConfig.allowedHosts,
             webClientDir,
             interfaces: networkInterfaces(),
+            version: NOOKLET_VERSION,
           });
           process.stdout.write(banner.stdout);
           if (banner.stderr) process.stderr.write(banner.stderr);
         },
       );
       guardUpgradeSockets(server);
+      // B-685: a failed listen is an 'error' event on the server; unhandled, Node threw it as a
+      // raw EADDRINUSE stack trace. Say what happened and what to do, in one line.
+      server.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") {
+          die(
+            `port ${baseConfig.port} on ${hostname} is in use — stop the other server, or pick another with --port <n>`,
+          );
+        }
+        if (err.code === "EACCES") {
+          die(`not allowed to listen on port ${baseConfig.port} — pick another with --port <n>`);
+        }
+        die(`could not listen on ${hostname}:${baseConfig.port}: ${err.message}`);
+      });
       return;
     }
 
@@ -445,7 +471,7 @@ async function main(): Promise<void> {
     // server's pairing page. The code goes to stdout for the owner and nowhere else: not to the
     // server's log, not into root.token, not into the database (only its hash).
     case "pair": {
-      cliArg(() => checkFlags(args, ["data", "graph", "link", "scope", "sync", "minutes"]));
+      cliArg(() => checkFlags(args, PAIR_FLAGS));
       const linkFlag = args.flags.get("link");
       if (typeof linkFlag !== "string")
         die(

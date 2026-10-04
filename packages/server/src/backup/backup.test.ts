@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import type { SqlDriver } from "@nooklet/core";
 import { newId } from "@nooklet/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -185,6 +186,34 @@ describe("createBackup / restoreBackup", () => {
       expect(() => restoreBackup(backup.path, { dataDir: targetDir })).toThrow(/refusing/);
       const result = restoreBackup(backup.path, { dataDir: targetDir, force: true });
       expect(result.filesRestored).toBeGreaterThan(0);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+
+  it("--force over a database whose writer died with an un-checkpointed WAL: the stale WAL is not replayed onto the restored file", () => {
+    seedGraph();
+    const before = dumpAll(ctx.driver);
+    const backup = createBackup(ctx.driver, { dataDir });
+
+    // The target's previous database, abandoned mid-WAL the way a killed server leaves it: a
+    // second connection with checkpointing off, never closed. Its -wal/-shm stay on disk.
+    const targetDir = mkdtempSync(join(tmpdir(), "nooklet-restore-stale-wal-"));
+    try {
+      const old = new DatabaseSync(graphDbPath(targetDir));
+      old.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE junk(x)");
+      const insert = old.prepare("INSERT INTO junk VALUES (?)");
+      for (let i = 0; i < 200; i++) insert.run("x".repeat(500));
+      // Copy the -wal aside while the connection holds it, then put it back after closing (a
+      // clean close would checkpoint and delete it, which is exactly what a crash does not do).
+      const wal = readFileSync(`${graphDbPath(targetDir)}-wal`);
+      old.close();
+      writeFileSync(`${graphDbPath(targetDir)}-wal`, wal);
+
+      restoreBackup(backup.path, { dataDir: targetDir, force: true });
+      expect(existsSync(`${graphDbPath(targetDir)}-wal`)).toBe(false);
+      const restored = createServerContext(openDb({ path: graphDbPath(targetDir) }));
+      expect(dumpAll(restored.driver)).toEqual(before);
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }

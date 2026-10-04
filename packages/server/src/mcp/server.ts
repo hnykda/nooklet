@@ -48,6 +48,7 @@ import {
   toErrorBody,
 } from "../ops/registry.js";
 import { listPluginMcpResources, listPluginMcpTools } from "../plugins/mcp-registry.js";
+import { NOOKLET_VERSION } from "../version.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -114,7 +115,7 @@ export function buildMcpServerInstance(
   serverCtx: ServerContext,
   config: ServerConfig,
   auth: McpAuth,
-  version = "0.0.1",
+  version = NOOKLET_VERSION,
 ): McpServer {
   const server = new McpServer({ name: "nooklet", version }, { instructions: SERVER_INSTRUCTIONS });
   const { scopes, actor } = auth;
@@ -237,7 +238,7 @@ export function buildMcp(
   reg: OpRegistry,
   serverCtx: ServerContext,
   config: ServerConfig,
-  version = "0.0.1",
+  version = NOOKLET_VERSION,
 ) {
   return createMcpHandler(
     (requestCtx) => {
