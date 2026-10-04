@@ -4,7 +4,7 @@ Branch: the agent's own worktree branch, based on `6d56c8f`. Not merged, not pus
 
 ## Status
 
-**Done.** One commit (see `git log`), then nothing in flight. Coordinator: fold the section at
+**Done.** `e5c9b6b` (fixes, tests, probe, specs), then this line. Nothing in flight. Coordinator: fold the section at
 the bottom into BUGS.md.
 
 ## B-702 — a leading-pipe table rendered every cell as `|`
