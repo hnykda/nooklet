@@ -83,8 +83,11 @@ Secrets (names only, all optional): `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE
 - `pnpm test` (core 479, plugin-api 17, server 813, web 1624, tools 7), `pnpm -r typecheck`,
   `biome check . --diagnostic-level=error`, `leak-check --tree`: all pass.
 - e2e: `help.spec.ts` failed first (it pinned "nooklet 0.1.0"; the build said 0.0.1): fixed to read
-  the package version. help/views/desktop-shell/keys-in-fields specs pass (chromium). Full suite: see
-  below.
+  the package version. help/views/desktop-shell/keys-in-fields specs pass (chromium). Full `pnpm e2e` (port 6478,
+  23.5 min): 776 passed, 2 skipped, 1 failed: `mermaid-lazy-cache.spec.ts` "a diagram rendered once
+  renders again offline" (timed out waiting for the offline re-render). Re-run alone with
+  `--repeat-each=3`: 6/6 pass. Treated as load-dependent flakiness, not caused by this branch (its
+  only client change is the help-menu line and the version `define`); worth a BUGS entry if it recurs.
 
 ### Not verified (only CI can)
 
