@@ -14,6 +14,36 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
+### B-802 · In the iOS app the capture screen's Save button is under the keyboard
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1
+
+Open the capture screen in the iOS app: the text field takes focus, the keyboard comes up, and
+"Save to journal" (and the no-graph notice below the field) sit behind it. "Confirm with one tap"
+became "dismiss the keyboard, then tap". Cause: the app sets `KeyboardResize.None` and owns layout
+through the `--kb` variable, but only `AppShell` started the keyboard watcher that writes it, and
+`/capture` is deliberately mounted outside `AppShell`; `capture.css` never used `--kb` either.
+
+**Fix:** `CaptureView` starts the keyboard watcher while it is mounted; the shell pads its bottom
+by `--kb`; the textarea no longer insists on 40vh; the no-graph notice moved above the field.
+**Test:** `apps/web/src/views/CaptureView.test.tsx` ("starts the keyboard watcher …") and the
+Simulator screenshots in `tools/probes/phone-capture/` (Save visible above the keyboard).
+
+### B-801 · Queued captures never drain in the iOS app: the plugin lookup never resolves
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1, before it shipped
+
+A capture queued by the "Add to nooklet" intent stayed in `Application Support/captures/` across
+launches and resumes; the console showed no `NookletCapture list` call at all, though the plugin
+answered when called directly. `capture/native-queue.ts` resolved a promise WITH the
+`registerPlugin()` proxy. Capacitor's plugin proxy answers every property with a native-method
+wrapper, `then` included, so promise resolution treated the proxy as a thenable, called its
+`then`, and waited forever. The unit tests used a fake queue and could not see it.
+
+**Fix:** resolve a plain `{ plugin }` box, never the proxy itself. **Test:**
+`apps/web/src/capture/native-queue.test.ts` (a proxy shaped like Capacitor's; hangs on the old
+code), and the Simulator run in `tools/probes/phone-capture/sim-run.sh`.
+
 ### B-800 · A second deep-link subscriber never sees the link that launched the app
 **Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
 **Found:** while building proposal 006 Phase 1, before it shipped

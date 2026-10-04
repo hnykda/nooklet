@@ -11,8 +11,9 @@
  * local-write path (`../data/store.ts#applyOps`, via `submitQuickCapture`) as every other write,
  * so it works offline (ADR 005) for free — there is no separate "offline capture" code path.
  */
-import { createSignal, type JSX, onMount, Show } from "solid-js";
+import { createSignal, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { submitQuickCapture } from "../capture/quickCaptureService.js";
+import { platform } from "../platform/index.js";
 import "./capture.css";
 
 export interface CaptureViewProps {
@@ -70,6 +71,14 @@ export function CaptureView(props: CaptureViewProps): JSX.Element {
   const [status, setStatus] = createSignal<Status>("idle");
   let textareaEl: HTMLTextAreaElement | undefined;
 
+  // B-802: this screen is mounted outside `AppShell`, which is what normally starts the keyboard
+  // watcher. Without it `--kb` stays 0 in the iOS app (KeyboardResize.None), and the keyboard
+  // covers the Save button.
+  onMount(() => {
+    const keyboard = platform.startKeyboardWatcher();
+    onCleanup(() => keyboard.stop());
+  });
+
   onMount(() => {
     // Tapping a shortcut/share-target/FAB is a real navigation, not a synchronous trusted event
     // in the sense research/08 §3.4 means, so this focus() is not guaranteed to raise the iOS
@@ -113,6 +122,17 @@ export function CaptureView(props: CaptureViewProps): JSX.Element {
           Journal
         </a>
       </div>
+      <Show when={props.noGraph}>
+        <div class="capture-no-graph" role="status">
+          <p>
+            There's no graph on this device yet, so this can't be saved. Your text is kept here: set
+            up a graph, and it will be waiting on this screen.
+          </p>
+          <button type="button" class="capture-save" onClick={() => props.onSetUpGraph?.()}>
+            Set up a graph
+          </button>
+        </div>
+      </Show>
       <textarea
         ref={textareaEl}
         class="capture-input"
@@ -126,17 +146,6 @@ export function CaptureView(props: CaptureViewProps): JSX.Element {
         }}
         onKeyDown={onKeyDown}
       />
-      <Show when={props.noGraph}>
-        <div class="capture-no-graph" role="status">
-          <p>
-            There's no graph on this device yet, so this can't be saved. Your text is kept here: set
-            up a graph, and it will be waiting on this screen.
-          </p>
-          <button type="button" class="capture-save" onClick={() => props.onSetUpGraph?.()}>
-            Set up a graph
-          </button>
-        </div>
-      </Show>
       <div class="capture-actions">
         <Show when={!props.noGraph}>
           <button

@@ -57,6 +57,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 ///   left in the queue for inspection, as after an intent run with the app closed.
 /// - `-NookletDebugQuickAction <type>` runs the quick-action handler for that
 ///   `UIApplicationShortcutItemType` once the app is up (`xcrun simctl` cannot long-press).
+/// - `-NookletDebugOpenToAdd <text>` forwards the link `OpenNookletToAddIntent` forwards.
+/// - `-NookletDebugOpenURL <url>` delivers a `nooklet://` link at launch (a cold-start link).
 enum DebugLaunchHooks {
     static func run() {
         let defaults = UserDefaults.standard
@@ -68,6 +70,18 @@ enum DebugLaunchHooks {
                 NSLog("[nooklet-debug] enqueue failed: \(error)")
             }
             if defaults.bool(forKey: "NookletDebugExitAfterEnqueue") { exit(0) }
+        }
+        if let text = defaults.string(forKey: "NookletDebugOpenToAdd") {
+            // What `OpenNookletToAddIntent.perform()` does once iOS has opened the app.
+            DispatchQueue.main.async {
+                AppLinkForwarder.open(AppLinkForwarder.captureURL(text: text))
+                NSLog("[nooklet-debug] open to add forwarded")
+            }
+        }
+        if let link = defaults.string(forKey: "NookletDebugOpenURL"), let url = URL(string: link) {
+            // `xcrun simctl openurl` stops at an "Open in nooklet?" prompt nothing here can tap;
+            // this hands the link over the way an opened URL arrives (Capacitor's open-URL proxy).
+            DispatchQueue.main.async { AppLinkForwarder.open(url) }
         }
         if let type = defaults.string(forKey: "NookletDebugQuickAction") {
             DispatchQueue.main.async {

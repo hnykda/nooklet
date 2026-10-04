@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { platform } from "../platform/index.js";
 import { CAPTURE_DRAFT_KEY, CaptureView } from "./CaptureView.js";
 
 afterEach(() => {
@@ -147,5 +148,15 @@ describe("CaptureView", () => {
     render(() => <CaptureView initialText="newer" />);
     const textarea = screen.getByPlaceholderText("Capture a thought…") as HTMLTextAreaElement;
     expect(textarea.value).toBe("older\nnewer");
+  });
+
+  it("starts the keyboard watcher while mounted, so Save stays above the iOS keyboard (B-802)", () => {
+    const stop = vi.fn();
+    const start = vi.spyOn(platform, "startKeyboardWatcher").mockReturnValue({ stop });
+    render(() => <CaptureView />);
+    expect(start).toHaveBeenCalledTimes(1);
+    cleanup();
+    expect(stop).toHaveBeenCalledTimes(1);
+    start.mockRestore();
   });
 });

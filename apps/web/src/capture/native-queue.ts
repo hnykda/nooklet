@@ -19,13 +19,17 @@ interface NookletCapturePlugin {
   remove(options: { id: string }): Promise<void>;
 }
 
-let pluginPromise: Promise<NookletCapturePlugin | undefined> | undefined;
+// B-801: boxed. A Capacitor plugin proxy answers EVERY property with a native-method wrapper,
+// `then` included, so resolving a promise with the proxy itself makes the promise treat it as a
+// thenable, call its `then`, and wait forever. Never return the proxy from a `.then` or an async
+// function; return `{ plugin }`.
+let pluginPromise: Promise<{ plugin: NookletCapturePlugin } | undefined> | undefined;
 
-function plugin(): Promise<NookletCapturePlugin | undefined> {
+function plugin(): Promise<{ plugin: NookletCapturePlugin } | undefined> {
   if (!pluginPromise) {
     pluginPromise = import("@capacitor/core").then(({ Capacitor, registerPlugin }) =>
       Capacitor.isPluginAvailable("NookletCapture")
-        ? registerPlugin<NookletCapturePlugin>("NookletCapture")
+        ? { plugin: registerPlugin<NookletCapturePlugin>("NookletCapture") }
         : undefined,
     );
   }
@@ -56,9 +60,9 @@ function nativeDeps(p: NookletCapturePlugin): CaptureQueueDeps {
  * there is no native queue. Never throws: a failed drain leaves every file for the next one. */
 export async function drainNativeCaptureQueue(): Promise<DrainReport | undefined> {
   try {
-    const p = await plugin();
-    if (!p) return undefined;
-    const report = await drainCaptureQueue(nativeDeps(p));
+    const box = await plugin();
+    if (!box) return undefined;
+    const report = await drainCaptureQueue(nativeDeps(box.plugin));
     if (report.failed.length > 0 || report.malformed.length > 0) {
       console.warn("[capture-queue] left queued", {
         failed: report.failed,
