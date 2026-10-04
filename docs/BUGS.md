@@ -1018,6 +1018,14 @@ desktop shell, the switcher's "add a server graph" should hand the URL to the sh
 `nooklet-desktop.invalid` request) instead of fetching cross-origin; on plain web it should say
 plainly that a different server must be opened in its own tab.
 
+### B-705 · iOS zooms in when focusing the add-graph server URL field and the page stays too wide
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
+
+Same mechanism as B-648: iOS auto-zooms on focusing a form control whose font-size is under 16px
+and never zooms back, leaving the viewport wider than the screen. B-648's fix covered specific
+fields (properties, search, task filter); every new form (here the graph switcher's server URL)
+reintroduces it. Owner: "try to fix this globally".
+
 ## Fixed
 
 ### B-701 · A long `$$…$$` display formula widened the page at phone width
