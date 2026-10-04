@@ -537,21 +537,24 @@ struct Shell {
 #[derive(Clone)]
 struct WindowFacts {
     key: String,
-    /// The server graph whose token the script carries, if any.
-    token_for: Option<String>,
+    /// The server graph this window was built to open, if any. Its script carries that graph's
+    /// token when the keychain has one; when it has none, the page asks on the add form, and a
+    /// token entered there opens a new window (`handle_shell_request`), so this window must NOT
+    /// rebuild itself for the graph it was built for — that would loop, rebuilding forever.
+    server_for: Option<String>,
     list_version: u64,
     local_ids: Vec<String>,
 }
 
-/// Whether a navigation to `graph` needs a new window rather than this one: a server graph whose
-/// token this window's script does not carry, a This-Mac graph its list has not heard of (made by
+/// Whether a navigation to `graph` needs a new window rather than this one: a server graph this
+/// window was not built for (its script cannot carry that graph's token), a This-Mac graph its list has not heard of (made by
 /// the CLI or an import since), or any graph once the list has changed.
 fn needs_new_window(facts: &WindowFacts, graph: &GraphKey, list_version: u64, on_disk: impl Fn(&str) -> bool) -> bool {
     if facts.list_version != list_version {
         return true;
     }
     match graph {
-        GraphKey::Server(id) => facts.token_for.as_deref() != Some(id.as_str()),
+        GraphKey::Server(id) => facts.server_for.as_deref() != Some(id.as_str()),
         GraphKey::Mac(id) => !facts.local_ids.iter().any(|l| l == id) && on_disk(id),
     }
 }
@@ -656,9 +659,9 @@ fn open_window(app: &tauri::AppHandle, graph: GraphKey, land: Option<String>) ->
         let land = land.unwrap_or_else(|| address.clone());
         let facts = WindowFacts {
             key: random_key(),
-            token_for: match (&graph, &token) {
-                (GraphKey::Server(id), Some(_)) => Some(id.clone()),
-                _ => None,
+            server_for: match &graph {
+                GraphKey::Server(id) => Some(id.clone()),
+                GraphKey::Mac(_) => None,
             },
             list_version: shell.list_version.load(Ordering::SeqCst),
             local_ids: local.iter().map(|g| g.id.clone()).collect(),
@@ -1497,12 +1500,14 @@ mod tests {
     fn b785_only_a_new_token_or_a_changed_list_needs_a_new_window() {
         let facts = WindowFacts {
             key: KEY.into(),
-            token_for: Some("s1".into()),
+            server_for: Some("s1".into()),
             list_version: 3,
             local_ids: vec!["default".into(), "quiet-otter".into()],
         };
         let never = |_: &str| false;
         let always = |_: &str| true;
+        // The graph it was built for, token or not: never again (a window without a token for it
+        // shows the add form; rebuilding would loop).
         assert!(!needs_new_window(&facts, &GraphKey::Server("s1".into()), 3, never));
         assert!(needs_new_window(&facts, &GraphKey::Server("s2".into()), 3, never));
         assert!(!needs_new_window(&facts, &GraphKey::Mac("quiet-otter".into()), 3, never));
