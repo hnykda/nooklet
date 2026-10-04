@@ -21,7 +21,7 @@ import {
 } from "../../data/queries.js";
 import { sameJson } from "../../data/same-json.js";
 import { pageRoutePath, rawAnchorHref } from "../../routes/page-path.js";
-import { MARKER_GLYPH } from "../BlockRowView.js";
+import { TaskMarkerIcon } from "../TaskMarkerIcon.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
 import "./query.css";
 
@@ -66,7 +66,7 @@ function HitView(props: { block: QueryResultBlock; ctx: RenderCtx; depth: number
         <Show when={props.block.marker}>
           {(m) => (
             <span class={`vr-marker vr-marker-${m()}`} role="img" aria-label={`Task: ${m()}`}>
-              {MARKER_GLYPH[m()] ?? "☐"}
+              <TaskMarkerIcon marker={m()} />
             </span>
           )}
         </Show>

@@ -37,16 +37,19 @@ test("Cmd/Ctrl+Enter cycles the marker through null, TODO, DOING, DONE and back 
 
   await page.keyboard.press(`${MOD}+Enter`);
   await expect(marker(outliner)).toHaveClass(/vr-marker-TODO/);
-  await expect(marker(outliner)).toHaveText("☐");
+  await expect(marker(outliner).locator("[data-marker-icon=TODO]")).toHaveCount(1);
+  await expect(marker(outliner)).toHaveAttribute("aria-checked", "false");
   await expect.poll(() => markerOf(page, "Tasks Cycle Keys")).toBe("TODO");
 
   await page.keyboard.press(`${MOD}+Enter`);
   await expect(marker(outliner)).toHaveClass(/vr-marker-DOING/);
-  await expect(marker(outliner)).toHaveText("◐");
+  await expect(marker(outliner).locator("[data-marker-icon=DOING]")).toHaveCount(1);
+  await expect(marker(outliner)).toHaveAttribute("aria-checked", "mixed");
 
   await page.keyboard.press(`${MOD}+Enter`);
   await expect(marker(outliner)).toHaveClass(/vr-marker-DONE/);
-  await expect(marker(outliner)).toHaveText("☑");
+  await expect(marker(outliner).locator("[data-marker-icon=DONE]")).toHaveCount(1);
+  await expect(marker(outliner)).toHaveAttribute("aria-checked", "true");
   await expect.poll(() => markerOf(page, "Tasks Cycle Keys")).toBe("DONE");
 
   await page.keyboard.press(`${MOD}+Enter`);

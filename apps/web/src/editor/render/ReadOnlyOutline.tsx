@@ -18,9 +18,9 @@ import { classifyBlockContent, formatDayTime } from "@nooklet/core";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { BlockTreeNode } from "../../data/types.js";
 import { BlockProperties } from "../BlockProperties.js";
-import { MARKER_GLYPH } from "../BlockRowView.js";
 import { DateChips } from "../DateChips.js";
 import { deriveNumbering, isNumbered } from "../numbering.js";
+import { TaskMarkerIcon } from "../TaskMarkerIcon.js";
 import { EMBED_ROW_CAP, visibleEmbedRows } from "./embedRows.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
 import "./embed.css";
@@ -214,7 +214,7 @@ function OutlineRow(props: {
         <Show when={marker()}>
           {(m) => (
             <span class={`vr-marker vr-marker-${m()}`} role="img" aria-label={`Task: ${m()}`}>
-              {MARKER_GLYPH[m()] ?? "☐"}
+              <TaskMarkerIcon marker={m()} />
             </span>
           )}
         </Show>

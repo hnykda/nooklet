@@ -315,9 +315,24 @@ export function CommandLayer(props: { children?: JSX.Element }): JSX.Element {
       setTimeout(onKeyUp, 0);
     };
     document.addEventListener("pointerup", onPointerUp, true);
+    // B-646: keyup is not the only way text arrives. The editor taking focus with a trigger already
+    // before the caret — a journal day's first line handed over by `/` (`VirtualJournalDay`) — has
+    // no key of its own after it, and text inserted with no keyup at all (dictation, a keyboard's
+    // suggestion bar, an IME commit) has none either. Both re-detect after the editor has caught
+    // up (deferred a macrotask, as for a pointer). Detection is idempotent and an Escape-dismissed
+    // trigger stays dismissed (`dismissedAt`), so a key that fires keyup AND input cannot open
+    // anything twice.
+    const onLater = (e: Event): void => {
+      if ((e.target as Element | null)?.closest?.(".cmd-popup, .ctx-menu")) return;
+      setTimeout(onKeyUp, 0);
+    };
+    document.addEventListener("focusin", onLater, true);
+    document.addEventListener("input", onLater, true);
     onCleanup(() => {
       document.removeEventListener("keyup", onKeyUp, true);
       document.removeEventListener("pointerup", onPointerUp, true);
+      document.removeEventListener("focusin", onLater, true);
+      document.removeEventListener("input", onLater, true);
     });
   });
 

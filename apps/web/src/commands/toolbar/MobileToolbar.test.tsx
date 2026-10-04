@@ -25,7 +25,7 @@ function commands(run: (id: string) => void): Command[] {
     title: b.command,
     category: "Block",
     defaultKeys: {},
-    when: b.command === "task.toggleDone" ? "isTask" : undefined,
+    when: b.command === "format.insertBlockRef" ? "isTask" : undefined,
     run: () => run(b.command),
   }));
 }
@@ -70,8 +70,8 @@ describe("<MobileKeyboardToolbar>", () => {
         />
       </CommandProvider>
     ));
-    const toggleDone = screen.getByLabelText("task.toggleDone");
-    expect(toggleDone.hasAttribute("disabled")).toBe(true);
+    const gated = screen.getByLabelText("format.insertBlockRef");
+    expect(gated.hasAttribute("disabled")).toBe(true);
   });
 
   it("enables a button whose `when` is true", () => {
@@ -82,8 +82,8 @@ describe("<MobileKeyboardToolbar>", () => {
         />
       </CommandProvider>
     ));
-    const toggleDone = screen.getByLabelText("task.toggleDone");
-    expect(toggleDone.hasAttribute("disabled")).toBe(false);
+    const gated = screen.getByLabelText("format.insertBlockRef");
+    expect(gated.hasAttribute("disabled")).toBe(false);
   });
 
   it("tapping a button runs its command", async () => {

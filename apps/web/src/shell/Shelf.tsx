@@ -45,8 +45,8 @@ import { lookupBlockText } from "../data/block-ref-cache.js";
 import { displayPageName, displayRefName } from "../data/page-title.js";
 import { usePageByName, usePageTree } from "../data/store.js";
 import type { BlockTreeNode, NavigateTarget } from "../data/types.js";
-import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { BlockContentView } from "../editor/render/tokens.js";
+import { TaskMarkerIcon } from "../editor/TaskMarkerIcon.js";
 import { pageRoutePath } from "../routes/page-path.js";
 import { goToTarget } from "../views/navigateTarget.js";
 import "./shelf.css";
@@ -89,7 +89,7 @@ function ShelfOutline(props: {
                 <Show when={node.marker}>
                   {(marker) => (
                     <span class={`shelf-marker vr-marker-${marker()}`} title={marker()}>
-                      {MARKER_GLYPH[marker()] ?? "☐"}
+                      <TaskMarkerIcon marker={marker()} />
                     </span>
                   )}
                 </Show>

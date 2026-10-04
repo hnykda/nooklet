@@ -9,6 +9,7 @@ import {
   insertCodeFence,
   insertProperty,
   insertQueryFence,
+  insertSlash,
   insertTable,
   insertToday,
   onContent,
@@ -143,11 +144,13 @@ export function createInsertCommands(deps: { editor: EditorHost; now?: () => num
       title: "Open slash menu",
       category: "Insert",
       defaultKeys: {},
-      when: "editorFocused && atLineStart",
+      // Anywhere in the block, not only at its start (B-646): `insertSlash` adds the space a `/`
+      // needs mid-word. With `atLineStart` the toolbar's `/` was greyed out everywhere but offset 0.
+      when: "editorFocused",
       run() {
         const sel = editor.getSelection();
         if (!sel) return;
-        editor.replaceRange({ from: sel.start, to: sel.end, text: "/", caretOffset: 1 });
+        editor.replaceRange(insertSlash(sel.content, sel.start, sel.end));
       },
     },
   ];

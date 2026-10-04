@@ -16,8 +16,8 @@ import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { AgendaTask } from "../data/agenda.js";
 import { displayPageName, journalTitleFormat } from "../data/page-title.js";
 import type { NavigateTarget } from "../data/types.js";
-import { MARKER_GLYPH } from "../editor/BlockRowView.js";
 import { InlineContent } from "../editor/InlineContent.js";
+import { TaskMarkerIcon } from "../editor/TaskMarkerIcon.js";
 import { pageRoutePath, rawAnchorHref } from "../routes/page-path.js";
 import {
   type AgendaDate,
@@ -89,7 +89,7 @@ function EntryRow(props: { entry: AgendaEntry; onNavigate: (t: NavigateTarget) =
                 role="img"
                 aria-label={`Task: ${marker()}`}
               >
-                {MARKER_GLYPH[marker()] ?? "☐"}
+                <TaskMarkerIcon marker={marker()} />
               </span>
             )}
           </Show>

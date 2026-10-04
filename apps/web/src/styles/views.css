@@ -635,6 +635,30 @@
   border-color: var(--muted);
 }
 
+/* B-648: on a phone these fields made the page wider than the screen until a restart. Two causes.
+   First, 13px text: iOS zooms the whole page in when a field under 16px takes focus and does not
+   zoom back out — the "wider, centred, cut off" page (Simulator: visualViewport.scale 1.23 after
+   tapping "property"). Second, a flex item's minimum width is its content's, and an <input>'s is
+   its `size=20` width, so key + value + Add came to more than a 390px screen; `min-width: 0` lets
+   them share the row. */
+.page-property-value,
+.page-property-add-key,
+.page-property-add-value {
+  min-width: 0;
+}
+
+.page-property-key {
+  overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+  .page-property-value,
+  .page-property-add-key,
+  .page-property-add-value {
+    font-size: 16px;
+  }
+}
+
 .namespace-children {
   margin: var(--space-2xl) 0;
 }
@@ -907,6 +931,13 @@
   font-size: var(--text-sm);
 }
 
+/* B-648: under 16px, iOS zooms the page in on focus and leaves it zoomed. */
+@media (pointer: coarse) {
+  .search-filters input {
+    font-size: 16px;
+  }
+}
+
 .search-hint,
 .search-loading,
 .search-summary {
@@ -1071,6 +1102,13 @@
   font-size: var(--text-sm);
   font-family: var(--font-sans);
   letter-spacing: normal;
+}
+
+/* B-648: under 16px, iOS zooms the page in on focus and leaves it zoomed. */
+@media (pointer: coarse) {
+  .task-filters input:not([type="checkbox"]) {
+    font-size: 16px;
+  }
 }
 
 .task-group {

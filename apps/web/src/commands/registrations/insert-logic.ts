@@ -135,3 +135,15 @@ export function insertProperty(content: string, key = ""): ReplaceRangeSpec {
     caretOffset: key === "" ? prefix.length : text.length,
   };
 }
+
+/**
+ * R50 (B-646): the `/` the toolbar's slash button types. The slash menu opens on a `/` at the
+ * start of a text run — the block's start or after whitespace (`../slash/trigger.ts`) — so mid-word
+ * a space goes first; otherwise the button typed a `/` that opened nothing. A selection is
+ * replaced, as typing would.
+ */
+export function insertSlash(content: string, start: number, end: number): ReplaceRangeSpec {
+  const before = content.slice(0, start);
+  const text = before === "" || /\s$/.test(before) ? "/" : " /";
+  return { from: start, to: end, text, caretOffset: text.length };
+}

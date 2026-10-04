@@ -16,22 +16,8 @@ import { DateChips } from "./DateChips.js";
 import { attachSwipeRow } from "./gestures/swipeAttach.js";
 import { RemoteChangeNotice } from "./RemoteChangeNotice.js";
 import { BlockContentView, type Navigate } from "./render/tokens.js";
+import { markerChecked, TaskMarkerIcon } from "./TaskMarkerIcon.js";
 import type { EditableBlock } from "./types.js";
-
-/** The glyph for each task state. Deliberately text rather than SVG: it inherits colour and size
- * from the row, so it stays aligned with the text baseline at any zoom.
- *
- * Exported because the shelf (`../shell/Shelf.tsx`) renders blocks read-only too, and a second
- * copy of this table is how DOING quietly becomes a different symbol in one of the two places. */
-export const MARKER_GLYPH: Record<string, string> = {
-  TODO: "☐",
-  LATER: "☐",
-  NOW: "◐",
-  DOING: "◐",
-  WAITING: "◔",
-  DONE: "☑",
-  CANCELED: "☒",
-};
 
 export function BlockRowView(props: {
   id: string;
@@ -156,15 +142,21 @@ export function BlockRowView(props: {
               six, so DOING and WAITING had no representation at all and read as "not done". The
               glyph carries the state — empty box to do, half-filled while in progress, a check
               when done — which is what makes a list scannable without reading it. */}
+          {/* A checkbox to assistive tech too (B-651): ticks and unticks (`toggleDone`); in
+              progress is "mixed". Cycling through DOING/NOW is Mod+Enter, or the phone toolbar's
+              task button, as in Logseq. */}
+          {/* biome-ignore lint/a11y/useSemanticElements: an <input type=checkbox> has two states (plus indeterminate) and no room for the icon per state; the marker has seven, and keeps the editor focused on pointerdown. */}
           <button
             type="button"
+            role="checkbox"
+            aria-checked={markerChecked(props.block.marker ?? "")}
             class={`vr-marker vr-marker-${props.block.marker}`}
             aria-label={`Task: ${props.block.marker}`}
-            title={`${props.block.marker} — click to advance`}
+            title={`${props.block.marker} — ${props.block.marker === "DONE" ? "click to reopen" : "click to mark done"}`}
             onPointerDown={(e) => e.preventDefault()}
             onClick={props.onToggleMarker}
           >
-            {MARKER_GLYPH[props.block.marker ?? ""] ?? "☐"}
+            <TaskMarkerIcon marker={props.block.marker ?? ""} />
           </button>
         </Show>
         <Show when={props.block.priority}>

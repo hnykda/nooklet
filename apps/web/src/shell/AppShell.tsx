@@ -25,6 +25,7 @@ import {
 import { CalendarButton } from "./CalendarButton.js";
 import { GraphSwitcher } from "./GraphSwitcher.js";
 import { HelpMenu, openShortcuts } from "./HelpMenu.js";
+import { useHistoryPosition } from "./history-position.js";
 import { MoreMenu } from "./MoreMenu.js";
 import { Shelf } from "./Shelf.js";
 import { Sidebar } from "./Sidebar.js";
@@ -36,6 +37,8 @@ import "../data/appearance.js";
 
 export function AppShell(props: { children?: JSX.Element }) {
   const navigate = useNavigate();
+  // B-649: greyed out when there is nowhere to go, not a button that silently does nothing.
+  const historyPos = useHistoryPosition();
   onMount(() => {
     const handle = platform.startKeyboardWatcher();
     onCleanup(() => handle.stop());
@@ -61,6 +64,7 @@ export function AppShell(props: { children?: JSX.Element }) {
             class="app-icon-button"
             aria-label="Back"
             title="Back"
+            disabled={!historyPos().canGoBack}
             onClick={() => navigate(-1)}
           >
             <ChevronLeft size={17} />
@@ -70,6 +74,7 @@ export function AppShell(props: { children?: JSX.Element }) {
             class="app-icon-button"
             aria-label="Forward"
             title="Forward"
+            disabled={!historyPos().canGoForward}
             onClick={() => navigate(1)}
           >
             <ChevronRight size={17} />
