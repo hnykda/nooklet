@@ -1,5 +1,5 @@
 /**
- * Settings → Import from Logseq (ADR 030), end to end: a real browser picks the fixture graph as
+ * Settings → Import from Logseq (ADR 031), end to end: a real browser picks the fixture graph as
  * a folder (desktop width) and as a .zip (phone width), the real server unpacks, imports and
  * verifies it into a new graph, and the counts on screen match what `nooklet import` makes of the
  * very same folder. Then "Open" lands in the new graph with its pages there.

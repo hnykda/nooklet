@@ -29,6 +29,7 @@ import {
   type ApplyOpsResult,
   applyOps as coreApplyOps,
   Hlc,
+  LIVE_CLOSE,
   makeOp,
   merge3,
   newDeviceId,
@@ -36,6 +37,7 @@ import {
   resolvePendingTextConflict,
   type SqlDriver,
 } from "@nooklet/core";
+import { LIVE_REFUSED_CODES, liveRefusedNote } from "./live-backoff.js";
 import {
   type CapturedPage,
   captureAndRemoveRefusedPage,
@@ -45,6 +47,7 @@ import {
 } from "./refused-page.js";
 import {
   isSyncAuthError,
+  isSyncGraphRetiredError,
   LIVE_AUTH_REJECTED_CODES,
   type PushResponse,
   type SyncState,
@@ -169,6 +172,9 @@ export class SyncClient {
    * network failure on top of it must not turn "re-pair this device" back into "wait, it will
    * sync when back online", which is the false promise this state exists to stop making. */
   private authRejected = false;
+  /** B-713: the server retired this graph. Sticky like `authRejected`, and checked first: a
+   * re-paired token would not bring a retired graph back. */
+  private graphRetired = false;
   private status: SyncStatus = { state: "offline", pendingCount: 0, serverCursor: 0 };
 
   constructor(opts: SyncClientOptions) {
@@ -312,10 +318,13 @@ export class SyncClient {
           this.setStatus({ state: "error", lastError: String(err) });
           return;
         }
+        // Only a push the server accepted proves the graph is served again (B-713); an empty
+        // outbox reaches this point without asking the server anything.
+        this.graphRetired = false;
         if (rows.length < this.pushBatchLimit) break;
       }
       this.authRejected = false;
-      this.setStatus({ state: "idle" });
+      this.setStatus({ state: this.graphRetired ? "retired" : "idle" });
     } finally {
       this.flushing = false;
       if (this.flushAgain) {
@@ -448,6 +457,7 @@ export class SyncClient {
         if (!res.has_more) break;
       }
       this.authRejected = false;
+      this.graphRetired = false;
       this.setStatus({ state: "idle" });
     } catch (err) {
       this.setStatus({ state: this.failureState(err), lastError: String(err) });
@@ -585,7 +595,11 @@ export class SyncClient {
   connectLive(): void {
     this.unsubscribeLive?.();
     this.unsubscribeLive = this.transport.connectLive(this.deviceId, {
-      onPoke: () => void this.pull(),
+      onPoke: () => {
+        // A poke means the server accepted this socket after all.
+        if (this.status.liveNote) this.setStatus({ liveNote: undefined });
+        void this.pull();
+      },
       onOpen: () => {
         this.clearLiveDownTimer();
         void this.pull();
@@ -617,13 +631,25 @@ export class SyncClient {
    * also what notices the server coming back when the socket alone cannot.
    */
   private onLiveClosed(code: number): void {
+    if (code === LIVE_CLOSE.graphRetired) {
+      this.clearLiveDownTimer();
+      this.graphRetired = true;
+      this.setStatus({ state: "retired", lastError: `the server retired this graph (${code})` });
+      return;
+    }
     if (LIVE_AUTH_REJECTED_CODES.has(code)) {
       this.clearLiveDownTimer();
       this.authRejected = true;
       this.setStatus({ state: "unauthorized", lastError: `live sync refused the token (${code})` });
       return;
     }
-    if (this.authRejected || this.liveDownTimer) return;
+    // B-676 H4: refused for capacity (or a frame too big). Push and pull still work, so the state
+    // stays whatever the probe below finds; the note says why other devices' changes now arrive
+    // only when the (long, backed-off) reconnect attempt pulls.
+    // Any other close (the server went away) makes the note stale.
+    const liveNote = LIVE_REFUSED_CODES.has(code) ? liveRefusedNote(code) : undefined;
+    if (liveNote !== this.status.liveNote) this.setStatus({ liveNote });
+    if (this.graphRetired || this.authRejected || this.liveDownTimer) return;
     this.liveDownTimer = setTimeout(() => {
       this.liveDownTimer = undefined;
       void this.pull();
@@ -637,13 +663,16 @@ export class SyncClient {
 
   /** What a request that failed with `err` leaves the client in (B-613). */
   private failureState(err: unknown): SyncState {
+    if (isSyncGraphRetiredError(err)) this.graphRetired = true;
     if (isSyncAuthError(err)) this.authRejected = true;
+    if (this.graphRetired) return "retired";
     return this.authRejected ? "unauthorized" : "offline";
   }
 
   /** "pushing"/"pulling", unless the token is known to be refused: a retry that is all but certain
    * to be refused again should not flicker the indicator through "N changes waiting to sync". */
   private busyState(state: "pushing" | "pulling"): SyncState {
+    if (this.graphRetired) return "retired";
     return this.authRejected ? "unauthorized" : state;
   }
 

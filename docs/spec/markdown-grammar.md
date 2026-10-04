@@ -47,7 +47,7 @@ conventions glossary — not added there because this task may only touch this f
   non-BMP character such as most emoji is 2 units; no rule in this grammar ever splits a
   surrogate pair).
 - **Content classification**: the step that looks at a block's whole `content` string and
-  decides it is one of `paragraph | heading | fence | quote | table | hr` before inline
+  decides it is one of `paragraph | heading | fence | quote | table | hr | mixed` before inline
   tokenization runs (§2.7).
 
 ## 2. Normative rules
@@ -344,9 +344,23 @@ marker, priority, id, and property lines) is classified into exactly one of:
   `:` for alignment) with the same cell count as line 1; every further line is also a pipe row.
   Cells are split on unescaped `|` (a `\|` inside a cell is a literal pipe, not a separator, and
   is resolved to `|` by the inline tokenizer's escape token, §2.9-ESC), trimmed, and each cell's
-  content is tokenized independently (no `br`s inside a cell — GFM tables are one line per row).
-  `align[i]` is `left`/`right`/`center`/`null` from the delimiter cell's colons. Any mismatch
-  (ragged row, no delimiter row) falls through to CLS-P.
+  content is tokenized independently (no `br`s inside a cell — GFM tables are one line per row),
+  **at the cell's own offset in the whole `content`** like every other token (B-702: cells were
+  tokenized from offset 0, so every cell of `| a | b |` rendered the leading `|`). Leading and
+  trailing pipes are optional. `align[i]` is `left`/`right`/`center`/`null` from the delimiter
+  cell's colons. A header/delimiter cell-count mismatch, or no delimiter row, is not a table. Body
+  rows may be ragged (GFM): a short row is padded with empty cells, a long row's extra cells are
+  not rendered (the stored text keeps them). The table ends at the first blank line or line with
+  no `|` (GFM would keep a pipe-less line as a one-cell row; Logseq does not, and neither do we).
+  - **CLS-T-mixed** (B-702): a table need not start on line 1. Wherever a header row is followed
+    by a delimiter row, a table starts; the lines around it are prose. Content with at least one
+    table and any prose classifies as `{ kind: "mixed", parts }` — `paragraph` and `table` parts in
+    order, each paragraph part carrying `firstLine` (its first line's index in `content`) when not
+    0. Blank lines that only separate prose from a table are dropped. Every table in the owner's
+    real graph has this shape (a line of prose, a blank line, the table). `tokenizeContent` of a
+    `mixed` block is the CLS-P token stream of the whole content, so snippets read as before.
+  - Mirror caveat (B-470): a delimiter row written `- | -` (no outer pipes, a dash then a space)
+    reads back from the mirror as a child bullet. `---|---` and `| - | - |` are safe.
 - **CLS-R (hr)**: `content` is exactly one line matching `/^(-{3,}|\*{3,}|_{3,})$/` (trailing
   whitespace already stripped by OUT-7) and the block has no marker and no children-affecting
   content otherwise. No inline tokens.
@@ -590,6 +604,7 @@ export type BlockContent =
   | { kind: "fence"; lang: string; code: string }
   | { kind: "quote"; lines: InlineToken[][] }
   | { kind: "table"; align: Align[]; header: InlineToken[][]; rows: InlineToken[][][] }
+  | { kind: "mixed"; parts: (Paragraph | Table)[] } // CLS-T-mixed; a paragraph part may carry firstLine
   | { kind: "hr" };
 
 /** One physical line, no `\n`. Offsets are relative to `base` (the line's start in the
@@ -675,6 +690,7 @@ export function extractRefs(content: string, properties?: Properties): Extracted
 | content `fence`, `lang` ∈ {`query`,`sql`} | same as any fence in v1 (§2.6) | `.vr-fence[data-lang="query"\|"sql"]` |
 | content `quote` | `<blockquote>` | `.vr-quote` |
 | content `table` | `<table><thead>…<tbody>…`, `text-align` per `align[i]` | `.vr-table` |
+| content `mixed` | each part in order: `<p>` for prose, `<table>` for a table | `.vr-paragraph`, `.vr-table` |
 | content `hr` | `<hr>` | `.vr-hr` |
 | block-level `marker` | a checkbox/state pill before the content, click cycles state (ADR — editor) | `.vr-marker.vr-marker-<TODO\|DOING\|...>` |
 | block-level `priority` | a small badge | `.vr-priority.vr-priority-<A\|B\|C>` |
@@ -907,7 +923,7 @@ Pandoc dollar-math heuristic matters; `query`/`sql` fences and `#+BEGIN_QUOTE` o
 (justifying OUT-27's "reserve the name, don't build the feature" and OUT-24's "cheap fallback,
 open issue" choices).
 
-### Corpus index (49 cases)
+### Corpus index (50 cases)
 
 | # | File | Tests | `tokens`? |
 |---|---|---|:-:|
@@ -960,8 +976,9 @@ open issue" choices).
 | 47 | `47-emoji-diacritics-rtl.md` | Emoji tag offsets, Czech diacritics, RTL line | ✓ |
 | 48 | `48-heading-fence-quote-table-hr.md` | Content classification (§2.7), all five non-paragraph kinds | |
 | 49 | `49-escaped-shaped-content.md` | Property-, timestamp- and drawer-shaped content lines, escaped; an escaped escape (OUT-23a) | |
+| 50 | `50-tables.md` | GFM tables: outer pipes, alignment, an escaped pipe, a short row; prose + blank + table + prose (CLS-T-mixed); no outer pipes | |
 
-(49 cases — comfortably over the "at least 40" floor; the table above is the index, files are in
+(50 cases — comfortably over the "at least 40" floor; the table above is the index, files are in
 `docs/spec/corpus/`.)
 
 ## 10. Worked example

@@ -3,7 +3,8 @@
  * `nooklet` CLI: the one entry point that wires the pieces of this package together.
  *
  *   nooklet serve   [--data <dir>] [--port <n>]     run the HTTP API + MCP endpoint
- *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
+ *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq import: a file graph's
+ *                                                     folder, or a DB-version graph's root
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
  *   nooklet pair    --link <public url> [--scope read|write] [--no-sync] [--minutes <n>]
@@ -15,10 +16,11 @@
  *                   minting one if it does not exist yet; ignores --graph, it is not per-graph)
  *   nooklet embed   status | run | model <name> [--provider ollama|openai-compat] [--host <url>]
  *                   M3/ADR 010 embeddings: index status, drain the queue now, or switch models.
- *   nooklet backup  [--out <path>] [--data <dir>]    consistent VACUUM INTO snapshot + assets/,
+ *   nooklet backup  [--graph <id>] [--out <path>] [--data <dir>]  VACUUM INTO snapshot + assets/,
  *                   as a single .tar.gz archive (M6, docs/OPERATIONS.md)
- *   nooklet restore <archive> [--data <dir>] [--force]  restore a backup (refuses to clobber an
- *                   existing database unless --force; refuses an archive newer than this build)
+ *   nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]  restore a backup into one
+ *                   graph (refuses to clobber an existing database unless --force; refuses an
+ *                   archive newer than this build)
  *   nooklet gc      [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
  *                   op-log GC down to min(device.acked_seq) across live devices (M6), and
  *                   removal of assets nothing references any more (M7, ./gc.ts)
@@ -42,7 +44,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { renderUnicodeCompact } from "uqr";
-import { WebSocketServer } from "ws";
 import type { ServerContext } from "./apply-ops.js";
 import { createPairingCode } from "./auth/pairing-codes.js";
 import {
@@ -59,6 +60,9 @@ import {
   booleanFlag,
   CliArgError,
   checkFlags,
+  GRAPH_FLAGS,
+  GRAPH_SUBCOMMAND_FLAGS,
+  PAIR_FLAGS,
   parseArgs,
   parseGcFlags,
   parseRepairFlags,
@@ -91,9 +95,22 @@ import {
   GraphSelectionError,
   openGraphForCommand,
 } from "./graphs/registry.js";
+import {
+  GraphRetireError,
+  listRetired,
+  replaceGraph,
+  retireGraph,
+  unretireGraph,
+} from "./graphs/retire.js";
+import { liveServer, liveServerMessage, writeServerLock } from "./graphs/server-lock.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { attachImportService, ImportService } from "./importer/jobs.js";
-import { importLogseqGraph } from "./importer/logseq.js";
+import { detectLogseqGraph, importLogseqGraph } from "./importer/logseq.js";
+import {
+  configureLiveLimits,
+  createLiveWebSocketServer,
+  parseLiveLimitFlags,
+} from "./live-limits.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
 import { startLiveMirror } from "./mirror/live.js";
@@ -104,6 +121,7 @@ import { ensurePluginRow, isPluginEnabled, setPluginEnabled } from "./plugins/se
 import { applyOrgDateRepair, formatOrgDateReport, planOrgDateRepair } from "./repair-org-dates.js";
 import { formatServeBanner } from "./serve-banner.js";
 import { formatVerifyReport, verifyRebuildParity } from "./verify.js";
+import { NOOKLET_VERSION } from "./version.js";
 
 function dataDir(args: Args): string {
   const flag = args.flags.get("data");
@@ -209,7 +227,7 @@ function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config:
  * which is how the desktop app shipped without them (B-180).
  */
 /** `--import-max-mb <n>`: the largest graph upload Settings → Import from Logseq accepts
- * (ADR 030). Default 1024. */
+ * (ADR 031). Default 1024. */
 function importMaxBytes(args: Args): number | undefined {
   const flag = args.flags.get("import-max-mb");
   if (flag === undefined) return undefined;
@@ -245,11 +263,19 @@ const USAGE = `nooklet — a local-first outliner server
                                          behind a same-host reverse proxy (docs/OPERATIONS.md).
                                          Default: on for a loopback bind, off with a non-loopback
                                          --host (--loopback-token turns it back on)
+                 [--ws-max-per-token <n>] [--ws-max-total <n>]   live-socket caps (default 20, 500)
   nooklet import <logseq-graph-dir> [--data <dir>]
+                                         a file graph's folder (pages/, journals/), or a
+                                         DB-version graph's root (db.sqlite + mirror/markdown/)
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
   nooklet graph create <id> [--label <label>] [--data <dir>]
-  nooklet graph list [--data <dir>]
+  nooklet graph list [--retired] [--data <dir>]
+  nooklet graph retire <id> [--force] [--data <dir>]   move graphs/<id> to graphs-retired/
+                      (nothing is deleted; "default" needs --force; refused while serve runs)
+  nooklet graph unretire <retired-name> [--as <id>] [--data <dir>]
+  nooklet graph replace <id> --from <dir> [--data <dir>]   swap in a re-imported graph,
+                      keeping its tokens; the old one is retired
   nooklet pair --link <public url> [--scope read|write] [--no-sync] [--minutes <1-60>]
                       print a one-time pairing QR code for a phone (default: write + sync, 10 min)
   nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
@@ -265,11 +291,14 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet plugin enable <plugin-id>
   nooklet plugin disable <plugin-id>
   nooklet plugin reload <plugin-id>
-  nooklet backup [--out <path>] [--data <dir>]
-  nooklet restore <archive> [--data <dir>] [--force]
-  nooklet gc [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
-  nooklet verify [--data <dir>]
-  nooklet repair org-dates [--apply] [--data <dir>]   dry run unless --apply
+  nooklet backup [--graph <id>] [--out <path>] [--data <dir>]
+  nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
+  nooklet gc [--graph <id>] [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
+  nooklet verify [--graph <id>] [--data <dir>]
+  nooklet repair org-dates [--graph <id>] [--apply] [--data <dir>]   dry run unless --apply
+  nooklet --version | -V
+
+  Every command except serve works on one graph: --graph <id>, default "default".
 `;
 
 async function main(): Promise<void> {
@@ -283,6 +312,12 @@ async function main(): Promise<void> {
     process.stdout.write(USAGE);
     return;
   }
+  // B-696. Like --help, answered before anything opens a data dir. `-V` is not a `--` flag, so it
+  // lands in `args._`; only honoured as the first token, so it can never be a positional value.
+  if (args.flags.has("version") || cmd === "-V" || cmd === "version") {
+    process.stdout.write(`nooklet ${NOOKLET_VERSION}\n`);
+    return;
+  }
 
   switch (cmd) {
     case "serve": {
@@ -290,12 +325,16 @@ async function main(): Promise<void> {
       migrateLegacyLayoutIfNeeded(dir);
       const baseConfig = baseServerConfig(args);
       const webClientDir = resolveWebClientDir(args.flags.get("web"));
+      // B-676 H4: caps on /sync/live and /ui/live sockets (`live-limits.ts`).
+      configureLiveLimits(cliArg(() => parseLiveLimitFlags(args)));
 
       // One indexer per graph this process ends up opening (ADR 025 — a graph is opened lazily,
       // the first time something asks for it, not necessarily at boot), so shutdown can stop all
       // of them, not just whichever graph happened to be first.
       const indexers = new Map<string, EmbeddingIndexer>();
-      // ADR 030: Settings → Import from Logseq. One per process (one import at a time).
+      // Per graph too, so retiring one (B-713) stops its mirror before its database closes.
+      const mirrors = new Map<string, ReturnType<typeof startLiveMirror>>();
+      // ADR 031: Settings → Import from Logseq. One per process (one import at a time).
       const importer = new ImportService({
         rootDataDir: dir,
         baseConfig,
@@ -310,7 +349,9 @@ async function main(): Promise<void> {
           // ADR 002's continuous mirror — the half that never existed (B-95): pages/ and
           // journals/ followed commits only when someone ran `nooklet export`. `--no-mirror`
           // turns it off, for every graph this process hosts.
-          if (handle.config.mirror.enabled) startLiveMirror(handle.ctx, handle.config.dataDir);
+          if (handle.config.mirror.enabled) {
+            mirrors.set(handle.id, startLiveMirror(handle.ctx, handle.config.dataDir));
+          }
           attachImportService(handle.ctx, handle.config, importer);
 
           // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a
@@ -334,6 +375,16 @@ async function main(): Promise<void> {
           });
           indexer.start();
           indexers.set(handle.id, indexer);
+        },
+        onClose: (handle) => {
+          // The mirror's last sweep runs now, while the database is still open, so the retired
+          // folder's markdown copy is as current as its database.
+          const mirror = mirrors.get(handle.id);
+          mirrors.delete(handle.id);
+          mirror?.flush();
+          mirror?.stop();
+          indexers.get(handle.id)?.stop();
+          indexers.delete(handle.id);
         },
       });
 
@@ -360,8 +411,9 @@ async function main(): Promise<void> {
       // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
       // adapter's `serve()` call — `upgradeWebSocket` (used by that route) only handles the Hono
       // side of the handshake; `@hono/node-server` needs a `{ noServer: true }` WebSocketServer
-      // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs.
-      const wss = new WebSocketServer({ noServer: true });
+      // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs. It carries
+      // the frame-size limit (B-676 H12, `live-limits.ts`).
+      const wss = createLiveWebSocketServer();
       const shutdown = (): void => {
         for (const indexer of indexers.values()) indexer.stop();
         process.exit(0);
@@ -387,18 +439,42 @@ async function main(): Promise<void> {
             allowedHosts: baseConfig.allowedHosts,
             webClientDir,
             interfaces: networkInterfaces(),
+            version: NOOKLET_VERSION,
           });
           process.stdout.write(banner.stdout);
           if (banner.stderr) process.stderr.write(banner.stderr);
+          // B-713: lets `nooklet graph retire` (another process) see that this data dir is live.
+          // Written only once listening, so a serve that failed to bind never claims the dir.
+          const removeLock = writeServerLock(dir, info.port);
+          process.on("exit", removeLock);
         },
       );
       guardUpgradeSockets(server);
+      // B-685: a failed listen is an 'error' event on the server; unhandled, Node threw it as a
+      // raw EADDRINUSE stack trace. Say what happened and what to do, in one line.
+      server.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") {
+          die(
+            `port ${baseConfig.port} on ${hostname} is in use — stop the other server, or pick another with --port <n>`,
+          );
+        }
+        if (err.code === "EACCES") {
+          die(`not allowed to listen on port ${baseConfig.port} — pick another with --port <n>`);
+        }
+        die(`could not listen on ${hostname}:${baseConfig.port}: ${err.message}`);
+      });
       return;
     }
 
     case "import": {
       const graphDir = args._[1];
       if (!graphDir) die("import needs a Logseq graph directory");
+      const layout = detectLogseqGraph(resolve(graphDir));
+      process.stderr.write(
+        layout.kind === "db"
+          ? `nooklet: a Logseq DB-version graph: pages from ${layout.markdownDir}, images, favourites and dates from ${layout.sqliteFile} (read from a copy)\n`
+          : `nooklet: a Logseq file graph at ${layout.root}\n`,
+      );
       const { ctx, config } = open(args, { migrate: true });
       const stats = await importLogseqGraph(ctx, resolve(graphDir), { dataDir: config.dataDir });
       process.stdout.write(`${JSON.stringify(stats, null, 2)}\n`);
@@ -431,8 +507,82 @@ async function main(): Promise<void> {
     // adds a graph to This Mac (B-643); the HTTP equivalent is `POST /graphs` with the root token.
     case "graph": {
       const sub = args._[1];
+      if (!sub || !Object.hasOwn(GRAPH_SUBCOMMAND_FLAGS, sub)) {
+        die(
+          `unknown graph subcommand "${sub ?? ""}" (expected create, list, retire, unretire or replace)`,
+        );
+      }
+      cliArg(() =>
+        checkFlags(args, GRAPH_SUBCOMMAND_FLAGS[sub as keyof typeof GRAPH_SUBCOMMAND_FLAGS]),
+      );
+      // `GRAPH_FLAGS` is the union the flag audit checks this case against.
+      cliArg(() => checkFlags(args, GRAPH_FLAGS));
       const dir = dataDir(args);
       migrateLegacyLayoutIfNeeded(dir);
+      // B-713: retire and replace move a graph's folder out from under whoever has it open. A live
+      // `serve` on this data dir keeps its graphs' databases open and cannot be told from here to
+      // let go, so refuse while one runs; `DELETE /graphs/<id>` retires from a running server.
+      // `unretire` is allowed: it only moves a folder into `graphs/` under an id nothing serves
+      // (it refuses an existing one), and a running server opens it on the first request.
+      if (sub === "retire" || sub === "replace") {
+        const live = liveServer(dir);
+        if (live) die(liveServerMessage(dir, live));
+      }
+      if (sub === "retire") {
+        const id = args._[2];
+        if (!id) die("graph retire needs an id, e.g. nooklet graph retire work");
+        try {
+          const r = retireGraph(dir, id, { force: booleanFlag(args, "force", false) });
+          process.stdout.write(
+            `retired "${r.id}": moved to ${r.path}\n` +
+              `Nothing was deleted. To bring it back: nooklet graph unretire ${r.retiredName}` +
+              ` (add --as <id> to restore it under another id).\n`,
+          );
+        } catch (err) {
+          if (err instanceof GraphRetireError) die(err.message);
+          throw err;
+        }
+        return;
+      }
+      if (sub === "unretire") {
+        const name = args._[2];
+        if (!name)
+          die("graph unretire needs a retired graph's name (see: nooklet graph list --retired)");
+        const as = args.flags.get("as");
+        if (as !== undefined && typeof as !== "string") die("--as needs a graph id");
+        try {
+          const r = unretireGraph(dir, name, as);
+          process.stdout.write(
+            `restored "${r.id}" from ${r.from}\nA running server picks it up on its next request for /g/${r.id}/.\n`,
+          );
+        } catch (err) {
+          if (err instanceof GraphRetireError) die(err.message);
+          throw err;
+        }
+        return;
+      }
+      if (sub === "replace") {
+        const id = args._[2];
+        const from = args.flags.get("from");
+        if (!id || typeof from !== "string") {
+          die(
+            "graph replace needs an id and --from <dir>, e.g. nooklet graph replace work --from /tmp/scratch",
+          );
+        }
+        try {
+          const r = replaceGraph(dir, id, from);
+          process.stdout.write(
+            `replaced "${r.id}" with ${r.source} (${r.tokensCarried} token${r.tokensCarried === 1 ? "" : "s"} carried over)\n` +
+              `The old graph is in ${r.retired.path}; nothing was deleted.\n` +
+              `Devices that synced the old graph will show "The server has a different graph now"; ` +
+              `"Discard the local copy and re-sync" is expected: the replacement is a new graph instance.\n`,
+          );
+        } catch (err) {
+          if (err instanceof GraphRetireError) die(err.message);
+          throw err;
+        }
+        return;
+      }
       if (sub === "create") {
         const id = args._[2];
         if (!id) die("graph create needs an id, e.g. nooklet graph create work --label Work");
@@ -452,6 +602,12 @@ async function main(): Promise<void> {
         return;
       }
       if (sub === "list") {
+        if (booleanFlag(args, "retired", false)) {
+          for (const g of listRetired(dir)) {
+            process.stdout.write(`${g.name}\t${g.id}\t${g.retiredAt}\t${g.label ?? ""}\n`);
+          }
+          return;
+        }
         const registry = new GraphRegistry(dir, {
           registry: buildRegistry(),
           baseConfig: baseServerConfig(args),
@@ -459,7 +615,6 @@ async function main(): Promise<void> {
         for (const g of await registry.list()) process.stdout.write(`${g.id}\t${g.label}\n`);
         return;
       }
-      die(`unknown graph subcommand "${sub ?? ""}" (expected create or list)`);
       return;
     }
 
@@ -467,7 +622,7 @@ async function main(): Promise<void> {
     // server's pairing page. The code goes to stdout for the owner and nowhere else: not to the
     // server's log, not into root.token, not into the database (only its hash).
     case "pair": {
-      cliArg(() => checkFlags(args, ["data", "graph", "link", "scope", "sync", "minutes"]));
+      cliArg(() => checkFlags(args, PAIR_FLAGS));
       const linkFlag = args.flags.get("link");
       if (typeof linkFlag !== "string")
         die(
@@ -795,7 +950,7 @@ async function main(): Promise<void> {
     case "backup": {
       const { ctx, config } = open(args);
       const outFlag = args.flags.get("out");
-      const result = createBackup(ctx.driver, {
+      const result = await createBackup(ctx.driver, {
         dataDir: config.dataDir,
         ...(typeof outFlag === "string" ? { outPath: resolve(outFlag) } : {}),
       });
@@ -818,7 +973,7 @@ async function main(): Promise<void> {
       // Targets this graph's own subdirectory (ADR 025) so a restored archive lands exactly where
       // `serve`/`open()` will look for it — migrateLegacyLayoutIfNeeded never needs to touch it.
       const dir = graphDir(dataDir(args), graphIdFlag(args));
-      const result = restoreBackup(resolve(archivePath), { dataDir: dir, force });
+      const result = await restoreBackup(resolve(archivePath), { dataDir: dir, force });
       // Into a fresh data dir this is the graph's first database; give it its graph.json (B-607).
       ensureGraphMeta(dataDir(args), graphIdFlag(args));
       process.stdout.write(
@@ -833,7 +988,7 @@ async function main(): Promise<void> {
       // Parsed before the database is opened: a flag gc does not understand stops the run.
       const gcFlags = cliArg(() => parseGcFlags(args));
       const { ctx, config } = open(args);
-      const report = runGc(ctx, { dataDir: config.dataDir, ...gcFlags });
+      const report = await runGc(ctx, { dataDir: config.dataDir, ...gcFlags });
       // The op-log half can be refused (no device has synced yet); the asset half never is, so
       // both are always reported.
       if (report.refused) {
@@ -873,8 +1028,10 @@ async function main(): Promise<void> {
     }
 
     case "verify": {
-      const { ctx } = open(args);
-      const report = verifyRebuildParity(ctx.driver);
+      const { ctx, config } = open(args);
+      // On disk beside the graph, not in memory: the replica holds the whole replayed op log.
+      const scratchPath = join(config.dataDir, `.verify-scratch-${process.pid}.sqlite`);
+      const report = verifyRebuildParity(ctx.driver, { scratchPath });
       process.stdout.write(`${formatVerifyReport(report)}\n`);
       if (!report.ok) process.exit(1);
       return;

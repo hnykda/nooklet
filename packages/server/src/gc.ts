@@ -376,6 +376,17 @@ export function planGc(driver: SqlDriver): {
   return { floor, drop: plan.drop, retain: plan.retain };
 }
 
+/** `planGc`'s numbers without materialising the plan: the same `seq < floor` split, in SQL. */
+function countGc(driver: SqlDriver): { floor: GcFloor; dropCount: number; retainCount: number } {
+  const floor = computeGcFloor(driver);
+  if (floor.floor === null) return { floor, dropCount: 0, retainCount: 0 };
+  const row = driver.get<{ drop: number; retain: number }>(
+    `SELECT COALESCE(SUM(seq < ?), 0) AS "drop", COALESCE(SUM(seq >= ?), 0) AS retain FROM op`,
+    [floor.floor, floor.floor],
+  );
+  return { floor, dropCount: row?.drop ?? 0, retainCount: row?.retain ?? 0 };
+}
+
 /**
  * Run GC for real (or report what it would do, with `dryRun: true`): compute the floor and plan,
  * refuse per `computeGcFloor`'s rules, otherwise (unless dry-run) take an automatic backup (unless
@@ -384,10 +395,12 @@ export function planGc(driver: SqlDriver): {
  * something vacuums it -- `docs/spec/sql-schema.md` rule 28 calls the op log the single largest
  * contributor to file size at scale, so this is the whole point of running GC at all).
  */
-export function runGc(ctx: ServerContext, opts: RunGcOptions): GcReport {
+export async function runGc(ctx: ServerContext, opts: RunGcOptions): Promise<GcReport> {
   const dryRun = opts.dryRun ?? false;
   const now = Date.now();
-  const { floor, drop, retain } = planGc(ctx.driver);
+  // Counts, not `planGc`: that loads and parses the whole op log just so its lengths can be
+  // reported, O(graph) memory for two numbers (docs/progress/streaming-backup.md).
+  const { floor, dropCount, retainCount } = countGc(ctx.driver);
   const assetPlan = planAssetGc(ctx.driver, { graceDays: opts.assetGraceDays, now });
 
   const base: GcReport = {
@@ -396,11 +409,11 @@ export function runGc(ctx: ServerContext, opts: RunGcOptions): GcReport {
     reason: floor.reason,
     blockingDevices: floor.blockingDevices,
     floor: floor.floor,
-    dropCount: drop.length,
-    retainCount: retain.length,
+    dropCount,
+    retainCount,
     assets: { ...assetPlan, removed: 0, reclaimedBytes: 0 },
   };
-  const willDropOps = floor.floor !== null && drop.length > 0;
+  const willDropOps = floor.floor !== null && dropCount > 0;
   const willRemoveAssets = assetPlan.orphans.length > 0;
   if (dryRun || (!willDropOps && !willRemoveAssets)) return base;
 
@@ -408,7 +421,7 @@ export function runGc(ctx: ServerContext, opts: RunGcOptions): GcReport {
   // dropped) AND `assets/` (with the files about to be unlinked).
   let backupPath: string | undefined;
   if (!opts.noBackup) {
-    backupPath = createBackup(ctx.driver, { dataDir: opts.dataDir }).path;
+    backupPath = (await createBackup(ctx.driver, { dataDir: opts.dataDir })).path;
   }
 
   let reclaimedBytes: number | undefined;

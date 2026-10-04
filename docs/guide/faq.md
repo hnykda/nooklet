@@ -132,6 +132,30 @@ graphs, not the Logseq DB version's export.
 It will not trim the op log while any device holding a token has never pulled, because it cannot
 know what that device still needs. Sync that device once, or revoke its token if it is gone.
 
+## How do I remove or re-import a graph on the server?
+
+Retire it, don't delete it. With the server running, send `DELETE /graphs/<id>` with the root
+token. With it stopped, run `nooklet graph retire <id>`. Either way the folder moves to
+`graphs-retired/` and `nooklet graph unretire` brings it back. To rebuild a graph from its Logseq
+files, import into a scratch data dir and run `nooklet graph replace <id> --from <scratch>`, which
+keeps every device's token. See
+[Self-hosting](self-hosting.md#retiring-restoring-and-replacing-a-graph).
+
+## The app says "The server has a different graph now"
+
+The server now serves a different graph instance at this address: it was replaced (re-imported or
+restored from elsewhere), or the server points at another data directory. After a replace this is
+expected. Press **Discard the local copy and re-sync**. It affects only this graph on this device,
+but edits on this device that never reached the server are lost. If that might matter, choose
+**Keep as a device-only graph**, or point the server back at the old graph first (retire the
+replacement, `nooklet graph unretire` the old one), let the device sync, then replace again.
+
+## The sync indicator says "Graph retired"
+
+The server's operator retired this graph (`DELETE /graphs/<id>` or `nooklet graph retire`). The
+device stops trying to sync it. Your local copy and any unsynced edits stay on the device. Ask the
+operator to bring it back with `nooklet graph unretire`, then reload.
+
 ## Is my data safe if the server dies?
 
 Each device has a full copy of each synced graph, and the markdown mirror is on the server's disk.

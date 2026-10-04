@@ -1,8 +1,8 @@
-# ADR 030: Import a Logseq graph from the app: chunked zip upload, server-side import, `admin` only
+# ADR 031: Import a Logseq graph from the app: chunked zip upload, server-side import, `admin` only
 
 Date: 2026-10-04. Status: accepted (built on the in-app-import branch,
-`docs/progress/in-app-import.md`). Extends ADR 012 (what is imported) with how it gets to the
-server; ADR 012's scope is unchanged.
+`docs/progress/in-app-import.md`). Adds a way in to the importer of ADR 012 (file graphs) and
+ADR 030 (DB-version graphs); what is imported is theirs, unchanged.
 
 ## Context
 
@@ -20,7 +20,11 @@ accepts (48 MB, security review).
    zip-store.ts`): the bulk of a graph is already-compressed images. A phone picks a .zip from
    Files (iOS has no folder picker in a web view). Only what the importer reads is sent — the rule
    is one function both sides share (`packages/core/src/logseq-archive.ts`), so `logseq/bak/`,
-   `.git/` and the rest never leave the device.
+   `.git/` and the rest never leave the device. Both layouts: a file graph (`pages/`, `journals/`,
+   `assets/`, `logseq/config.edn`) and a DB-version graph (`db.sqlite`, `db.sqlite-wal`,
+   `mirror/markdown/{pages,journals}/`, `assets/`). The server unpacks the same shape and calls the
+   same `importLogseqGraph`, whose `detectLogseqGraph` picks the format, so a DB graph brings its
+   images, favourites and the rest of what ADR 030 restores.
 2. **Chunked upload through the op registry.** `import.begin` (target) → `import.chunk` (4 MiB of
    base64 at a time, in order; a resent chunk is accepted) → `import.start` → poll
    `import.status`; `import.cancel` any time; `import.info` says whether this session may import
@@ -47,8 +51,8 @@ accepts (48 MB, security review).
 5. **Zip safety** (`packages/server/src/importer/zip.ts`). Entry names are decoded and checked by
    us: absolute, drive-letter and `..` names refuse the archive; output paths are built from four
    fixed directory names and one validated component. Symlink entries are skipped. Limits: 200,000
-   entries, 4 GiB unpacked, ratio 200x for entries over 1 MiB, and inflation capped at each entry's
-   declared size. yauzl lists the central directory; entry bytes are read and inflated by our code
+   entries, 4 GiB unpacked, ratio 200x for entries over 1 MiB (not for `db.sqlite*`: SQLite's free
+   pages are zeros and pack past any ratio), and inflation capped at each entry's declared size. yauzl lists the central directory; entry bytes are read and inflated by our code
    (see "Found while building").
 6. **Background job with progress.** One job per process. Status carries the phase (upload,
    unpack, import, check) and the live counts (pages, journals, blocks, assets); the finished job

@@ -1,6 +1,6 @@
 /**
  * A minimal streaming ZIP writer, STORE only (no compression), for the in-app Logseq import
- * (ADR 030): the browser turns a picked graph folder into one zip, a file at a time, and uploads it
+ * (ADR 031): the browser turns a picked graph folder into one zip, a file at a time, and uploads it
  * in chunks while it is being written, so a 250 MB graph never has to sit in memory whole.
  *
  * No compression on purpose: a graph's bulk is images and PDFs, already compressed; its markdown

@@ -8,8 +8,11 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
+import { closeDb } from "../db.js";
+import { closeGraphSockets } from "../live-limits.js";
 import type { OpRegistry } from "../ops/registry.js";
 import { createAppWithPlugins } from "../plugins/bootstrap.js";
+import type { PluginHost } from "../plugins/host.js";
 import { type BaseServerConfig, type OpenGraphOptions, openGraph } from "./open-graph.js";
 import {
   type GraphMeta,
@@ -19,6 +22,7 @@ import {
   isValidGraphId,
 } from "./paths.js";
 import { pluginDirsFor } from "./plugin-dirs.js";
+import { GraphRetireError, type RetireOptions, type RetireResult, retireGraph } from "./retire.js";
 
 export type { GraphMeta } from "./paths.js";
 
@@ -27,6 +31,7 @@ export interface GraphHandle {
   ctx: ServerContext;
   config: ReturnType<typeof openGraph>["config"];
   app: Hono;
+  pluginHost: PluginHost;
 }
 
 export interface GraphRegistryOptions {
@@ -44,6 +49,21 @@ export interface GraphRegistryOptions {
    * own. Kept out of here so a one-shot CLI command, or a routing test, isn't forced to pay for a
    * mirror watcher or an indexer it will never use. */
   onOpen?: (handle: GraphHandle) => void | Promise<void>;
+  /** `onOpen`'s counterpart: called when a handle is dropped (the graph was retired, or its folder
+   * was replaced underneath this process, B-713) before its database is closed, so whatever
+   * `onOpen` started (mirror, indexer) stops instead of writing to a closed or moved graph. */
+  onClose?: (handle: GraphHandle) => void | Promise<void>;
+}
+
+/** The identity of the database file a handle opened: what `resolve()` compares against to notice
+ * that the folder was moved or replaced underneath it. */
+function fileIdentity(path: string): string | undefined {
+  try {
+    const st = statSync(path);
+    return `${st.dev}:${st.ino}`;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -141,6 +161,11 @@ export class GraphRegistry {
   #dataDir: string;
   #opts: GraphRegistryOptions;
   #handles = new Map<string, Promise<GraphHandle>>();
+  /** `graphId -> fileIdentity()` of the database each cached handle opened. */
+  #identities = new Map<string, string | undefined>();
+  /** Graphs mid-retire: `resolve()` answers "no such graph" for them, so a request arriving while
+   * the handle is being closed cannot reopen the graph a moment before its folder moves. */
+  #retiring = new Set<string>();
 
   constructor(dataDir: string, opts: GraphRegistryOptions) {
     this.#dataDir = dataDir;
@@ -150,12 +175,66 @@ export class GraphRegistry {
   /** `undefined` when no such graph exists — becomes a 404 in `graphs/mount.ts`, never an
    * auto-create (that's `create()`'s job, deliberately a separate, explicit call). */
   async resolve(graphId: string): Promise<GraphHandle | undefined> {
+    if (this.#retiring.has(graphId)) return undefined;
     const cached = this.#handles.get(graphId);
-    if (cached) return cached;
+    if (cached) {
+      // B-713: a cached handle keeps the database it opened, and an open file follows its inode,
+      // not its path. So if `graphs/<id>/` was moved aside (and maybe replaced) by hand while this
+      // process runs, the cache would go on serving, and writing to, the moved-away graph. One
+      // stat per request notices it: drop the stale handle, then open whatever is there now.
+      const handle = await cached;
+      const now = fileIdentity(graphDbPath(this.#dataDir, graphId));
+      if (now !== undefined && now === this.#identities.get(graphId)) return handle;
+      await this.#evict(graphId, cached, "graph folder replaced");
+      return this.resolve(graphId);
+    }
     if (!existsSync(graphDbPath(this.#dataDir, graphId))) return undefined;
     const promise = this.#open(graphId);
     this.#handles.set(graphId, promise);
     return promise;
+  }
+
+  /**
+   * `DELETE /graphs/<id>` (B-713): stop serving the graph and move its folder to
+   * `graphs-retired/` (`retire.ts`). In order: refuse new requests for it, close its sockets
+   * (4410) and its database, then move the folder. Throws `GraphRetireError`.
+   */
+  async retire(graphId: string, opts: RetireOptions = {}): Promise<RetireResult> {
+    if (this.#retiring.has(graphId)) {
+      throw new GraphRetireError(`"${graphId}" is already being retired`, "conflict");
+    }
+    if (graphId === "default" && !opts.force) {
+      // Refused before anything is closed: `retireGraph` throws the explanation.
+      return retireGraph(this.#dataDir, graphId, opts);
+    }
+    this.#retiring.add(graphId);
+    try {
+      const cached = this.#handles.get(graphId);
+      if (cached) await this.#evict(graphId, cached, "graph retired");
+      return retireGraph(this.#dataDir, graphId, opts);
+    } finally {
+      this.#retiring.delete(graphId);
+    }
+  }
+
+  /** Drop a cached handle and release everything it holds. Only if `expected` is still the cached
+   * one: two requests that both noticed a replaced folder must not close the fresh handle the
+   * first of them opened. */
+  async #evict(graphId: string, expected: Promise<GraphHandle>, reason: string): Promise<void> {
+    if (this.#handles.get(graphId) !== expected) return;
+    this.#handles.delete(graphId);
+    this.#identities.delete(graphId);
+    const handle = await expected;
+    // Logged, not thrown: the handle is already out of the cache, so a retire that stopped here
+    // would leave the graph neither served by this handle nor moved.
+    try {
+      await this.#opts.onClose?.(handle);
+      await handle.pluginHost.deactivateAll();
+    } catch (err) {
+      process.stderr.write(`nooklet: [${graphId}] closing the graph: ${(err as Error).message}\n`);
+    }
+    closeGraphSockets(handle.ctx.driver, reason);
+    closeDb(handle.ctx.driver);
   }
 
   async create(graphId: string, label?: string): Promise<GraphHandle> {
@@ -205,8 +284,10 @@ export class GraphRegistry {
       migrate: this.#opts.migrate,
       log: (message) => process.stderr.write(message),
     });
+    // After the open, because `create()` comes through here too and its file did not exist before.
+    this.#identities.set(graphId, fileIdentity(graphDbPath(this.#dataDir, graphId)));
     const dirs = pluginDirsFor(config.dataDir);
-    const { app } = await createAppWithPlugins({
+    const { app, pluginHost } = await createAppWithPlugins({
       serverCtx: ctx,
       // Per graph, like every other plugin registry (they key on the graph's `ServerContext`):
       // each graph activates its own copy of every plugin, so each needs room for its plugin ops
@@ -218,7 +299,7 @@ export class GraphRegistry {
       bundledPluginDirs: dirs.bundled,
       webClientDir: this.#opts.webClientDir,
     });
-    const handle: GraphHandle = { id: graphId, ctx, config, app };
+    const handle: GraphHandle = { id: graphId, ctx, config, app, pluginHost };
     await this.#opts.onOpen?.(handle);
     return handle;
   }

@@ -1,10 +1,17 @@
 /**
- * In-app Logseq import (ADR 030) over the real HTTP routes: scopes, the two targets and their
+ * In-app Logseq import (ADR 031) over the real HTTP routes: scopes, the two targets and their
  * rules, chunked upload, cancel, and that the result matches what `nooklet import` makes of the
  * same files.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,10 +21,19 @@ import { openDb } from "../db.js";
 import { graphDbPath, graphMetaPath } from "../graphs/paths.js";
 import { attachImportService, ImportService } from "../importer/jobs.js";
 import { importLogseqGraph } from "../importer/logseq.js";
+import { writeFixtureDbGraph } from "../importer/logseq-db-fixture.js";
 import { fixtureGraphFiles, rawZip, storeZip } from "../importer/zip-test-helpers.js";
 import { type JsonAny, makeTestServer, post } from "../test-helpers.js";
 
 const services: ImportService[] = [];
+
+/** Every file under `dir`, relative, `/`-separated. */
+function walk(dir: string, rel = ""): string[] {
+  return readdirSync(join(dir, rel), { withFileTypes: true }).flatMap((e) => {
+    const r = rel ? `${rel}/${e.name}` : e.name;
+    return e.isDirectory() ? walk(dir, r) : [r];
+  });
+}
 afterEach(() => {
   for (const s of services.splice(0)) s.dispose();
 });
@@ -214,6 +230,44 @@ describe("import into a new graph", () => {
     expect(job.state).toBe("cancelled");
     expect(existsSync(join(s.root, "graphs", "big"))).toBe(false);
     expect(existsSync(join(s.root, "import-staging", jobId))).toBe(false);
+  });
+});
+
+describe("import a DB-version graph through the app", () => {
+  it("detects the format and brings its images and favourites, like the CLI", async () => {
+    const s = setup();
+    const src = mkdtempSync(join(tmpdir(), "nooklet-import-dbgraph-"));
+    writeFixtureDbGraph(src);
+    // A zip of the graph folder, plus what must be left behind (shm, a backup copy).
+    const files: Record<string, Uint8Array> = {};
+    for (const rel of walk(src)) files[`My DB graph/${rel}`] = readFileSync(join(src, rel));
+    files["My DB graph/db.sqlite-shm"] = new Uint8Array(8);
+    files["My DB graph/backups/db.sqlite"] = new Uint8Array(8);
+    const job = await upload(s, storeZip(files), { target: "new", graph_id: "dbgraph" });
+    expect(job.state, job.message).toBe("done");
+
+    const cliCtx = createServerContext(openDb({ path: ":memory:" }));
+    const cli = await importLogseqGraph(cliCtx, src, {
+      dataDir: mkdtempSync(join(tmpdir(), "nooklet-import-dbcli-")),
+    });
+    expect(cli.format).toBe("db");
+    expect(job.result).toMatchObject({
+      format: "db",
+      pages: cli.pagesImported,
+      journals: cli.journalsImported,
+      blocks: cli.blocksImported,
+      assets: cli.assetsImported,
+      favorites: cli.favoritesMarked,
+      verify: { ok: true },
+    });
+    expect(job.result.assets).toBeGreaterThan(0);
+    expect(job.result.favorites).toBeGreaterThan(0);
+    // The image block points at an imported asset in the new graph.
+    const db = openDb({ path: graphDbPath(s.root, "dbgraph") });
+    const image = db.get<{ content: string }>(
+      "SELECT content FROM block WHERE content LIKE '![%' AND deleted_at IS NULL",
+    );
+    expect(image?.content).toMatch(/\]\(assets\/[0-9a-z]+\.png\)$/);
   });
 });
 

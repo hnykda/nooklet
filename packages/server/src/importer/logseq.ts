@@ -1,9 +1,5 @@
 /**
- * Logseq file-graph importer (M1, ADR 012).
- *
- * Scope is exactly ADR 012's: the classic Logseq file graph (`pages/*.md`, `journals/*.md`,
- * `logseq/config.edn`) — not the Logseq DB version's one-way markdown mirror export (different
- * directory shape, page-level `id::` line, no `config.edn`; see the ADR).
+ * Logseq importer (ADR 012 for the file graph, ADR 030 for the DB version).
  *
  * This module does not reparse markdown itself: every file's outline is produced by
  * `packages/core`'s `parseOutline` (`docs/spec/markdown-grammar.md`), which already tolerates
@@ -21,13 +17,22 @@
  *      order via `ordersBetween`) and applying them through `serverApplyOps` — the server's own
  *      ref/path_ref indexing, cycle correction, and `changes` audit trail all run for free.
  *
- * Assets: `assets/*` is copied through the same writer `asset.upload` uses (`importAssets`) when
- * a `dataDir` is given. Two callers: `nooklet import`, and the in-app import (ADR 030,
- * `./jobs.ts`), which also passes progress, cancellation and a write lock.
+ * Two source formats, detected by `detectLogseqGraph` (ADR 012's file-graph-only scope was widened
+ * by the owner on 2026-10-04, B-715):
+ *
+ *   - the classic file graph: `pages/`, `journals/`, `assets/`, `logseq/config.edn`;
+ *   - the DB version: `db.sqlite` + `assets/` + the Markdown Mirror at `mirror/markdown/`. Pages
+ *     come from the mirror, exactly like a file graph's; what the mirror loses (images, refs written
+ *     as uuids, SCHEDULED, favourites) is put back from `db.sqlite` by `logseq-db-import.ts`.
+ *
+ * Detection lives here, not in the CLI, so the in-app import calls the same thing.
+ *
+ * Callers: `nooklet import`, and the in-app import (ADR 031, `./jobs.ts`), which also passes
+ * progress, cancellation and a write lock.
  */
 
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import {
   type AppliedOpResult,
   DEFAULT_JOURNAL_TITLE_FORMAT,
@@ -48,9 +53,11 @@ import {
 import { type ServerContext, serverApplyOps } from "../apply-ops.js";
 import { assetMarkdownPath, mimeFromFilename, storeAssetBytes } from "../assets/store.js";
 import { setSuggestedJournalTitleFormat } from "../journal-format.js";
-import { REFERENCE_DEVICE_ID, unclaimedReferencePageForKey } from "../ref-pages.js";
+import { REFERENCE_DEVICE_ID, referenceKey, unclaimedReferencePageForKey } from "../ref-pages.js";
 import { mintDanglingReferencedPages } from "../ref-pages-migration.js";
 import { setRecordedTaskWorkflow } from "../task-workflow.js";
+import { LogseqDbGraph } from "./logseq-db.js";
+import { enrichFromLogseqDb, type LogseqDbStats } from "./logseq-db-import.js";
 
 // -------------------------------------------------------------------------------------------
 // config.edn (tiny EDN subset)
@@ -76,6 +83,9 @@ export interface LogseqConfig {
    *  value → `todo`); `null` when the key is absent, so the graph's markers decide instead
    *  (`../task-workflow.ts`). */
   preferredWorkflow: TaskWorkflow | null;
+  /** `:favorites` — page names favourited in the file graph's sidebar, in order. The DB version
+   *  keeps favourites in the database instead (`LogseqDbGraph.favoritePages`). */
+  favorites: string[];
 }
 
 export const DEFAULT_LOGSEQ_CONFIG: LogseqConfig = {
@@ -83,6 +93,7 @@ export const DEFAULT_LOGSEQ_CONFIG: LogseqConfig = {
   journalPageTitleFormat: DEFAULT_JOURNAL_TITLE_FORMAT,
   fileNameFormat: "legacy",
   preferredWorkflow: null,
+  favorites: [],
 };
 
 /** Strip EDN line comments (`;` to end of line), respecting string literals, so a commented-out
@@ -123,6 +134,29 @@ function ednStringValue(text: string, key: string): string | undefined {
   return m?.[1];
 }
 
+/** `:key ["a" "b"]` — a vector of strings. Logseq writes favourites lowercased, sometimes as
+ *  `"[[Page]]"`; both are unwrapped. */
+function ednStringVector(text: string, key: string): string[] | undefined {
+  const m = new RegExp(`:${key}\\s+\\[`).exec(text);
+  if (!m) return undefined;
+  // Scan to the closing `]`, skipping strings: a name may itself contain `]` (`"[[Page]]"`).
+  const out: string[] = [];
+  let i = m.index + m[0].length;
+  for (; i < text.length && text[i] !== "]"; i++) {
+    if (text[i] !== '"') continue;
+    let s = "";
+    for (i++; i < text.length && text[i] !== '"'; i++) {
+      if (text[i] === "\\") i++;
+      s += text[i] ?? "";
+    }
+    out.push(s);
+  }
+  return out
+    .map((x) => x.trim())
+    .map((x) => (x.startsWith("[[") && x.endsWith("]]") ? x.slice(2, -2).trim() : x))
+    .filter((x) => x !== "");
+}
+
 function ednKeywordValue(text: string, key: string): string | undefined {
   const m = new RegExp(`:${key}\\s+:([a-zA-Z0-9_-]+)`).exec(text);
   return m?.[1];
@@ -153,7 +187,54 @@ export function parseLogseqConfigEdn(text: string): LogseqConfig {
       ednKeywordValue(stripped, "preferred-workflow") ??
         ednStringValue(stripped, "preferred-workflow"),
     ),
+    favorites: ednStringVector(stripped, "favorites") ?? [],
   };
+}
+
+/** Where a Logseq graph's parts are, and which of the two formats it is. */
+export type LogseqGraphLayout =
+  | { kind: "file"; root: string; markdownDir: string }
+  | { kind: "db"; root: string; markdownDir: string; sqliteFile: string };
+
+/**
+ * Which kind of Logseq graph `dir` is. A DB-version graph is recognised by `db.sqlite` next to
+ * `mirror/markdown/`; pointing at the mirror folder itself (or its `markdown/` child) finds the
+ * graph root two/one levels up. Everything else is a file graph, read the way it always was. A DB
+ * graph without a mirror cannot be imported (pages come from the mirror) and says how to fix it.
+ */
+export function detectLogseqGraph(dir: string): LogseqGraphLayout {
+  for (const root of [dir, dirname(dir), dirname(dirname(dir))]) {
+    const sqliteFile = join(root, "db.sqlite");
+    const markdownDir = join(root, "mirror", "markdown");
+    if (!existsSync(sqliteFile)) continue;
+    if (root !== dir && markdownDir !== dir && join(root, "mirror") !== dir) continue;
+    if (!existsSync(markdownDir)) {
+      throw new Error(
+        `${dir} is a Logseq DB-version graph without a Markdown Mirror: turn on Settings → Markdown Mirror in Logseq (desktop), run "Regenerate full mirror", then import again`,
+      );
+    }
+    return { kind: "db", root, markdownDir, sqliteFile };
+  }
+  return { kind: "file", root: dir, markdownDir: dir };
+}
+
+/** A DB-version graph keeps its `config.edn` inside the database. Its `:favorites` key is unused
+ *  there ("is not stored in config for DB graphs", Logseq `deps/common/src/logseq/common/
+ *  config.cljs`), so favourites come from the database instead. */
+function dbConfig(g: LogseqDbGraph, warnings: string[]): LogseqConfig {
+  const text = g.fileContent("logseq/config.edn");
+  if (text === undefined) return DEFAULT_LOGSEQ_CONFIG;
+  try {
+    return { ...parseLogseqConfigEdn(text), favorites: [] };
+  } catch (err) {
+    warnings.push(`db.sqlite: could not parse its config.edn (${errMsg(err)}); using defaults`);
+    return DEFAULT_LOGSEQ_CONFIG;
+  }
+}
+
+function withoutNames(s: LogseqDbStats): Omit<LogseqDbStats, "favoritePageNames"> {
+  const { favoritePageNames: _names, ...rest } = s;
+  return rest;
 }
 
 function readConfig(graphDir: string, warnings: string[]): LogseqConfig {
@@ -210,27 +291,42 @@ function errMsg(err: unknown): string {
 }
 
 /** Scans `pages/` then `journals/` (in that order; each sorted by file name) and resolves each
- *  file's page name, deduplicating by normalized key (first file wins, later ones are skipped
- *  with a warning — ADR 012 §3: "rare, malformed graphs"). */
+ *  file's page name, deduplicating by normalized key. Two files that name the same page are
+ *  MERGED, never dropped: the old "first file wins, later ones are skipped" rule silently lost
+ *  notes on a real graph exported by Logseq's DB version, whose mirror wrote three journal days
+ *  twice — a one-line stub under `pages/` (scanned first, so it won) and the real five-line day
+ *  under `journals/` (skipped). Now a journal file's identity wins (it is a journal day), page
+ *  properties keep the first value per key, and both files' blocks are kept, journal first. */
 async function resolveFileEntries(
   graphDir: string,
   warnings: string[],
   hooks: ImportHooks,
 ): Promise<FileEntry[]> {
   const entries: FileEntry[] = [];
-  const seenKeys = new Map<string, string>();
+  const seenKeys = new Map<string, number>();
 
   const record = (candidate: Omit<FileEntry, "relPath" | "filePath">, filePath: string): void => {
     const relPath = relative(graphDir, filePath);
     const key = normalizePageName(candidate.resolvedName);
-    const firstSeenAt = seenKeys.get(key);
-    if (firstSeenAt !== undefined) {
+    const firstIndex = seenKeys.get(key);
+    if (firstIndex !== undefined) {
+      const first = entries[firstIndex] as FileEntry;
+      const journalWins = candidate.isJournal && !first.isJournal;
+      const primary = journalWins ? { ...candidate, filePath, relPath } : first;
+      const secondary = journalWins ? first : { ...candidate, filePath, relPath };
+      entries[firstIndex] = {
+        ...primary,
+        parsed: {
+          properties: { ...secondary.parsed.properties, ...primary.parsed.properties },
+          blocks: [...primary.parsed.blocks, ...secondary.parsed.blocks],
+        },
+      };
       warnings.push(
-        `${relPath}: page name "${candidate.resolvedName}" already imported from ${firstSeenAt}; this file was skipped`,
+        `${relPath}: page name "${candidate.resolvedName}" also came from ${first.relPath}; the two files were merged (${primary.relPath}'s blocks first)`,
       );
       return;
     }
-    seenKeys.set(key, relPath);
+    seenKeys.set(key, entries.length);
     entries.push({ ...candidate, filePath, relPath });
   };
 
@@ -557,6 +653,47 @@ function buildPageOps(
   return { pageId, ops, dangling, danglingAssets };
 }
 
+/** Marks each named page as a favourite the way the app does (`favorite:: true`, a synced page
+ *  property; `setPageFavorite` in the web app's store). Names are matched like references are, so
+ *  a journal favourite written in any title format finds its ISO-named page. */
+function markFavorites(
+  ctx: ServerContext,
+  names: readonly string[],
+  warnings: string[],
+): { marked: number; missing: number } {
+  let marked = 0;
+  let missing = 0;
+  const done = new Set<string>();
+  for (const name of names) {
+    const key = referenceKey(name);
+    if (done.has(key)) continue;
+    done.add(key);
+    const row = ctx.driver.get<{ id: string }>(
+      "SELECT id FROM page WHERE key = ? AND deleted_at IS NULL",
+      [key],
+    );
+    if (!row) {
+      missing++;
+      warnings.push(`favourite "${name}" names a page that was not imported; skipped`);
+      continue;
+    }
+    const res = serverApplyOps(
+      ctx,
+      [
+        makeOp(ctx.hlc.next(), IMPORTER_DEVICE_ID, row.id, {
+          kind: "page.prop",
+          key: "favorite",
+          value: "true",
+        }),
+      ],
+      { origin: "import", actor: IMPORTER_ACTOR, referencedPages: "skip" },
+    );
+    if (res.results[0]?.status === "applied") marked++;
+    else missing++;
+  }
+  return { marked, missing };
+}
+
 function applyChunked(ctx: ServerContext, ops: readonly Op[]): AppliedOpResult[] {
   const results: AppliedOpResult[] = [];
   for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
@@ -584,7 +721,7 @@ export interface ImportLogseqOptions {
   /** The nooklet data directory, where `assets/` lives. Without it the graph's `assets/*` are
    *  left behind and every `![](../assets/…)` stays a dead link — reported as a warning. */
   dataDir?: string;
-  /** Called with the same object, mutated in place, as the import moves along (ADR 030: the
+  /** Called with the same object, mutated in place, as the import moves along (ADR 031: the
    *  in-app import polls it). */
   onProgress?: (progress: ImportProgress) => void;
   /** Checked between files; an aborted signal stops the import by throwing its reason. */
@@ -601,7 +738,7 @@ export interface ImportLogseqOptions {
   onPageCreated?: (pageId: string) => void;
 }
 
-/** Live counters for an import in flight (ADR 030). */
+/** Live counters for an import in flight (ADR 031). */
 export interface ImportProgress {
   phase: "reading" | "assets" | "pages" | "references" | "done";
   /** Markdown files in `pages/` + `journals/`. */
@@ -656,6 +793,8 @@ function makeHooks(opts: ImportLogseqOptions): ImportHooks {
 }
 
 export interface ImportStats {
+  /** Which kind of Logseq graph was found (`detectLogseqGraph`). */
+  format: "file" | "db";
   /** Non-journal pages successfully created (page.create applied). */
   pagesImported: number;
   /** Journal pages successfully created. */
@@ -679,11 +818,18 @@ export interface ImportStats {
    *  `page.create` op being rejected, e.g. a pre-existing name collision). The rest of the graph
    *  is still imported — see task step 5. */
   errors: string[];
+  /** Pages marked favourite (`favorite:: true`) from Logseq's favourites. */
+  favoritesMarked: number;
+  /** Favourites naming a page the import did not produce. */
+  favoritesMissing: number;
+  /** DB-version graphs only: what was recovered from `db.sqlite`, and what still is not. */
+  logseqDb?: Omit<LogseqDbStats, "favoritePageNames">;
   durationMs: number;
 }
 
 /**
- * Import a Logseq file graph at `graphDir` into `ctx`'s database.
+ * Import a Logseq graph at `graphDir` into `ctx`'s database: a file graph's folder, or a DB-version
+ * graph's root folder (the one holding `db.sqlite`; see `detectLogseqGraph`).
  *
  * HLC/device choice (task step 8): every op is minted with `ctx.hlc.next()` — the same
  * `ServerContext` clock `serverApplyOps` already advances via `receive()` on every call, so
@@ -711,7 +857,11 @@ export async function importLogseqGraph(
   const hooks = makeHooks(opts);
   const { progress } = hooks;
   const exclusive = opts.runExclusive ?? (<T>(fn: () => T) => Promise.resolve(fn()));
-  const config: LogseqConfig = { ...readConfig(graphDir, warnings), ...opts.config };
+  const layout = detectLogseqGraph(graphDir);
+  // Read before anything is written, so a database that cannot be read fails the import cleanly.
+  const dbGraph = layout.kind === "db" ? LogseqDbGraph.fromFile(layout.sqliteFile) : null;
+  const sourceConfig = dbGraph ? dbConfig(dbGraph, warnings) : readConfig(graphDir, warnings);
+  const config: LogseqConfig = { ...sourceConfig, ...opts.config };
   // Journal pages are stored under their ISO name now (ADR 018), so the source graph's title
   // format no longer decides anything about storage — but it is the format this person has been
   // reading their dates in for years, and settings can be set to match. Saying so beats leaving
@@ -725,7 +875,7 @@ export async function importLogseqGraph(
   }
   // B-608: Mod+Enter, the slash menu and the checkbox start tasks the way this graph did.
   if (config.preferredWorkflow) setRecordedTaskWorkflow(ctx.driver, config.preferredWorkflow);
-  const entries = await resolveFileEntries(graphDir, warnings, hooks);
+  const entries = await resolveFileEntries(layout.markdownDir, warnings, hooks);
   const ids = assignIds(entries, warnings);
 
   let assetsImported = 0;
@@ -738,6 +888,23 @@ export async function importLogseqGraph(
   } else if (existsSync(join(graphDir, "assets"))) {
     warnings.push(
       "assets/ was not imported: no dataDir was given, so there is nowhere to copy the files",
+    );
+  }
+
+  let dbStats: LogseqDbStats | undefined;
+  if (dbGraph) {
+    dbStats = enrichFromLogseqDb(
+      dbGraph,
+      entries,
+      {
+        // Emitted as the graph-relative link a file graph would have, so `rewriteAssetLinks`
+        // re-points it like any other — one path for every imported asset.
+        assetPath: (fileName) =>
+          assetPaths.has(fileName.normalize("NFC")) ? `../assets/${fileName}` : undefined,
+        nodeId: (node) => ids.nodeIds.get(node),
+        journalTitleFormat: config.journalPageTitleFormat,
+      },
+      warnings,
     );
   }
 
@@ -801,10 +968,15 @@ export async function importLogseqGraph(
   progress.phase = "references";
   await hooks.checkpoint();
   const referenced = await exclusive(() => mintDanglingReferencedPages(ctx));
+
+  const favorites = await exclusive(() =>
+    markFavorites(ctx, dbStats ? dbStats.favoritePageNames : config.favorites, warnings),
+  );
   progress.phase = "done";
   opts.onProgress?.(progress);
 
   return {
+    format: layout.kind,
     pagesImported,
     journalsImported,
     referencedPagesCreated: referenced.created,
@@ -815,6 +987,9 @@ export async function importLogseqGraph(
     danglingAssetLinks,
     warnings,
     errors,
+    favoritesMarked: favorites.marked,
+    favoritesMissing: favorites.missing,
+    ...(dbStats ? { logseqDb: withoutNames(dbStats) } : {}),
     durationMs: Date.now() - start,
   };
 }

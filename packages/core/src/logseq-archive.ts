@@ -1,17 +1,27 @@
 /**
  * Which files of a Logseq graph folder or .zip the importer needs, and where each one goes
- * (ADR 030). Shared by the client, which uses it to pick what to upload out of a chosen folder, and
+ * (ADR 031). Shared by the client, which uses it to pick what to upload out of a chosen folder, and
  * by the server, which uses it to decide what to unpack out of an uploaded zip — so the two can never
  * disagree about what "the graph" is.
  *
- * The importer (`packages/server/src/importer/logseq.ts`) reads exactly these: the top level of
- * `pages/` and `journals/` (markdown only), the top level of `assets/`, and `logseq/config.edn`.
- * `logseq/bak/`, `.recycle/`, `.git/`, `whiteboards/` and the rest are left out.
+ * The importer (`packages/server/src/importer/logseq.ts`, `detectLogseqGraph`) reads one of two
+ * layouts, and exactly these files of each:
+ *
+ * - a file graph: the top level of `pages/` and `journals/` (markdown only), the top level of
+ *   `assets/`, and `logseq/config.edn`;
+ * - a DB-version graph (ADR 030): `db.sqlite` (and `db.sqlite-wal`, which may hold its newest
+ *   writes), the Markdown Mirror's `mirror/markdown/pages/` and `mirror/markdown/journals/`, and
+ *   `assets/`.
+ *
+ * `logseq/bak/`, `.recycle/`, `.git/`, `whiteboards/`, `db.sqlite-shm` and the rest are left out.
  */
 
 export class LogseqArchiveError extends Error {}
 
 const GRAPH_DIRS: readonly string[] = ["pages", "journals", "assets"];
+/** The DB version's database files, kept by name at the graph root. */
+const DB_FILES: readonly string[] = ["db.sqlite", "db.sqlite-wal"];
+const MIRROR = "mirror/markdown/";
 
 /** One file-name component we are willing to create: no separators, not `.`/`..`, no NUL, not
  * hidden (Logseq never reads dotfiles, and `._name` is macOS resource-fork litter). */
@@ -32,12 +42,14 @@ export function findLogseqRoot(paths: readonly string[]): string {
   const roots = new Set<string>();
   for (const path of paths) {
     if (path.startsWith("__MACOSX/")) continue;
-    const m = /^((?:[^/]+\/)*?)(?:pages\/|journals\/|logseq\/config\.edn$)/.exec(path);
+    // `db.sqlite` marks a DB-version graph's root; its `mirror/markdown/pages/` also matches, one
+    // level deeper, and loses to the shallower root below.
+    const m = /^((?:[^/]+\/)*?)(?:pages\/|journals\/|logseq\/config\.edn$|db\.sqlite$)/.exec(path);
     if (m) roots.add(m[1] ?? "");
   }
   if (roots.size === 0) {
     throw new LogseqArchiveError(
-      "no pages/ or journals/ folder was found, so this is not a Logseq graph",
+      "no pages/ or journals/ folder (or a DB-version graph's db.sqlite) was found, so this is not a Logseq graph",
     );
   }
   const depth = (p: string) => p.split("/").length;
@@ -55,8 +67,15 @@ export function findLogseqRoot(paths: readonly string[]): string {
  * importer does not read it. */
 export function logseqArchiveTarget(path: string, root: string): string | null {
   if (!path.startsWith(root) || path.endsWith("/")) return null;
-  const rest = path.slice(root.length);
-  if (rest === "logseq/config.edn") return rest;
+  let rest = path.slice(root.length);
+  if (rest === "logseq/config.edn" || DB_FILES.includes(rest)) return rest;
+  // The Markdown Mirror's pages and journals, kept at their own path (the importer reads the
+  // mirror where `detectLogseqGraph` expects it). Its assets are the graph root's `assets/`.
+  let prefix = "";
+  if (rest.startsWith(`${MIRROR}pages/`) || rest.startsWith(`${MIRROR}journals/`)) {
+    prefix = MIRROR;
+    rest = rest.slice(MIRROR.length);
+  }
   const slash = rest.indexOf("/");
   if (slash < 0) return null;
   const dir = rest.slice(0, slash);
@@ -64,5 +83,5 @@ export function logseqArchiveTarget(path: string, root: string): string | null {
   if (!GRAPH_DIRS.includes(dir)) return null;
   if (!safeArchiveFileName(base)) return null; // also rejects anything nested deeper
   if (dir !== "assets" && !base.toLowerCase().endsWith(".md")) return null;
-  return `${dir}/${base}`;
+  return `${prefix}${dir}/${base}`;
 }

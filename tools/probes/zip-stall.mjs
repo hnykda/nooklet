@@ -1,4 +1,4 @@
-// Does yauzl 2.10's openReadStream finish an entry of ~830 KB on this Node? (ADR 030)
+// Does yauzl 2.10's openReadStream finish an entry of ~830 KB on this Node? (ADR 031)
 //
 // Found during the in-app import's scale run (2026-10-04, Node 26.8): the stream delivered
 // 786,432 bytes (12 x 64 KiB) of an 830,130-byte entry, then nothing — no data, no error, no end.

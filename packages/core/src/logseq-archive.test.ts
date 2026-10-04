@@ -92,3 +92,32 @@ describe("ZipStoreWriter", () => {
     expect(() => w.add("b", new Uint8Array(1))).toThrow(/finished/);
   });
 });
+
+describe("a DB-version graph (db.sqlite + mirror/markdown + assets)", () => {
+  const paths = [
+    "Garden/db.sqlite",
+    "Garden/db.sqlite-wal",
+    "Garden/db.sqlite-shm",
+    "Garden/mirror/markdown/pages/Garden Plans.md",
+    "Garden/mirror/markdown/journals/2026_09_14.md",
+    "Garden/assets/photo.png",
+    "Garden/backups/db.sqlite",
+  ];
+
+  it("finds the root at db.sqlite, not one level down at the mirror", () => {
+    expect(findLogseqRoot(paths)).toBe("Garden/");
+  });
+
+  it("keeps the database, its WAL, the mirror and the assets, and nothing else", () => {
+    const kept = paths.map((p) => logseqArchiveTarget(p, "Garden/"));
+    expect(kept).toEqual([
+      "db.sqlite",
+      "db.sqlite-wal",
+      null,
+      "mirror/markdown/pages/Garden Plans.md",
+      "mirror/markdown/journals/2026_09_14.md",
+      "assets/photo.png",
+      null,
+    ]);
+  });
+});

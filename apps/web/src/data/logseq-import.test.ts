@@ -32,6 +32,25 @@ describe("folderSource", () => {
     expect(src.bytes).toBe(1 + 1 + 1 + 4 + 1);
   });
 
+  it("picks a DB-version graph's database, mirror and assets, and counts its pages", () => {
+    const src = folderSource([
+      picked("garden/db.sqlite", "sqlite"),
+      picked("garden/db.sqlite-shm"),
+      picked("garden/mirror/markdown/pages/Garden Plans.md"),
+      picked("garden/mirror/markdown/journals/2026_09_14.md"),
+      picked("garden/assets/photo.png"),
+      picked("garden/backups/db.sqlite"),
+    ]);
+    if ("error" in src) throw new Error(src.error);
+    expect(src.files.map((f) => f.target).sort()).toEqual([
+      "assets/photo.png",
+      "db.sqlite",
+      "mirror/markdown/journals/2026_09_14.md",
+      "mirror/markdown/pages/Garden Plans.md",
+    ]);
+    expect([src.pages, src.journals, src.assets]).toEqual([1, 1, 1]);
+  });
+
   it("says plainly when the folder is not a Logseq graph", () => {
     const src = folderSource([picked("photos/a.jpg")]);
     expect(src).toMatchObject({ error: expect.stringMatching(/not a Logseq graph/) });

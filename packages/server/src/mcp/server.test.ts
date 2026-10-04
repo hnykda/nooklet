@@ -100,9 +100,11 @@ const HTTP_ONLY_OP_NAMES = [
   "embeddings.status",
   "embeddings.configure",
   "embeddings.reindex",
+  // B-703: image sizes for the renderer's layout; an agent gets them from `asset.upload`.
+  "asset.sizes",
   // The one tokenless op: its caller is a device with no credential, never an MCP client.
   "pairing.redeem",
-  // ADR 030: the in-app Logseq import. An agent has `nooklet import`; base64-ing a whole graph
+  // ADR 031: the in-app Logseq import. An agent has `nooklet import`; base64-ing a whole graph
   // through tool calls is not a path worth offering.
   "import.info",
   "import.begin",

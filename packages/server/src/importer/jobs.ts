@@ -1,5 +1,5 @@
 /**
- * In-app Logseq import (ADR 030): the jobs behind the `import.*` ops (`../ops/import.ts`).
+ * In-app Logseq import (ADR 031): the jobs behind the `import.*` ops (`../ops/import.ts`).
  *
  * A job is: an upload, received in chunks into `<data>/import-staging/<job>/upload.zip`; then, in
  * the background, unpacking (`./zip.ts`), importing (`./logseq.ts`, the same importer the CLI
@@ -82,6 +82,8 @@ export interface ImportSource {
 }
 
 export interface ImportResultView {
+  /** Which Logseq the graph came from: a classic file graph or the DB version (ADR 030). */
+  format: "file" | "db";
   pages: number;
   journals: number;
   blocks: number;
@@ -90,6 +92,7 @@ export interface ImportResultView {
   pages_skipped: number;
   dangling_block_refs: number;
   dangling_asset_links: number;
+  favorites: number;
   warnings: string[];
   warnings_total: number;
   errors: string[];
@@ -207,6 +210,7 @@ function errMsg(err: unknown): string {
 
 function toResultView(stats: ImportStats, verify: ReturnType<typeof verifyRebuildParity>) {
   return {
+    format: stats.format,
     pages: stats.pagesImported,
     journals: stats.journalsImported,
     blocks: stats.blocksImported,
@@ -215,6 +219,7 @@ function toResultView(stats: ImportStats, verify: ReturnType<typeof verifyRebuil
     pages_skipped: stats.pagesSkipped,
     dangling_block_refs: stats.danglingBlockRefs,
     dangling_asset_links: stats.danglingAssetLinks,
+    favorites: stats.favoritesMarked,
     warnings: stats.warnings.slice(0, MAX_LISTED),
     warnings_total: stats.warnings.length,
     errors: stats.errors.slice(0, MAX_LISTED),

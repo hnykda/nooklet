@@ -93,6 +93,11 @@ export function blockTitle(content: string): { text: string; level?: TocEntry["l
       return { text: classified.lang ? `\`\`\`${classified.lang}` : "```" };
     case "table":
       return { text: plainText(classified.header[0] ?? [], content) || "table" };
+    case "mixed": {
+      const first = classified.parts[0];
+      const tokens = first?.kind === "paragraph" ? first.lines[0] : first?.header[0];
+      return { text: plainText(tokens ?? [], content) || "table" };
+    }
     case "hr":
       return { text: "—" };
   }

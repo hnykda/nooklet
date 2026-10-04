@@ -1,5 +1,5 @@
 /**
- * Zip safety for the in-app import (ADR 030): an uploaded archive is hostile until proven
+ * Zip safety for the in-app import (ADR 031): an uploaded archive is hostile until proven
  * otherwise. Each refusal test has a control showing the same archive minus the hostile part is
  * accepted, so the refusal is the check under test and not something incidental.
  */

@@ -1,5 +1,5 @@
 /**
- * `import.*` (ADR 030): import a Logseq graph from inside the app, without a terminal.
+ * `import.*` (ADR 031): import a Logseq graph from inside the app, without a terminal.
  *
  * The client zips the graph folder (or the phone picks a .zip), then:
  *
@@ -71,6 +71,7 @@ const JobView = z.object({
   progress: Progress,
   result: z
     .object({
+      format: z.enum(["file", "db"]),
       pages: z.number().int(),
       journals: z.number().int(),
       blocks: z.number().int(),
@@ -79,6 +80,7 @@ const JobView = z.object({
       pages_skipped: z.number().int(),
       dangling_block_refs: z.number().int(),
       dangling_asset_links: z.number().int(),
+      favorites: z.number().int(),
       warnings: z.array(z.string()),
       warnings_total: z.number().int(),
       errors: z.array(z.string()),

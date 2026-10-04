@@ -1,5 +1,5 @@
 /**
- * Settings → Import from Logseq (ADR 030): bring a Logseq graph in without a terminal.
+ * Settings → Import from Logseq (ADR 031): bring a Logseq graph in without a terminal.
  *
  * Pick the graph folder (desktop and web) or a .zip of it (anywhere, and the only way on a phone,
  * whose Files app can pick a zip but not a folder), choose where it goes, watch it arrive, open it.
@@ -485,6 +485,10 @@ function Summary(props: { job: ImportJob; onOpen: () => void; onAgain: () => voi
     const res = r();
     if (!res) return [];
     const out: string[] = [];
+    if (res.format === "db")
+      out.push("Read as a Logseq DB-version graph (db.sqlite and its Markdown Mirror).");
+    if (res.favorites > 0)
+      out.push(`${count(res.favorites, "favourite was", "favourites were")} kept.`);
     if (res.referenced_pages > 0)
       out.push(
         `${count(res.referenced_pages, "page was", "pages were")} created because other pages link to ${res.referenced_pages === 1 ? "it" : "them"}.`,

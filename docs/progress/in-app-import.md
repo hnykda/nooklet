@@ -3,18 +3,32 @@
 Owner request (2026-10-04): "to import the logseq graph, could we have that as a feature within the
 app so the users don't need to run npm commands?"
 
-Branch: `worktree-agent-a0659e9f571d20eb0` (based on `c9d993bb`). Decisions: ADR 030 (and a
+Branch: `worktree-agent-a0659e9f571d20eb0` (based on `c9d993bb`). Decisions: ADR 031 (and a
 pointer amendment on ADR 012).
 
 ## Status
 
 - [x] server: import ops, jobs, zip unpacking, importer progress/cancel — `7d447bfd`
 - [x] fixes from the scale run (yauzl stream stall, unflagged UTF-8 names), client section,
-      e2e, ADR 030, docs, security inventory — second commit on the branch (see `git log`)
+      e2e, ADR 031, docs, security inventory — second commit on the branch (see `git log`)
 - [x] unit tests, e2e for this feature, synthetic scale run
 - [ ] real-graph run: **not done** — the real graph's path (`~/notes-graph` here) does not exist on this machine
       (`ls: No such file or directory`, 2026-10-04). Ran a synthetic real-shaped graph instead.
 - [ ] iOS Simulator / Tauri desktop window: not run (see "Still unverified")
+
+## Merge with main (DB-version importer)
+
+`git merge main` brought in the DB-version importer (ADR 030, `detectLogseqGraph`), so this work's
+ADR is now **031**. The in-app import calls the same `importLogseqGraph`, which detects the format.
+The shared allow-list (`packages/core/src/logseq-archive.ts`) now also takes a DB graph's
+`db.sqlite`, `db.sqlite-wal`, `mirror/markdown/{pages,journals}/*.md` and `assets/` (root found at
+`db.sqlite`; `db.sqlite-shm` and anything else left out); the zip ratio check skips `db.sqlite*`.
+Favourite marking now runs under the write lock too. The job summary carries `format` and
+`favorites`. Test: `ops/import.http.test.ts` "import a DB-version graph through the app" (main's
+synthetic `writeFixtureDbGraph`, zipped, uploaded; counts, assets and favourites equal the CLI's;
+image block points at an imported asset). After the merge: `pnpm -r test` core 503, server 951,
+web 1674, all passing; typecheck and biome clean; e2e `logseq-import`, `settings`, `commands` 20/20.
+The owner's real graph is a DB-version graph; per the coordinator it was not touched.
 
 ## What exists
 
@@ -96,12 +110,12 @@ graph.zip graph`, then the scale script's flow (CLI import vs `import.*` upload,
 
 ## How to resume
 
-Read ADR 030. Remaining: real-graph run, desktop/iOS checks above, fold the BUGS entries below.
+Read ADR 031. Remaining: real-graph run, desktop/iOS checks above, fold the BUGS entries below.
 
 ## BUGS.md updates to fold in
 
 - **New, fixed** · *Importing a Logseq graph needs a terminal* (owner request, 2026-10-04). Fixed by
-  Settings → Import from Logseq (ADR 030). Tests: `ops/import.http.test.ts`,
+  Settings → Import from Logseq (ADR 031). Tests: `ops/import.http.test.ts`,
   `importer/zip.test.ts`, `e2e/tests/logseq-import.spec.ts`.
 - **New, fixed** · *An uploaded graph zip with an image over ~768 KB never finishes unpacking*
   (found in the scale run before shipping): yauzl 2.10's entry stream stalls on Node 26. Fixed by

@@ -1,5 +1,5 @@
 /**
- * Settings → Import from Logseq, client side (ADR 030).
+ * Settings → Import from Logseq, client side (ADR 031).
  *
  * The server does the import (`packages/server/src/importer/`); this file gets the graph to it:
  * a picked folder is turned into a zip here, one file at a time (`ZipStoreWriter`, STORE only:
@@ -44,6 +44,7 @@ export interface ImportProgress {
 }
 
 export interface ImportResult {
+  format: "file" | "db";
   pages: number;
   journals: number;
   blocks: number;
@@ -52,6 +53,7 @@ export interface ImportResult {
   pages_skipped: number;
   dangling_block_refs: number;
   dangling_asset_links: number;
+  favorites: number;
   warnings: string[];
   warnings_total: number;
   errors: string[];
@@ -89,7 +91,7 @@ export const FINISHED_STATES: ReadonlySet<ImportJobState> = new Set([
 /** What the section can offer this session. */
 export type ImportAvailability =
   | { kind: "ready"; info: ImportInfo }
-  /** A "Just this device" graph: no server to import on (ADR 030). */
+  /** A "Just this device" graph: no server to import on (ADR 031). */
   | { kind: "local-only" }
   /** A phone's paired token is `write`; importing is server administration (`admin`). */
   | { kind: "not-admin" }
@@ -160,8 +162,9 @@ export function folderSource(files: readonly File[]): FolderSource | { error: st
     if (target === null) return;
     picked.push({ target, file });
     bytes += file.size;
-    if (target.startsWith("pages/")) pages++;
-    else if (target.startsWith("journals/")) journals++;
+    const inGraph = target.replace(/^mirror\/markdown\//, "");
+    if (inGraph.startsWith("pages/")) pages++;
+    else if (inGraph.startsWith("journals/")) journals++;
     else if (target.startsWith("assets/")) assets++;
   });
   const top = (paths[0] ?? "").split("/")[0] ?? "";

@@ -2,7 +2,7 @@
 // (Referenced, not left to `include`: the web package typechecks server sources it imports.)
 
 /**
- * Unpacks an uploaded .zip of a Logseq graph into a directory the importer can read (ADR 030).
+ * Unpacks an uploaded .zip of a Logseq graph into a directory the importer can read (ADR 031).
  *
  * The archive comes from a client, so nothing in it is trusted. What this file guarantees:
  *
@@ -20,7 +20,7 @@
  */
 
 import { closeSync, mkdirSync, openSync, readSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { findLogseqRoot, LogseqArchiveError, logseqArchiveTarget } from "@nooklet/core";
 import yauzl, { type Entry, type ZipFile } from "yauzl";
@@ -239,7 +239,11 @@ export async function extractLogseqZip(
         warnings.push(`${shown}: encrypted, not imported`);
         continue;
       }
+      // Not for a DB-version graph's database: SQLite's free pages are runs of zeros, and a big
+      // one can legitimately pack past any ratio a markdown file would. The total limit and the
+      // declared-size cap on inflation still apply to it.
       if (
+        !target.startsWith("db.sqlite") &&
         entry.uncompressedSize > 1024 * 1024 &&
         entry.uncompressedSize / Math.max(entry.compressedSize, 1) > limits.maxRatio
       ) {
@@ -257,15 +261,14 @@ export async function extractLogseqZip(
     }
 
     const dest = resolve(destDir);
-    for (const dir of ["pages", "journals", "assets", "logseq"])
-      mkdirSync(join(dest, dir), { recursive: true });
+    mkdirSync(dest, { recursive: true });
     let written = 0;
     let files = 0;
     const seen = new Set<string>();
     for (const { entry, name, target } of selected) {
       if (opts.signal?.aborted) throw opts.signal.reason ?? new Error("cancelled");
       const out = resolve(dest, target);
-      // Belt and braces: `logseqArchiveTarget` only builds `<fixed dir>/<one component>`.
+      // Belt and braces: `logseqArchiveTarget` only builds fixed directories + one component.
       if (!out.startsWith(dest + sep)) {
         throw new ZipRejectedError(`${name}: resolves outside the import directory`);
       }
@@ -284,6 +287,7 @@ export async function extractLogseqZip(
         warnings.push(err.message);
         continue;
       }
+      mkdirSync(dirname(out), { recursive: true });
       writeFileSync(out, data, { flag: "wx" });
       written += data.length;
       files++;

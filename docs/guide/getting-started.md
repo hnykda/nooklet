@@ -71,27 +71,32 @@ graphs or list them from another device. `pnpm nooklet token root` prints it aga
 
 In the app: **Settings → Import from Logseq**.
 
-1. Choose the graph's folder (the one with `pages/` and `journals/` in it), or a .zip of that
-   folder. On a phone, zip it first (Files → long-press → Compress) and choose the zip.
+1. Choose the graph's folder, or a .zip of that folder. Both kinds of Logseq graph work: a classic
+   file graph (the folder with `pages/` and `journals/`) and a DB-version graph (the folder with
+   `db.sqlite`, with Logseq's Markdown Mirror turned on). On a phone, zip it first (Files →
+   long-press → Compress) and choose the zip.
 2. Choose where it goes: a new graph (give it a name), or this graph if it is still empty.
 3. Watch it upload, unpack and import. At the end you see how many pages, journals, blocks and
    images came across, and anything the importer noticed: block references that point nowhere,
    images missing from `assets/`, and the date format your journals used.
 4. Open the new graph.
 
-Your Logseq folder is only read. Only `pages/`, `journals/`, `assets/` and `logseq/config.edn` are
-sent; `logseq/bak/` and the rest stay behind. Importing needs the server's owner session: the
+Your Logseq folder is only read, and only what the importer reads is sent: `pages/`, `journals/`,
+`assets/` and `logseq/config.edn`, or for a DB-version graph `db.sqlite`, `mirror/markdown/` and
+`assets/`. Backups and the rest stay behind. Importing needs the server's owner session: the
 desktop app, or a browser on the server's own machine (a paired phone cannot start one). The largest
 upload the server takes is 1 GB; `serve --import-max-mb <n>` changes that. A graph that lives only
 on a phone ("Just this device") cannot import on its own: import on a server, then add that graph.
 
-From a terminal instead:
+From a terminal instead (a classic file graph's folder, or a DB-version graph's folder, the one
+with `db.sqlite`):
 
 ```sh
 pnpm nooklet import ~/notes/my-logseq-graph
 ```
 
 Importing before the first `serve` works too. Running it again skips pages that already exist.
+[Importing from Logseq](importing-from-logseq.md) covers which folder to pick and what carries over.
 
 ## Recommended: a server on your tailnet
 
@@ -199,6 +204,7 @@ from source. None of the downloads is code-signed yet, so each OS warns the firs
 
   On some macOS versions right-click → **Open** → **Open** works instead, or System Settings →
   Privacy & Security → **Open Anyway** after the first refused launch. The Intel build is untested.
+- **macOS with Homebrew**: see [Homebrew](#homebrew-macos) below.
 - **Linux** (`-linux-x64.AppImage` or `.deb`). Built in CI, not yet tested by the maintainer.
   AppImage: `chmod +x nooklet-*.AppImage && ./nooklet-*.AppImage`. Debian/Ubuntu:
   `sudo apt install ./nooklet-*.deb`. Both need WebKitGTK 4.1, which current Ubuntu and Debian
@@ -206,6 +212,32 @@ from source. None of the downloads is code-signed yet, so each OS warns the firs
 - **Windows** (`-windows-x64-setup.exe`). Built in CI, not yet tested by the maintainer. SmartScreen
   shows "Windows protected your PC": **More info** → **Run anyway**. It installs for the current
   user, no administrator needed.
+
+### Homebrew (macOS)
+
+```sh
+brew install --cask hnykda/nooklet/nooklet
+brew trust hnykda/nooklet                                  # once, so `brew upgrade` can load it
+xattr -dr com.apple.quarantine /Applications/nooklet.app   # after every install and upgrade
+```
+
+This installs the same `.dmg` as the Releases page (Apple Silicon or Intel, picked for you) and a
+`nooklet` command: the app's own bundled server, so `nooklet import ~/notes-graph`,
+`nooklet mcp --stdio` and `nooklet token create` work without a source checkout. Both use
+`~/.nooklet`, the same data as the app.
+
+What to know:
+
+- **It is unsigned, and Homebrew will not hide that.** The cask is in our own tap rather than
+  Homebrew's main cask repository because Homebrew no longer accepts apps that fail Gatekeeper
+  there, and Homebrew removed its `--no-quarantine` option. macOS therefore treats the app as an
+  unverified download after every install *and every upgrade*; the `xattr` line above (or **Open
+  Anyway** in System Settings → Privacy & Security) is needed each time. Run it only if you trust
+  the release you just installed; `brew info --cask nooklet` shows where it came from.
+- `brew uninstall --cask --zap nooklet` moves the app's settings, caches and window storage to the
+  Trash. It never removes `~/.nooklet`, where your notes are.
+- The Intel build is untested, and Homebrew itself moved Intel Macs to its lowest support tier in
+  September 2026.
 
 To build it yourself you need Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 in addition to the above:

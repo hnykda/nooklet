@@ -1597,6 +1597,7 @@ export const assetUpload = defineOp({
     markdown: z.string().describe('Ready-to-paste markdown image/link - paste this directly into a block_update/page_append/block_insert content field'),
     mime_type: z.string(), byte_size: z.number().int(),
     deduped: z.boolean().describe('true when identical bytes were already uploaded; this returned that existing asset'),
+    width: z.number().int().nullable(), height: z.number().int().nullable(), // B-703: PNG/JPEG/GIF/WebP, as displayed (EXIF orientation applied); else null
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, scopes: ['write'],
   render: renderAssetUpload, handler: (i, ctx) => ctx.graph.uploadAsset(i, ctx),
@@ -1607,6 +1608,13 @@ export const assetUpload = defineOp({
 unauthenticated (nooklet binds `127.0.0.1` only, §3.9; an `<img src>` tag has no way to attach a
 bearer token anyway), serving the raw bytes with the `asset` row's recorded `mime_type`. Not an op
 in its own right — listed here because `asset_upload.url` points at it.
+
+**`asset.sizes`** (B-703, HTTP-only, `read`): `{ ids: string[] }` (≤ 500) →
+`{ assets: [{ id, width, height }] }`, the recorded pixel sizes, unknown/deleted ids left out. The
+web client calls it to reserve an image's box before the lazy-loaded bytes arrive. Assets stored
+before sizes were recorded get theirs read from the file on the first call that asks
+(`packages/server/src/assets/store.ts#assetSizes`). Not an MCP tool: an agent has no layout to keep
+still, and gets the size from `asset_upload`.
 
 **Example**
 
@@ -1717,6 +1725,8 @@ export const uiState = defineOp({
 Where `UiWindowState` mirrors the client's own `WhenContext`/`CommandContext` (ADR 015 §2.3;
 `apps/web/src/live/state-snapshot.ts` is the client-side builder): `page`, `zoom_root_block_id`,
 `focus` (`mode`/`block_id`/`selected_block_ids`/`cursor`), `viewport`, `panels`, `updated_at`.
+`focus.selected_block_count` appears only when the window cut `selected_block_ids` short to keep its
+answer under the live socket's 512 KiB frame limit (about 30,000 ids; B-676): it is the real count.
 
 **HTTP**: `POST /api/v1/ui.state`.
 

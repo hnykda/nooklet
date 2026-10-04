@@ -9,9 +9,22 @@
  * hand-rolling it beats adding a dependency for it, while still producing an archive any real
  * `tar` binary can list/extract (`tar tzvf backup.tar.gz`) for a human to inspect — useful for
  * "how do I get my data out of this" peace of mind (see docs/OPERATIONS.md).
+ *
+ * Two implementations of the same byte format:
+ *   - `writeTarGzFile` / `readTarGzFile` stream: memory is O(chunk), independent of graph size.
+ *     These are what backup/restore use. A 280 MB graph OOMKilled a 512 MiB backup job when this
+ *     module only had the in-memory pair (docs/progress/streaming-backup.md).
+ *   - `createTarGz` / `readTarGz` work on whole Buffers. `readTarGz` is the reader every build up
+ *     to c9d993b restored with, so tests use it to prove a streamed archive still restores on an
+ *     older nooklet. Not for production paths: memory is several times the archive.
+ *
+ * Both produce ONE gzip member holding a plain ustar stream, so either reader reads either
+ * writer's output (and so does `tar xzf`).
  */
 
-import { gunzipSync, gzipSync } from "node:zlib";
+import { createReadStream } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
+import { constants, createGunzip, createGzip, type Gzip, gunzipSync, gzipSync } from "node:zlib";
 
 export interface TarEntry {
   /** Forward-slash-separated relative path, e.g. "assets/1k7f3q9xz2hav4.png". Max 100 bytes. */
@@ -110,4 +123,242 @@ export function readTarGz(archive: Buffer): TarEntry[] {
     offset = dataStart + padded(size);
   }
   return entries;
+}
+
+/** A file to stream into an archive. */
+export interface TarFileSource {
+  /** Archive path, forward-slash separated, max 100 bytes. */
+  path: string;
+  /** File on disk to read it from. */
+  file: string;
+  /** Size recorded in the header. A tar header precedes its data, so a file that grew or shrank
+   * between the stat and the read would corrupt every entry after it: checked, not trusted. */
+  size: number;
+  /** zlib level for this entry's bytes. Default 6. */
+  level?: number;
+}
+
+export interface TarBufferSource {
+  path: string;
+  data: Buffer;
+  level?: number;
+}
+
+/** zlib's own default, spelled out: `Z_DEFAULT_COMPRESSION` is -1, which never compares equal to
+ * an explicit 6 and would trigger needless level switches. */
+export const DEFAULT_GZIP_LEVEL = 6;
+
+/**
+ * Backpressure for writing into `gz` while something else drains it: `write` waits for `drain`
+ * when gzip's buffer is full, and rejects instead if the drain side has failed. One listener per
+ * wait, removed when it settles. (Racing each wait against the drain promise instead would add a
+ * reaction to that never-settling promise per wait: tens of thousands for a large graph, an
+ * O(graph) heap leak in a path whose whole point is O(chunk).)
+ */
+function backpressure(gz: Gzip, drained: Promise<void>) {
+  let failure: unknown;
+  let rejectWait: ((err: unknown) => void) | undefined;
+  drained.catch((err) => {
+    failure = err ?? new Error("archive write failed");
+    rejectWait?.(failure);
+  });
+  return async function write(chunk: Buffer): Promise<void> {
+    if (failure) throw failure;
+    if (gz.write(chunk)) return;
+    await new Promise<void>((resolve, reject) => {
+      const onDrain = () => {
+        rejectWait = undefined;
+        resolve();
+      };
+      gz.once("drain", onDrain);
+      rejectWait = (err) => {
+        gz.off("drain", onDrain);
+        rejectWait = undefined;
+        reject(err);
+      };
+    });
+  };
+}
+
+/** Change the deflate level between entries. `params` queues a sync flush and applies the new
+ * level in that flush's callback. Waiting for it before the next write means nothing is in flight
+ * when the level changes; with writes queued behind the flush, Node would start the next threadpool
+ * deflate before running the callback. */
+function setLevel(gz: Gzip, level: number): Promise<void> {
+  // `params` exists on every zlib stream at runtime; @types/node only declares it on Deflate etc.
+  const z = gz as Gzip & { params(l: number, s: number, cb: () => void): void };
+  return new Promise((res) => z.params(level, constants.Z_DEFAULT_STRATEGY, () => res()));
+}
+
+/**
+ * Stream a gzip-compressed ustar archive into `out` (an open file handle: the caller owns the temp
+ * name, fsync and rename). Each file goes `createReadStream` -> one shared gzip stream -> `out`,
+ * chunk by chunk, pausing on `drain` whenever the gzip buffer is full, so memory stays O(chunk)
+ * whatever the graph's size. Returns the compressed byte count.
+ */
+export async function writeTarGzFile(
+  out: FileHandle,
+  entries: Iterable<TarFileSource | TarBufferSource>,
+): Promise<number> {
+  const mtimeSec = Math.floor(Date.now() / 1000);
+  let level = DEFAULT_GZIP_LEVEL;
+  const gz = createGzip({ level, chunkSize: 64 * 1024 });
+  let bytesWritten = 0;
+  // Drain gzip's output into the file handle. Pulling with for-await is the backpressure: while a
+  // write is pending, gzip's readable side fills, `gz.write` returns false, and the producer
+  // below waits for `drain`. (An fs.WriteStream over a caller-owned FileHandle with
+  // `autoClose: false` never emits 'close', so `pipeline` into one never settles.)
+  const done = (async () => {
+    for await (const chunk of gz) {
+      const buf = chunk as Buffer;
+      let off = 0;
+      while (off < buf.length) {
+        off += (await out.write(buf, off, buf.length - off)).bytesWritten;
+      }
+      bytesWritten += buf.length;
+    }
+  })();
+  // Awaited at the end; until then a failure surfaces through `write`, which rejects with it.
+  // Without this, an early failure would also be reported as an unhandled rejection.
+  done.catch(() => {});
+  const write = backpressure(gz, done);
+
+  try {
+    for (const entry of entries) {
+      const want = entry.level ?? DEFAULT_GZIP_LEVEL;
+      if (want !== level) {
+        await setLevel(gz, want);
+        level = want;
+      }
+      const size = "data" in entry ? entry.data.length : entry.size;
+      await write(header(entry.path, size, mtimeSec));
+      if ("data" in entry) {
+        if (size > 0) await write(entry.data);
+      } else {
+        let seen = 0;
+        for await (const chunk of createReadStream(entry.file, { highWaterMark: 64 * 1024 })) {
+          const buf = chunk as Buffer;
+          seen += buf.length;
+          if (seen > size) throw new Error(`${entry.path} grew while it was being archived`);
+          await write(buf);
+        }
+        if (seen !== size) throw new Error(`${entry.path} shrank while it was being archived`);
+      }
+      const pad = padded(size) - size;
+      if (pad > 0) await write(Buffer.alloc(pad));
+    }
+    await write(Buffer.alloc(BLOCK_SIZE * 2)); // end-of-archive
+    gz.end();
+    await done;
+  } catch (err) {
+    gz.destroy();
+    throw err;
+  }
+  return bytesWritten;
+}
+
+export interface TarEntryHeader {
+  path: string;
+  size: number;
+  /** ustar typeflag: "0" or "\0" regular file, "5" directory, "x"/"g" pax headers, ... */
+  type: string;
+}
+
+/** Where `readTarGzFile` sends one entry's bytes. */
+export interface TarEntrySink {
+  write(chunk: Buffer): Promise<void>;
+  end(): Promise<void>;
+}
+
+function checksumOk(block: Buffer): boolean {
+  const stored = parseOctalField(block, 148, 8);
+  let sum = 0;
+  for (let i = 0; i < BLOCK_SIZE; i++) sum += i >= 148 && i < 156 ? 0x20 : (block[i] as number);
+  return sum === stored;
+}
+
+function cString(buf: Buffer, start: number, end: number): string {
+  const nul = buf.indexOf(0, start);
+  return buf.toString("utf8", start, nul === -1 || nul > end ? end : nul);
+}
+
+/**
+ * Stream-parse a gzip-compressed ustar archive: `createReadStream` -> `createGunzip` -> a small
+ * state machine that hands each entry's bytes to the sink `onEntry` returns (`null` skips the
+ * entry) as they arrive. Only a partial 512-byte header is ever held; the `for await` pull means a
+ * slow sink pauses the gunzip and the file read. Rejects on a bad header checksum, a corrupt or
+ * truncated gzip stream, or a missing end-of-archive marker — cases where the in-memory
+ * `readTarGz` silently returned the entries it had parsed so far.
+ */
+export async function readTarGzFile(
+  archivePath: string,
+  onEntry: (h: TarEntryHeader) => Promise<TarEntrySink | null>,
+): Promise<void> {
+  const gunzip = createGunzip({ chunkSize: 64 * 1024 });
+  const source = createReadStream(archivePath, { highWaterMark: 64 * 1024 });
+  source.on("error", (err) => gunzip.destroy(err));
+  source.pipe(gunzip);
+
+  const hdr = Buffer.alloc(BLOCK_SIZE);
+  let hdrFill = 0;
+  let state: "header" | "body" | "pad" | "end" = "header";
+  let remaining = 0;
+  let padRemaining = 0;
+  let sink: TarEntrySink | null = null;
+
+  try {
+    for await (const raw of gunzip) {
+      let chunk = raw as Buffer;
+      while (chunk.length > 0 && state !== "end") {
+        if (state === "header") {
+          const take = Math.min(BLOCK_SIZE - hdrFill, chunk.length);
+          chunk.copy(hdr, hdrFill, 0, take);
+          hdrFill += take;
+          chunk = chunk.subarray(take);
+          if (hdrFill < BLOCK_SIZE) continue;
+          hdrFill = 0;
+          if (hdr.every((b) => b === 0)) {
+            state = "end";
+            break;
+          }
+          if (!checksumOk(hdr)) throw new Error("corrupt archive: tar header checksum mismatch");
+          const name = cString(hdr, 0, 100);
+          // ustar splits paths over 100 bytes into prefix + name; this module never writes one,
+          // but a `tar czf` made by hand might.
+          const prefix = hdr.toString("ascii", 257, 262) === "ustar" ? cString(hdr, 345, 500) : "";
+          const size = parseOctalField(hdr, 124, 12);
+          const type = String.fromCharCode(hdr[156] as number);
+          sink = await onEntry({ path: prefix ? `${prefix}/${name}` : name, size, type });
+          remaining = size;
+          padRemaining = padded(size) - size;
+          state = "body";
+        }
+        if (state === "body") {
+          if (remaining > 0 && chunk.length > 0) {
+            const take = Math.min(remaining, chunk.length);
+            if (sink) await sink.write(chunk.subarray(0, take));
+            remaining -= take;
+            chunk = chunk.subarray(take);
+          }
+          if (remaining > 0) continue;
+          if (sink) await sink.end();
+          sink = null;
+          state = "pad";
+        }
+        if (state === "pad") {
+          const take = Math.min(padRemaining, chunk.length);
+          padRemaining -= take;
+          chunk = chunk.subarray(take);
+          if (padRemaining === 0) state = "header";
+        }
+      }
+      // No break at the end-of-archive marker: the rest of the stream (zero padding) is still
+      // read, because gunzip only checks the gzip trailer's CRC-32 and length once it reaches
+      // them. That check is what proves every extracted byte is the byte that was archived.
+    }
+  } finally {
+    source.destroy();
+    gunzip.destroy();
+  }
+  if (state !== "end") throw new Error("truncated archive: no end-of-archive marker");
 }

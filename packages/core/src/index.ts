@@ -4,6 +4,7 @@ export * from "./fts-query.js";
 export * from "./hlc.js";
 export * from "./ids.js";
 export * from "./journal.js";
+export * from "./live-socket.js";
 export * from "./logseq-archive.js";
 export * from "./model.js";
 export * from "./ops.js";
