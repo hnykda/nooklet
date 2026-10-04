@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Run a nooklet server, open the web app, the desktop app and the iOS app, and pair devices with tokens or a pairing link.
+description: Download or build nooklet, run a server, open the web, desktop, iOS and experimental Android apps, and pair devices with tokens or a pairing link.
 order: 5
 ---
 
@@ -18,9 +18,25 @@ Plain `http://` to another machine does not work: browsers only grant the APIs t
 `https://` pages and `localhost`. See [Security](security.md) for why the tailnet setup is the
 default.
 
+## Download a release
+
+Each tagged version is on the [Releases page](https://github.com/hnykda/nooklet/releases): the
+desktop app for macOS, Linux and Windows, an experimental Android APK, release notes, and a
+`SHA256SUMS` file. The server is a container image, `ghcr.io/hnykda/nooklet:<version>` (for
+example `0.1.0`, or `latest`); see [Docker](self-hosting.md#docker). iOS has no download: build it
+from source (below).
+
+Not every build gets the same testing. The macOS app and the server are used daily; the Linux and
+Windows apps are built in CI and not yet tested by the maintainer; Android is experimental and has
+never been run by the maintainer. The README's
+[platform table](https://github.com/hnykda/nooklet#platform-support) has the details.
+
+To check a download: `shasum -a 256 -c SHA256SUMS --ignore-missing` in the folder holding both
+(`sha256sum -c` on Linux, `Get-FileHash` on Windows).
+
 ## Install from source
 
-There are no published packages yet. You need Node 24 or newer, pnpm 12, and git.
+You need Node 24 or newer, pnpm 12, and git.
 
 ```sh
 git clone https://github.com/hnykda/nooklet.git
@@ -147,19 +163,40 @@ secure context, and stops.
 
 The web app can be installed as a PWA from the browser's menu.
 
-## The desktop app (macOS)
+## The desktop app
 
-Build it from source. You need Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/)
-in addition to the above.
+Download it from the [Releases page](https://github.com/hnykda/nooklet/releases), or build it
+from source. None of the downloads is code-signed yet, so each OS warns the first time:
+
+- **macOS** (`nooklet-<version>-macos-arm64.dmg` for Apple Silicon, `-macos-x64.dmg` for Intel).
+  Open the `.dmg` and drag nooklet to Applications. Because the app is not signed or notarized,
+  macOS says it "is damaged and can't be opened" or "cannot be verified". Clear the download
+  quarantine once:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/nooklet.app
+  ```
+
+  On some macOS versions right-click → **Open** → **Open** works instead, or System Settings →
+  Privacy & Security → **Open Anyway** after the first refused launch. The Intel build is untested.
+- **Linux** (`-linux-x64.AppImage` or `.deb`). Built in CI, not yet tested by the maintainer.
+  AppImage: `chmod +x nooklet-*.AppImage && ./nooklet-*.AppImage`. Debian/Ubuntu:
+  `sudo apt install ./nooklet-*.deb`. Both need WebKitGTK 4.1, which current Ubuntu and Debian
+  ship.
+- **Windows** (`-windows-x64-setup.exe`). Built in CI, not yet tested by the maintainer. SmartScreen
+  shows "Windows protected your PC": **More info** → **Run anyway**. It installs for the current
+  user, no administrator needed.
+
+To build it yourself you need Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/)
+in addition to the above:
 
 ```sh
 pnpm desktop            # development run
 pnpm desktop:build      # build nooklet.app and a .dmg under apps/desktop/src-tauri/target/
 ```
 
-The release workflow in `.github/workflows/release.yml` builds unsigned `.dmg` files for tagged
-versions. If the repository's Releases page has one, you can use it instead; macOS will ask you to
-right-click → Open the first time.
+The app does not update itself yet. The version is at the bottom of the `?` menu, which links to the
+Releases page; download the newer build and replace the app. Your data stays where it is.
 
 - **Local mode ("This Mac").** The app starts its own bundled server on `127.0.0.1:6100`, using
   `~/.nooklet/default` (or `$NOOKLET_DATA`). If something already answers on 6100, the app uses that
@@ -197,6 +234,71 @@ the server address and a token, or open a pairing link. The server address can b
 If the phone reaches the server over the local network instead of Tailscale, iOS asks once whether
 nooklet may find devices on your local network. Allow it, or the connection times out. You can
 change it later in Settings → Privacy & Security → Local Network.
+
+## Android (experimental)
+
+**The Android app has never been run on a device or an emulator by the maintainer.** It is
+generated from the same Capacitor project as the iOS app and the release workflow builds it, so
+it should work in principle, but nobody has checked. If you try it, please send a
+[platform report](https://github.com/hnykda/nooklet/issues/new?template=platform-report.yml),
+whether it works or not.
+
+### Install the APK
+
+1. Download `nooklet-<version>-android-experimental.apk` from the
+   [Releases page](https://github.com/hnykda/nooklet/releases) on the phone. (A file ending in
+   `-debug.apk` means the release was built without the signing key: it installs the same way,
+   but a later signed APK cannot update it in place. Uninstall it first, which deletes its local
+   data.)
+2. Open it. Android asks to allow installs from that app (your browser or file manager): allow
+   it, then **Install**. Play Protect may warn about an app from an unknown developer; **Install
+   anyway**.
+3. Optionally compare the file against `SHA256SUMS` from the same release first.
+
+### What should work
+
+The same web client as iOS and the desktop apps, so in principle everything the
+[features page](features.md) lists:
+
+- **Just this device**: a local-only graph stored in the app.
+- **Sync with a server**: enter the server address and a token, as on iOS. Prefer an `https://`
+  address (Tailscale or a TLS proxy). Plain `http://192.168.x.x:6100` is allowed by this build for
+  home-network servers, but the token and your notes then cross that network unencrypted.
+- **`nooklet://` links**, including pairing links (`token create --link`).
+
+### What is likely rough
+
+- **The keyboard toolbar** and the space above the keyboard. The iOS insets were tuned on iOS;
+  Android reports keyboard height differently.
+- **The back button.** Nothing handles it yet; it probably closes the app instead of going back.
+- **Storage durability.** The work that keeps a local-only graph safe when the app is backgrounded
+  or storage is evicted (B-573: reopen on resume, a native-filesystem checkpoint) lives in the shared
+  Capacitor code, so it runs on Android too, but it was designed around iOS's behaviour and only
+  ever tested there. Keep anything important synced to a server.
+- **Background and resume**, which on iOS needed several fixes.
+- **Cleartext HTTP** to a LAN server relies on two settings that have never been exercised on a
+  device (`network_security_config.xml`, `allowMixedContent`); live sync over `ws://` may fail
+  even where page loads work.
+
+### Report what you find
+
+Use the [platform report](https://github.com/hnykda/nooklet/issues/new?template=platform-report.yml)
+template. Its checklist covers the same checks the iOS app was tested with. The most useful extra
+detail is the WebView console: enable USB debugging, connect the phone, open `chrome://inspect` in
+desktop Chrome, and inspect the nooklet WebView. The sync engine runs in a Worker, listed
+separately.
+
+### Build it from source
+
+You need Android Studio (or JDK 21 and the Android SDK) in addition to the above.
+
+```sh
+pnpm android:sync     # builds the web client and copies it into apps/web/android
+pnpm android:open     # opens the project in Android Studio
+```
+
+Run it on a device or emulator from Android Studio, or build an APK on the command line with
+`cd apps/web/android && ./gradlew assembleDebug` (output in `app/build/outputs/apk/debug/`).
 
 ## Check it works
 

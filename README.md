@@ -37,9 +37,40 @@ pnpm nooklet serve
 Open <http://127.0.0.1:6100>. Bring a Logseq file graph with
 `pnpm nooklet import /absolute/path/to/graph`.
 
+Or skip the build: the [Releases page](https://github.com/hnykda/nooklet/releases) has the desktop
+apps and an Android APK, and the server runs from a published image:
+
+```sh
+docker run -d --name nooklet -p 127.0.0.1:6100:6100 -v nooklet-data:/data ghcr.io/hnykda/nooklet:latest
+docker exec nooklet /app/node /app/server.mjs token create --label me --scope write --sync
+```
+
+Open <http://127.0.0.1:6100> and paste that token. The image never hands out a token on its own
+([Self-hosting](docs/guide/self-hosting.md#docker) explains why, and how to put it behind HTTPS).
+
 For several devices, run the server on your Tailscale network with HTTPS and give each device its
-own token. [Getting started](docs/guide/getting-started.md) walks through it, plus the macOS desktop
-app and the iOS app (both built from source for now).
+own token. [Getting started](docs/guide/getting-started.md) walks through it, plus the desktop apps,
+the iOS app (built from source) and the experimental Android app.
+
+## Platform support
+
+Honest status as of the first release. "Built in CI" means a release workflow produces it on every
+tag, not that anyone has used it.
+
+| Platform | How to get it | Status |
+|---|---|---|
+| Server (Docker, from source) | `ghcr.io/hnykda/nooklet`, or `pnpm nooklet serve` | Tested; runs the owner's own notes. The arm64 image is built but untested. |
+| Web / PWA | Served by the server | Tested; the e2e suite runs it in Chromium and WebKit. |
+| macOS desktop | Releases (`.dmg`) or `pnpm desktop:build` | Used daily (Apple Silicon). **Unsigned**: see [Getting started](docs/guide/getting-started.md#the-desktop-app). The Intel build is untested. |
+| iOS | Build from source with Xcode | Tested on the Simulator and one iPhone. No App Store or TestFlight build. |
+| Linux desktop | Releases (AppImage, `.deb`) | Built in CI, not yet tested by the maintainer. |
+| Windows desktop | Releases (setup `.exe`) | Built in CI, not yet tested by the maintainer. Unsigned. |
+| Android | Releases (`…-android-experimental.apk`) | **Experimental: never run on a device or emulator by the maintainer.** |
+
+If you run nooklet on Linux, Windows or Android, a
+[platform report](https://github.com/hnykda/nooklet/issues/new?template=platform-report.yml) (a short
+checklist: sync both ways, offline, resume, keyboard, deep links) is the most useful thing you can
+send. What to expect on Android: [Getting started](docs/guide/getting-started.md#android-experimental).
 
 ## Documentation
 
@@ -73,7 +104,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as desc
 | `packages/core` | Data model, outline parser and serializer, op log, `applyOps`, queries |
 | `packages/server` | SQLite store, sync, HTTP API, MCP server, importer, mirror, embeddings, CLI |
 | `packages/plugin-api` | Types plugin authors compile against |
-| `apps/web` | The client; also what the desktop and iOS apps show |
+| `apps/web` | The client; also what the desktop, iOS and Android apps show |
 | `apps/desktop` | Tauri shell with a bundled server |
 | `plugins` | Built-in plugins: mermaid, word-count, daily-summary |
 | `deploy` | Container image and an example Kubernetes chart |

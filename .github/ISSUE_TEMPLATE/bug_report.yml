@@ -31,7 +31,11 @@ body:
       options:
         - Desktop app (macOS)
         - Desktop app (Linux)
+        - Desktop app (Windows)
+        - iOS app (built from source)
+        - Android app (experimental APK)
         - Browser against my own server
+        - Docker image
         - From source
     validations:
       required: true

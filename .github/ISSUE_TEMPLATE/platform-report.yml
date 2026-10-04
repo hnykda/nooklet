@@ -1,0 +1,87 @@
+name: Platform report (Android, Linux, Windows)
+description: You tried nooklet on a platform the maintainer has not tested. Tell us what worked and what did not.
+title: "[platform] "
+labels: ["platform-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. The Android app has never been run by the maintainer, and the Linux and Windows
+        desktop apps are built in CI but untested, so a report that says "all of this works" is as
+        useful as a bug. Tick what you checked and passed; describe anything that failed below.
+        Never paste a token (`nk_…`) or your notes' content.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android app (APK from the Releases page)
+        - Android app (built from source)
+        - Linux desktop (AppImage)
+        - Linux desktop (.deb)
+        - Windows desktop
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: nooklet version
+      description: The `?` menu shows it at the bottom.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS
+      placeholder: "Pixel 8, Android 16 / Ubuntu 24.04, GNOME, Wayland / Windows 11 24H2"
+    validations:
+      required: true
+  - type: dropdown
+    id: server
+    attributes:
+      label: How it connects
+      options:
+        - Local only (no server)
+        - Server over HTTPS (Tailscale or a TLS proxy)
+        - Server over plain http:// on my LAN
+        - Desktop local mode (the app's own server)
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks that passed
+      description: The same checks the iOS app and the macOS app were tested with. Leave a box empty if it failed or you did not try it.
+      options:
+        - label: Installs and opens to the first screen
+        - label: "Local only: add a few bullets, close the app completely, reopen: still there"
+        - label: "Connects to a server with an address and a token"
+        - label: "Sync this device → another: a new page appears on the other device within a few seconds"
+        - label: "Sync another device → this one: an edit appears live, without reloading"
+        - label: "Same bullet edited on both devices: both end with the later edit, no duplicate"
+        - label: "Offline: network off, add bullets, network on: everything arrives, nothing lost or doubled"
+        - label: "Background / resume: leave the app for a minute (then 10+), come back: editable at once, not stuck on Loading"
+        - label: "Kill and relaunch: same content, still connected"
+        - label: "Keyboard: the toolbar sits right above the on-screen keyboard; indent, outdent and new bullet work; the edited line stays visible (phones)"
+        - label: "Rotate to landscape and back without losing the edit (phones)"
+        - label: "Back button / gesture does something sensible (Android)"
+        - label: "A nooklet:// pairing link (token create --link) opens the app and shows the Connect screen"
+        - label: "Graph switcher: add a local-only graph, switch to it and back, nothing mixes"
+        - label: "Desktop: the app's own local mode starts and shows its graph (Linux, Windows)"
+  - type: textarea
+    id: failures
+    attributes:
+      label: What failed or looked wrong
+      description: |
+        What you did, what you expected, what happened. Screenshots help (of test data only).
+        Android: the WebView console is in desktop Chrome at chrome://inspect with USB debugging on;
+        the sync engine is a separate Worker entry. Desktop: start the app from a terminal and
+        paste its output.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Click the sync indicator in the top bar and paste what the panel shows.
+      render: text

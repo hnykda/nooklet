@@ -66,12 +66,11 @@ it cleanly.
 
 ### Docker
 
-The image is built from the repository root. It bundles Node, the server, the web client,
-`sqlite-vec` and the built-in plugins; there is no `node_modules` at runtime.
-
-```sh
-docker build -f deploy/docker/Dockerfile -t nooklet .
-```
+Each release publishes the server image for `linux/amd64` and `linux/arm64` (the arm64 one is
+untested so far) at `ghcr.io/hnykda/nooklet`, tagged with the version (`0.1.0` and `v0.1.0`),
+`sha-<8 hex>` and `latest`. Pin a version rather than `latest`, so an upgrade happens when you
+choose it. The image bundles Node, the server, the web client, `sqlite-vec` and the built-in
+plugins; there is no `node_modules` at runtime.
 
 The image runs as uid 1000, keeps data in `/data`, listens on 6100, and by default runs
 `serve --host 0.0.0.0 --port 6100 --web /app/web --no-loopback-token`. Add your `--allow-host` by
@@ -81,9 +80,13 @@ passing the full command:
 docker run -d --name nooklet --restart unless-stopped \
   -p 127.0.0.1:6100:6100 \
   -v nooklet-data:/data \
-  nooklet serve --host 0.0.0.0 --port 6100 --web /app/web --no-loopback-token \
+  ghcr.io/hnykda/nooklet:0.1.0 \
+    serve --host 0.0.0.0 --port 6100 --web /app/web --no-loopback-token \
     --allow-host <machine>.<your-tailnet>.ts.net
 ```
+
+To build the image yourself instead, from the repository root:
+`docker build -f deploy/docker/Dockerfile -t nooklet .`, then use `nooklet` as the image name.
 
 Then `tailscale serve --bg --https=443 http://127.0.0.1:6100` on the host, as above. Publish the
 port on `127.0.0.1` only, so the container is not reachable from the LAN.
@@ -282,7 +285,9 @@ has never synced holds a token; revoke tokens of devices you no longer use.
 ## Upgrades
 
 1. Take a backup.
-2. Update: `git pull && pnpm install && pnpm --filter @nooklet/web build`, or pull a new image.
+2. Update: `git pull && pnpm install && pnpm --filter @nooklet/web build`, or change the image tag
+   to the new version (the [Releases page](https://github.com/hnykda/nooklet/releases) and
+   `CHANGELOG.md` say what changed).
 3. Restart the server. Opening a database runs any pending schema migrations; they only add tables
    and columns.
 4. If a command says the database schema is newer than the build, you started an older build on
