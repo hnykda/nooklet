@@ -9,6 +9,7 @@
  */
 
 import { devices, expect, type Page, test } from "@playwright/test";
+import { openGraphMenu } from "../helpers/graph-menu.js";
 import { MOD, openPage, pagePath } from "../helpers/index.js";
 
 test.use({ ...devices["iPhone 13"] });
@@ -106,7 +107,7 @@ test("B-705: every form field is at least 16px on a touch screen", async ({ page
 
   // The graph switcher: rename and the add-a-server form.
   await page.goto("/journals");
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page); // B-709: the sidebar title, not a top-bar button
   await page.getByText("Add a graph").click();
   const sync = page.getByRole("button", { name: /Sync with a server/s });
   if (await sync.isVisible()) await sync.click();
@@ -124,7 +125,7 @@ test("B-705: focusing the graph switcher's server address leaves the page unzoom
   page,
 }) => {
   await page.goto("/journals");
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page); // B-709: the sidebar title, not a top-bar button
   await page.getByText("Add a graph").click();
   const sync = page.getByRole("button", { name: /Sync with a server/s });
   if (await sync.isVisible()) await sync.click();
