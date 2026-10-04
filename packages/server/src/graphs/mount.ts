@@ -75,11 +75,11 @@ export interface CreateMultiGraphAppOptions {
  * `apps/web/capacitor.config.ts` keeps Capacitor's default `iosScheme`/`androidScheme`/`hostname`
  * and pins them, because the origin is also the OPFS storage key.
  *
- * The cost of the Android entry, accepted when it was added: unlike `capacitor://`, an
- * `https://localhost` page can also be served by something else on the server's own machine (a
- * local dev server with a trusted certificate), and such a page could then read `/api/session`'s
- * loopback token. That needs code already running on the server machine; `--no-loopback-token`
- * (which every exposed deployment sets) removes the token from that response entirely. Capacitor
+ * Unlike `capacitor://`, an `https://localhost` page can also be served by something else on the
+ * server's own machine (a local dev server with a trusted certificate). It still cannot read the
+ * loopback auto-token: `/api/session` refuses the token to any cross-origin caller
+ * (`http/app.ts#isCrossOriginRequest`, B-691), and app shells never need it (phones are never
+ * loopback peers). What such a page can do is what any page with a token could. Capacitor
  * cannot give Android a hostname of its own without changing iOS's origin too (`server.hostname`
  * is shared), which would orphan every iOS install's data.
  *

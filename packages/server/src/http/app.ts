@@ -135,7 +135,27 @@ function buildClientBootstrap(ctx: ServerContext, config: ServerConfig, c: Conte
     };
   if (!isLoopbackRequest(c))
     return { token: null, reason: "non_loopback_host", graphId, journalTitleFormat, taskWorkflow };
+  // A cross-origin caller never gets the auto-token, whatever its origin. The app shells allowed by
+  // CORS (`graphs/mount.ts#APP_SHELL_ORIGINS`) run on phones, which are never loopback peers, so
+  // they never need it; but `https://localhost` (Android's origin) can also be served by any local
+  // dev server on this machine, and without this check such a page could read a write token
+  // cross-origin. Same-origin fetches either omit `Origin` or name this server's own host.
+  if (isCrossOriginRequest(c))
+    return { token: null, reason: "cross_origin", graphId, journalTitleFormat, taskWorkflow };
   return { token: webClientToken(ctx), graphId, journalTitleFormat, taskWorkflow };
+}
+
+/** Whether the request names an `Origin` other than this server's own (by `Host`). Browsers send
+ * `Origin` on every cross-origin fetch and cannot forge it; a same-origin page load sends none. */
+function isCrossOriginRequest(c: Context): boolean {
+  const origin = c.req.header("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== (c.req.header("host") ?? "");
+  } catch {
+    // `null` (opaque origins: sandboxed frames, file://) and anything unparsable: not ours.
+    return true;
+  }
 }
 
 /**

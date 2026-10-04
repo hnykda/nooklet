@@ -38,7 +38,7 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 | Method | Path | Auth | Without a token it returns | Why public |
 |---|---|---|---|---|
 | GET | `/healthz` | none | `{"name":"nooklet","status":"ok"}` | liveness probe |
-| GET | `/api/session` | none | graph instance id, suggested journal format and task workflow; `token: null` unless the peer is loopback **and** the auto-token is on | how a client with no token learns which graph it is talking to |
+| GET | `/api/session` | none | graph instance id, suggested journal format and task workflow; `token: null` unless the peer is loopback, the request is same-origin (no foreign `Origin`, B-691), **and** the auto-token is on | how a client with no token learns which graph it is talking to |
 | GET | `/openapi.json` | none | the full op list and schemas (no data) | API description for agents |
 | GET | `/assets/:id` | none (capability URL) | the asset bytes if the id exists; served with `CSP: sandbox` + `nosniff` | `<img src>` cannot carry a bearer header (B-659, see below) |
 | GET | `/plugins/:id/:file` | none | a content-hashed client plugin bundle | loaded by `import()`, build output |

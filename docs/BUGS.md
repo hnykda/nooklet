@@ -985,27 +985,63 @@ reached for the `/` itself in the block editor.
 
 Should print a one-line explanation ("port 6100 is in use; pick --port").
 
-### B-686 · CI installs only Chromium, but `pnpm e2e` also runs the WebKit project
-**Status:** open · **Severity:** medium (CI) · **Found:** 2026-10-04, build-docs agent · **Test:** none
+### B-695 · `build-sidecar.mjs` could not have worked on Windows
+**Status:** believed fixed (2026-10-04, releases agent), unverified · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** none (first real test is the Windows CI job)
 
-The WebKit specs will likely fail in CI. Forwarded to the releases agent.
+`spawnSync("pnpm")` without a shell (pnpm.cmd), esbuild.exe looked up under `bin/`, zip extracted
+with `unzip`. Fixed by reading; no Windows machine.
 
-### B-687 · CI uploads failure traces from the repo root, but Playwright writes them to `e2e/test-results/`
-**Status:** open · **Severity:** low (CI) · **Found:** 2026-10-04, build-docs agent · **Test:** none
+### B-696 · The server reports version `0.0.1` to MCP clients and has no `nooklet --version`
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** none
 
-The artifact upload probably finds nothing. Forwarded to the releases agent.
+`mcp/server.ts` default; `cli.ts` never passes the package version.
+
+## Fixed
 
 ### B-689 · `capacitor.config.ts` has a stale comment
-**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, build-docs agent · **Test:** none
+**Status:** fixed (2026-10-04, releases agent `822be67`)
 
 Describes an older setup.
 
 ### B-690 · Root `pnpm build` runs a bare `tauri build` without the sidecar step
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, build-docs agent · **Test:** none
+**Status:** fixed (2026-10-04, releases agent `a1e9a0a`) · **Test:** none (CI config)
 
 Same class as B-580 (stale sidecar): the bundled server may be out of date.
 
-## Fixed
+### B-687 · CI uploads failure traces from the repo root, but Playwright writes them to `e2e/test-results/`
+**Status:** fixed (2026-10-04, releases agent `a1e9a0a`) · **Test:** none (CI config)
+
+The artifact upload probably finds nothing. Forwarded to the releases agent.
+
+### B-686 · CI installs only Chromium, but `pnpm e2e` also runs the WebKit project
+**Status:** fixed (2026-10-04, releases agent `a1e9a0a`) · **Test:** none (CI config)
+
+The WebKit specs will likely fail in CI. Forwarded to the releases agent.
+
+### B-694 · `help.spec.ts` pinned "nooklet 0.1.0"
+**Status:** fixed (2026-10-04, releases agent) · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** the spec itself
+
+Would have failed on every release that was not 0.1.0; now reads `apps/web/package.json`.
+
+### B-693 · The Android shell could not reach any server (CORS)
+**Status:** fixed (2026-10-04, releases agent) · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** `packages/server/src/graphs/mount.test.ts` "answers the Android shell's preflight too"
+
+`APP_SHELL_ORIGINS` lacked `https://localhost` (see B-691 for the follow-up hardening).
+
+### B-692 · The Help menu showed a hard-coded version
+**Status:** fixed (2026-10-04, releases agent) · **Severity:** low · **Found:** 2026-10-04, releases agent · **Test:** `apps/web/src/shell/HelpMenu.test.tsx` "names the package.json version and links to the Releases page"
+
+`apps/web/vite.config.ts` had a literal `"0.1.0"` while package.json said `0.0.1`; now read from package.json.
+
+### B-691 · Allowing Android's `https://localhost` origin let a local dev server's page read the auto-token cross-origin
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** medium (security) · **Found:** 2026-10-04, coordinator reviewing the releases agent's CORS change · **Test:** `packages/server/src/http/host-guard.test.ts` "cross-origin callers never get the auto-token (B-691)" (red without the fix)
+
+The releases agent added `https://localhost` to `APP_SHELL_ORIGINS` so the Android shell can reach a
+server, and documented the cost: any local dev server with a trusted certificate can serve a page
+from that origin, which could then read `/api/session`'s loopback write token (e.g. from the desktop
+app's sidecar on a developer's Mac). Fix: `/api/session` refuses the auto-token to any request whose
+`Origin` names another host (`http/app.ts#isCrossOriginRequest`, reason `cross_origin`); same-origin
+fetches and page loads are unaffected, and app shells never need it.
 
 ### B-688 · The Xcode project committed the owner's Apple `DEVELOPMENT_TEAM`
 **Status:** fixed · **Severity:** low (hygiene; a team id is public in any signed app) · **Found:** 2026-10-04, build-docs agent · **Test:** none

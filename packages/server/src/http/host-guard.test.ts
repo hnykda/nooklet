@@ -170,6 +170,38 @@ describe("loopback detection", () => {
   });
 });
 
+describe("cross-origin callers never get the auto-token (B-691)", () => {
+  it("refuses a loopback peer whose request carries another origin, and still serves its own", async () => {
+    // `https://localhost` is Android's app-shell origin and so CORS-allowed; a local dev server can
+    // serve a page from that origin too, which must not be able to read the write token.
+    const s = makeTestServer({ webClientDir: undefined });
+    const port = await listen(s.app);
+    const host = `127.0.0.1:${port}`;
+    for (const origin of [
+      "https://localhost",
+      "capacitor://localhost",
+      "http://evil.example",
+      "null",
+    ]) {
+      const body = JSON.parse((await get(port, "/api/session", host, { origin })).body) as {
+        token: string | null;
+        reason?: string;
+      };
+      expect(body.token, origin).toBeNull();
+      expect(body.reason, origin).toBe("cross_origin");
+    }
+    // Same-origin fetch (Origin names this server) and a page load (no Origin) still get it.
+    const same = JSON.parse(
+      (await get(port, "/api/session", host, { origin: `http://${host}` })).body,
+    ) as { token: string | null };
+    expect(same.token).toBeTruthy();
+    const none = JSON.parse((await get(port, "/api/session", host)).body) as {
+      token: string | null;
+    };
+    expect(none.token).toBeTruthy();
+  });
+});
+
 describe("--no-loopback-token (B-600, decision D3)", () => {
   it("never hands out a token, even to a genuine loopback peer with a loopback Host", async () => {
     // The case forwarding headers cannot catch: a same-machine proxy that rewrites Host to
