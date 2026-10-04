@@ -139,6 +139,8 @@ describe("the desktop graph menu (B-781: one list, the shell's)", () => {
     const input = menu.getByLabelText("New name for Work");
     fireEvent.input(input, { target: { value: "Job" } });
     fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+    expect(assign).toHaveBeenCalledOnce();
     expect(lastRequest().pathname).toBe("/rename");
     expect(lastRequest().searchParams.get("graph")).toBe("server:s1");
     expect(lastRequest().searchParams.get("label")).toBe("Job");

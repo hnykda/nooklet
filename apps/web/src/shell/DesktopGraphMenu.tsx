@@ -118,6 +118,8 @@ export function DesktopGraphMenu(props: { shell: DesktopShell }): JSX.Element {
   }
 
   async function commitRename(graph: DesktopGraph): Promise<void> {
+    // Enter, then the blur of the input it unmounts: commit once.
+    if (renaming() !== graph.key) return;
     const label = renameDraft().trim();
     setRenaming(undefined);
     if (!label || label === graph.label) return;
