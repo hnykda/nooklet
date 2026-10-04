@@ -4,6 +4,24 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
+## Real-device test feedback round — 2026-10-04 (in flight)
+
+The owner ran the first real test (Mac desktop + iPhone against `~/nooklet-test` on 6200; still
+running — agents must never touch 6100/6200, `~/nooklet-test` (except a read-only `sqlite3 .backup`),
+or the main checkout's `apps/web/dist`). Fixed during the test: B-638 (serve on a new data dir).
+Logged: B-639 (white screen after adding the server; suspected dist rebuild mid-load) and
+B-640..B-651 from the owner's feedback. Agents in flight (worktrees, all based on `c3302f6`):
+
+| Slug | Task | Ports |
+|---|---|---|
+| b640 | invisible block text until edited (high) — reproduces from a backup of the test graph | 6400-6404 |
+| b641 | references (and other server-only views) offline/local-only from the replica | 6405-6409 |
+| b642 | readable conflict copies instead of `conflict_copy::` (ADR) | 6410-6414 |
+| phone-ui | B-646 `/` on phone, B-648 properties overflow, B-649 forward greyed, B-650 switcher outside-tap, B-651 task cycling + checkbox | 6415-6419 |
+| desktop-local-graph | B-643 local graph from the desktop app, B-644 whimsical names | 6420-6424 |
+| all-pages | B-645 counts + delete in All pages | 6425-6429 |
+| icon-picker | B-647 searchable emoji picker | 6430-6434 |
+
 ## Ready for the first real-device test — 2026-10-03 evening (READ THIS FIRST)
 
 All agent work of 2026-10-03 is merged into `main`; no worktrees, no agents, no servers running.
