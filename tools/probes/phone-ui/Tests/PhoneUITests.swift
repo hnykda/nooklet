@@ -1,7 +1,7 @@
-// Phone UI probe (B-646, B-648, B-651): drives the REAL app on a private headless Simulator with
+// Phone UI probe (B-646, B-648, B-651, B-709/B-708): drives the REAL app on a private headless Simulator with
 // the SOFTWARE keyboard (XCUITest's typeText goes through it; no hardware keyboard is attached
 // without Simulator.app), and screenshots each state. Run by ../run.sh. Env (TEST_RUNNER_ prefix
-// stripped by xcodebuild): SHOT_DIR, STEPS (comma list: slash, task, props).
+// stripped by xcodebuild): SHOT_DIR, STEPS (comma list: slash, task, props, graphmenu).
 import XCTest
 
 final class PhoneUITests: XCTestCase {
@@ -22,6 +22,33 @@ final class PhoneUITests: XCTestCase {
     if steps.contains("slash") { try slash() }
     if steps.contains("task") { try task() }
     if steps.contains("props") { try props() }
+    if steps.contains("graphmenu") { try graphMenu() }
+  }
+
+  /// B-709: the graph menu is the sidebar drawer's title; B-708: no agent badge in the top bar.
+  func graphMenu() throws {
+    let agent = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "gents")).firstMatch
+    XCTAssertFalse(agent.exists, "agent badge shown on the phone")
+    let toggle = app.buttons["Toggle sidebar"]
+    XCTAssertTrue(toggle.waitForExistence(timeout: 10), "no sidebar toggle")
+    toggle.tap()
+    sleep(2)
+    shot("10-drawer")
+    let title = app.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS[c] %@", "switch graph")).firstMatch
+    XCTAssertTrue(title.waitForExistence(timeout: 5), "no graph title in the drawer")
+    title.tap()
+    sleep(2)
+    shot("11-graph-menu")
+    let add = app.buttons["Add a graph"]
+    XCTAssertTrue(add.waitForExistence(timeout: 5), "no Add a graph")
+    add.tap()
+    sleep(2)
+    shot("12-add-choice")
+    // An outside tap in the drawer closes the menu (B-650).
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.9)).tap()
+    sleep(2)
+    shot("13-menu-closed")
   }
 
   /// B-646: `/` typed on the soft keyboard into today's empty first line.

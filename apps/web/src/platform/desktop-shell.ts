@@ -37,13 +37,20 @@ export interface DesktopShell {
  * to resolve (RFC 2606), so outside the shell it fails instead of reaching anyone. */
 const SHELL_REQUEST_ORIGIN = "http://nooklet-desktop.invalid";
 
-export function shellRequestUrl(
-  request: { kind: "new-local-graph"; label: string } | { kind: "open-local-graph"; id: string },
-): string {
+export type ShellRequest =
+  | { kind: "new-local-graph"; label: string }
+  | { kind: "open-local-graph"; id: string }
+  /** B-704: remember a server graph and restart onto it, as the shell's own Switch Server… → Add
+   * a server does. The page cannot do it itself: the connect check would be cross-origin. */
+  | { kind: "add-server-graph"; url: string };
+
+export function shellRequestUrl(request: ShellRequest): string {
   const params =
     request.kind === "new-local-graph"
       ? new URLSearchParams({ label: request.label })
-      : new URLSearchParams({ id: request.id });
+      : request.kind === "open-local-graph"
+        ? new URLSearchParams({ id: request.id })
+        : new URLSearchParams({ url: request.url });
   return `${SHELL_REQUEST_ORIGIN}/${request.kind}?${params.toString()}`;
 }
 

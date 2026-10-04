@@ -56,6 +56,7 @@ import {
 import { defaultDeviceLabel, redeemPairingCode } from "../data/pairing.js";
 import { platform } from "../platform/index.js";
 import "./connect.css";
+import { DesktopServerSwitch } from "./DesktopServerSwitch.js";
 
 export function ConnectView(props: {
   reason?: string;
@@ -411,6 +412,10 @@ export function ConnectView(props: {
           Sending a token over plain HTTP exposes it to anyone on the network path. Outside a
           trusted LAN, put the server behind HTTPS or reach it over a tailnet such as Tailscale.
         </p>
+      </Show>
+      {/* B-704: in the desktop app, a way to another server (or This Mac) from here. */}
+      <Show when={!props.repair && !prefill}>
+        <DesktopServerSwitch />
       </Show>
     </main>
   );

@@ -18,6 +18,7 @@ import { useAllPages, useFavoritePages, usePageIcons } from "../data/store.js";
 import { platform } from "../platform/index.js";
 import { pageRoutePath } from "../routes/page-path.js";
 import { PageIconBadge } from "../views/PageIcon.js";
+import { GraphSwitcher } from "./GraphSwitcher.js";
 import { PaletteButton } from "./PaletteButton.js";
 import "./sidebar.css";
 
@@ -64,6 +65,11 @@ export function Sidebar(): JSX.Element {
         onClick={() => document.body.classList.remove("sidebar-open")}
       />
       <aside class="app-sidebar" aria-label="Sidebar">
+        {/* B-709: the open graph's name heads the sidebar, Logseq-style; clicking it lists the
+            graphs (`./GraphSwitcher.tsx`). */}
+        <div class="sidebar-graph">
+          <GraphSwitcher />
+        </div>
         <nav class="sidebar-nav">
           {/* The palette by pointer — the only way to it on a phone (B-352). */}
           <PaletteButton />

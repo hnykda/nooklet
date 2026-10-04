@@ -1,8 +1,13 @@
 /**
- * ADR 025: the graph list, as a top-bar icon + anchored popover — the same shape
- * `CalendarButton.tsx`/`live/ConsentBadge.tsx` already use (a quick jump, not a destination, so no
- * full-screen modal). Placed next to `SyncIndicator`, since "which graph" and "is it synced" are
- * the same question asked two ways.
+ * ADR 025: the graph list. Since B-709 it is the left sidebar's title, Logseq-style: the current
+ * graph's name at the top of the sidebar (`./Sidebar.tsx`), and clicking it opens this menu. It
+ * used to be a database icon in the top bar, which said nothing about WHICH graph was open and
+ * added one more icon to a bar the owner wanted calmer.
+ *
+ * The menu is `position: fixed`, placed under the name when it opens (`placeUnder`): the sidebar
+ * scrolls (`overflow-y: auto`), which would clip an absolutely positioned popover to its 15rem.
+ * Rows are grouped by where the graph lives — this device (a phone's local-only replica), this Mac
+ * (ADR 028's bundled server), a server — so the three kinds read apart before any address does.
  *
  * The three legal moves the ADR settled on:
  *  1. New local-only graph — Capacitor and the desktop app (`showLocalOption` below), never a plain
@@ -29,8 +34,18 @@
  * token can call), with the address under it, so two graphs on one server can be told apart. An
  * entry still on a placeholder label ("This graph"/"Remote graph", from before labels existed) is
  * relabelled the next time the switcher opens; a label the owner typed is never replaced.
+ *
+ * B-704: a server on ANOTHER origin cannot be added from a served page. The connect check is a
+ * cross-origin request, and the server's CORS allowlist admits only the app shells' origins
+ * (`capacitor://localhost`), so it fails as "Load failed". Inside the desktop shell the request is
+ * handed to the shell instead (`add-server-graph`, as B-643's local-graph requests), which remembers
+ * the server and restarts onto it, as its own Switch Server… → Add a server does; that server's own
+ * page then asks for its token. In a plain browser tab the form says so and offers the server in a
+ * new tab. Capacitor is unaffected: its origin is on every server's allowlist.
  */
-import DatabaseIcon from "lucide-solid/icons/database";
+import Check from "lucide-solid/icons/check";
+import ChevronsUpDown from "lucide-solid/icons/chevrons-up-down";
+import ExternalLink from "lucide-solid/icons/external-link";
 import Laptop from "lucide-solid/icons/laptop";
 import Pencil from "lucide-solid/icons/pencil";
 import Plus from "lucide-solid/icons/plus";
@@ -38,10 +53,12 @@ import Server from "lucide-solid/icons/server";
 import Smartphone from "lucide-solid/icons/smartphone";
 import Trash2 from "lucide-solid/icons/trash-2";
 import UploadCloud from "lucide-solid/icons/upload-cloud";
-import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { confirmDialog } from "../app/confirm-dialog.js";
 import {
   activeGraph,
   activeGraphId,
+  canPromoteGraph,
   createLocalOnlyGraph,
   findGraphByAddress,
   type GraphListEntry,
@@ -64,15 +81,18 @@ import {
   parseServerUrl,
   type ServerGraph,
 } from "../data/connect-graph.js";
+import { forgetPendingCount, knownPendingCount } from "../data/pending-memo.js";
 import {
   DESKTOP_ERROR_EVENT,
   type DesktopLocalGraph,
+  type DesktopShell,
   desktopShell,
   localGraphAddress,
   onBundledServer,
   shellRequestUrl,
 } from "../platform/desktop-shell.js";
 import { platform } from "../platform/index.js";
+import { removalDialog } from "./graph-removal.js";
 import "./graph-switcher.css";
 
 /** The desktop's This-Mac graph as a row title: its default graph is "This Mac" itself, the name
@@ -83,9 +103,54 @@ function macGraphName(g: DesktopLocalGraph): string {
 
 type Mode = "list" | "add-choice" | "add-form" | "promote-form";
 
-/** A reasonable starting graph id from a label someone already typed, editable before submit —
- * not itself validated against the server's `isValidGraphId` (`packages/server/src/graphs/
- * paths.ts`), which runs the real check and reports a real error if this guess is not enough. */
+/** Where a graph lives, which is how the menu groups its rows (B-709): this device's own replica
+ * with no server (Capacitor's local-only graphs), This Mac's bundled server (ADR 028, desktop only),
+ * or any other server. */
+export type GraphPlace = "device" | "mac" | "server";
+
+export const GRAPH_PLACE_HEADING: Record<GraphPlace, string> = {
+  device: "On this device",
+  mac: "On this Mac",
+  server: "On a server",
+};
+
+export function graphPlace(entry: GraphListEntry, shell: DesktopShell | null): GraphPlace {
+  if (!entry.baseUrl) return "device";
+  if (shell) {
+    const address = resolvedGraphAddress(entry.baseUrl);
+    try {
+      if (address && new URL(address).origin === `http://127.0.0.1:${shell.port}`) return "mac";
+    } catch {
+      // Not an absolute address: not This Mac's either.
+    }
+  }
+  return "server";
+}
+
+/** B-704: whether `url` is a server this page cannot verify from here, i.e. another origin. Never
+ * true under Capacitor, whose `capacitor://localhost` every server's CORS allowlist admits. */
+export function needsOwnOrigin(url: string, pageOrigin: string): boolean {
+  if (platform.name === "capacitor") return false;
+  try {
+    return new URL(url).origin !== pageOrigin;
+  } catch {
+    return false;
+  }
+}
+
+/** Where the fixed-position menu goes: under `anchor`, as wide as a phone drawer allows, and no
+ * taller than the space left below it (it scrolls past that). */
+export function placeUnder(
+  anchor: { left: number; bottom: number },
+  viewport: { width: number; height: number },
+  margin = 8,
+): { left: number; top: number; width: number; maxHeight: number } {
+  const width = Math.min(288, viewport.width - 2 * margin);
+  const left = Math.max(margin, Math.min(anchor.left, viewport.width - width - margin));
+  const top = anchor.bottom + 4;
+  return { left, top, width, maxHeight: Math.max(160, viewport.height - top - margin) };
+}
+
 /** What a row is called: the label, unless it is a placeholder nobody chose — then the graph's
  * slug says more (B-618). */
 export function graphDisplayName(entry: GraphListEntry): string {
@@ -106,6 +171,9 @@ export function graphAddressLine(entry: GraphListEntry): string | undefined {
   }
 }
 
+/** A reasonable starting graph id from a label someone already typed, editable before submit —
+ * not itself validated against the server's `isValidGraphId` (`packages/server/src/graphs/
+ * paths.ts`), which runs the real check and reports a real error if this guess is not enough. */
 function slugify(label: string): string {
   return label
     .toLowerCase()
@@ -117,10 +185,10 @@ function slugify(label: string): string {
 export function GraphSwitcher(): JSX.Element {
   const [open, setOpen] = createSignal(false);
   const [mode, setMode] = createSignal<Mode>("list");
-  const [graphs, setGraphs] = createSignal<GraphListEntry[]>([]);
+  // Read at mount, not only on open: the sidebar's title is the active graph's name (B-709).
+  const [graphs, setGraphs] = createSignal<GraphListEntry[]>(listGraphs());
   const [renamingId, setRenamingId] = createSignal<string | undefined>();
   const [renameDraft, setRenameDraft] = createSignal("");
-  const [confirmRemoveId, setConfirmRemoveId] = createSignal<string | undefined>();
   const [serverUrl, setServerUrl] = createSignal("");
   const [token, setToken] = createSignal("");
   const [error, setError] = createSignal<string | undefined>();
@@ -134,6 +202,7 @@ export function GraphSwitcher(): JSX.Element {
 
   const [macGraphs, setMacGraphs] = createSignal<DesktopLocalGraph[]>([]);
   const [pendingNote, setPendingNote] = createSignal<string | undefined>();
+  const [placement, setPlacement] = createSignal<ReturnType<typeof placeUnder> | undefined>();
 
   // Capacitor and the desktop app, never a plain browser tab — see this file's own header.
   const shell = desktopShell();
@@ -149,6 +218,46 @@ export function GraphSwitcher(): JSX.Element {
   function refresh(): void {
     setGraphs(listGraphs());
     setMacGraphs(unlistedMacGraphs());
+  }
+
+  const activeEntry = createMemo(() => graphs().find((g) => g.id === activeGraphId()));
+  /** The sidebar's title. With no entry yet (a first load before bootstrap adopts one), the page's
+   * own place stands in: This Mac on the bundled server, else this server's host. */
+  const titleText = (): string => {
+    const entry = activeEntry();
+    if (entry) return graphDisplayName(entry);
+    if (shell && onBundledServer(shell)) return "This Mac";
+    return typeof location === "undefined" ? "nooklet" : location.host || "nooklet";
+  };
+  const titlePlace = (): GraphPlace => {
+    const entry = activeEntry();
+    if (entry) return graphPlace(entry, shell);
+    return shell && onBundledServer(shell) ? "mac" : "server";
+  };
+  /** Rows grouped by place, in a fixed order; empty groups are left out. */
+  const grouped = createMemo(() =>
+    (["device", "mac", "server"] as const)
+      .map((place) => ({
+        place,
+        entries: graphs().filter((g) => graphPlace(g, shell) === place),
+        mac: place === "mac" ? macGraphs() : [],
+      }))
+      .filter((group) => group.entries.length > 0 || group.mac.length > 0),
+  );
+
+  /** B-704: the add form's address is a server on another origin, which this page cannot reach. */
+  const addTargetElsewhere = (): string | undefined => {
+    const parsed = parseServerUrl(serverUrl());
+    if ("error" in parsed) return undefined;
+    const target = graphBaseUrl(parsed.url);
+    return needsOwnOrigin(target, location.origin) ? target : undefined;
+  };
+
+  let trigger: HTMLButtonElement | undefined;
+  function place(): void {
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    setPlacement(placeUnder(rect, { width: window.innerWidth, height: window.innerHeight }));
   }
 
   /** B-586: navigates to wherever the now-active entry actually lives, rather than blindly
@@ -188,11 +297,11 @@ export function GraphSwitcher(): JSX.Element {
     refresh();
     void refreshPlaceholderLabels();
     setMode("list");
-    setConfirmRemoveId(undefined);
     setRenamingId(undefined);
     setError(undefined);
     setPendingNote(undefined);
     setBusy(false);
+    place();
     setOpen(true);
   }
 
@@ -205,13 +314,21 @@ export function GraphSwitcher(): JSX.Element {
     // there is no Escape, so the only way out was the button that opened it. `pointerdown`, so a
     // press on another top-bar control both closes this and works there.
     const onDown = (e: PointerEvent): void => {
-      if (open() && wrap && !wrap.contains(e.target as Node)) setOpen(false);
+      // The removal dialog (B-712) is rendered outside this component; working in it is not an
+      // outside tap, so the menu is still there, updated, when it closes.
+      const inDialog = (e.target as Element | null)?.closest?.(".confirm-dialog-overlay");
+      if (open() && wrap && !inDialog && !wrap.contains(e.target as Node)) setOpen(false);
+    };
+    const onResize = (): void => {
+      if (open()) place();
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown);
+    window.addEventListener("resize", onResize);
     onCleanup(() => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("resize", onResize);
     });
     if (!shell) return;
     // B-643: the shell could not do what was asked (`main.rs#report_to_page`).
@@ -248,21 +365,47 @@ export function GraphSwitcher(): JSX.Element {
     refresh();
   }
 
-  function doRemove(id: string): void {
-    removeGraph(id);
-    setConfirmRemoveId(undefined);
+  /** B-712: never one tap. What is lost, said plainly, and `delete` typed wherever data can be
+   * lost (`./graph-removal.ts`). The in-app dialog, never `window.confirm` (B-491). */
+  async function confirmRemove(entry: GraphListEntry): Promise<void> {
+    const where = graphPlace(entry, shell);
+    const address = resolvedGraphAddress(entry.baseUrl);
+    let host: string | undefined;
+    try {
+      host = address ? new URL(address).host : undefined;
+    } catch {
+      host = undefined;
+    }
+    const ok = await confirmDialog(
+      removalDialog({
+        name: graphDisplayName(entry),
+        place: where,
+        host,
+        pending: where === "device" ? undefined : knownPendingCount(entry),
+      }),
+    );
+    if (!ok) return;
+    removeGraph(entry.id);
+    forgetPendingCount(entry.id);
     refresh();
   }
 
   async function addServer(e: Event): Promise<void> {
     e.preventDefault();
-    const tokenValue = token().trim();
-    if (!tokenValue) return;
     const parsed = parseServerUrl(serverUrl());
     if ("error" in parsed) {
       setError(parsed.error);
       return;
     }
+    // B-704: another origin cannot be verified from this page (see this file's header).
+    const elsewhere = addTargetElsewhere();
+    if (elsewhere) {
+      if (shell) handServerToShell(elsewhere);
+      // A browser tab: the form already says so and links the server instead of a Connect button.
+      return;
+    }
+    const tokenValue = token().trim();
+    if (!tokenValue) return;
     // B-618: the graph is already on this device — switch to it rather than adding it twice (each
     // entry has its own replica, so a duplicate is a second, separately-synced copy). Its token is
     // still verified and refreshed by `connectToGraph`, which matches the existing entry the same way.
@@ -280,6 +423,18 @@ export function GraphSwitcher(): JSX.Element {
       return;
     }
     goToActiveGraph();
+  }
+
+  /** B-704: the desktop shell remembers the server and restarts onto it, exactly as its own Switch
+   * Server… → Add a server does (`main.rs#ShellRequest::AddServerGraph`). No token travels: the
+   * window then shows that server's own page, which asks for one (`ConnectView.tsx`). */
+  function handServerToShell(url: string): void {
+    setError(undefined);
+    setBusy(true);
+    setPendingNote(
+      `Opening ${new URL(url).host}. nooklet restarts, then that server asks for its token…`,
+    );
+    location.assign(shellRequestUrl({ kind: "add-server-graph", url }));
   }
 
   /** B-618: offer the graphs the server hosts, when the token in the form can list them. */
@@ -354,6 +509,13 @@ export function GraphSwitcher(): JSX.Element {
     e.preventDefault();
     const id = promotingId();
     if (!id) return;
+    // B-714: checked BEFORE the server graph is made — `updateGraph` refuses a detached copy only
+    // after `createGraphOnServer` would already have created an empty graph on the server.
+    const entry = listGraphs().find((g) => g.id === id);
+    if (!entry || !canPromoteGraph(entry)) {
+      setError("This graph cannot be given a server.");
+      return;
+    }
     const rootToken = promoteRootToken().trim();
     const graphId = promoteGraphId().trim();
     if (!rootToken || !graphId) return;
@@ -378,150 +540,180 @@ export function GraphSwitcher(): JSX.Element {
     goToActiveGraph();
   }
 
-  return (
-    <div class="graph-switcher-wrap" ref={wrap}>
+  const placeIcon = (where: GraphPlace, size: number): JSX.Element =>
+    where === "device" ? (
+      <Smartphone size={size} aria-hidden="true" />
+    ) : where === "mac" ? (
+      <Laptop size={size} aria-hidden="true" />
+    ) : (
+      <Server size={size} aria-hidden="true" />
+    );
+
+  /** A row for a graph in this device's list: switch, rename, promote, remove. */
+  const entryRow = (entry: GraphListEntry): JSX.Element => {
+    const isActive = entry.id === activeGraphId();
+    return (
+      <li class="graph-switcher-row" classList={{ active: isActive }}>
+        <Show
+          when={renamingId() === entry.id}
+          fallback={
+            <button
+              type="button"
+              class="graph-switcher-name"
+              aria-current={isActive ? "true" : undefined}
+              onClick={() => switchTo(entry.id)}
+            >
+              <span class="graph-switcher-name-text">
+                <span class="graph-switcher-label">{graphDisplayName(entry)}</span>
+                <Show when={graphAddressLine(entry)}>
+                  {(line) => <span class="graph-switcher-address">{line()}</span>}
+                </Show>
+              </span>
+              <Show when={isActive}>
+                <Check size={14} class="graph-switcher-current" aria-label="open now" />
+              </Show>
+            </button>
+          }
+        >
+          <input
+            class="graph-switcher-rename-input"
+            value={renameDraft()}
+            autofocus
+            onInput={(e) => setRenameDraft(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename(entry.id);
+              if (e.key === "Escape") setRenamingId(undefined);
+            }}
+            onBlur={() => commitRename(entry.id)}
+          />
+        </Show>
+        <span class="graph-switcher-row-actions">
+          <button
+            type="button"
+            class="graph-switcher-icon-action"
+            aria-label={`Rename ${graphDisplayName(entry)}`}
+            title="Rename"
+            onClick={() => startRename(entry)}
+          >
+            <Pencil size={13} />
+          </button>
+          {/* ADR 025 move 2: only a genuinely local-only entry (no baseUrl at all) has anything
+                to promote — one already server-backed is already synced. B-714: a device-only copy
+                of an earlier server graph holds only this device's unsynced tail, so promoting it
+                would seed a server graph with a fragment; shown disabled, saying why. */}
+          <Show
+            when={canPromoteGraph(entry)}
+            fallback={
+              <Show when={entry.detachedFrom}>
+                <button
+                  type="button"
+                  class="graph-switcher-icon-action"
+                  disabled
+                  aria-label={`Add a server for ${graphDisplayName(entry)} (not available: a device-only copy)`}
+                  title="A device-only copy of an earlier server graph cannot be given a server: it holds only this device's unsynced changes, not the whole graph."
+                >
+                  <UploadCloud size={13} />
+                </button>
+              </Show>
+            }
+          >
+            <button
+              type="button"
+              class="graph-switcher-icon-action"
+              aria-label={`Add a server for ${graphDisplayName(entry)}`}
+              title="Add a server for this graph"
+              onClick={() => startPromote(entry)}
+            >
+              <UploadCloud size={13} />
+            </button>
+          </Show>
+          <Show when={!isActive}>
+            <button
+              type="button"
+              class="graph-switcher-icon-action"
+              aria-label={`Remove ${graphDisplayName(entry)}`}
+              title="Remove from this device"
+              onClick={() => void confirmRemove(entry)}
+            >
+              <Trash2 size={13} />
+            </button>
+          </Show>
+        </span>
+      </li>
+    );
+  };
+
+  /** A This-Mac graph this origin has no entry for (desktop only, B-643). */
+  const macRow = (g: DesktopLocalGraph): JSX.Element => (
+    <li class="graph-switcher-row">
       <button
         type="button"
-        class="app-icon-button"
-        aria-label="Switch graph"
+        class="graph-switcher-name"
+        disabled={busy()}
+        onClick={() => openMacGraph(g)}
+      >
+        <span class="graph-switcher-name-text">
+          <span class="graph-switcher-label">{macGraphName(g)}</span>
+          <span class="graph-switcher-address">on this Mac</span>
+        </span>
+      </button>
+    </li>
+  );
+
+  return (
+    <div class="graph-switcher-wrap" ref={wrap}>
+      {/* B-709: the sidebar's title. Its accessible name keeps "Switch graph" (what it does) after
+          the visible name (what is open), so both a reader and a test find it by either. */}
+      <button
+        type="button"
+        class="graph-switcher-title"
+        ref={trigger}
+        aria-label={`${titleText()}, switch graph`}
         title="Switch graph"
         aria-expanded={open()}
         aria-haspopup="dialog"
         onClick={() => (open() ? setOpen(false) : openSwitcher())}
       >
-        <DatabaseIcon size={17} />
+        <span class="graph-switcher-title-icon">{placeIcon(titlePlace(), 15)}</span>
+        <span class="graph-switcher-title-text">{titleText()}</span>
+        <ChevronsUpDown size={14} class="graph-switcher-title-chevron" aria-hidden="true" />
       </button>
       <Show when={open()}>
-        <div class="graph-switcher-popover" role="dialog" aria-label="Switch graph">
+        <div
+          class="graph-switcher-popover"
+          role="dialog"
+          aria-label="Switch graph"
+          style={{
+            left: `${placement()?.left ?? 8}px`,
+            top: `${placement()?.top ?? 48}px`,
+            width: `${placement()?.width ?? 288}px`,
+            "max-height": `${placement()?.maxHeight ?? 480}px`,
+          }}
+        >
           <Show when={mode() === "list"}>
-            <ul class="graph-switcher-list">
-              <For each={graphs()}>
-                {(entry) => (
-                  <li
-                    class="graph-switcher-row"
-                    classList={{ active: entry.id === activeGraphId() }}
-                  >
-                    <Show
-                      when={renamingId() === entry.id}
-                      fallback={
-                        <button
-                          type="button"
-                          class="graph-switcher-name"
-                          onClick={() => switchTo(entry.id)}
-                        >
-                          {entry.kind === "remote" ? (
-                            <Server size={14} aria-hidden="true" />
-                          ) : (
-                            <Smartphone size={14} aria-hidden="true" />
-                          )}
-                          <span class="graph-switcher-name-text">
-                            <span class="graph-switcher-label">{graphDisplayName(entry)}</span>
-                            <Show when={graphAddressLine(entry)}>
-                              {(line) => <span class="graph-switcher-address">{line()}</span>}
-                            </Show>
-                          </span>
-                        </button>
-                      }
-                    >
-                      <input
-                        class="graph-switcher-rename-input"
-                        value={renameDraft()}
-                        autofocus
-                        onInput={(e) => setRenameDraft(e.currentTarget.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitRename(entry.id);
-                          if (e.key === "Escape") setRenamingId(undefined);
-                        }}
-                        onBlur={() => commitRename(entry.id)}
-                      />
-                    </Show>
-                    <Show
-                      when={confirmRemoveId() !== entry.id}
-                      fallback={
-                        <span class="graph-switcher-confirm">
-                          <button type="button" onClick={() => doRemove(entry.id)}>
-                            Remove
-                          </button>
-                          <button type="button" onClick={() => setConfirmRemoveId(undefined)}>
-                            Cancel
-                          </button>
-                        </span>
-                      }
-                    >
-                      <span class="graph-switcher-row-actions">
-                        <button
-                          type="button"
-                          class="graph-switcher-icon-action"
-                          aria-label={`Rename ${graphDisplayName(entry)}`}
-                          title="Rename"
-                          onClick={() => startRename(entry)}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        {/* ADR 025 move 2: only a genuinely local-only entry (no baseUrl at all)
-                            has anything to promote — one already server-backed is already synced. */}
-                        <Show when={entry.kind === "local" && !entry.baseUrl}>
-                          <button
-                            type="button"
-                            class="graph-switcher-icon-action"
-                            aria-label={`Add a server for ${graphDisplayName(entry)}`}
-                            title="Add a server for this graph"
-                            onClick={() => startPromote(entry)}
-                          >
-                            <UploadCloud size={13} />
-                          </button>
-                        </Show>
-                        <Show when={entry.id !== activeGraphId()}>
-                          <button
-                            type="button"
-                            class="graph-switcher-icon-action"
-                            aria-label={`Remove ${graphDisplayName(entry)}`}
-                            title="Remove from this device"
-                            onClick={() => setConfirmRemoveId(entry.id)}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </Show>
-                      </span>
-                    </Show>
-                  </li>
-                )}
-              </For>
-            </ul>
-            <Show when={macGraphs().length > 0}>
-              <p class="graph-switcher-group" id="graph-switcher-mac">
-                On this Mac
+            <For each={grouped()}>
+              {(group) => (
+                <section class="graph-switcher-section" data-place={group.place}>
+                  <p class="graph-switcher-group" id={`graph-switcher-${group.place}`}>
+                    {placeIcon(group.place, 13)}
+                    {GRAPH_PLACE_HEADING[group.place]}
+                  </p>
+                  <ul class="graph-switcher-list" aria-labelledby={`graph-switcher-${group.place}`}>
+                    <For each={group.entries}>{entryRow}</For>
+                    <For each={group.mac}>{macRow}</For>
+                  </ul>
+                </section>
+              )}
+            </For>
+            <Show when={pendingNote()}>
+              <p class="graph-switcher-hint" role="status">
+                {pendingNote()}
               </p>
-              <ul class="graph-switcher-list" aria-labelledby="graph-switcher-mac">
-                <For each={macGraphs()}>
-                  {(g) => (
-                    <li class="graph-switcher-row">
-                      <button
-                        type="button"
-                        class="graph-switcher-name"
-                        disabled={busy()}
-                        onClick={() => openMacGraph(g)}
-                      >
-                        <Laptop size={14} aria-hidden="true" />
-                        <span class="graph-switcher-name-text">
-                          <span class="graph-switcher-label">{macGraphName(g)}</span>
-                          <span class="graph-switcher-address">on this Mac</span>
-                        </span>
-                      </button>
-                    </li>
-                  )}
-                </For>
-              </ul>
-              <Show when={pendingNote()}>
-                <p class="graph-switcher-hint" role="status">
-                  {pendingNote()}
-                </p>
-              </Show>
-              <Show when={error()}>
-                <p class="graph-switcher-error" role="alert">
-                  {error()}
-                </p>
-              </Show>
+            </Show>
+            <Show when={error()}>
+              <p class="graph-switcher-error" role="alert">
+                {error()}
+              </p>
             </Show>
             <button
               type="button"
@@ -611,7 +803,8 @@ export function GraphSwitcher(): JSX.Element {
                 <code>/g/&lt;graph&gt;</code> at the end picks a graph; without it you get the
                 server's default graph.
               </p>
-              <label class="graph-switcher-field">
+              {/* B-704: a server on another origin asks for its token on its own page. */}
+              <label class="graph-switcher-field" hidden={addTargetElsewhere() !== undefined}>
                 <span>Device token</span>
                 <input
                   type="text"
@@ -632,12 +825,55 @@ export function GraphSwitcher(): JSX.Element {
                   {error()}
                 </p>
               </Show>
-              <button type="submit" disabled={busy() || !serverUrl().trim() || !token().trim()}>
-                {busy() ? "Checking…" : "Connect"}
-              </button>
+              <Show when={addTargetElsewhere()}>
+                {(target) => (
+                  <Show
+                    when={shell}
+                    fallback={
+                      <div class="graph-switcher-elsewhere" role="note">
+                        <p>
+                          This page can only add graphs on {location.host}. A graph on{" "}
+                          {new URL(target()).host} opens in its own tab, which asks for its device
+                          token.
+                        </p>
+                        <a href={target()} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink size={14} aria-hidden="true" /> Open{" "}
+                          {new URL(target()).host} in a new tab
+                        </a>
+                      </div>
+                    }
+                  >
+                    <p class="graph-switcher-hint">
+                      nooklet restarts onto this server; its page then asks for the device token.
+                    </p>
+                  </Show>
+                )}
+              </Show>
+              <Show when={mode() === "add-form" && pendingNote()}>
+                <p class="graph-switcher-hint" role="status">
+                  {pendingNote()}
+                </p>
+              </Show>
+              <Show when={!addTargetElsewhere() || shell}>
+                <button
+                  type="submit"
+                  disabled={
+                    busy() || !serverUrl().trim() || (!addTargetElsewhere() && !token().trim())
+                  }
+                >
+                  {addTargetElsewhere()
+                    ? busy()
+                      ? "Restarting…"
+                      : "Add and restart"
+                    : busy()
+                      ? "Checking…"
+                      : "Connect"}
+                </button>
+              </Show>
               <button
                 type="button"
                 class="graph-switcher-link"
+                hidden={addTargetElsewhere() !== undefined}
                 disabled={busy() || !serverUrl().trim() || !token().trim()}
                 onClick={() => void showServerGraphs()}
               >

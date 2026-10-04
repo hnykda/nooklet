@@ -23,7 +23,8 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { type ActivityEntry, activityLog } from "./activity-log.js";
 import { BADGE_LABEL, deriveBadgeState } from "./badge-state.js";
 import { liveConnected } from "./connection-state.js";
-import { type ConsentState, liveConsent } from "./consent.js";
+import { type ConsentState, liveBadgeShown, liveConsent } from "./consent.js";
+import { liveOffByDefault } from "./device-default.js";
 import "./live.css";
 
 function relativeTime(at: number, now: number): string {
@@ -79,72 +80,77 @@ export function ConsentBadge() {
     deriveBadgeState({ connected: liveConnected(), controlEnabled: consent().controlEnabled }),
   );
 
+  // B-708: on a phone the badge is drawn only while agent access is on (turned on in Settings).
+  const offByDefault = liveOffByDefault();
+
   return (
-    <div class="vr-live-badge-wrap">
-      <button
-        type="button"
-        class="app-icon-button vr-live-badge"
-        data-state={state()}
-        aria-expanded={open()}
-        aria-haspopup="dialog"
-        aria-label={BADGE_LABEL[state()]}
-        title={BADGE_LABEL[state()]}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <Bot size={17} />
-        <span class="vr-live-dot" aria-hidden="true" />
-      </button>
-      <Show when={open()}>
-        <div class="vr-live-popover" role="dialog" aria-label="Agent access to this window">
-          <h3>Agent access to this window</h3>
+    <Show when={liveBadgeShown(consent(), offByDefault)}>
+      <div class="vr-live-badge-wrap">
+        <button
+          type="button"
+          class="app-icon-button vr-live-badge"
+          data-state={state()}
+          aria-expanded={open()}
+          aria-haspopup="dialog"
+          aria-label={BADGE_LABEL[state()]}
+          title={BADGE_LABEL[state()]}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <Bot size={17} />
+          <span class="vr-live-dot" aria-hidden="true" />
+        </button>
+        <Show when={open()}>
+          <div class="vr-live-popover" role="dialog" aria-label="Agent access to this window">
+            <h3>Agent access to this window</h3>
 
-          <div class="vr-live-toggle-row">
-            <div class="vr-live-toggle-copy">
-              <span class="vr-live-toggle-title">Let agents view this window</span>
-              <span class="vr-live-toggle-sub">
-                Read-only: what page, what's focused. No edits.
-              </span>
+            <div class="vr-live-toggle-row">
+              <div class="vr-live-toggle-copy">
+                <span class="vr-live-toggle-title">Let agents view this window</span>
+                <span class="vr-live-toggle-sub">
+                  Read-only: what page, what's focused. No edits.
+                </span>
+              </div>
+              <ToggleSwitch
+                checked={consent().viewEnabled}
+                variant="view"
+                label="Let agents view this window"
+                onChange={(v) => liveConsent.setViewEnabled(v)}
+              />
             </div>
-            <ToggleSwitch
-              checked={consent().viewEnabled}
-              variant="view"
-              label="Let agents view this window"
-              onChange={(v) => liveConsent.setViewEnabled(v)}
-            />
-          </div>
 
-          <div class="vr-live-toggle-row">
-            <div class="vr-live-toggle-copy">
-              <span class="vr-live-toggle-title">Let agents control this window</span>
-              <span class="vr-live-toggle-sub">Run commands here, exactly as you would.</span>
+            <div class="vr-live-toggle-row">
+              <div class="vr-live-toggle-copy">
+                <span class="vr-live-toggle-title">Let agents control this window</span>
+                <span class="vr-live-toggle-sub">Run commands here, exactly as you would.</span>
+              </div>
+              <ToggleSwitch
+                checked={consent().controlEnabled}
+                variant="control"
+                label="Let agents control this window"
+                onChange={(v) => liveConsent.setControlEnabled(v)}
+              />
             </div>
-            <ToggleSwitch
-              checked={consent().controlEnabled}
-              variant="control"
-              label="Let agents control this window"
-              onChange={(v) => liveConsent.setControlEnabled(v)}
-            />
-          </div>
 
-          <div class="vr-live-activity">
-            <h4>Recent activity</h4>
-            <Show
-              when={activity().length > 0}
-              fallback={<p class="vr-live-activity-empty">Nothing yet.</p>}
-            >
-              <ul>
-                <For each={activity()}>
-                  {(entry) => (
-                    <li>
-                      {entry.text} · {relativeTime(entry.at, now())}
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </Show>
+            <div class="vr-live-activity">
+              <h4>Recent activity</h4>
+              <Show
+                when={activity().length > 0}
+                fallback={<p class="vr-live-activity-empty">Nothing yet.</p>}
+              >
+                <ul>
+                  <For each={activity()}>
+                    {(entry) => (
+                      <li>
+                        {entry.text} · {relativeTime(entry.at, now())}
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </div>
           </div>
-        </div>
-      </Show>
-    </div>
+        </Show>
+      </div>
+    </Show>
   );
 }

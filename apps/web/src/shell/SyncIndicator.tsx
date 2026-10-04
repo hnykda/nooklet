@@ -21,6 +21,7 @@ import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-j
 import { Portal } from "solid-js/web";
 import { activeGraph, hasSyncTarget } from "../data/bootstrap.js";
 import { repairTargetFor } from "../data/connect-graph.js";
+import { rememberPendingCount } from "../data/pending-memo.js";
 import { useSyncStatus } from "../data/store.js";
 import { storageInfo } from "../db/client.js";
 import { ConnectView } from "../views/ConnectView.js";
@@ -46,6 +47,14 @@ export function SyncIndicator() {
   // The label is the TRUE state, not the delayed one: it is only seen on hover or read by a screen
   // reader, neither of which blinks, and it is what an e2e test waits on for "nothing left to push".
   const label = () => syncLabel(view(), status()?.pendingCount ?? 0, status()?.liveNote);
+  // B-712: remembered per graph, so removing this graph later (from another graph, when this one
+  // is not loaded) can say how many unsynced changes it would lose. Only a status the engine
+  // actually reported is recorded — never a guessed zero.
+  createEffect(() => {
+    const s = status();
+    const entry = activeGraph();
+    if (s && entry) rememberPendingCount(entry.id, s.pendingCount);
+  });
   const [repairing, setRepairing] = createSignal(false);
   const rejected = () => view() === "unauthorized";
 
