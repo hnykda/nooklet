@@ -5,7 +5,7 @@ Branch: `worktree-agent-ab7505fe4c4eb2f03`, based on `010fa65`, with
 
 ## Done
 
-All in one commit on the branch (see `git log`; message starts `feat(server): retire, restore and
+All in `663c7ba` (`feat(server): retire, restore and
 replace a graph (B-713)`).
 
 - `packages/server/src/graphs/retire.ts`: `retireGraph` (renames `graphs/<id>` to
@@ -65,7 +65,7 @@ replace a graph (B-713)`).
 
 ```
 ### B-713 · There is no supported way to retire/delete a graph on the server
-**Status:** fixed (2026-10-04, graph-retire agent, <commit>) · **Severity:** medium · **Found:** 2026-10-04, owner asked; coordinator had to swap production `alpha` by hand · **Test:** `packages/server/src/graphs/retire.test.ts` (API: root-token only, sockets closed 4410, handle closed, 404 after, unretire data intact + verify; stale handle after a by-hand swap; replace keeps tokens), `packages/server/src/cli-graph-retire.test.ts` (CLI retire/unretire/list --retired/replace, default needs --force, refusal while a real serve runs), `http/route-inventory.test.ts`
+**Status:** fixed (2026-10-04, graph-retire agent, `663c7ba`) · **Severity:** medium · **Found:** 2026-10-04, owner asked; coordinator had to swap production `alpha` by hand · **Test:** `packages/server/src/graphs/retire.test.ts` (API: root-token only, sockets closed 4410, handle closed, 404 after, unretire data intact + verify; stale handle after a by-hand swap; replace keeps tokens), `packages/server/src/cli-graph-retire.test.ts` (CLI retire/unretire/list --retired/replace, default needs --force, refusal while a real serve runs), `http/route-inventory.test.ts`
 
 `nooklet graph retire <id> [--force]` moves `graphs/<id>` to `graphs-retired/<id>-<UTC timestamp>/`
 (nothing deleted; `default` needs --force); `graph unretire <name> [--as <id>]`; `graph list
@@ -98,4 +98,4 @@ It could say "This graph was removed from the server" and stop retrying.
 
 ## How to resume
 
-Nothing in flight. Coordinator: fold the BUGS.md text above in, fill in the commit hash.
+Nothing in flight. Coordinator: fold the BUGS.md text above in (B-7xx numbers to assign).
