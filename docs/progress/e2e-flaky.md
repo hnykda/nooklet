@@ -67,11 +67,23 @@ after Restore); with the fix, 10/10 (and 50/50 for the whole spec). At `6d56c8f`
 merges, it failed 5/10. So it is the lost-poke bug, not B-624's carry-over (names are per-run)
 and not a regression from All pages' Delete, the in-app confirm or the ref index.
 
+After the merge: merged full run A (`f34e9b6`, retries 0): 804 passed, 2 failed, 2 skipped.
+`mermaid-lazy-cache.spec.ts:30` and `sync-connection-states.spec.ts:60`, both "This page doesn't
+exist yet" after a reload without the server. Trace: two device ids in one test, so the page load
+that showed the page had come up as a follower on an in-memory replica (the previous load's worker
+still held the writer lock). Fixed as B-761 (`d9b6a03`, `db/leader-tab.ts`), test
+`reload-leader.spec.ts` (red at wait 0). M2 (same tree, before B-761, under other agents' parallel
+runs, 37.8 m): 804 passed, 2 failed (WebKit focus-log:76 and phone-ui B-651; both test races,
+fixed). Second merge of main (`7a65a90`, includes `1d9845d2`), then coordinator items: phone-ui
+B-651 = B-764, desktop-local-graph:113 = B-765 (`588581f`). BUGS.md entries B-760..B-765 written
+directly at the coordinator's request.
+
 ## In flight / next
 
-- `--repeat-each 10` of tasks, popups, mermaid-lazy-cache, commands.
-- sw-update.spec.ts:86 (B-636): not reproduced (20/20 alone). Try under load.
-- Then three full `pnpm e2e --retries=0` runs, `pnpm -r test` twice, typecheck, biome, leak-check.
+- Three full `pnpm e2e --retries=0` runs on `588581f`: running (scratchpad `three-runs.sh`, logs
+  `full-A/B/C.log`).
+- Done: `pnpm -r test` twice on the first merge (3103 tests each, green), typecheck, biome (no
+  errors), leak-check clean. sw-update (B-636): not reproduced, 20/20 alone, 30/30 under load.
 
 ## BUGS.md updates to fold in
 
