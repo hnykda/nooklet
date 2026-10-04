@@ -10,7 +10,7 @@ offline). Both sides replaced the whole text, so the 3-way merge rightly failed,
 text ended as a `conflict_copy:: There is this` property chip under the winner ("Nothing"). The
 owner: "shouldn't it be smarter than that, and e.g. added that as extra line or something".
 
-How conflicts worked until now (read from code, `c3302f6`):
+How conflicts worked until now (read from code, `ae90be5`):
 
 - The merge runs only on a client, in `SyncClient.pull()` → `resolveTextConflicts` →
   `@nooklet/core`'s `resolvePendingTextConflict`. Trigger: a pulled `block.text` for a block that
@@ -119,7 +119,7 @@ in `pending_op`. A push response deletes them. `worker-core.ts` starts push and 
 was applied first, the other device's edit, pulled a moment later, met nothing: plain LWW, one text
 gone, no copy, no trace outside the op log. Proven, not suspected: `apps/web/src/sync/e2e.test.ts`
 "… whichever response a reconnecting device gets first (B-652)" holds each response until the test
-releases it. On `59aa77b`, 11 of 15 scenarios lost a text — every push-response-first case,
+releases it. On `8a91f06`, 11 of 15 scenarios lost a text — every push-response-first case,
 whichever device's text won LWW and whichever device came back first, three devices, and two
 devices that were both *online* and each pushed before pulling (no reconnect needed).
 
@@ -194,12 +194,12 @@ clients built before this change.
   seeded random schedules (2–3 devices, random clock offsets, 1–2 edits each, random flush / pull /
   reconnect with random request and response order) in a conflict mode (every device's last text
   on the page) and a merge mode (one text with every device's last word, no copy). 120 seeds per
-  mode by default; 5000 per mode passed. 20 of these fail on `59aa77b`.
+  mode by default; 5000 per mode passed. 20 of these fail on `8a91f06`.
 - `apps/web/src/sync/sync-client.test.ts`: `sent_text` kept on push, merged against, dropped when
   pulled back / when the cursor passes a noop / never written when a pull already passed it.
 - `e2e/tests/sync-conflict.spec.ts` "a reconnecting device whose push response lands before its
   pull keeps both texts (B-652, …)": real browsers, the returning device's pull responses held
-  1.5 s with `context.route`; both fail with the `59aa77b` client.
+  1.5 s with `context.route`; both fail with the `8a91f06` client.
 - `tools/probes/b652-race-http.ts`: three devices against a real `nooklet serve`; with the
-  `59aa77b` client four edits vanished and every replica agreed on the loss, and `nooklet verify`
+  `8a91f06` client four edits vanished and every replica agreed on the loss, and `nooklet verify`
   still said OK — verify cannot see this kind of loss, only the tests above can.

@@ -1,6 +1,6 @@
 # Progress: a local graph from the desktop app's switcher (B-643), whimsical names (B-644)
 
-Branch `worktree-agent-a72408d2a6d0b0d34`, based on `main` at `c3302f6`. Not merged.
+Branch `worktree-agent-a72408d2a6d0b0d34`, based on `main` at `ae90be5`. Not merged.
 
 ## Status
 
@@ -75,7 +75,7 @@ Found on the way and needed for this: loading `/g/X` while this origin's active 
 `/g/Y` showed Y's data under X's URL (`apiBaseUrl()` prefers the active entry). The address bar
 now wins on web/desktop (`adoptAddressBarGraph`).
 
-## Verification (exact, `884f469`)
+## Verification (exact, `b2f737a`)
 
 - `cargo test` (apps/desktop/src-tauri, `CARGO_TARGET_DIR` in scratch, empty `apps/desktop/sidecar/`
   so the build script finds its resource dir): 17 passed (11 before + 6 new).
@@ -89,11 +89,11 @@ now wins on web/desktop (`adoptAddressBarGraph`).
 - Full chromium e2e suite: 709 passed, 2 skipped, 2 failed: `pages.spec.ts` "a page created through
   the API appears in the open sidebar without a reload" and `plugins.spec.ts` "deleting the open
   page asks word count about it without a 500 (B-610)". Both files re-run alone: 22/22 passed. So
-  order-dependent in the full run; not run on `c3302f6` to show they are pre-existing, and neither
+  order-dependent in the full run; not run on `ae90be5` to show they are pre-existing, and neither
   touches the graph list, the switcher or `/g/` routing.
 - Red without the fix: "once made, the new graph opens on This Mac's server..." fails with
   `adoptAddressBarGraph()` commented out (requests went to `/g/default`). The component test
-  "offers a new graph on this Mac" cannot pass on `c3302f6` (no such option there).
+  "offers a new graph on this Mac" cannot pass on `ae90be5` (no such option there).
 - Behaviour change caught by the suite: `graph-switcher.spec.ts` "adding an existing remote graph"
   went to a bare `/page/...` after switching to `gs-second`, which the server redirects to
   `/g/default/...`; it used to show gs-second's data under default's URL, now it opens default. The
@@ -111,14 +111,14 @@ now wins on web/desktop (`adoptAddressBarGraph`).
 
 ## BUGS.md updates to fold in
 
-- **B-643** → fixed (`884f469`). Cause: `GraphSwitcher.tsx` offered a local graph only when
+- **B-643** → fixed (`b2f737a`). Cause: `GraphSwitcher.tsx` offered a local graph only when
   `platform.name === "capacitor"`; the desktop app is the web platform. Model chosen: a new graph on
   This Mac's bundled server (ADR 028), via a shell request the page makes by navigating to
   `nooklet-desktop.invalid`. Tests: `e2e/tests/desktop-local-graph.spec.ts` (3 desktop cases),
   `e2e/tests/desktop-launcher.spec.ts` two B-643 cases, `GraphSwitcher.test.tsx` "B-643: the
   desktop app" (4), `desktop-shell.test.ts` (2), `cli-first-run.test.ts` "graph create" (2), Rust
   `main.rs` tests (6). Real window unverified.
-- **B-644** → fixed (`884f469`). Tests: `data/graph-names.test.ts` (6), `bootstrap.test.ts` "B-644:
+- **B-644** → fixed (`b2f737a`). Tests: `data/graph-names.test.ts` (6), `bootstrap.test.ts` "B-644:
   each new local graph gets its own curated name", e2e `desktop-local-graph.spec.ts` "B-644: on the
   phone...". Existing names (including "This device") are never renamed; the B-612 rescue still
   labels the recovered graph "This device".

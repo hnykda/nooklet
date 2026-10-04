@@ -7,21 +7,21 @@ properties removes it), B-194 (Cmd/Ctrl+Z after the edited block left the page r
 sight and unmounts the editor), B-162 (undoing a collapse ends editing, so redo has no keyboard
 target). Failing Playwright test first for each.
 
-Branch `m9/undo` from `cf08d19`, worktree
+Branch `m9/undo` from `febfc23`, worktree
 `<repo>/.claude/worktrees/wf_e473942f-106-5`. e2e port 6400. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m9/undo/`.
 Bugs go to `docs/bugs-inbox/undo.md` (never `docs/BUGS.md`).
 
 ## 1. Done (commit hashes)
 
-- `35ff441` B-142 fixed + B-191 verified fixed by B-101: `app/hosts.ts#createStore` writes
+- `386320e` B-142 fixed + B-191 verified fixed by B-101: `app/hosts.ts#createStore` writes
   block props through `EditorHost.commitOps`; `app/editor-host.ts#commitThroughEditor` tries the
   active, recent, then every mounted tree (`registerEditorHost` in `BlockTree`). Tests:
   `e2e/tests/undo-gaps.spec.ts` (B-142 ×3, B-191 ×1), `hosts.test.ts` +3, `editor-host.test.ts` +3.
   Base run of the full new spec (7 tests incl. B-194/B-162): 6 failed, 1 passed (B-191; it fails
   with `invert.ts#propValueBefore`'s default put back to `null`). After the change: B-142 3/3;
   dates, tasks, templates, template-undo, undo-redo, redo, selection 55/55; web unit 1006/1006.
-- `6628f12` B-194, B-162, B-280 fixed: `history.ts` undo/redo take `present(id)` and drop
+- `2ba4b35` B-194, B-162, B-280 fixed: `history.ts` undo/redo take `present(id)` and drop
   steps on blocks that left (`reachable`); new `editor/undo-focus.ts#focusAfterStep` (follow a
   caret only into a block with a row; no caret → keep the editor while its row is on screen);
   `BlockTree#applyHistoryStep` shared by `doUndo`/`doRedo`; `BlockTree#commitStep` flushes typing
@@ -31,7 +31,7 @@ Bugs go to `docs/bugs-inbox/undo.md` (never `docs/BUGS.md`).
   redo, focus, editing, editing-row-leaves, commands, template-undo, selection, tasks, dates,
   block-properties, journal-stream-editing, page-find, read-only): 131/131. Web unit 1015/1015.
 
-- `e0da57d` R51 as built (`docs/spec/commands-and-keymap.md`, four lines), real-graph probe
+- `fd3e960` R51 as built (`docs/spec/commands-and-keymap.md`, four lines), real-graph probe
   `tools/probes/undo-real-graph.spec.ts`.
 - (this commit) Verification, all on the branch head:
   - Full e2e in two runs on port 6400 (the machine was loaded: the second took 16.7 min).
@@ -39,7 +39,7 @@ Bugs go to `docs/bugs-inbox/undo.md` (never `docs/BUGS.md`).
     2 failed — `popups.spec.ts` "Code block wraps the content in a fence" (passed on rerun: 71/72
     for popups + views) and `views.spec.ts` "opening the palette while editing and closing it hands
     focus back to the editor", which fails again alone AND with `apps/web/src` checked out at
-    `cf08d19` — the pre-existing B-161 family (B-173/B-193/B-213/B-226/B-246/B-270), not this
+    `febfc23` — the pre-existing B-161 family (B-173/B-193/B-213/B-226/B-246/B-270), not this
     branch. Total 446 passed of 450 in the full pass, 448 counting the rerun.
   - Real graph (backup of `~/.nooklet/default`, served on port 6419 with `NOOKLET_DATA` in
     scratch): the probe passes 2/2 — palette priority, Cmd/Ctrl+Enter and a collapse of a 35-child
@@ -72,7 +72,7 @@ answered "no" here and needs the owner's confirmation (see the inbox entry for h
 
 ## 5. How to resume
 
-`git log --oneline cf08d19..m9/undo` in the worktree; this file's section 1 names each commit.
+`git log --oneline febfc23..m9/undo` in the worktree; this file's section 1 names each commit.
 Run `cd e2e && NOOKLET_E2E_PORT=6400 pnpm exec playwright test tests/undo-gaps.spec.ts --project=chromium`.
 
 ## 6. Adversarial verification (second agent, 2026-09-13)
@@ -87,20 +87,20 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
   Cmd/Ctrl+Enter undoes in two steps (`kind:: ab` → `kind:: a`); a remote `block.delete` of the
   last-edited block drops that step and undoes the older one; Czech + emoji text survives a date
   undo; cross-tree chip pick with editing in another day is undone correctly. Rapid double
-  Cmd/Ctrl+Enter reads a stale marker (TODO twice) — the same on `cf08d19`, not this branch.
-- Found and fixed **B-281** (`9546dff`): a block left selected in another journal day kept its
+  Cmd/Ctrl+Enter reads a stale marker (TODO twice) — the same on `febfc23`, not this branch.
+- Found and fixed **B-281** (`bf8504d`): a block left selected in another journal day kept its
   tree the undo target over the tree that took a chip date. New e2e test in `undo-gaps.spec.ts`
   (fails before the change), unit test in `editor-host.test.ts`. Logged, not fixed: **B-282**
   (rapid double Cmd/Ctrl+Enter, pre-existing).
 - Probes kept: `tools/probes/undo-verify-edges.spec.ts` (results in its header),
   `tools/probes/undo-verify-real-graph.spec.ts` (B-281 and an undo chain on real journal days;
   both passed on a backup copy, `nooklet verify` OK, 20449 ops).
-- After `9546dff`: web unit 1016/1016; `pnpm -r test` 393 + 17 + 608 + 1016, all passed;
+- After `bf8504d`: web unit 1016/1016; `pnpm -r test` 393 + 17 + 608 + 1016, all passed;
   `pnpm -r typecheck` exit 0. Related e2e (undo-gaps, undo-redo, redo, selection, dates, tasks,
   journal-stream-editing, read-only, template-undo, templates, journals, context-menu): 91 passed,
   1 skipped. Full e2e in three runs on port 6400: `[a-i]` 127 passed, 1 skipped, 1 failed
   (`autocomplete.spec.ts` "typing a namespaced query…", passed alone and again after the four specs
   before it: 7/7); `[j-p]` 142 passed; `[q-z]` 177 passed, 1 skipped, 2 failed — `templates.spec.ts`
   "a day started in the app…" (passed on rerun, templates + views 36/37) and `views.spec.ts` "opening
-  the palette while editing…" (fails again with `apps/web/src` at `cf08d19`: B-161, pre-existing).
+  the palette while editing…" (fails again with `apps/web/src` at `febfc23`: B-161, pre-existing).
   446 passed + 2 skipped + 3 failed of 451; 448 counting the reruns.

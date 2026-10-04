@@ -1,6 +1,6 @@
 # 002 — Pending edits must survive a reload
 
-Proposal, 2026-09-13, against tree `cf08d19` (branch `m9/clipboard-sync`). Status: **the cheapest
+Proposal, 2026-09-13, against tree `febfc23` (branch `m9/clipboard-sync`). Status: **the cheapest
 safe option (B below) is implemented**; whether to keep it or move to C is the open question for
 the owner. Kept as written rather than updated in place.
 

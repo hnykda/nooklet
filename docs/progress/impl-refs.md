@@ -18,8 +18,8 @@ port 6406, new bug numbers B-200..B-209. Bugs go to `docs/bugs-inbox/impl-refs.m
 
 ## Note on the starting commit
 
-The worktree was created at `41666ee` (an old commit), not `da85cfb`. The branch was created there
-and immediately `git reset --hard da85cfb` before any work (no commits lost; nothing else touched).
+The worktree was created at `f7c9644` (an old commit), not `61279a2`. The branch was created there
+and immediately `git reset --hard 61279a2` before any work (no commits lost; nothing else touched).
 
 ## Done
 
@@ -27,23 +27,23 @@ and immediately `git reset --hard da85cfb` before any work (no commits lost; not
   `packages/server/src/block-create-bag.test.ts`; sql-schema.md rule 24 updated. Core 335/335,
   server 522/522, typecheck clean, verify OK on the real-graph copy (20,411 ops).
 
-- B-89 commit `03d8422`.
+- B-89 commit `54e92ba`.
 - B-104 fixed: core `page-alias.ts` (parser moved from server), client `data/page-alias.ts` +
   `usePageByName` fallback (stamped on `page_prop`), `views/canonicalPageRoute.ts` redirect hooked
-  into `PageView` (2 lines). e2e `page-identity.spec.ts` 5/5; all 5 fail on da85cfb's client; the
+  into `PageView` (2 lines). e2e `page-identity.spec.ts` 5/5; all 5 fail on 61279a2's client; the
   "no bounce" test fails with the loading guard removed. Neighbour specs (pages, navigation,
   journals, references, refactor, shelf, history, page-icons + identity): 53 passed. Web unit
   692/692.
 
-- B-104 commit `713f059`.
+- B-104 commit `be6c119`.
 - B-111 fixed: `page-tags.ts#pagesTaggedWith`, `page.backlinks` `tagged_pages`/`tagged_total` +
   description + render; spec §4.3.6, ADR 017 note, 3 wiki pages; client `api-client.ts` types,
   `views/TaggedPages.tsx` + `tagged-pages.css`, hookup in `ReferencesPanel.tsx`. Server 528/528,
   web 695/695 (one earlier full run had 1 failure in `page-title.test.ts`, passed alone and on the
-  full rerun — load), e2e tagged-pages 3/3 (all fail on da85cfb), neighbours 53 passed. Logged
+  full rerun — load), e2e tagged-pages 3/3 (all fail on 61279a2), neighbours 53 passed. Logged
   B-200 (uncreated page shows no references) — open, not fixed.
 
-- B-111 commit `a4ba8fd`.
+- B-111 commit `201bd70`.
 - Real-graph probe `tools/probes/refs-real-graph.mjs` on a copy served at 6406: alias routes
   (daně → Taxes, zahrada → Garden, bracketed alias with commas) redirect in ~250 ms; `journal` page
   shows "Pages tagged journal" 825 (200 shown, note present) above linked refs; API journal 825 in
@@ -56,7 +56,7 @@ and immediately `git reset --hard da85cfb` before any work (no commits lost; not
   references means no panel at all", 12 s timeout) — passed alone and in the same file order (83
   passed): load.
 
-- Probe commit `df36a2e`; B-201 commit `0ccd0a0`. Final unit: core 338/338, server 528/528, web
+- Probe commit `a774a97`; B-201 commit `cb2b6e3`. Final unit: core 338/338, server 528/528, web
   695/695; `pnpm -r typecheck` clean.
 
 ## In flight
@@ -89,7 +89,7 @@ Nothing. B-89, B-104, B-111, B-201 fixed and committed; B-200 logged open.
 
 ## How to resume
 
-`git log --oneline da85cfb..m8/impl-refs`, then this file, then `docs/bugs-inbox/impl-refs.md`.
+`git log --oneline 61279a2..m8/impl-refs`, then this file, then `docs/bugs-inbox/impl-refs.md`.
 Real-graph copy: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-refs/graph`
 (re-create with `sqlite3 ~/.nooklet/default/graph.sqlite ".backup '<dir>/graph.sqlite'"` if gone).
 

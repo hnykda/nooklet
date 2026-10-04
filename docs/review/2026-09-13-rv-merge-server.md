@@ -5,7 +5,7 @@ Brief from the M9 coordinator: fix four code-review findings (F1–F4) on the me
 by an independent skeptic. Reproduce each one first with a failing test, fix the cause, one commit
 per finding, high severity first; write this record last.
 
-Branch `m9/rv-merge-server`, from `cf08d19`. Bugs were written to
+Branch `m9/rv-merge-server`, from `febfc23`. Bugs were written to
 `docs/bugs-inbox/rv-merge-server.md` (not `docs/BUGS.md`); progress in
 `docs/progress/rv-merge-server.md`. Numbers B-365..B-369.
 
@@ -25,14 +25,14 @@ checkout, so they were used as evidence only; every finding got a real test on t
 
 ## Findings, by severity
 
-Line numbers are at `cf08d19`.
+Line numbers are at `febfc23`.
 
 | # | Sev | Where | What | Bug | Outcome |
 |---|---|---|---|---|---|
-| F1 | medium | `packages/server/src/mirror/live.ts:63` | The live mirror moves its `changes.seq` cursor whenever `exportAll` returns, and `exportAll` now reports page write failures instead of throwing (B-126 × B-260): a page that failed once is never retried until it changes or the server restarts, while the log says it will be. | B-365 | fixed `2677236` |
-| F2 | low | `packages/server/src/ops/batch-undo.ts:204` | `batch.undo`'s page-name pre-check uses the before-image and ignores `keep_later_edits`, so History's Undo is refused over a name the undo would not write. | B-366 | fixed `d4f1335` |
-| F3 | low | `packages/server/src/ops/batch-undo.ts:208` | The same pre-check checks page keys only; B-256's alias refusal reached `trash.restore` (`trash-restore.ts:144`, `assertNameFree`) but not `batch.undo`, so undoing a delete takes a name back from a live page's alias. | B-367 | fixed `b36d2f2` |
-| F4 | low | `packages/core/src/sync/page-outline.ts:176` | Core `pageMirrorPath` (the web export's file name) lacks the NAME_MAX shortening the server's own `pageFilePath` has, and the download lacks the mirror's `title::`. | B-368 | fixed `aa866c3` |
+| F1 | medium | `packages/server/src/mirror/live.ts:63` | The live mirror moves its `changes.seq` cursor whenever `exportAll` returns, and `exportAll` now reports page write failures instead of throwing (B-126 × B-260): a page that failed once is never retried until it changes or the server restarts, while the log says it will be. | B-365 | fixed `6d51dd9` |
+| F2 | low | `packages/server/src/ops/batch-undo.ts:204` | `batch.undo`'s page-name pre-check uses the before-image and ignores `keep_later_edits`, so History's Undo is refused over a name the undo would not write. | B-366 | fixed `9aeb801` |
+| F3 | low | `packages/server/src/ops/batch-undo.ts:208` | The same pre-check checks page keys only; B-256's alias refusal reached `trash.restore` (`trash-restore.ts:144`, `assertNameFree`) but not `batch.undo`, so undoing a delete takes a name back from a live page's alias. | B-367 | fixed `55e772b` |
+| F4 | low | `packages/core/src/sync/page-outline.ts:176` | Core `pageMirrorPath` (the web export's file name) lacks the NAME_MAX shortening the server's own `pageFilePath` has, and the download lacks the mirror's `title::`. | B-368 | fixed `76c9e19` |
 
 All four reproduced. None was left as "does not reproduce".
 
@@ -41,7 +41,7 @@ All four reproduced. None was left as "does not reproduce".
 Each commit was green on `pnpm exec biome check`, `pnpm -r typecheck` and the unit suites of the
 packages it touched before it was made.
 
-1. `2677236` fix(server): the live mirror retries a page file it could not write (B-365) — the
+1. `6d51dd9` fix(server): the live mirror retries a page file it could not write (B-365) — the
    sweep keeps the ids in `exportAll`'s `failed` and passes them to the next sweep through a new
    `exportAll` option, `alsoPageIds` (candidates on top of the pages touched since the cursor); the
    cursor still advances. **Changed from the suggestion:** the smallest version (`if
@@ -49,9 +49,9 @@ packages it touched before it was made.
    pin the cursor forever, and every sweep would re-render every page touched since. With the
    carry-over, a page that keeps failing costs one render per sweep and is logged each time.
    Test: `mirror/live.test.ts` "retries a page it could not write on the next sweep, without that
-   page changing again (B-365)". It fails at `cf08d19`, where the second sweep logs nothing about
+   page changing again (B-365)". It fails at `febfc23`, where the second sweep logs nothing about
    the page.
-2. `d4f1335` fix(ops): batch.undo checks the name the page will have after the undo (B-366).
+2. `9aeb801` fix(ops): batch.undo checks the name the page will have after the undo (B-366).
    `pagePlan(row)` works out the name and tombstone the undo leaves, and whether it writes a
    `page.rename`. Both the pre-check and the op builder read it, and `laterEdits` is memoized per
    entity. **Changed from the suggestion:** checking the post-undo name alone was not enough. In
@@ -62,10 +62,10 @@ packages it touched before it was made.
    `trash.restore … new_name` after the old name was taken again used to get core's 400
    `page-key-collision`, and now gets the pre-check's 409. mcp-tools.md §4.3.17 errors updated.
    Tests: `batch-undo-later-edits.http.test.ts` "a later rename or delete it keeps does not make
-   the undo fight over the page's old name (B-366)", which answers 409 at `cf08d19`, and
+   the undo fight over the page's old name (B-366)", which answers 409 at `febfc23`, and
    `undelete-collision.http.test.ts` "batch.undo of a restore under new_name, after the old name
-   was taken, is conflict (B-366)", which answers 400 at `cf08d19`.
-3. `b36d2f2` fix(ops): batch.undo refuses a name a live page uses as an alias (B-367).
+   was taken, is conflict (B-366)", which answers 400 at `febfc23`.
+3. `55e772b` fix(ops): batch.undo refuses a name a live page uses as an alias (B-367).
    `trash-restore.ts#livePageAliasing` is exported and takes a list of page ids to leave out
    (`json_each`, so a large batch needs no variable per id). `batch.undo` calls it for pages
    outside the batch. **Changed from the suggestion ("exclude pages in `firstByEntity`"):** a page
@@ -77,9 +77,9 @@ packages it touched before it was made.
    `page.create`) would be refused. Tool description and mcp-tools.md updated. Test: new
    `ops/batch-undo-alias.http.test.ts` with 4 tests. Two answered 200 before the fix; the other two
    guard the exemptions.
-4. `598ce78` test(probes): `tools/probes/undo-names-real-graph.ts`, which runs F2 and F3 on a copy
+4. `80806e1` test(probes): `tools/probes/undo-names-real-graph.ts`, which runs F2 and F3 on a copy
    of the real graph (results below) and logs B-369.
-5. `aa866c3` fix(core,server,web): one mirror file name for the server and the web export (B-368).
+5. `76c9e19` fix(core,server,web): one mirror file name for the server and the web export (B-368).
    Core `pageMirrorPath` now shortens names with B-126's rules: 200 UTF-8 bytes, cut on a code
    point, never inside `%XX`. The new core `pageMirrorOutline` adds the leading `title::` for a
    shortened name. Server `exportPage` and web `renderPageMarkdown` both use them. The server's
@@ -89,22 +89,22 @@ packages it touched before it was made.
    runs in the browser, where the only SHA is async `crypto.subtle`. A file shortened under the old
    suffix is renamed on its next export by `exportPage`'s path-change cleanup, and the owner's graph
    has none. Tests: core `page-outline.test.ts` "shortens a name past NAME_MAX to a prefix and a
-   hash, as the mirror names its file (B-368)" (fails at `cf08d19`) and "puts the full name in
+   hash, as the mirror names its file (B-368)" (fails at `febfc23`) and "puts the full name in
    title:: when, and only when, the file name was shortened (B-368)"; server `export.test.ts` "the
    web export's file name and text are the mirror's, long names included (B-368)"; e2e
    `page-export.spec.ts` "Export of a page whose name is past NAME_MAX downloads the mirror's
    shortened file, title:: included (B-368)". With the three source files put back to their pre-F4
    versions and the test kept, that e2e test failed: Chromium suggested the full 345-byte name while
    the mirror wrote `…čtvrtlet~6d458ccb.md`.
-6. `fee493a` fix(ops): batch.undo's outline names a page as the undo leaves it (B-369). See below.
+6. `728bd11` fix(ops): batch.undo's outline names a page as the undo leaves it (B-369). See below.
 
 ## Found while fixing
 
 | Where | What | Outcome |
 |---|---|---|
-| `ops/batch-undo.ts` summary line | With `keep_later_edits`, the outline said `restored page "<before-image name>"` for a page left renamed, and "restored" for a page that stays in the trash. Seen on the real graph ("Plánování zahradních úprav", Garden). | B-369, fixed `fee493a`; test in `batch-undo-later-edits.http.test.ts` |
+| `ops/batch-undo.ts` summary line | With `keep_later_edits`, the outline said `restored page "<before-image name>"` for a page left renamed, and "restored" for a page that stays in the trash. Seen on the real graph ("Plánování zahradních úprav", Garden). | B-369, fixed `728bd11`; test in `batch-undo-later-edits.http.test.ts` |
 | `ops/batch-undo.ts` (F2's suggested fix) | A rename to the page's own name, on a page that stays trashed, is rejected by core. | folded into B-366 |
-| `ops/batch-undo.ts` op order | **Not fixed, needs a number.** `batch.undo` cannot reverse a single batch that renamed page A to B and then created a new A (`batch` op, or a plugin). The undo writes the rename back to A before it deletes the new A, core rejects the rename, and the call answers 400 `page-key-collision (page.rename …); nothing was written`. Reproduced with a scratch probe (`scratchpad/m9/rv-merge-server/undo-rename-and-recreate.probe.test.ts`). Not introduced here: by reading, `cf08d19` behaves the same (the pre-check exempts clashing pages inside the batch, and ops are minted in `changes.seq` order); the probe ran on this branch only. A fix would order page deletes before renames/un-deletes, or check the batch's post-undo keys as a whole. | open; coordinator to number |
+| `ops/batch-undo.ts` op order | **Not fixed, needs a number.** `batch.undo` cannot reverse a single batch that renamed page A to B and then created a new A (`batch` op, or a plugin). The undo writes the rename back to A before it deletes the new A, core rejects the rename, and the call answers 400 `page-key-collision (page.rename …); nothing was written`. Reproduced with a scratch probe (`scratchpad/m9/rv-merge-server/undo-rename-and-recreate.probe.test.ts`). Not introduced here: by reading, `febfc23` behaves the same (the pre-check exempts clashing pages inside the batch, and ops are minted in `changes.seq` order); the probe ran on this branch only. A fix would order page deletes before renames/un-deletes, or check the batch's post-undo keys as a whole. | open; coordinator to number |
 | `page.delete` / `page.create` with an alias name | `page.delete {page: "Nick"}` while "Real" has `alias:: Nick` deletes "Real", and `page.create {name: "Nick"}` returns "Real" with `existed: true` and does not add its markdown. The first run of the real-graph probe hit this: `page.delete {page: "Daně"}` deleted Taxes. Both responses name the real page, so this is not silent. It looks like the intended alias resolution of `requirePage`, but it is surprising on a destructive op. | not changed; noted for the owner |
 
 ## Not done
@@ -146,7 +146,7 @@ packages it touched before it was made.
 ## Still unverified
 
 - **What a real browser saves for an over-long download name.** Playwright reported the full
-  345-byte `suggestedFilename` at `cf08d19`, but Playwright saves downloads under its own GUID
+  345-byte `suggestedFilename` at `febfc23`, but Playwright saves downloads under its own GUID
   names. Chromium's and WKWebView's behaviour when writing a name over 255 bytes to disk (cut,
   rename, fail) was not observed. After the fix the name is at most 203 bytes, so the question no
   longer arises for nooklet's own export.

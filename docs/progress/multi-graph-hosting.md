@@ -125,7 +125,7 @@ immediately caught a real bug, exactly per CLAUDE.md's testing philosophy:
   (`apps/web/src/sync/e2e.test.ts`'s "push first" name-collision-with-a-tombstone case) started
   failing a `verifyRebuildParity` check on the server, surfaced by a full `pnpm -r test` run done
   while wrapping up B-586. Confirmed via `git stash` bisection to be pre-existing in the
-  accumulated-but-uncommitted tree (passes on `629f572`), not caused by ADR 025/B-586 (the failing
+  accumulated-but-uncommitted tree (passes on `77b1fee`), not caused by ADR 025/B-586 (the failing
   test never imports `bootstrap.ts`/`GraphSwitcher.tsx`). Logged with full detail, deliberately not
   investigated — different subsystem (sync/tombstone replay), possibly related to B-585's area
   (both touch this session's earlier B-568 ref-page work) but not confirmed to share a cause.

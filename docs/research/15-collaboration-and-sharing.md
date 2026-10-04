@@ -2,7 +2,7 @@
 
 Dated record, 2026-09-12. Like the other files in `docs/research/`, this is kept as written rather
 than updated in place. No ADR follows from it yet; §8 says what one would decide. Working tree at
-commit `f1675df` plus six agents' uncommitted M7 work; nothing in this document depends on the
+commit `d24ce73` plus six agents' uncommitted M7 work; nothing in this document depends on the
 uncommitted parts.
 
 **Read `research/11-e2ee-sync.md` and `research/12-multi-user-and-pairing.md` first.** They settled
@@ -62,7 +62,7 @@ page could not be fetched, §9 says so rather than guessing.
 
 ---
 
-## 1. What exists today (verified by reading the tree at `f1675df`)
+## 1. What exists today (verified by reading the tree at `d24ce73`)
 
 The op log and its invariants, restated only as far as the questions below need them:
 

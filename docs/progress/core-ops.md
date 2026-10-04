@@ -11,7 +11,7 @@ linked refs), B-370 (`batch.undo` of rename A→B + create new A fails with page
 test), B-324 (Tasks view row shows one date; show scheduled and deadline when both exist). Then
 `pnpm nooklet verify` on a real-graph copy.
 
-Branch `m10/core-ops` from `70c9bb9`, worktree
+Branch `m10/core-ops` from `007052a`, worktree
 `<repo>/.claude/worktrees/wf_ced35de1-fb8-3`. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m10/core-ops/`
 (`graph/graph.sqlite` = `.backup` of the owner's graph taken 13:08; `data/` = NOOKLET_DATA for any
@@ -20,17 +20,17 @@ nooklet command; `reimport/` = the mirror re-imported). E2E port 6401. Bugs go t
 
 ## Done (committed) — every item of the brief
 
-- `421a829` B-310 + B-390 (new, found fixing B-310) — `core/outline.ts` parser/serializer; spec
+- `528113f` B-310 + B-390 (new, found fixing B-310) — `core/outline.ts` parser/serializer; spec
   OUT-14 and OUT-18; tests `core/src/outline.test.ts` (+8) and `server/src/mirror/export.test.ts`
   (+1); probe `tools/probes/mirror-roundtrip-graph.ts`.
-- `363f376` B-322 — `server/ops/page-backlinks.ts` keys the missing-page branch by `refKeyOf`. Test
+- `6056932` B-322 — `server/ops/page-backlinks.ts` keys the missing-page branch by `refKeyOf`. Test
   `server/src/ops/page-backlinks-missing-journal.http.test.ts` (2).
-- `5f0e4ac` B-370 — `server/ops/batch-undo.ts` orders page restores so a key is freed before it is
+- `0c69191` B-370 — `server/ops/batch-undo.ts` orders page restores so a key is freed before it is
   claimed (DFS: a page claiming key K goes after the batch page that holds K and gives it up). Test
   `server/src/ops/batch-undo-name-order.http.test.ts` (3, incl. a two-page swap: still refused).
-- `f565e8a` B-324 — `web/views/taskFilters.ts#taskDateLabels` + `TasksView.tsx` + `styles/views.css`.
+- `f5940a6` B-324 — `web/views/taskFilters.ts#taskDateLabels` + `TasksView.tsx` + `styles/views.css`.
   Tests `taskFilters.test.ts` (+2), `e2e/tests/tasks-view-dates.spec.ts` (1).
-- `11d9ee2` B-311 — `web/editor/paste.ts#pastedBlocks` keeps a pre-block as an empty block with those
+- `e7fe15f` B-311 — `web/editor/paste.ts#pastedBlocks` keeps a pre-block as an empty block with those
   properties. Tests `paste.test.ts` (+4), `e2e/tests/paste-page-properties.spec.ts` (1).
 
 Each new test was run against the pre-fix code and failed (except guard tests noted in the inbox).
@@ -73,7 +73,7 @@ B-322, B-324, B-370 existing; B-390 new, fixed) into BUGS.md.
 
 Re-run and extended by a second agent; nothing above needed a code change. Evidence, for folding:
 
-- Every new test above fails on 70c9bb9's code where the entry says it does (B-322 2/2, B-370 2 of
+- Every new test above fails on 007052a's code where the entry says it does (B-322 2/2, B-370 2 of
   3 plus the two added below, B-311 3 of 4 re-run against the old `paste.ts`).
 - Added: `packages/core/src/outline.test.ts` › "serialize -> parse is lossless across heads, ids,
   properties and content shapes" (192 blocks × both id modes × with/without page properties; fails

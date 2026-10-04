@@ -1,18 +1,18 @@
 # Progress — pairing link, serve hardening (D3, B-602, B-604, B-603, B-607, B-616)
 
-Branch `worktree-agent-a1a8803e8c967f3b2` (reset to main @ edacbc4, then `git merge main` twice at
-the coordinator's request: `e22c2c9`, `b07ecdd`). Ports used: 6316–6319. Not merged to main.
+Branch `worktree-agent-a1a8803e8c967f3b2` (reset to main @ 2360bca, then `git merge main` twice at
+the coordinator's request: `0a2274f`, `cfeaed0`). Ports used: 6316–6319. Not merged to main.
 
 ## Status — all done
 
 | item | commit | test |
 |---|---|---|
-| D3 / B-600 remainder: `serve --no-loopback-token`, on in Dockerfile + Helm chart | `b233294` | `http/host-guard.test.ts` "--no-loopback-token (B-600, decision D3)" |
-| B-602: failed WS upgrades answered at once | `b233294` | `graphs/mount.test.ts` (2 new) |
-| B-607: command before first `serve` (coordinator add-on) | `228f942` | `graphs/registry.test.ts` (5), `cli-first-run.test.ts` (2) |
-| B-604: LAN addresses on `--host 0.0.0.0` | `f19a64b` | `serve-banner.test.ts` (7) |
-| B-603: `nooklet://connect` pairing link + `token create --link` | `0399e4e`, `fb31593` | `connect-graph.test.ts` parsePairingLink (5), `PairingLinkPrompt.test.tsx` (5), `platform/launch-url.test.ts` (4), `auth/pairing-link.test.ts` (3), `cli-first-run.test.ts` --link (1); Simulator probe `tools/probes/pairing-link-ui/` |
-| B-616: MCP Host guard only on `/mcp`, follows `--allow-host` (coordinator add-on) | `f177b35` | `http/web-client.test.ts` "serves the app shell behind a same-host proxy that rewrites Host (B-616)" |
+| D3 / B-600 remainder: `serve --no-loopback-token`, on in Dockerfile + Helm chart | `27baa2e` | `http/host-guard.test.ts` "--no-loopback-token (B-600, decision D3)" |
+| B-602: failed WS upgrades answered at once | `27baa2e` | `graphs/mount.test.ts` (2 new) |
+| B-607: command before first `serve` (coordinator add-on) | `a22487b` | `graphs/registry.test.ts` (5), `cli-first-run.test.ts` (2) |
+| B-604: LAN addresses on `--host 0.0.0.0` | `f4e7189` | `serve-banner.test.ts` (7) |
+| B-603: `nooklet://connect` pairing link + `token create --link` | `b484a24`, `4d1f1b7` | `connect-graph.test.ts` parsePairingLink (5), `PairingLinkPrompt.test.tsx` (5), `platform/launch-url.test.ts` (4), `auth/pairing-link.test.ts` (3), `cli-first-run.test.ts` --link (1); Simulator probe `tools/probes/pairing-link-ui/` |
+| B-616: MCP Host guard only on `/mcp`, follows `--allow-host` (coordinator add-on) | `6079f95` | `http/web-client.test.ts` "serves the app shell behind a same-host proxy that rewrites Host (B-616)" |
 | Runbook (owner's Option L decision) + OPERATIONS §1.1/§2/§8 + README | last commit | — |
 
 ## Decisions
@@ -43,7 +43,7 @@ the coordinator's request: `e22c2c9`, `b07ecdd`). Ports used: 6316–6319. Not m
   Connecting goes through `connectToGraph`, which adds a remote entry and keeps local graphs. The
   server builds the link with an explicit `/g/<graph>` path. **No QR**: no QR library is in the
   dependency tree; adding one is an owner decision.
-- **Found on the Simulator, fixed (`fb31593`)**: Capacitor's `App.getLaunchUrl()` is really
+- **Found on the Simulator, fixed (`4d1f1b7`)**: Capacitor's `App.getLaunchUrl()` is really
   `ApplicationDelegateProxy.lastURL` (`@capacitor/ios` 8.5.1 `CAPBridge.swift`), set by every open
   and surviving `location.reload()`, so after Connect the confirm screen reappeared. Delivered URLs
   are now recorded (FNV hash only, never the token) in `sessionStorage`; `getLaunchUrl()` skips
@@ -91,24 +91,24 @@ the coordinator's request: `e22c2c9`, `b07ecdd`). Ports used: 6316–6319. Not m
 
 ## BUGS.md updates to fold in
 
-- **B-600** → D3 done: `nooklet serve --no-loopback-token` (`b233294`), set in the Dockerfile and
+- **B-600** → D3 done: `nooklet serve --no-loopback-token` (`27baa2e`), set in the Dockerfile and
   the Helm chart. Test: `http/host-guard.test.ts` "--no-loopback-token (B-600, decision D3)".
   Status → fixed.
-- **B-602** → fixed (`b233294`). Root cause: B-589's second `'upgrade'` listener; affected every
+- **B-602** → fixed (`27baa2e`). Root cause: B-589's second `'upgrade'` listener; affected every
   failed upgrade, not only bare paths. Tests: `graphs/mount.test.ts` "answers a failed upgrade with
   404 at once instead of leaving it hanging (B-602)" and "survives a client resetting the TCP
   connection mid-upgrade (B-589, kept by the new guard)". B-589's entry should point to
   `http/upgrade-guard.ts` now.
-- **B-603** → fixed (`0399e4e`, `fb31593`). Tests listed in the Status table; Simulator probe
+- **B-603** → fixed (`b484a24`, `4d1f1b7`). Tests listed in the Status table; Simulator probe
   `tools/probes/pairing-link-ui/`. QR left out (no library; owner decision).
-- **B-604** → fixed (`f19a64b`). Test: `serve-banner.test.ts`.
-- **B-607** → fixed (`228f942`). Tests: `graphs/registry.test.ts`, `cli-first-run.test.ts` (both
+- **B-604** → fixed (`f4e7189`). Test: `serve-banner.test.ts`.
+- **B-607** → fixed (`a22487b`). Tests: `graphs/registry.test.ts`, `cli-first-run.test.ts` (both
   orders failed before the fix with `serve exited 1`). README and OPERATIONS §2 updated.
-- **B-616** → fixed (`f177b35`). Test: `http/web-client.test.ts` "serves the app shell behind a
+- **B-616** → fixed (`6079f95`). Test: `http/web-client.test.ts` "serves the app shell behind a
   same-host proxy that rewrites Host (B-616)" (403 vs 200 on the old code).
 - **(new, fixed, found here)** After a deep link's `location.reload()`, `App.getLaunchUrl()`
   re-delivered the same URL (it is Capacitor's `lastURL`), so the pairing confirm screen came back
-  after every Connect. Fixed `fb31593` (`platform/launch-url.ts`). Test:
+  after every Connect. Fixed `4d1f1b7` (`platform/launch-url.ts`). Test:
   `platform/launch-url.test.ts`; found by `tools/probes/pairing-link-ui/`.
 - **(new, open, low)** `packages/server/src/mcp/stdio-main.ts` defaults to
   `~/.nooklet/default/graph.sqlite`, the pre-ADR-025 flat layout. Run without `--data` it would

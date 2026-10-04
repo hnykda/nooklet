@@ -1,11 +1,11 @@
 # M11 progress — mirror-escape adversarial verification
 
-Resilience log for verifying branch `m11/mirror-escape` (B-342, OUT-23a) from `52e5d20`. Updated
+Resilience log for verifying branch `m11/mirror-escape` (B-342, OUT-23a) from `ac2528e`. Updated
 after every meaningful step. Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-4`,
 e2e port 6413, scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11/mirror-escape-verify/`
 (`graph/` = `.backup` of the owner's graph 18:24, `graph-export/` = same + mirror exported with the
-branch code, `reimport/` = that mirror re-imported, `outline-base.ts` = `52e5d20`'s outline.ts).
+branch code, `reimport/` = that mirror re-imported, `outline-base.ts` = `ac2528e`'s outline.ts).
 
 ## Checked (no defect)
 
@@ -47,8 +47,8 @@ branch code, `reimport/` = that mirror re-imported, `outline-base.ts` = `52e5d20
 
 ## Done (committed)
 
-- `a3098dc` this file; `2d48ca1` inbox B-474, B-475.
-- `bd1d7f6` B-474 fixed: `withEditText` returns the block for its own editing text;
+- `075c11c` this file; `bdd88b1` inbox B-474, B-475.
+- `781086e` B-474 fixed: `withEditText` returns the block for its own editing text;
   `flushPendingEdit` writes nothing for a buffer equal to `before`'s editing text (the second half
   found by an undo/redo probe: the undo's buffer rewrite re-promoted the line 500 ms later and
   emptied redo). Tests: `e2e/tests/text-property-line-keystroke.spec.ts` (4; 3 red before the fix,

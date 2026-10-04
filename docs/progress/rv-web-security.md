@@ -1,7 +1,7 @@
 # rv-web-security: fix the M7 web security/cleanliness review findings (F1–F10)
 
 Branch `m8/rv-web-security`, worktree `.claude/worktrees/wf_69b4f9a8-ee2-20`, started from
-`da85cfb`. e2e port **6473** (always pass `--output <scratch>/pw-results`). Scratch:
+`61279a2`. e2e port **6473** (always pass `--output <scratch>/pw-results`). Scratch:
 `<scratchpad>/rv-web-security/` (also holds the reviewer's own probes and a real-graph copy in
 `graph/`).
 
@@ -19,20 +19,20 @@ review doc only.
 ## Done
 
 - Baseline (before any fix, `e2e-baseline.log` in scratch): the new specs
-  `change-bus`/`load-errors`/`untrusted-content` fail 7 of 8 against `da85cfb`, each for the
+  `change-bus`/`load-errors`/`untrusted-content` fail 7 of 8 against `61279a2`, each for the
   reason its finding names (History-first ordering in `change-bus` passed — kept as a guard).
   The full four-test `untrusted-content` spec is saved at `<scratch>/untrusted-content.full.spec.ts`;
   the committed file grows one test per finding.
-- F1 / B-135 `ff140b1`: `db/client.ts` fan-out, store owns the sync-drain bump +
+- F1 / B-135 `5eee913`: `db/client.ts` fan-out, store owns the sync-drain bump +
   `serverStampedFor`, `history.ts` stamps through it. `client.test.ts` 5/5; web unit 689/689; e2e
   change-bus+trash+history+diagnostics+query+pages+references+connectivity 46/46.
-- F2 / B-136 `eb3face`: guarded resource reads. `load-errors.test.tsx` 3/3 (3/3 failed before);
+- F2 / B-136 `2fd98ad`: guarded resource reads. `load-errors.test.tsx` 3/3 (3/3 failed before);
   e2e load-errors+trash+history+query 21/21. Web unit: 691/692 — the one failure is the unchanged
   `data/page-title.test.ts` first test timing out at 5 s on a dynamic import under load average
   43; it passes 9/9 alone.
-- F3 / B-137 `59f4da8`: `followLink` → `assetUrl`. `app/hosts.test.ts` 5/5 (4 failed before);
+- F3 / B-137 `b66077a`: `followLink` → `assetUrl`. `app/hosts.test.ts` 5/5 (4 failed before);
   e2e untrusted-content (F3 test) + assets 2/2. B-139 logged (open) in the same commit.
-- F4 / B-138 (links) `6d1cb2e`: `safeHref` (http/https/mailto/tel/relative) in `asset-url.ts`,
+- F4 / B-138 (links) `48e0a9a`: `safeHref` (http/https/mailto/tel/relative) in `asset-url.ts`,
   used by the rendered link (tokens.tsx, 2 lines) and `followLink`. Real-graph probe
   `tools/probes/link-schemes-in-graph.ts` shows those five are all the owner's 2,298 links use.
   Unit: `untrusted-content.test.tsx` + `hosts.test.ts` (new cases failed before); web unit
@@ -50,8 +50,8 @@ review doc only.
 - F5 / B-138 (fence classes): `highlight.ts#languageClass` (first word, `[\w+-]` only), 3 lines
   in tokens.tsx. `untrusted-content.test.tsx` 3 new cases (failed before); render unit 69/69; e2e
   untrusted-content+rendering+render 10/10.
-- F5 commit `dafa968`, F7 commit `8a1ccb8`.
-- F6 / B-138 (formula sizes) `87a75b4`: `maxSize: 20` in `math.ts`. The suggested CSS
+- F5 commit `cb30d19`, F7 commit `ba414a9`.
+- F6 / B-138 (formula sizes) `ef5fab9`: `maxSize: 20` in `math.ts`. The suggested CSS
   (`inline-block; overflow:hidden`) NOT adopted — probe `tools/probes/inline-block-clip-baseline.mjs`
   shows an 11 px baseline lift in Chromium and WebKit. `\kern` stays uncapped by KaTeX (e2e checks
   it does not widen the page). `math.test.ts` with real KaTeX (failed before); e2e
@@ -63,9 +63,9 @@ review doc only.
   (failed before); web unit 733/733; e2e views+references+replace+graph+history+link-unlinked
   49/50 — the failure is `views.spec.ts:461` "opening the palette while editing and closing it
   hands focus back to the editor", failing twice in a row; unrelated code path (palette focus),
-  being checked against `da85cfb` next.
-- F8 commit `3d73b13`. The palette-focus e2e failure (`views.spec.ts:461`) also fails at
-  `da85cfb` (checked with `git switch --detach da85cfb`, 1/1 failed; 3 failures in a row in all):
+  being checked against `61279a2` next.
+- F8 commit `5d12eaa`. The palette-focus e2e failure (`views.spec.ts:461`) also fails at
+  `61279a2` (checked with `git switch --detach 61279a2`, 1/1 failed; 3 failures in a row in all):
   pre-existing, not caused here. No bug number left to log it under; reported to the coordinator
   and in the review doc.
 - F9 (cleanliness; commit "refactor(web): page paths from one module…"): new
@@ -76,7 +76,7 @@ review doc only.
   not pull in `data/store.ts`. `editor/render/page-hrefs.test.tsx` (4/4 failed before with
   `%2F`); web unit 737/737; e2e navigation+pages+query+shelf+rendering+history+trash+refactor
   52/52.
-- F9 commit `373c654`. F10 commit `b21352b`: the four stale comments (PageIcon CSP clause,
+- F9 commit `24ee675`. F10 commit `44ebb6e`: the four stale comments (PageIcon CSP clause,
   BlockTree highlighter "DEFERRED" + block-ref gap, tokens.tsx block-ref gap, appearance.ts loader)
   rewritten after checking each claim against the code; the embed / `.vr-ref-new` / `list::
   number` gaps are still real and still listed. No CSP added (see review doc).
@@ -99,5 +99,5 @@ review doc only.
 
 ## How to resume
 
-`git log --oneline da85cfb..HEAD` shows what landed; each commit names its finding. Re-read this
+`git log --oneline 61279a2..HEAD` shows what landed; each commit names its finding. Re-read this
 file's "In flight" and check `git status` for uncommitted work in the files it names.

@@ -6,9 +6,9 @@ Branch `worktree-agent-a3cca45c7a5208ed2`, started 2026-10-04. Not merged to mai
 
 Done and verified (see "Verification" below). Commits:
 
-- `730e8da` wip scaffold (Next config, source loader, renderer, search, first figures)
+- `ad6bce6` wip scaffold (Next config, source loader, renderer, search, first figures)
 - merge of `main` (brings the real `docs/guide/`, nine pages)
-- `cd8daf9` landing page, docs from `docs/guide`, figures from the guide's animation specs, search, llms files
+- `603534a` landing page, docs from `docs/guide`, figures from the guide's animation specs, search, llms files
 - the commit that adds this file: e2e suite, README, mobile and search fixes
 
 ## Design direction

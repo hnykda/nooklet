@@ -1,15 +1,15 @@
 # mermaid-lazy — mermaid out of the PWA precache; desktop sidecar reuses the web build's copy
 
 Status: **done** (both parts committed). Branch: `worktree-agent-a585a35147c7628f5`
-(fast-forwarded to main `fd779f4` first: the worktree had been created 634 commits behind).
+(fast-forwarded to main `c28097a` first: the worktree had been created 634 commits behind).
 
-## Baseline (main `fd779f4`)
+## Baseline (main `c28097a`)
 - Web (`node tools/probes/web-build-weight.mjs`): precache 222 entries, 8026.3 KiB.
 - Sidecar (`du -sk apps/desktop/sidecar`): 185,524 KiB; `plugins/mermaid/client.js` 12,032,014 B.
 - `nooklet.app` (`tauri build --bundles app`, sum of file sizes): 186,603,034 B (du 182,908 KiB).
 
 ## Done
-1. `ce99b82` — `apps/web/vite.config.ts`: a build plugin finds the chunks only reachable through
+1. `183b058` — `apps/web/vite.config.ts`: a build plugin finds the chunks only reachable through
    mermaid's dynamic import (`apps/web/src/sw/lazy-only-chunks.ts` + unit test); workbox
    `manifestTransforms` drops them from the precache; a function-matcher runtime rule (B-401:
    RegExp rules anchored at `^\/` never match, workbox tests them against the full href) caches
@@ -19,7 +19,7 @@ Status: **done** (both parts committed). Branch: `worktree-agent-a585a35147c7628
      diagram rendered once → chunk in `lazy-chunks` cache → offline reload renders it again.
    - Negative checks run: with the rule as RegExp `/^\/static\//` the cache assertion fails; with
      the cache assertion removed too, the offline render fails. So both steps are load-bearing.
-2. `05ac71e` — sidecar: `packageBundledPlugins(..., { clientImportUrls })` →
+2. `8f637ba` — sidecar: `packageBundledPlugins(..., { clientImportUrls })` →
    `bundleClientEntry(..., importUrls)` resolves `mermaid` to the web build's
    `/static/mermaid.core-<hash>.js` as an external URL import. `build-sidecar.mjs` finds that chunk
    in `sidecar/web/static`, and fails the build if the packaged mermaid client.js exceeds 512 KiB.

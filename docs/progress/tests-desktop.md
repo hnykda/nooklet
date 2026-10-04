@@ -4,7 +4,7 @@ Resilience log, updated after every meaningful step. If you are reading this aft
 read "Next steps" and continue from there.
 
 Branch `m10/tests-desktop`, worktree `<repo>/.claude/worktrees/wf_ced35de1-fb8-4`,
-based on `70c9bb9`. E2E port 6402. Bug entries go to `docs/bugs-inbox/tests-desktop.md` (new
+based on `007052a`. E2E port 6402. Bug entries go to `docs/bugs-inbox/tests-desktop.md` (new
 numbers B-400..B-409), never `docs/BUGS.md`. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m10/tests-desktop/`
 (`burn.sh N` / `unburn.sh` start and stop N busy node loops for "under load" runs; the machine
@@ -70,7 +70,7 @@ with a scratch `NOOKLET_DATA` (not the full Tauri app).
   - `pnpm -r test`: core 399, plugin-api 17, server 670, web 1126 — all passed.
   - Full e2e in four alphabetical chunks on port 6402 (the tool's 10 min limit): chunk 1
     (a-fresh-journal…focus) 136 passed, 1 skipped; chunk 2 (follow-link…pages) 117 passed; chunk 3
-    (palette-text-keys…replace-unicode) 138 passed; chunk 4 (replace…views) at `81f3ff4` 135 passed,
+    (palette-text-keys…replace-unicode) 138 passed; chunk 4 (replace…views) at `a2304af` 135 passed,
     1 skipped, 1 failed (B-403), and with the B-403 commit 136 passed, 1 skipped. Every one of the 93
     spec files ran; with the fix, 527 passed, 2 skipped, 0 failed.
   - The first session's full run had been cut off at 246/527 with one failure,
@@ -102,29 +102,29 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
 (`burn.sh N`/`unburn.sh`), e2e port 6402.
 
 - Done: B-333's new line-length ratio test failed 2 of 95 under 84 busy loops (8.16, 8.32 > 8) —
-  logged and fixed as B-405, commit `79d5f0b` (equal sub-quantum windows, least of 15, limit 2).
+  logged and fixed as B-405, commit `4b4e8d8` (equal sub-quantum windows, least of 15, limit 2).
 - Done: B-402 check matches plugin-api's required OpDef fields and every in-repo/doc op; found
-  B-406 (REST alias without method/path still crashes startup) — fixed, commit `2698260`, test in
+  B-406 (REST alias without method/path still crashes startup) — fixed, commit `75dd7dc`, test in
   `host.test.ts`.
 - Done: sidecar rebuilt (freshness probe "fresh"), `sidecar-user-plugin` 200, `sidecar-plugins` ok;
   scratch `sidecar-kitchen.mjs` — user plugin importing all four host modules (op via
   `@nooklet/core`, OpError 400, Hono sub-app 200, client bundle 200 w/o node_modules), B-402 and
   B-406 plugins isolated, server healthy.
 - Done: B-323 — `opfs-pool.spec` pass at HEAD, fail with fix commented out; probes for a real
-  interrupted start and an already-broken profile (commit `7558ace`).
+  interrupted start and an already-broken profile (commit `974317e`).
 - Done: under 56 busy loops — editing, page-icons, references, opfs-pool `--repeat-each=4`: 44 of
   44 (the filter also caught `journal-stream-editing.spec.ts`, which failed repeats 1-3 on a fixed
   day: B-408, open). Page-icons with one read instead of the poll fails 2 of 2 (the push route
   works). `-g B-131 --repeat-each=12` found the trash/history "failed … load" tests failing (trash
-  0 of 11) — B-407, fixed in `4c37543` (16 of 16 under load; control: old 2 of 8 failed, new 8 of
+  0 of 11) — B-407, fixed in `d09f394` (16 of 16 under load; control: old 2 of 8 failed, new 8 of
   8). The five touched specs, two fresh runs under load: 19 of 19 each. opfs-pool's indicator regex
-  anchored (`22383f7`).
+  anchored (`38b7bc5`).
 - Done: `pnpm -r typecheck` green; biome clean on every branch-changed file (repo-wide errors are
   in untouched files); `pnpm -r test` core 399, plugin-api 17, server 671, web 1126; related e2e
   (plugins, storage incl. WebKit, review-reactivity, editing, page-icons, references, opfs-pool,
   a-fresh-journal, journal-draft-sync) 41 passed, 1 skipped; `nooklet verify` on a backup of the
   owner's graph: 20,477 ops OK.
-- Done: full e2e at `2a55ce4`, all 93 spec files in four chunks on 6402 (idle apart from other
+- Done: full e2e at `0a674f7`, all 93 spec files in four chunks on 6402 (idle apart from other
   agents): 147 + 92 + 151 + 137 = 527 passed, 2 skipped, 0 failed.
 - Nothing left in flight. Open from this pass: B-408. The B-403 product question is still the
   owner's.

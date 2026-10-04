@@ -1,6 +1,6 @@
 # phone-ui — B-646, B-648, B-649, B-650, B-651 (owner's iPhone test, 2026-10-04)
 
-Branch: the agent worktree branch (not merged). Status: **done** (`a1b9e09` fixes + tests,
+Branch: the agent worktree branch (not merged). Status: **done** (`c7c822a` fixes + tests,
 then this file's results commit). Not merged.
 
 ## Done
@@ -86,7 +86,7 @@ Screenshots kept in `tools/probes/phone-ui/` (overlay at the top: header line is
   `vv=402@1.00` (no zoom), `docW=402 innerW=402`, key/value/Add all within the screen. Before the
   fix the same step gave `vv=326@1.23` (run 1). Back is enabled, Forward greyed (B-649).
 
-## Verification (2026-10-04, on `a1b9e09`)
+## Verification (2026-10-04, on `c7c822a`)
 
 - `pnpm --filter @nooklet/web test`: 176 files, 1536 tests passed.
 - `pnpm -r typecheck`: clean. `pnpm exec biome check . --diagnostic-level=error`: clean.
@@ -143,7 +143,7 @@ Nothing in flight. Coordinator: fold the section below into BUGS.md.
   iOS. Severity medium (a fresh day on the phone). Unverified on a physical iPhone.
 - **New (open):** `e2e/tests/tasks.spec.ts` "Cmd/Ctrl+Enter cycles…" and "clicking the rendered
   marker…" expect TODO after the first Mod+Enter. Run alone (fresh server, empty graph) they fail
-  with LATER, since `34c8d3e` (empty graph → `now`); in the full suite they pass because earlier
+  with LATER, since `7641c43` (empty graph → `now`); in the full suite they pass because earlier
   specs leave TODO markers and the workflow is inferred `todo`. Order-dependent tests.
 - **New (open, low):** after the toolbar's hide-keyboard button the toolbar stays at the bottom of
   the screen, scrolled sideways.

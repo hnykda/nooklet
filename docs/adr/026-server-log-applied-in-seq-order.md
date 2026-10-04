@@ -17,7 +17,7 @@ live and rejects it (`page-key-collision`).
 The open question was whether only `verify` was wrong or a replica too. Settled by a deterministic
 test (the same test file, "… converges on every replica (B-587)"): A's clock 5 s behind (ADR 003
 rejects only clocks running *ahead*, so this is a legal device), real server, real `SyncClient`s.
-On `c897962`:
+On `f55e3b0`:
 
 - **C** (bootstrapped before the delete, then one incremental pull carrying the delete and A's
   ops) **diverged**: A's page and block missing, no live "Ghost Name" at all — for good, nothing

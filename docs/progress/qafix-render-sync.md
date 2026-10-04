@@ -1,6 +1,6 @@
 # qafix-render-sync — progress
 
-Branch `m8/qafix-render-sync`, worktree `.claude/worktrees/wf_69b4f9a8-ee2-19`, based on `da85cfb`.
+Branch `m8/qafix-render-sync`, worktree `.claude/worktrees/wf_69b4f9a8-ee2-19`, based on `61279a2`.
 Task: fix the nine findings from exploratory QA on render, queries, mirror and sync (Q1–Q9), one
 commit per finding, each with a reproducing test. e2e port **6462**. Bug entries go to
 `docs/bugs-inbox/qafix-render-sync.md` (B-260..B-268 assigned, B-269 spare), never `docs/BUGS.md`.
@@ -24,18 +24,18 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 
 ## Done (commits)
 
-- `693f000` inbox entries B-260..B-268 logged
-- `2577a3e` B-260 live mirror follows `changes` (unit + `e2e/tests/mirror-live.spec.ts` 3/3)
-- `2416e9e` B-261 title rename through `page.update` (`e2e/tests/page-rename.spec.ts` 2/2, `pages.spec.ts` 14/14)
-- `bd6ef6f` B-262 export rewrites files missing on disk (unit; real graph copy 952/952)
-- `a287309` B-263 derived Task tag in queries (`core/refs.ts#TASK_TAG`; unit + `e2e/tests/query-task-tag.spec.ts` 2/2; real graph 686)
-- `cf5ae1c` B-264 `$$…$$` display math (core tokenizer + MathView + MathWidget + spec; unit + `e2e/tests/math-display.spec.ts` 2/2)
-- `8bc4179` B-265 template roots inserted unfolded (`core/templates.ts#templateRoots`; unit + `e2e/tests/template-collapsed.spec.ts` 1/1, `templates.spec.ts` 8/8; real graph Meeting)
-- `81bb2b2` B-266 unpadded org timestamps (`core/outline.ts`; unit + importer test; real data 20/20; existing DB rows not repaired — owner)
-- `8ae97c0` B-267 MCP text says "dry run, nothing written" for every dry-run op (`ops/dry-run.ts#renderToolText`; unit)
-- `dd2eb76` B-268 script-capable link schemes never become an href or a `window.open` (`editor/render/safe-href.ts`; unit + `e2e/tests/link-scheme.spec.ts` 1/1)
-- `6e4099e` B-261 follow-up: the missing-view flash after a title rename (guard cleared on resolve)
-- Final pass on `dd2eb76`: `pnpm -r test` 343 + 17 + 529 + 688 passed; `pnpm -r typecheck` clean;
+- `f3e04f0` inbox entries B-260..B-268 logged
+- `959c505` B-260 live mirror follows `changes` (unit + `e2e/tests/mirror-live.spec.ts` 3/3)
+- `318e7a7` B-261 title rename through `page.update` (`e2e/tests/page-rename.spec.ts` 2/2, `pages.spec.ts` 14/14)
+- `f6993c3` B-262 export rewrites files missing on disk (unit; real graph copy 952/952)
+- `1caf169` B-263 derived Task tag in queries (`core/refs.ts#TASK_TAG`; unit + `e2e/tests/query-task-tag.spec.ts` 2/2; real graph 686)
+- `2c78732` B-264 `$$…$$` display math (core tokenizer + MathView + MathWidget + spec; unit + `e2e/tests/math-display.spec.ts` 2/2)
+- `f35a712` B-265 template roots inserted unfolded (`core/templates.ts#templateRoots`; unit + `e2e/tests/template-collapsed.spec.ts` 1/1, `templates.spec.ts` 8/8; real graph Meeting)
+- `0dce15f` B-266 unpadded org timestamps (`core/outline.ts`; unit + importer test; real data 20/20; existing DB rows not repaired — owner)
+- `89efe21` B-267 MCP text says "dry run, nothing written" for every dry-run op (`ops/dry-run.ts#renderToolText`; unit)
+- `9b4c7db` B-268 script-capable link schemes never become an href or a `window.open` (`editor/render/safe-href.ts`; unit + `e2e/tests/link-scheme.spec.ts` 1/1)
+- `52162c6` B-261 follow-up: the missing-view flash after a title rename (guard cleared on resolve)
+- Final pass on `9b4c7db`: `pnpm -r test` 343 + 17 + 529 + 688 passed; `pnpm -r typecheck` clean;
   16 e2e specs together (the 7 new + pages, query, tasks, templates, render, rendering, editing,
   refactor, references, parity) 88/88; `nooklet verify` on a real-graph copy OK (20,420 ops).
   After the follow-up: `pages.spec.ts` + `page-rename.spec.ts` 15/16 then 16/16 on rerun (the one
@@ -67,7 +67,7 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 
 ## How to resume
 
-1. `git log --oneline da85cfb..` on the branch; this file's table says what is left.
+1. `git log --oneline 61279a2..` on the branch; this file's table says what is left.
 2. Real-graph copy: `sqlite3 ~/.nooklet/default/graph.sqlite ".backup '<scratch>/graph/graph.sqlite'"`,
    never a nooklet command on `~/.nooklet/default`.
 3. Before each commit: biome on changed files, `pnpm -r typecheck`, unit tests of touched packages,

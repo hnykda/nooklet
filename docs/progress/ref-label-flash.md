@@ -1,6 +1,6 @@
 # ref-label-flash — progress
 
-Branch `m11/ref-label-flash` from `52e5d20`, worktree
+Branch `m11/ref-label-flash` from `ac2528e`, worktree
 `.claude/worktrees/wf_b8e786c1-020-2`. e2e port **6417**. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11b/ref-label-flash/`
 (`data/` = NOOKLET_DATA for any nooklet command; `graph/` = real-graph backup when made).
@@ -20,7 +20,7 @@ never `docs/BUGS.md`.
 
 ## Done
 
-- Step 1, reproduced (`e2e/tests/ref-label-flash.spec.ts`, 3 tests, all FAIL on `52e5d20`; the
+- Step 1, reproduced (`e2e/tests/ref-label-flash.spec.ts`, 3 tests, all FAIL on `ac2528e`; the
   webkit project's `testMatch` now includes this spec). MutationObserver on `.page-view`:
   - 5 pulls (API `block.update` of an unrelated block on the page): **25 of 30** DOM snapshots show
     every `((ref))` label as `((id))`; Chromium and WebKit identical (25/30).
@@ -39,7 +39,7 @@ never `docs/BUGS.md`.
   calls `invalidateBlockRefs()` on every change event naming `block`, which empties the whole
   `block-ref-cache.ts` record, so every `lookupBlockText` returns `undefined` until its refetch.
 
-- Step 3 "before" numbers (instrumented build of `52e5d20` + the B-500 test commit, real-graph
+- Step 3 "before" numbers (instrumented build of `ac2528e` + the B-500 test commit, real-graph
   copy `<scratch>/graph`, `tools/probes/refresh-render-count.mjs`, 5 API writes per page, Chromium,
   per refresh): see the table in "Measurements" below. Raw: `<scratch>/before.json`.
 - Step 2a, B-500 cache fix: `data/block-ref-cache.ts` rewritten (per-id signals, generation-stamped
@@ -47,14 +47,14 @@ never `docs/BUGS.md`.
   `data/block-ref-cache.test.ts` 8/8 (8/8 fail against the old file); e2e `ref-label-flash.spec.ts`
   3/3 chromium, 3/3 webkit; web unit 1146/1146; typecheck clean.
 
-- `158b893` B-500 fix committed. `5e57646` B-510 + B-511 committed.
+- `429457b` B-500 fix committed. `f113619` B-510 + B-511 committed.
 - Step 3 measured before/after (table below); probe gained a Chromium main-thread pass and a
-  `treeUpdateMs` counter; both patches regenerated (before → `3f070e9` sources, after → `5e57646`).
+  `treeUpdateMs` counter; both patches regenerated (before → `f8dc76c` sources, after → `f113619`).
 - Step 2b, B-510 + B-511: `data/same-json.ts` (`sameJson` memo equality, unit test 2) on
   `DateChips` chips, `BlockProperties` entries, `QueryFenceView` latest, `ReferencesPanel` data;
   `InlineContent` gets an optional `resolveBlockRef`, `ReferencesPanel` passes
   `block-ref-cache.ts#resolveBlockRef`. e2e spec now 4 tests (B-510 test and the mount assertion
-  failed on `158b893`); 4/4 chromium, 4/4 webkit; related e2e (references ×3, query ×3, embeds,
+  failed on `429457b`); 4/4 chromium, 4/4 webkit; related e2e (references ×3, query ×3, embeds,
   dates, block-properties, shelf ×2, render, rendering) 66/66; web unit 1148/1148.
   Checked and not flashing: page title + icon, embed text, word count, sidebar (0 remounts).
 
@@ -63,16 +63,16 @@ never `docs/BUGS.md`.
   (m11/remote-rewrite changes the effect). Web unit 1151/1151; e2e 156/156 across 16 editing-heavy
   specs. Measured (rows "after + row equality" below).
 
-- `935d1fb` row-memo equality committed.
+- `76c78be` row-memo equality committed.
 - Journals view checked on the real-graph copy (`tools/probes/refresh-journals-flash.mjs`, HEAD
-  `935d1fb`): 256 rows on screen, 5 pulls writing a block in the first day (the owner's real
+  `76c78be`): 256 rows on screen, 5 pulls writing a block in the first day (the owner's real
   `((ref))` block, shown as "travel/trip-planning"): no region or row but the written one ever showed a
   second text, the written row went straight between its two texts (never `((id))`), 0 rows / date
   chips / property rows / agenda items / sidebar entries created; 5 `.vr-block-ref` created = the
   written block's own label re-rendering with its text. Chromium and WebKit identical. Page probe
   in WebKit on HEAD: `Ref Heavy` and `2022-12-16` 0 flashed snapshots, 4 records per refresh.
 
-- `d762804` journals probe committed. Spec test 5 added ("a label changes when its target's text
+- `dd416a7` journals probe committed. Spec test 5 added ("a label changes when its target's text
   does, and never passes through ((id))"); seeding made re-runnable on one server. Spec 5/5
   chromium, 5/5 webkit (run as separate invocations — one invocation with both projects shares a
   server). Against the old `block-ref-cache.ts` (with a `resolveBlockRef` shim): tests 1, 2, 4, 5
@@ -82,8 +82,8 @@ never `docs/BUGS.md`.
 
 Real-graph copy (`<scratch>/graph`, backup of the owner's graph 2026-09-13 17:42), `nooklet serve`
 on 6417, Chromium, `tools/probes/refresh-render-count.mjs`: 5 API `block.update`s of the last
-visible block on the page. "before" = client source of `3f070e9` (pre-fix) +
-`refresh-render-count.before.patch`; "after" = `5e57646` + `refresh-render-count.after.patch`.
+visible block on the page. "before" = client source of `f8dc76c` (pre-fix) +
+`refresh-render-count.before.patch`; "after" = `f113619` + `refresh-render-count.after.patch`.
 `Ref Heavy` is a page the probe adds to the copy (150 rows, 50 `((refs))` to real blocks) — the
 real graph has only 43 blocks with a block ref, at most 2 on a page. Raw JSON:
 `<scratch>/before-full.json`, `<scratch>/after-full.json`.
@@ -121,13 +121,13 @@ Nothing. Task complete; see "Not done" below.
 
 ## Final state (HEAD after the last commit)
 
-- Web unit (`apps/web`): 1151/1151 on `935d1fb`; nothing in `apps/web/src` changed after it.
+- Web unit (`apps/web`): 1151/1151 on `76c78be`; nothing in `apps/web/src` changed after it.
 - Typecheck (`pnpm -r typecheck`): clean.
-- e2e Chromium, full suite in 4 batches on `52ac1a6` (each batch its own server): 148 + 1 skipped;
+- e2e Chromium, full suite in 4 batches on `d644d4f` (each batch its own server): 148 + 1 skipped;
   110 + 1 failed → rerun 111/111; 143; 137 + 1 skipped. The one failure was `pages.spec.ts:175`
   "the sidebar's Recent list shows the most recently edited pages first" (15 s wait for the page in
   the sidebar) — passed alone (`pages.spec.ts` 14/14) and on the batch rerun; the same batch on
-  the `52e5d20` client failed a different test instead (`page-find.spec.ts:181`), and
+  the `ac2528e` client failed a different test instead (`page-find.spec.ts:181`), and
   `docs/progress/qafix-render-sync.md` records the same sidebar test failing once then passing. The
   Sidebar and its data are untouched here. Treated as a pre-existing flake, not investigated.
 - e2e WebKit project (storage + ref-label-flash): 7/7.
@@ -150,10 +150,10 @@ Nothing. Task complete; see "Not done" below.
 
 Scratch: `.../scratchpad/m11b/ref-label-flash-verify/`. No source defect found; one test commit.
 
-- HEAD `7f15c8a`: web unit 1151/1151, typecheck clean, spec 5/5 Chromium and 5/5 WebKit.
-- `52e5d20` client (`git checkout 52e5d20 -- apps/web/src`): spec 0/5 in both engines (pulls 25/30
+- HEAD `5caa634`: web unit 1151/1151, typecheck clean, spec 5/5 Chromium and 5/5 WebKit.
+- `ac2528e` client (`git checkout ac2528e -- apps/web/src`): spec 0/5 in both engines (pulls 25/30
   snapshots flashed, typing 4/13, both engines).
-- Cause, re-proved: `52e5d20` client minus the `invalidateBlockRefs()` call → tests 1-2 pass (0/10,
+- Cause, re-proved: `ac2528e` client minus the `invalidateBlockRefs()` call → tests 1-2 pass (0/10,
   0/9 flashed), test 5 fails with the stale "target alpha". Emptying the cache was the flash.
 - Real-graph copy (fresh backup), probe without counter patches, per refresh: `Ref Heavy` before
   53 flashed / 3,237 records / 1,915 created / 24.5 task ms, after 0 / 4 / 3 / 4.9; `2022-12-16`
@@ -162,7 +162,7 @@ Scratch: `.../scratchpad/m11b/ref-label-flash-verify/`. No source defect found; 
 - Added 4 tests to the spec (the kept label must still move): same-page fast typing never steps
   backwards + undo; delete → `((id))` → `trash.restore` → text; a second browser context typing;
   target changed while the label was unmounted. Chromium 27/27 with `--repeat-each=3`, WebKit
-  18/18 with `--repeat-each=2`. On `52e5d20` the typing and second-device tests fail; the
+  18/18 with `--repeat-each=2`. On `ac2528e` the typing and second-device tests fail; the
   unmounted-label test fails against a mutant cache that re-reads only never-read ids.
 - Full Chromium e2e at HEAD (97 other specs, 7 batches): 556 passed, 2 skipped, 0 failed.
 - WebKit project (storage + this spec) 11/11. Typing 26 chars into the plain block of `Flash Rich`
@@ -179,7 +179,7 @@ Scratch: `.../scratchpad/m11b/ref-label-flash-verify/`. No source defect found; 
 
 ## How to resume
 
-`git log --oneline 52e5d20..` shows what landed. Before each commit: biome check on the files,
+`git log --oneline ac2528e..` shows what landed. Before each commit: biome check on the files,
 `pnpm -r typecheck`, `pnpm --filter @nooklet/web test`. e2e:
 `cd e2e && NOOKLET_E2E_PORT=6417 pnpm exec playwright test <specs> --project=chromium`.
 

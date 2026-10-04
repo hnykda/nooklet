@@ -1,6 +1,6 @@
 # references-render — B-550: linked references render as the block looks in its page
 
-Branch `m11/references-render` from `967d563`, worktree
+Branch `m11/references-render` from `51830cd`, worktree
 `<repo>/.claude/worktrees/wf_3a5c12f3-4ba-1`. e2e port 6423. Scratch (graph copy,
 data dir): `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11e/`.
 
@@ -61,7 +61,7 @@ Chromium headless, persistent profile (replica warm), M-series Mac shared with o
 `firstRow` = ms from navigation start to the first reference row; stalls = gaps >50 ms between
 10 ms timer ticks (the Long Tasks API reported nothing in headless Chromium — a deliberate 120 ms
 busy loop produced no entry — while the sampler showed it as one 127 ms stall). Baseline =
-`967d563`'s build; final = `31dc26b`'s build; same graph copy, run back to back.
+`51830cd`'s build; final = `6ce485b`'s build; same graph copy, run back to back.
 
 | page (linked refs) | baseline: rows / firstRow | final: rows (outline rows, breadcrumbs) / firstRow | stalls load / refetch | row kept on refetch (baseline → final) |
 |---|---|---|---|---|
@@ -83,10 +83,10 @@ the scratch dir. Checked by eye: nesting, breadcrumbs, DONE strike, stored folds
 
 ## Done
 
-- `31dc26b` feat(web): a reference renders as the block in its page, children nested (B-550) —
+- `6ce485b` feat(web): a reference renders as the block in its page, children nested (B-550) —
   ReadOnlyOutline extraction, reference-trees loader, nesting, ReferenceItem/Groups/Breadcrumb,
   panel wiring, CSS; `views.spec` clicks the rendered row.
-- Tests, all green at `31dc26b`: `pnpm --filter @nooklet/web test` 141 files / 1158 tests;
+- Tests, all green at `6ce485b`: `pnpm --filter @nooklet/web test` 141 files / 1158 tests;
   `pnpm --filter @nooklet/core test` 21 / 408; `pnpm -r typecheck` clean; biome clean on every
   touched file. New: `ReferenceItem.test.tsx` 8, `referenceNesting.test.ts` 8,
   `reference-trees.test.ts` 4, `e2e/tests/references-render.spec.ts` 2 (both FAIL with the old
@@ -116,10 +116,10 @@ On a fresh `.backup` copy of the graph (`scratchpad/m11e/verify-data`), server o
   API writes: a new child folds under its reference in ~90 ms, a new reference appears as a row,
   a deleted child disappears (one fallback-row flash of the new/deleted child was seen once and
   not reproduced in 25 further insert/delete cycles).
-- Probe `tools/probes/references-render-real-graph.mjs` back to back: baseline (`967d563` build)
+- Probe `tools/probes/references-render-real-graph.mjs` back to back: baseline (`51830cd` build)
   first row 71–99 ms; branch with the fix below 90–152 ms; no stalls either way; rows kept on refetch.
 - **Defect found and fixed: B-552** — a breadcrumb step whose parent is a heading (`## 🔖 Articles`),
-  a fence or empty rendered as an empty span (94 steps on 62 pages). `73c9061`.
+  a fence or empty rendered as an empty span (94 steps on 62 pages). `bf1811b`.
 - Not changed, worth the owner's eye: the filter matches a block's own first-line refs (pre-existing),
   so excluding a page leaves the children of its blocks as rows whose breadcrumb names the excluded
   page; a breadcrumb step that is entirely a `[[page]]` link opens the page, and the parent block is
@@ -145,5 +145,5 @@ On a fresh `.backup` copy of the graph (`scratchpad/m11e/verify-data`), server o
 
 ## How to resume
 
-Re-read this file and the branch's commits since `967d563`. Everything is committed; what is left
+Re-read this file and the branch's commits since `51830cd`. Everything is committed; what is left
 is the open questions above.

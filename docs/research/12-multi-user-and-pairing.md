@@ -15,7 +15,7 @@ cheap and currently broken in three verified ways (§1.6).
 
 ## 1. What the code actually does today
 
-Everything in this section was read out of the repository at commit `0654dd5`, and the claims in
+Everything in this section was read out of the repository at commit `7904dd6`, and the claims in
 §1.6 were reproduced against a running `nooklet serve`.
 
 ### 1.1 One user, one graph, and a `graph_id` column that does nothing

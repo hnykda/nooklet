@@ -4,7 +4,7 @@ Part of the M9 review workflow (`docs/progress/coordinator.md`). A reviewer read
 defects that the M8 merges created — two branches, each correct on its own, meeting in a merge that
 resolved without a conflict or was resolved by hand — and an independent skeptic tried to refute
 each finding and could not. This document is the fixer's record: what was found, what was
-reproduced, what changed, and what was left. Branch `m9/rv-merge-web`, based on `cf08d19`. Bugs
+reproduced, what changed, and what was left. Branch `m9/rv-merge-web`, based on `febfc23`. Bugs
 are in `docs/bugs-inbox/rv-merge-web.md` (B-360–B-364, plus one unnumbered) for the coordinator to
 fold into `docs/BUGS.md`.
 
@@ -30,7 +30,7 @@ function level.
 
 ## Findings, by severity
 
-Line numbers are at `cf08d19`.
+Line numbers are at `febfc23`.
 
 | # | Bug | Severity | Where | What |
 |---|---|---|---|---|
@@ -46,24 +46,24 @@ All five reproduced (F5 by reading: it is a comment). None was refuted.
 
 One commit per finding, each with its test, the inbox entry and this branch's progress file:
 
-1. `e0eb2c7` docs: B-360–B-364 logged before any fix.
-2. `c3bb9f7` **F1 / B-360** — `surface.setCaret(bufferCaret(res.focus.id, res.focus.caret))` in the
+1. `573f38e` docs: B-360–B-364 logged before any fix.
+2. `44cfb10` **F1 / B-360** — `surface.setCaret(bufferCaret(res.focus.id, res.focus.caret))` in the
    same-block branch. Test: `e2e/tests/templates.spec.ts` "/template into an empty numbered item:
    what is typed next extends the text, not the list property (B-360)". Red before: stored
    `{content: "Daily plan for [[Sep 13th, 2026]]", properties: {list: "number!"}}`.
-3. `bed80fc` **F2 / B-361** — `openPageFind(editing: EditorSelection | null)` saves
+3. `9db717c` **F2 / B-361** — `openPageFind(editing: EditorSelection | null)` saves
    `contentOffsetOf(editing.content, editing.end)`; `CommandLayer.tsx` unchanged (it already passed
    the whole selection). Tests: `app/page-find.test.ts` "puts back a content offset when the editing
    buffer shows property lines (B-361)" (red: `{offset: 31}` for 17) and `e2e/tests/page-find.spec.ts`
    "Escape puts the caret back in the same place in a block that shows a property line (B-361)"
    (red: caret 41 for 31).
-4. `12fa9a7` **F3 / B-362** — `refuseHistoryWhenLocked()` at the top of `doUndo` and `doRedo`: on a
+4. `43f7456` **F3 / B-362** — `refuseHistoryWhenLocked()` at the top of `doUndo` and `doRedo`: on a
    locked page they do nothing and show the read-only notice, like the tree's other writers. Test:
    `e2e/tests/read-only.spec.ts` "after a page is locked, Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z no longer
    write to it (B-362)". Red before, each half separately: against the unfixed build the undo made
    the row `editable` (and a temporary `readBlocks` poll, since removed, read `editable` from the
    server); with only the redo guard disabled the redo made it `editable text more`.
-5. `5e16080` **F4 / B-363** — `filtered` returns null while `isPrinting()` (so `rows` expands and no
+5. `072a0d2` **F4 / B-363** — `filtered` returns null while `isPrinting()` (so `rows` expands and no
    row carries a find class; `afterprint` restores the filter), and `print.css` hides `.page-find`
    and makes `::highlight(nooklet-find)` / `::highlight(nooklet-find-current)` transparent. Test:
    `e2e/tests/page-export.spec.ts` "printing with find in page open prints the whole page and no find
@@ -76,7 +76,7 @@ One commit per finding, each with its test, the inbox entry and this branch's pr
    find comes back unchanged when the dialog closes. The highlight part goes one step past the
    finding's text (bar + rows): the marks are ranges that survive the print's re-render, and they
    are the same leftover of the find on paper.
-6. `7634832` **F5 / B-364** — the header names the one remaining gap (`.vr-ref-new`, which nothing in
+6. `6be3979` **F5 / B-364** — the header names the one remaining gap (`.vr-ref-new`, which nothing in
    `apps/web/src` emits) and says embeds render read-only through `render/EmbedView.tsx`. No test.
 7. This document.
 

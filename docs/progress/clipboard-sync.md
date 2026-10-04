@@ -9,7 +9,7 @@ a busy replica worker is lost on reload: measure the window, make pending edits 
 proposal if it needs a design decision).
 
 Branch `m9/clipboard-sync`, worktree `<repo>/.claude/worktrees/wf_e473942f-106-9`,
-based on `cf08d19`. E2E port 6402. Scratch:
+based on `febfc23`. E2E port 6402. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m9/clipboard-sync/`
 (`NOOKLET_DATA=<scratch>/data`; `bin/e2e.sh <repeat> <specs…>` runs Playwright on 6402). Bug
 entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
@@ -19,25 +19,25 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
 - B-233 — test fix: `e2e/tests/editing.spec.ts` counts rows relative to the start;
   `e2e/tests/a-fresh-journal.spec.ts` waits for the server to hold its two blocks. Cause: a race
   between the push debounce and the test's browser context closing (see inbox entry). Commit
-  `281059d`.
+  `8aa35d9`.
 
 - B-245 — `block.cutSelection`: new `apps/web/src/editor/selection-clipboard.ts` (+test), hookup in
   `BlockTree.tsx` (copy case now calls the shared function; new cut case), `keydown.ts` union,
   `commands/registrations/structural.ts` (Cmd/Ctrl+X), spec row + R31 paragraph, e2e test in
   `selection.spec.ts`. Unit web 1006/1006; e2e selection.spec 19/19; the new test fails with the
   registration removed. Logged B-300 (Backspace/Cmd+X in the page title act on a standing block
-  selection) in passing. Commit `f1c1851`.
+  selection) in passing. Commit `e2ac3bd`.
 
 - B-247 measured (`tools/probes/replica-busy-window.mjs`, numbers in the inbox entry): even an
   idle-ish worker loses an edit reloaded 100–300 ms after typing; logged B-301 (an op durable in
-  the replica is never pushed after a reload until the next local write). Commit `888b5e2`.
+  the replica is never pushed after a reload until the next local write). Commit `80e97c9`.
 
 - B-301 + B-247 fixed — `sync/sync-client.ts#pushIfPending` (connectLive + onOpen);
   `db/unapplied-ops.ts` (+test), `db/client.ts` hookup, `WorkerApi.replayLocalOps` in
   `worker-api.ts`/`db.worker.ts`/`worker-core.ts` (+test), `fake-worker.ts`,
   `db/client-unapplied.test.ts`, `e2e/tests/reload-durability.spec.ts`, proposal
   `docs/proposals/002-pending-edits-durability.md`. E2E reload-durability 15/15 (repeat 5);
-  attribution: journal disabled → B-247 tests 4/4 red. Commit `d218e7d`.
+  attribution: journal disabled → B-247 tests 4/4 red. Commit `0320731`.
   Unit: full web suite 1021/1021 (at load average ~20; at 65–72 it had 7 timeouts in
   `SearchView.test.tsx`, `page-title.test.ts`, `render-seams.test.tsx`, identical with the original
   `db/client.ts`). E2E a-fresh-journal + editing + reload-durability + selection: 27/27.
@@ -48,7 +48,7 @@ entries: `docs/bugs-inbox/clipboard-sync.md` (new numbers B-300..B-309).
   `nooklet verify` OK (20,466 ops). Probe server stopped. B-300 left unfixed with three candidate
   fixes written into its entry (each changes how keys resolve app-wide — owner/coordinator call).
   Logged B-302 (typing on a 201-block page blocks the worker 0.1–1.6 s per stretch, loaded
-  machine, needs-repro). Commit `2ef86e7`.
+  machine, needs-repro). Commit `511a965`.
 
 - Full e2e (chromium, port 6402), in four chunks because one run exceeds a 10-minute foreground
   call; each chunk led by `a-fresh-journal.spec.ts` so today's journal starts as in a full run
@@ -98,9 +98,9 @@ copy in `graph/`, served on 16403 while probing, stopped).
   reload-durability + selection 27/27.
 - Found and fixed **B-303** (a cut straight after typing copied the last-fetched text and deleted
   the block with the new text): `BlockTree.tsx#unansweredText`, test in `selection.spec.ts`,
-  real-graph before/after with `tools/probes/cut-just-typed.mjs`. Commits `7bc3cd2`, `771dfa9`,
-  `eea8eeb`. After the fix: 100/100 on 16 editor/undo/sync specs; web unit 1021/1021; verify OK.
-- Added palette evidence to **B-300** (`59cf6c1`), not fixed (owner decision stands).
+  real-graph before/after with `tools/probes/cut-just-typed.mjs`. Commits `3c588f8`, `ed2b951`,
+  `76f8a6f`. After the fix: 100/100 on 16 editor/undo/sync specs; web unit 1021/1021; verify OK.
+- Added palette evidence to **B-300** (`28a7dfd`), not fixed (owner decision stands).
 - Checked and fine (throwaway specs, not kept): cut/undo/redo of a subtree with property lines,
   a marker and Czech text; Cmd+X on text inside the editor still cuts text; Enter + typing + Tab
   behind a busy worker survive a reload; a cut behind a busy worker stays cut after a reload; a
@@ -109,5 +109,5 @@ copy in `graph/`, served on 16403 while probing, stopped).
   Cmd+X in another day's editor.
 - Full e2e on the verified tree (four chunks, each led by a-fresh-journal): 120+1 skipped / 82 /
   121 / 123+1 failed+1 skipped — unique 443 passed, 1 failed, 2 skipped. The failure is views.spec
-  "opening the palette while editing…" (B-161), which also fails 4/4 on `cf08d19`'s web sources
+  "opening the palette while editing…" (B-161), which also fails 4/4 on `febfc23`'s web sources
   here and at load average 2 — reproduced, not this branch; noted in the inbox.

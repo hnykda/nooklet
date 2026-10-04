@@ -1,6 +1,6 @@
 # Production deployment (infra) — progress
 
-Slug `infra`. Started 2026-10-04 from `e3df44a`. Goal: generic, public-safe deployment pieces in this
+Slug `infra`. Started 2026-10-04 from `70b60be`. Goal: generic, public-safe deployment pieces in this
 repo; the owner-specific deployment lives in the owner's private infrastructure repo as a draft PR.
 **This file is public: it names no hosts, networks, registries or secret values.**
 
@@ -32,7 +32,7 @@ repo; the owner-specific deployment lives in the owner's private infrastructure 
 - Deploy pipeline in the infra repo, triggered by this repo's `images.yaml` with
   `BUILD_TARGET=nooklet NOOKLET_TAG=sha-<8>`: validates the tag, takes the infra repo's deploy
   lock, runs a pre-deploy backup Job, then syncs server and site.
-- The chart is vendored there from `deploy/helm/nooklet` at `3b149c9`; keep templates in sync.
+- The chart is vendored there from `deploy/helm/nooklet` at `9633525`; keep templates in sync.
 - Ollama/bge-m3 **not** deployed: nooklet's own measurement (Ollama ~3.4 GB RSS indexing,
   `search-fallback-verify.md`) does not fit the node's free memory. Written up as a follow-up.
 
@@ -73,10 +73,10 @@ next morning's backup archive. 8. Mint device tokens with `nooklet token create`
   infra repo's deploy pipeline.
 - Leak guard (`zricethezav/gitleaks:v8.28.0`, against a clone of this branch): gitleaks-only
   fallback: tree scan flags the known token; with it redacted in the clone, tree + range
-  `e3df44a..HEAD` pass, and a range spanning the token's commit (`727d358~1..HEAD`) fails, as it
+  `70b60be..HEAD` pass, and a range spanning the token's commit (`1e40ea0~1..HEAD`) fails, as it
   should. With the leak-audit branch's `tools/leak-check.mjs` + `.gitleaks.toml` dropped into the
-  clone: nodejs installs from apk inside the gitleaks image (node 20), `--range e3df44a..HEAD`
-  → clean, `--range 727d358~1..727d358` → 2 findings, exit 1; `--tree` fails on the pre-scrub
+  clone: nodejs installs from apk inside the gitleaks image (node 20), `--range 70b60be..HEAD`
+  → clean, `--range 1e40ea0~1..1e40ea0` → 2 findings, exit 1; `--tree` fails on the pre-scrub
   docs of this branch (expected, scrubbed on the leak-audit branch).
 - **Not verified:** Helm rendering of either chart (no `helm` run, by instruction); the site
   image on the merged tree; anything on the real cluster/Woodpecker; Woodpecker's

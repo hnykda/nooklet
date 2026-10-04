@@ -5,7 +5,7 @@ from "every block" to Logseq's count. History: B-550's fix note ("The heading st
 (what `page.backlinks` reports); Logseq counts top-level references instead — left as an open
 question").
 
-Branch `worktree-agent-ae1597b2ae1e1d9ab` (fast-forwarded to main `5006319` first — the worktree
+Branch `worktree-agent-ae1597b2ae1e1d9ab` (fast-forwarded to main `429a047` first — the worktree
 had been cut from a stale commit). e2e port 6308.
 
 ## What Logseq counts (read from source, 2026-10-03)

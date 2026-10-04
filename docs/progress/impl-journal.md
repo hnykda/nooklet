@@ -1,7 +1,7 @@
 # M8 progress — impl-journal (journal "Scheduled and deadline" section + B-94)
 
 Updated after every meaningful step. If you are reading this after a restart, continue from
-**Next steps**. Branch `m8/impl-journal`, based on `da85cfb`. e2e port 6403.
+**Next steps**. Branch `m8/impl-journal`, based on `61279a2`. e2e port 6403.
 
 ## Task
 
@@ -63,9 +63,9 @@ Updated after every meaningful step. If you are reading this after a restart, co
   "doesn't exist yet" view of a date route too. `tools/probes/block-update-property-roundtrip.ts`
   (B-172). e2e on port 6403: agenda spec 6/6 alone; with journals, views, tasks, query,
   a-fresh-journal, templates: 68 passed, 1 failed — `views.spec.ts:461` palette focus, which also
-  fails on a clean `git archive da85cfb` checkout (B-173), so not this branch.
+  fails on a clean `git archive 61279a2` checkout (B-173), so not this branch.
 
-- `docs(bugs): log B-174` — found by the perf probe's typing step: on a clean `da85cfb` build
+- `docs(bugs): log B-174` — found by the perf probe's typing step: on a clean `61279a2` build
   against the owner's graph, one typed character in an earlier stream day replaced 28 of 29 day
   sections and the editor with them.
 - `fix(web): journal-stream sections are keyed by day, so editing an earlier day survives its own
@@ -84,11 +84,11 @@ Updated after every meaningful step. If you are reading this after a restart, co
 - `docs: PLAN §8, wiki Journals/Tasks, ADR 011 deferred list — the Scheduled and deadline
   section exists; midnight staleness fixed`.
 
-- Final verification at `051a22f`: `pnpm -r typecheck` exit 0; biome clean on every file this
+- Final verification at `d9d47f3`: `pnpm -r typecheck` exit 0; biome clean on every file this
   branch touched; web unit 78 files / 715 tests passed; e2e (port 6403) journal-agenda,
   journal-stream-editing, journals, a-fresh-journal, templates, phone, focus, editing, pages,
   navigation, render, query, tasks, views — 134 passed, 1 failed (`views.spec.ts:461`, B-173,
-  fails identically on a clean `da85cfb` build). `nooklet verify` not run: no op, sync or schema
+  fails identically on a clean `61279a2` build). `nooklet verify` not run: no op, sync or schema
   code changed.
 
 ## For the coordinator
@@ -96,7 +96,7 @@ Updated after every meaningful step. If you are reading this after a restart, co
 - Fold `docs/bugs-inbox/impl-journal.md` into `docs/BUGS.md`: B-94 fixed, B-170 fixed, B-174
   fixed (high — editing any earlier stream day was broken), B-171 open (Tasks view due window),
   B-172 open (server `block.update` old_str/new_str on blocks with property lines — affects
-  agents), B-173 needs-repro (palette focus e2e red on `da85cfb`).
+  agents), B-173 needs-repro (palette focus e2e red on `61279a2`).
   From the verification pass: B-175 fixed in the agenda (open for query-fence hit rows), B-176
   fixed, B-177 fixed, B-178 fixed (test only).
 - Owner decisions: (1) marker-less blocks with a date are not listed (tasks only); (2) no cap on
@@ -107,7 +107,7 @@ Updated after every meaningful step. If you are reading this after a restart, co
 ## Performance (2026-09-13, machine load average 17-45, 5 warm runs each, medians)
 
 Probe: `tools/probes/journal-agenda-perf.mjs`, port 6403, headless Chromium, persistent profile
-per build per graph (replica bootstrapped once). "base" = `git archive da85cfb` with its own
+per build per graph (replica bootstrapped once). "base" = `git archive 61279a2` with its own
 production build; "branch" = this branch at the B-174 fix plus the grid CSS (same JS paths).
 
 | graph | build | load /journals (ms) | load more (ms) | long tasks over 8 edits (ms) | agenda rows on screen |
@@ -141,7 +141,7 @@ overdue tasks and the owner's own graph has none.
 3. (done) hookups + B-170.
 4. (done) e2e.
 5. (done — see Performance) Real-graph perf check with `tools/probes/journal-agenda-perf.mjs`: base build
-   (`scratchpad/impl-journal/base`, a `git archive da85cfb` with `apps/web/dist` built by its own
+   (`scratchpad/impl-journal/base`, a `git archive 61279a2` with `apps/web/dist` built by its own
    e2e run) vs this branch, on the real copy and on a stress copy (686 dated open tasks, 386
    overdue — made by SQL on a copy, so `verify` on it is meaningless). One browser profile per
    build per graph (a shared profile's service worker served the other build's bundle). Record
@@ -150,7 +150,7 @@ overdue tasks and the owner's own graph has none.
 
 ## How to resume
 
-`git log --oneline da85cfb..m8/impl-journal`, then this file's Next steps.
+`git log --oneline 61279a2..m8/impl-journal`, then this file's Next steps.
 
 ## Adversarial verification (second agent, 2026-09-13)
 
@@ -165,20 +165,20 @@ dated open tasks made by SQL, probes `probe1..5.mjs`). Port 6403.
   the server rejects/loses the edits (HLC drift / LWW), which looks like a product bug and is not.
 - Found and fixed: B-175 (web link in an agenda row opened the task), B-176 (every write rebuilt
   every agenda row, dropping keyboard focus), B-177 (a calendar pin equal to the new Today was
-  rendered twice). Commits: `66b0fa3` (log), `d83610d` (B-177), `2b676b2` (B-175, B-176).
-- `97e00da` (B-176 follow-up): keyed rows alone still re-rendered every row's text on each write
+  rendered twice). Commits: `43d440b` (log), `0765b32` (B-177), `3a49ffd` (B-175, B-176).
+- `f410bdb` (B-176 follow-up): keyed rows alone still re-rendered every row's text on each write
   (stress copy: ~22k DOM mutations over 8 edits, vs ~6k before); a by-value memo per entry brings
   it to ~2.4-3.5k, rows 587/587 kept. Perf probe on the stress copy after all fixes: load median
   183 ms, load-more 114 ms, 0 ms long tasks while editing.
 - Re-checked in the browser after the fixes: a web link in a row opens a new tab and the app stays
   on /journals; Tab-focus on a row survives an API write; typing keeps all rows; the pinned day
   disappears at midnight when it becomes Today.
-- `35e591a`, `a423286`: `e2e/tests/journal-midnight.spec.ts` (2 tests, fake clock at 23:59:45 then
+- `c73ec0d`, `bb764a5`: `e2e/tests/journal-midnight.spec.ts` (2 tests, fake clock at 23:59:45 then
   fast-forward): Today's agenda and a `deadline:today` fence move to the new day. Both fail when
   `day-clock.ts#check` stops moving the day. Seeds a DEADLINE because `query.spec.ts` counts every
   open task scheduled for tomorrow (a scheduled seed broke it in a combined run).
-- `2f98421` (B-178): the B-174 spec shared its journal day with `graph.spec.ts` and failed in a full
-  run; now on its own day and its own block; still fails on `da85cfb`'s stream view.
+- `92b695d` (B-178): the B-174 spec shared its journal day with `graph.spec.ts` and failed in a full
+  run; now on its own day and its own block; still fails on `61279a2`'s stream view.
 - Final: web unit 78 files / 718 tests; `pnpm -r typecheck` exit 0; biome clean on all 21 branch
   files; full chromium e2e before B-178's fix: 294 passed, 2 failed (B-178, and `views.spec.ts:461`
   = B-173), 2 skipped; after: a-fresh-journal, graph, journal-agenda, journal-midnight,

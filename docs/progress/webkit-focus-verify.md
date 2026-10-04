@@ -1,7 +1,7 @@
 # M11 progress — webkit-focus VERIFY (adversarial review of m11/webkit-focus)
 
 Branch `m11/webkit-focus` (worktree `.claude/worktrees/wf_b8e786c1-020-1`), reviewing commits
-57985f6..14229ef on top of 52e5d20. E2E port 6416. Scratch
+8dd87e2..64690a9 on top of ac2528e. E2E port 6416. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11b/webkit-focus-verify/`
 (traces/, e2e-*.txt run outputs, typing-cost.txt). Bug numbers used: B-502, B-503.
 
@@ -21,9 +21,9 @@ Branch `m11/webkit-focus` (worktree `.claude/worktrees/wf_b8e786c1-020-1`), revi
   next key at block start. Mechanism traced (`tools/probes/edited-row-move-mechanism.spec.ts`):
   WebKit fires no focusout on the move, CM6's cached DOM selection goes stale, view.focus() writes
   nothing, WebKit's focus leaves the caret at 0. Same cause as the branch's B-501 (Alt+Up/Down).
-  - `40fc589` log + failing test; `3973aa1` fix in editor/surface.ts#focus (no BlockTree hunk).
-- B-503: focus log logged emoji / decomposed accents as typed keys — fixed `c665747`.
-- Tests `6034ec1`, `81d602a`, mid-line test commit: undo of Alt+Up (guard), hidden-marker mid-line
+  - `f7323a3` log + failing test; `8fc4174` fix in editor/surface.ts#focus (no BlockTree hunk).
+- B-503: focus log logged emoji / decomposed accents as typed keys — fixed `82d7fc3`.
+- Tests `80ae623`, `7c36c2e`, mid-line test commit: undo of Alt+Up (guard), hidden-marker mid-line
   caret (guard), focus log ON changes nothing about editing (fails pre-fix in WebKit).
 - Measurements (port 6416, global setup):
   - pre-fix surface.ts, edited-row-move-caret + focus-log + webkit-refresh-focus: 15 passed,

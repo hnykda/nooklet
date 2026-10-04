@@ -3,11 +3,11 @@
 Adversarial verification of `m8/impl-plugins` (B-103 client plugin host, B-181). Worktree
 `<repo>/.claude/worktrees/wf_69b4f9a8-ee2-11`, e2e port 6404, scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-plugins-verify/`.
-Branch head at start: `b6c199d`.
+Branch head at start: `c226a3c`.
 
 ## State
 
-Done: B-183/B-184/B-185 fixed in `f62e74e`, B-186 in `9242a15`. Final e2e plugins + popups 50/50.
+Done: B-183/B-184/B-185 fixed in `9f2d2f1`, B-186 in `74b1726`. Final e2e plugins + popups 50/50.
 Nothing in flight.
 
 Reruns on the branch head as received: typecheck clean; web unit 703/703 (first run 702/703 — a
@@ -47,8 +47,8 @@ e2e plugins.spec 6/6.
 
 ## Commits added
 
-- `f62e74e` fix(web,mermaid): B-183, B-184, B-185 (+ e2e/unit tests)
-- `9242a15` fix(server): B-186 (+ bundler.test.ts)
+- `9f2d2f1` fix(web,mermaid): B-183, B-184, B-185 (+ e2e/unit tests)
+- `74b1726` fix(server): B-186 (+ bundler.test.ts)
 
 ## Test counts (final code)
 

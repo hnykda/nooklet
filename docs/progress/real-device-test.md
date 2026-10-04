@@ -2,7 +2,7 @@
 
 Goal: make the owner's first real three-device test go smoothly — find and fix blockers in advance
 and leave a step-by-step runbook (below, §Runbook). Started 2026-10-03 on branch
-`worktree-agent-aaca187218b79b7b0` (fast-forwarded to `main` @ 4f6980f first; the worktree had been
+`worktree-agent-aaca187218b79b7b0` (fast-forwarded to `main` @ 451ebab first; the worktree had been
 created 635 commits behind).
 
 Owner input mid-task (via coordinator): the server should live on the owner's own infrastructure —
@@ -171,7 +171,7 @@ Woodpecker pipeline. Not applied, not rendered with `helm template` (no helm run
 - **D3 — same-host proxy that rewrites Host without forwarding headers** still gets a token.
   Options: (a) document "keep Host or send X-Forwarded-For" (done in the runbook); (b) add
   `nooklet serve --no-loopback-token` for proxied deployments; (c) only mint when the peer is
-  loopback AND no proxy is configured. **Decided (b), done** (`b233294`, `docs/progress/pairing.md`):
+  loopback AND no proxy is configured. **Decided (b), done** (`27baa2e`, `docs/progress/pairing.md`):
   the flag exists and is on in the container image and the draft Helm chart.
 - **D4 — Tailscale ingress Host header** — whether the operator's proxy forwards
   `nooklet.<tailnet>.ts.net` as `Host` is unverified. If not, nooklet answers 403 naming the host
@@ -288,7 +288,7 @@ curl -si -X OPTIONS -H 'Origin: capacitor://localhost' \
 
 ## 1. Mint the iPhone's token — after the first `serve`
 
-Mint it after step 0 has run once. (Since B-607's fix, `228f942`, merged 2026-10-03, either order
+Mint it after step 0 has run once. (Since B-607's fix, `a22487b`, merged 2026-10-03, either order
 works; this one is simply the natural one.)
 
 ```sh
@@ -349,7 +349,7 @@ on the confirm screen is `http://192.168.1.5:6200/g/default` → **Connect**.
 - iOS asks "nooklet would like to find and connect to devices on your local network" — **Allow**
   (if you tapped Don't Allow: Settings → Privacy & Security → Local Network → nooklet).
 - Expected: app reloads into Today; the sync indicator (cloud icon, top right) turns green. The
-  confirm screen must **not** come back after the reload (it did before `fb31593`).
+  confirm screen must **not** come back after the reload (it did before `4d1f1b7`).
 
 ## 4. Set up the Mac desktop app
 

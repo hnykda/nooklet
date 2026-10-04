@@ -3,7 +3,7 @@
 Brief from the coordinator (M8 workflow): fix the findings of the server security review of the M7
 code, each already confirmed by an independent skeptic; reproduce each first with a failing test,
 fix the cause, one commit per finding, high severity first; if one does not reproduce, say so and
-leave it. Branch `m8/rv-server-security`, from `da85cfb`.
+leave it. Branch `m8/rv-server-security`, from `61279a2`.
 
 This document is the record of that pass: what the findings were, what was changed, what was not
 and why, and what is still unverified. Bug entries (B-125..B-129, plus a follow-up on B-109) are
@@ -28,7 +28,7 @@ characters of block text, 20,411 ops) and a read-only import of the owner's Logs
 
 ## Findings, by severity
 
-| # | Bug | Severity | Where (at `da85cfb`) | What |
+| # | Bug | Severity | Where (at `61279a2`) | What |
 |---|---|---|---|---|
 | F1 | B-125 | high | `packages/server/src/ops/graph-replace.ts:160` (`compileQuery` 27–47) | A user regex runs synchronously over every live block on the only thread. `(a+)+$` over 25 `a`s held `/healthz` for 5,010 ms; on the real graph `(\w+\s?)+:`, `(\S+\s*)+\?`, `^(.*?,)*x$` did not finish in 60 s. FindReplaceView's debounced dry run makes a half-typed pattern enough. |
 | F2 | B-126 | medium | `packages/server/src/mirror/export.ts:186`, `:215`, `:278` | No byte limit on the mirror file name. A page name past 255 bytes throws `ENAMETOOLONG` at the rename, leaks the temp file, aborts `exportAll` before later pages and the prune; the live mirror repeats it every sweep; `nooklet export` throws. |
@@ -42,11 +42,11 @@ All seven reproduced; none was left for not reproducing.
 
 ### Found while fixing
 
-- **The first F5 fix could abort the server.** Commit `8ddae71` capped the scan worker's heap
+- **The first F5 fix could abort the server.** Commit `70f5362` capped the scan worker's heap
   (`resourceLimits.maxOldGenerationSizeMb: 256`) as a backstop. Checking which limit a test had
   actually hit showed that one 199,000-character block times a 2,000-character replacement —
   reachable over HTTP, `page.create` allows 200,000 characters — did not end the worker but
-  aborted the whole process ("FATAL ERROR: Reached heap limit", exit 134). Fixed in `3d01f11` by
+  aborted the whole process ("FATAL ERROR: Reached heap limit", exit 134). Fixed in `e3c2292` by
   computing each block's replaced length before building it and dropping the cap;
   `tools/probes/worker-heap-cap-abort.mjs` reproduces the abort. Logged in B-125's entry.
 - **Moving the scan off the event loop opened a write race.** Before F1 there was no `await`
@@ -59,49 +59,49 @@ All seven reproduced; none was left for not reproducing.
   `ops/trial-lock.ts` invariant is untouched.
 - **`e2e/tests/views.spec.ts:461`** ("opening the palette while editing and closing it hands focus
   back to the editor") fails on this branch, and fails the same way with every source file this
-  branch changed checked out at `da85cfb`. Not caused here and not investigated; no bug number was
+  branch changed checked out at `61279a2`. Not caused here and not investigated; no bug number was
   left in this branch's range to log it under.
 
 ## What changed (commits, oldest first)
 
-1. `c533125` fix(server): graph.replace scans in a worker with a 2 s budget (B-125) — F1.
+1. `c2473b2` fix(server): graph.replace scans in a worker with a 2 s budget (B-125) — F1.
    `ops/replace-scan.ts`: the scan runs in an eval'd `worker_threads` Worker, terminated after
    2 s; a regex timeout is 400 `invalid`. The worker body is a JavaScript string, because tsx
    injects `__name` helpers into a TS function's `toString()` (`tools/probes/tsx-function-tostring.ts`)
    and a worker file would not survive the sidecar's single-file esbuild bundle. Literal queries go
    through it too: ~20 ms of worker overhead on the real graph when idle, and one implementation.
    Pre-write re-check and 409 `conflict` (above). Spec §4.3.28 and the op description updated.
-2. `3f77bf9` fix(server): the mirror survives a page name past NAME_MAX (B-126) — F2.
+2. `4678ecd` fix(server): the mirror survives a page name past NAME_MAX (B-126) — F2.
    `pageFilePath` shortens a base past 200 UTF-8 bytes to a code-point-safe prefix (never cutting
    a `%XX`) plus `~<8 hex of sha256(name)>`, and `exportPage` writes the full name as `title::` so
    the mirror stays lossless; `exportAll` isolates per-page failures (`failed: [...]`) and still
    prunes; the temp file is removed when the rename fails; `nooklet export` exits 1 on failures.
-3. `3389bd1` fix(server): the Logseq importer never follows a symlink in assets/ (B-127) — F3.
+3. `f6a9f53` fix(server): the Logseq importer never follows a symlink in assets/ (B-127) — F3.
    Dirent (lstat) types; a link is skipped with a warning; a symlinked `assets/` is not followed.
-4. `8ddae71` fix(server): graph.replace stops building text it will refuse (B-125) — F5. Past
+4. `70f5362` fix(server): graph.replace stops building text it will refuse (B-125) — F5. Past
    `max_blocks` the worker stops holding text but keeps counting; a 20 M-character output budget;
    a block grown past 100,000 characters (`block.update`'s cap) is refused, while an already
    longer block may still be edited if the edit does not grow it (the real graph has a
    120,016-character block). Also added the heap cap that item 7 removes.
-5. `fe5837a` fix(cli): gc --no-backup and --flag=value work; gc and restore refuse unknown flags
+5. `811e11a` fix(cli): gc --no-backup and --flag=value work; gc and restore refuse unknown flags
    (B-109) — F6. `parseArgs` splits `--key=value`; `parseGcFlags` lives in `cli-args.ts` where it
    is tested; `checkFlags` for `gc`/`restore`; `booleanFlag` rejects values it does not know.
    `docs/OPERATIONS.md` §5.
-6. `e377269` fix(core): query fences refuse more than 32 levels of nesting or 100 filters (B-129)
+6. `41212ee` fix(core): query fences refuse more than 32 levels of nesting or 100 filters (B-129)
    — F7. Checked before recursing; errors in words; ADR 011 records the limits; new
    `e2e/tests/query-limits.spec.ts`. `joinSql` still emits a flat chain — at 100 filters its SQL
    depth is far inside SQLite's 1,000, so a balanced tree was not needed.
-7. `47186b3` fix(server,web): graph.replace regexes run in Unicode mode (B-128) — F8. `gu`/`giu`
+7. `b244245` fix(server,web): graph.replace regexes run in Unicode mode (B-128) — F8. `gu`/`giu`
    on the server and in FindReplaceView's highlight; the description says `\w`/`\b` stay
    ASCII-only and gives `(?<![\p{L}\p{N}_])word(?![\p{L}\p{N}_])`. New
    `e2e/tests/replace-unicode.spec.ts`.
-8. `6b492d2` docs(progress): the heap-cap abort found, before fixing it.
-9. `3d01f11` fix(server): graph.replace refuses an oversized block before building it; no worker
+8. `0ec6f97` docs(progress): the heap-cap abort found, before fixing it.
+9. `e3c2292` fix(server): graph.replace refuses an oversized block before building it; no worker
    heap cap (B-125). Exact replaced length per block from the matches — literal lengths, or
    ECMA-262 GetSubstitution lengths for `$`-templates — checked before `String.replace` runs; the
    worker throws if a built string ever disagrees. A table test pins every template form (removing
    the two-digit `$nn` rule fails it).
-10. `25e3951`, `2d384e4` docs(probes): `worker-heap-cap-abort.mjs`, `tsx-function-tostring.ts`.
+10. `cc70a34`, `455bc43` docs(probes): `worker-heap-cap-abort.mjs`, `tsx-function-tostring.ts`.
 11. This document.
 
 ## Verification
@@ -114,11 +114,11 @@ All seven reproduced; none was left for not reproducing.
   end-to-end with the CLI on a graph copy, and re-run after the fix.
 - `pnpm -r typecheck`: clean at every commit. `pnpm exec biome check`: no new diagnostics (the two
   `useOptionalChain` warnings in `core/query.ts` predate this branch).
-- `pnpm -r test` at `2d384e4` (the last code commit): 149 files, 1,579 tests, all passing (core
+- `pnpm -r test` at `455bc43` (the last code commit): 149 files, 1,579 tests, all passing (core
   334, plugin-api 17, server 544, web 684). Each package's suite was also green before each
   commit that touched it.
 - e2e on port 6471, Chromium: `replace`, `replace-unicode`, `query`, `query-limits`, `refactor`,
-  `views` — 48 passed, 1 failed (`views.spec.ts:461`, pre-existing, above). After `3d01f11`:
+  `views` — 48 passed, 1 failed (`views.spec.ts:461`, pre-existing, above). After `e3c2292`:
   `replace`, `replace-unicode`, `query-limits`, `refactor` 11/11.
 - Real graph copy: `nooklet verify` OK (20,411 ops); a real `graph.replace` of `TODO` → `TO-DO`
   (168 blocks) and its `batch.undo`, then `verify` OK again (22,765 ops); `nooklet export` wrote

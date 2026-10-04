@@ -5,10 +5,10 @@ Owner agent's working record. Updated after every meaningful step so a restart c
 
 ## Done
 
-- `40c054b` feat(ops): `trash.list` + `trash.restore` (+ 19 HTTP tests, `ops/index.ts`
+- `d72e7c4` feat(ops): `trash.list` + `trash.restore` (+ 19 HTTP tests, `ops/index.ts`
   registration, MCP pin list).
-- `fe1a197` feat(ops): `page.history` (+ 7 HTTP tests).
-- `163d3b9` feat(gc): orphan-asset GC (`planAssetGc`, second phase of `runGc`,
+- `9a10bc7` feat(ops): `page.history` (+ 7 HTTP tests).
+- `b1e9b6d` feat(gc): orphan-asset GC (`planAssetGc`, second phase of `runGc`,
   `DEFAULT_ASSET_GRACE_DAYS = 7`, `--asset-grace <days>` in `cli.ts`; 9 tests).
 - Commits go through a PRIVATE git index (`<scratch>/commit-mine.sh` + `craft-shared.mjs`):
   other agents' ops are still untracked, so the shared `ops/index.ts` / `mcp/server.test.ts` are
@@ -44,9 +44,9 @@ Owner agent's working record. Updated after every meaningful step so a restart c
   half ran anyway, as designed.
 - `pnpm -r typecheck` clean (repo-wide, at this moment); `pnpm -r test` 1,538 passing
   (330 + 17 + 512 + 679).
-- Docs landed as `59f1b89`, were REVERTED by a concurrent agent's `36bc2cb` (its tree was built
-  from a stale HEAD and parented on mine), and re-landed as `cdab2dc`. Comment renumbering in the
-  server files: `6cb8845`. `th-commit.sh` now does a compare-and-swap on HEAD (`git update-ref
+- Docs landed as `5c45509`, were REVERTED by a concurrent agent's `410778c` (its tree was built
+  from a stale HEAD and parented on mine), and re-landed as `c5c521a`. Comment renumbering in the
+  server files: `2761147`. `th-commit.sh` now does a compare-and-swap on HEAD (`git update-ref
   HEAD <new> <old>`, retry on a moved HEAD) so this cannot happen from my side and I notice it
   from theirs. **If you resume: check `git diff HEAD -- <my files>` is empty before anything
   else; a non-empty diff on a committed file means another revert.**
@@ -56,8 +56,8 @@ Owner agent's working record. Updated after every meaningful step so a restart c
   same artefact `docs/review/2026-09-12-review.md` recorded); run 4 with
   `--output <scratch>/th-test-results` (a private artifacts dir): **9/9 passed**. Always pass
   `--output` to a private dir while other agents run Playwright.
-- Web committed: `f13044a` (Trash view, data layer, text helpers, sidebar entry, trash.spec),
-  `1c200eb` (History view, both route lines, history.spec).
+- Web committed: `fd19935` (Trash view, data layer, text helpers, sidebar entry, trash.spec),
+  `f5b5248` (History view, both route lines, history.spec).
 - **Full e2e suite on 6354** (`<scratch>/th-e2e-full.log`, private `--output`): 281 passed,
   2 skipped, 5 failed — all five in other workstreams' in-flight specs (`context-menu.spec.ts:219`,
   `refactor.spec.ts:74/:91` "Move to page…", `templates.spec.ts:202/:240` journal template); none

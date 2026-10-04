@@ -6,13 +6,13 @@ audit §2 (`docs/review/2026-09-12-exposure-audit.md`) items 9 (copy/export page
 10 (print / Save as PDF) and 13 (favourite from the page and the palette; sidebar "Recent").
 Bugs go to `docs/bugs-inbox/impl-export.md` (numbers B-220..B-229), never `docs/BUGS.md`.
 
-Note: the worktree was created at an old commit (`41666ee`); the branch was reset to `da85cfb`
+Note: the worktree was created at an old commit (`f7c9644`); the branch was reset to `61279a2`
 before any work, as the brief says everyone starts there.
 
 ## Done (committed)
 
-- `6b8d703` progress file + B-220..B-222 logged.
-- `06ed234` core: the mirror's renderer moved to `packages/core/src/sync/page-outline.ts`
+- `8e29142` progress file + B-220..B-222 logged.
+- `c45ef89` core: the mirror's renderer moved to `packages/core/src/sync/page-outline.ts`
   (`PAGE_OUTLINE_SQL`, `buildPageOutline`, `readPageOutline`, `pageMirrorPath`); server
   `mirror/export.ts` wraps it. B-223 fixed (siblings tie-break by id). Core 338 / server 521 green.
 - (this commit) web: page actions — see "What exists" below. B-220, B-221, B-222 fixed; B-224,
@@ -38,12 +38,12 @@ before any work, as the brief says everyone starts there.
   edit, palette export, print via real `page.pdf()`, palette print, star, palette favourite +
   Recent heading).
 
-- `457d7d3` web page actions (above). B-220, B-221, B-222 fixed; B-224, B-225 logged open.
-- (next commit) B-226 logged: `views.spec.ts` palette-focus test fails at `da85cfb` too (6/6 runs,
+- `53d2721` web page actions (above). B-220, B-221, B-222 fixed; B-224, B-225 logged open.
+- (next commit) B-226 logged: `views.spec.ts` palette-focus test fails at `61279a2` too (6/6 runs,
   last one with baseline sources checked out) — pre-existing, not this branch. Spec: E.6 rows +
   R52a for the four commands.
 
-- `a764284` `tools/probes/page-export-real-graph.mjs` — real-graph check, results below.
+- `c2b311c` `tools/probes/page-export-real-graph.mjs` — real-graph check, results below.
 
 ## Final numbers (2026-09-13)
 
@@ -51,7 +51,7 @@ before any work, as the brief says everyone starts there.
   on every file this branch touched (the repo has pre-existing findings elsewhere).
 - e2e Chromium, port 6408, batch 1 (page-export, pages, page-icons, views, editing, selection,
   context-menu, parity, focus, shelf, journals, refactor): 146 passed, 1 failed, 1 skipped — the
-  failure is B-226, which also fails with `da85cfb` sources. Batch 2 (page-export, help, popups,
+  failure is B-226, which also fails with `61279a2` sources. Batch 2 (page-export, help, popups,
   phone, navigation, history, shelf-outline, render, rendering, a-fresh-journal, templates): 87
   passed. The whole suite was not run.
 
@@ -96,7 +96,7 @@ before any work, as the brief says everyone starts there.
 
 ## How to resume
 
-- `git log --oneline da85cfb..m8/impl-export`, then this file's "Next steps".
+- `git log --oneline 61279a2..m8/impl-export`, then this file's "Next steps".
 - e2e: `cd e2e && NOOKLET_E2E_PORT=6408 pnpm exec playwright test page-export.spec.ts --project=chromium`
 - Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-export/`
   (real graph copy in `graph/`, screenshots/PDFs from the visual check).
@@ -108,10 +108,10 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 only, never committed.
 
 - Reran: unit core 338 / server 521 / web 697 (plus a 17-test package) green; `page-export.spec.ts` 7/7.
-- Found and fixed B-227 (`3bbeff0`): long page titles clipped on paper (the title is an input).
-- Found and fixed B-228 (`14272fc`): `ui_run` could run Copy/Export/Print in the person's window;
+- Found and fixed B-227 (`4a9903f`): long page titles clipped on paper (the title is an input).
+- Found and fixed B-228 (`b3df9c5`): `ui_run` could run Copy/Export/Print in the person's window;
   those three are now `remoteInvocable: false` (spec R52a updated).
-- Found and fixed B-229 (`0f48d56`): a double click on the star left the page favourited; toggles
+- Found and fixed B-229 (`fdd7a3a`): a double click on the star left the page favourited; toggles
   now queue. B-226 annotated: passes in a full views.spec run, fails alone; duplicate of
   B-161/B-193/B-246. All of B-220..B-229 are now used.
 - Real graph copy (fresh `.backup`): `nooklet export` with this branch's renderer skipped all 952

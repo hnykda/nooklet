@@ -6,7 +6,7 @@ Resilience log for the verifying agent. Branch `m11/keys-in-fields` (worktree
 Bugs go to `docs/bugs-inbox/keys-in-fields.md` (B-450..B-459; B-452 used here).
 
 ## Done
-- Read the diff (`52e5d20..499afcd`): `isFieldOutsideOutliner` + `withoutOutliner` + 3 lines in
+- Read the diff (`ac2528e..62444fb`): `isFieldOutsideOutliner` + `withoutOutliner` + 3 lines in
   `KeyboardDispatch`; spec R12b; unit + e2e tests; inbox B-300/B-450/B-451. Design checked against
   every `when` clause in `commands/registrations` (no negated clause survives hiding the outliner;
   no default chord bindings), `popupOpen` claims, `historyEditorHost`, the palette's full-context rows.
@@ -31,9 +31,9 @@ Bugs go to `docs/bugs-inbox/keys-in-fields.md` (B-450..B-459; B-452 used here).
   journal-day-start, dates, date-picker-type-ahead, page-rename, page-title-draft, search-cleared,
   search-filters, context-menu, page-icons) 164 passed, 1 skipped (context-menu fixme).
 
-- `bd843cc` fix B-452 + tests + probe + inbox + this file.
+- `efa25d6` fix B-452 + tests + probe + inbox + this file.
 - Web unit suite after the fix: 138 files, 1142/1142.
-- Every one of the 98 e2e spec files ran at least once on `bd843cc` (port 6411, Chromium), in five
+- Every one of the 98 e2e spec files ran at least once on `efa25d6` (port 6411, Chromium), in five
   runs (some files matched two filters and ran twice): 73 passed; 164 passed + 1 skipped
   (context-menu fixme); 83 passed + 3 failed (`editing.spec` openJournal strict-mode — ordering, B-453;
   alone 5/5); 105 passed + 1 failed (`journal-agenda` "finishing a task elsewhere…" live update, load;

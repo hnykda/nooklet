@@ -9,7 +9,7 @@ markdown drops a page-properties pre-block), B-236 (`page.update` refuses proper
 day), B-148 (`ui_run` command errors come back as a timeout). Then `pnpm nooklet verify` on a
 real-graph copy.
 
-Branch `m9/server-ops` from `cf08d19`, worktree
+Branch `m9/server-ops` from `febfc23`, worktree
 `<repo>/.claude/worktrees/wf_e473942f-106-7`. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m9/server-ops/`
 (`graph/graph.sqlite` = backup of the owner's graph taken 10:48; `data/` = NOOKLET_DATA for any
@@ -18,25 +18,25 @@ B-310..B-319), never `docs/BUGS.md`.
 
 ## Done (committed)
 
-- `f075d2a` B-151 — `core/outline.ts#serializeOutline` places a fence-first block's property lines
+- `53838d0` B-151 — `core/outline.ts#serializeOutline` places a fence-first block's property lines
   after the closed fence / on the bullet line (no ids). Test: `core/src/outline.test.ts` › "a block
   that opens with a fence, without ids (B-151)". Core 396/396, server 608/608. Logged B-310 (same
   block with a marker; probe `tools/probes/fence-first-task-roundtrip.ts`), not fixed.
-- `ba8aa99` B-172 — `outline-bridge.ts#parseSingleBlockGrammar(text, "flush"|"auto")`. Tests:
+- `fe5417f` B-172 — `outline-bridge.ts#parseSingleBlockGrammar(text, "flush"|"auto")`. Tests:
   `server/src/ops/outline-bridge.test.ts` (13), `server/src/ops/block-update-text.http.test.ts` (9).
   Server 630/630. Spec: mcp-tools.md §3.2 rule 10.
-- `d3e1672` B-236 — `page-update.ts` refuses only a real rename of a journal. Test:
+- `047551e` B-236 — `page-update.ts` refuses only a real rename of a journal. Test:
   `server/src/ops/page-update-journal.http.test.ts` (3). Server 633/633.
-- `51c1361` B-235 — `outline-bridge.ts#checkWriteMarkdown` / `prepareMarkdownInsert(…, "accept" |
+- `e7b010a` B-235 — `outline-bridge.ts#checkWriteMarkdown` / `prepareMarkdownInsert(…, "accept" |
   "refuse")`; page.create applies the pre-block as `page.prop` ops (minted AFTER `page.create`: HLC
   order), page.append/block.insert/page.create-append refuse it. Same commit: B-312 (logged + fixed:
   page.append checked markdown after creating its page) and B-172's second cause (empty block with
   only property lines read as a pre-block; sentinel first bullet). Test:
   `server/src/ops/markdown-page-properties.http.test.ts` (12). Logged B-311 (web paste drops a
   pre-block), not fixed. Server 647/647.
-- `be17814` progress update.
+- `1fb8629` progress update.
 
-- `0241b6a` B-148 — web `live/message-handler.ts` replies `command.result {error}` when the command
+- `4275d7a` B-148 — web `live/message-handler.ts` replies `command.result {error}` when the command
   throws; server `live/run-remote-command.ts` → `invalid`, `details.reason: "command_failed"`.
   Tests: `apps/web/src/live/message-handler.test.ts` (+2), `server/src/live/ui-run-error.test.ts` (3),
   and new `e2e/tests/agent-ops.spec.ts` (4 tests: B-172, B-235, B-236, B-148 in a real
@@ -109,20 +109,20 @@ OUT-14 shape), B-311 (web paste drops a pre-block). If picking this up again: th
 
 ## How to resume
 
-`git log --oneline cf08d19..m9/server-ops`, then the first unticked step above.
+`git log --oneline febfc23..m9/server-ops`, then the first unticked step above.
 
 ## Adversarial verification (2026-09-13, second agent; scratch `…/scratchpad/m9/server-ops-verify/`)
 
 Done (committed on this branch):
-- `2fc05fb` B-313 (found + fixed): `content` copied from `page_read` for a nested block lost its
+- `0fd3782` B-313 (found + fixed): `content` copied from `page_read` for a nested block lost its
   properties (the `"auto"` reading stripped one 2-column unit; page_read indents depth d by
   2·(d+1)). Now strips the common leading whitespace. Probe
   `tools/probes/block-update-content-indent-graph.mts` on the graph copy: 866 → 0 property diffs.
   Also kept as tests: property-line edit/removal by old_str (Czech), collapsed + children +
   batch.undo, pre-block `alias::` resolving.
-- `959633e` e2e: Cmd/Ctrl+C → paste of a fence-first block with a property keeps it (B-151 in the
-  browser; fails with cf08d19's core built in).
-- `930a7a0` B-314 (found + fixed): old_str edit of a `collapsed:: true` line was a silent no-op.
+- `6b5dd95` e2e: Cmd/Ctrl+C → paste of a fence-first block with a property keeps it (B-151 in the
+  browser; fails with febfc23's core built in).
+- `8ebd5ff` B-314 (found + fixed): old_str edit of a `collapsed:: true` line was a silent no-op.
 
 Checked and fine: typecheck; branch's own tests; real-graph round-trip probe (0 refused, the 20
 literal SCHEDULED blocks as documented); flush-as-content and page_read@0 old-vs-new parse identical

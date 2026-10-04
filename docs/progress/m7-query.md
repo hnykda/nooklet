@@ -5,23 +5,23 @@ reading this after a restart, continue from **Next steps**.
 
 ## Done (commit hashes)
 
-- `f1675df` feat(core): the ```query fence language — `packages/core/src/query.ts` +
+- `d24ce73` feat(core): the ```query fence language — `packages/core/src/query.ts` +
   `query.test.ts` (55 tests): parser, matcher, sorter, SQL prefilter.
-- `0b69dc0` feat(web): render seams — highlight.js (lazy, per-language chunks) + KaTeX (lazy),
+- `e1286ff` feat(web): render seams — highlight.js (lazy, per-language chunks) + KaTeX (lazy),
   `tokens.tsx`/`livePreview.ts` wired, `e2e/tests/render.spec.ts`, package.json + lockfile.
-- `dfaf3b9` feat(web): query fence UI — `data/queries.ts`, `store.ts` `stampedFor`,
+- `4ef5864` feat(web): query fence UI — `data/queries.ts`, `store.ts` `stampedFor`,
   `render/QueryFenceView.tsx`, `/query` command + slash item, `e2e/tests/query.spec.ts`.
-- `36bc2cb` fix(core): TS narrowing in the parser (HEAD typecheck was red), biome formatting,
+- `410778c` fix(core): TS narrowing in the parser (HEAD typecheck was red), biome formatting,
   e2e seed fix.
 - Unit: 86 web tests + 55 core tests green. e2e `query.spec.ts` + `render.spec.ts`: **14/14 pass**
-  on a clean checkout of `dfaf3b9` (+ the fixed spec) on port 6350. In the shared working tree
+  on a clean checkout of `4ef5864` (+ the fixed spec) on port 6350. In the shared working tree
   the same run rendered a blank app (no `.vr-row` anywhere, even on a plain page) — other
   agents' uncommitted files at that moment, not committed code.
 - Bundle numbers (clean worktrees, exact commits) in `docs/research/14-render-seams.md`.
 - ADR 011 amended (language as shipped, semantics, deferrals).
 
-- `28fcb7c` docs: ADR 011 amendment + `docs/research/14-render-seams.md`.
-- `a2d5c13` docs(bugs): B-94 (midnight staleness), B-93 cross-reference.
+- `1add7e9` docs: ADR 011 amendment + `docs/research/14-render-seams.md`.
+- `c98b1d5` docs(bugs): B-94 (midnight staleness), B-93 cross-reference.
 - `pnpm -r typecheck` exit 0; `pnpm -r test` 1,539 tests green (shared tree, 2026-09-12 ~18:10).
 - Full e2e on the shared tree, port 6350, in three shards (`scratch/e2e-shard1b.log`, `-shard2.log`,
   `-shard3.log`): 280 passed, 6 failed, 3 skipped. Failures: `context-menu:219` (refactors

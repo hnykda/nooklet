@@ -78,7 +78,7 @@ Two more facts shaped the fix:
 ## Consequences
 
 - **The precache grows by 5 MB.** Production build, `tools/probes/web-build-weight.mjs`, before
-  (`da85cfb`) → after: precache 91 → 207 entries, 2,795 → 7,829 KiB; JS on disk 1,612 → 6,652
+  (`61279a2`) → after: precache 91 → 207 entries, 2,795 → 7,829 KiB; JS on disk 1,612 → 6,652
   KiB; startup entry 513.2 → 521.8 KiB. The largest chunk is mermaid's ELK layout engine,
   1,456 kB (453 kB gzip), then cytoscape 435 kB (138 kB gzip) and a second KaTeX, 259 kB (mermaid
   pins 0.16; the app uses 0.18). None load on a page without a diagram

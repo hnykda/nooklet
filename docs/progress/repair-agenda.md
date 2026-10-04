@@ -15,7 +15,7 @@ Brief (two owner-approved items):
    toggle. Playwright tests for both; journal stream stays fast on the real-graph copy (measure
    before/after).
 
-Branch `m11/repair-agenda` from `52e5d20`, worktree
+Branch `m11/repair-agenda` from `ac2528e`, worktree
 `<repo>/.claude/worktrees/wf_975bcd44-fae-5`. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11/repair-agenda/`
 (`graph/graph.sqlite` = `.backup` of the owner's graph taken 17:28, now repaired;
@@ -25,13 +25,13 @@ B-480..B-489).
 
 ## Done (committed)
 
-- `524cf49` Part 1 code: `nooklet repair org-dates [--apply]` — `core/outline.ts`
+- `8a108b6` Part 1 code: `nooklet repair org-dates [--apply]` — `core/outline.ts`
   (`orgDateLine`, `findOrgDateLines`; the parser now calls `orgDateLine`),
   `server/repair-org-dates.ts`, `server/cli-args.ts#parseRepairFlags`, `server/cli.ts` case
   `repair`. Tests: core `outline-org-dates.test.ts` (+4), server `repair-org-dates.test.ts` (6),
   `cli-args.test.ts` (+2). Unit: core 412/412, server 684/684; typecheck clean.
-- `7693124` docs: `OPERATIONS.md` §10, wiki `Command line`, inbox B-143 (existing), this file.
-  Part 2: `29e6bc3` code, `15e1224` e2e.
+- `7f26409` docs: `OPERATIONS.md` §10, wiki `Command line`, inbox B-143 (existing), this file.
+  Part 2: `06aa21e` code, `e2837a9` e2e.
 - Part 2 code: `web/data/agenda.ts` (SQL takes `marker IS NULL` too, via `due_day IS NOT NULL`),
   `web/views/agendaDay.ts` (`agendaSection`, `OVERDUE_SHOWN = 10`, notes never overdue),
   `web/views/JournalAgenda.tsx` (bullet row, "Show all N overdue" / "Show fewer overdue" toggle,
@@ -130,7 +130,7 @@ runs it, and with it the planner picked different plans):
 | real (18,631 blocks; 1 dated note, 0 dated open tasks) | 0.012 ms, 0 rows | 2.0-2.3 ms (`SCAN b USING INDEX block_page`), 1 row | 0.006 ms, 1 row |
 | stress (686 dated open tasks / 605 overdue + 401 dated notes, made by SQL) | 1.2 ms, 686 rows | 5.2 ms, 1,087 rows | 1.4 ms, 1,087 rows |
 
-`tools/probes/journal-agenda-perf.mjs`, 5 warm runs, medians, base (`52e5d20` build) and branch
+`tools/probes/journal-agenda-perf.mjs`, 5 warm runs, medians, base (`ac2528e` build) and branch
 servers side by side on two copies of each graph (ports 7415/7414), runs interleaved:
 
 | graph | build | load /journals (ms) | load more (ms) | long tasks over 8 edits (ms) | agenda rows on screen |
@@ -194,7 +194,7 @@ Scratch `…/scratchpad/m11/repair-agenda-verify/`; fresh `.backup` of the owner
   after reload 19 chips; a fresh context 19 chips; `batch.undo` over HTTP reaches both windows live
   (~0.5 s); `verify` OK. After a restart the live mirror renders the repaired pages. OPERATIONS §10
   now says why quitting the app first is required.
-- B-481 (fixed, `dfc07ed`): trailing blank line left where a re-import leaves none; not a shape on the
+- B-481 (fixed, `975e97e`): trailing blank line left where a re-import leaves none; not a shape on the
   owner's graph — `--apply` output on a fresh copy is byte-identical before and after the fix.
 - E2E, ONE run of the whole Chromium suite on 6414 (not chunked, so cross-spec state carries all the
   way): 536 passed, 2 skipped, 0 failed (12.8 min). Then journal-agenda + journal-midnight with two new
@@ -217,4 +217,4 @@ Scratch `…/scratchpad/m11/repair-agenda-verify/`; fresh `.backup` of the owner
 
 ## How to resume
 
-`git log --oneline 52e5d20..m11/repair-agenda`, then this file's Next steps.
+`git log --oneline ac2528e..m11/repair-agenda`, then this file's Next steps.

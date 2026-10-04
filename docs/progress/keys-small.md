@@ -1,7 +1,7 @@
 # keys-small: B-450, B-594, B-592
 
-Branch: `worktree-agent-afb12b96115e5cdf1` (fast-forwarded to `main` @ `fd779f4` first; the
-worktree had been created on the older `41666ee`, which has none of these entries).
+Branch: `worktree-agent-afb12b96115e5cdf1` (fast-forwarded to `main` @ `c28097a` first; the
+worktree had been created on the older `f7c9644`, which has none of these entries).
 
 ## State (2026-10-03)
 

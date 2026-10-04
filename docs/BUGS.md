@@ -240,7 +240,7 @@ Fix direction (not done, outside this branch's scope): poll the read, and use `h
 
 ### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
-m10/editor-keys (`/template`: pre-existing; `/mermaid`: reachable since the B-344 fix, `30e9a71`) ·
+m10/editor-keys (`/template`: pre-existing; `/mermaid`: reachable since the B-344 fix, `246d61e`) ·
 **Test:** —
 
 Page `- zoom root` / `  - zoom child` / `- outside`, opened at `?block=<zoom root>`, click the root
@@ -251,7 +251,7 @@ screen only the slash text disappears; the focus request for the new block is dr
 there (`zoom root Z`). `/template` with text in the zoom root does the same (stored
 `["tpl root ", "tpl child", "EKV Checklist", "step one", "tpl outside"]`, rows still
 `["tpl root ", "tpl child"]`): both place "after a bullet with text" with
-`data/templates.ts#nextSiblingOrder`. Before `30e9a71` `/mermaid` put the fence inline in the root
+`data/templates.ts#nextSiblingOrder`. Before `246d61e` `/mermaid` put the fence inline in the root
 (visible, never rendered — B-344). Options: insert as the zoom root's first child when the anchor is
 the tree's root, or navigate out of the zoom. Probe: `e2e/tests/zz-ekv-probe.spec.ts` P10/P10b/P11
 (throwaway, not committed).
@@ -271,11 +271,11 @@ trash is empty.") — so the error state went away by itself after `page.unroute
 click landed, and the click then waits for a button that no longer exists. Seen 3 times in a row on
 port 6411: in a full run (trash only), alone (both), and alone with this branch's one dispatch line
 disabled (both) — so not caused by B-300's fix. Machine load average 65–106 throughout. Not
-checked: whether it also fails at `52e5d20` on an idle machine, and what refetches the view (a live
+checked: whether it also fails at `ac2528e` on an idle machine, and what refetches the view (a live
 sync poke or a focus refetch would both do it) — which decides whether the fix is in the test
 (click Retry OR accept a recovered view) or in the view.
 
-Load-dependent (verifier, 2026-09-13): on `bd843cc` both "Retry recovers" tests PASSED (288 ms and
+Load-dependent (verifier, 2026-09-13): on `efa25d6` both "Retry recovers" tests PASSED (288 ms and
 292 ms) inside a run of 30 spec files at load average ~25–56, the same port and machine. So the
 race needs a slow machine — consistent with the view refetching by itself before the click lands.
 
@@ -381,7 +381,7 @@ A block whose content line 1 contains U+2028 or U+2029 (pasted from some web pag
 strings) is written `- a<U+2028>b`, and read back as a plain paragraph block whose text is
 `- a<U+2028>b`: the bullet regex's `.` does not match a line separator, so the line is not a bullet.
 A task loses its marker and id the same way. Lines after line 1 are fine (they are continuation
-lines by indent). Same on the base code (`52e5d20`), so not B-342's change. Owner's graph copy: 0
+lines by indent). Same on the base code (`ac2528e`), so not B-342's change. Owner's graph copy: 0
 blocks contain either character.
 
 ---
@@ -395,7 +395,7 @@ with `ids: "none"` — copy, `block.update`'s `before`) and read back as the tex
 `1k7f3q9xz2hav4`; a text line 1 of ` ^1k7f3q9xz2hav4 ` (trailing space) is text on the first read
 and an id on the next. `docs/spec/mcp-tools.md` §3.2 rule 5 says such text "is escaped as ` \^…` on
 output and unescaped on input"; `outline.ts` implements no such escape. Same class as B-342 (OUT-23a
-would be the natural shape for it). Same on the base code (`52e5d20`). Owner's graph copy: 0 blocks
+would be the natural shape for it). Same on the base code (`ac2528e`). Owner's graph copy: 0 blocks
 whose text ends like that.
 
 ---
@@ -430,7 +430,7 @@ are not covered. Not fixed here: it is outside B-411's cause.
 A block whose text contains `((some-block))` reads `wombatprobe task quoting ((1m2dv7va6w5hxr))` in
 the Tasks view and in a search hit, and a property `source:: ((…))` reads `source((1m2d…))` under
 its row — where the outliner row shows the referenced block's text. Seen with
-`tools/probes/ref-placeholders-elsewhere.spec.ts` on `52ac1a6` (Chromium). Same cause as B-510:
+`tools/probes/ref-placeholders-elsewhere.spec.ts` on `d644d4f` (Chromium). Same cause as B-510:
 these render through `InlineContent` without a resolver. The journal agenda renders its tasks the
 same way, so it very likely shows the placeholder too (by reading the code; not run). Not fixed
 here: B-510's `resolveBlockRef` prop is the way in — pass it from each of these callers
@@ -653,7 +653,7 @@ cache. Not verified in a browser; found by reading the generated SW and workbox'
 
 ---
 
-**2026-10-03 (mermaid-lazy, `ce99b82`):** confirmed in Chromium. A RegExp rule `/^\/static\//` never
+**2026-10-03 (mermaid-lazy, `183b058`):** confirmed in Chromium. A RegExp rule `/^\/static\//` never
 put a chunk in its cache; the function matcher `({ url, sameOrigin }) => sameOrigin &&
 url.pathname.startsWith("/static/")` did (`e2e/tests/mermaid-lazy-cache.spec.ts`). The two original
 rules (`api|sync` NetworkOnly, `/assets/` CacheFirst) are untouched and still never match; the
@@ -826,7 +826,7 @@ A resource keeps its last value while loading: 2–4 ms locally, invisible in pr
 
 Fixed page names edited by the tests: lines 103, 223, 313, 578, 608, 619 fail on repeats 1–4.
 Single runs are green. (Its two slash-menu tests that assumed `todo` on an empty graph, stale since
-`34c8d3e`, are fixed: pinned `todo` in Settings.)
+`7641c43`, are fixed: pinned `todo` in Settings.)
 
 ### B-636 · `sw-update.spec.ts` B-537 test failed once in 4 full runs with a worker left `waiting`
 **Status:** open, not investigated · **Severity:** low (flaky; possibly a real takeover race) · **Found:** 2026-10-03, e2e-green final runs · **Test:** `sw-update.spec.ts:86`
@@ -885,7 +885,7 @@ The server exposes `ui_windows`, `ui_state`, `ui_run`, …; ADR 015 names them d
 ### B-657 · The old README advertised a Homebrew cask, Release downloads and a bare `/mcp` URL
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
 
-No tap and no releases exist; bare `/mcp` answers 307. Fixed in the README rewrite (`36fdac6`).
+No tap and no releases exist; bare `/mcp` answers 307. Fixed in the README rewrite (`018e917`).
 
 ### B-658 · `apps/web/README.md` and OPERATIONS §3 (restore paths) predate the current code
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
@@ -912,7 +912,7 @@ Simulator event log: `keydown Enter` then `beforeinput insertLineBreak`, draft `
 ### B-663 · `tasks.spec.ts` Mod+Enter tests are order-dependent since empty graphs default to `now`
 **Status:** open · **Severity:** low (test) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
 
-Run alone (fresh server, empty graph) they expect TODO and get LATER (`34c8d3e`); in the full suite earlier specs leave TODO markers so the workflow is inferred `todo`.
+Run alone (fresh server, empty graph) they expect TODO and get LATER (`7641c43`); in the full suite earlier specs leave TODO markers so the workflow is inferred `todo`.
 
 ### B-664 · After the toolbar's hide-keyboard button the toolbar stays at the bottom, scrolled sideways
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, phone-ui agent · **Test:** none
@@ -962,23 +962,23 @@ Reachability unverified. Recommendation H9: `pnpm.overrides` now; weekly `pnpm a
 ## Fixed
 
 ### B-680 · `e2e.test.ts` B-642 "one device offline" was flaky (6/20): a same-millisecond HLC tie
-**Status:** fixed (2026-10-04, `d7d6586`) · **Severity:** low (test) · **Found:** 2026-10-04, b652 agent · **Test:** the test itself
+**Status:** fixed (2026-10-04, `6484cd0`) · **Severity:** low (test) · **Found:** 2026-10-04, b652 agent · **Test:** the test itself
 
 Test-only; B's clock now 1 s ahead.
 
 ### B-679 · A merge op was queued without a base, so the next concurrent edit won by LWW over the merge
-**Status:** fixed (2026-10-04, `d7d6586`) · **Severity:** high · **Found:** 2026-10-04, b652 agent · **Test:** "three devices edit different words offline …"
+**Status:** fixed (2026-10-04, `6484cd0`) · **Severity:** high · **Found:** 2026-10-04, b652 agent · **Test:** "three devices edit different words offline …"
 
 A third device's change was lost.
 
 ### B-678 · A three-way merge used the newest pending edit's base and could silently revert an earlier local edit
-**Status:** fixed (2026-10-04, `d7d6586`) · **Severity:** high · **Found:** 2026-10-04, b652 agent · **Test:** "two local edits of one block before the other device's edit arrives: the merge keeps the first one too"
+**Status:** fixed (2026-10-04, `6484cd0`) · **Severity:** high · **Found:** 2026-10-04, b652 agent · **Test:** "two local edits of one block before the other device's edit arrives: the merge keeps the first one too"
 
 Two offline edits of one block, then another device's edit to a nearby word: the first local edit vanished.
 
 ### B-652 · A reconnecting device can silently lose one side of a same-block conflict (push/pull race)
-**Status:** fixed (2026-10-04, `d7d6586` + `1164ed3`, ADR 027 amendment 1) · **Severity:** high (silent text loss) ·
-**Test:** `apps/web/src/sync/e2e.test.ts` "a same-block conflict is kept whichever response a reconnecting device gets first (B-652)" (15 scenarios + random schedules; 20 tests fail on `59aa77b`), `apps/web/src/sync/sync-client.test.ts` (B-652 cases), `e2e/tests/sync-conflict.spec.ts` (2 new, red before)
+**Status:** fixed (2026-10-04, `6484cd0` + `f9ec85f`, ADR 027 amendment 1) · **Severity:** high (silent text loss) ·
+**Test:** `apps/web/src/sync/e2e.test.ts` "a same-block conflict is kept whichever response a reconnecting device gets first (B-652)" (15 scenarios + random schedules; 20 tests fail on `8a91f06`), `apps/web/src/sync/sync-client.test.ts` (B-652 cases), `e2e/tests/sync-conflict.spec.ts` (2 new, red before)
 
 Conflict detection in `SyncClient.pull()` needs the device's own `block.text` still in `pending_op`
 when the other device's op is pulled. On `online`/`resume`/`visible`, `worker-core.ts` runs
@@ -988,7 +988,7 @@ copy. The B-642 Playwright spec did not hit it in 9 runs (pull went first each t
 keep the base/text of recently acknowledged `block.text` ops until the next pull completes, or pull
 before push on reconnect.
 
-**Confirmed real and fixed.** 11/15 deterministic scenarios lost a text on `59aa77b`, including two
+**Confirmed real and fixed.** 11/15 deterministic scenarios lost a text on `8a91f06`, including two
 *online* devices each pushing before pulling; a three-device probe against a real server lost four
 edits silently while `nooklet verify` said OK (a `block.text` carries no base, so the server just
 overwrites). Fix: an acknowledged `block.text` moves to a new client table `sent_text` until a pull
@@ -1038,7 +1038,7 @@ server's page.backlinks cannot be reached". Graph view and unlinked mentions als
 The router followed the URL, every request followed the entry. Fixed by `bootstrap.ts#adoptAddressBarGraph`. Consequence: a bare address (redirected to `/g/default`) now opens default even if another graph was active.
 
 ### B-644 · New local graphs are all named "This device"
-**Status:** fixed (2026-10-04, `884f469`)
+**Status:** fixed (2026-10-04, `b2f737a`)
 
 Owner: generate a whimsical name from a list of ~100, adding a number if taken; renaming exists but
 every new graph showing "This device" is confusing.
@@ -1049,7 +1049,7 @@ phone...". Existing names (including "This device") are never renamed; the B-612
 labels the recovered graph "This device".
 
 ### B-643 · The desktop app cannot add a local graph ("This device") from the graph switcher
-**Status:** fixed (2026-10-04, `884f469`)
+**Status:** fixed (2026-10-04, `b2f737a`)
 
 Works on the phone; in the Mac app (remote mode, `http://127.0.0.1:6200`) the switcher's add flow
 does not offer "This device".
@@ -1063,7 +1063,7 @@ desktop app" (4), `desktop-shell.test.ts` (2), `cli-first-run.test.ts` "graph cr
 `main.rs` tests (6). Real window unverified.
 
 ### B-651 · On the phone, no visible way to set a task to DOING, and the empty checkbox looks like a missing glyph
-**Status:** fixed (2026-10-04, `a1b9e09`)
+**Status:** fixed (2026-10-04, `c7c822a`)
 
 Owner: "not sure how to cycle through the In progress on a task. Also the empty square checkbox looks
 like an error of unrendered char than what it does. Maybe with the checkmark it would be better."
@@ -1079,7 +1079,7 @@ everywhere a task is drawn; the outliner marker is `role="checkbox"` + `aria-che
 icon"; Simulator `4-cycled.png`, `6-checkbox-tapped.png`. Spec R60 table updated.
 
 ### B-650 · On the phone, the graph switcher does not close when tapping elsewhere
-**Status:** fixed (2026-10-04, `a1b9e09`)
+**Status:** fixed (2026-10-04, `c7c822a`)
 
 Owner.
 
@@ -1087,7 +1087,7 @@ Owner.
 `phone-ui.spec.ts` "B-650…".
 
 ### B-649 · Go forward is not greyed out when there is nowhere to go
-**Status:** fixed (2026-10-04, `a1b9e09`)
+**Status:** fixed (2026-10-04, `c7c822a`)
 
 Owner, on the phone.
 
@@ -1096,7 +1096,7 @@ else the router's `_depth` vs `history.length` (`shell/history-position.ts`). **
 `phone-ui.spec.ts` "B-649…" (Chromium + WebKit), `history-position.test.ts`.
 
 ### B-648 · On the phone, opening Properties makes the page wider than the screen until the app is restarted
-**Status:** fixed (2026-10-04, `a1b9e09`)
+**Status:** fixed (2026-10-04, `c7c822a`)
 
 Owner: the viewport grows past the phone width and the page is centred, so content is cut off;
 only an app restart restored the width.
@@ -1109,7 +1109,7 @@ plus the inputs' intrinsic width could push the add row past 390px. Fix: 16px un
 `8-props-field-focused.png` (scale 1.00). The B-572 viewport meta needed no change.
 
 ### B-646 · Typing `/` on the phone does not open the slash menu
-**Status:** fixed (2026-10-04, `a1b9e09`)
+**Status:** fixed (2026-10-04, `c7c822a`)
 
 Owner on the iPhone app.
 
@@ -1124,14 +1124,14 @@ only…", "…toolbar's `/` works mid-block…" (Chromium + WebKit); `insert-log
 "insertSlash (R50, B-646)"; Simulator `tools/probes/phone-ui/1-draft-slash.png`.
 
 ### B-645 · The All pages view has no block/word counts and no row actions
-**Status:** fixed (2026-10-04, `9407c8b`) · **Severity:** low (feature) · **Test:** `e2e/tests/all-pages.spec.ts`, `e2e/tests/all-pages-phone.spec.ts`, `apps/web/src/data/page-stats.test.ts`
+**Status:** fixed (2026-10-04, `7ee1b0e`) · **Severity:** low (feature) · **Test:** `e2e/tests/all-pages.spec.ts`, `e2e/tests/all-pages-phone.spec.ts`, `apps/web/src/data/page-stats.test.ts`
 
 Owner: extra columns such as word count or block count, and actions such as delete (with confirm).
 
 **Done.** Sortable Blocks / Words / Created / Edited columns counted on the local replica (word rule shared with the word-count plugin, `plugins/word-count/src/count.ts`), per-row Delete through `deletePageWithConfirm` + the in-app confirm; name + blocks + a sort menu at phone width. Left out: backlinks column, bulk/orphan delete, pagination. Real-graph copy: counts painted 278 ms after navigation, 207 ms after an edit. Possible follow-up (owner's call): bulk select/delete and "remove orphaned pages" as in Logseq.
 
 ### B-660 · WebKit client logs `SQLITE_CONSTRAINT_FOREIGNKEY` on `INSERT OR REPLACE INTO block` while loading a page
-**Status:** fixed (2026-10-04, `2cd8b92`) · **Severity:** high (a new device could come up missing data after `nooklet gc`) · **Test:** `apps/web/src/sync/e2e.test.ts` "a block moved under a block created after it (B-660)" (3 tests, red before)
+**Status:** fixed (2026-10-04, `b514ba6`) · **Severity:** high (a new device could come up missing data after `nooklet gc`) · **Test:** `apps/web/src/sync/e2e.test.ts` "a block moved under a block created after it (B-660)" (3 tests, red before)
 
 Seen in the replica on a page freshly created via the API (`tools/probes/b640/row-mutations.mjs`
 output). May be harmless ordering in a snapshot apply; worth a look (FK failures can mean a row was
@@ -1140,7 +1140,7 @@ dropped).
 **Fixed.** `/sync/snapshot` lists blocks in creation order, so a block moved under a later-created one precedes its parent; the replica's immediate `parent_id` FK check failed and rolled back the whole bootstrap (Chromium too). The app then fell back to pulling the op log from 0 — which hides it while the log is complete but loses whatever `nooklet gc` trimmed — and re-downloaded (and failed) the snapshot on every cold start. Fix: `PRAGMA defer_foreign_keys = ON` in the bootstrap transaction. Probe: `tools/probes/b660/snapshot-fk.mjs`.
 
 ### B-640 · A synced block's text is invisible until the block is opened for editing
-**Status:** fixed (2026-10-04, `49ddf1e`) · **Severity:** high (data looked lost; data was intact) · **Test:** `e2e/tests/row-paint-after-enter.spec.ts` (WebKit, red before, green after)
+**Status:** fixed (2026-10-04, `7d92d6c`) · **Severity:** high (data looked lost; data was intact) · **Test:** `e2e/tests/row-paint-after-enter.spec.ts` (WebKit, red before, green after)
 
 Owner: text typed on the iPhone reached the Mac app, but on the iPhone it was not visible, "almost
 like the same font color was chosen as background". Seen on the Mac too after syncing the offline
@@ -1157,7 +1157,7 @@ WebKit contexts. Chromium unaffected. Fix: `.vr-row-editing { content-visibility
 revert to `auto` once the editor leaves. Not verified on the real iPhone/Mac app.
 
 ### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
-**Status:** fixed (2026-10-04, `f45e6bb`) · **Severity:** low · **Test:** `e2e/tests/page-icon-picker.spec.ts` (3),
+**Status:** fixed (2026-10-04, `4d055c3`) · **Severity:** low · **Test:** `e2e/tests/page-icon-picker.spec.ts` (3),
 `apps/web/src/views/EmojiPicker.test.tsx`, `apps/web/src/emoji/search.test.ts`
 
 Owner: on the phone it just inserts a default smiling face; typing inputs raw characters instead of
@@ -1171,7 +1171,7 @@ Remove, typed/pasted emoji taken as is; stored `icon` property unchanged. Shaped
 Capacitor app; no Czech keywords (the dataset has none).
 
 ### B-642 · A same-block edit conflict is kept as a `conflict_copy::` property instead of something readable
-**Status:** fixed (2026-10-04, `1827b8c`, ADR 027) · **Severity:** medium (UX) · **Test:** `packages/server/src/conflict-copy.test.ts`,
+**Status:** fixed (2026-10-04, `0c4a275`, ADR 027) · **Severity:** medium (UX) · **Test:** `packages/server/src/conflict-copy.test.ts`,
 `packages/server/src/sync/convergence.property.test.ts` (`conflictReport`), `apps/web/src/sync/e2e.test.ts`
 "a same-block conflict leaves the losing text as a block after the winner (B-642)", `e2e/tests/sync-conflict.spec.ts` (8/8)
 
@@ -1206,9 +1206,9 @@ before writing `root.token`. `token create` on a missing dir already worked (B-6
 it now has a test too. The owner worked around it with `mkdir -p ~/nooklet-test` and continued.
 
 ### B-634 · A block shelf made on a tab's first load was gone after a reload
-**Status:** fixed (2026-10-03, `19c5941`) · **Severity:** low (real regression) · **Found:** 2026-10-03, e2e-green · **Test:** `apps/web/src/app/shelf.test.ts` (red before), e2e shelf-crumb test in `views.spec.ts` (red 2/2 before, 5/5 after)
+**Status:** fixed (2026-10-03, `e039482`) · **Severity:** low (real regression) · **Found:** 2026-10-03, e2e-green · **Test:** `apps/web/src/app/shelf.test.ts` (red before), e2e shelf-crumb test in `views.spec.ts` (red 2/2 before, 5/5 after)
 
-Since `c58ede4` (B-611's per-replica keys) the shelf's storage key was fixed before a graph was chosen.
+Since `03a8205` (B-611's per-replica keys) the shelf's storage key was fixed before a graph was chosen.
 
 ### B-593 · `connectivity.spec.ts` "search returns rather than spinning forever" can time out when today's journal already has content
 **Status:** fixed (2026-10-03, with B-543) · **Test:** `connectivity.spec.ts` 5/5
@@ -1239,20 +1239,20 @@ Cause reproduced: `popups.spec` also seeds "wombat". The spec now uses its own s
 ### B-624 · `page-delete.spec.ts` is flaky under `--repeat-each=2`
 **Status:** fixed (2026-10-03, test only) · **Test:** `page-delete.spec.ts`, `autocomplete-inside-link.spec.ts` with `--repeat-each 5`
 
-"Delete page from the … menu…" and "from the palette mid-typing…" fail intermittently on `4c28fad`.
+"Delete page from the … menu…" and "from the palette mid-typing…" fail intermittently on `07720d1`.
 `autocomplete-inside-link.spec.ts` (the B-382/B-592 test) was flaky the same way.
 
 Cause: repeat/retry carry-over through `seedPage`'s `if_exists: "return"` — repeat 0 always passed, 1–4 always failed. Per-run names; the autocomplete walk is bounded by the rows offered.
 
 ### B-623 · `page-find.spec.ts` and `random-page.spec.ts` fail on every run
-**Status:** fixed (2026-10-03, `cfc863b`) · **Severity:** medium (real regression) · **Test:** `page-find.spec.ts` (red before), `random-page.spec.ts`
+**Status:** fixed (2026-10-03, `b7194b7`) · **Severity:** medium (real regression) · **Test:** `page-find.spec.ts` (red before), `random-page.spec.ts`
 
-On `4c28fad`, also alone (not order-dependent): `page-find.spec.ts` "Cmd/Ctrl+F narrows the
+On `07720d1`, also alone (not order-dependent): `page-find.spec.ts` "Cmd/Ctrl+F narrows the
 outline…" and "Enter and Shift+Enter step through the matches"; `random-page.spec.ts` "Open a random
 page jumps to another page…" and "from a view that is not a page…". Same failures with B-609's files
 reset.
 
-**Fixed 2026-10-03.** Cause `6ddfc77` (B-595's `.page-view-body` wrapper): `PageFindBar.tsx` looked for `:scope > .vr-outliner`, so find-in-page filtered rows but drew no highlights and Enter/Shift+Enter no longer scrolled to the match — broken for real users. `random-page.spec.ts` had the same stale selector.
+**Fixed 2026-10-03.** Cause `7506ea2` (B-595's `.page-view-body` wrapper): `PageFindBar.tsx` looked for `:scope > .vr-outliner`, so find-in-page filtered rows but drew no highlights and Enter/Shift+Enter no longer scrolled to the match — broken for real users. `random-page.spec.ts` had the same stale selector.
 
 ### B-633 · A graph-mismatched page may still sync its old replica with the server's new graph
 **Status:** fixed (2026-10-03, coordinator) · **Severity:** high (confirmed: cross-graph mixing) · **Found:** 2026-10-03, b631 agent ·
@@ -1270,7 +1270,7 @@ sync target when `bootstrap.graphMismatch` is set; the discard is worker-local, 
 Both tests in the spec pass with the fix.
 
 ### B-631 · "Discard the local copy and re-sync" deletes every graph's database on the device, including local-only notes
-**Status:** fixed (2026-10-03, `926fdb4`) · **Severity:** high (data loss) · **Test:** `e2e/tests/graph-mismatch-discard.spec.ts`
+**Status:** fixed (2026-10-03, `984ee90`) · **Severity:** high (data loss) · **Test:** `e2e/tests/graph-mismatch-discard.spec.ts`
 (fails on the old code: local-only note lost), `db/sqlite-wasm-driver.test.ts` "discardReplicaFile",
 `db/unapplied-ops.test.ts` "discardScopeBatches"
 
@@ -1293,7 +1293,7 @@ the server's bare-origin 307 sends to the default graph, so on `/g/work` a valid
 as "rejected". `connectToGraph` now verifies at `samePathGraphPrefix()`. Not run in a real browser.
 
 ### B-618 · Graph switcher labels are generic and can't be told apart
-**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+**Status:** fixed (2026-10-03, connection-states, `7472c63..0740330`) · **Test:**
 
 Repro: two-clients 1c. Entries read "This graph" and "Remote graph" rather than the server's graph
 label or slug. In the desktop picker, two graphs on one server both have the title `127.0.0.1:6311`
@@ -1303,16 +1303,16 @@ no hint that `/g/<slug>` is expected, and nothing uses `GET /graphs` to offer a 
 
 **Fixed 2026-10-03.** Test and details: `e2e/tests/graph-switcher.spec.ts` "B-618: rows carry the
 server's graph names, a bare address is not added twice, and a root token lists graphs" (red on
-38e17a6 at the label assertion; the duplicate-add part was not separately run red),
+869ed39 at the label assertion; the duplicate-add part was not separately run red),
 `e2e/tests/desktop-launcher.spec.ts` "B-618: two graphs on one server get distinct titles…" (red
-on 38e17a6), `ops.http.test.ts` graph.overview label case, `bootstrap.test.ts` two B-618 cases.
+on 869ed39), `ops.http.test.ts` graph.overview label case, `bootstrap.test.ts` two B-618 cases.
 Fix: see Done. API change: `graph.overview` output gains `graph: {id, label}`
 (`docs/spec/mcp-tools.md` updated). Not done: the Capacitor ConnectView's own server field has no
 `/g/<graph>` hint (only the switcher's add form and the desktop picker do); the desktop dedupe is
 in the launcher JS, `main.rs#add_graph` still compares exact strings.
 
 ### B-615 · Plain-http non-loopback origin: token accepted, then a blank white page with no explanation
-**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+**Status:** fixed (2026-10-03, connection-states, `7472c63..0740330`) · **Test:**
 
 Repro: `insecure-context.probe.ts` (`serve.sh <dir> 6311 <LAN-IP>`, open `http://<LAN-IP>:6311/`,
 paste a valid token). Errors: `crypto.randomUUID is not a function` (`data/bootstrap.ts`,
@@ -1320,7 +1320,7 @@ paste a valid token). Errors: `crypto.randomUUID is not a function` (`data/boots
 `!isSecureContext` and say why. The same blank page is expected in the desktop app pointed at a
 plain-http remote.
 
-**Fixed 2026-10-03.** Test and details: `e2e/tests/insecure-context.spec.ts` (red on 38e17a6: blank
+**Fixed 2026-10-03.** Test and details: `e2e/tests/insecure-context.spec.ts` (red on 869ed39: blank
 page), `insecure-context.test.ts`. Fix: the top of `main.tsx` gates before starting anything and
 shows why plus the three fixes. The capability check (randomUUID,
 locks) decides alongside `isSecureContext`. Capacitor `capacitor://localhost` = secure context per
@@ -1329,20 +1329,20 @@ not re-probed here. Desktop app pointed at a plain-http remote: expected to land
 (same build), not run.
 
 ### B-614 · Sync indicator stays "Synced" while the server is down
-**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+**Status:** fixed (2026-10-03, connection-states, `7472c63..0740330`) · **Test:**
 
 Repro: `edges.probe.ts`. Synced client, stop the server, don't type: "Synced" at 1/3/5/10/20/30 s,
 with and without a proxy. The live WebSocket's `close` only schedules a reconnect
 (`http-transport.ts`) and never changes the status. Only a failed push or pull does.
 
 **Fixed 2026-10-03.** Test and details: `e2e/tests/sync-connection-states.spec.ts` "with nobody typing,
-Synced gives way to Offline…" (red on 38e17a6) and "a blip … never changes what the dot shows"
+Synced gives way to Offline…" (red on 869ed39) and "a blip … never changes what the dot shows"
 (guard). Fix: WS close → 1.5 s grace → probe `pull()`; failure → `offline`; reconnect → pull →
 `idle`. Each failed reconnect re-probes, so recovery is noticed even without the socket. Not
 verified against a real killed server (the e2e uses a TCP proxy that stops listening).
 
 ### B-613 · Revoked or invalid stored token shows as "Offline", forever, with no way to re-pair
-**Status:** fixed (2026-10-03, connection-states, `acd0cc7..7131475`) · **Test:**
+**Status:** fixed (2026-10-03, connection-states, `7472c63..0740330`) · **Test:**
 
 Repro: `edges.probe.ts`. Join with a device token, `nooklet token revoke <id>`, reload, edit. The
 indicator says "Offline — changes are kept and sent when back online" for 20 s+ and the edit never
@@ -1351,7 +1351,7 @@ memory replica the page reads "This page doesn't exist yet. Create …". A 401 o
 `offline` (`sync-client.ts` catch → `state: "offline"`).
 
 **Fixed 2026-10-03.** Test and details: `e2e/tests/sync-connection-states.spec.ts` "a refused token says
-so, keeps the edit, and re-pairing sends it" (red on 38e17a6); `sync-client.test.ts` "connection
+so, keeps the edit, and re-pairing sends it" (red on 869ed39); `sync-client.test.ts` "connection
 states" block; `sync-indicator-state.test.ts` B-613 case; `connect-graph.test.ts`
 `repairTargetFor`. Fix: 401/403 on push/pull/snapshot and WS close 4403 → `unauthorized`
 (sticky until a request succeeds); indicator "Token rejected — changes stay on this device until
@@ -1372,7 +1372,7 @@ A relaunch could start as an in-memory follower while the old page held the writ
 `location.assign(<server URL>)` navigated the app away. Now reloads in place. Test: `data/bootstrap.test.ts` "graphEntryUrl under Capacitor".
 
 ### B-619 · Local-only draft-journal write can be lost on an immediate relaunch
-**Status:** fixed (2026-10-03, `c58ede4`, `3e3c1c5`) · **Severity:** low-medium · **Test:** `views/VirtualJournalDay.test.tsx`
+**Status:** fixed (2026-10-03, `03a8205`, `985f939`) · **Severity:** low-medium · **Test:** `views/VirtualJournalDay.test.tsx`
 "keeps typed lines until they are ops" (3, incl. the coordinator's merge test for B-609 depths), `e2e/tests/local-graphs.spec.ts` B-619 (5 runs)
 
 Repro: `local-then-server.probe.ts` with `SWEEP_LT_SETTLE_MS=0`: fill today's draft, Enter, Escape,
@@ -1385,7 +1385,7 @@ they are ops (`data/journal-draft-store.ts`). Coordinator merge note: B-609's de
 met in one merge; the store now keeps `{text, depth}` and reads an older string-only copy at depth 0.
 
 ### B-612 · Capacitor local-only graph disappears from the list once a server graph is added
-**Status:** fixed (2026-10-03, `c58ede4`) · **Severity:** high · **Test:** `data/bootstrap.test.ts` "B-612: ...",
+**Status:** fixed (2026-10-03, `03a8205`) · **Severity:** high · **Test:** `data/bootstrap.test.ts` "B-612: ...",
 `e2e/tests/local-graphs.spec.ts` "an install stranded by the old ..." and the 20-run test's switch-back
 
 Repro: as above, at any timing. "Just this device" creates no `nooklet.graphs` entry (`App.tsx` only
@@ -1396,7 +1396,7 @@ goes straight into the server graph.
 Fixed: "Just this device" is a real graph-list entry that takes over the old local database; a device already stranded gets it back as "This device" at startup.
 
 ### B-611 · Local-only content leaks into a server graph after "Add a graph" (orphaned B-247 batches are not graph-scoped)
-**Status:** fixed (2026-10-03, `c58ede4`, `3e3c1c5`) · **Severity:** high · **Test:** `apps/web/src/db/client-graph-scope.test.ts`,
+**Status:** fixed (2026-10-03, `03a8205`, `985f939`) · **Severity:** high · **Test:** `apps/web/src/db/client-graph-scope.test.ts`,
 `db/unapplied-ops.test.ts` "batches belong to the replica..." + "migrateUnscopedBatches", `data/bootstrap.test.ts`
 "B-611: who could have written...", `e2e/tests/local-graphs.spec.ts` (20-run sequence: 0 leaks; deterministic unscoped batch)
 
@@ -1426,7 +1426,7 @@ graph → switch back; the server graph held no local data.
 ### B-543 · `connectivity.spec.ts` › "search returns rather than spinning forever" fails most runs
 **Status:** fixed (2026-10-03, server-search agent) · **Test:** the spec itself (3/3 fail before, 3/3 pass after)
 
-On the unchanged base commit `9ac9e48` (port 6422, Chromium) it failed 3 of 4 runs, the same as on
+On the unchanged base commit `119a285` (port 6422, Chromium) it failed 3 of 4 runs, the same as on
 `m11/quiet-topbar`: `locator.click` times out waiting for `.vr-outliner .vr-block-view`. The page
 snapshot at the failure shows today's virtual journal with its "Start typing…" draft and no
 outliner. Likely cause (read, not proven): the test decides which branch to take with a
@@ -1439,7 +1439,7 @@ has rendered, so it takes the "outliner" branch on a day that only has a draft. 
 Fixed: `connectivity.spec.ts` waits for `draft.or(today's first block)` before branching.
 
 ### B-625 · Search had no local fallback: offline it failed after 10 s, local-only it said "Search needs a server"
-**Status:** fixed (2026-10-03, `3844838`, `ba58947`) · **Severity:** high · **Found:** 2026-10-03, server-search agent (owner request) ·
+**Status:** fixed (2026-10-03, `4a4ffe1`, `e09a4c9`) · **Severity:** high · **Found:** 2026-10-03, server-search agent (owner request) ·
 **Test:** `apps/web/src/data/local-search.test.ts` (8), `apps/web/src/data/search-enrich.test.ts` (13),
 `apps/web/src/views/SearchView.test.tsx` "SearchView: local first, then the server's semantic matches" (9),
 `apps/web/src/data/api-client.test.ts` "callOp's time bound and cancellation" (2),
@@ -1456,7 +1456,7 @@ Semantic search needs `nooklet embed model bge-m3 --provider ollama --host …` 
 recommended on homeserver, `OLLAMA_KEEP_ALIVE=-1`); `docs/progress/server-search.md`.
 
 ### B-609 · A zero-delay Enter/Tab burst on a brand-new journal day loses the Tab
-**Status:** fixed (2026-10-03, `319d1e8`, `e65638a`) · **Severity:** low · **Test:** `e2e/tests/journal-draft-burst.spec.ts`
+**Status:** fixed (2026-10-03, `f31cfaf`, `b5609ff`) · **Severity:** low · **Test:** `e2e/tests/journal-draft-burst.spec.ts`
 (3 tests; red before), `apps/web/src/views/VirtualJournalDay.test.tsx` "keeps Tab and Shift+Tab typed
 while the replica has not answered…" and "Backspace at the start of an empty waiting line…"
 
@@ -1479,12 +1479,12 @@ worker answers them (as text already was, B-303). Real-graph copy, 60 ms/key: th
 for 0.3-0.6 s in 4/7 runs before, 0/12 after. See `docs/progress/b609.md`.
 
 ### B-621 · After a deep link's reload, `App.getLaunchUrl()` re-delivered the same link, so the pairing confirm screen kept coming back
-**Status:** fixed (2026-10-03, `fb31593`) · **Severity:** medium · **Found:** 2026-10-03, pairing agent on the Simulator · **Test:** `platform/launch-url.test.ts`; probe `tools/probes/pairing-link-ui/`
+**Status:** fixed (2026-10-03, `4d1f1b7`) · **Severity:** medium · **Found:** 2026-10-03, pairing agent on the Simulator · **Test:** `platform/launch-url.test.ts`; probe `tools/probes/pairing-link-ui/`
 
 `getLaunchUrl()` is Capacitor's `lastURL`, so after `location.reload()` the same `nooklet://connect` link came back. Fixed in `platform/launch-url.ts`.
 
 ### B-616 · Behind a same-host reverse proxy, the app shell 403s with an MCP "Invalid Host" JSON-RPC error
-**Status:** fixed (2026-10-03, `f177b35`) · **Test:** `http/web-client.test.ts` "serves the app shell behind a same-host proxy that rewrites Host (B-616)"
+**Status:** fixed (2026-10-03, `6079f95`) · **Test:** `http/web-client.test.ts` "serves the app shell behind a same-host proxy that rewrites Host (B-616)"
 
 Repro: `serve.sh <dir> 6311` (bound 127.0.0.1, no `--allow-host`), then
 `node host-proxy.mjs 6312 6311` (forwards `Host: nooklet.sweep.test`).
@@ -1496,7 +1496,7 @@ while `/api/session` returns 200. The cause is `mountMcp`'s `"/"` sub-app guard
 The MCP Host guard applies only to `/mcp`, follows `--allow-host`, and its 403 and the server log suggest the flag.
 
 ### B-607 · `nooklet import` into a fresh data dir, then `nooklet serve`, crashes: `a graph called "default" already exists`
-**Status:** fixed (2026-10-03, `228f942`) · **Test:** `graphs/registry.test.ts`, `cli-first-run.test.ts` (both orders failed before with `serve exited 1`)
+**Status:** fixed (2026-10-03, `a22487b`) · **Test:** `graphs/registry.test.ts`, `cli-first-run.test.ts` (both orders failed before with `serve exited 1`)
 
 **Severity:** medium. It blocks first start on a new server if the import comes first. Workaround:
 run `serve` once before importing, or write `graphs/default/graph.json` by hand.
@@ -1511,35 +1511,35 @@ Same root cause as `nooklet token create` before the first `serve` (found by the
 CLI commands write `graph.json`; `serve` adopts an existing `graph.sqlite` without one. README and OPERATIONS §2 paths updated.
 
 ### B-604 · `nooklet serve --host 0.0.0.0` prints `http://0.0.0.0:6100/...` as the address to use
-**Status:** fixed (2026-10-03, `f19a64b`) · **Test:** `serve-banner.test.ts`
+**Status:** fixed (2026-10-03, `f4e7189`) · **Test:** `serve-banner.test.ts`
 
 Not reachable from a phone; printing the machine's LAN IPs would save a lookup.
 
 A `0.0.0.0` bind prints the LAN addresses (skipping VM/Docker bridges) and the exact `--allow-host` to restart with.
 
 ### B-603 · `nooklet://` deep links reach nothing
-**Status:** fixed (2026-10-03, `0399e4e`, `fb31593`) · **Test:** unit tests in `docs/progress/pairing.md`; Simulator probe `tools/probes/pairing-link-ui/`
+**Status:** fixed (2026-10-03, `b484a24`, `4d1f1b7`) · **Test:** unit tests in `docs/progress/pairing.md`; Simulator probe `tools/probes/pairing-link-ui/`
 
 `platform.deepLinks.onOpen` has no subscriber anywhere in `apps/web/src` (grep), so opening `nooklet://anything` just foregrounds the app. A `nooklet://connect?url=…&token=…` link (or QR) would also remove the token-pasting step.
 
 `nooklet://connect?url=…&token=…` opens ConnectView pre-filled and connects only on a tap; it adds a server graph and keeps local ones. Parsing rejects non-http(s) URLs, user-info and missing params. `nooklet token create --link <url>` prints the link. No QR (no library in the tree; adding one is an owner decision). The token sits in the URL: it can leak via clipboard/history — documented.
 
 ### B-602 · A WebSocket upgrade to an unrouted bare path hangs instead of failing
-**Status:** fixed (2026-10-03, `b233294`) · **Test:** `graphs/mount.test.ts` "answers a failed upgrade with 404 at once … (B-602)" and "survives a client resetting the TCP connection mid-upgrade (B-589, kept by the new guard)"
+**Status:** fixed (2026-10-03, `27baa2e`) · **Test:** `graphs/mount.test.ts` "answers a failed upgrade with 404 at once … (B-602)" and "survives a client resetting the TCP connection mid-upgrade (B-589, kept by the new guard)"
 
 `/sync/live` with no `/g/<id>` prefix: no 101, no error response (`tools/probes/ws-bare-origin.mjs`, "NEVER OPENED" after 5 s). The client fix (bare address → `/g/default`) avoids it; the server should answer 404.
 
 Root cause: B-589's second `'upgrade'` listener — `@hono/node-server` only answers a failed upgrade when it has the sole listener, so every failed upgrade hung (unknown graphs too). The B-589 guard now attaches at `'connection'` (`http/upgrade-guard.ts`).
 
 ### B-600 · Security: the loopback auto-token was handed to every client behind a same-host reverse proxy
-**Status:** fixed (2026-10-03, `b233294`, D3) · **Test:** `http/host-guard.test.ts` "--no-loopback-token (B-600, decision D3)"
+**Status:** fixed (2026-10-03, `27baa2e`, D3) · **Test:** `http/host-guard.test.ts` "--no-loopback-token (B-600, decision D3)"
 
-The server gives a write token to any caller that looks local. A proxy on the server's machine that rewrites `Host` to its upstream made every client look local. **Fixed 2026-10-03** (`ee8c54c`) for any request carrying forwarding headers (`X-Forwarded-For`, `Forwarded`, …) in `http/app.ts`. Still open: a proxy that rewrites `Host` and adds no forwarding header is indistinguishable from a local browser (decision D3 in `docs/progress/real-device-test.md`). the home server's setup is not affected (the Tailscale proxy runs in a separate pod).
+The server gives a write token to any caller that looks local. A proxy on the server's machine that rewrites `Host` to its upstream made every client look local. **Fixed 2026-10-03** (`757dcf9`) for any request carrying forwarding headers (`X-Forwarded-For`, `Forwarded`, …) in `http/app.ts`. Still open: a proxy that rewrites `Host` and adds no forwarding header is indistinguishable from a local browser (decision D3 in `docs/progress/real-device-test.md`). the home server's setup is not affected (the Tailscale proxy runs in a separate pod).
 
 **D3 done 2026-10-03:** `nooklet serve --no-loopback-token`, set in the Dockerfile and the Helm chart (no browser runs in a container; port-forwards and sidecars arrive over loopback). Off by default in the CLI because the local desktop app relies on the auto-token.
 
 ### B-617 · Plugin "word-count" fails to activate for every graph after the first
-**Status:** fixed (2026-10-03, `de59bf8`) · **Severity:** low · **Test:** `packages/server/src/graphs/mount.test.ts`
+**Status:** fixed (2026-10-03, `81fb0cb`) · **Severity:** low · **Test:** `packages/server/src/graphs/mount.test.ts`
 "activates every built-in plugin in each graph … (B-617)"
 
 Repro: `nooklet serve` with two graphs, then hit `/g/<second>/…`. The server log shows
@@ -1549,7 +1549,7 @@ op registry looks process-global across graph contexts.
 Fixed: each graph gets its own op registry for plugin ops; mermaid and daily-summary checked too.
 
 ### B-610 · The word-count plugin returns 500 for a page just deleted
-**Status:** fixed (2026-10-03, `69e9e99`) · **Severity:** low · **Test:** `packages/server/src/plugins/built-ins.test.ts`
+**Status:** fixed (2026-10-03, `4250be9`) · **Severity:** low · **Test:** `packages/server/src/plugins/built-ins.test.ts`
 "the status bar's rpc answers null, not a 500, for a page just deleted (B-610)"; e2e `plugins.spec.ts`
 "deleting the open page asks word count about it without a 500 (B-610)"
 
@@ -1558,7 +1558,7 @@ Fixed: each graph gets its own op registry for plugin ops; mermaid and daily-sum
 `OpError: no page named "…"` at `plugins/word-count … countPage`, and the browser logs a 500.
 
 ### B-608 · Mod+Enter ignores the owner's LATER/NOW workflow: a LATER task cycles to no marker
-**Status:** fixed (2026-10-03, `69e9e99`) · **Severity:** medium · **Test:** `packages/core/src/task-workflow.test.ts`,
+**Status:** fixed (2026-10-03, `4250be9`) · **Severity:** medium · **Test:** `packages/core/src/task-workflow.test.ts`,
 `apps/web/src/editor/task.test.ts` "under the `now` workflow (B-608)", `commands/registrations/index.test.ts`
 "follow the graph's task workflow (B-608)", `SlashMenu.test.tsx` "LATER first under `now`",
 `importer/logseq.test.ts` "task workflow (B-608)", `http/host-guard.test.ts` "task workflow", e2e
@@ -1579,7 +1579,7 @@ reopens as LATER. `done::` on DONE→none left as is. **Coordinator follow-up:**
 tie) now infers `now`, Logseq's own default and the owner's workflow (the agent had kept `todo`).
 
 ### B-606 · Clicking right of a block's text, or pressing End, puts the caret inside a trailing `[[link]]`
-**Status:** fixed (`15a203c`) · **Severity:** high · **Found:** 2026-10-03, core readiness sweep ·
+**Status:** fixed (`d2320f0`) · **Severity:** high · **Found:** 2026-10-03, core readiness sweep ·
 **Test:** `e2e/tests/caret-after-link.spec.ts` (all 14, Chromium and WebKit), `apps/web/src/editor/caret.test.tsx` "resolveClickOffset at a line's edges (B-606)"
 
 **Severity:** high. Typing corrupts the link target and creates junk pages. "… with [[Person]]" is
@@ -1607,7 +1607,7 @@ after the link, no `BaleníZ` page.
 Not run in the real Mac app (Playwright WebKit stood in).
 
 ### B-587 · `verifyRebuildParity` diverges on the server after a "push first" name-collision-with-a-tombstone race — found via a full `pnpm -r test` run, not investigated
-**Status:** fixed (2026-10-03, `0cb4a62`, ADR 026) · **Severity:** high (replicas diverged for good) ·
+**Status:** fixed (2026-10-03, `af9968e`, ADR 026) · **Severity:** high (replicas diverged for good) ·
 **Test:** `apps/web/src/sync/e2e.test.ts` "a page created under a name the server freed … (B-587)";
 `packages/server/src/sync/convergence.property.test.ts`; `packages/core/src/sync/apply-ops.test.ts`
 
@@ -1621,7 +1621,7 @@ AssertionError: expected [ { table: 'page', …(2) }, …(1) ] to deeply equal [
 ```
 
 Confirmed pre-existing in the same accumulated-but-uncommitted tree B-585 already covers (`git
-stash` back to `629f572`, this test passes cleanly there) — not caused by ADR 025 / B-586, whose
+stash` back to `77b1fee`, this test passes cleanly there) — not caused by ADR 025 / B-586, whose
 code this test never touches (no `bootstrap.ts`/`GraphSwitcher.tsx` import). Given the scenario
 (server-side "page of a name whose earlier page was deleted" + B-443's "never revive an unclaimed
 tombstone" logic, right next to B-568's ref-page work this session already touched), this may share
@@ -1665,7 +1665,7 @@ convergence.property.test.ts`; `packages/core/src/sync/apply-ops.test.ts` `order
 `tools/probes/b587-three-device-http.ts`.
 
 ### B-491 · `window.confirm()` is always "Cancel" and `window.alert()` shows nothing in the desktop app
-**Status:** fixed (2026-10-03, `f3a0d78`) · **Severity:** high · **Test:** `e2e/tests/history.spec.ts`
+**Status:** fixed (2026-10-03, `5107b69`) · **Severity:** high · **Test:** `e2e/tests/history.spec.ts`
 (Undo/Restore confirm in-page), `e2e/tests/refactor.spec.ts` "a failed Turn into page says so in the
 page…", `e2e/tests/page-rename.spec.ts` (clash notice), `apps/web/src/source-guards.test.ts`
 "native dialogs (B-491)" (guard), `apps/web/src/plugins/host.test.ts` "dialogs (B-491)"
@@ -1699,7 +1699,7 @@ in-page dialog, `ctx.prompt` still unsupported (no in-page text dialog). A sourc
 any new `window.confirm/alert/prompt`. Only run in Chromium, not in the built desktop app.
 
 ### B-595 · Opening a journal day that has no blocks yet shows "This page doesn't exist yet", not an editable empty journal
-**Status:** fixed (2026-10-03, `6ddfc77`) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
+**Status:** fixed (2026-10-03, `7506ea2`) · **Severity:** low · **Found:** 2026-10-03, while doing B-560 ·
 **Test:** `apps/web/src/views/PageView.test.tsx` (4 tests; 3 failed before the fix);
 `e2e/tests/empty-journal-page.spec.ts` (2 tests: date URL, and today's heading in a fresh graph,
 both checking that viewing creates no page and typing creates the blocks on the server).
@@ -1722,32 +1722,32 @@ element. Ordinary missing pages keep "doesn't exist yet / Create" — see B-605.
 **Status:** fixed · **Severity:** low (deploy only) · **Found:** 2026-10-03, real-device-test agent ·
 **Test:** manual: `docker run` of `deploy/docker/Dockerfile`'s image
 
-**Fixed 2026-10-03** (`ee8c54c`) by installing `libatomic1` in the image. Possibly also affects the Linux desktop sidecar on minimal distros; not investigated.
+**Fixed 2026-10-03** (`757dcf9`) by installing `libatomic1` in the image. Possibly also affects the Linux desktop sidecar on minimal distros; not investigated.
 
 ### B-599 · A server address typed without a path (`http://host:6100`) never opened live sync
 **Status:** fixed · **Severity:** high · **Found:** 2026-10-03, real-device-test agent ·
 **Test:** `apps/web/src/data/connect-graph.test.ts`, updated `ConnectView.test.tsx`/`GraphSwitcher.test.tsx`; probe `tools/probes/ws-bare-origin.mjs`
 
-The address was stored as-is; HTTP worked via the server's 307 to `/g/default`, but `/sync/live` never opened (WebSockets don't follow redirects), so live sync silently never connected. **Fixed 2026-10-03** (`ee8c54c`): `connect-graph.ts#graphBaseUrl` stores a bare address as `<address>/g/default`.
+The address was stored as-is; HTTP worked via the server's 307 to `/g/default`, but `/sync/live` never opened (WebSockets don't follow redirects), so live sync silently never connected. **Fixed 2026-10-03** (`757dcf9`): `connect-graph.ts#graphBaseUrl` stores a bare address as `<address>/g/default`.
 
 ### B-598 · The iOS app could not reach any server: no CORS on the server
 **Status:** fixed · **Severity:** critical (iPhone sync impossible) · **Found:** 2026-10-03, real-device-test agent ·
 **Test:** `packages/server/src/graphs/mount.test.ts` "CORS for nooklet's own app shells"; probe `tools/probes/capacitor-network/` (Simulator, before/after)
 
-Preflights got 401 (graph routes) or 307 (bare origin) without `Access-Control-Allow-Origin`; WebKit reported "TypeError: Load failed" for every fetch from `capacitor://localhost`. **Fixed 2026-10-03** (`ee8c54c`) in `graphs/mount.ts`: an allowlist of `capacitor://localhost` (never `*`). Verified on the iOS Simulator: 5/5 fetch checks failed before, 11/11 pass after; a block written on the server appeared live in the real app over a LAN IP. Not verified on a physical iPhone.
+Preflights got 401 (graph routes) or 307 (bare origin) without `Access-Control-Allow-Origin`; WebKit reported "TypeError: Load failed" for every fetch from `capacitor://localhost`. **Fixed 2026-10-03** (`757dcf9`) in `graphs/mount.ts`: an allowlist of `capacitor://localhost` (never `*`). Verified on the iOS Simulator: 5/5 fetch checks failed before, 11/11 pass after; a block written on the server appeared live in the real app over a LAN IP. Not verified on a physical iPhone.
 
 ### B-592 · The B-382 e2e test's precondition ("a link to a page that does not exist") cannot hold since ADR 024
-**Status:** fixed (`4c233f1`) · **Severity:** low (test only) · **Test:** the reworked test itself
+**Status:** fixed (`64fd85b`) · **Severity:** low (test only) · **Test:** the reworked test itself
 
 Fails every time, alone or with neighbours:
 `Expected substring: "New page" / Received string: "Walkin Unmade Page"` at the
 `.cmd-row--active` check — the popup offers the real page, so there is no "New page" row to press.
 The test seeds `- alpha [[Walkin Unmade Page]] omega` through `page.create`; since ADR 024
-(`c162820`, after B-382's `dc86f5b`) `serverApplyOps` mints every referenced page in the same
+(`570ad45`, after B-382's `99c2aec`) `serverApplyOps` mints every referenced page in the same
 transaction, so "Walkin Unmade Page" exists before the browser opens. **Not B-585:** checked out
-`629f572` (no `local-ref-pages.ts` at all) in a worktree and ran the spec with `--repeat-each 3` —
+`77b1fee` (no `local-ref-pages.ts` at all) in a worktree and ran the spec with `--repeat-each 3` —
 the same test failed 3/3 with the same received string, the other six passed. Earlier green runs
-(e.g. `f2b21b0`'s "634 passed") are unexplained — presumably the "pages list not loaded yet" race
+(e.g. `7b046bb`'s "634 passed") are unexplained — presumably the "pages list not loaded yet" race
 the B-382 entry mentions, which used to leave "New page" as the only row. To fix the test (not
 done here): it needs a link whose page does not exist, which ADR 024 forbids for anything written
 through the server — e.g. type the link in the browser with the page list known not to contain it,
@@ -1766,7 +1766,7 @@ link is whole and no "Walkin Unm" page exists. Red with B-382's `createName` fix
 (see the new entry below), this test needs another missing-page state.
 
 ### B-594 · The Diagnostics panel does not close on Escape
-**Status:** fixed (`4c233f1`) · **Severity:** low · **Found:** 2026-10-03, while fixing B-591 ·
+**Status:** fixed (`64fd85b`) · **Severity:** low · **Found:** 2026-10-03, while fixing B-591 ·
 **Test:** e2e/tests/diagnostics.spec.ts "closes on Escape, like every other overlay (B-594)"
 
 Every other overlay (HelpMenu, the confirm dialog, the context menu) closes on Escape. The
@@ -1782,7 +1782,7 @@ block editor focused underneath (opening the panel takes a click, which ends edi
 ### B-450 · With a block selection standing, Enter on a focused button opens the block instead of pressing the button
 **Owner decision 2026-10-03:** mimic Logseq. Being implemented (see `docs/progress/keys-small.md`).
 
-**Status:** fixed (`4c233f1`) · **Severity:** low · **Found:** 2026-09-13, keys-in-fields · **Test:**
+**Status:** fixed (`64fd85b`) · **Severity:** low · **Found:** 2026-09-13, keys-in-fields · **Test:**
 e2e/tests/keys-in-fields.spec.ts "Enter on a button focused outside the outline presses it, not
 the selected block (B-450)" and "click the title, Tab to the History link, Enter follows the link
 with a block selected (B-450)"
@@ -1822,13 +1822,13 @@ were red with the new effect disabled. Unverified: WebKit; Logseq's Tab-indents-
 from its keymap, not run.
 
 ### B-585 · B-568's client-side ref-page creation loses keystrokes / mints junk pages / times out restoring — found via a full e2e run, not yet fixed
-**Status:** fixed (2026-10-03, `7784d54`) · **Severity:** high (silent data loss) ·
+**Status:** fixed (2026-10-03, `ec791f5`) · **Severity:** high (silent data loss) ·
 **Test:** the four e2e specs (ref-pages.spec.ts:123, :171, :280; remote-rewrite.spec.ts:344) — now
 pass, --repeat-each 3; plus `data/store-apply-ops.test.ts` and `db/worker-core.test.ts`
 "WorkerDb.applyLocalOps: pages a write references (B-568, B-585)"
 
 **Confirmed NOT caused by this session's multi-graph work** (ADR 025, B-562 through B-584): `git
-stash`-ed the entire working tree back to the last commit (`629f572`, before B-568's client-side
+stash`-ed the entire working tree back to the last commit (`77b1fee`, before B-568's client-side
 ref-page creation existed at all) and ran these tests in isolation — all passed cleanly (the
 `page-delete.spec.ts` case specifically: ~1s, vs. an ~11s timeout on the current tree). Restored the
 stash (all work intact) and re-ran the same tests in isolation against the current tree — all still
@@ -1870,7 +1870,7 @@ a slower `applyOps`" is an open question for whoever picks this up.
 
 **Not B-585 (2026-10-03):** `autocomplete-inside-link.spec.ts` "Enter on New page inside a link
 to a page that does not exist keeps the whole link (B-382)", which `docs/progress/coordinator.md`
-listed as "likely" B-585, fails identically on `629f572` (before any B-568 client code) — see B-592.
+listed as "likely" B-585, fails identically on `77b1fee` (before any B-568 client code) — see B-592.
 
 **Deliberately not fixed in this session's multi-graph pass**: different subsystem (client-side
 ref-page creation + CodeMirror/editor debounce interaction), pre-existing in the uncommitted tree
@@ -1891,7 +1891,7 @@ ones). (B) Skip the await for batches that reference nothing: remote-rewrite:344
 `db/client.ts#applyOps`, the forceSync message reached the worker first, so the push carried the
 block without " kickoff" and the server turned "Probe start" into the page. It also delayed
 B-247's crash-safe copy of the batch, and let any batch naming a page be overtaken by a later one.
-page-delete.spec.ts passed on fd779f4 before the fix; not reproduced.
+page-delete.spec.ts passed on c28097a before the fix; not reproduced.
 
 **Fix:** planning runs synchronously inside the worker (`WorkerDb.applyLocalOps`, and
 `replayLocalOps`), same batch/transaction as before; `store.ts#applyOps` posts at once again.
@@ -1913,7 +1913,7 @@ The heading counted every `path_ref` block, so a journal block linking `[[@Alex]
 children counted 11 (756 on `@alex`, shown as 91 rows). Logseq 0.10.9
 (`frontend/components/reference.cljs`, `top-level-blocks` / `filter-n`; read via a fetched summary,
 not a local clone) counts blocks whose own refs name the page or an alias, and under a filter shows
-"F of T". **Fixed 2026-10-03** (`7d34d03`): `page.backlinks` marks each linked item `direct` and
+"F of T". **Fixed 2026-10-03** (`3568f91`): `page.backlinks` marks each linked item `direct` and
 returns `linked_direct_total`; the panel counts direct blocks (`referenceNesting.ts#countDirectReferences`,
 with Logseq's parent add-back under a filter) and reads "F of T" when filtered. Unlinked count
 unchanged (Logseq counts every mention too). Details: `docs/progress/refs-count.md`.
@@ -1935,7 +1935,7 @@ inside a word that already follows `#`.
 
 ---
 
-**Fixed 2026-10-03 (option c, `c6fe3bc`).** The tag popup no longer opens when the text after the caret
+**Fixed 2026-10-03 (option c, `14ca14d`).** The tag popup no longer opens when the text after the caret
 continues the tag: `commands/autocomplete/trigger.ts#matchTagTrigger` takes the text after the
 caret (passed by `app/CommandLayer.tsx`'s keyup re-detection) and refuses when the run up to the
 next tag stop (whitespace, `, ; ) ] } ' "`), less trailing `.!?:`, is non-empty — the same rule
@@ -1958,7 +1958,7 @@ text; clicking it should open that day's page (`/page/<ISO date>`), as Logseq do
 
 ---
 
-**Fixed 2026-10-03** (`9f41585`): each day heading's text is a router `<A>` to
+**Fixed 2026-10-03** (`5e9d772`): each day heading's text is a router `<A>` to
 `pageRoutePath(isoJournalName(day))` (`JournalStreamView.tsx#DayTitleLink`): upcoming, today (also
 while virtual), pinned and earlier days. Styled as the heading (`.journal-day-link`: inherited
 colour, underline on hover only). Found along the way: B-595.
@@ -1967,7 +1967,7 @@ colour, underline on hover only). Found along the way: B-595.
 **Status:** fixed · **Severity:** low (lint only) · **Found:** 2026-10-03, coordinator cleanup pass ·
 **Test:** `pnpm exec biome check . --diagnostic-level=error` is the test
 
-`pnpm exec biome check .` exits 1 on `629f572` (checked in a clean worktree of that commit, not just
+`pnpm exec biome check .` exits 1 on `77b1fee` (checked in a clean worktree of that commit, not just
 the dirty tree): `BlockContextMenu.tsx:165` (`useSemanticElements` on the `role="separator"` div),
 `BlockRowView.tsx:131` (`noStaticElementInteractions` on the row), and three in
 `DiagnosticsPanel.tsx`'s backdrop, whose `biome-ignore` comment sits one line too low (biome also
@@ -2775,7 +2775,7 @@ Trash, Keyboard shortcuts / Help, Diagnostics — next to the quiet sync icon an
 
 ---
 
-**Follow-up done 2026-10-03** (`8578821`): the top-right "⋯" menu — `shell/MoreMenu.tsx`, last in
+**Follow-up done 2026-10-03** (`1cefaf4`): the top-right "⋯" menu — `shell/MoreMenu.tsx`, last in
 the top bar after the sync cloud and the agent badge — with Settings (Cmd+,), All pages, Graph,
 Trash, Keyboard shortcuts, Diagnostics. Each item runs a command (new: `nav.allPages`, `nav.graph`,
 `nav.trash`, `app.showShortcuts`, `app.openDiagnostics`; Settings is `app.openSettings`), so the
@@ -2787,14 +2787,14 @@ each item), `e2e/tests/more-menu-phone.spec.ts`, `e2e/tests/desktop-shell.spec.t
 
 ### B-531 · Hypothesis refuted: the traffic lights do NOT cover Toggle sidebar / Back / Forward
 **Status:** not a bug · **Severity:** — · **Found:** 2026-09-13, desktop-shell ·
-**Evidence:** `shots/01-base-default-size.png` (client `52e5d20`), `shots/10-final-default-size.png`
+**Evidence:** `shots/01-base-default-size.png` (client `ac2528e`), `shots/10-final-default-size.png`
 (this branch's app, menu and client) · **Test (guard):** `e2e/tests/desktop-shell.spec.ts` › "at the
 desktop window's size, Settings, Graph, All pages and Help are reachable by pointer"
 
 The suspicion was that `TitleBarStyle::Transparent` + `hidden_title` puts web content under the
 title bar, so the macOS window buttons would sit on the top bar's first three controls and leave
 no visible way into the sidebar (and so to Graph and Pages). At the default 1100×800 window, with
-the client from `52e5d20`, the screenshot shows otherwise: `Transparent` only makes the title bar
+the client from `ac2528e`, the screenshot shows otherwise: `Transparent` only makes the title bar
 transparent (Tauri's `Overlay` is the style that lays content under it). The title bar is its own
 ~32 pt strip; the 44 pt top bar starts below it with Toggle sidebar, Back and Forward fully
 visible; the sidebar is collapsed; the `?` help button is visible bottom-right. So at the default
@@ -2925,7 +2925,7 @@ Chromium in the suite)
 
 Editing `two` on `one, two` with the caret at the end, Alt+ArrowUp: the block moves up and the
 editor keeps focus, but the caret is at offset 0 instead of 3 (`{anchor: 0, head: 0}`). Chromium
-keeps it at 3. Same result on `52e5d20` (this branch's base) with none of this branch's changes, so
+keeps it at 3. Same result on `ac2528e` (this branch's base) with none of this branch's changes, so
 not caused by the focus log. Not yet checked in the real desktop app (WKWebView), where it would
 matter; not diagnosed. A guess worth testing first, not a finding: the keyed `<For>` moves the row's
 DOM node, WebKit resets the document selection when the focused node moves, and CodeMirror reads
@@ -2934,7 +2934,7 @@ that selection back on refocus instead of writing its own.
 For the record, the same WebKit run (`popups`, `focus`, `focus-return`, `editing`,
 `editing-row-leaves`, `autocomplete`, `autocomplete-busy-replica`, `follow-link-popup`,
 `journal-stream-editing`, `diagnostics`, `storage`, `webkit-refresh-focus`, `focus-log`: 101
-passed, 6 failed) had five more failures, all of one kind and all also failing on `52e5d20`: a
+passed, 6 failed) had five more failures, all of one kind and all also failing on `ac2528e`: a
 reload or `page.goto` shortly after typing (`editing.spec.ts` "text survives blurring…", "Enter
 creates a second bullet…", "typing immediately after Enter…"; `focus.spec.ts` "text typed just
 before an in-app navigation…"; `popups.spec.ts` "Table on an empty block…"), each at its first
@@ -3046,7 +3046,7 @@ to the previous first page). If that lands just after the retry click, nothing c
 view stays at 25. Probe `tools/probes/history-older-vs-first-sync.spec.ts`:
 - A (forced: snapshot held until the retried older page is in flight, released before its answer):
   25, 7 of 7 over three runs.
-- C (unforced: ten runs of the 70c9bb9 flow, logging each `page.history` fetch and click in the
+- C (unforced: ten runs of the 007052a flow, logging each `page.history` fetch and click in the
   page): under 56 busy loops (load average ≈ 70), 1 of 10 at 25 — `click@475 older>475 first>490
   (x4) older<491 first<493…496`, the refetches clearing the older page just appended — and in the
   other nine the refetches had been answered 3-195 ms before the retry click (two more unlogged
@@ -3133,7 +3133,7 @@ modules as files beside `server.mjs` (as `bundled.ts` does for the built-ins) an
 when `NOOKLET_BUNDLED_PLUGINS_DIR` is set — or bundle them into a `plugins/_host/` the loader
 points esbuild at.
 
-**Fixed 2026-09-13.** Reproduced first at `70c9bb9`, with a sidecar built by `apps/desktop/build-sidecar.mjs`
+**Fixed 2026-09-13.** Reproduced first at `007052a`, with a sidecar built by `apps/desktop/build-sidecar.mjs`
 and `tools/probes/sidecar-user-plugin.mjs apps/desktop/sidecar 6412`: `hello.say -> 404`, log `plugin
 "hello" failed to activate: … Could not resolve "@nooklet/plugin-api" … Could not resolve "zod"`.
 
@@ -3175,7 +3175,7 @@ reading, and by an e2e run that had just rebuilt `dist` from other sources) · *
 
 Step 5 builds the web client only when `apps/web/dist/index.html` is missing, then copies `dist`
 into the sidecar. `dist` is rebuilt by every e2e run and every `vite build`, from whatever sources
-the checkout had then — during this verification it held a build of `cf08d19`'s client for a few
+the checkout had then — during this verification it held a build of `febfc23`'s client for a few
 minutes, while the server being bundled was HEAD's. A local `pnpm desktop:build` /
 `pnpm desktop:install` after switching branches (or after an e2e run on another tree state) ships
 that older client next to a newer server, with nothing to say so. CI starts from a fresh checkout,
@@ -3185,7 +3185,7 @@ the same reason.
 
 **Fixed 2026-09-13.** Reproduced first with the new probe `tools/probes/sidecar-web-freshness.mjs`,
 which plants a stale client in `apps/web/dist` (an `index.html` saying so, plus a marker file) and
-runs the sidecar build: at `70c9bb9` it printed `STALE: sidecar/web/index.html is the planted one;
+runs the sidecar build: at `007052a` it printed `STALE: sidecar/web/index.html is the planted one;
 sidecar/web holds the marker; …`. Step 5 of `apps/desktop/build-sidecar.mjs` now runs `pnpm --filter
 @nooklet/web build` every time (Vite empties `dist` first) and fails if that leaves no
 `index.html`; the probe then prints `fresh: sidecar/web is a client built by this run`. Test that
@@ -3227,7 +3227,7 @@ rerun of that package alone failed the same four: `src/tokens.test.ts` "stays fa
 quadratic" (1,488 ms against its 500 ms budget) and three in `src/sync/sync.property.test.ts` —
 "dense adversarial moves on a small block pool…" (timed out at 30 s), "converges regardless of
 interleaving…" and "content and each prop key converge independently…" (5 s each). This branch
-changes nothing in `packages/core` (`git diff cf08d19 -- packages/core` is empty). Not rerun on a
+changes nothing in `packages/core` (`git diff febfc23 -- packages/core` is empty). Not rerun on a
 quiet machine; not investigated. A wall-clock budget and fixed per-test timeouts are the likely
 reason — the property tests' run counts, not their assertions, would be what to look at. The same
 package passed 393/393 minutes later at load average 26.
@@ -3314,7 +3314,7 @@ caught it: `e2e/tests/opfs-pool.spec.ts` "a start cut short while the OPFS pool 
 does not leave the app dead" — builds the state an interrupted first start leaves (the pool's
 `.nooklet-opfs-sahpool/.opaque` directory holding ONE zero-length file, created from `/icon.svg` so
 the app never runs first), then opens a page, checks the indicator says synced (OPFS, not the memory
-fallback), edits, and reloads. At `70c9bb9`'s driver it failed with the B-323 page exactly
+fallback), edits, and reloads. At `007052a`'s driver it failed with the B-323 page exactly
 ("Loading…", indicator empty); with the fix it passes (3 of 3 with `storage.spec.ts`; 8 of 8 in the
 96-test run under 56 busy loops). The combined set, three fresh runs under 56 busy loops (load
 average 60-75): 56 passed each. `references.spec.ts` keeps its extra `/journals` load: it is what
@@ -3379,7 +3379,7 @@ stream). The same spec alone right after: 5/5. Same family as B-233 (specs shari
 on one server); nothing in this branch touches the journal views. Likely fix, as B-233 says: give
 these tests their own page, or wait for the outline instead of blurring the draft.
 
-**Diagnosis 2026-09-13 (m10/tests-desktop).** Reproduced at `70c9bb9` under 56 busy loops (load
+**Diagnosis 2026-09-13 (m10/tests-desktop).** Reproduced at `007052a` under 56 busy loops (load
 average ≈ 65): `editing.spec.ts`'s first three tests, `--repeat-each=8`, failed 3 of 24 with
 exactly `locator.blur: Test timeout of 30000ms exceeded … waiting for
 locator('.vr-draft-input').first()`. Cause, from the page snapshot of a failure: today's outline
@@ -3418,7 +3418,7 @@ regression, which is the first thing a flaky-looking failure calls for. Fix: a p
 `repeatEachIndex`/`retry`, as `views.spec.ts`'s palette test now has. Not changed here (not this
 branch's spec).
 
-**Fixed 2026-09-13.** Reproduced first, at `70c9bb9`: `--repeat-each=3` on an idle machine failed
+**Fixed 2026-09-13.** Reproduced first, at `007052a`: `--repeat-each=3` on an idle machine failed
 repeats 1 and 2 with `Expected: 1, Received: 3` / `Received: 4`. The test now seeds its page
 through the shared `e2e/helpers#openPage` under `runName("Enter Probe", info)` — a new helper,
 `e2e/helpers/api.ts#runName`, that suffixes `repeatEachIndex-retry` (the pattern `views.spec.ts`'s
@@ -3684,7 +3684,7 @@ skew (≤ 60 s, `HLC_MAX_DRIFT_MS`), and nothing on screen says the typing was d
 Cause: the editor's clock (`editor/clock.ts`) is a `new Hlc(deviceId)` that only follows wall time;
 it never absorbs an HLC it has seen. Every keystroke's `block.text` is stamped below the other
 writer's `content_hlc`, and `applyBlockText` drops it as stale. B-192's fix made it absorb the HLC
-of an OFFERED version (`Clock.receive`, 99f54ff) but not of a taken one, nor of any text the tree
+of an OFFERED version (`Clock.receive`, 80a3f6f) but not of a taken one, nor of any text the tree
 shows.
 
 Fixed 2026-09-13: `BlockTree` absorbs the newest `content_hlc` of every page fetch into the editor
@@ -3872,7 +3872,7 @@ renderer's depth rule, as in embeds); references are not editable (by request).
 ### B-446 · The ADR 024 migration puts 259 empty pages at the top of "Recently edited" and of `graph_overview`'s recent pages
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, ref-pages adversarial verification
 · **Test:** `packages/server/src/ref-pages-migration.test.ts` "dates each page by its earliest
-reference, so they do not top 'Recently edited' (B-446)" (fails against `3496234`'s sweep)
+reference, so they do not top 'Recently edited' (B-446)" (fails against `65af6b3`'s sweep)
 
 `page.updated_at` is only ever the `createdAt` of the page's `page.create` (core never bumps it), and
 All pages sorts by it by default ("Recently edited"), as do `graph_overview`'s `recent_pages` (the
@@ -3900,9 +3900,9 @@ are pages the sweep made, each because a block written recently links it.
 adversarial verification · **Tests:** `packages/server/src/ref-pages.test.ts` "writing that reaches a
 page after the junk rule deleted it (B-445)" (4), `apps/web/src/sync/e2e.test.ts` "writing that
 reaches a linked page after its link was removed keeps the page, on every replica" — all five fail
-against `3fbd9de`'s `ref-pages.ts` (checked by swapping the file back); and in Chromium,
+against `e160f7e`'s `ref-pages.ts` (checked by swapping the file back); and in Chromium,
 `e2e/tests/ref-pages.spec.ts` "what an offline device typed into a linked page survives another
-device removing the link (B-445)" (two contexts; fails on `3fbd9de`, passes on the fix)
+device removing the link (B-445)" (two contexts; fails on `e160f7e`, passes on the fix)
 
 Device B has the empty page `[[Offline Notes]]` made (ADR 024) and, offline, types into it. Device
 A edits the only link away; the server deletes the page as unclaimed junk. B comes back online: its
@@ -4106,17 +4106,17 @@ Real-graph numbers (per refresh, 150-row page with 50 refs): 2,550 resolver call
 → 1, 3,206 DOM mutation records → 4 — `docs/progress/ref-label-flash.md` › Measurements.
 
 **Verified independently 2026-09-13** (adversarial pass, same branch). Cause re-proved without the
-author's trace: the `52e5d20` client with only the `invalidateBlockRefs()` call removed from
+author's trace: the `ac2528e` client with only the `invalidateBlockRefs()` call removed from
 `data/store.ts` shows no placeholder in any snapshot (pulls 0 of 10, typing 0 of 9) but never
 updates a label whose target changed — so emptying the cache was the flash. The four failing tests
-above fail on `52e5d20` in Chromium and WebKit (25 of 30 and 4 of 13 snapshots, both engines) and
+above fail on `ac2528e` in Chromium and WebKit (25 of 30 and 4 of 13 snapshots, both engines) and
 pass at HEAD. Real-graph copy, `tools/probes/refresh-render-count.mjs` without counter patches: `Ref
 Heavy` 53 flashed snapshots / 3,237 records / 1,915 elements per refresh before, 0 / 4 / 3 after
 (2022-12-16: 5 / 16 / 29.6 → 0 / 4 / 8.6), after identical in WebKit. The other side of
 stale-while-revalidate — a kept label must still move when its target really changes — now has
 tests in `e2e/tests/ref-label-flash.spec.ts`: "typing fast into a referenced block on the same
 page: the label follows forward only" and "a second device typing into a referenced block: the
-first device's label converges, never ((id))" (both fail on `52e5d20`), "a deleted target shows
+first device's label converges, never ((id))" (both fail on `ac2528e`), "a deleted target shows
 ((id)) again, and restoring it resolves the label" and "navigating away and back after the target
 changed shows the new text" (guards; the latter fails against a cache that skips re-reading ids
 nobody was watching).
@@ -4233,7 +4233,7 @@ text typed immediately after Enter on a just-materialised day lost (second block
 shows a non-interactive loading row until the stream has answered, so a fresh client has no draft to
 type into during its first sync. Its e2e test is rewritten to that contract:
 `e2e/tests/journal-draft-sync.spec.ts` "today offers no draft until the first sync says whether
-today exists, and nothing typed after it is lost (B-243, B-410)". It fails on `70c9bb9`, where the
+today exists, and nothing typed after it is lost (B-243, B-410)". It fails on `007052a`, where the
 draft is visible while the snapshot is held. The append-on-teardown path stays for a draft swapped
 out because another device wrote the day, and its unit tests still pass.
 
@@ -4528,7 +4528,7 @@ checkbox too (B-452)"
 
 Select a block, Backspace (deleted on the server), open Settings (Cmd/Ctrl+,), focus the "Journal
 template" `<select>`, press Cmd+Z: the deleted block came back — stored `["kv one","kv two","kv
-three"]` again, focus still on the select. Pre-existing (the same at `52e5d20`), and exactly the
+three"]` again, focus still on the select. Pre-existing (the same at `ac2528e`), and exactly the
 class B-300 closes: "a key typed into a field outside the outliner never acts on its blocks" held
 for every key but these two. Cause: `edit.undo`/`edit.redo` are `when: true`, so R12b's hidden
 outliner does not stop them; R12a (`textFieldOwnsKey`) leaves Mod+Z to the field only for TEXT
@@ -4588,7 +4588,7 @@ another day — the editing tree's context wins and the text is cut natively (ch
 **Severity: raise to high** (the entry's own suggestion): the palette is opened from a selection
 all the time, and keys typed there wrote to blocks on the server.
 
-**Measured again at `52e5d20` before changing anything** (`tools/probes/keys-in-fields-selection.spec.ts`,
+**Measured again at `ac2528e` before changing anything** (`tools/probes/keys-in-fields-selection.spec.ts`,
 header has every line). B-347's key list (`app/text-field-keys.ts#textFieldOwnsKey`, spec R12a),
 merged after B-300 was measured on `m9/clipboard-sync`, had already fixed the reported half:
 Backspace and Cmd+X in the title, and Backspace/Cmd+A/Cmd+X in the palette, edited the field and
@@ -4681,7 +4681,7 @@ the same rule (by design) — no plugin with a keybinding exists to try it with.
 
 ### B-384 · Enter on the autocomplete a walk into a complete link opened silently re-points the link
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
-m10/editor-keys (made silent by the B-294 fix, `86897db`; the wrong pick itself is older) ·
+m10/editor-keys (made silent by the B-294 fix, `fd0c38b`; the wrong pick itself is older) ·
 **Test:** `e2e/tests/autocomplete-inside-link.spec.ts` "…keeps the link's page, not a shorter name
 (B-384)", "Enter with the caret walked to just after [[ keeps the link, not today's date (B-384)",
 "walking into a ((ref)) offers nothing to pick, so Enter leaves the ref alone (B-384)"
@@ -4694,7 +4694,7 @@ stored `met [[Ekvthree Jan]] today` — the link now names another page, and not
 broken. With the caret right after `[[` the query is empty, the date shortcuts come first, and Enter
 stores `met [[Sep 13th, 2026]] today`: the page name is gone. Walking into a `((ref))` queries a
 fragment of the id, which matches blocks whose TEXT contains the id — the block being edited first —
-and Enter stored `see ((<the edited block's own id>))! end`. Before `86897db` each of these left the
+and Enter stored `see ((<the edited block's own id>))! end`. Before `fd0c38b` each of these left the
 old tail behind (`[[Ekvthree Jan]] Novak]]`), visibly wrong and one undo away; now the result looks
 like a valid link. Enter with the caret inside a link is a realistic slip (arrowing to split a block
 a couple of characters early). Probe: `e2e/tests/zz-ekv2-probe.spec.ts` P2, `zz-ekv3-probe.spec.ts`
@@ -4716,7 +4716,7 @@ inside a link to no page, ranking still decides the active row (B-384)" (green b
 
 ### B-382 · Enter on "New page" inside an existing `[[link]]` deletes the rest of the link's name
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-13, adversarial verification of
-m10/editor-keys (introduced by the B-294 fix, `86897db`) · **Test:**
+m10/editor-keys (introduced by the B-294 fix, `fd0c38b`) · **Test:**
 `e2e/tests/autocomplete-inside-link.spec.ts` "Enter on New page inside a link to a page that does not
 exist keeps the whole link (B-382)"
 
@@ -4724,7 +4724,7 @@ exist keeps the whole link (B-382)"
 name), Home, ArrowRight to after `[[Walkin Unm`: the popup's rows are `New page "Walkin Unm"` and a
 block match. Enter stores `alpha [[Walkin Unm]] omega` and creates a page "Walkin Unm". B-294's fix
 replaces through the link's `]]`, but the "New page" row still names the page after the text BEFORE
-the caret, so "ade Page" is silently gone. Before `86897db` the same Enter gave the visible garble
+the caret, so "ade Page" is silently gone. Before `fd0c38b` the same Enter gave the visible garble
 `[[Walkin Unm]]ade Page]]`. The same path is reached for a link to a page that DOES exist whenever
 the "New page" row is active — B-294's own repro saw it once, and it is the only row until the pages
 list has loaded (B-244's busy worker). Probe: `e2e/tests/zz-ekv-probe.spec.ts` P1 (throwaway).
@@ -4738,7 +4738,7 @@ offered at all; and in the not-yet-loaded race the create of an existing name is
 "do not replace through `]]` for this row", which would have brought B-294's garble back for it.
 Cost: retyping a link's name from the middle and picking "New page" names the page after everything
 the link now says (`[[Walkin OthGoal Page]]`), not after the typed part — what the buffer shows. The
-e2e test was red on `67ae509` (`alpha [[Walkin Unm]]! omega`), green after. Unit:
+e2e test was red on `0ce2fa2` (`alpha [[Walkin Unm]]! omega`), green after. Unit:
 `AutocompletePopup.test.tsx` "New page with the caret inside a complete link names the whole link…"
 and "offers no New page inside a complete link whose whole name is an existing page" (both red with
 the fix reverted).
@@ -4794,7 +4794,7 @@ created a moment earlier whose create has not reached the replica rejects with "
 
 ### B-295 · Keys typed straight after Alt+Enter follows a link go into the block being left
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-13, adversarial verification of m9/focus
-(pre-existing: `cf08d19` 2 of 2, branch 3 of 3) · **Test:** none yet
+(pre-existing: `febfc23` 2 of 2, branch 3 of 3) · **Test:** none yet
 
 Editing `- go [[Target]]`, End, Alt+Enter, type `qq` at once: the stored block on the page left is
 `go [[Target]]qq`. `nav.followLink` → `hosts.ts#openPageByRef` resolves the ref with a replica read
@@ -4810,7 +4810,7 @@ ends editing when it is requested, not when the page unmounts. `app/hosts.ts#cre
 calls `requestEditingEnd()` (the same signal Cmd/Ctrl+F uses) at the start of `followLink` for page,
 tag and block links, `openPage` (palette page rows, Random page) and `openPageByRef` (`nav.openPage`,
 agents). Every tree flushes what was typed and detaches the editor, so focus is on `<body>` until the
-new page is clicked into — where `cf08d19` left it after the palette form (B-293). Not changed: web
+new page is clicked into — where `febfc23` left it after the palette form (B-293). Not changed: web
 links (they open in another tab and the editor keeps focus), `back`/`forward`/`openJournals`/
 `openSearch` (not measured whether keys typed straight after them can land in the block being left)
 and `revealBlock` (documented as not changing focus). Where the correct page already showed, nothing
@@ -4825,12 +4825,12 @@ in the block being left (B-295)" and the `((block ref))` form; red before (5 of 
 
 ### B-294 · Enter on the autocomplete that walking into an existing `[[link]]` opened duplicates the link's tail
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-13, adversarial verification of m9/focus
-(pre-existing: same result with `apps/web/src` at `cf08d19`) · **Test:** none yet
+(pre-existing: same result with `apps/web/src` at `febfc23`) · **Test:** none yet
 
 `- alpha [[Target]] omega`, Home, ArrowRight ×9 (caret after `[[T`): the `[[` autocomplete opens
 over a link that is already complete (B-203's precondition). Enter picks the active row and replaces
 only the text between the trigger and the caret, so the rest of the old link stays behind it:
-`alpha [[Target]]arget]] omega` (probe `tools/probes/focus-return-verify.spec.ts` "B-294", seen on `cf08d19` and
+`alpha [[Target]]arget]] omega` (probe `tools/probes/focus-return-verify.spec.ts` "B-294", seen on `febfc23` and
 on the branch; once the active row was the query itself, giving `alpha [[T]]arget]] omega`).
 Either the autocomplete should not open inside a complete link (noted, not asked, in
 `docs/progress/focus.md` §3) or picking a row should replace up to the link's `]]`.
@@ -4892,7 +4892,7 @@ other way — the date commands are not offered for several blocks — and that 
 
 Caret in a block with no marker, Cmd/Ctrl+Enter twice with no pause (Playwright `press` twice):
 the server ends with `TODO`, not `DOING`, and the history holds two steps (the first Cmd/Ctrl+Z
-leaves `TODO`, the second clears it). Same result with `apps/web/src` at `cf08d19`, so not caused
+leaves `TODO`, the second clears it). Same result with `apps/web/src` at `febfc23`, so not caused
 by `m9/undo`. Cause, by reading: `task.cycle` (`commands/registrations/task.ts`) reads the marker
 from the replica (`Store.getBlockTaskState`) and the dispatcher does not await a command before
 running the next (`keymap/dispatch.ts#runRow`: `void ctx.exec(...)`), so the second press reads
@@ -4935,7 +4935,7 @@ reload — and the page runs the previous client for the whole session again.
 
 Reproduced in the devtest2 app with the same probe shape as B-532 (fresh store, graceful quits,
 harness reading the loaded `index-*.js` and `performance` navigation type):
-- baseline, OLD `adadff1` → NEW this branch, no delay: the first launch after the update reloads
+- baseline, OLD `c30cb37` → NEW this branch, no delay: the first launch after the update reloads
   (`nav: "reload"`) onto NEW within ~1.2 s — B-532's claim holds;
 - OLD this branch → NEW this branch with index.html's precache revision bumped, `/api/session`
   delayed 2 s by the logging proxy: the first launch after the update shows **OLD for the whole 30 s
@@ -5063,15 +5063,15 @@ installs, precaches, and then **waits** for as long as any page is controlled by
 reload-on-`activated` that autoUpdate relies on never fires.
 
 Reproduced in the devtest app (`tools/probes/desktop-sw-update.sh`, fresh WebKit store, graceful
-quits): serve the `adadff1` client and launch; serve the `52e5d20` client and launch again. Each
+quits): serve the `c30cb37` client and launch; serve the `ac2528e` client and launch again. Each
 index.html is stamped with a visible label naming its build and `index-*.js`:
 
-- launch with the old client served: `shell: OLD adadff1 · index-DXnnFemz.js` (as expected);
-- **first launch after the server has the new client: still `OLD adadff1`, for the whole 40 s
+- launch with the old client served: `shell: OLD c30cb37 · index-DXnnFemz.js` (as expected);
+- **first launch after the server has the new client: still `OLD c30cb37`, for the whole 40 s
   session.** The request log shows the update WAS found — `GET /sw.js`, then the new build's
   `/static/index-DxOn0mZf.js` fetched with `sec-fetch-dest: empty` (the new worker filling its
   precache) — but no page ever asked for it;
-- second launch: `shell: NEW 52e5d20 (no fix)` — the waiting worker took over only once the app
+- second launch: `shell: NEW ac2528e (no fix)` — the waiting worker took over only once the app
   had quit and no page was left for the old one to control; third launch: new as well.
 
 So after any update the desktop app shows the previous client for the first whole session, which
@@ -5097,7 +5097,7 @@ Proven twice:
   registration of the same `sw.js` → before: no reload in 60 s, state
   `{"controlled":true,"scriptURL":".../sw.js","waiting":true,"installing":false}`; after: the page
   reloads by itself in ~2 s and settles with nothing waiting (3/3 with `--repeat-each=3`).
-- WKWebView, the devtest app (`desktop-sw-update.sh`, same OLD `adadff1` client installed first,
+- WKWebView, the devtest app (`desktop-sw-update.sh`, same OLD `c30cb37` client installed first,
   graceful quits, 6 s / 30 s screenshots): the **first** launch after the server has the fixed client
   already shows `shell: NEW with B-532 fix · index-B8cDJY3A.js` at 6 s, and so do both later
   launches. The request log shows the extra `GET /sw.js` of the reloaded page registering again.
@@ -5499,7 +5499,7 @@ block stays selected — and stays selected through clicks elsewhere, so its tre
 editor host). Click the deadline chip of a block in day B, pick "+31d". Cmd/Ctrl+Z: the date stays
 and " typed" is taken back in day A. The date's step sits in day B's history, where a later
 Cmd/Ctrl+Z in day B would take it back by surprise (the B-241 shape). The e2e test fails on
-`695af3a` (`deadline` still `+31d` 10 s after Cmd+Z).
+`8ec3712` (`deadline` still `+31d` 10 s after Cmd+Z).
 
 Cause: B-142's `commitThroughEditor` lands the batch in the tree that shows the block (day B) and
 makes it `recent`, but `historyEditorHost()` prefers `active` — day A, because of its standing
@@ -5542,7 +5542,7 @@ commits, like `runStructural`; `commitOne`, the `task.cycle` case of `runCommand
 The Cmd/Ctrl+Enter test does not isolate B-280: Cmd/Ctrl+Enter is taken by the global command
 dispatcher (document capture phase) and runs `task.cycle` through the command `Store`, which since
 B-142 commits through `runStructural` and so already flushed. What it does pin is B-142 for the
-keyboard: with the store's editor commit disabled (the `cf08d19` behaviour) it fails —
+keyboard: with the store's editor commit disabled (the `febfc23` behaviour) it fails —
 `Received: "TODO"` after Cmd+Z — so Cmd/Ctrl+Enter was never undoable either.
 
 ---
@@ -5563,7 +5563,7 @@ Not fixed here (outside this brief's scope).
 redo collapses it again from the keyboard (B-162)", "undoing Collapse all keeps editing a block that
 stayed on screen, and redo folds again (B-162)"; `apps/web/src/editor/undo-focus.test.ts`
 
-Reproduced on `cf08d19` by both: after Cmd+Z the active element is `<body>`.
+Reproduced on `febfc23` by both: after Cmd+Z the active element is `<body>`.
 
 **Fixed 2026-09-13.** The cause was the one the entry read: `doUndo`/`doRedo` treated a step with
 no recorded caret as "detach the surface", and collapse, expand, Collapse all, a keyboard marker
@@ -5573,7 +5573,7 @@ sites, the rule itself changed (`editor/undo-focus.ts#focusAfterStep`, used by t
 while its row is on screen, and ends editing only when the step took that row away (an undone
 create, an undone expand folding it back). That covers every null-focus step at once, including
 ones nobody listed (Cmd/Ctrl+Enter then Cmd/Ctrl+Z also ended editing). Both e2e tests fail on
-`cf08d19` and pass with the change.
+`febfc23` and pass with the change.
 
 ---
 
@@ -5589,7 +5589,7 @@ the destination page (B-88, as intended). Now click into "keep", End, Cmd/Ctrl+Z
 nowhere. Probe on the branch: destination read back `["already here","goes","child"]`, no row
 held the editor, typed "Z" landed nowhere.
 
-Not introduced by B-88's fix: the same probe against `apps/web` at `da85cfb` (where the row stays
+Not introduced by B-88's fix: the same probe against `apps/web` at `61279a2` (where the row stays
 until the click into "keep", which flushes the same text transaction) ends identically. B-88's
 flush only makes it reachable without that click.
 
@@ -5604,7 +5604,7 @@ left the page neither reaches it nor loses the editor (B-194)"; `apps/web/src/ed
 "EditHistory — steps on blocks that left the tree are dropped (B-194)" (4);
 `apps/web/src/editor/undo-focus.test.ts` (5)
 
-Reproduced on `cf08d19`: after the move, click into "keep", End, Cmd+Z, type "Z" — no
+Reproduced on `febfc23`: after the move, click into "keep", End, Cmd+Z, type "Z" — no
 `.cm-content` anywhere (`element(s) not found`).
 
 **Fixed 2026-09-13.** Both halves the entry offered, since they answer different questions:
@@ -5621,7 +5621,7 @@ Reproduced on `cf08d19`: after the move, click into "keep", End, Cmd+Z, type "Z"
 
 **Owner's call, flagged:** the entry left "should an undo reach a block that left?" to the owner.
 This branch answers no. If the answer should be yes, delete the `present` argument in `doUndo`/
-`doRedo` (two call sites); the focus rule stays either way. The e2e test fails on `cf08d19` and
+`doRedo` (two call sites); the focus rule stays either way. The e2e test fails on `febfc23` and
 passes with the change.
 
 
@@ -5646,13 +5646,13 @@ generic properties into the page tree, which today (`BlockRow`) has none.
 **Status:** fixed · **Test:** `e2e/tests/undo-gaps.spec.ts` "undo of /template into a bullet that
 already had the template's property restores the old value (B-191)"
 
-**Fixed 2026-09-13, before this branch, by B-101** (`89c0f22`, merged in `cf08d19`). B-191 was
+**Fixed 2026-09-13, before this branch, by B-101** (`91477c8`, merged in `febfc23`). B-191 was
 logged on `m8/impl-editor` from reading `invert.ts`, whose `propValueBefore` inverted every
 non-reserved key to `null`. B-101's branch, merged afterwards, projected generic properties into
 `EditableBlock.properties` and made `propValueBefore` read `block.properties[key]`, which is the
 fix the entry asked for. No code change here: the e2e test above (empty bullet with `kind:: a`,
 `/template` whose first block has `kind:: b`, Cmd+Z, server has `kind: a` again and the buffer
-shows `kind:: a`) passes on `cf08d19`, and fails when `propValueBefore`'s default case is put back
+shows `kind:: a`) passes on `febfc23`, and fails when `propValueBefore`'s default case is put back
 to `return null` (server `{}` instead of `{ kind: "a" }`) — so it is the test that would have
 caught it.
 
@@ -5680,7 +5680,7 @@ Cmd/Ctrl+Z takes back the marker first (B-142, B-280)"; `apps/web/src/app/hosts.
 writes (B-142)" (3); `apps/web/src/app/editor-host.test.ts` "a command's op batch reaches a tree
 that shows its block, focused or not (B-142)" (3)
 
-Reproduced on `cf08d19` by all three e2e tests before any change: the picked date stays
+Reproduced on `febfc23` by all three e2e tests before any change: the picked date stays
 (`Received: "2026-09-14"` 10 s after Cmd+Z), the chip's date stays (`2026-09-25`, not the `09-22`
 it had), and palette "Set priority A" stays `A`. So the palette marker/priority commands have the
 gap too, as the entry guessed by reading.
@@ -5692,14 +5692,14 @@ only when no tree takes it. Every store-routed write is covered at once: the dat
 item, palette row, chip), `task.cycle`/`task.toggleDone`/`task.setMarker*`/`task.clearMarker`
 from the palette or menu, and `task.setPriorityA/B/C`. That includes Cmd/Ctrl+Enter itself, which
 the global dispatcher runs as the `task.cycle` command through the store, not through
-`BlockTree#runCommand`: it was not undoable on `cf08d19` either (see B-280's second test). `liveEditorHost.commitOps`
+`BlockTree#runCommand`: it was not undoable on `febfc23` either (see B-280's second test). `liveEditorHost.commitOps`
 (`app/editor-host.ts#commitThroughEditor`) now tries the active tree, then the tree whose session
 ended last, then every mounted one (`registerEditorHost`, one line in `BlockTree`), and the tree
 that takes the batch becomes the undo target. Without that, a date picked from a chip — nothing
 edited or selected, so no active tree — still went past every history. A tree only takes a batch
 for a block it shows (`external-batch.ts`), so a write never lands in the wrong page's history.
 Cost: the store's write now resolves when the tree has the change, not when the replica does
-(the tree does not await `applyOps`, same as every edit). The three e2e tests fail on `cf08d19`
+(the tree does not await `applyOps`, same as every edit). The three e2e tests fail on `febfc23`
 and pass with the change; `dates`, `tasks`, `templates`, `template-undo`, `undo-redo`, `redo` and
 `selection` specs stay green (55/55). On a copy of the owner's graph
 (`tools/probes/undo-real-graph.spec.ts`): palette priority and Cmd/Ctrl+Enter undone on a
@@ -5968,7 +5968,7 @@ unchanged). `tools/probes/serialize-fence-props.ts` now prints the properties ba
 Found in passing: B-310 (the same block with a marker). In a browser (added while verifying):
 `e2e/tests/agent-ops.spec.ts` › "copying a fence-first block with a property and pasting it keeps
 the property (B-151)" — Cmd/Ctrl+C, the clipboard text, a paste, the pasted block's stored
-properties; with cf08d19's `outline.ts` built into the client it fails at the clipboard (the
+properties; with febfc23's `outline.ts` built into the client it fails at the clipboard (the
 property line inside the fence).
 
 ---
@@ -6121,7 +6121,7 @@ where the only SHA is async (`crypto.subtle`). A mirror file shortened under the
 renamed on its next export by `exportPage`'s path-change cleanup; the owner's graph has none
 (`nooklet export` of a copy: 952 pages, `failed: []`, 0 shortened names, longest file name 114
 bytes). Tests that would have caught it: `core/src/sync/page-outline.test.ts` "shortens a name past
-NAME_MAX to a prefix and a hash, as the mirror names its file (B-368)" (failed at `cf08d19`: the
+NAME_MAX to a prefix and a hash, as the mirror names its file (B-368)" (failed at `febfc23`: the
 path had no suffix) and "puts the full name in title:: when, and only when, the file name was
 shortened (B-368)"; `server/src/mirror/export.test.ts` "the web export's file name and text are the
 mirror's, long names included (B-368)"; `e2e/tests/page-export.spec.ts` "Export of a page whose
@@ -6178,7 +6178,7 @@ undo leaves it, not skipped — undoing a merge removes the alias the merge adde
 undo that moves no name (the page is live under the same key before and after) is not refused over
 an alias that page already shadowed, which `page.create` allows. Test that would have caught it:
 `ops/batch-undo-alias.http.test.ts` (4; the delete-then-alias case and the kept-alias merge case
-answered 200 before this fix, at `d4f1335`; the other two guard the exemptions).
+answered 200 before this fix, at `9aeb801`; the other two guard the exemptions).
 
 ---
 
@@ -6212,9 +6212,9 @@ it would have restored nothing. Side effect, tested: undoing a `trash.restore �
 old name was taken again answered 400 `page-key-collision` from core, and now answers the
 pre-check's 409 conflict. Tests that would have caught it:
 `ops/batch-undo-later-edits.http.test.ts` "a later rename or delete it keeps does not make the undo
-fight over the page's old name (B-366)" (409 at `cf08d19`) and `ops/undelete-collision.http.test.ts`
+fight over the page's old name (B-366)" (409 at `febfc23`) and `ops/undelete-collision.http.test.ts`
 "batch.undo of a restore under new_name, after the old name was taken, is conflict (B-366)" (400 at
-`cf08d19`).
+`febfc23`).
 
 ---
 
@@ -6245,7 +6245,7 @@ would re-render every page touched since, for as long as the server runs. With t
 page that keeps failing costs one render per sweep and is logged every time, and the log line's
 "will retry after the next commit" is true. The test that would have caught it:
 `mirror/live.test.ts` "retries a page it could not write on the next sweep, without that page
-changing again (B-365)" — it failed at `cf08d19` on the second sweep, which logged nothing about
+changing again (B-365)" — it failed at `febfc23` on the second sweep, which logged nothing about
 the page.
 
 ---
@@ -6336,7 +6336,7 @@ window looks at the scheduled date AND the deadline", 4 cases)
 deadline lies in the window, one date satisfying both bounds (a task scheduled before a window with
 its deadline after it is not in it); `filterTasks` uses it instead of comparing `dueDay`. The e2e
 seeds three tasks in 2031 — scheduled 03-01 with deadline 03-20, scheduled 03-18, scheduled 03-01
-only — and sets the window 03-15..03-25 in the real Tasks view: 2 rows expected; on `cf08d19`'s
+only — and sets the window 03-15..03-25 in the real Tasks view: 2 rows expected; on `febfc23`'s
 `taskFilters.ts` it got 1 (the deadline task missing). The unit cases "a deadline inside the
 window…" and "an open-ended bound…" failed before. The existing fixture task that had only
 `dueDay` now also carries the `scheduledDay` it would have in real data. Left as it was: the row's
@@ -6371,7 +6371,7 @@ server's missing-page branch matches the raw title (B-322 — with the raw name 
 "received []"); and the panel gets `unlinked={false}`, a new `ReferencesPanel` prop, because its
 "Link all" runs `mentions.link`, whose `requirePage` would only answer 404 for a page that does not
 exist. Once Create is pressed the ordinary view's panel, unlinked half included, takes over (checked
-in the same e2e). The first test cannot pass on `cf08d19` — nothing under the missing view rendered
+in the same e2e). The first test cannot pass on `febfc23` — nothing under the missing view rendered
 a panel. Real graph (backup copy, `tools/probes/render-views-real-graph.mjs`): `/page/book`, which
 the owner never created, now shows "Pages tagged book" 1 and "Linked references" 9 with 9 rows —
 exactly `page.backlinks {target: "book"}`'s `tagged_total` 1 and `linked_total` 9 — and no unlinked
@@ -6401,7 +6401,7 @@ are in the … menu instead" (both failed before).
 invisible controls; History and Add icon are in the … menu"), `e2e/tests/render-views.spec.ts` ("on
 a desktop the title row keeps History and the icon slot behind hover; the menu has both")
 
-Measured before fixing (iPhone 13 descriptor, production build, `cf08d19`): in a 366 px title row
+Measured before fixing (iPhone 13 descriptor, production build, `febfc23`): in a 366 px title row
 the invisible empty icon slot took 39 px and the invisible History link 55 px, leaving the title
 input 164 px; forcing both visible showed the name clipped to "RV Phone Prob".
 
@@ -6480,7 +6480,7 @@ attribute on hits (`data-query-hit-id`), as embedded rows use `data-embed-block-
 row, not on a query result above it"), `apps/web/src/editor/render/render-seams.test.tsx` ("lists
 hits grouped by page with a count…")
 
-Reproduced in a browser before fixing (Chromium, production build, `cf08d19`'s
+Reproduced in a browser before fixing (Chromium, production build, `febfc23`'s
 `QueryFenceView.tsx`): a page whose first block is a ```` ```query TODO tag:rvreveal ```` fence
 and whose third is the matching task. Shelving the page, switching the card to its outline and
 clicking the task's entry put `shelf-reveal-target` on the `li.vr-query-hit` and never on the
@@ -6507,7 +6507,7 @@ whose spans jump from `data-to="27"` to `data-from="28"` with no `<br>` for offs
 `plain first\nplain second` renders "plain firstplain second" the same way. `@nooklet/core`'s
 `tokenizeContent` does insert `br` tokens and `render/tokens.tsx` has a `br` case, so the render
 path in use is dropping them somewhere between the two. Reproduced on a production build at
-`06ed234` + this branch's uncommitted web changes (none of which touch `render/`), Chromium, seeded
+`c45ef89` + this branch's uncommitted web changes (none of which touch `render/`), Chromium, seeded
 through `page.create` markdown with a continuation line. Not fixed here: `render/tokens.tsx` is
 another branch's file this round (`m8/impl-render` exists).
 
@@ -6519,7 +6519,7 @@ Cause (read, then confirmed by a failing unit test and a failing e2e): `render/t
 rendered a paragraph's and a quote's `lines` back to back with no `<br>` between them. The `br`
 tokens exist only in `tokenizeContent`'s flat stream (used by `InlineContent`), never in
 `classifyBlockContent`'s per-line arrays, which is what every outliner row, query hit, embed and
-shelf card renders. It had been that way since the renderer was written (`b957731`); the existing
+shelf card renders. It had been that way since the renderer was written (`6770965`); the existing
 unit test `quote -> <blockquote class=vr-quote>` asserted the run-together text
 `"line oneline two"`, so the defect was codified rather than caught.
 
@@ -6529,7 +6529,7 @@ unit test `quote -> <blockquote class=vr-quote>` asserted the run-together text
 tokens). Heading trailing lines were already one `<p>` each and are unchanged. The e2e seeds the
 entry's own two blocks through `page.create` markdown, checks `page.read` stores the `\n`, then
 asserts one `<br>` per row and that the second line's first glyph sits below the first line's; it
-failed on `cf08d19`'s `tokens.tsx` (`br` count 0) and passes with the fix. The unit tests failed
+failed on `febfc23`'s `tokens.tsx` (`br` count 0) and passes with the fix. The unit tests failed
 before (no `<br>`) and pin the offsets `27`/`39`/`40` for `Poznámka: **žluťoučký kůň**\nsecond
 line\n\nfourth`. Real graph (backup copy, production build, `tools/probes/render-views-real-graph.mjs`):
 on `2023-02-17` (26 rows, 19 multi-line) and `TTRPG/VTM-alpha` (88 rows, 10 multi-line) every
@@ -6547,7 +6547,7 @@ Filter order is Tag, Namespace, Updated after, Task, Show, Journals only, Update
 two halves of one date range are split (about 430px apart at 390px wide).
 
 **Fixed 2026-09-13.** "Updated before" moved to straight after "Updated after" in
-`views/SearchView.tsx` (the M8 selects had been inserted between them, `03cb6ef`). Order now Tag,
+`views/SearchView.tsx` (the M8 selects had been inserted between them, `dc8ff90`). Order now Tag,
 Namespace, Updated after, Updated before, Task, Show, Journals only. Real graph copy: the two date
 labels 61px apart at 390px and at 1400px (the panel is one column at both). Test that would have
 caught it: the named component test (failed before: the label after "Updated after" was "Task").
@@ -6648,7 +6648,7 @@ window-height-only version, bottom 836 > 799) and `apps/web/src/app/menu-placeme
 Not verified: a real iPhone with the on-screen keyboard open (the toolbar's top is taken as the
 keyboard's top; placement is computed when the menu's size changes, not when the keyboard moves).
 Pre-existing, not touched: biome's `useSemanticElements` error on the menu's `role="separator"`
-div (present at `cf08d19`).
+div (present at `febfc23`).
 
 ---
 
@@ -6805,7 +6805,7 @@ recorded in spec R20a: the marker is carried as a marker rather than as the word
 block is empty, and the mirror would write it back as a task — the B-342 mismatch); when both blocks
 set the same field to different values the merge is refused and the outliner's toast names the field
 and both values (`mergeRefusedMessage`), because keeping either value silently loses the other.
-`done` never refuses. The e2e spec was red on `cf08d19` (both tests: TODO/scheduled/owner and
+`done` never refuses. The e2e spec was red on `febfc23` (both tests: TODO/scheduled/owner and
 list/source gone; no notice) and green after; unit: `commands.test.ts` "merges keep what the merged
 block carried (B-340)" (4 of 6 red before the fix, the other two guard the Enter-then-Backspace
 numbered-item flow and shared fields).
@@ -6830,12 +6830,12 @@ emoji picker, Playwright `insertText`/`type("Ž")` — is inserted where the DOM
 `commands/` cannot reach the view. The module comment ("its own focus handler keeps the caret where it
 was") was an unverified assumption.
 
-Evidence (`apps/web/src/commands/focus-return.ts` at `2924c05`). Real graph copy, a plain Czech block
+Evidence (`apps/web/src/commands/focus-return.ts` at `fab4ee9`). Real graph copy, a plain Czech block
 on a 201-block page: Home, ArrowRight ×4, Cmd+K, Escape, `type("Ž")` → stored at offset 0; without
 the palette → offset 4. e2e data (`tools/probes/focus-return-verify.spec.ts` "B-296", 4 rounds per run, 2 runs): caret at
 offset 2, Cmd+K, Escape, then — digit key: 8/8 at 2; `insertText` at once: 8/8 at 0; `type("Ž")` at
 once: 8/8 at 0; `insertText` 50 ms later: 8/8 at 2. The `caret()` read straight after Escape is 0
-every time, even when the text then lands right. Not visible in `cf08d19`, where nothing gave focus
+every time, even when the text then lands right. Not visible in `febfc23`, where nothing gave focus
 back (the text went nowhere). The branch's tests typed `!` (a keydown) at the end of the block.
 
 **Fixed 2026-09-13.** `rememberFocus` also records the document selection when it lies inside the
@@ -6864,19 +6864,19 @@ focused again, so what is typed goes into its block — and is saved there, on a
 longer on screen.
 
 Probe (`tools/probes/focus-return-verify.spec.ts` "B-293", port 6401): edit `- origin`,
-Cmd+K, type another page's name, Enter, type `qq` at once. On `2924c05`: `activeElement` right after
+Cmd+K, type another page's name, Enter, type `qq` at once. On `fab4ee9`: `activeElement` right after
 Enter is `.cm-content`, and the stored block on the page left is `originqq` (1 of 1); same with the
-Create page row (1 of 1). With `apps/web/src` checked out at `cf08d19`: focus on `<body>` and the
+Create page row (1 of 1). With `apps/web/src` checked out at `febfc23`: focus on `<body>` and the
 block stays `origin` (both). "Open journals" run from the palette does not show it (that navigation
 is synchronous, so the editor is already detached when the palette closes).
 
 **Fixed 2026-09-13.** `commands/palette/CommandPalette.tsx#selectRow` skips the focus return for the
 rows that leave the page: a page, "Create page", and a command in the `Navigation` category (probe:
 "Follow link under cursor" run from the palette resolves the link before it navigates — `qq` went
-into the block 1 of 2 on the branch, 0 of 2 with `apps/web/src` at `cf08d19`). Escape, Cmd/Ctrl+K, a
+into the block 1 of 2 on the branch, 0 of 2 with `apps/web/src` at `febfc23`). Escape, Cmd/Ctrl+K, a
 backdrop click, any other command row (and a command that closes the palette itself, like Move to
 page…) and Shift+Enter onto the shelf still give focus back. Focus after such a row is where
-`cf08d19` left it (`<body>` until the new page is clicked into). Tests that would have caught it:
+`febfc23` left it (`<body>` until the new page is clicked into). Tests that would have caught it:
 `e2e/tests/focus-return.spec.ts` "choosing a page in the palette while editing: what is typed before
 it shows never lands in the block being left" (page row and create row) and "following a link from
 the palette while editing: what is typed before the page shows never lands in the block being left";
@@ -6935,7 +6935,7 @@ Consequence worth knowing: with the autocomplete or slash menu open, Cmd/Ctrl+En
 and Alt+Up/Down (`block.moveUp/Down`) now run their commands instead of doing nothing, the same as
 with no popup. Tests that would have caught it: `e2e/tests/follow-link-popup.spec.ts` "Alt+Enter
 follows a [[link]] the caret was walked into, though that opened the autocomplete" (failed on
-`cf08d19`: the URL stayed on the page) and, for the boundary, "with the autocomplete open, plain
+`febfc23`: the URL stayed on the page) and, for the boundary, "with the autocomplete open, plain
 Enter is still the popup's: it picks a row, it does not split the block"; unit
 `commands/popup-keys.test.ts` (4) and `keymap/dispatch.test.ts` "step 2 asks popupTakesKey: a key
 the popup never receives is dispatched (B-203)". Not fixed, and not asked: whether walking the caret
@@ -6969,7 +6969,7 @@ Fix direction: hold keys from the moment `open()` is called (a capture listener 
 picker, replayed on mount), and take `beforeinput` `insertText` while open. Not done here.
 
 **Fixed 2026-09-13** — both holes the entry names, except composition, now B-291. Reproduced first:
-the four e2e tests below failed on `cf08d19` (keys typed in the gap went to the block and the
+the four e2e tests below failed on `febfc23` (keys typed in the gap went to the block and the
 picker's query stayed empty; Escape in the gap dropped the block into selection mode and the
 picker opened anyway; `insertText("zítra")` went into the block).
 
@@ -7035,7 +7035,7 @@ block selected with the outliner focused (typing did nothing there either, but n
 editable). The row did not leave the page, so the tree's new end-editing path (B-88) does not run.
 Same family as B-193: a picker or palette closing without handing focus back to the editor.
 
-**Fixed 2026-09-13.** Reproduced first as an e2e test (failed on `cf08d19`: `activeElement is body`
+**Fixed 2026-09-13.** Reproduced first as an e2e test (failed on `febfc23`: `activeElement is body`
 straight after the picker closed). Same cause as B-161: the "Move to page…" picker
 (`app/refactor-host.tsx#pickPage`) puts focus in its input and nothing gave it back. It now records
 what had focus before it mounts (`commands/focus-return.ts#rememberFocus`) and gives it back as it
@@ -7047,7 +7047,7 @@ would have caught it: `e2e/tests/focus-return.spec.ts` "Move to page… onto the
 while editing it leaves the editor focused and typeable" (right-click, pick its own page, focus
 read straight after Enter and again after the row moved, `End` + `!` lands in the stored block) and
 "Move to page… run from the palette hands focus through the palette and the picker back to the
-editor" (Escape out of the picker); both failed with `refactor-host.tsx` at `cf08d19`.
+editor" (Escape out of the picker); both failed with `refactor-host.tsx` at `febfc23`.
 
 ---
 
@@ -7062,7 +7062,7 @@ Open a page, click into a block, Cmd/Ctrl+K, Escape: the palette closes but `.cm
 focused (`toBeFocused` times out, "inactive"), so the `!` typed next goes nowhere. On port 6402 it
 passed twice earlier the same morning and then failed three runs in a row — once in a 19-spec sweep
 and twice alone (`--repeat-each=2`) — **including with every `apps/web/src` file this branch changed
-restored to `da85cfb`**, so this branch did not cause it. Reading the code, nothing hands focus
+restored to `61279a2`**, so this branch did not cause it. Reading the code, nothing hands focus
 back to the editor when the palette closes (the palette input takes focus in a microtask on open;
 removing it leaves focus on `<body>`), so the test passing at all may depend on timing — e.g. the
 input's `focus()` landing before or after the element is attached. Machine load at the time was
@@ -7072,7 +7072,7 @@ regression from whichever branch merges next.
 2026-09-13, verify pass of `m9/clipboard-sync`: "opening the palette while editing and closing it
 hands focus back to the editor" failed in chunk 3 of a full run and then **alone**, so it was
 repeated with a throwaway copy using a fresh page name each time: 8 of 8 failed on the branch,
-3 of 3 at load average 2.3, and 4 of 4 with `apps/web/src` checked out from `cf08d19` — so it is
+3 of 3 at load average 2.3, and 4 of 4 with `apps/web/src` checked out from `febfc23` — so it is
 not this branch and not machine load. After Escape closes the palette, `document.activeElement` is
 `BODY` (`document.hasFocus()` true). Not investigated further here.
 
@@ -7114,7 +7114,7 @@ back in the same keystroke, even with frames arriving late", "Cmd/Ctrl+K pressed
 palette also gives the editor focus back", "the palette opened from block selection gives the
 outliner its keys back"; unit `apps/web/src/commands/focus-return.test.ts`.
 
-Proof, port 6401: with `CommandPalette.tsx` and `surface.ts` restored to `cf08d19`, all five of
+Proof, port 6401: with `CommandPalette.tsx` and `surface.ts` restored to `febfc23`, all five of
 those e2e tests failed (`activeElement is body`). Loop under 20 busy node processes (load average
 12 → 41): the ORIGINAL test (only its page name made unique) 0 of 10, the new form 0 of 10. With
 the fix, same load (36 → 64), `--repeat-each=10` over the original test, the four palette tests in
@@ -7125,8 +7125,8 @@ B-173, B-182, B-193, B-213, B-226, B-246, B-270.
 the editor" failed 8 times in a row on port 6461 around 12:00 (load average ≈15): in a 12-spec run,
 alone, `--repeat-each 4`, and `--repeat-each 2` twice — the last with every app file this branch
 changes (`PageView.tsx`, `PageActions.tsx`, `PageIcon.tsx`, `print.css`, `BlockContextMenu.tsx`,
-`context-menu.css`, `Sidebar.tsx`) restored to `cf08d19`. It had passed on this branch an hour
-earlier. Another m9 branch carries a fix (`d69414f`, "the palette gives focus back when it closes;
+`context-menu.css`, `Sidebar.tsx`) restored to `febfc23`. It had passed on this branch an hour
+earlier. Another m9 branch carries a fix (`8c189f4`, "the palette gives focus back when it closes;
 a late frame no longer steals it (B-161, B-290)").
 
 **Status:** still failing (not fixed here)
@@ -7135,7 +7135,7 @@ Another data point, 2026-09-13 on port 6404: "opening the palette while editing 
 focus back to the editor" failed in every run on this branch — inside a 4-spec run, `views.spec.ts`
 alone (28/29), and the full n–z half (295 passed, 1 failed) — and then failed 2/2
 (`--repeat-each=2`) with every `apps/web/src` source file this branch changes restored to
-`cf08d19`. So it fails on `cf08d19`'s client here too, though the coordinator's full run on the same
+`febfc23`. So it fails on `febfc23`'s client here too, though the coordinator's full run on the same
 commit passed it; machine load (a dozen agents) is the difference in sight.
 
 ---
@@ -7164,7 +7164,7 @@ busy machine is the shape it would take.
 leaves it); focus that moved anywhere new in between was someone's decision and stays. The
 microtask refocus is unchanged. Test that would have caught it: `e2e/tests/focus-return.spec.ts` "a
 click into a block then Cmd/Ctrl+K before the next frame: what is typed goes to the palette" —
-frames delayed 400 ms by `e2e/helpers/focus.ts#delayAnimationFrames`; it failed on `cf08d19`'s
+frames delayed 400 ms by `e2e/helpers/focus.ts#delayAnimationFrames`; it failed on `febfc23`'s
 `surface.ts` (`activeElement` was `.cm-content` under the open palette) and passes with the fix
 (10 of 10 under load, see B-161).
 
@@ -7219,7 +7219,7 @@ proven to be it.
 
 Test before the fix: `e2e/tests/reload-durability.spec.ts` "an edit queued behind a busy replica
 survives a reload after the text debounce (B-247)" and "... inside the text debounce (B-247)" — both
-fail on `cf08d19` + B-233/B-245 (server keeps `x`).
+fail on `febfc23` + B-233/B-245 (server keeps `x`).
 
 **Fixed 2026-09-13** — the cheapest safe mitigation; the options and what is still open are in
 `docs/proposals/002-pending-edits-durability.md`. New `apps/web/src/db/unapplied-ops.ts`:
@@ -7290,7 +7290,7 @@ the spec itself
 
 `cd e2e && NOOKLET_E2E_PORT=<port> pnpm exec playwright test tests/a-fresh-journal.spec.ts
 tests/editing.spec.ts --project=chromium` → "Enter creates a second bullet and both keep their
-text" sees 3 rows, not 2. Reproduced on the base commit `da85cfb` (extracted with `git archive`),
+text" sees 3 rows, not 2. Reproduced on the base commit `61279a2` (extracted with `git archive`),
 so not caused by this branch. All specs share ONE server per run (`global-setup.ts` runs once;
 `playwright.config.ts`'s comment "Each spec gets its own server" is wrong), `a-fresh-journal`
 leaves two blocks in today's journal, and `editing.spec.ts`'s `openJournal` only seeds a VIRTUAL
@@ -7301,7 +7301,7 @@ checked. Fix: give that test its own page (as the next test in the file already 
 leaves two blocks". Whether it leaves ANY depends on a race: its two blocks are applied to the
 browser context's own OPFS replica and pushed to the server after a 300 ms debounce, and the test
 ends (context closed, replica thrown away) right after its last local assertion. Measured on
-`cf08d19` with a throwaway spec between the two that read `page.read <today>` from the server:
+`febfc23` with a throwaway spec between the two that read `page.read <today>` from the server:
 3 runs out of 3, the server had **no** page for today at all, and `editing.spec.ts` passed 5/5 —
 its `openJournal` found a virtual day and seeded exactly one block. When the push does land first
 (a loaded machine, as on the day it was found), today already has two blocks and "Enter creates a
@@ -7355,7 +7355,7 @@ and word-count's client half (bundled into the web build since B-103) shows no c
 `rpc.call("count")` has no server half to answer. Fix: ship the built-in plugins' server bundles
 with the sidecar (or discover them from a resource path the sidecar sets).
 
-**Reproduced 2026-09-13** before fixing: built the sidecar at `9402f31` (`node
+**Reproduced 2026-09-13** before fixing: built the sidecar at `0d5d232` (`node
 apps/desktop/build-sidecar.mjs`), copied it out of the repo into an app-bundle layout and started it
 the way `main.rs` does on a scratch graph: `GET /api/v1/plugins` answered `{"plugins":[]}`,
 `page.wordcount` 404, 29 MCP tools and no `page_wordcount`. Shipping the `plugins/` sources would
@@ -7407,13 +7407,13 @@ lowercased), not a display name.
 exactly what a click on the rendered link does. **Tests that would have caught it:**
 `apps/web/src/app/hosts.test.ts` "nav.followLink for page links" (2 of 2 failed before) and
 `e2e/tests/namespace-paths.spec.ts` "Alt+Enter on a [[namespaced link]] opens it at its path"
-(failed on `a9ea71a` with `/page/nspath%20area/leaf%20page`).
+(failed on `b01970f` with `/page/nspath%20area/leaf%20page`).
 
 ---
 
 ### B-331 · A rendered link to a namespaced page points at `/page/Area%2FLeaf`, not `/page/Area/Leaf`
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9 cleanup (review finding F9 of
-`m8/rv-web-security`, whose fix `373c654` was not merged; re-probed on the merged tree) · **Test:**
+`m8/rv-web-security`, whose fix `24ee675` was not merged; re-probed on the merged tree) · **Test:**
 `apps/web/src/editor/render/page-hrefs.test.tsx`, `e2e/tests/namespace-paths.spec.ts`,
 `apps/web/src/source-guards.test.ts`
 
@@ -7421,7 +7421,7 @@ Hover, middle-click, "Copy link" or open-in-new-tab on `[[NSPath Area/Leaf Page]
 is `/page/NSPath%20Area%2FLeaf%20Page`. The page still opens — the route is a splat and the name is
 decoded — which is why nobody saw it, but it is not the page's address as the app itself navigates
 to it (`/page/NSPath%20Area/Leaf%20Page`), and `pathToPageName` documents that the app never
-produces `%2F`. Probed with `e2e/tests/namespace-paths.spec.ts` on `a9ea71a`, every way into a
+produces `%2F`. Probed with `e2e/tests/namespace-paths.spec.ts` on `b01970f`, every way into a
 page: the `href` of a `[[link]]`, a `#[[tag]]`, a `[label]([[page]])`, a query result's page heading
 and an embed's source line all carried `%2F` (six render sites: three in `editor/render/tokens.tsx`,
 one in `QueryFenceView.tsx`, two in `EmbedView.tsx`, each `encodeURIComponent` over the whole
@@ -7432,7 +7432,7 @@ Page paths were still built inline in twelve places (`hosts.ts` twice plus its o
 `pagePath`, `Sidebar.tsx` twice, `PageView.tsx`'s history link, and the six above) besides
 `views/navigateTarget.ts`, the module that had the functions.
 
-**Fixed 2026-09-13.** Redoes `373c654` on the merged tree. `apps/web/src/routes/page-path.ts` (no
+**Fixed 2026-09-13.** Redoes `24ee675` on the merged tree. `apps/web/src/routes/page-path.ts` (no
 imports, so the renderer does not pull in the data layer) holds `pageNameToPath`, `pathToPageName`,
 `pageRoutePath`, `pageZoomRoutePath` and `historyRoutePath`; `views/navigateTarget.ts` keeps only
 `goToTarget`; `hosts.ts#pagePath` is gone (the client plugin host gets `pageRoutePath`). All twelve
@@ -7440,7 +7440,7 @@ inline sites and every importer go through it. A bookmarked `%2F` URL still open
 route decodes its splat) and is not rewritten. **Tests that would have caught it:**
 `apps/web/src/editor/render/page-hrefs.test.tsx` (6 of 6 failed before with `%2F`: link, tag,
 label, query heading, embed source, embed at the depth limit); `e2e/tests/namespace-paths.spec.ts`
-(9 tests, one per way into a page; on `a9ea71a` 5 failed — the rendered hrefs, and the palette and
+(9 tests, one per way into a page; on `b01970f` 5 failed — the rendered hrefs, and the palette and
 shelf screens that show them; after, 9/9); the guard in `apps/web/src/source-guards.test.ts`
 "are built only by routes/page-path.ts" (failed before, listing the sites).
 
@@ -7456,7 +7456,7 @@ not parse" (its `waitFor`, default 1 s, gives up before the lazy `QueryFenceView
 resolved — the DOM dump shows the plain `<pre>` fallback) and `src/data/page-title.test.ts`
 "renders a journal by its day and an ordinary page by its name" (its first `vi.resetModules()` +
 `import()`; message not captured). Both pass alone, every time tried (4/4). Not caused by this
-branch: with `editor/BlockRowView.tsx` swapped back to `da85cfb`'s, 3 of 3 full `apps/web` runs
+branch: with `editor/BlockRowView.tsx` swapped back to `61279a2`'s, 3 of 3 full `apps/web` runs
 had one or two of these failures; with this branch's, 3 of 8 runs (counting one `pnpm -r test`)
 had one, and the last 3 in a row were clean. A timed probe of the
 `QueryFenceView` import alone measured 0.9–3.7 s depending on machine load. Likely fix: a longer
@@ -7480,7 +7480,7 @@ same lazy-chunk cost with a 5 s `waitFor`; left as it is.
 
 ### B-330 · A search or graph that cannot reach the server does not say where it tried, and several views drop the server's hint
 **Status:** fixed · **Severity:** low · **Found:** 2026-09-13, m9 cleanup (review finding F8 of
-`m8/rv-web-security`, whose fix `3d73b13` was not merged) · **Test:** `data/api-client.test.ts`, `views/server-errors.test.tsx`, `source-guards.test.ts`
+`m8/rv-web-security`, whose fix `5d12eaa` was not merged) · **Test:** `data/api-client.test.ts`, `views/server-errors.test.tsx`, `source-guards.test.ts`
 
 Two ways to call a server op existed in `apps/web`: `callOp` (network failures become an
 `ApiError` naming the address it tried; a rejection keeps the server's `hint`) and
@@ -7494,7 +7494,7 @@ server's `hint` (`graph.replace`'s "fix the pattern, or set regex: false…"). A
 three wrappers: `history.ts#undoBatch`, `refactorApi.undoBatch`, and an inline `callOp` in
 `ReferencesPanel`.
 
-**Fixed 2026-09-13.** Redoes `3d73b13` on the merged tree. `apiClient` is an object whose three
+**Fixed 2026-09-13.** Redoes `5d12eaa` on the merged tree. `apiClient` is an object whose three
 methods call `callOp` (`post`, `createApiClient` and `ApiClientOptions` are gone; `page.backlinks`
 keeps its B-253 cursor walk). `refactor-api.ts#undoBatch` is the one `batch.undo` wrapper, with
 History's `keepLaterEdits` / `ignoreBatches` / `kept` (B-251) moved there from `history.ts`;
@@ -7511,7 +7511,7 @@ before: Find & Replace hint, Search address, History Undo hint), and the guard
 
 ---
 
-### B-213 · e2e "opening the palette while editing and closing it hands focus back to the editor" fails at `da85cfb`
+### B-213 · e2e "opening the palette while editing and closing it hands focus back to the editor" fails at `61279a2`
 **Status:** duplicate · **Severity:** medium · **Found:** 2026-09-13, running neighbouring specs for
 embeds · **Test:** `e2e/tests/views.spec.ts` "opening the palette while editing and closing it hands
 focus back to the editor" (the failing test itself)
@@ -7519,13 +7519,13 @@ focus back to the editor" (the failing test itself)
 **Duplicate of B-161.**
 
 Not diagnosed. On port 6407 the test failed three runs out of three: twice on `m8/impl-embeds`, and
-once with every existing web file this branch modifies checked out at `da85cfb` (its new modules
+once with every existing web file this branch modifies checked out at `61279a2` (its new modules
 then unreferenced; client rebuilt by the run) — so it is not the embeds work. It fails at `expect(editor(page)).toBeFocused()` after Escape
 closes the palette: `.cm-content` is still in the DOM but "inactive" for the full 10 s, so typing
 afterwards would go nowhere — the B-72 symptom that test was written for. The other 118 tests in
 journals/selection/context-menu/navigation/focus/phone/tasks/views passed in the same run.
 
-*Addendum (verification pass, 2026-09-13):* order-dependent. After `b4ed719` the whole of
+*Addendum (verification pass, 2026-09-13):* order-dependent. After `e10b820` the whole of
 `views.spec.ts` passed 29/29 on 6407 — this test included — while the same test run alone
 (`-g "opening the palette while editing"`) failed 3/3 with the same "inactive" `.cm-content`. Still
 not diagnosed; it does not touch embeds.
@@ -7551,14 +7551,14 @@ prints `USAGE` and exits before `dataDir()` is ever called.
 
 ---
 
-### B-173 · B-72's "palette closes and hands focus back to the editor" e2e fails on da85cfb
+### B-173 · B-72's "palette closes and hands focus back to the editor" e2e fails on 61279a2
 **Status:** duplicate · **Severity:** low · **Found:** 2026-09-13, impl-journal (running
 `views.spec.ts` alongside the journal specs) · **Test:** `e2e/tests/views.spec.ts` "opening the
 palette while editing and closing it hands focus back to the editor"
 
 **Duplicate of B-161.**
 
-Fails 2 of 2 on this branch and 1 of 1 on a clean `git archive da85cfb` checkout (port 6403,
+Fails 2 of 2 on this branch and 1 of 1 on a clean `git archive 61279a2` checkout (port 6403,
 load average ~17): after Escape closes the palette, `.cm-content` is "inactive" rather than
 focused for the whole 10 s. So it predates this branch. Not investigated: whether it is a
 regression of B-72 since 2026-09-12 or something about headless focus on a loaded machine.
@@ -7573,10 +7573,10 @@ hands focus back to the editor" — currently failing
 **Duplicate of B-161.**
 
 Edit a block, Cmd/Ctrl+K, Escape: the palette closes but `.cm-content` is no longer focused, so the
-next keystroke goes nowhere. The e2e test B-72 added for exactly this fails on `da85cfb` itself
+next keystroke goes nowhere. The e2e test B-72 added for exactly this fails on `61279a2` itself
 (1 run, port 6404, production build) and on `m8/impl-plugins` (2 runs), each time with
 `toBeFocused` → "inactive" after 10 s — so it is not load and not the plugin host. Not
-investigated beyond establishing that; which commit between B-72's fix and `da85cfb` broke it is
+investigated beyond establishing that; which commit between B-72's fix and `61279a2` broke it is
 the next question (`git bisect` over `e2e/tests/views.spec.ts -g "opening the palette"`).
 
 ---
@@ -7609,9 +7609,9 @@ back to the editor" (B-72's test)
 
 Cmd/Ctrl+K while editing, Escape: the palette closes, but `.cm-content` is not focused ("inactive")
 for the whole 10 s wait. Failed 3 of 3 runs on `m8/impl-editor` (port 6405), and 1 of 1 with
-`apps/web` checked out at `da85cfb`, so this branch did not cause it. Not diagnosed. The
-coordinator's full run on `a6c2859` did not list it as failing, and nothing under `apps/web` or
-`e2e/` changed between `a6c2859` and `da85cfb` — so either it is load- or machine-dependent (the
+`apps/web` checked out at `61279a2`, so this branch did not cause it. Not diagnosed. The
+coordinator's full run on `b9023e9` did not list it as failing, and nothing under `apps/web` or
+`e2e/` changed between `b9023e9` and `61279a2` — so either it is load- or machine-dependent (the
 machine was running a dozen agents' builds and browsers) or that run passed it by chance. Next
 step: run the single test on an idle machine; if it still fails, trace focus on Escape
 (`e2e/helpers/focus.ts#installFocusTrace`).
@@ -7622,7 +7622,7 @@ parity, popups, autocomplete, journals, a-fresh-journal, tasks, replace, query a
 
 ---
 
-### B-226 · `views.spec.ts` "opening the palette while editing and closing it hands focus back to the editor" fails at `da85cfb`
+### B-226 · `views.spec.ts` "opening the palette while editing and closing it hands focus back to the editor" fails at `61279a2`
 **Status:** duplicate · **Severity:** medium · **Found:** 2026-09-13, e2e run for
 this branch · **Test:** that test
 
@@ -7633,20 +7633,20 @@ After Cmd/Ctrl+K and Escape the palette closes but `.cm-content` never regains f
 port 6408, Chromium: in a 12-spec batch; in `views.spec.ts` alone; alone with `-g` on this branch;
 alone with the title-row controls removed; alone with the page-action commands and print hookup
 also removed; and alone with `apps/web/src`, `packages/core/src` and `packages/server/src`
-checked out from `da85cfb` (production build, fresh server) — so it is not caused by this branch. The coordinator's full run at `a6c2859` did not list it among
-failures, so either `06fd859`/`da85cfb` or the machine's state since then changed something;
+checked out from `61279a2` (production build, fresh server) — so it is not caused by this branch. The coordinator's full run at `b9023e9` did not list it among
+failures, so either `b6c5f9b`/`61279a2` or the machine's state since then changed something;
 neither was checked. B-72's fix names this test. Nothing in `CommandPalette.tsx` restores focus
 explicitly, so whatever used to return it to the editor is worth finding first.
 
 **Note (adversarial verification, 2026-09-13):** order-dependent, not simply broken. On this branch
-at `14272fc` it **passed** inside a full `views.spec.ts` run (batch with page-export, pages,
+at `b3df9c5` it **passed** inside a full `views.spec.ts` run (batch with page-export, pages,
 page-icons, phone, navigation, history: 72 passed) and **failed 3 of 3** run alone with
 `-g "hands focus back" --repeat-each=3`. The same test is already logged by other branches as
 B-161 (`impl-commands`), B-193 (`impl-editor`) and B-246 (`qafix-editor`) — merge as one entry.
 
 ---
 
-### B-246 · `views.spec.ts` "opening the palette while editing and closing it hands focus back to the editor" fails at da85cfb
+### B-246 · `views.spec.ts` "opening the palette while editing and closing it hands focus back to the editor" fails at 61279a2
 **Status:** duplicate · **Severity:** low (test or focus regression, undiagnosed) · **Found:**
 2026-09-13, while regression-running e2e for B-243 · **Test:** the one named
 
@@ -7655,8 +7655,8 @@ B-161 (`impl-commands`), B-193 (`impl-editor`) and B-246 (`qafix-editor`) — me
 Mod+K while editing, Escape: the palette closes and `.cm-content` is never focused again
 (`toBeFocused` times out, "inactive"). Fails 3/3 on port 6460: twice in the full `views.spec.ts`
 with this branch's changes, and once alone and once in the full spec with `apps/web/src` checked
-out at `da85cfb`, so it is not caused by this branch. The coordinator's last full run on
-`a6c2859` did not list it among failures. Nothing in `apps/web/src` explicitly returns focus to
+out at `61279a2`, so it is not caused by this branch. The coordinator's last full run on
+`b9023e9` did not list it among failures. Nothing in `apps/web/src` explicitly returns focus to
 the editor when the palette closes (no `focus()` call in `CommandPalette`/`palette-controller`),
 so whatever made it pass before is worth finding before "fixing" the test. Order matters: it
 PASSED once, in a run of context-menu + focus + help + undo-redo + views on one server (views
@@ -7675,7 +7675,7 @@ hands focus back to the editor" (B-72's regression test) — failing
 
 Edit a block, press Mod+K, press Escape: the palette closes but `.cm-content` is not focused, and
 typing goes nowhere. Failed three times in a row on port 6472 at load average ≈35 — twice on this
-branch and once with every source file this branch changes restored to `da85cfb`, so it predates
+branch and once with every source file this branch changes restored to `61279a2`, so it predates
 the branch. Not investigated; it may be timing under load, but it did not pass once.
 
 ---
@@ -9427,7 +9427,7 @@ title survives other pages being created and edited (B-201)"
 Click a page's title, type " renamed" without leaving the field, and let anything create or rename
 a page anywhere (sync, an agent, another tab): the input snaps back to the stored name and the
 typing is gone. Measured with the e2e test before any fix: with the lookup listening to `page` only
-(as on `da85cfb`), a `page.create` of an unrelated page reverted it; with B-104's lookup — which
+(as on `61279a2`), a `page.create` of an unrelated page reverted it; with B-104's lookup — which
 also listens to `page_prop`, so an alias added elsewhere resolves — setting an icon on an unrelated
 page reverted it too. So the bug predates this branch, and B-104 widened it. Cause: `PageView`'s
 `createEffect(() => setTitleDraft(page()?.name …))` re-runs whenever the resource value changes, and
@@ -9476,7 +9476,7 @@ ADR 017's "not built" note and the three wiki pages that said so are updated. Cl
 `views/TaggedPages.tsx` (own CSS file) renders "Pages tagged X" with the total as its count, a
 wrapped list of page names, collapsible, and "Showing N of M." when the panel's 200-row request
 returned fewer than exist; hooked into `ReferencesPanel` above linked references, which now also
-shows when tagged pages are all there is. All three e2e tests fail against `da85cfb`'s
+shows when tagged pages are all there is. All three e2e tests fail against `61279a2`'s
 `ReferencesPanel.tsx`/`page-backlinks.ts` (checked). Not built: ADR 017's "a `property` tag is
 removable, an `intrinsic` one is not" control — the list marks `data-source` but offers no remove.
 
@@ -9527,7 +9527,7 @@ Journal days are not redirected (they have always been addressable by any title 
 redirect waits for the resource to finish loading: while a new route loads, a Solid resource still
 returns the previous page, and comparing that with the new name bounced every link-follow back —
 the "links onward" e2e test fails with the guard removed (checked). All five e2e tests fail against
-`da85cfb`'s `store.ts`/`PageView.tsx` (checked). Known limit, unchanged: when two pages claim the
+`61279a2`'s `store.ts`/`PageView.tsx` (checked). Known limit, unchanged: when two pages claim the
 same alias the client picks the older page, the server (`resolvePageIdForKey`) whichever row SQLite
 returns first.
 
@@ -9563,7 +9563,7 @@ bag's value (B-89)", "an invalid reserved value in the bag is dropped, the block
 the block becomes a Task"
 
 Reproduced as described in BUGS.md before fixing: the first core test and the server test both
-failed against `da85cfb`'s reducer (`expected null to be 'TODO'`). The owner's op log (a copy taken
+failed against `61279a2`'s reducer (`expected null to be 'TODO'`). The owner's op log (a copy taken
 2026-09-13, 20,411 ops) has no `block.create` carrying a reserved key in its bag — 870 creates carry
 a bag, 0 of them `marker`/`priority`/`collapsed` — so changing what such an op replays to changes
 nothing `nooklet verify` compares on that graph.
@@ -9724,7 +9724,7 @@ full run the spec clicked the section's FIRST block (graph's), typed there, and 
 `["earlier day baseabc"]` (got `["journal mentions [[Graph Leaf]]abc", "earlier day base"]`). It
 passed whenever it ran without `graph.spec.ts`, which is how it was verified. **Fixed 2026-09-13:**
 an unused day (-8), a click on the spec's own block by its text, and a `toContain` on the stored
-blocks. Still fails on `da85cfb`'s `JournalStreamView.tsx` (editor focus lost), so it still guards
+blocks. Still fails on `61279a2`'s `JournalStreamView.tsx` (editor focus lost), so it still guards
 B-174.
 
 ---
@@ -9797,7 +9797,7 @@ performance probe's typing step kept "losing" its editor) · **Test:**
 
 On `/journals`, click a block on any day below Today and type: about half a second later (the
 editor's debounced write) the caret is gone — focus drops to `<body>`, and further keys go nowhere.
-Today's own section is not affected. Reproduced on a clean `git archive da85cfb` build against a
+Today's own section is not affected. Reproduced on a clean `git archive 61279a2` build against a
 copy of the owner's graph: marking every `.journal-day` element, typing one character into the
 first earlier day, and waiting 1.5 s left 1 of 29 sections as the same DOM element (Today's);
 the other 28 had been replaced, and `.cm-content` no longer existed
@@ -9813,7 +9813,7 @@ Today's section is a non-keyed `<Show>`, which is why it survives.
 map inside the section, through a non-keyed `<Show>`. Numbers compare by value, so a section — and
 the `BlockTree` and editor in it — lives as long as its day is in the stream. Tests that would have
 caught it: `journal-stream-editing.spec.ts` "typing in an earlier day keeps editing across the
-write, and every key lands (B-174)" (fails on a clean `da85cfb` build: the editor is gone after the
+write, and every key lands (B-174)" (fails on a clean `61279a2` build: the editor is gone after the
 first write), and `JournalStreamView.test.tsx` "keeps every day's outline mounted when a write
 refetches the stream (B-174)" (old view: 13 `BlockTree` mounts after three refetches instead of 4).
 
@@ -10007,7 +10007,7 @@ with no mark that anything is missing.
 
 Worse than the audit said: **everything below the first screen is cut off.** The shell is
 `position: fixed` over a `height: 100%; overflow: hidden` body, with `.page-scroll` as the only
-scroller, so print layout sees one viewport. Measured at `da85cfb` (Playwright, Chromium, print
+scroller, so print layout sees one viewport. Measured at `61279a2` (Playwright, Chromium, print
 media, `page.pdf()`): a 120-block page produced a **1-page** PDF with `.app-topbar` visible and the
 collapsed block's child absent. The same run showed `page.pdf()` fires `beforeprint`/`afterprint`,
 which is what lets a test observe the print-time DOM.
@@ -10180,7 +10180,7 @@ target tree contains one of them shows a notice (`embedRows.ts#embedReachesPath`
 (see B-211). On a copy of the owner's graph (`tools/probes/embeds-real-graph.mjs`) all five
 well-formed embeds render (6, 12, 27, 27 and 31 rows, no page errors); the sixth, written
 `{{embed ((id))}` with one closing brace, is not an embed to the tokenizer and still renders as text
-plus a block reference. The e2e tests would have caught it: on `da85cfb` there is no `.vr-embed-item`.
+plus a block reference. The e2e tests would have caught it: on `61279a2` there is no `.vr-embed-item`.
 
 ---
 
@@ -10530,7 +10530,7 @@ registrations (the wiki's shortcuts page already does this) and delete the stale
 `apps/web/src/commands/registrations/spec-tables.test.ts` (spec §E tables vs the registered
 commands: ids, section/category, title, keys, `when`; spec R54's slash table vs `SLASH_ITEMS`)
 
-What was still true at `da85cfb`: the nine `format.*` and the `task.setMarker*` rows had already
+What was still true at `61279a2`: the nine `format.*` and the `task.setMarker*` rows had already
 been added (the audit read an older spec), but eight registered commands had no row —
 `nav.openPage`, `nav.revealBlock`, `block.insertQueryFence`, `block.insertTemplate`,
 `block.turnIntoPage`, `block.moveToPage`, `edit.mergePage`, `search.findReplace` — and R54's slash
@@ -10542,7 +10542,7 @@ Every title, key and `when` of the rows that did exist matched the code.
 branch's own `block.openOnShelf` / `nav.openPageOnShelf` (R32a, R43a) and `requiresArgs` (R1a);
 R54 gains Template and Query and cites ADR 019. The DiagnosticsPanel comment now names the two real
 ways in (the top bar's sync indicator, Settings → About). `spec-tables.test.ts` fails against
-`da85cfb`'s spec (2 of 4 tests: the eight missing ids, and the slash table) and will fail the next
+`61279a2`'s spec (2 of 4 tests: the eight missing ids, and the slash table) and will fail the next
 time a command is added without its row — which is the intent; the fix is a spec row. Also: the
 wiki generator (`docs/wiki/tools/generate-shortcuts.mjs`) now passes the optional refactor and shelf
 hosts (their commands were missing from the wiki page) and lists `requiresArgs` commands apart from
@@ -10630,7 +10630,7 @@ mirror like any collapse. If the row being edited (or part of a selection) folds
 — a surface left attached to an unmounted row swallows keystrokes. For the nothing-focused case,
 every editable `BlockTree` registers in `editor/outline-registry.ts` and the no-op host hands the
 two page-scoped ids (and only those) to all of them: on a page view that is the page; on the journal
-stream, every loaded day. All three e2e tests fail against `da85cfb`'s `BlockTree.tsx` /
+stream, every loaded day. All three e2e tests fail against `61279a2`'s `BlockTree.tsx` /
 `editor-host.ts` (rows stay 6/4/2). Not covered by e2e: the journal stream fan-out (seeding journal
 days in a shared-server spec disturbs `journals.spec.ts`; the fan-out is unit-tested).
 
@@ -10681,7 +10681,7 @@ Big batches stall the server (F8, plus one found in passing while measuring B-12
   push is one batch too. The skeptic measured the `find` alone at about 0.25 s at 8k ops and 1.1 s
   at 20k.
 - **A cross-page move of a large subtree was slow** on the code as it stood before this branch. Moving the owner's largest subtree (961 blocks) with `subtreePlaceOps`
-  through `serverApplyOps` took 23 s at `da85cfb` (load average ~24 on a shared machine).
+  through `serverApplyOps` took 23 s at `61279a2` (load average ~24 on a shared machine).
   `reindexTouchedEntities` calls `reindexBlockAndSubtree` for every placed block, which walks that
   block's whole subtree with `SELECT id FROM block WHERE parent_id = ?` — no `deleted_at` filter,
   so the partial `block_children` index cannot serve it and every step is a full scan — and
@@ -11115,7 +11115,7 @@ once, inside that ancestor. `selection.spec.ts` "Cmd/Ctrl+C copies the selection
 `apps/web/src/commands/registrations/refactor.test.ts` "every refactor command registers in the
 real registry", and every e2e spec (the app did not boot)
 
-Commit `c916c29` registered `page.mergeInto` and `search`-less `graph.findReplace`. The registry
+Commit `e6aac6f` registered `page.mergeInto` and `search`-less `graph.findReplace`. The registry
 enforces R2's closed set of core areas and throws `CommandRegistrationError` at
 `createCoreCommands` time — inside the first render, so the page stayed a white `<div id="app">`
 with the error only in the console. Unit tests passed (they build commands, they never register
@@ -11133,12 +11133,12 @@ command; not done here (shell/commands provider are not this task's files).
 **Test:** `e2e/tests/popups.spec.ts` "opens at a run start with every item in R54 order" and
 "opens as the first character of an empty block"
 
-Type `/` in a block: the popup lists sixteen items — the M7 `Template` entry (78970b1,
+Type `/` in a block: the popup lists sixteen items — the M7 `Template` entry (ced489d,
 `apps/web/src/commands/slash/items.ts`) is there — but `SLASH_ORDER` in `popups.spec.ts` still
 lists the fifteen from R54, so the two count/order assertions fail on every full run. Either the
 spec's list needs the new item in its R54 position or the keymap spec's R54 needs the item added;
-whichever way, the two should agree. Seen with the suite run from a worktree at `f1675df` +
-`81546e1`; not caused by, and not fixable from, the references/appearance/shelf work.
+whichever way, the two should agree. Seen with the suite run from a worktree at `d24ce73` +
+`6c5892c`; not caused by, and not fixable from, the references/appearance/shelf work.
 
 **Fixed 2026-09-12** (templates agent): `SLASH_ORDER` now lists `Template` and `Query` after
 `Property`, matching `items.ts`; the two tests above pass again and pin the seventeen-item
@@ -11528,7 +11528,7 @@ Tests: `packages/core/src/journal.test.ts`, `packages/core/src/sync/apply-ops.te
 
 ### B-23 · `page.create` accepted a journal-formatted name and made a non-journal page
 **Status:** fixed · **Severity:** medium · **Found:** 2026-09-11, while writing journal e2e tests ·
-commit `dab7dc7`
+commit `53a1ec2`
 
 `page.create` deliberately refuses journal days — but its guard used `journalDayFromWire`, which
 only understands ISO and `today`/`yesterday`, not the title formats `parseJournalTitle` accepts. So
@@ -11855,7 +11855,7 @@ had passed the 1,180-test unit suite. That is what `e2e/` now exists to prevent 
 `playwright.config.ts` header.
 
 ### B-01 · Served client had no API credentials
-**Status:** fixed · `d6163df` · **Test:** `e2e/tests/connectivity.spec.ts`
+**Status:** fixed · `4236418` · **Test:** `e2e/tests/connectivity.spec.ts`
 
 Search 401'd, linked references hung, `/ui/live` reported "agents can't see this window", and the
 sync indicator flapped offline→syncing→offline every few seconds. One cause: the token came from
@@ -11863,14 +11863,14 @@ sync indicator flapped offline→syncing→offline every few seconds. One cause:
 injects a per-process token as `window.__NOOKLET__`, for loopback callers only.
 
 ### B-02 · Editing stopped after exactly one character
-**Status:** fixed · `d6163df` · **Test:** `e2e/tests/editing.spec.ts`, "types a whole sentence"
+**Status:** fixed · `4236418` · **Test:** `e2e/tests/editing.spec.ts`, "types a whole sentence"
 
 `<For each={rows()}>` keyed on objects rebuilt by `flattenVisible` on every refetch, so each
 keystroke recreated every row's DOM and tore out the element the single CodeMirror surface is
 re-parented into. Now keyed by block id.
 
 ### B-03 · Clicking a block entered edit mode without focus
-**Status:** fixed · `d6163df` · **Test:** `e2e/tests/rendering.spec.ts`, "clicking a seeded row"
+**Status:** fixed · `4236418` · **Test:** `e2e/tests/rendering.spec.ts`, "clicking a seeded row"
 
 The clicked `.vr-block-view` is swapped out of the DOM inside the click handler, so the browser
 reset focus to `<body>` after the handler returned, undoing `view.focus()`. Re-asserted on the next
@@ -11878,7 +11878,7 @@ frame. Deliberately *not* moved to `mousedown`, which fires before link clicks a
 `[[page]]` navigation.
 
 ### B-04 · Typed text vanished on blur, reappeared on reload
-**Status:** fixed · `d6163df` · **Test:** `e2e/tests/editing.spec.ts`, "text survives blurring"
+**Status:** fixed · `4236418` · **Test:** `e2e/tests/editing.spec.ts`, "text survives blurring"
 
 Two causes. See B-05 for why the UI didn't update; separately, a typed edit could be lost for real:
 writes are debounced ~500 ms and nothing flushed on blur or unload, so clicking away and reloading
@@ -11886,7 +11886,7 @@ inside that window discarded it. Now flushed on `focusout` past the tree, `pageh
 `visibilitychange`.
 
 ### B-05 · Nothing refetched after a write
-**Status:** fixed · `d6163df` · **Test:** covered by B-04's test and "a page seeded through the API"
+**Status:** fixed · `4236418` · **Test:** covered by B-04's test and "a page seeded through the API"
 
 Global. Every resource source called `trackTable`/`trackPage` and then returned a stable scalar (an
 id, a name, or literally `true`); `createResource` refetches only when the source *value* changes,
@@ -11894,7 +11894,7 @@ so Solid never re-ran the fetcher. Local edits reached SQLite and the UI kept re
 previous result until a reload. Sources now return a version-stamped object.
 
 ### B-06 · Enter dropped the next two keystrokes
-**Status:** fixed · `d6163df` · **Test:** `e2e/tests/editing.spec.ts`, "Enter creates a second bullet"
+**Status:** fixed · `4236418` · **Test:** `e2e/tests/editing.spec.ts`, "Enter creates a second bullet"
 
 Surfaced by fixing B-05: a refetch landing before the write committed overwrote the optimistic row
 and unmounted the new block's editor, so `second bullet` arrived as `cond bullet`. The block being

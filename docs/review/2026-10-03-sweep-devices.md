@@ -1,6 +1,6 @@
 # Readiness sweep: devices (Mac desktop + iPhone as clients of the owner's server), 2026-10-03
 
-Base: `main` at `c322269`. App-side flows only. Deployment, TLS, ATS, CORS policy, signing and the
+Base: `main` at `319b6d9`. App-side flows only. Deployment, TLS, ATS, CORS policy, signing and the
 runbook belong to the real-device-test agent (`docs/progress/real-device-test.md`). Where a finding
 lands in their area it is flagged for them here but not designed.
 

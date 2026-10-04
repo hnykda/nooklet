@@ -1,7 +1,7 @@
 # Progress: local-only graphs under ADR 025 (B-611, B-612, B-619)
 
 Owner's next-test items 8/9 (graph switcher, local-only on the phone). Branch:
-`worktree-agent-ad349bb7b38028773` (worktree `agent-a349640cdbbaa6d03`), based on `main` at `38e17a6`.
+`worktree-agent-ad349bb7b38028773` (worktree `agent-a349640cdbbaa6d03`), based on `main` at `869ed39`.
 
 Scratch setup used throughout: `tools/probes/sweep-devices/serve.sh <scratch>/d1 6335`, and
 `node tools/probes/sweep-devices/host-proxy.mjs 6336 6335 nooklet.sweep.test apps/web/dist` (a
@@ -12,9 +12,9 @@ same-origin stand-in for the Capacitor shell). Probes for this work are in `tool
 - [x] Reproduced B-612 (probe `sweep-devices/local-then-server.probe.ts`, 1/1 runs: switcher lists
       only "Remote graph" after adding a server graph).
 - [x] B-619 narrowed down, cause confirmed (below).
-- [x] B-611: cause confirmed with a deterministic test (red on `38e17a6`: the server graph got
+- [x] B-611: cause confirmed with a deterministic test (red on `869ed39`: the server graph got
       2 hits, the page and the block, from a seeded unscoped batch).
-- [x] Fixes + migration + tests: `c58ede4`, `3e3c1c5`.
+- [x] Fixes + migration + tests: `03a8205`, `985f939`.
 - [x] Required e2e specs, `pnpm -r test`, typecheck, biome (results below).
 - [x] Headless Simulator run of the real app (below). All done; nothing in flight.
 
@@ -62,14 +62,14 @@ Cause: `db/client.ts` replayed every orphaned B-247 batch (`nooklet.unapplied-op
 no graph in the key) into whichever replica the next page load opened. A "Just this device" write
 still unapplied at a relaunch, then "Add a graph" before the relaunched page's replay ran, landed in
 the server graph's replica and was pushed. Evidence: `e2e/tests/local-graphs.spec.ts` "unscoped
-batch ... (deterministic)" seeds exactly that state; on `38e17a6` the server graph returns 2 hits (the
+batch ... (deterministic)" seeds exactly that state; on `869ed39` the server graph returns 2 hits (the
 page and the block); with the fix 0, and the batch is quarantined. Unit: `db/client-graph-scope.test.ts`
-(red on `38e17a6`, green after). The checkpoint (one fixed `CHECKPOINT_PATH`, restored into any empty
+(red on `869ed39`, green after). The checkpoint (one fixed `CHECKPOINT_PATH`, restored into any empty
 replica) is the same class; not seen to fire (needs an evicted or new replica plus a checkpoint from
 another graph, which is exactly "Add a local graph" after a server graph's checkpoint) and fixed the
 same way.
 
-Fix (`c58ede4`): `data/bootstrap.ts#replicaKey/replicaScope` is the one key for everything
+Fix (`03a8205`): `data/bootstrap.ts#replicaKey/replicaScope` is the one key for everything
 per-graph. Journal keys are `v2:<scope>:...` and a page load only replays its own scope. Checkpoint
 path per scope. Migration: `soleLegacyStateOwner()` decides whether exactly one replica could have
 written unscoped state (Capacitor: only when every entry is the un-namespaced one; web: when there is
@@ -101,7 +101,7 @@ server's web client (the sweep's "reading the code only" item).
 replica and day) from the first keystroke until `applyOps` has recorded the ops (then the B-247
 copy carries them). A later load restores and writes them; if the day has a page by then
 (`JournalDayOutline`), they are appended to it. Plus two more ways a relaunch lost local-only writes,
-found by the probes (`3e3c1c5`):
+found by the probes (`985f939`):
 - A replica with no server became a **follower** (in-memory) when the previous page load still held
   the writer lock: 1 of 10 relaunches. Now waits up to 3 s for the lock (`db.worker.ts#becomeLeader`).
   0 of 20 after.
@@ -117,10 +117,10 @@ Probe results: `relaunch-loss.probe.ts` before 9/10 lost; after 0/10, then 0/20 
 - `e2e/tests/local-graphs.spec.ts` (`NOOKLET_E2E_PORT=6335`, chromium): 4 passed (4.7 min). The
   20-run sequence (local-only note, orphaned batch from a busy worker, immediate relaunch, "Add a
   graph", wait past both replay passes, server search, switch back): **0 leaks in 20**, both notes
-  back in "This device" every run. On `38e17a6` the deterministic, stranded and B-619 tests fail (3/3).
+  back in "This device" every run. On `869ed39` the deterministic, stranded and B-619 tests fail (3/3).
 - graph-switcher, local-page-creation, empty-journal-page, connectivity, remote-device: 11 passed,
   1 failed: `connectivity.spec.ts` "search returns rather than spinning forever" — **pre-existing**,
-  fails the same on `38e17a6` (2/2): it checks `.vr-draft-input` with an instant `isVisible()` while
+  fails the same on `869ed39` (2/2): it checks `.vr-draft-input` with an instant `isVisible()` while
   today is still "Loading…", then clicks a block that does not exist. Not fixed (not this work).
   `graph-switcher.spec.ts` promote test updated: a local-only entry no longer shows the set-up screen.
 - `pnpm -r test`: core 426, plugin-api 17, server 790, web 1442 — all passed.
@@ -146,17 +146,17 @@ Probe results: `relaunch-loss.probe.ts` before 9/10 lost; after 0/10, then 0/20 
 
 ## BUGS.md updates to fold in
 
-- **B-611** → fixed (`c58ede4`, `3e3c1c5`). Cause, fix, migration as above. Tests:
+- **B-611** → fixed (`03a8205`, `985f939`). Cause, fix, migration as above. Tests:
   `apps/web/src/db/client-graph-scope.test.ts`, `db/unapplied-ops.test.ts` "batches belong to the
   replica..." + "migrateUnscopedBatches", `data/bootstrap.test.ts` "B-611: who could have written...",
   `e2e/tests/local-graphs.spec.ts` (20-run sequence, deterministic unscoped batch).
-- **B-612** → fixed (`c58ede4`). Tests: `data/bootstrap.test.ts` "B-612: ...",
+- **B-612** → fixed (`03a8205`). Tests: `data/bootstrap.test.ts` "B-612: ...",
   `e2e/tests/local-graphs.spec.ts` "an install stranded by the old ...", and the 20-run test's
   switch-back. Simulator screenshots as above.
-- **B-619** → fixed (`c58ede4`, `3e3c1c5`). Cause: the draft's commit waits on `prepare()` (worker
+- **B-619** → fixed (`03a8205`, `985f939`). Cause: the draft's commit waits on `prepare()` (worker
   round trips) before any op exists, so B-247's copy had nothing to copy; 9/10 lost in the probe.
   Tests: `views/VirtualJournalDay.test.tsx` "keeps typed lines until they are ops" (2, red on
-  `38e17a6`), `e2e/tests/local-graphs.spec.ts` B-619 (5 runs).
+  `869ed39`), `e2e/tests/local-graphs.spec.ts` B-619 (5 runs).
 - **New, fixed** (low-medium): under Capacitor, switching to a remote graph called
   `location.assign(<server URL>)`, leaving the app for the server's web client. Now reloads in place.
   Test: `data/bootstrap.test.ts` "graphEntryUrl under Capacitor".
@@ -169,7 +169,7 @@ Probe results: `relaunch-loss.probe.ts` before 9/10 lost; after 0/10, then 0/20 
   OPFS entry, i.e. every graph's replica on the device, including local-only graphs with notes that
   exist nowhere else. Needs a worker method that unlinks one pool file. Not fixed here.
 - **New, open** (low): `e2e/tests/connectivity.spec.ts` "search returns rather than spinning forever"
-  fails on `38e17a6` too; the instant `isVisible()` on the draft races the "Loading…" row.
+  fails on `869ed39` too; the instant `isVisible()` on the draft races the "Loading…" row.
 - **Note for B-247**: a follower replica with no sync target replays orphaned batches into memory and
   settles them; with the lock wait above this should no longer happen on relaunch, but a genuine
   second tab of a local-only graph would still do it.

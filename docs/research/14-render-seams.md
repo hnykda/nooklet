@@ -9,7 +9,7 @@ fallback in `editor/livePreview.ts`) are now wired: **highlight.js** (core + one
 grammar) for code fences, **KaTeX** for `$…$`. Both load on first use only. Measured on the exact
 commits, in clean worktrees:
 
-| | before `b1d3679` | after `dfaf3b9` | delta |
+| | before `ea6903b` | after `4ef5864` | delta |
 |---|---:|---:|---:|
 | Startup JS (main + statically-loaded chunks), minified | 597.43 kB | 603.52 kB (499.56 + 103.96) | **+6.1 kB** |
 | Startup JS, gzip | 189.53 kB | 192.36 kB (162.70 + 29.66) | **+2.8 kB** |
@@ -43,7 +43,7 @@ resolve in the main bundle without loading anything). Considered and rejected:
 `innerHTML` of its output safe; `throwOnError: false` renders a half-typed formula as source in
 KaTeX's error colour rather than throwing inside a decoration pass.
 
-## 2. Chunk-by-chunk (after, `dfaf3b9`)
+## 2. Chunk-by-chunk (after, `4ef5864`)
 
 | chunk | min | gzip | loaded when |
 |---|---:|---:|---|

@@ -5,10 +5,10 @@ Worktree `.claude/worktrees/wf_e473942f-106-10`, branch `m9/cleanup`, e2e port 6
 
 ## Done (verified, re-run by this agent)
 
-- Read the whole diff `cf08d19..816d9c3`; compared intent with `3d73b13` and `373c654`.
+- Read the whole diff `febfc23..0a8fcf1`; compared intent with `5d12eaa` and `24ee675`.
 - `pnpm -r typecheck` clean. `apps/web` 1024/1024; three full web runs at once (load ~34): 3×1024.
   `packages/server` 610/610. Biome on the 52 changed files: only the 3 errors + 1 warning in
-  `DiagnosticsPanel.tsx`, identical at `cf08d19` (base file swapped in).
+  `DiagnosticsPanel.tsx`, identical at `febfc23` (base file swapped in).
 - e2e (port 6405): namespace-paths, follow-link, navigation, references, history, trash, replace,
   link-unlinked: 36/36.
 - Probe spec (not kept): namespaced names with Czech diacritics, `%`, `?`, `#`, quotes — hrefs
@@ -33,12 +33,12 @@ Worktree `.claude/worktrees/wf_e473942f-106-10`, branch `m9/cleanup`, e2e port 6
 
 - Stale pointers: `App.tsx` / `PageRoute.tsx` still sent readers to `views/navigateTarget.ts` for
   the path encoding, and `canonicalPageRoute.test.ts` mocked the store for an import that is gone
-  (fixed, `6c49cc6`).
+  (fixed, `0ac10d5`).
 - More e2e on port 6405: search-filters, graph, diagnostics, settings, plugins, refactor, shelf,
   embeds, query, query-task-tag, tagged-pages, tasks, page-rename, page-identity, connectivity,
   views, rendering, render, untrusted-content, journal-agenda, history-later-edits, trash-conflict,
   replace-stale, replace-unicode, references-cap, references-filters: 148 passed, 1 failed —
-  `views.spec.ts:461` (B-161): failed again alone at HEAD, and alone with `cf08d19`'s `apps/web`
+  `views.spec.ts:461` (B-161): failed again alone at HEAD, and alone with `febfc23`'s `apps/web`
   and `e2e` swapped in (so not this branch). The other 43 specs: 104 passed + 1 skipped, and
   162 passed + 1 skipped. With the 36 + 10 above, every spec file has run on this tree.
 - `packages/core` 393/393, `packages/plugin-api` 17/17 (load ~11). `nooklet verify` on the
@@ -58,5 +58,5 @@ Worktree `.claude/worktrees/wf_e473942f-106-10`, branch `m9/cleanup`, e2e port 6
 ## Verdict
 
 Solid: the four parts do what the brief asked, verified in a browser, on a built sidecar and on the
-real-graph copy. This agent added tests (`3d24e77`) and comment fixes (`6c49cc6`), no code fixes.
+real-graph copy. This agent added tests (`4754cf5`) and comment fixes (`0ac10d5`), no code fixes.
 

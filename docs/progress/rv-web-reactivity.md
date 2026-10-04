@@ -1,8 +1,8 @@
 # rv-web-reactivity — fix the M8 web-client correctness review findings
 
 Branch `m8/rv-web-reactivity`, worktree `.claude/worktrees/wf_69b4f9a8-ee2-14`, based on
-`da85cfb` (the worktree was created at an older `41666ee`; the fresh branch was reset to
-`da85cfb` before any work). e2e port **6472**. Scratch:
+`61279a2` (the worktree was created at an older `f7c9644`; the fresh branch was reset to
+`61279a2` before any work). e2e port **6472**. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/rv-web-reactivity/`
 (the reviewer's probes are there too: `f1-listener-hijack.probe.ts`, `f2-errored-resources.probe.tsx`,
 `f4-history-gap.probe.ts`, `f5-query-nested-cap.probe.ts` — they import from the MAIN checkout).
@@ -13,12 +13,12 @@ B-133 (F5), B-134 (F7). Review record: `docs/review/2026-09-13-m7-rv-web-reactiv
 
 ## Done
 
-All eight findings fixed; the review doc is the last commit. Commits: `b75e571` (inbox),
-`cdaf63c` F1, `918c0ff` F2, `8651877` F3, `e5a19dc` F4, `b7a2b3f` F5, `4837d25` F6, `0294865` F7,
-`1248892` F8, then the review doc.
+All eight findings fixed; the review doc is the last commit. Commits: `6eb889d` (inbox),
+`6005e32` F1, `24ce5d0` F2, `db2827b` F3, `dcd2ece` F4, `24858fc` F5, `b6dcbea` F6, `211a91d` F7,
+`b1b698a` F8, then the review doc.
 
-- `b75e571` bugs inbox + this file (bugs logged before fixing).
-- `cdaf63c` F1 / B-130 — listener fan-out in `db/client.ts`. Unit repro `data/history.test.ts`
+- `6eb889d` bugs inbox + this file (bugs logged before fixing).
+- `6005e32` F1 / B-130 — listener fan-out in `db/client.ts`. Unit repro `data/history.test.ts`
   failed (0 refetches after Trash) before the fix; e2e `review-reactivity.spec.ts` failed against
   the unfixed client (client.ts temporarily reverted; global-setup rebuilds) and passes with it.
   Related e2e after the fix: trash, history, diagnostics, references, query, remote-device,
@@ -59,7 +59,7 @@ All eight findings fixed; the review doc is the last commit. Commits: `b75e571` 
 
 - Broader e2e after all fixes: editing, pages, tasks, views, navigation, page-icons, shelf,
   refactor, link-unlinked, graph, settings, references-filters, focus — 127 passed, 1 failed
-  (`views.spec.ts:461` palette focus; fails with `da85cfb` sources too — logged unnumbered in the
+  (`views.spec.ts:461` palette focus; fails with `61279a2` sources too — logged unnumbered in the
   inbox). Final at HEAD: review-reactivity (7) + trash, history, query, replace, a-fresh-journal,
   journals, templates, diagnostics, references, render — 54/54. Web unit 704/704.
 - Review doc `docs/review/2026-09-13-m7-rv-web-reactivity.md`.
@@ -77,5 +77,5 @@ Nothing.
 
 ## How to resume
 
-`git log --oneline da85cfb..` shows what landed. Before each commit: `pnpm exec biome check
+`git log --oneline 61279a2..` shows what landed. Before each commit: `pnpm exec biome check
 --write <files>`, `pnpm -r typecheck`, `cd apps/web && pnpm exec vitest run`.

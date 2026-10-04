@@ -1,6 +1,6 @@
 # B-595: an empty journal day's page is editable, as in Logseq
 
-Branch: `worktree-agent-a78a5d6e8e3d75057` (reset to main `4b0a291` first; it had no commits).
+Branch: `worktree-agent-a78a5d6e8e3d75057` (reset to main `771f1b1` first; it had no commits).
 
 ## Done
 - `apps/web/src/views/PageView.tsx`: a whole-day route (`/page/<date>`, any title format the
@@ -42,7 +42,7 @@ Branch: `worktree-agent-a78a5d6e8e3d75057` (reset to main `4b0a291` first; it ha
   journal-stream-editing, journals, navigation, pages, ref-pages, render-views. 70 passed,
   3 failed. All 3 failures are in `ref-pages.spec.ts` (:123, :171, :280) and are **pre-existing**:
   the same 3 fail with main's `apps/web/src/views` restored (checked by checking those files out
-  from `4b0a291` and re-running `ref-pages` alone, 3 failed / 4 passed). Logged below.
+  from `771f1b1` and re-running `ref-pages` alone, 3 failed / 4 passed). Logged below.
 - Also run: page-identity, page-delete, page-rename, local-page-creation,
   desktop-page-creation-probe, parity. These passed apart from the two render-views tests,
   since updated and passing (9/9).
@@ -121,7 +121,7 @@ Reasoning is in `docs/progress/empty-journal.md`.
 **New (open) · Three `ref-pages.spec.ts` tests fail on main**
 **Status:** open · **Severity:** medium (test or real regression, not yet known) · **Found:**
 2026-10-03, while verifying B-595 · **Test:** the tests themselves
-On `4b0a291` (main's `apps/web/src/views`, run alone on port 6309) these fail: `:123` "editing an
+On `771f1b1` (main's `apps/web/src/views`, run alone on port 6309) these fail: `:123` "editing an
 existing link one character at a time leaves no junk pages" (`Received: ["edit me … [[Junk Probe
 … F]]"]`: the server never got past the first typed character within 10 s), `:171` "deleting the
 only link removes the empty page it made…" and `:280` "…survives another device removing the link

@@ -1,6 +1,6 @@
 # 001 — Porting the core to Rust: one core for web, iOS, and Android
 
-Proposal, 2026-09-11, against tree `dc6f624`. Status: **recommended against for now**, with a
+Proposal, 2026-09-11, against tree `76bedd8`. Status: **recommended against for now**, with a
 named trigger condition in §9. Like the files in `docs/research/`, this is a dated record kept as
 written rather than updated in place. No ADR follows it, because the recommendation is "not yet".
 
@@ -170,7 +170,7 @@ sync client, which §1.3 argues stay. Equivalent Rust for this kind of code (exp
 `match` arms, real error types, `serde` derives) typically runs 1.3–2× the line count, so
 **~4,500–7,000 lines of Rust**, plus binding crates and the conformance harness of §5.
 
-Note what that means for tests. `pnpm -r test` at `dc6f624` on 2026-09-11 passes **1,185 tests
+Note what that means for tests. `pnpm -r test` at `76bedd8` on 2026-09-11 passes **1,185 tests
 across 117 files**: `packages/core` 260 in 14 files (3.08 s), `packages/plugin-api` 17 in 3,
 `packages/server` 311 in 38, `apps/web` 597 in 62. The port puts **260 of those 1,185 directly at
 risk** and indirectly threatens the rest, since everything else depends on core. §5 is about not
@@ -854,7 +854,7 @@ designed to find out cheaply.
 
 ### 6.4 Bundle size, measured
 
-Built at `dc6f624` with `pnpm build` in `apps/web` (Vite 8.3.0, 2026-09-11):
+Built at `76bedd8` with `pnpm build` in `apps/web` (Vite 8.3.0, 2026-09-11):
 
 | Artifact | raw | gzip |
 |---|---:|---:|

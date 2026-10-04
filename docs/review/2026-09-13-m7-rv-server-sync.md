@@ -4,7 +4,7 @@ Brief from the M8 coordinator: fix ten code-review findings on the server and sy
 (F1–F10), each already confirmed by an independent skeptic. Reproduce each one first with a
 failing test, fix the cause, one commit per finding, high severity first; write this record last.
 
-Branch `m8/rv-server-sync`, from `da85cfb`. Bugs were written to
+Branch `m8/rv-server-sync`, from `61279a2`. Bugs were written to
 `docs/bugs-inbox/rv-server-sync.md` (not `docs/BUGS.md`, which a dozen branches would conflict on);
 progress in `docs/progress/rv-server-sync.md`.
 
@@ -24,20 +24,20 @@ only; every finding got a real test in this branch.
 
 ## Findings, by severity
 
-Line numbers are at `da85cfb`.
+Line numbers are at `61279a2`.
 
 | # | Sev | Where | What | Bug | Outcome |
 |---|---|---|---|---|---|
-| F1 | high | `packages/server/src/data-api.ts:254` (`subtreePlaceOps`), `apply-ops.ts:112` | A device's later-HLC `block.place` that moves a block back onto its old page wins LWW over the server's cross-page move; the children stay on the new page under a parent on the old one — on neither page, not in the trash, `verify` clean. | B-120 | fixed `b913148` |
-| F2 | medium | `packages/server/src/data-api.ts:267` (`siblingRows` filter) | A tombstoned descendant stays on the old page when its parent moves; `trash.restore` brings it back onto neither page. | B-120 | fixed `6e1281f` |
-| F3 | medium | `packages/server/src/ops/block-to-page.ts:124`, `block-move-to-page.ts:128`, `page-merge.ts:169` | The three refactor ops commit, then throw on a rejected op; on an ordinary page named like an ISO date `block.to_page` loses the continuation lines and answers 400. | B-122 | fixed `05e0145` |
-| F4 | medium | `packages/server/src/ops/batch-undo.ts:158`, `trash-restore.ts:21-24` | After B-90, `batch.undo` and `trash.restore` report success when the page un-delete is rejected and the block un-deletes apply. | B-90 (existing) | fixed `a6cd161` |
-| F5 | medium | `packages/server/src/verify.ts:76` | `verify` replays rejected ops in HLC order; a late push that lost a name collision shows as divergence. | B-123 | fixed `79c1b70` |
-| F6 | low | `packages/server/src/ref-reindex.ts:24` | The B-86 migration rebuilds `ref` only; `path_ref` (backlinks) stays keyed on `target|label`. | B-86 (existing) | fixed `668c0d3` |
-| F7 | low | `packages/core/src/query.ts:1052` | The query `ref` prefilter drops blocks whose only reference is in `alias::` or another property. | B-124 | fixed `b035d86` |
-| F8 | low | `packages/server/src/apply-ops.ts:349` | `recordChanges` does `results.find` per op — quadratic in a batch. | note under B-85 | fixed `33b4797`, and the real cause `df6b6fc` |
-| F9 | low | `packages/server/src/data-api.ts:454,459,555` | `DataApi` deletes stamp `Date.now()` per op, so a plugin delete restores partially. | B-121 | fixed `0f404cc` |
-| F10 | low | `packages/server/src/gc.ts:189` | Asset GC ignores references held only by page history, which "restore this version" brings back. | B-91 (existing) | fixed `5a8a440` (policy flagged) |
+| F1 | high | `packages/server/src/data-api.ts:254` (`subtreePlaceOps`), `apply-ops.ts:112` | A device's later-HLC `block.place` that moves a block back onto its old page wins LWW over the server's cross-page move; the children stay on the new page under a parent on the old one — on neither page, not in the trash, `verify` clean. | B-120 | fixed `351f497` |
+| F2 | medium | `packages/server/src/data-api.ts:267` (`siblingRows` filter) | A tombstoned descendant stays on the old page when its parent moves; `trash.restore` brings it back onto neither page. | B-120 | fixed `cf5386d` |
+| F3 | medium | `packages/server/src/ops/block-to-page.ts:124`, `block-move-to-page.ts:128`, `page-merge.ts:169` | The three refactor ops commit, then throw on a rejected op; on an ordinary page named like an ISO date `block.to_page` loses the continuation lines and answers 400. | B-122 | fixed `8470f5f` |
+| F4 | medium | `packages/server/src/ops/batch-undo.ts:158`, `trash-restore.ts:21-24` | After B-90, `batch.undo` and `trash.restore` report success when the page un-delete is rejected and the block un-deletes apply. | B-90 (existing) | fixed `f6ce1fb` |
+| F5 | medium | `packages/server/src/verify.ts:76` | `verify` replays rejected ops in HLC order; a late push that lost a name collision shows as divergence. | B-123 | fixed `bac8cac` |
+| F6 | low | `packages/server/src/ref-reindex.ts:24` | The B-86 migration rebuilds `ref` only; `path_ref` (backlinks) stays keyed on `target|label`. | B-86 (existing) | fixed `26171ad` |
+| F7 | low | `packages/core/src/query.ts:1052` | The query `ref` prefilter drops blocks whose only reference is in `alias::` or another property. | B-124 | fixed `f61c907` |
+| F8 | low | `packages/server/src/apply-ops.ts:349` | `recordChanges` does `results.find` per op — quadratic in a batch. | note under B-85 | fixed `1f6f2c9`, and the real cause `adeab5c` |
+| F9 | low | `packages/server/src/data-api.ts:454,459,555` | `DataApi` deletes stamp `Date.now()` per op, so a plugin delete restores partially. | B-121 | fixed `e6e279c` |
+| F10 | low | `packages/server/src/gc.ts:189` | Asset GC ignores references held only by page history, which "restore this version" brings back. | B-91 (existing) | fixed `cc20d87` (policy flagged) |
 
 All ten reproduced. None was left as "does not reproduce".
 
@@ -49,52 +49,52 @@ B-85 because the range ran out. The coordinator may want to give that note its o
 
 | Where | What | Outcome |
 |---|---|---|
-| `apply-ops.ts#subtreeIds` / `reindexTouchedEntities` | The reindex walk queried `WHERE parent_id = ?` with no `deleted_at` filter, which the partial `block_children` index cannot serve: one full table scan per visited block, and every touched block re-walked its whole subtree. Moving the owner's 961-block subtree took 23 s at `da85cfb`; a 16,000-op batch 8.2 s. This, not F8's `find`, was most of F8's measured time. | fixed `df6b6fc` (note under B-85) |
+| `apply-ops.ts#subtreeIds` / `reindexTouchedEntities` | The reindex walk queried `WHERE parent_id = ?` with no `deleted_at` filter, which the partial `block_children` index cannot serve: one full table scan per visited block, and every touched block re-walked its whole subtree. Moving the owner's 961-block subtree took 23 s at `61279a2`; a 16,000-op batch 8.2 s. This, not F8's `find`, was most of F8's measured time. | fixed `adeab5c` (note under B-85) |
 | `ops/resolve.ts#resolvePageRef` step 1 | An ordinary page named like an ISO date (`pages/2026-09-07.md` imported) is unreachable by that name over the wire: `page.read {page: "2026-09-07"}` → 404, `page.append` → **500** `journal: failed to read back created page` (the journal create is rejected as a key collision). Probed in a throwaway test, not fixed: the refactor ops now resolve it (F3), the read/append door is `resolve.ts` + `DataApi.pages.journal`. | logged under B-122, open |
 | `packages/server/src/verify.ts#keyOf` | Joins primary-key parts with a literal NUL byte, so git and `grep` treat the file as binary (diffs show `Bin`). Harmless at runtime. | left alone, recorded |
-| `docs/bugs-inbox/rv-server-sync.md` | The renumbering rewrite in `6e1281f` silently dropped the B-91 entry; restored in `5a8a440`. | fixed |
+| `docs/bugs-inbox/rv-server-sync.md` | The renumbering rewrite in `cf5386d` silently dropped the B-91 entry; restored in `cc20d87`. | fixed |
 
 ## Pass 2 — changes
 
 In order; each commit green on `pnpm exec biome check`, `pnpm -r typecheck`, and the unit suites of
 the packages it touched.
 
-1. `b913148` fix(server): children follow their parent's page whoever moved it (B-120) — a second
+1. `351f497` fix(server): children follow their parent's page whoever moved it (B-120) — a second
    repair pass in `serverApplyOps`, next to the cycle correction (`subtree-page-repair.ts`): every
    descendant of a block that changed page, sitting on a different page than its parent, gets a
    server-HLC `block.place` keeping parent and order, minted parent-first, applied in the same
    transaction, logged, recorded in `changes` (so `batch.undo` of the move reverses it) and returned
    as `corrections` (the web client already applies those). sql-schema.md rule 24 updated.
-2. `6e1281f` fix(core,server): tombstoned descendants move with their parent (B-120, F2) — the walk
+2. `cf5386d` fix(core,server): tombstoned descendants move with their parent (B-120, F2) — the walk
    includes tombstoned children; core's `resolvePlace` keeps a tombstoned parent **when it is the
    parent the block already has** (a tombstone hides a subtree, it does not dissolve it —
    research/03-sync.md), so a deleted grandchild stays attached; a move under a *different* deleted
    parent still falls back. The walk is limited to blocks whose applied `block.place` names a page
    other than their pre-batch page, which also covers a batch that moves a block away and back.
-3. `05e0145` fix(ops): to_page, move_to_page and merge write all or nothing (B-122) —
+3. `8470f5f` fix(ops): to_page, move_to_page and merge write all or nothing (B-122) —
    `ops/apply-all-or-nothing.ts` (savepoint, rolled back before the error); `resolveOrMintPage`
    returns a live page already stored under the key it would mint.
-4. `a6cd161` fix(ops): batch.undo and trash.restore fail loudly on a rejected un-delete (B-90) —
+4. `f6ce1fb` fix(ops): batch.undo and trash.restore fail loudly on a rejected un-delete (B-90) —
    `batch.undo` checks name clashes first (`conflict`, `details.live_page_id`); `trash.restore`
    refuses `new_name` on a journal day; both apply all or nothing. mcp-tools.md errors updated.
-5. `79c1b70` fix(verify): do not replay ops the server rejected (B-123) — `loadOps` skips
+5. `bac8cac` fix(verify): do not replay ops the server rejected (B-123) — `loadOps` skips
    `status = 'rejected'`; the report counts them. sql-schema.md rule 26 updated.
-6. `668c0d3` fix(server): the [[Target|label]] re-index rebuilds path_ref too (B-86) — rebuild via
+6. `26171ad` fix(server): the [[Target|label]] re-index rebuilds path_ref too (B-86) — rebuild via
    `reindexBlockAndSubtree`, candidates from `ref` or `path_ref`, new done-flag key so a graph that
    ran the first version runs again.
-7. `b035d86` fix(core): the query ref prefilter admits references held in properties (B-124).
-8. `33b4797` perf(server): recordChanges looks results up in a Map (F8).
-9. `df6b6fc` perf(server): reindex walks children through the index, once per batch (F8) —
+7. `f61c907` fix(core): the query ref prefilter admits references held in properties (B-124).
+8. `1f6f2c9` perf(server): recordChanges looks results up in a Map (F8).
+9. `adeab5c` perf(server): reindex walks children through the index, once per batch (F8) —
    `block-children.ts#childLookup` (live children via the index, tombstoned ones from one scan);
    refs first, then `path_ref` once for the union of touched subtrees. Shared by the repair pass
    and the B-86 re-index.
-10. `0f404cc` fix(data-api): a delete is one instant, so the trash restores all of it (B-121).
-11. `5a8a440` fix(gc): an asset page history still references is not an orphan (B-91) — ADR 022 §5
+10. `e6e279c` fix(data-api): a delete is one instant, so the trash restores all of it (B-121).
+11. `cc20d87` fix(gc): an asset page history still references is not an orphan (B-91) — ADR 022 §5
     amended.
 
 ### Tests that would have caught them
 
-| Finding | Test (all fail on `da85cfb`, verified by running them before the fix or against the reverted code) |
+| Finding | Test (all fail on `61279a2`, verified by running them before the fix or against the reverted code) |
 |---|---|
 | F1 | `packages/server/src/subtree-page-repair.test.ts` — "a later device reorder on the old page wins, and the subtree comes back with it"; "a device moving a child to another page brings the grandchildren along"; "a batch that moves a block away and back does not strand what was placed under it meanwhile" |
 | F2 | same file — "a deleted child follows a cross-page move and restores onto the parent's page, grandchild attached"; "page.merge carries a deleted child along too, so restoring it lands on the target"; `packages/core/src/sync/apply-ops.test.ts` "block.place keeps a tombstoned parent it already has (B-120)" (3) |
@@ -110,7 +110,7 @@ the packages it touched.
 
 ### Verification
 
-- **Unit suites at `5a8a440`** (`pnpm -r test`): core 336, plugin-api 17, server 544, web 684 —
+- **Unit suites at `cc20d87`** (`pnpm -r test`): core 336, plugin-api 17, server 544, web 684 —
   **1,581 passed, 0 failed**. During the work, individual full runs hit 5 s timeouts under load
   average 20–40 (core `sync.property.test.ts` and the `tokens.test.ts` "stays far away from
   quadratic" timing test, `plugins/host.test.ts`, `plugins/built-ins.test.ts`, web
@@ -126,7 +126,7 @@ the packages it touched.
     before, so no migration is needed for it.
   - `reindex-parity-real-graph.ts` — every `ref` (2,185) and `path_ref` (32,671) row rebuilt through
     the new walk is identical to what the old walk had built.
-  - `apply-ops-batch-scaling.ts` — 16,000 `block.text` ops in one batch: 8.2 s at `da85cfb`, 7.7 s
+  - `apply-ops-batch-scaling.ts` — 16,000 `block.text` ops in one batch: 8.2 s at `61279a2`, 7.7 s
     after the Map, 1.8 s after the walk (8,000: 1.0 s — linear). The 961-block server-planned move:
     23 s → 0.46 s. Load averages 5–24 on a shared machine; the ratios are the point.
   - Query prefilter on the graph: the new clause admits exactly the 55 blocks (84 page/tag `ref`

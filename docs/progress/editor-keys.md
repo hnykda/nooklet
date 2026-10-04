@@ -1,6 +1,6 @@
 # editor-keys (M10) — progress
 
-Branch `m10/editor-keys` from `70c9bb9`, worktree `.claude/worktrees/wf_ced35de1-fb8-2`.
+Branch `m10/editor-keys` from `007052a`, worktree `.claude/worktrees/wf_ced35de1-fb8-2`.
 Scratch: `scratchpad/m10/editor-keys/`. e2e port 6400.
 
 Task: B-282 (Cmd+Enter twice cycles once), B-294 (Enter on autocomplete inside an existing link
@@ -17,28 +17,28 @@ first for each. Bug notes go to `docs/bugs-inbox/editor-keys.md`, not BUGS.md.
   `external-batch.ts` refuses a batch touching a block the tree does not show. e2e
   `task-marker-keys.spec.ts` (2 tests) red before, green after (4/4 repeats); related specs
   (tasks, dates, undo-gaps, undo-redo, selection, commands, redo, template-undo, context-menu,
-  palette-text-keys) 85 passed, 1 skipped. Web unit 1,136 green. Commit `6e590ca`.
+  palette-text-keys) 85 passed, 1 skipped. Web unit 1,136 green. Commit `da224b0`.
 - B-294: a pick replaces through the `]]`/`))` of the link the caret is inside
   (`trigger.ts#existingRefTailLength`, `AutocompletePopup.tsx#queryEnd`). e2e
   `autocomplete-inside-link.spec.ts` (3; 2 red before). Tag form left open as new B-380 (owner
   decision; probe `tools/probes/autocomplete-tag-walk.spec.ts`). Autocomplete/follow-link specs green.
-  Commit `86897db`.
+  Commit `fd0c38b`.
 - B-295: `createNavigationHost` ends editing (`requestEditingEnd`) at the start of followLink
   (page/tag/block), openPage, openPageByRef. e2e `follow-link-typing.spec.ts` (2) red 5/5 before,
-  green 5/5 after; navigation/focus specs 74 passed. Commit `5a4a851`.
+  green 5/5 after; navigation/focus specs 74 passed. Commit `7e15266`.
 - B-344: client plugin host implements `editor.currentBlock/insertBlockAfter/focusBlock`
   (new `EditorHost.currentBlock`, `editor/current-block.ts`, `data/plugin-writes.ts`); `/mermaid`
   on a non-blank block inserts the starter as the next sibling. e2e `mermaid-after-text.spec.ts` (2)
   red before, green after; plugins.spec green. Web unit 1,152.
 
-- Full chromium e2e on `30e9a71`: 531 passed, 2 failed, 2 skipped (10.0 min). Both failures were
+- Full chromium e2e on `246d61e`: 531 passed, 2 failed, 2 skipped (10.0 min). Both failures were
   `link-unlinked.spec.ts` counting 4 unlinked mentions of "Link Target" instead of 2 — my
   `autocomplete-inside-link.spec.ts` page names contained "Walk Link Target". Renamed to
   "Walkin Goal Page"/"Caret Inside Src …"; the two specs together (plus references, views,
   autocomplete, follow-link-popup) green on rerun. `references.spec.ts:77` timed out once in that
   rerun and passed alone (load).
 
-- Final e2e on `d3e6d85`, in two halves (the whole suite is ~10 min, the tool's foreground limit):
+- Final e2e on `8c390b7`, in two halves (the whole suite is ~10 min, the tool's foreground limit):
   `tests/[a-l]` 181 passed, 1 skipped (4.5 min); `tests/[m-z]` 350 passed, 2 failed, 1 skipped
   (7.3 min). The 2 were `page-icons.spec.ts` (grapheme/clear read without a poll; agent icon got a
   401 from the page's window token) — both passed 3/3 alone straight after; logged as B-381.

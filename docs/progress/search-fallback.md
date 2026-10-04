@@ -18,7 +18,7 @@ So the fallback is right but unexplained.
 3. Tests: component/unit per message, Playwright for "not set up" → Settings, http test for the
    new output field.
 
-Branch `m11/search-fallback` from `52e5d20`, worktree
+Branch `m11/search-fallback` from `ac2528e`, worktree
 `<repo>/.claude/worktrees/wf_b8e786c1-020-3`. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11b/search-fallback/`
 (`data/` = NOOKLET_DATA, `graph/` = `.backup` copy). E2E port 6418. Bugs to
@@ -26,8 +26,8 @@ Branch `m11/search-fallback` from `52e5d20`, worktree
 
 ## Done (committed)
 
-- `c42f932` progress file; B-520 logged in the inbox before fixing.
-- `43fbe68` server: `search` output `fallback` {reason, message, provider, model, host, indexed,
+- `5124767` progress file; B-520 logged in the inbox before fixing.
+- `8314c36` server: `search` output `fallback` {reason, message, provider, model, host, indexed,
   total, errors, error} (defineOp), reasons in `embeddings/semantic-search.ts`
   (`checkSemanticAvailability` now returns `fallback`; new `embedQueryForSearch` classifies a failed
   query embed by probing the host). B-521 (pages filter matching nothing said `keyword`) fixed.
@@ -37,16 +37,16 @@ Branch `m11/search-fallback` from `52e5d20`, worktree
   `{mode_used: "keyword"}`; `embeddings.status` → vec loaded v0.1.9, active null, switching_to
   null, provider reachable with bge-m3:latest + qwen3-embedding:8b. I.e. "not set up".
 
-- `1f06196` web: `views/SearchFallbackNote.tsx` (+ `search-fallback.css`), one sentence and
+- `6b2351f` web: `views/SearchFallbackNote.tsx` (+ `search-fallback.css`), one sentence and
   action per reason; `SettingsPanel.tsx#openEmbeddingsSettings` (scroll-request signal, same
   pattern as `PluginsSection`); `api-client.ts` maps `fallback`. Tests
   `SearchFallbackNote.test.tsx` (11), `SearchView.test.tsx` (+3). Web suite 1152/1152.
-- `4c22ed4` e2e `e2e/tests/search-fallback.spec.ts` (2). Chromium with settings.spec + views.spec:
+- `e2be5ef` e2e `e2e/tests/search-fallback.spec.ts` (2). Chromium with settings.spec + views.spec:
   39 passed. The in-viewport assertion was checked to fail with the scroll removed.
 
-- `6f5d00f` B-523 fixed (closing Settings re-runs a fallen-back search; e2e +1 failed before, unit
+- `6da28ad` B-523 fixed (closing Settings re-runs a fallen-back search; e2e +1 failed before, unit
   +1); B-522 logged with probe `tools/probes/search-embed-silent-host.ts`.
-- `78853bf` B-522 fixed: `QUERY_EMBED_TIMEOUT_MS` = 15 s on the query embed. Test
+- `872dece` B-522 fixed: `QUERY_EMBED_TIMEOUT_MS` = 15 s on the query embed. Test
   `server/src/embeddings/query-embed-timeout.test.ts` (4; 3 fail on the old code). Server 688/688.
 
 ## Real-graph run (part 2) — owner's graph `.backup` taken 17:46, this branch's server on :6438

@@ -1,13 +1,13 @@
 # Security review: public exposure behind a TLS reverse proxy (tier 2)
 
-Started 2026-10-04 from `02fa3dc`. Scope: what "public behind a TLS reverse proxy" needs, with
+Started 2026-10-04 from `5cc2d9f`. Scope: what "public behind a TLS reverse proxy" needs, with
 evidence; fix small defects in `packages/server/src/http` and `auth`; then (coordinator extension)
 an enforced route inventory, deny-by-default auth, safe defaults, and a hardening backlog.
 Scratch servers on ports 6455-6457 only, `NOOKLET_DATA` always a fresh `mktemp -d`. Probes in
 `tools/probes/security/`.
 
 ## Done
-- Verified checkout (hnykda/nooklet, fast-forwarded 41666ee -> 02fa3dc), `pnpm install`.
+- Verified checkout (hnykda/nooklet, fast-forwarded f7c9644 -> 5cc2d9f), `pnpm install`.
 - Read tokens/root-token/pairing-link, http/*, graphs/mount, sync auth + WS, live WS, MCP gate,
   plugin routes, prior reviews (`rv-server-security.md`, `rv-web-security.md`).
 - Probes (before/after results in each file's header):
@@ -32,7 +32,7 @@ Scratch servers on ports 6455-6457 only, `NOOKLET_DATA` always a fresh `mktemp -
   from the app (KaTeX, code fence, mermaid fence, links, reload); an injected inline script was
   blocked.
 
-- Committed `654a105`; merged `main`; filled the two `TODO (security review)` blocks in
+- Committed `2e80cc7`; merged `main`; filled the two `TODO (security review)` blocks in
   `docs/guide/self-hosting.md` and `docs/guide/security.md` (only those blocks).
 - After the merge: server unit 100 files / 809 tests green, `tsc` clean.
 - First e2e attempt is void: a sibling agent wrote to the same scratchpad log name, so the
@@ -58,7 +58,7 @@ Scratch servers on ports 6455-6457 only, `NOOKLET_DATA` always a fresh `mktemp -
   The `serve` synopsis should gain `[--loopback-token]`.
 
 ## How to resume
-Re-read this file; `git log 02fa3dc..HEAD`; `git status` for uncommitted files listed above.
+Re-read this file; `git log 5cc2d9f..HEAD`; `git status` for uncommitted files listed above.
 
 ---
 

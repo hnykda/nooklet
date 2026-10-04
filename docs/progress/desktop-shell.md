@@ -1,6 +1,6 @@
 # Progress — desktop-shell (m11)
 
-Branch `m11/desktop-shell` from `52e5d20`. Worktree `.claude/worktrees/wf_dd1ff6ba-1f5-1`.
+Branch `m11/desktop-shell` from `ac2528e`. Worktree `.claude/worktrees/wf_dd1ff6ba-1f5-1`.
 Bugs inbox: `docs/bugs-inbox/desktop-shell.md` (B-530..B-535). **State: done** (see "Not done").
 
 Owner report: "I don't see any settings dialog anywhere, nor the question mark icon in the desktop
@@ -27,8 +27,8 @@ once; expect one reload flash.
   Playwright on 6419.
 - Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11c`
   (`shots/`, `data/`, `target/`, `logs/`, `build-app.sh`, `ctl.sh`, `desktop-window` binary,
-  `src-adadff1/` = `git archive adadff1` with its web client built, `web-base/` = 52e5d20 client,
-  `web-fix/` = B-532 fix client, `sidecar/` = 52e5d20 sidecar used to run servers).
+  `src-c30cb37/` = `git archive c30cb37` with its web client built, `web-base/` = ac2528e client,
+  `web-fix/` = B-532 fix client, `sidecar/` = ac2528e sidecar used to run servers).
 
 ## Incident (tell the coordinator)
 
@@ -42,19 +42,19 @@ the previously frontmost app 1.5 s after each launch (`desktop-window give-back`
 
 ## Done (commits, oldest first)
 
-- `0d08bf6` B-530 launcher tracked; `NOOKLET_PORT` + `__NOOKLET_DESKTOP__` init script; probes
+- `6ede263` B-530 launcher tracked; `NOOKLET_PORT` + `__NOOKLET_DESKTOP__` init script; probes
   `desktop-window.swift`, `logging-proxy.mjs`, `desktop-sw-update.sh`; inbox B-530..B-534.
-- `47ad4bc` B-532 fix (`vite.config.ts` skipWaiting + clientsClaim; dead `onNeedRefresh` removed) +
+- `e79b6df` B-532 fix (`vite.config.ts` skipWaiting + clientsClaim; dead `onNeedRefresh` removed) +
   `e2e/tests/sw-update.spec.ts`.
-- `ac89619` B-533 native menu + `platform/desktop-shell.ts` bridge; B-534 `on_new_window` → browser;
+- `0be3e23` B-533 native menu + `platform/desktop-shell.ts` bridge; B-534 `on_new_window` → browser;
   `desktop-shell.test.ts` (5), `e2e/tests/desktop-shell.spec.ts` (2).
 - (this commit) docs: OPERATIONS §4 client updates, ADR 016 amendment, B-535, progress.
 
 ## Evidence (screenshots, all in `<scratch>/m11c/shots/`)
 
-- `01-base-default-size.png` — 52e5d20 client, default window: toolbar clear of traffic lights, `?` visible.
+- `01-base-default-size.png` — ac2528e client, default window: toolbar clear of traffic lights, `?` visible.
 - `02-base-click-toggle-sidebar.png` — the click that did not arrive (no Accessibility permission).
-- `update-before-fix/` — OLD adadff1 installed; NEW 52e5d20 served; launch 1 still OLD (early+late),
+- `update-before-fix/` — OLD c30cb37 installed; NEW ac2528e served; launch 1 still OLD (early+late),
   launches 2–3 NEW. `labels/` has the label crops.
 - `update-after-fix/` — same OLD installed; NEW-with-fix served; launch 1 already NEW at 6 s.
 - `10-final-default-size.png` — this branch's app (custom menu builds, own sidecar on 6420), current
@@ -82,7 +82,7 @@ the previously frontmost app 1.5 s after each launch (`desktop-window give-back`
 ## Decisions
 
 - No inset: evidence first. `Overlay` would be a design change, not a fix.
-- Old client for the probe: `adadff1` (same SW config and register code as every build since B-20).
+- Old client for the probe: `c30cb37` (same SW config and register code as every build since B-20).
   Visual proof by a label the probe stamps into each build's index.html — not product code.
 - Fix only the worker (skipWaiting + clientsClaim) rather than a server build-id handshake: the old
   page's own `registerSW` already reloads on a newer worker's `activated`, so the smallest change
@@ -90,7 +90,7 @@ the previously frontmost app 1.5 s after each launch (`desktop-window give-back`
 
 ## How to resume
 
-Read this file, `git log --oneline 52e5d20..`, `docs/bugs-inbox/desktop-shell.md`. Rebuild the
+Read this file, `git log --oneline ac2528e..`, `docs/bugs-inbox/desktop-shell.md`. Rebuild the
 devtest app with `<scratch>/m11c/build-app.sh` (after `pnpm --filter @nooklet/desktop run sidecar`).
 Re-run the update proof: `tools/probes/desktop-sw-update.sh <old dist> OLD <new dist> NEW <out>`.
 
@@ -106,10 +106,10 @@ Confirmed: B-531 (hit-tests and clicks, `shots/verify/v01…v06`), B-532 baselin
 B-533 menu items and Cmd+, / Cmd+R / Edit keys in a textarea, B-534 links (`OPEN`/`REFUSED` log).
 
 Found and fixed (commits on this branch):
-- `611e00b` B-536 — Cmd/Ctrl+V into a block pasted nothing anywhere: the dispatcher matched
+- `af8bfa5` B-536 — Cmd/Ctrl+V into a block pasted nothing anywhere: the dispatcher matched
   `edit.paste`'s informational row and cancelled the paste. `e2e/tests/keyboard-paste.spec.ts` (2),
   dispatch unit test.
-- `8a76e44` B-537 — B-532's reload lost the race with WebKit's 1 s soft update whenever `/api/session`
+- `70d1327` B-537 — B-532's reload lost the race with WebKit's 1 s soft update whenever `/api/session`
   was slow (`update-B-branch-slow-session`: OLD all session). Inline `controllerchange` listener in
   `index.html`; `sw-update.spec.ts` B-537 test, `sw/takeover.test.ts` (4); `update-C-fix-slow-session`
   reloads onto NEW at +1.1 s.
@@ -119,7 +119,7 @@ Unverified still: a real window drag (the window server ignores synthesized drag
 `window.open`; the real `open` spawn. Merge: conflicts with `main` in `main.rs` and `AppShell.tsx`;
 main's launcher move makes B-530's tracked `apps/desktop/dist/` dead (see B-530).
 
-Tests on `8a76e44`: web unit 1,148 passed; `pnpm -r typecheck` clean; e2e chromium full suite in four
+Tests on `70d1327`: web unit 1,148 passed; `pnpm -r typecheck` clean; e2e chromium full suite in four
 chunks on 6497: 537 passed, 2 skipped, 3 failed — all three `editing.spec.ts` `openJournal` tests,
 B-453 (order-dependent helper, known on main), which pass 4/4 run alone. New tests fail without their
 fixes (keyboard-paste 2/2 fail, B-537 test fails with no reload in 20 s).

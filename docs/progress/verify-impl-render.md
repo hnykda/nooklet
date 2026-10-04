@@ -9,12 +9,12 @@ Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-
 new editing buffer introduced were found in the browser and fixed.
 
 ## Commits
-- `87d2e5d` B-152: a property value with a line break (or surrounding whitespace, or a key the line
+- `93a6e70` B-152: a property value with a line break (or surrounding whitespace, or a key the line
   regex cannot read back) leaked into the block's text on the first keystroke. `showsInEditText`.
-- `6e7d781` B-153: `/code`, `/query`, `/h1`–`/h3` acted on the property lines too (numbering wrapped
+- `e644bc8` B-153: `/code`, `/query`, `/h1`–`/h3` acted on the property lines too (numbering wrapped
   into the fence; property became the query; caret left on the property line). B-154: `/template`
   into an empty numbered item went in after it. `insert-logic.ts#onContent`.
-- `483152e` e2e: an agent's property set mid-typing survives the flush.
+- `7727fcd` e2e: an agent's property set mid-typing survives the flush.
 
 ## Browser checks that held (scratch spec, deleted)
 Typed property + immediate Enter; agent property set while typing kept; `/property` undo/redo;
@@ -40,5 +40,5 @@ typed property shows as a chip on the other, and the other's value edit syncs ba
   remote-device) 114 passed, 1 skipped; batch 3 (references, references-filters, views, refactor,
   pages, navigation, replace, trash, link-unlinked, page-icons, help) 74 passed, 2 failed —
   `page-icons` passed on rerun (load); `views.spec.ts` "opening the palette while editing and
-  closing it hands focus back to the editor" fails at `da85cfb` too (checked out and run): pre-existing,
+  closing it hands focus back to the editor" fails at `61279a2` too (checked out and run): pre-existing,
   not this branch.

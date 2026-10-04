@@ -11,7 +11,7 @@ fire from such a field and keep it working; list each in the bug entry with how 
 Playwright: title Backspace/Cmd+X with a selection; palette Backspace, Cmd+A then Cmd+X with a
 selection; a selection still answers Backspace/Cmd+X when no field has focus. Raise severity to high.
 
-Branch `m11/keys-in-fields` from `52e5d20`, worktree
+Branch `m11/keys-in-fields` from `ac2528e`, worktree
 `<repo>/.claude/worktrees/wf_975bcd44-fae-2`. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11/keys-in-fields/`
 (`data/` = NOOKLET_DATA). E2E port 6411. Bugs go to `docs/bugs-inbox/keys-in-fields.md` (new
@@ -19,7 +19,7 @@ numbers B-450..B-459), never `docs/BUGS.md`.
 
 ## Findings
 
-- `52e5d20` already had B-347's partial fix (`textFieldOwnsKey`, R12a): Backspace/Cmd+X in the
+- `ac2528e` already had B-347's partial fix (`textFieldOwnsKey`, R12a): Backspace/Cmd+X in the
   title and Backspace/Cmd+A/Cmd+X in the palette were already fine. Every other key still ran
   against the outliner: title Enter → `block.editSelected`, Cmd+Shift+D → duplicate, Cmd+. → zoom,
   palette over an edit Cmd+Shift+K → `[]()` into the block. Probe:
@@ -38,11 +38,11 @@ numbers B-450..B-459), never `docs/BUGS.md`.
   tests fail with the dispatch line disabled (checked).
 - Suites: web unit 1141/1141, `pnpm -r typecheck` clean, biome clean on touched files. Related e2e
   set (26 spec files) 216 passed / 1 skipped before test 7 was added; keys-in-fields 7/7.
-- `6447615` fix + tests + spec R12b + inbox (B-300 existing, B-450 new) + probe.
+- `f23d29f` fix + tests + spec R12b + inbox (B-300 existing, B-450 new) + probe.
 - Full e2e suite in 3 runs (543 tests, load avg 65–106): 539 passed, 2 skipped, 2 failed — `parity`
   (a different test each of two same-order runs; the spec alone 14/14 twice: load) and
   `review-reactivity` trash Retry (fails alone too, and with the dispatch line disabled → logged as
-  B-451, not this branch's). Recorded in the inbox; committed after `6447615`.
+  B-451, not this branch's). Recorded in the inbox; committed after `f23d29f`.
 - No ops/sync/schema/parser touched → `pnpm nooklet verify` not needed.
 
 ## Next steps

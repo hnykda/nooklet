@@ -4,7 +4,7 @@ Part of the M8 review workflow (`docs/progress/coordinator.md`, "Review → skep
 finding → fixer per dimension"). A reviewer read the web client for correctness of its reactive
 data flow and failure paths; an independent skeptic tried to refute each finding and could not.
 This document is the fixer's record: what was found, what was reproduced, what changed, and what
-was left. Branch `m8/rv-web-reactivity`, based on `da85cfb`. Bugs are in
+was left. Branch `m8/rv-web-reactivity`, based on `61279a2`. Bugs are in
 `docs/bugs-inbox/rv-web-reactivity.md` (B-130–B-134) for the coordinator to fold into
 `docs/BUGS.md`.
 
@@ -33,7 +33,7 @@ below replace them inside the repo.
 
 ## Findings, by severity
 
-Line numbers are at `da85cfb`.
+Line numbers are at `61279a2`.
 
 | # | Bug | Severity | Where | What |
 |---|---|---|---|---|
@@ -56,33 +56,33 @@ All eight reproduced. None was refuted.
 One commit per finding, each with its failing-then-passing tests, the inbox entry and this branch's
 progress file:
 
-1. `b75e571` docs: B-130–B-134 logged before any fix.
-2. `cdaf63c` **F1 / B-130** — `db/client.ts` registers one Comlink proxy per listener kind and fans
+1. `6eb889d` docs: B-130–B-134 logged before any fix.
+2. `6005e32` **F1 / B-130** — `db/client.ts` registers one Comlink proxy per listener kind and fans
    out to a subscriber set; `onChange`/`onSyncStatus` return an unsubscribe; a throwing subscriber
    is logged and does not starve the rest; `useSyncStatus` unsubscribes on cleanup. Comments in
    `store.ts`, `history.ts` and `worker-api.ts` that said "a second module must not subscribe"
    now say why it is safe. Tests: `db/client.test.ts` (5, over `db/fake-worker.ts`, a
    single-slot fake of the worker), `data/history.test.ts` (3, real `client.ts` + `store.ts` +
    `history.ts`), e2e "after visiting Trash, an open page still picks up a write made elsewhere".
-3. `918c0ff` **F2** — `TrashView`'s `list()` and `usePageHistory`'s new `firstPage()` guard every
+3. `24ce5d0` **F2** — `TrashView`'s `list()` and `usePageHistory`'s new `firstPage()` guard every
    read; error lines use `describeError`. Tests: `views/TrashView.test.tsx`,
    `views/HistoryView.test.tsx`, two e2e cases (`page.route` aborts, then Retry).
-4. `8651877` **F3** — `QueryFenceView` reads a guarded `latest()`; "Running query…" only without an
+4. `db2827b` **F3** — `QueryFenceView` reads a guarded `latest()`; "Running query…" only without an
    error; `describeError` for the reason. Test: `editor/render/QueryFenceView.test.tsx` (real
    `useQueryResults`, rejecting `queryAs`).
-5. `e5a19dc` **F4 / B-132** — a generation counter in `usePageHistory`, bumped when a first page
+5. `dcd2ece` **F4 / B-132** — a generation counter in `usePageHistory`, bumped when a first page
    lands; a `loadMore` that straddled it drops its answer. Tests: `data/history.test.ts` (server
    model with held responses), e2e case holding the cursor request with `page.route` and writing
    two batches meanwhile — unfixed: two batch ids missing; fixed: all 33 in order.
-6. `b7a2b3f` **F5 / B-133** — `toResultBlock` reports what it emitted; hits no rendered subtree
+6. `24858fc` **F5 / B-133** — `toResultBlock` reports what it emitted; hits no rendered subtree
    emitted are listed on their own, outermost first, so nothing is lost or listed twice. Tests: two
    cases in `data/queries.test.ts`, one e2e case (70 notes, then the subtask).
-7. `4837d25` **F6** — `HistoryView#loadOlder` catches and shows the reason. Tests: a
+7. `b6dcbea` **F6** — `HistoryView#loadOlder` catches and shows the reason. Tests: a
    `HistoryView.test.tsx` case, one e2e case.
-8. `0294865` **F7 / B-134** — Replace all sends the live fields and is disabled until the preview
+8. `211a91d` **F7 / B-134** — Replace all sends the live fields and is disabled until the preview
    for exactly those fields has landed. Tests: `views/FindReplaceView.test.tsx` (3), one e2e case —
    unfixed: "the wombat smiles" written after typing "numbat"; fixed: "the numbat smiles".
-9. `1248892` **F8** — `materialize` catches, restores the placeholder with the draft, clears its
+9. `b1b698a` **F8** — `materialize` catches, restores the placeholder with the draft, clears its
    caret request and shows "Could not start this day: …"; the next blur or Enter retries. Tests: two
    `VirtualJournalDay.test.tsx` cases.
 
@@ -109,9 +109,9 @@ progress file:
 ## Found in passing, and left alone
 
 - **`e2e/tests/views.spec.ts:461` "opening the palette while editing and closing it hands focus
-  back to the editor" fails at `da85cfb` too.** After Escape the palette is gone and `.cm-content`
+  back to the editor" fails at `61279a2` too.** After Escape the palette is gone and `.cm-content`
   is present but not focused. Three runs: twice on this branch, once with every changed source file
-  restored to `da85cfb` — so it is not this branch. It is B-72's regression test. Load was high
+  restored to `61279a2` — so it is not this branch. It is B-72's regression test. Load was high
   (≈35), so it may be timing, but it failed all three times. Not logged with a number (this branch's
   five are used); flagged for the coordinator.
 - **`render-seams.test.tsx`'s query-fence cases are load-sensitive** (above): the first lazy

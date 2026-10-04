@@ -10,19 +10,19 @@ that does not exist yet shows none of its references), B-171 (Tasks view due win
 deadline when the task is also scheduled).
 
 Branch `m9/render-views`, worktree `<repo>/.claude/worktrees/wf_e473942f-106-8`,
-based on `cf08d19`. E2E port 6404. Bug entries go to `docs/bugs-inbox/render-views.md` (new
+based on `febfc23`. E2E port 6404. Bug entries go to `docs/bugs-inbox/render-views.md` (new
 numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m9/render-views/`.
 
 ## 1. Done (committed)
 
-- B-224 — `e7f1fa6` "fix(web): a multi-line block renders a line break between its lines".
+- B-224 — `dc48503` "fix(web): a multi-line block renders a line break between its lines".
   `render/tokens.tsx#Lines`; tests `tokens.test.tsx` (3 new/changed), new
   `e2e/tests/render-views.spec.ts` (B-224 test). Unit web 1002/1002; e2e render-views, rendering,
   render, embeds, query, editing, block-properties, math-display, parity: 61 passed. The e2e failed
   on the old `tokens.tsx` (`br` count 0).
 - B-211 + new B-320 (plugin fence in an embed/query hit got the host block) + new B-321 (journal
-  agenda item carried `data-block-id`) — `817d4ad` "fix(web): only outliner rows carry
+  agenda item carried `data-block-id`) — `efe8cdb` "fix(web): only outliner rows carry
   data-block-id". `QueryFenceView.tsx` (`data-query-hit-id`), `JournalAgenda.tsx`
   (`data-agenda-block-id`), `PluginFence.tsx#fenceContext` (`FENCE_OWNER`). Tests:
   `render-seams.test.tsx`, `PluginFence.test.tsx` (+2), `JournalAgenda.test.tsx`, e2e
@@ -30,7 +30,7 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   e2e render-views, query, query-task-tag, query-limits, embeds, plugins, journal-agenda,
   shelf-outline, shelf, review-reactivity: 54 passed.
 
-- B-225 — `8f9dbe0` "fix(web): a phone reaches History and Add icon through the page menu".
+- B-225 — `8ba224e` "fix(web): a phone reaches History and Add icon through the page menu".
   `views/page-actions.css` (coarse pointer: row's History link and empty icon slot `display:
   none`), `views/PageActions.tsx` (menu items "Page history" link, "Add icon"),
   new `views/page-icon-request.ts` (signal), `views/PageIcon.tsx` (consumes it), one hookup in
@@ -40,7 +40,7 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   1004/1004 (a first run under load timed out in page-title/SearchView/render-seams; all green on
   rerun, file-level and full).
 
-- B-200 — `ce8e07d` "feat(web): a page that does not exist yet shows its references". `PageView.tsx`
+- B-200 — `5a58138` "feat(web): a page that does not exist yet shows its references". `PageView.tsx`
   mounts `ReferencesPanel target={canonicalRefName(name)} unlinked={false}` in the missing-page
   branch; `ReferencesPanel.tsx` gains the `unlinked` prop. Two e2e tests in `render-views.spec.ts`.
   Logged B-322 (server `page.backlinks` missing-target branch uses the raw title — reproduced via
@@ -48,14 +48,14 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   rerun). e2e render-views, pages, references, references-cap, references-filters, tagged-pages,
   journal-agenda, journals, page-rename, navigation, link-unlinked: 51/52 then 52/52 on rerun.
 
-- B-171 — `83e48fb` "fix(web): the Tasks view's due window matches a deadline as well as a scheduled
+- B-171 — `b5a2ec5` "fix(web): the Tasks view's due window matches a deadline as well as a scheduled
   date". `views/taskFilters.ts#inDueWindow`; 4 unit cases in `taskFilters.test.ts`; e2e in
   `render-views.spec.ts` (failed on the old file: 1 row, expected 2). Logged B-324 (row label shows
   only `dueDay`). Unit web 1008/1008. e2e render-views, tasks, views, dates: 53 passed, 1 failed —
   `views.spec.ts` "opening the palette while editing…", the known B-161, failed again alone (28/29);
   nothing on this branch touches the palette or editor focus (not revert-checked by this branch).
 
-- Real-graph checks — `4c37f10` "test(probes): render-views on a copy of the real graph". New
+- Real-graph checks — `6123783` "test(probes): render-views on a copy of the real graph". New
   `tools/probes/render-views-real-graph.mjs`. Graph copy (952 pages, 508 multi-line blocks) served
   on 6414 with the branch's build: `/page/book` shows tagged 1 / linked 9, equal to
   `page.backlinks`; `2023-02-17` 19 and `TTRPG/VTM-alpha` 10 multi-line rows all with the right
@@ -66,7 +66,7 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
   specs a–m 149 passed, 1 failed, 1 skipped (11.1 min; the failure, editing.spec "typing
   immediately after Enter is not discarded", passed 4/4 when the spec was rerun alone); specs n–z
   295 passed, 1 failed, 1 skipped (4.6 min; the failure is B-161, which also failed 2/2 with this
-  branch's web sources restored to `cf08d19` — note added to the inbox). Unit web 1008/1008;
+  branch's web sources restored to `febfc23` — note added to the inbox). Unit web 1008/1008;
   `pnpm -r typecheck` clean.
 
 ## 2. In flight
@@ -89,7 +89,7 @@ numbers B-320..B-329), never `docs/BUGS.md`. Scratch:
 
 ## 5. How to resume
 
-`git log --oneline cf08d19..m9/render-views` in the worktree; this file's "Next steps".
+`git log --oneline febfc23..m9/render-views` in the worktree; this file's "Next steps".
 
 ## 6. Adversarial verification pass (2026-09-13, second agent)
 
@@ -103,22 +103,22 @@ Scratch `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b
   gets its `<br>`; missing page with a Czech name (NFC and NFD URL) and a namespaced name lists its
   references; a missing page nothing points at shows no panel; "Add icon" request does not linger
   after Escape + revisit; menu reachable by Tab, "Page history" by Enter.
-- Found and fixed B-325 — `cccd9c3`: a click on the empty line of a multi-line block went to the
+- Found and fixed B-325 — `c47d08b`: a click on the empty line of a multi-line block went to the
   block's end (`caret.ts` could not resolve a between-children hit). New e2e in
   `render-views.spec.ts`, new `apps/web/src/editor/caret.test.tsx`. Web unit 1011/1011; e2e
   render-views(+phone), focus, editing, block-properties, rendering, parity, context-menu,
   math-display: 86 passed, 1 skipped.
-- Found and fixed B-326 — `6e469b0`: every write to the `page`/`page_prop` tables anywhere (an
+- Found and fixed B-326 — `5aeda5f`: every write to the `page`/`page_prop` tables anywhere (an
   agent's `page.create`) rebuilt a missing page's view, so the B-200 panel fell back to "Loading
   references…" with the scroll at 0. `PageView.tsx` keeps the missing view through a refetch for
   the name the lookup last settled for. New e2e in `render-views.spec.ts` (failed before:
   `samePanel: false, loadingSeen: true`). Missing-view neighbours (pages, page-rename,
   page-identity, references*, tagged-pages, journals, journal-agenda, trash, history, …): 89 passed.
-- Real graph copy (`16eecd7`, `tools/probes/render-views-blank-line-real-graph.mjs`): B-325 marker
+- Real graph copy (`62b7626`, `tools/probes/render-views-blank-line-real-graph.mjs`): B-325 marker
   lands on the empty line of `2022-12-02`'s emoji block; B-326 `/page/book` keeps panel and scroll.
 - Final: web unit 1011/1011, `pnpm -r typecheck` clean, biome clean on every changed file. Whole
   chromium e2e in four groups on the branch head: 120 passed + 1 skipped; 94 passed + 1 failed
   (`page-icons.spec` "setting an icon from the title row…", All Pages row without the icon after a
   reload — then 3/3 alone and 20/20 with page-export and page-find before it; load); 113 passed;
   119 passed + 1 failed + 1 skipped (`views.spec` B-161 — also 2/2 failed with `apps/web/src`
-  restored to `cf08d19`). WebKit project (storage.spec only) not run.
+  restored to `febfc23`). WebKit project (storage.spec only) not run.

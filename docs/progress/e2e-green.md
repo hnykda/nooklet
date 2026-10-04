@@ -1,19 +1,19 @@
 # e2e-green — B-623, B-624, B-593, B-561, autocomplete-inside-link flake; full suite twice
 
-Branch: `worktree-agent-a54e807ecce809a96` (based on main `d27d56a`, main merged in again after
+Branch: `worktree-agent-a54e807ecce809a96` (based on main `6496f14`, main merged in again after
 server search landed). Ports 6350-6354 (`NOOKLET_E2E_PORT=6350`). Not merged to main.
 
 ## Status
 
-Done: `cfc863b` (B-623), `eaa3b8c` and before (flake fixes), the `views.spec` search test,
-`65b2460` (search-local-only), `19c5941` (shelf). Main merged up to `885543b`. In flight: the two
+Done: `b7194b7` (B-623), `91f013f` and before (flake fixes), the `views.spec` search test,
+`4258949` (search-local-only), `e039482` (shelf). Main merged up to `532f941`. In flight: the two
 final full runs on the merged tree (see "Full runs").
 
 ## Full runs
 
-- Run 1 (main d27d56a + server search): 726 passed, 1 failed (views.spec:246, a stale search
+- Run 1 (main 6496f14 + server search): 726 passed, 1 failed (views.spec:246, a stale search
   test, fixed below), 2 skipped, of 729.
-- Run on the `885543b` merge (742 tests): 737 passed, 3 failed, 2 skipped. The failures were
+- Run on the `532f941` merge (742 tests): 737 passed, 3 failed, 2 skipped. The failures were
   search-local-only (stale, fixed), the views.spec shelf test (app regression, fixed), and
   untrusted-content Alt+Enter ("Loading…" forever). The last one happened while I had a second
   e2e run going on port 6351 in the same checkout. Both runs rebuild `apps/web/dist`, and a later
@@ -24,14 +24,14 @@ final full runs on the merged tree (see "Full runs").
 
 ## Stale after today's merges (found in the full runs)
 
-- `views.spec.ts` "a failed search shows an error with Retry": since `3844838` (local-first
+- `views.spec.ts` "a failed search shows an error with Retry": since `4a4ffe1` (local-first
   search), a failing server shows this device's hits plus a "server's semantic search failed"
   line. There is no error and no Retry any more. I rewrote the test to that contract (5/5).
-- `search-local-only.spec.ts`: since `c58ede4`/B-612, an active `kind: "local"` entry opens
+- `search-local-only.spec.ts`: since `03a8205`/B-612, an active `kind: "local"` entry opens
   straight into its replica. The test waited 30 s for ConnectView's "Just this device". It is
   red on main too. It now waits for the local sync state (5/5).
 
-## App regression: the shelf is lost on the first reload (`c58ede4`)
+## App regression: the shelf is lost on the first reload (`03a8205`)
 
 `apps/web/src/app/shelf.ts` fixed its sessionStorage key from `activeGraphId()` at module load.
 On a tab's first load, bootstrap has not adopted a graph yet, so the shelf was written under
@@ -44,19 +44,19 @@ re-resolved until bootstrap sets one, then stays fixed for the rest of the page 
 
 ### B-623 — `page-find.spec.ts` and `random-page.spec.ts` red on every run
 
-One cause, both specs: `6ddfc77` (B-595, "an empty journal day's page is editable") wrapped the
+One cause, both specs: `7506ea2` (B-595, "an empty journal day's page is editable") wrapped the
 page view's sections in `<div class="page-view-body">`. Two places addressed the page's outline as
 a DIRECT child of `.page-view`:
 
 - **App regression** — `apps/web/src/views/PageFindBar.tsx`'s `outliner()` queried
-  `:scope > .vr-outliner`, which since `6ddfc77` matches nothing. Find in page still filtered rows
+  `:scope > .vr-outliner`, which since `7506ea2` matches nothing. Find in page still filtered rows
   (that runs off the data), but painted no highlights (`CSS.highlights` sizes 0/0 — the page-find
   failures) and Enter/Shift+Enter no longer scrolled the current match into view. Fixed in the app:
   `:scope > .page-view-body > .vr-outliner`.
 - **Stale test** — `random-page.spec.ts` waited for `.page-view > .vr-outliner .vr-row`; the page
   rendered fine (error-context snapshot shows it). Selector updated to `.page-view-body > …`.
 
-No bisect needed: `git show 6ddfc77` adds the wrapper; no other selector in `apps/web/src` or
+No bisect needed: `git show 7506ea2` adds the wrapper; no other selector in `apps/web/src` or
 `e2e/` uses `.page-view >`. Verified: both specs `--repeat-each 5` 55/55.
 
 ### B-624 (`page-delete.spec.ts`) and the `autocomplete-inside-link.spec.ts` flake — test isolation
@@ -78,7 +78,7 @@ random-page: 154/155 then the fix, and 226 popups+autocomplete run had no autoco
 Reproduced on the pre-merge tree by running `popups search-fallback` only: "2 results" for
 "wombat" — `popups.spec.ts:358` seeds "unique wombat sentence". Fix (test): the spec's three
 search words are its own (`fallbackkwwombat`, `fallbackstalenumbat`, `fallbackfocusbilby`).
-Re-verified after merging server search (`3844838`): `--repeat-each 5` green.
+Re-verified after merging server search (`4a4ffe1`): `--repeat-each 5` green.
 
 ### B-543 / B-593 — connectivity "search returns rather than spinning forever"
 
@@ -92,7 +92,7 @@ avoids by seeding first).
 ### New, found on the way: `popups.spec.ts` slash menu (2 tests) red alone
 
 "opens at a run start with every item in R54 order" and "TODO / task turns the block into a task"
-expected TODO first. `34c8d3e` made an empty/tied graph's inferred workflow `now` (owner
+expected TODO first. `7641c43` made an empty/tied graph's inferred workflow `now` (owner
 decision), so the spec's "this graph has no tasks, so `todo`" no longer holds, and on the shared
 server the inference depends on which markers other specs seeded. Fix (test): both pin `todo` in
 Settings first, as `task-workflow.spec.ts` does. 10/10 under `--repeat-each 5`.
@@ -101,7 +101,7 @@ seedPage reason); repeat 0 is green. Not fixed — logged below.
 
 ## BUGS.md updates to fold in
 
-- B-623 → fixed: cause `6ddfc77` (B-595's `.page-view-body` wrapper). App: `PageFindBar.tsx`
+- B-623 → fixed: cause `7506ea2` (B-595's `.page-view-body` wrapper). App: `PageFindBar.tsx`
   outline lookup (highlights + scroll-to-match were broken for real users). Test:
   `random-page.spec.ts` selector. Tests: `page-find.spec.ts` (red before), `random-page.spec.ts`.
 - B-624 → fixed (test only): repeat/retry carry-over through `seedPage`'s `if_exists: "return"`;
@@ -111,22 +111,22 @@ seedPage reason); repeat 0 is green. Not fixed — logged below.
 - B-543, B-593 → fixed on main by the server-search agent (connectivity waits for draft-or-block);
   verified 5/5 here. Residual draft-swap race noted above.
 - NEW (low, test): `popups.spec.ts` slash-menu order assumed `todo` on an empty graph; stale since
-  `34c8d3e`. Fixed: pinned `todo` in Settings.
+  `7641c43`. Fixed: pinned `todo` in Settings.
 - NEW (low, test): `popups.spec.ts` is not `--repeat-each`-safe (fixed page names edited by the
   tests: lines 103, 223, 313, 578, 608, 619 fail on repeats 1-4). Open.
 - NEW, fixed (low, real): the block shelf made on a tab's first load was gone after a reload
-  (`c58ede4`). Fix `19c5941`. Tests: `apps/web/src/app/shelf.test.ts`, and the e2e shelf-crumb
+  (`03a8205`). Fix `e039482`. Tests: `apps/web/src/app/shelf.test.ts`, and the e2e shelf-crumb
   test in `views.spec.ts`.
-- NEW, fixed (test): the `views.spec.ts` search-failure test has been stale since `3844838`, and
-  `search-local-only.spec.ts` since `c58ede4` (red on main).
+- NEW, fixed (test): the `views.spec.ts` search-failure test has been stale since `4a4ffe1`, and
+  `search-local-only.spec.ts` since `03a8205` (red on main).
 - NEW (process): concurrent e2e runs in one checkout share `apps/web/dist`. One run's build breaks
   the other's server (`web_client_missing`), and separate ports do not isolate them.
 
-## Final full runs (merged tree `96de5e4` = main `885543b` + this branch; 742 tests, Chromium+WebKit)
+## Final full runs (merged tree `f3ef60d` = main `532f941` + this branch; 742 tests, Chromium+WebKit)
 
 - Run C: **739 passed, 1 failed, 2 skipped** (24.2 m). Failed: `sw-update.spec.ts:86` (B-537's
   test) at its last poll: `{controlled: true, installing: false, waiting: true}` for 60 s after
-  the reload. It passed in every other full run (run 1, the `885543b` run, run D) and 10/10 alone
+  the reload. It passed in every other full run (run 1, the `532f941` run, run D) and 10/10 alone
   (`--repeat-each 5`). That makes it a NEW intermittent failure. Not investigated: the test's own
   comment says the reloaded app registers `/sw.js` again, which is one more update, so a worker
   stuck in `waiting` there may be a real takeover race or a test timing issue. Unknown.

@@ -1,6 +1,6 @@
 # server-search — search on a server for clients, with the device as the floor
 
-Branch `worktree-agent-af21eebbdee0ec39a` (based on main `34c8d3e`). Started 2026-10-03.
+Branch `worktree-agent-af21eebbdee0ec39a` (based on main `7641c43`). Started 2026-10-03.
 
 Owner request (verbatim): "enable search-on-a-server for clients? e.g. we obv can't ship embedding
 on the phone, so could we - if connected to a remote server - use embedding server search instead
@@ -119,7 +119,7 @@ Ollama's.
 - `pnpm -r test`: core 473, plugin-api 17, server 758, web 1476 — all passed.
 - `pnpm -r typecheck`: exit 0.
 - `pnpm exec biome check . --diagnostic-level=error`: only pre-existing format errors in
-  `tools/probes/sweep-devices/*` (untouched, also on `34c8d3e`).
+  `tools/probes/sweep-devices/*` (untouched, also on `7641c43`).
 - e2e Chromium, port 6345 (+6346 for the semantic server): `search connectivity palette
   sync-timeout local-page-creation` → 26 passed. New specs: `search-semantic-server.spec.ts` (5),
   `search-local-only.spec.ts` (1). WebKit: not run (the webkit project found no tests for this
@@ -130,7 +130,7 @@ Ollama's.
   replica's FTS only).
 
 ## Done
-- `3844838` feat(search): local-first search… (implementation, unit tests, e2e, probes)
+- `4a4ffe1` feat(search): local-first search… (implementation, unit tests, e2e, probes)
 - next commit: B-543 test fix, progress file
 
 ## Still unverified

@@ -1,9 +1,9 @@
 # Top-right "⋯" menu (B-541 follow-up)
 
-Branch: `worktree-agent-a81e27c54a58c349a`. It had been created from an old commit (`41666ee`, no
-SyncIndicator, no B-541), so it was fast-forwarded to main `fd779f4` before any work.
+Branch: `worktree-agent-a81e27c54a58c349a`. It had been created from an old commit (`f7c9644`, no
+SyncIndicator, no B-541), so it was fast-forwarded to main `c28097a` before any work.
 
-## Status: done — commit `8578821` on the branch, not merged into main
+## Status: done — commit `1cefaf4` on the branch, not merged into main
 
 ## What was built
 - `apps/web/src/shell/MoreMenu.tsx` + `more-menu.css`: an `.app-icon-button` with lucide's

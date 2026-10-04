@@ -18,11 +18,11 @@ data — do NOT push until the leak audit's remediation is decided by the owner.
 
 | Slug | Task | Ports |
 |---|---|---|
-| leak-audit | **merged** (`7f3ac53`); 246 hits left in test files/deploy → scrub after all merges; repo made PRIVATE 2026-10-04; owner chose: rewrite all history + force-push | — |
-| public-docs | docs/guide (9 pages), README, SECURITY, CONTRIBUTING, **merged** (`36fdac6`); mismatches B-653..B-659 | 6440-6444 |
+| leak-audit | **merged** (`59d84fc`); 246 hits left in test files/deploy → scrub after all merges; repo made PRIVATE 2026-10-04; owner chose: rewrite all history + force-push | — |
+| public-docs | docs/guide (9 pages), README, SECURITY, CONTRIBUTING, **merged** (`018e917`); mismatches B-653..B-659 | 6440-6444 |
 | site | apps/site, **merged** | 6445-6449 |
-| b660 | real data loss after gc on a new device, **merged** (`2cd8b92`) | 6465-6469 |
-| b652 | real silent text loss, **merged** (`d7d6586`, ADR 027 am. 1); B-678..B-680 |  6460-6464 |
+| b660 | real data loss after gc on a new device, **merged** (`b514ba6`) | 6465-6469 |
+| b652 | real silent text loss, **merged** (`6484cd0`, ADR 027 am. 1); B-678..B-680 |  6460-6464 |
 | security-review | **merged**: enforced route inventory, headers/CSP, body limits, loopback-token default; B-672..B-677; backlog H1-H12 in PLAN M13 | 6455-6459 |
 | infra | generic deploy/ + .woodpecker, **merged**; infra-repo draft PR #59 | 6450-6454 |
 
@@ -38,24 +38,24 @@ The owner ran the first real test (Mac desktop + iPhone against `~/nooklet-test`
 running — agents must never touch 6100/6200, `~/nooklet-test` (except a read-only `sqlite3 .backup`),
 or the main checkout's `apps/web/dist`). Fixed during the test: B-638 (serve on a new data dir).
 Logged: B-639 (white screen after adding the server; suspected dist rebuild mid-load) and
-B-640..B-651 from the owner's feedback. Agents in flight (worktrees, all based on `c3302f6`):
+B-640..B-651 from the owner's feedback. Agents in flight (worktrees, all based on `ae90be5`):
 
 | Slug | Task | Ports |
 |---|---|---|
-| b640 | invisible text = WebKit content-visibility paint bug, **merged** (`49ddf1e`); B-660 FK log | 6400-6404 |
+| b640 | invisible text = WebKit content-visibility paint bug, **merged** (`7d92d6c`); B-660 FK log | 6400-6404 |
 | b641 | offline references etc., **merged** | 6405-6409 |
-| b642 | readable conflict copies, **merged** (`1827b8c`, ADR 027); B-652 race logged | 6410-6414 |
-| phone-ui | B-646, B-648..B-651, **merged** (`a1b9e09`); B-661..B-664 logged | 6415-6419 |
-| desktop-local-graph | B-643/B-644, **merged** (`884f469`, ADR 028) | 6420-6424 |
-| all-pages | B-645, **merged** (`9407c8b`) | 6425-6429 |
-| icon-picker | B-647 emoji picker, **merged** (`f45e6bb`) | 6430-6434 |
+| b642 | readable conflict copies, **merged** (`0c4a275`, ADR 027); B-652 race logged | 6410-6414 |
+| phone-ui | B-646, B-648..B-651, **merged** (`c7c822a`); B-661..B-664 logged | 6415-6419 |
+| desktop-local-graph | B-643/B-644, **merged** (`b2f737a`, ADR 028) | 6420-6424 |
+| all-pages | B-645, **merged** (`7ee1b0e`) | 6425-6429 |
+| icon-picker | B-647 emoji picker, **merged** (`4d055c3`) | 6430-6434 |
 
 ## Ready for the first real-device test — 2026-10-03 evening (READ THIS FIRST)
 
 All agent work of 2026-10-03 is merged into `main`; no worktrees, no agents, no servers running.
 Nothing pushed (`main` ~750 commits ahead of `origin/main`); pushing is the owner's call.
 
-**Final verification on `main` (coordinator, `07eddde`):** `pnpm install --frozen-lockfile` ok;
+**Final verification on `main` (coordinator, `62abb3b`):** `pnpm install --frozen-lockfile` ok;
 `pnpm -r typecheck` clean; `biome check . --diagnostic-level=error` clean; unit core 473,
 plugin-api 17, server 781, web 1531 — all pass; full e2e (Chromium + WebKit projects)
 **740 passed, 0 failed, 2 skipped** (19.4 min). `nooklet verify` was run by the sweeps and agents
@@ -78,8 +78,8 @@ Ollama for semantic search).
 ## Assessment — 2026-10-03 morning
 
 The 2026-09-14..16 work (ADR 025 multi-graph hosting, the Capacitor iOS shell, desktop remote mode)
-had sat uncommitted for two weeks. It is now on `main` as `26e1f10` (generated iOS project) and
-`cb79009` (everything else, with its docs). Nothing is pushed: `main` is ~635 commits ahead of
+had sat uncommitted for two weeks. It is now on `main` as `0af1fbf` (generated iOS project) and
+`e3a2bf6` (everything else, with its docs). Nothing is pushed: `main` is ~635 commits ahead of
 `origin/main`. All merged branches were deleted. Only `m8/rv-web-security` is kept, because it was
 cherry-picked in part on purpose (see "Integration choices" under M8). No worktrees, servers or
 agents are left running.
@@ -90,30 +90,30 @@ commits on its own worktree branch. The coordinator merges the branches, folds i
 runs the full e2e suite on the merged tree.
 | Slug | Task | e2e port |
 |---|---|---|
-| b585 | B-585 fix, **merged** (`7784d54`); B-587 cause found, not fixed | 6301 |
-| keys-small | B-450, B-594, B-592, **merged** (`4c233f1`) | 6302 |
-| journal-headings | B-560, **merged** (`9f41585`) | 6303 |
-| top-menu | "⋯" menu, **merged** (`8578821`) | 6304 |
-| tag-autocomplete | B-380 option (c), **merged** (`c6fe3bc`) | 6305 |
-| mermaid-lazy | mermaid lazy + single sidecar copy, **merged** (`ce99b82`, `05ac71e`) | 6306 |
-| real-device-test | runbook + CORS, bare-address, proxy-token fixes, deploy/ drafts, **merged** (`ee8c54c`) | 6307 |
-| refs-count | references count like Logseq, **merged** (`7d34d03`, B-596) | 6308 |
-| empty-journal | B-595, **merged** (`6ddfc77`); B-605 deferred | 6309 |
+| b585 | B-585 fix, **merged** (`ec791f5`); B-587 cause found, not fixed | 6301 |
+| keys-small | B-450, B-594, B-592, **merged** (`64fd85b`) | 6302 |
+| journal-headings | B-560, **merged** (`5e9d772`) | 6303 |
+| top-menu | "⋯" menu, **merged** (`1cefaf4`) | 6304 |
+| tag-autocomplete | B-380 option (c), **merged** (`14ca14d`) | 6305 |
+| mermaid-lazy | mermaid lazy + single sidecar copy, **merged** (`183b058`, `8f637ba`) | 6306 |
+| real-device-test | runbook + CORS, bare-address, proxy-token fixes, deploy/ drafts, **merged** (`757dcf9`) | 6307 |
+| refs-count | references count like Logseq, **merged** (`3568f91`, B-596) | 6308 |
+| empty-journal | B-595, **merged** (`7506ea2`); B-605 deferred | 6309 |
 | sweep-core | **done**: basic loop works; B-606..B-610 → `docs/review/2026-10-03-sweep-core.md` | 6310 |
 | sweep-devices | **done**; B-611..B-619 → `docs/review/2026-10-03-sweep-devices.md` | 6311-6313 |
 | sweep-scope | readiness sweep: PLAN v1 vs reality → `docs/review/2026-10-03-sweep-scope.md` | — |
-| b587 | B-587, real divergence, **merged** (`0cb4a62`, ADR 026) | 6314 |
-| b491 | B-491, **merged** (`f3a0d78`) | 6315 |
+| b587 | B-587, real divergence, **merged** (`af9968e`, ADR 026) | 6314 |
+| b491 | B-491, **merged** (`5107b69`) | 6315 |
 | pairing | D3, B-602, B-603, B-604, B-607, B-616, runbook, **merged** | 6316-6319 |
-| b606 | B-606, **merged** (`15a203c`) | 6320-6324 |
-| tasks-workflow | B-608, B-610, B-617, **merged** (`69e9e99`, `de59bf8`); empty graph defaults to `now` | 6325-6329 |
-| b609 | B-609, **merged** (`319d1e8`, `e65638a`) | 6330-6334 |
-| local-graphs | B-611, B-612, B-619 + 2 more, **merged** (`c58ede4`, `3e3c1c5`); B-631 open (discard deletes all) | 6335-6339 |
-| connection-states | B-613, B-614, B-615, B-618 + B-632, **merged** (`b96e6e2`) | 6340-6344 |
+| b606 | B-606, **merged** (`d2320f0`) | 6320-6324 |
+| tasks-workflow | B-608, B-610, B-617, **merged** (`4250be9`, `81fb0cb`); empty graph defaults to `now` | 6325-6329 |
+| b609 | B-609, **merged** (`f31cfaf`, `b5609ff`) | 6330-6334 |
+| local-graphs | B-611, B-612, B-619 + 2 more, **merged** (`03a8205`, `985f939`); B-631 open (discard deletes all) | 6335-6339 |
+| connection-states | B-613, B-614, B-615, B-618 + B-632, **merged** (`a7ef909`) | 6340-6344 |
 (B-617 → tasks-workflow; B-616 + runbook localhost fix → pairing.)
-| b631 | B-631, **merged** (`926fdb4`); B-633 found and fixed by the coordinator | 6355-6359 |
+| b631 | B-631, **merged** (`984ee90`); B-633 found and fixed by the coordinator | 6355-6359 |
 | e2e-green | B-623 (real regression), B-624, B-561, B-593 + shelf regression, **merged**; final runs 739/1 and 740/0 | 6350-6354 |
-| server-search | local-first search + server semantic enrich, **merged** (`3844838`, `ba58947`) | 6345-6349 |
+| server-search | local-first search + server semantic enrich, **merged** (`4a4ffe1`, `e09a4c9`) | 6345-6349 |
 If cut off: `git worktree list` shows the branches; read each progress file.
 
 ### Incidents 2026-10-03 (so they are not repeated)
@@ -131,9 +131,9 @@ If cut off: `git worktree list` shows the branches; read each progress file.
   B-590 (two calendar tests that failed on the 3rd of every month).
 - Full Chromium e2e: 657 passed, 9 failed, 2 skipped (14.7 min). Known failures: B-585 (ref-page
   creation; ref-pages ×3, remote-rewrite ×1), the B-581/B-568 probe spec ×2, B-592 ×1, B-561's
-  search flake ×1, and B-590's e2e sibling ×1 (fixed after the run). `cb79009`'s message credits
+  search flake ×1, and B-590's e2e sibling ×1 (fixed after the run). `e3a2bf6`'s message credits
   B-585 with 5. Triage later showed the fifth (autocomplete-inside-link, the B-382 test) is B-592:
-  since ADR 024 the "page that does not exist" precondition cannot hold, and it fails on `629f572`
+  since ADR 024 the "page that does not exist" precondition cannot hold, and it fails on `77b1fee`
   too. The probe spec is rewritten and passes 2/2. Its B-581 "hang" was a probe artifact
   (`isVisible` ignores its timeout), so B-581 is now "not reproduced". B-593 (a connectivity e2e
   race) was found and logged.
@@ -188,12 +188,12 @@ cherry-picked on purpose (see "Integration choices" under M8); the branches are 
 are removed.
 
 ### State of `main` at the end
-- Unit: core 423, plugin-api 17, server 744, web 1,300 — all green (web 1,300 before `0d7ae24`'s one
+- Unit: core 423, plugin-api 17, server 744, web 1,300 — all green (web 1,300 before `3b90a35`'s one
   test-only change). `pnpm -r typecheck` clean.
 - `pnpm nooklet verify` on a fresh copy of the live graph: OK.
-- Full Chromium e2e on `0d7ae24`: **634 passed, 1 failed, 2 skipped** (11.8 min). The failure is B-561
+- Full Chromium e2e on `3b90a35`: **634 passed, 1 failed, 2 skipped** (11.8 min). The failure is B-561
   (search-fallback keyword test, order-dependent: passes alone). The first full run on the merged tree
-  had 11 failures; 9 were real merge interactions fixed in `0d7ae24` (tests reading the old text sync
+  had 11 failures; 9 were real merge interactions fixed in `3b90a35` (tests reading the old text sync
   indicator; the delete dialog vs ADR 024), 1 passed alone (autocomplete, load/order).
 - Schema is v7 now (ADR 024's indexes). A desktop `.app` built before this is v6 and its bundled
   server would refuse the migrated graph (B-430's case) — rebuild the app after the owner's server
@@ -246,8 +246,8 @@ are removed.
 
 - ADR 018 journal names + display-format setting; page icons; asset import + B-51; B-43 storage
   fallback; the code-review batch (B-52–B-63, review agent); the e2e expansion (+166 tests) and
-  every bug it found fixed: B-64–B-84 (`615777c`, `f639465`, `7bf1c3b`, `cf50211`, `c9a98f9`,
-  `7d6cdfc`). Whole e2e suite: 222 passed, 3 skipped by design. Unit: 1,320.
+  every bug it found fixed: B-64–B-84 (`e3bfbe9`, `db188ba`, `1b4a8b9`, `b7686df`, `fe3273e`,
+  `19255fc`). Whole e2e suite: 222 passed, 3 skipped by design. Unit: 1,320.
 - research/13 (Logseq usage and demand) committed; PLAN.md M7 added; PLAN.md's four
   contradictions with the code fixed.
 
@@ -256,22 +256,22 @@ are removed.
 | Slug (`docs/progress/<slug>.md`) | Landed |
 |---|---|
 | m7-query | `core/query.ts` + ```` ```query ```` fence view, `/query`; highlight.js + KaTeX behind lazy seams; ADR 011 amended; research/14 (bundle numbers). B-94 open (query `today` after midnight). |
-| m7-templates | `/template` picker, `template::` blocks, journal template via `journal-template:: true`, `<% today %>` on both birth paths, Settings section, ADR 019. Agent hit its usage limit with unit 3 written and green; coordinator landed it as `c8da61c` (B-107 fix + `templates.spec.ts`). B-108 open (template insert not in Cmd+Z). |
+| m7-templates | `/template` picker, `template::` blocks, journal template via `journal-template:: true`, `<% today %>` on both birth paths, Settings section, ADR 019. Agent hit its usage limit with unit 3 written and green; coordinator landed it as `763eab8` (B-107 fix + `templates.spec.ts`). B-108 open (template insert not in Cmd+Z). |
 | m7-refactors | `block.to_page`, `block.move_to_page`, `page.merge`, `graph.replace` (+ MCP), context-menu entries, `/replace` view, ADR 020; registry allows `_` in a segment with a tool-name collision check. B-85 (core cross-page `block.move` strands descendants), B-86 (`[[Page|label]]` refs), B-88 (editing row outlives its block) open. |
 | m7-views | `mentions.link`, reference filters/sort (ADR 021), appearance, shelf outline. |
-| m7-trash-history | `trash.list/restore`, `page.history`, Trash and History views, asset GC (`gc --asset-grace`), ADR 022 (no expiry). Coordinator: History link on the page (`1fc867b`), B-90 core fix (`18f9ff2`), B-91 (`64ecfbc`). |
-| exposure-audit | `docs/review/2026-09-12-exposure-audit.md`; its D1 (mirror never written by serve) fixed as B-95 (`adc2b1a`), plus B-109 `--no-mirror` (`64ecfbc`). B-96–B-106 still open — the queue below. |
+| m7-trash-history | `trash.list/restore`, `page.history`, Trash and History views, asset GC (`gc --asset-grace`), ADR 022 (no expiry). Coordinator: History link on the page (`54f106d`), B-90 core fix (`b9a1871`), B-91 (`cf652bc`). |
+| exposure-audit | `docs/review/2026-09-12-exposure-audit.md`; its D1 (mirror never written by serve) fixed as B-95 (`2d4c31b`), plus B-109 `--no-mirror` (`cf652bc`). B-96–B-106 still open — the queue below. |
 | research-collab | `docs/research/15`; shortlist presence → share links → conflicts UI → Tailscale hosting → membership → OT last. Not in PLAN as a milestone; a proposal when the owner wants it. |
 | wiki | `docs/wiki/` — 21 pages, imports with 0 warnings, verified rendering. Found B-109/B-110 and seven doc-vs-code drifts (listed in its report; see queue). |
 
-Coordinator's own commits after the agents: `adc2b1a` B-95, `1fc867b` History link, `34a5214` e2e
-artifacts keyed by port + OUT-27, `18f9ff2` B-90, `c8da61c` templates unit 3, `64ecfbc`
-B-91/B-109/B-110, `e86b1f8` PLAN M7 done + 29 fixed entries moved to Fixed, `da449c7` one
-`callOp`, `a6c2859` e2e day-offset collision.
+Coordinator's own commits after the agents: `2d4c31b` B-95, `54f106d` History link, `e9fbda1` e2e
+artifacts keyed by port + OUT-27, `b9a1871` B-90, `763eab8` templates unit 3, `cf652bc`
+B-91/B-109/B-110, `6c14697` PLAN M7 done + 29 fixed entries moved to Fixed, `a34e59c` one
+`callOp`, `b9023e9` e2e day-offset collision.
 
-Final numbers on `a6c2859`: `pnpm -r typecheck` clean; unit 1,551 passing (331 core + 17 + 519
+Final numbers on `b9023e9`: `pnpm -r typecheck` clean; unit 1,551 passing (331 core + 17 + 519
 server + 684 web); full Chromium e2e 286 passed / 1 failed / 2 skipped — the one failure was the
-day-offset collision fixed in `a6c2859` (22/22 on rerun of the two specs involved; the full suite
+day-offset collision fixed in `b9023e9` (22/22 on rerun of the two specs involved; the full suite
 was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph: OK, 20,411 ops.
 
 ## Queue (in order of worth), none started
@@ -292,12 +292,12 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
 
 ## M11 runs — 2026-09-13 evening (in flight)
 
-- `wf_975bcd44-fae` (base `52e5d20`, branches `m11/<slug>`, ports 6410–6415): ref-pages (pages exist once
+- `wf_975bcd44-fae` (base `ac2528e`, branches `m11/<slug>`, ports 6410–6415): ref-pages (pages exist once
   referenced — owner request; ADR 023), keys-in-fields (B-300 option c), remote-rewrite (B-192),
   mirror-escape (B-342 option b), repair-agenda (SCHEDULED text repair tool — coordinator applies it
   to the live graph after reading the report; agenda non-task dated blocks + overdue collapse),
   delete-launcher (Delete page; B-430). Each verified adversarially.
-- `wf_b8e786c1-020` (base `52e5d20`, ports 6416–6418): webkit-focus (B-42 — owner: desktop app only,
+- `wf_b8e786c1-020` (base `ac2528e`, ports 6416–6418): webkit-focus (B-42 — owner: desktop app only,
   on sync refresh mid-`[[dru`), ref-label-flash (B-500 — `((id))` on every refresh), search-fallback
   (explain why search fell back; embeddings were never configured on the owner's graph; Ollama +
   bge-m3 available).
@@ -313,11 +313,11 @@ was not rerun after it); `pnpm nooklet verify` on a fresh copy of the real graph
   PWA precache, sidecar reusing the web build's mermaid.
 - Owner decisions recorded 2026-09-13: all twelve recommendations accepted (see BUGS.md B-194,
   B-291; spec R38). `/Applications/nooklet.app` removed (in the Trash); never copy builds there.
-  A fresh desktop build from `adadff1` is at `apps/desktop/src-tauri/target/release/bundle/macos/`.
+  A fresh desktop build from `c30cb37` is at `apps/desktop/src-tauri/target/release/bundle/macos/`.
 
 ## M10 run — 2026-09-13 (in flight)
 
-Workflow `wf_ced35de1-fb8`, base `70c9bb9`, branches `m10/<slug>`. editor-keys (B-282/294/295/344/346,
+Workflow `wf_ced35de1-fb8`, base `007052a`, branches `m10/<slug>`. editor-keys (B-282/294/295/344/346,
 port 6400, B-380–389), core-ops (B-310/311/322/324/370, 6401, B-390–399), tests-desktop
 (B-292/323/333/335/356/371/336/337, 6402, B-400–409), each verified adversarially; plus a final
 regression QA pass on the real graph (serve 6450) → fixer (6460, B-410–419). Integration: as M8/M9.
@@ -327,7 +327,7 @@ regression QA pass on the real graph (serve 6450) → fixer (6460, B-410–419).
 Workflow `wf_e473942f-106`: 22 agents, 0 errors. Six bug-area branches each verified adversarially
 (5 fixed-up, 1 solid); two QA explorers on the M8 features (6 + 6 findings, all handled); two
 reviewers of the M8 merge resolutions (5 web + 4 server findings, all confirmed and fixed). All ten
-`m9/*` branches merged into main (`…` through `0aabb86`); inbox folded (`1cc25b1`).
+`m9/*` branches merged into main (`…` through `9b60f5c`); inbox folded (`e569262`).
 
 Integration choices: B-225 was built twice (render-views: `page-icon-request.ts` + `page-actions.css`;
 qafix-m8-views: a signal in `PageIcon.tsx` + "Change icon"). Kept render-views'; re-applied
@@ -349,8 +349,8 @@ the desktop sidecar.
 One workflow (`wf_69b4f9a8-ee2`, 38 agents, 0 errors): 3 QA explorers on copies of the real graph →
 3 fixers; 4 reviewers → a skeptic per dimension (35 of 37 findings survived) → 4 fixers; 10 builders
 → an adversarial verifier each in the same worktree (9 fixed defects on their branch, 1 solid).
-All 17 branches `m8/*` merged into main (merge commits `…` through `db4f1eb`), inbox folded
-(`5454b49`), 26 bugs open.
+All 17 branches `m8/*` merged into main (merge commits `…` through `ccaf23f`), inbox folded
+(`8b5c38b`), 26 bugs open.
 
 ### What landed (by branch)
 - QA editor: redo of a new block (B-240), undo after selection delete (B-241), Alt+Up/Down undo focus
@@ -377,17 +377,17 @@ All 17 branches `m8/*` merged into main (merge commits `…` through `db4f1eb`),
 ### Integration choices (so nobody re-litigates)
 - Parallel duplicate fixes: kept B-250 over B-134, B-240 over B-190, B-130/B-131 over B-135/B-136,
   B-143 over B-266 (both tests kept), B-268's scheme denylist over B-138's allowlist.
-- Skipped from `m8/rv-web-security`: `6d1cb2e` (allowlist), `3d73b13` (one-POST-path refactor) and
-  `373c654` (page paths module) — overlapping refactors that conflicted with the reactivity branch;
-  worth redoing on the merged tree. `ff140b1`/`eb3face` were duplicates.
+- Skipped from `m8/rv-web-security`: `48e0a9a` (allowlist), `5d12eaa` (one-POST-path refactor) and
+  `24ee675` (page paths module) — overlapping refactors that conflicted with the reactivity branch;
+  worth redoing on the merged tree. `5eee913`/`2fd98ad` were duplicates.
 - `m8/impl-export` moved the page renderer to core; the security branch's NAME_MAX-safe
   `pageFilePath` was kept in `mirror/export.ts`.
 
 ### Numbers on the merged tree
-Unit: core 393, plugin-api 17, server 608, web 1,000 — all green after `9f410e3`. `verify` on a
+Unit: core 393, plugin-api 17, server 608, web 1,000 — all green after `d6dda8c`. `verify` on a
 fresh copy of the live graph: OK, 20,411 ops. Fresh import of the Logseq graph: 127 pages + journals,
 18,628 blocks, 171 assets, 0 dangling; verify OK; 24 scheduled dates (was 4), 0 leftover `SCHEDULED:`.
-Full Chromium e2e on `4709bd8`'s tree: **439 passed, 0 failed, 2 skipped** (7.0 min). Worktrees
+Full Chromium e2e on `29323dc`'s tree: **439 passed, 0 failed, 2 skipped** (7.0 min). Worktrees
 removed; the 17 `m8/*` branches are kept until the owner has looked.
 
 ### Owner decisions waiting

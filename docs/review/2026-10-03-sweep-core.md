@@ -3,7 +3,7 @@
 **Question (owner):** before the real test (own Mac, own server, own iPhone), are all the
 functional pieces in place for basic daily use?
 
-**Method.** `main` at `c322269`. `pnpm install --frozen-lockfile`, then `pnpm --filter @nooklet/web build`.
+**Method.** `main` at `319b6d9`. `pnpm install --frozen-lockfile`, then `pnpm --filter @nooklet/web build`.
 I copied `~/notes-graph` to a scratch directory (the original was only read)
 and ran `nooklet import` into a fresh `--data` dir. Then `nooklet serve --port 6310` and real
 headless Chromium (Playwright), driven the way a person would: clicks and keystrokes, with the API

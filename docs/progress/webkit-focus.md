@@ -4,7 +4,7 @@ Resilience log, updated after every meaningful step. If you are reading this aft
 read "Next steps" and continue from there.
 
 Branch `m11/webkit-focus`, worktree `<repo>/.claude/worktrees/wf_b8e786c1-020-1`,
-based on `52e5d20`. E2E port 6416. Bug entries go to `docs/bugs-inbox/webkit-focus.md` (new
+based on `ac2528e`. E2E port 6416. Bug entries go to `docs/bugs-inbox/webkit-focus.md` (new
 numbers B-501..B-509; none used), never `docs/BUGS.md`. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11b/webkit-focus/`
 (traces and dumped focus logs in `traces/`; graph copy in `graph/`).
@@ -16,13 +16,13 @@ WebKit does not reproduce: say so, add owner-usable focus instrumentation, stop.
 
 ## 1. Done (committed)
 
-- `57985f6` probes — `tools/probes/webkit-refresh-focus.spec.ts` (e2e graph) and
+- `8dd87e2` probes — `tools/probes/webkit-refresh-focus.spec.ts` (e2e graph) and
   `tools/probes/webkit-refresh-focus-real-graph.mjs` (copy of the real graph). NOT reproduced in
   Playwright WebKit or Chromium; details in the inbox entry.
-- `60b58f6` focus log — `apps/web/src/app/focus-log.ts` (+ 8 unit tests), hooks in
+- `4b360e4` focus log — `apps/web/src/app/focus-log.ts` (+ 8 unit tests), hooks in
   `data/store.ts` (replica change, sync status), `editor/surface.ts` (attach/detach), `main.tsx`
   (init), Diagnostics panel section (`views/DiagnosticsPanel.tsx`, `diagnostics.css`).
-- `2206cfb` e2e — `e2e/tests/webkit-refresh-focus.spec.ts` (3) and `e2e/tests/focus-log.spec.ts`
+- `be8342b` e2e — `e2e/tests/webkit-refresh-focus.spec.ts` (3) and `e2e/tests/focus-log.spec.ts`
   (2), both in the webkit project's testMatch. 10/10 in chromium+webkit. Sabotage check: a build
   that blurs on each replica change fails all 6 refresh-focus runs. Log refinements (window
   capture listeners, correct parent for Element#remove, deduped sync notes).
@@ -32,12 +32,12 @@ Decisions: no fix (task step 4 — nothing reproduced, nothing to fix without gu
 WebKit not run (would take the keyboard from the owner's live session). No BlockTree hunks at all,
 so no merge surface with m11/remote-rewrite.
 
-- Broad e2e on `94ed831`'s code (13 specs: popups, focus, focus-return, editing,
+- Broad e2e on `3c9f4ff`'s code (13 specs: popups, focus, focus-return, editing,
   editing-row-leaves, autocomplete, autocomplete-busy-replica, follow-link-popup,
   journal-stream-editing, diagnostics, storage, webkit-refresh-focus, focus-log):
   - chromium: 106 passed, 1 skipped (storage's webkit-only test).
   - webkit (temporary config without testMatch, deleted): 101 passed, 6 failed. All 6 also fail
-    with the app files reverted to `52e5d20`. Five fail at the first assertion after a reload or
+    with the app files reverted to `ac2528e`. Five fail at the first assertion after a reload or
     `goto` (in-memory replica loses its unpushed queue — expected, B-43); one is new B-501
     (Alt+Up/Down caret to 0 in WebKit), logged in the inbox, not diagnosed.
 
@@ -48,5 +48,5 @@ so no merge surface with m11/remote-rewrite.
 ## 3. Next steps
 
 1. Owner: record a focus log in the desktop app (Diagnostics → Focus log) covering one loss.
-2. B-501: diagnosed and fixed by the verification (with B-502, `3973aa1`; see
+2. B-501: diagnosed and fixed by the verification (with B-502, `8fc4174`; see
    `docs/progress/webkit-focus-verify.md`) — still worth a look in the desktop app.

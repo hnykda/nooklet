@@ -8,14 +8,14 @@ YYYY-MM-DD[ HH:MM]`, `repeat:: 1w[ from done]`), picker behaviour is
 `docs/spec/commands-and-keymap.md` R38.
 
 Branch `m8/impl-dates`, worktree `<repo>/.claude/worktrees/wf_69b4f9a8-ee2-8`,
-started from `da85cfb` (the worktree was created at an older commit, `41666ee`; the fresh branch
-was reset to `da85cfb` before any work). e2e port 6400. Scratch:
+started from `61279a2` (the worktree was created at an older commit, `f7c9644`; the fresh branch
+was reset to `61279a2` before any work). e2e port 6400. Scratch:
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-dates/`.
 
 ## 1. Done (commit hashes)
 
-- `de8a3bb` `commands/date-picker/parse.ts` (+test): typed-date vocabulary → ADR 011 parts.
-- `fa30e65` picker + host + chips, unit/component tested:
+- `f6b6059` `commands/date-picker/parse.ts` (+test): typed-date vocabulary → ADR 011 parts.
+- `0674645` picker + host + chips, unit/component tested:
   - `commands/date-picker/host.ts` — real `DatePickerHost` (`open` → pick → one
     `setBlockProps` batch; `set` for agents, no UI); `patchForPick` is the write contract.
   - `commands/date-picker/DatePicker.tsx` + `date-picker.css` — the popup.
@@ -25,16 +25,16 @@ was reset to `da85cfb` before any work). e2e port 6400. Scratch:
     B-96 fix, 3 lines).
   - `editor/date-chips.ts` (pure label/tone) + `editor/DateChips.tsx` + `date-chips.css`;
     `editor/BlockRowView.tsx` hookup (import + 7-line JSX).
-- `2438473` `e2e/tests/dates.spec.ts` (6 tests), inbox B-96/B-102/B-140, this file.
-- `476d52a` B-141 (stale error line in the picker, a Solid `<Match>` render-callback trap) +
+- `7f7cf45` `e2e/tests/dates.spec.ts` (6 tests), inbox B-96/B-102/B-140, this file.
+- `db1f068` B-141 (stale error line in the picker, a Solid `<Match>` render-callback trap) +
   picker width/wrap after a light/dark/400px screenshot review.
-- `5d728d6` B-142 logged (open): a picked date is not undoable; probe
+- `8a563fc` B-142 logged (open): a picked date is not undoable; probe
   `tools/probes/picked-date-undo.spec.ts`.
-- `2c5cb65` B-143 fixed in `packages/core/src/outline.ts`: Logseq's `SCHEDULED: <2023-2-17 Fri>`
+- `3a27081` B-143 fixed in `packages/core/src/outline.ts`: Logseq's `SCHEDULED: <2023-2-17 Fri>`
   (one-digit month/day/hour) was imported as text, losing 20 of the owner's 24 scheduled dates.
   Tests: `packages/core/src/outline-org-dates.test.ts`, importer test in `logseq.test.ts`.
   Grammar spec OUT-23 updated. Real import re-run: 24 scheduled (was 4), 0 leftovers, verify OK.
-- `d979ba5` spec R38 "as built" paragraph; `tools/probes/date-chips-real-graph.mjs` (19 chips
+- `1a61255` spec R38 "as built" paragraph; `tools/probes/date-chips-real-graph.mjs` (19 chips
   on the owner's 2023-02-17 journal, picker opens on that day, no errors).
 
 ## 2. In flight
@@ -83,7 +83,7 @@ Left for later / other owners: B-142 (undo of store-routed task commands, needs 
 - A date set through the picker is not on the editor's undo stack — verified by probe, logged as
   B-142 (open). The same gap in the other `ctx.store` task commands is by code reading only.
 - `biome check apps/web/src/editor/BlockRowView.tsx` reports one `noStaticElementInteractions`
-  error on the row `<div onContextMenu>` — pre-existing at `da85cfb` (checked in the main
+  error on the row `<div onContextMenu>` — pre-existing at `61279a2` (checked in the main
   checkout), not touched here.
 - Mobile/IME: a virtual keyboard that sends `beforeinput` without real `keydown`s would type into
   the block rather than the picker. The grid and buttons work by touch. Not tested on a device.

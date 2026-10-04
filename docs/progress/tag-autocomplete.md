@@ -1,7 +1,7 @@
 # B-380 — no `#` autocomplete inside an existing tag (owner option c)
 
-## Status: done — fix commit `c6fe3bc` on branch `worktree-agent-aa4a26c6b54a87399`
-- [x] Worktree branch fast-forwarded from a stale base (41666ee) to main `fd779f4` before starting.
+## Status: done — fix commit `14ca14d` on branch `worktree-agent-aa4a26c6b54a87399`
+- [x] Worktree branch fast-forwarded from a stale base (f7c9644) to main `c28097a` before starting.
 - [x] `trigger.ts#matchTagTrigger(before, after = "")` returns null when the text after the caret
       continues the tag (`continuesTag`).
 - [x] `app/CommandLayer.tsx` onKeyUp passes `sel.content.slice(sel.start)`.

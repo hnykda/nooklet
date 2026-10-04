@@ -25,10 +25,10 @@ Never touch `~/.nooklet/default`.
 
 ## Pages
 
-All 21 pages done and committed: e366708 (17 pages), a08d492 (Troubleshooting, Architecture,
-Contributing, FAQ), 4797ca1 (mirror pages follow B-95; nested-fence fix on Markdown format).
+All 21 pages done and committed: a07386f (17 pages), 992c9fe (Troubleshooting, Architecture,
+Contributing, FAQ), 3822e17 (mirror pages follow B-95; nested-fence fix on Markdown format).
 
-Final verification (2026-09-12, after 4797ca1): import 21 pages / 422 blocks, 0 warnings,
+Final verification (2026-09-12, after 3822e17): import 21 pages / 422 blocks, 0 warnings,
 0 errors, 0 dangling refs; `verify-wiki.mjs` against `serve --port 6363`: all 21 pages render
 blocks in Chromium with the right title, all 21 distinct [[link]] targets resolve, Keyboard
 shortcuts renders 5 tables. Server on 6363 stopped. Port 6362 was another agent's server
@@ -39,7 +39,7 @@ In flight: nothing. Still to do: nothing — task complete; report delivered to 
 
 ## Findings to report (code contradicts docs)
 
-- Mirror: SUPERSEDED mid-task by `adc2b1a` (17:54, B-95) — `serve` now runs `startLiveMirror`
+- Mirror: SUPERSEDED mid-task by `2d4c31b` (17:54, B-95) — `serve` now runs `startLiveMirror`
   (commit-triggered, 500 ms debounce, sweep on start). Still export-only: no file watcher
   (chokidar unused). Pages corrected accordingly (Markdown format, Command line, Architecture, FAQ).
 - `--no-mirror` is STILL a no-op even though B-95 says "honoured for the first time":

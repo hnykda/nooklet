@@ -5,34 +5,34 @@ read "Next steps" and continue from there. Owner brief: research/13 §4.2 items 
 
 ## 1. Done (committed)
 
-- `750cc25` feat(server): `mentions.link` op (`packages/server/src/ops/page-link-unlinked.ts` +
+- `a4d137f` feat(server): `mentions.link` op (`packages/server/src/ops/page-link-unlinked.ts` +
   `.test.ts` + `.http.test.ts`), registered in `ops/index.ts`, MCP pin in `mcp/server.test.ts`
   (now counts `CORE_TOOL_NAMES.length` instead of a hard-coded 21), spec §4.3.24 + catalog row 25
   in `docs/spec/mcp-tools.md`. Named `mentions.link`, NOT `page.link_unlinked`: the registry's
   `OP_NAME_RE` (spec §3.1 rule 1) rejects underscores inside a segment.
 
-- `7e2ec53` feat(web): references filters/sort + Link all with undo (feature 5 + 10b client),
+- `3d56c6e` feat(web): references filters/sort + Link all with undo (feature 5 + 10b client),
   ADR 021, this progress file.
-- `551daa7` feat(web): appearance basics (feature 6).
-- `dab300f` feat(web): shelf page-outline mode (feature 7).
-- `81546e1` test(web): explicit type on the shelf outline test helper (TS7022 caught by the
+- `e338de5` feat(web): appearance basics (feature 6).
+- `aa3ca61` feat(web): shelf page-outline mode (feature 7).
+- `6c5892c` test(web): explicit type on the shelf outline test helper (TS7022 caught by the
   worktree typecheck). biome: clean on all 22 of my files (17:50).
 
 All four features are committed with green unit tests. **The four e2e specs pass (8/8, 17:41)**
 in the HEAD worktree on port 6353 (see Blockers for why a worktree). `pnpm -r test` at HEAD
-(f1675df): all four packages green (17:44). `pnpm -r typecheck` fails in `packages/core/src/query.ts`
-(the query agent's commit f1675df, not mine) — server and web typecheck on their own.
-**Full e2e suite (18:05, foreground, port 6353, worktree at f1675df + cherry-picked 81546e1
-because HEAD `fe1a197` broke `ops/index.ts` with duplicate `trashList`/`trashRestore` exports):
+(d24ce73): all four packages green (17:44). `pnpm -r typecheck` fails in `packages/core/src/query.ts`
+(the query agent's commit d24ce73, not mine) — server and web typecheck on their own.
+**Full e2e suite (18:05, foreground, port 6353, worktree at d24ce73 + cherry-picked 6c5892c
+because HEAD `9a10bc7` broke `ops/index.ts` with duplicate `trashList`/`trashRestore` exports):
 247 passed, 2 failed, 2 skipped.** The 2 failures are `popups.spec.ts` slash-menu counts (16
-items on screen vs the spec's 15) — the templates agent's `/template` item (78970b1) without a
-`SLASH_ORDER` update; none of my code. Logged as B-92 (commit c1c150a wrote it as B-90; another agent took B-90 concurrently, renumbered). Remaining: final report.
+items on screen vs the spec's 15) — the templates agent's `/template` item (ced489d) without a
+`SLASH_ORDER` update; none of my code. Logged as B-92 (commit 23b239b wrote it as B-90; another agent took B-90 concurrently, renumbered). Remaining: final report.
 
 ## 2. In flight (on disk, uncommitted)
 
 - Nothing uncommitted of mine at 17:36. The details below describe what each commit contains, for
   orientation after a restart.
-- **References filters/sort + Link all (client)** — in `7e2ec53`:
+- **References filters/sort + Link all (client)** — in `3d56c6e`:
   - `apps/web/src/views/referenceGrouping.ts` (+ `.test.ts`): sort param, `filterCandidates`,
     `applyReferenceFilter`, `cycleFilterKey`, `referencedKeys`.
   - `apps/web/src/views/referenceFilters.ts` (+ `.test.ts`, new): localStorage persistence.

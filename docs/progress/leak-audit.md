@@ -1,7 +1,7 @@
 # Progress — pre-publication leak audit
 
 Started 2026-10-04 by the leak-audit agent, branch `worktree-agent-a5608154727b50cb1` (based on
-`e3df44a`). Brief: before ~770 local commits are pushed to the public `hnykda/nooklet`, find
+`70b60be`). Brief: before ~770 local commits are pushed to the public `hnykda/nooklet`, find
 secrets, the owner's real notes, and personal infrastructure in (a) the working tree, (b) the
 unpushed range `origin/main..main`, (c) the already-public `origin/main`; scrub what this agent owns;
 write the history plan for the owner; add guards.
@@ -14,8 +14,8 @@ the guard.
 
 ## State
 
-- [x] Verified: `git remote -v` = `hnykda/nooklet`, `e3df44a` is a commit, branch fast-forwarded to it.
-- [x] Scan working tree, unpushed range (769 commits, 41666ee..e3df44a), public `origin/main` (59 commits).
+- [x] Verified: `git remote -v` = `hnykda/nooklet`, `70b60be` is a commit, branch fast-forwarded to it.
+- [x] Scan working tree, unpushed range (769 commits, f7c9644..70b60be), public `origin/main` (59 commits).
 - [x] Scrub internal docs, probes, CLAUDE.md, comments in 10 source files.
 - [x] Blank the LAN address in `tools/probes/pairing-link-ui/pairing-confirm.png`.
 - [x] Guards: `.gitleaks.toml`, `tools/leak-check.mjs`, `tools/git-hooks/pre-commit`, CLAUDE.md
@@ -48,7 +48,7 @@ Counts are distinct items, not occurrences. "Tree" = current working tree before
 
 - **A device token** (`nk_` + 48 hex, `write` + `can_sync`) printed by a scratch server during the
   B-25 Host-forgery repro, quoted in `docs/BUGS.md` (B-25) and
-  `docs/research/12-multi-user-and-pairing.md` §1.6(a). **Public since 2026-09-11** (`67a0c77`, in
+  `docs/research/12-multi-user-and-pairing.md` §1.6(a). **Public since 2026-09-11** (`955e241`, in
   `origin/main`). It was minted on a throwaway data dir on port 6198, so it is very likely dead, but
   a token in public history is treated as compromised regardless — see "Rotate" below.
 - Not found anywhere in tree or history: private keys (one `BEGIN OPENSSH PRIVATE KEY----- test`
@@ -102,7 +102,7 @@ Worst first:
 
 | | working tree (before) | unpushed range | public `origin/main` |
 |---|---|---|---|
-| token | 2 files | every commit since 67a0c77 | **yes** (2 files) |
+| token | 2 files | every commit since 955e241 | **yes** (2 files) |
 | real-graph path | ~20 files | yes | **yes** (5 files) |
 | LAN IP | ~15 files | yes | **yes** (`.81`, 3 files) |
 | drug-related page name | 6 files | yes | **yes** (1 comment, 1 test) |
@@ -141,7 +141,7 @@ rehearsal made, and with them **all unit tests pass and typecheck is clean** (se
 ## History — options for the owner
 
 Facts that shape the choice (checked 2026-10-04 with `gh api repos/hnykda/nooklet`): public, **0
-forks, 0 stars**, pushed once (2026-09-11). Local `main` is 769 commits on top of public `41666ee`.
+forks, 0 stars**, pushed once (2026-09-11). Local `main` is 769 commits on top of public `f7c9644`.
 
 **(a) Squash the unpushed range into fresh commits before the first push.**
 Scrub the tip (this branch + the scrubber over the files above), then
@@ -163,7 +163,7 @@ node tools/leak-check.mjs --range origin/main..main     # must print "clean"
 pnpm install && pnpm -r test && pnpm -r typecheck
 ```
 
-Rehearsal on a scratch clone (2026-10-04, 769 commits, ~12 s): public `41666ee` stays an ancestor
+Rehearsal on a scratch clone (2026-10-04, 769 commits, ~12 s): public `f7c9644` stays an ancestor
 (so the later push is a fast-forward, **no force-push**); `leak-check --range` over the rewritten
 range: clean; commit messages: clean; at the rewritten tip `pnpm -r test`: core 473, plugin-api 17,
 server 783, web 1531 — all passed; `pnpm -r typecheck` clean. (A first rehearsal failed 3 tests —
@@ -171,7 +171,7 @@ a sort order, a regex-escaped IP, a lowercase alias — which is why the mapping
 + Keeps every commit, blame and bisect. − Commit hashes change, so hashes cited inside BUGS.md and
 progress files point at the old commits; filter-repo leaves `.git/filter-repo/commit-map`, and a
 second `--replace-text` pass built from it (old short hash → new short hash) fixes those
-references. − Files untouched since `41666ee` keep their public content (the token in research 12,
+references. − Files untouched since `f7c9644` keep their public content (the token in research 12,
 the graph path in the rust-core proposal…): they are fixed by this branch's commit, but remain in
 the public commits. − Every other branch/worktree based on the old `main` must be rebased onto the
 rewritten one (all agents should be merged or stopped first).
@@ -210,7 +210,7 @@ came from a deleted scratch dir). No other credential was found in any range.
   installed; adds the private denylist when `~/.config/nooklet/leak-denylist.txt` (or
   `$NOOKLET_LEAK_DENYLIST`) exists, never echoing a denylisted string. Modes `--staged`, `--tree`,
   `--range A..B` (added lines only). `leak-check: allow` on a line exempts a deliberate example.
-  Checked: `--range 67a0c77~1..67a0c77` flags the token and LAN IP; `--staged` on this branch: clean.
+  Checked: `--range 955e241~1..955e241` flags the token and LAN IP; `--staged` on this branch: clean.
 - `tools/git-hooks/pre-commit` — enable with `git config core.hooksPath tools/git-hooks`.
 - CLAUDE.md "Public repo hygiene".
 - Current `--tree` result on this branch: remaining hits are exactly the feature-agent test files

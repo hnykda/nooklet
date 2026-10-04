@@ -7,8 +7,8 @@ failing test, fix the cause, one commit per finding. Then write
 start, you were restarted: read it, then continue from "Next steps".
 
 - Branch `m8/rv-server-security`, worktree `<repo>/.claude/worktrees/wf_69b4f9a8-ee2-21`.
-  The worktree was created at an OLD commit (41666ee, 88 commits behind); the branch was reset to
-  `da85cfb` (the agreed start) before any work.
+  The worktree was created at an OLD commit (f7c9644, 88 commits behind); the branch was reset to
+  `61279a2` (the agreed start) before any work.
 - Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/rv-server-security/`
   — the reviewer's probes `p1`..`p7`, this pass's `p10`..`p12`, `graph-fix/` (real-graph copy,
   now with a replace + undo in its op log), `graph-gc/` (disposable, gc ran on it), `import-f3/`.
@@ -30,29 +30,29 @@ start, you were restarted: read it, then continue from "Next steps".
 
 All seven fixed, each red first. Commits, oldest first:
 
-- `c533125` F1 (B-125 time) — scan in an eval'd worker with a 2 s budget; pre-write re-check and
+- `c2473b2` F1 (B-125 time) — scan in an eval'd worker with a 2 s budget; pre-write re-check and
   409 `conflict`. Red: `/healthz` at 5,010 ms (25 `a`s). Real graph: the three 60 s-killed
   patterns answer `invalid` in 2.1–2.3 s.
-- `3f77bf9` F2 (B-126) — shortened hash-suffixed file names + `title::`; per-page failure
+- `4678ecd` F2 (B-126) — shortened hash-suffixed file names + `title::`; per-page failure
   isolation; temp file cleanup. Real graph `nooklet export`: 952 pages, `failed: []`.
-- `3389bd1` F3 (B-127) — assets listed by Dirent, symlinks skipped with a warning, symlinked
+- `f6a9f53` F3 (B-127) — assets listed by Dirent, symlinks skipped with a warning, symlinked
   `assets/` not followed. Owner's Logseq graph imports as before (171 assets, no warnings).
-- `8ddae71` F5 (B-125 memory) — max_blocks stops holding text, output budget, per-block cap.
-  Real graph: `e` → 2,000 chars 1,091 MB → ~210 MB rss. (Its heap cap was wrong — see `3d01f11`.)
-- `fe5837a` F6 (B-109) — `--key=value`, `parseGcFlags`, unknown flags refused for gc/restore.
+- `70f5362` F5 (B-125 memory) — max_blocks stops holding text, output budget, per-block cap.
+  Real graph: `e` → 2,000 chars 1,091 MB → ~210 MB rss. (Its heap cap was wrong — see `e3c2292`.)
+- `811e11a` F6 (B-109) — `--key=value`, `parseGcFlags`, unknown flags refused for gc/restore.
   Reproduced and re-checked with the CLI on a graph copy.
-- `e377269` F7 (B-129) — parser depth 32 / filters 100; new `e2e/tests/query-limits.spec.ts`.
-- `47186b3` F8 (B-128) — `gu`/`giu` server and web; new `e2e/tests/replace-unicode.spec.ts`.
-- `6b492d2` progress note: heap-cap abort found in `8ddae71`.
-- `3d01f11` B-125 correction — exact replaced length before building, no `resourceLimits`. Red:
+- `41212ee` F7 (B-129) — parser depth 32 / filters 100; new `e2e/tests/query-limits.spec.ts`.
+- `b244245` F8 (B-128) — `gu`/`giu` server and web; new `e2e/tests/replace-unicode.spec.ts`.
+- `0ec6f97` progress note: heap-cap abort found in `70f5362`.
+- `e3c2292` B-125 correction — exact replaced length before building, no `resourceLimits`. Red:
   the 199,990-char test SIGABRTed the vitest worker.
-- `25e3951`, `2d384e4` — `tools/probes/worker-heap-cap-abort.mjs`, `tools/probes/tsx-function-tostring.ts`.
+- `cc70a34`, `455bc43` — `tools/probes/worker-heap-cap-abort.mjs`, `tools/probes/tsx-function-tostring.ts`.
 - Last commit: `docs/review/2026-09-13-m7-rv-server-security.md` and this file.
 
 Final numbers: `pnpm -r test` 149 files / 1,579 tests green; `pnpm -r typecheck` clean;
 `nooklet verify` on graph-fix OK (22,765 ops after a real replace + undo); e2e on 6471: replace,
 replace-unicode, query, query-limits, refactor, views 48/49 (the one failure, `views.spec.ts:461`,
-also fails at `da85cfb`); after `3d01f11` replace, replace-unicode, query-limits, refactor 11/11.
+also fails at `61279a2`); after `e3c2292` replace, replace-unicode, query-limits, refactor 11/11.
 
 ## 2. In flight
 
@@ -61,7 +61,7 @@ also fails at `da85cfb`); after `3d01f11` replace, replace-unicode, query-limits
 ## 3. Next steps
 
 - None on this branch. For the integrator: fold `docs/bugs-inbox/rv-server-security.md` into
-  `docs/BUGS.md`; `views.spec.ts:461` is failing on `da85cfb` and has no owner here.
+  `docs/BUGS.md`; `views.spec.ts:461` is failing on `61279a2` and has no owner here.
 
 ## 4. Decisions
 

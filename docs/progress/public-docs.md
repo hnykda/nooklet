@@ -1,6 +1,6 @@
 # Progress: public documentation (docs/guide, README, CONTRIBUTING, SECURITY)
 
-Branch: `worktree-agent-adac0d7da28c15554`, fast-forwarded to `main` @ `e3df44a`. Started 2026-10-04.
+Branch: `worktree-agent-adac0d7da28c15554`, fast-forwarded to `main` @ `70b60be`. Started 2026-10-04.
 
 Goal: `docs/guide/` is the single source for public docs (a docs site renders it: CommonMark, YAML
 front matter `title`/`description`/`order`, relative links, no raw HTML). README becomes a short
@@ -53,5 +53,5 @@ Recorded here, not in BUGS.md (another agent owns that file this round).
 
 ## How to resume
 
-`git log --oneline e3df44a..HEAD`. Pages live in `docs/guide/`; each has front matter. Re-check any
+`git log --oneline 70b60be..HEAD`. Pages live in `docs/guide/`; each has front matter. Re-check any
 claim against `pnpm nooklet --help` and `packages/server/src/cli.ts` before changing it.

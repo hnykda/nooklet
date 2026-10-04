@@ -1,6 +1,6 @@
 # M11 verify — m11/search-fallback (adversarial check of B-520..B-524)
 
-Verifier's resilience log. Branch `m11/search-fallback` from `be81345`, worktree
+Verifier's resilience log. Branch `m11/search-fallback` from `9140f05`, worktree
 `.claude/worktrees/wf_b8e786c1-020-3`. Scratch
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/m11b/search-fallback-verify/`
 (`data/` = NOOKLET_DATA, `graph/` = `.backup` of the owner's graph taken 18:23, `sidecar-graph/` =
@@ -8,10 +8,10 @@ Verifier's resilience log. Branch `m11/search-fallback` from `be81345`, worktree
 
 ## Done (committed)
 
-- `11e9a7f` this file.
-- `c129d3a` B-525 logged; `6de438e` fixed (note's Try again / Check again keep keyboard focus).
-- `4afa983` B-526 fixed (e2e "not set up" test collided with search-cleared.spec's "Quokka" page).
-- `17f36dc` B-527, B-528 logged open (Settings panel, pre-existing).
+- `5bf6f6b` this file.
+- `f0ce70d` B-525 logged; `1e48360` fixed (note's Try again / Check again keep keyboard focus).
+- `b57ac32` B-526 fixed (e2e "not set up" test collided with search-cleared.spec's "Quokka" page).
+- `ef609b0` B-527, B-528 logged open (Settings panel, pre-existing).
 - B-529 logged open (plugin data API `semantic()` unbounded query embed; code reading only).
 
 ## Author's claims, re-checked independently
@@ -20,8 +20,8 @@ Verifier's resilience log. Branch `m11/search-fallback` from `be81345`, worktree
   `embedding` / `embed_dirty` rows, no `embedding.*` settings; `embeddings.status` → vec v0.1.9
   loaded, active null, Ollama reachable with bge-m3:latest. Branch server: hybrid "dovolená" →
   `fallback.reason = not_configured`; keyword → no `fallback`. Confirmed.
-- New tests fail on the old code: http test 8/8 vs 52e5d20's server files; timeout test 3/4 vs
-  43fbe68's `semantic-search.ts`; SearchView tests 3 fail vs 43fbe68's view, 1 (B-523) vs 1f06196's.
+- New tests fail on the old code: http test 8/8 vs ac2528e's server files; timeout test 3/4 vs
+  8314c36's `semantic-search.ts`; SearchView tests 3 fail vs 8314c36's view, 1 (B-523) vs 6b2351f's.
 - UI flow on the copy (Chromium, production build): note "not set up" → button → Settings at Search
   & embeddings → "Turn on semantic search…" → prefilled http://127.0.0.1:11434 / bge-m3 → enable
   310 ms → close → note "still being built (0 of 19,586 embedded). Check again".
@@ -81,4 +81,4 @@ Verifier's resilience log. Branch `m11/search-fallback` from `be81345`, worktree
   spawns it (`env -i`, cwd `/`).
 - Nothing exercised `model_missing` / `query_embedding_failed` against a real Ollama (the author's
   stub-server http tests cover them).
-- The three flaky e2e tests above were not run on 52e5d20 to show they are flaky there too.
+- The three flaky e2e tests above were not run on ac2528e to show they are flaky there too.

@@ -1,6 +1,6 @@
 # B-608 (task workflow, LATER/NOW) + B-610 (word-count 500) — progress
 
-Branch: `worktree-agent-a617a1823cc1e0f30` (based on main `4c28fad`). Not merged into main.
+Branch: `worktree-agent-a617a1823cc1e0f30` (based on main `07720d1`). Not merged into main.
 
 ## What Logseq does (settled from source, file graphs, tag 0.10.9)
 
@@ -57,8 +57,8 @@ its own (ADR 011/R35); Logseq does not clearly differ (it never deletes the logb
 
 ## Status: done (all three fixed, tested), branch not merged
 
-Commits: `69e9e99` (B-608 + B-610 code and unit tests), `9e21781` (e2e), `6fc1b6c` (merge of
-main, for B-617), `de59bf8` (B-617), and a last commit with the e2e made order-independent and this
+Commits: `4250be9` (B-608 + B-610 code and unit tests), `602a347` (e2e), `dfb07d5` (merge of
+main, for B-617), `81fb0cb` (B-617), and a last commit with the e2e made order-independent and this
 file.
 
 What changed (B-608):
@@ -111,7 +111,7 @@ Still unverified:
 
 ## BUGS.md updates to fold in
 
-- **B-608** → Fixed (2026-10-03, `69e9e99`). Tests: `packages/core/src/task-workflow.test.ts`,
+- **B-608** → Fixed (2026-10-03, `4250be9`). Tests: `packages/core/src/task-workflow.test.ts`,
   `apps/web/src/editor/task.test.ts` "under the `now` workflow (B-608)",
   `apps/web/src/commands/registrations/index.test.ts` "follow the graph's task workflow (B-608)",
   `SlashMenu.test.tsx` "LATER first under `now`", `importer/logseq.test.ts` "task workflow
@@ -120,10 +120,10 @@ Still unverified:
   WAITING/CANCELED + Mod+Enter → start marker (was none); un-tick DONE → start marker; a repeating
   LATER/NOW task reopens as LATER. `done::` on DONE→none left as is (Logseq has no such property
   and removes nothing on that step either).
-- **B-610** → Fixed (2026-10-03, `69e9e99`). Tests: `packages/server/src/plugins/built-ins.test.ts`
+- **B-610** → Fixed (2026-10-03, `4250be9`). Tests: `packages/server/src/plugins/built-ins.test.ts`
   "the status bar's rpc answers null, not a 500, for a page just deleted (B-610)"; e2e
   `plugins.spec.ts` "deleting the open page asks word count about it without a 500 (B-610)".
-- **B-617** → Fixed (2026-10-03, `de59bf8`). Test: `packages/server/src/graphs/mount.test.ts`
+- **B-617** → Fixed (2026-10-03, `81fb0cb`). Test: `packages/server/src/graphs/mount.test.ts`
   "activates every built-in plugin in each graph … (B-617)".
 - New, not fixed (observed in passing): plugin `rpc.expose` routes turn any thrown error into an
   unhandled 500 (`plugins/server-context.ts`), unlike `ops.register`, which maps an `OpError` to

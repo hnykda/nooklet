@@ -1,21 +1,21 @@
 # impl-render (m8) — progress
 
-Branch `m8/impl-render`, worktree `.claude/worktrees/wf_69b4f9a8-ee2-9`, started from `da85cfb`
-(the worktree was created at an older commit, `41666ee`; the fresh branch was reset to `da85cfb`
+Branch `m8/impl-render`, worktree `.claude/worktrees/wf_69b4f9a8-ee2-9`, started from `61279a2`
+(the worktree was created at an older commit, `f7c9644`; the fresh branch was reset to `61279a2`
 before any work). Task: B-100 numbered lists render, B-101 block properties visible + `/property`
 writes a real property, B-99 `/image` opens a picker and uploads. e2e port 6401.
 
 ## Done
-- `6fb7ae6` core `block-text.ts` (split/join/offset maps/diff for a block's editing text) + tests;
+- `599e80a` core `block-text.ts` (split/join/offset maps/diff for a block's editing text) + tests;
   B-151 logged with probe `tools/probes/serialize-fence-props.ts`.
-- `4d3750f` B-100: worker tree carries `properties`; `EditableBlock.properties` replaces
+- `9935081` B-100: worker tree carries `properties`; `EditableBlock.properties` replaces
   `listNumber`; e2e numbered-list tests.
-- `89c0f22` B-101: editing text in the buffer (flush → `block.text` + `block.prop`), chips
+- `91477c8` B-101: editing text in the buffer (flush → `block.text` + `block.prop`), chips
   (`editor/BlockProperties.tsx`), `/property` (`:: ` under line 1), undo/optimistic/history for
   generic props, Enter continues numbering, duplicate copies props, spec OUT-22a.
-- `d7137b1` B-99 `/image` (hidden file input → `uploadImageAsset` → caret) and B-150 (upload had
+- `aeb6e84` B-99 `/image` (hidden file input → `uploadImageAsset` → caret) and B-150 (upload had
   no token; now `callOp`).
-- `5aac228` "Numbered list" command + slash item (`commands/registrations/numbered-list.ts`),
+- `c7ab06c` "Numbered list" command + slash item (`commands/registrations/numbered-list.ts`),
   real-graph probe `tools/probes/real-graph-properties.mjs`, keymap spec rows, inbox write-ups.
 
 ## Verification (all on this branch)
@@ -34,7 +34,7 @@ writes a real property, B-99 `/image` opens a picker and uploads. e2e port 6401.
 - Real graph copy: probe 9 pages, 177 numbered rows + 70 chip rows, 0 wrong; a UI property write
   → one op; `nooklet verify` OK (20,412 ops).
 - `pnpm -r typecheck` clean. Biome: one pre-existing error in `BlockRowView.tsx` (row div
-  `noStaticElementInteractions`, present at `da85cfb`).
+  `noStaticElementInteractions`, present at `61279a2`).
 
 ## Not done / follow-ups
 - Enter on an empty numbered item does not end the list (Logseq does).
@@ -66,7 +66,7 @@ writes a real property, B-99 `/image` opens a picker and uploads. e2e port 6401.
    `deps/graph-parser/src/logseq/graph_parser/property.cljs`) plus `list`.
 
 ## How to resume
-`git log --oneline da85cfb..m8/impl-render`, then this file and `docs/bugs-inbox/impl-render.md`.
+`git log --oneline 61279a2..m8/impl-render`, then this file and `docs/bugs-inbox/impl-render.md`.
 Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-render/`
 (real-graph copy in `graph/` — it has one probe write in it now; take a fresh `.backup` for a clean
 run).

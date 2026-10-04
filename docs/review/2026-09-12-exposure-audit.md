@@ -9,8 +9,8 @@ Method: the inventory is built from the code, not the docs — every `defineOp` 
 the slash items, context menu, palette modes, settings panel, shell, routes and help menu — and
 then checked by hand against a production build served by a real `nooklet serve` on a fresh graph
 (port 6361, `--no-mirror`, driven by a Playwright script; details in §1.9). Snapshot: the files
-were read at `750cc25` (~17:20) plus the M7 agents' uncommitted work; the client was built at
-17:31; by the time the runtime pass finished (~17:50) HEAD had moved to `28fcb7c` and the served
+were read at `a4d137f` (~17:20) plus the M7 agents' uncommitted work; the client was built at
+17:31; by the time the runtime pass finished (~17:50) HEAD had moved to `1add7e9` and the served
 `dist` had been rebuilt by another agent's e2e run. Where a file changed under the audit it is
 said so; the last section lists what landed meanwhile.
 
@@ -261,7 +261,7 @@ moved between reading and building.
 | Graph | "8 pages · 1 links", Journals toggle, Fit | exposed |
 
 **Aliases in the `[[` / `#` popups** (`<scratch>/audit3.mts`, `audit3-results.json`): on fresh
-pages against the rebuilt `dist` (post-`28fcb7c`), `[[gard`, `[[garden` and `#gard` all list
+pages against the rebuilt `dist` (post-`1add7e9`), `[[gard`, `[[garden` and `#gard` all list
 Zahrada first, with no page errors. The first pass (17:31 build) had offered only 'New page "gard"'
 for the same query; that was not reproducible afterwards and is recorded as unconfirmed, not as a
 defect. The one alias gap that stands is the route: `/page/garden` → "doesn't exist".
@@ -306,7 +306,7 @@ change that closes the gap; effort tiers are minutes / an hour / half a day / a 
 | 19 | `related.find` and `changes.since` have no reader | §1.1 | "Related pages" section on a page when embeddings are on (one HTTP call like backlinks); agent-change badges later | an hour / later |
 | 20 | Spec/comment drift: `commands-and-keymap.md` lacks 13 registered commands; `DiagnosticsPanel.tsx:11` cites an `app.diagnostics` command that does not exist | §1.2 | Add `app.diagnostics` (minutes) and regenerate the spec table | minutes |
 
-**Re-checked at HEAD `1c200eb` (~17:55)**, after the M7 commits listed at the end of this
+**Re-checked at HEAD `f5b5248` (~17:55)**, after the M7 commits listed at the end of this
 document: every gap above still holds — `CommandLayer.tsx:302` still passes
 `createFakeDatePickerHost()`; `editor/` still has no `collapseAll`/`expandAll`/`insertImage`
 handling; `hosts.ts:301` still navigates to `/settings/plugins`; `BlockTree.tsx:112` still
@@ -476,15 +476,15 @@ against a fresh graph as in §1.9 unless stated. "Known" means an existing entry
 | D13 | research/13 §4.1 marks "Numbered lists" (row "Numbered lists, headings"), "Mermaid" and "Word count" as **have**; none is reachable (D6, D9). Its Templates row says "missing"; templates landed in this build | §1.9 | `docs/research/13-logseq-usage-and-demand.md` §4.1 (research is kept as written — a dated correction note belongs in the coordinator's hands) |
 | D14 | (withdrawn) `[[` autocomplete did not offer the aliased page in the first pass; a clean re-run on the rebuilt build offers it for `[[gard`, `[[garden` and `#gard`. Not a defect on the evidence; noted so nobody re-chases the first observation | §1.9 alias paragraph | — |
 
-### What landed in the tree while this was written (`750cc25` → `1c200eb`)
+### What landed in the tree while this was written (`a4d137f` → `f5b5248`)
 
-`git log 750cc25..HEAD` at ~17:55: templates (`78970b1`, `e7e6b1f`: `/template`, journal template,
-Settings section), appearance basics (`551daa7`), reference filters/sort + Link all (`7e2ec53`),
-shelf outline mode (`dab300f`), the ```` ```query ```` fence rendering live (`dfaf3b9`, core
-`f1675df`), highlight.js + KaTeX wired (`0b69dc0`), refactor ops and their commands "Turn into
-page", "Move to page…", "Merge this page into…", "Find and replace…" (`d06661b`, `c916c29`), a
-`/replace` view (`f6730c1`), orphan-asset GC (`163d3b9`), `trash.list`/`trash.restore`/
-`page.history` ops (`40c054b`, `fe1a197`) and their views `/trash` and `/history/*name`
-(`f13044a`, `1c200eb`). So §1.1's "M7 in flight" rows for trash/history/refactors and §1.9's
+`git log a4d137f..HEAD` at ~17:55: templates (`ced489d`, `3e7374d`: `/template`, journal template,
+Settings section), appearance basics (`e338de5`), reference filters/sort + Link all (`3d56c6e`),
+shelf outline mode (`aa3ca61`), the ```` ```query ```` fence rendering live (`4ef5864`, core
+`d24ce73`), highlight.js + KaTeX wired (`e1286ff`), refactor ops and their commands "Turn into
+page", "Move to page…", "Merge this page into…", "Find and replace…" (`ea74be5`, `e6aac6f`), a
+`/replace` view (`cb45da6`), orphan-asset GC (`b1e9b6d`), `trash.list`/`trash.restore`/
+`page.history` ops (`d72e7c4`, `9a10bc7`) and their views `/trash` and `/history/*name`
+(`fd19935`, `f5b5248`). So §1.1's "M7 in flight" rows for trash/history/refactors and §1.9's
 fence/math/template rows describe the 17:31 build, not HEAD; the §1.10 gaps and Part 2 candidates
 were re-checked against HEAD (see the "re-checked at HEAD" line at the end of §1.10) and stand.

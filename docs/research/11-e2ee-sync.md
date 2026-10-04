@@ -504,7 +504,7 @@ a simple construction you fully understand.
 
 Scope note: this is **not** the same problem as `research/12` §5's pairing design, and the two
 compose rather than compete. Doc 12 pairs a device to a *server* — it needs a bearer token, and as
-of commit `0654dd5` that ships as `ConnectView.tsx`, a deliberate paste-a-token screen (its header
+of commit `7904dd6` that ships as `ConnectView.tsx`, a deliberate paste-a-token screen (its header
 notes "a pairing code or QR is a nicer front-end for" the same thing). What follows adds the layer
 E2EE needs on top: the device also needs the *graph key*, and unlike a token, the server must never
 learn it. A token can be minted by the server; a key cannot.

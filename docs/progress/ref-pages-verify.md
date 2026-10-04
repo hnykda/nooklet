@@ -8,7 +8,7 @@ Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-1`, e2e port 6410. Scratch
 
 ## Done
 
-- Read the whole diff `52e5d20..3fbd9de`.
+- Read the whole diff `ac2528e..e160f7e`.
 - `src/ref-pages.test.ts`, `ops/ref-pages.http.test.ts`, `ref-pages-migration.test.ts`: 30/30.
 - `e2e/tests/ref-pages.spec.ts` on 6410: 5/5.
 - Real-graph copy (19:27, 953 live pages, 265 dangling keys / 1,355 rows): `nooklet serve` logged
@@ -23,8 +23,8 @@ Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-1`, e2e port 6410. Scratch
 - B-445 (fixed, see commit "fix(server): writing that reaches a junk-deleted page brings it back"):
   a block written onto a linked page while offline, after another device removed the link, landed
   on the page the server deleted — hidden from the trash. 4 server tests + 1 two-replica sync test,
-  all failing on `3fbd9de`. Server suite 713/713, typecheck clean.
-- B-446 (fixed, e4dfb0b): the sweep stamped its 259 pages "now" — they topped All pages' default
+  all failing on `e160f7e`. Server suite 713/713, typecheck clean.
+- B-446 (fixed, 70ca5a8): the sweep stamped its 259 pages "now" — they topped All pages' default
   "Recently edited" (row 260 was the first real page). Now dated by earliest reference.
 - B-447 (open): after `nooklet gc` trims the op log, junk tombstones show in the trash and unlinked
   empty pages stay (probe in the entry).
@@ -41,16 +41,16 @@ Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-1`, e2e port 6410. Scratch
   journals + 259 referenced pages, 18,628 blocks, 0 errors, 4.6 s; 1,211 live pages, 17 dangling
   keys (journal days); `verify` OK over 19,839 ops. Real-graph copy after the browser writes:
   `verify` OK over 20,745 ops.
-- e2e: B-445 in two Chromium contexts (fails on `3fbd9de`'s server, passes now); a probe of typing
+- e2e: B-445 in two Chromium contexts (fails on `e160f7e`'s server, passes now); a probe of typing
   that continues while B-442's client repair moves a refused page (caret stays, nothing lost) —
   both added to `e2e/tests/ref-pages.spec.ts`, 7/7.
 
-- Unit, on e4dfb0b: server 714/714 (713 at 3914262 + B-446's test), web 1,143/1,143, core
+- Unit, on 70ca5a8: server 714/714 (713 at f3f5f28 + B-446's test), web 1,143/1,143, core
   408/408, plugin-api 17/17; `pnpm -r typecheck` clean; biome clean on every file the branch
   changed (the repo-wide `biome check .` reports older issues in HelpMenu.tsx, DiagnosticsPanel.tsx,
   plugin-api and the Tauri gen schemas, none touched here).
-- Full Chromium e2e on 6410 at 3496234: 541 passed, 2 skipped, 0 failed (8.5 min).
-- Real graph, fresh copy served with e4dfb0b: "created 259 pages … in 52 ms", dev verify OK;
+- Full Chromium e2e on 6410 at 65af6b3: 541 passed, 2 skipped, 0 failed (8.5 min).
+- Real graph, fresh copy served with 70ca5a8: "created 259 pages … in 52 ms", dev verify OK;
   All pages' "Recently edited" top rows now mix real and minted pages by date (`home`, minted from
   a block written today, first); `graph.overview` recent_pages likewise; the `#` popup offers the
   minted `AcmeCorp`, Enter inserts `#AcmeCorp` and the caret stays; verify after writes OK
@@ -64,7 +64,7 @@ Worktree `<repo>/.claude/worktrees/wf_975bcd44-fae-1`, e2e port 6410. Scratch
 
 1. (done) B-445.
 2. (done) unit suites, typecheck, biome, real-graph verify.
-3. (done) Second full Chromium e2e on e4dfb0b (the last code change): 541 passed, 2 skipped,
+3. (done) Second full Chromium e2e on 70ca5a8 (the last code change): 541 passed, 2 skipped,
    0 failed (8.4 min). Server suite on it: 714/714.
 
 Verification complete. Open for the coordinator: B-443, B-444 (from the branch), B-447, B-448,

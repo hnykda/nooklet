@@ -1,6 +1,6 @@
 # Progress: B-647 — page icon picker
 
-Branch `worktree-agent-a04c81cc0af3292be`, based on `main` at `c3302f6`; work in `f45e6bb`. Done; nothing in flight.
+Branch `worktree-agent-a04c81cc0af3292be`, based on `main` at `ae90be5`; work in `4d055c3`. Done; nothing in flight.
 
 ## Status
 
@@ -72,7 +72,7 @@ path still works; the next open retries.
 
 ## Bundle size (production build, `pnpm --filter @nooklet/web build`)
 
-| | before (`c3302f6`) | after |
+| | before (`ae90be5`) | after |
 |---|---|---|
 | main `index-*.js` | 655.61 kB / 212.40 kB gz | 662.59 kB / 214.88 kB gz (+6.98 / +2.48) |
 | main `index-*.css` | 104.03 kB / 16.64 kB gz | 106.62 kB / 17.07 kB gz (+2.59 / +0.43) |

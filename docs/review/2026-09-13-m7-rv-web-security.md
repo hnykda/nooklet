@@ -3,7 +3,7 @@
 Brief (coordinator, M8 workflow): fix ten findings from an independent review of the web client
 (`apps/web`), each confirmed by a second, sceptical reviewer. Reproduce each one first with a
 failing test, fix the cause, one commit per finding, high severity first; a finding that does not
-reproduce is left and said so. Branch `m8/rv-web-security`, from `da85cfb`.
+reproduce is left and said so. Branch `m8/rv-web-security`, from `61279a2`.
 
 This document is the record: what was in scope, what each finding turned out to be, what was
 changed (with hashes and the test that failed before), what was deliberately not done, and what
@@ -104,62 +104,62 @@ reproduced in a browser (Alt+Enter on `((id))` stayed on the source page), then 
 Commits on `m8/rv-web-security`, oldest first. Every one: `biome check` clean on its files,
 `pnpm -r typecheck` clean, the touched packages' unit suites green, and the e2e specs named.
 
-1. `35732c2` docs(progress): the plan.
-2. `ff140b1` **F1 / B-135.** `db/client.ts` registers with the worker once and fans out to a
+1. `018ae34` docs(progress): the plan.
+2. `5eee913` **F1 / B-135.** `db/client.ts` registers with the worker once and fans out to a
    subscriber set (unsubscribe returned; one throwing listener cannot starve the rest).
    `history.ts` stamps through store's new `serverStampedFor` instead of keeping counters. The
    push-drained bump (B-83) moved from `useSyncStatus` into store's wiring, so it no longer depends
    on the sync indicator being mounted; `useSyncStatus` unsubscribes on cleanup. Tests:
    `apps/web/src/db/client.test.ts`, `e2e/tests/change-bus.spec.ts`.
-3. `eb3face` **F2 / B-136.** Guarded reads: `usePageHistory().page`, `TrashView`'s `list()`,
+3. `2fd98ad` **F2 / B-136.** Guarded reads: `usePageHistory().page`, `TrashView`'s `list()`,
    `QueryFenceView`'s `latest()` (which also stops saying "Running query…" once evaluation has
    failed); a failed "Older changes" now shows an error instead of an unhandled rejection. Tests:
    `apps/web/src/views/load-errors.test.tsx`, `e2e/tests/load-errors.spec.ts`.
-4. `59f4da8` **F3 / B-137.** `followLink` opens `assetUrl(href)`. Tests: `app/hosts.test.ts`,
+4. `b66077a` **F3 / B-137.** `followLink` opens `assetUrl(href)`. Tests: `app/hosts.test.ts`,
    `e2e/tests/untrusted-content.spec.ts`. Also logs B-139 (then open).
-5. `6d1cb2e` **F4 / B-138.** `editor/render/asset-url.ts#safeHref`: the scheme is read with the
+5. `48e0a9a` **F4 / B-138.** `editor/render/asset-url.ts#safeHref`: the scheme is read with the
    WHATWG URL parser (so `java<TAB>script:` or a leading control character resolves as a browser
    would), and only http, https, mailto, tel and relative hrefs pass. Used by the rendered link and
    by `followLink`. The allowlist is exactly what the real graph uses:
    `tools/probes/link-schemes-in-graph.ts` counted 2,298 markdown links — https 1,810, http 337,
    relative 134, mailto 12, tel 5 — so no existing link lost its target. Tests:
    `editor/render/untrusted-content.test.tsx`, `app/hosts.test.ts`, the e2e spec.
-6. `8a1ccb8` **F7.** Raw NULs → the escape in three files (same strings at runtime; `nooklet verify`
+6. `ba414a9` **F7.** Raw NULs → the escape in three files (same strings at runtime; `nooklet verify`
    on the real-graph copy OK, 20,411 ops). Guard: `apps/web/src/source-text.test.ts` fails on any
    tracked text file with a C0 control character other than tab/LF/CR. Taken before F5 because F5
    edits `highlight.ts`, whose diffs were unreadable while git thought it binary.
-7. `dafa968` **F5 / B-138.** `highlight.ts#languageClass`: the info string's first word (the rule
+7. `cb30d19` **F5 / B-138.** `highlight.ts#languageClass`: the info string's first word (the rule
    `resolveLanguage` already used), reduced to `[\w+-]`, for both `CodeFence` branches; `data-lang`
    keeps the raw string. In the real graph every fence info string but one is a single word; the
    exception is a pasted log line, which now yields `language-Wed`.
-8. `87a75b4` **F6 / B-138.** `maxSize: 20` in `renderTexSync`. Tests: `editor/render/math.test.ts`
+8. `ef5fab9` **F6 / B-138.** `maxSize: 20` in `renderTexSync`. Tests: `editor/render/math.test.ts`
    (real KaTeX), the e2e spec (also checks a `\kern99999em` block does not widen the page).
    Probe: `tools/probes/inline-block-clip-baseline.mjs`.
-9. `3d73b13` **F8.** `apiClient` calls `callOp` (`post`, `createApiClient` and its options removed);
+9. `5d12eaa` **F8.** `apiClient` calls `callOp` (`post`, `createApiClient` and its options removed);
    `refactor-api.ts#undoBatch` is the single `batch.undo` wrapper (History and References import
    it); Find & Replace renders with `describeError`; both file headers rewritten. Tests:
    `data/api-client.test.ts`, `views/FindReplaceView.test.tsx`.
-10. `373c654` **F9.** `apps/web/src/routes/page-path.ts` (no imports, so the renderer does not pull
+10. `24ee675` **F9.** `apps/web/src/routes/page-path.ts` (no imports, so the renderer does not pull
     in the data layer) holds `pageNameToPath`, `pathToPageName`, `pageRoutePath`,
     `pageZoomRoutePath`, `historyRoutePath`; `navigateTarget.ts` keeps only `goToTarget`;
     `hosts.ts#pagePath` deleted; every inline builder replaced. Test:
     `editor/render/page-hrefs.test.tsx`.
-11. `b21352b` **F10.** The four comments rewritten (history.ts's was rewritten with F1).
-12. `e2cd507` **B-139.** `followLink`'s block case resolves the page by block id. Tests:
+11. `44ebb6e` **F10.** The four comments rewritten (history.ts's was rewritten with F1).
+12. `f5c8b69` **B-139.** `followLink`'s block case resolves the page by block id. Tests:
     `e2e/tests/follow-link.spec.ts`, `app/hosts.test.ts`.
 13. This document, the progress file, and two probes re-homed from the review
     (`tools/probes/javascript-href-sinks.mjs`, `tools/probes/katex-output-attributes.cjs`).
 
 ## Verification
 
-- `pnpm -r test` at `e2cd507`: core 332/332, plugin-api 17/17, server 521/521, web 739/739.
+- `pnpm -r test` at `f5c8b69`: core 332/332, plugin-api 17/17, server 521/521, web 739/739.
 - `pnpm -r typecheck`: clean at every commit.
-- e2e (`NOOKLET_E2E_PORT=6473`, private `--output`), final combined run at `e2cd507` over every
+- e2e (`NOOKLET_E2E_PORT=6473`, private `--output`), final combined run at `f5c8b69` over every
   spec this branch added or could affect — change-bus, load-errors, untrusted-content,
   follow-link, trash, history, query, pages, references, diagnostics, connectivity, views, replace,
   graph, link-unlinked, navigation, shelf, rendering, render, assets, refactor, settings:
   **126/126 passed**.
-- Before any fix, the new specs failed 7 of 8 against `da85cfb`, each for its finding's reason
+- Before any fix, the new specs failed 7 of 8 against `61279a2`, each for its finding's reason
   (log kept in the session scratchpad); B-139's spec failed on the pre-fix build too.
 - `pnpm nooklet verify --data <copy of the real graph>` after touching `verify.ts`: OK, 20,411 ops.
 
@@ -167,7 +167,7 @@ Two red runs along the way, recorded rather than smoothed over:
 
 - `views.spec.ts:461` "opening the palette while editing and closing it hands focus back to the
   editor" failed three runs in a row during F8 — including once with the worktree switched to
-  `da85cfb`, so not caused by this branch — and then passed in the final run. Treat it as flaky
+  `61279a2`, so not caused by this branch — and then passed in the final run. Treat it as flaky
   under load (load average 11–43 while it failed), not fixed. It needs a bug number if it recurs.
 - `apps/web/src/data/page-title.test.ts` "renders a journal by its day…" timed out at 5 s twice in
   the full web suite (its dynamic import under load); unchanged by this branch, 9/9 alone, green

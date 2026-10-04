@@ -1,6 +1,6 @@
 # B-645 — All pages: block/word columns, sorting, row delete
 
-Branch: `worktree-agent-a37ff5178c4da625f` (fast-forwarded to main `c3302f6` first). e2e port 6425,
+Branch: `worktree-agent-a37ff5178c4da625f` (fast-forwarded to main `ae90be5` first). e2e port 6425,
 real-graph server 6426. Status: **built, verified** (see Verification). Not merged to main.
 
 ## What Logseq has (read from source, 2026-10-04)

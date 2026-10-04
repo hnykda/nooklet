@@ -1,7 +1,7 @@
 # impl-embeds — embeds that transclude (audit §2 item 8)
 
 Branch `m8/impl-embeds`, worktree `<repo>/.claude/worktrees/wf_69b4f9a8-ee2-26`,
-started from `da85cfb`. e2e port 6407. Scratch (graph copy):
+started from `61279a2`. e2e port 6407. Scratch (graph copy):
 `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-embeds/`.
 
 Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inline, read-only
@@ -38,13 +38,13 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
 
 ## Done
 
-- `63cb3d9` feat(web): `{{embed}}` renders the embedded page/block read-only (B-210) —
+- `9b39e2f` feat(web): `{{embed}}` renders the embedded page/block read-only (B-210) —
   `data/embeds.ts` + `data/embeds.test.ts` (6), `editor/render/embedRows.ts` + test (5),
   `editor/render/EmbedView.tsx` + `embed.css` + `embed.test.tsx` (14), hookup in `tokens.tsx` (lazy
   `Embed` + `RenderCtx.embedPath`, exported `MAX_REF_DEPTH`) and one line in `BlockRowView.tsx`.
   Mutation check: with the cycle guard disabled the three cycle tests fail and the depth limit still
   terminates.
-- `7e79721` test(e2e) + fix(web) B-212: `e2e/tests/embeds.spec.ts` (9 tests, green on 6407); B-212 fix in
+- `15f43ed` test(e2e) + fix(web) B-212: `e2e/tests/embeds.spec.ts` (9 tests, green on 6407); B-212 fix in
   `editor/editor.css` + `shell/shelf.css` (done-strike selectors scoped to the block's own marker),
   each of its three halves seen failing first; `tools/probes/embeds-real-graph.mjs` run on a copy of
   the owner's graph: 5 well-formed embeds render (31/6/12/27/27 rows), the malformed one tokenizes as
@@ -53,15 +53,15 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
 - Neighbouring e2e run after step 1: render, rendering, query, shelf, shelf-outline, editing,
   references, popups — 73/73. After step 2: embeds + tasks + shelf — 26/26.
 - Lint note: `biome check apps/web/src/editor/BlockRowView.tsx` reports
-  `noStaticElementInteractions` on `.vr-row` — present at `da85cfb` too, not from this branch.
+  `noStaticElementInteractions` on `.vr-row` — present at `61279a2` too, not from this branch.
 
-- `354449c` fix(web): `shell/Shelf.tsx` passes `embedPath: [node.id]` too; e2e "on the shelf, a
+- `4bf4f06` fix(web): `shell/Shelf.tsx` passes `embedPath: [node.id]` too; e2e "on the shelf, a
   self-embedding block shows the notice rather than a copy of its page" failed first (2 rows), then
   embeds + shelf + shelf-outline 16/16.
-- Broader e2e after `354449c`: journals, selection, context-menu, navigation, focus, phone, tasks,
+- Broader e2e after `4bf4f06`: journals, selection, context-menu, navigation, focus, phone, tasks,
   views — 118 passed, 1 failed: views.spec "opening the palette while editing and closing it hands
   focus back to the editor", failing 3/3 including with this branch's modified web files checked
-  out at `da85cfb` → pre-existing, logged as B-213 (not fixed). Final embeds.spec: 10/10.
+  out at `61279a2` → pre-existing, logged as B-213 (not fixed). Final embeds.spec: 10/10.
 
 ## In flight
 
@@ -79,28 +79,28 @@ Task: `{{embed [[Page]]}}` / `{{embed ((id))}}` render the target's blocks inlin
 
 ## How to resume
 
-Read this file, `git log --oneline da85cfb..m8/impl-embeds`, then continue at "In flight".
+Read this file, `git log --oneline 61279a2..m8/impl-embeds`, then continue at "In flight".
 
 ## Adversarial verification (2026-09-13, second agent)
 
 Scratch: `/private/tmp/claude-501/-Users-dan-work-vrite/aefea7d2-a93f-49e0-b7cc-b14be2c3a1c0/scratchpad/impl-embeds-verify/`
-(graph copy in `graph/`). Probes kept in `tools/probes/embeds-*.mjs` (`0dbb1d0`) — run from `e2e/`
+(graph copy in `graph/`). Probes kept in `tools/probes/embeds-*.mjs` (`f3da250`) — run from `e2e/`
 against a server on a graph copy.
 
-- Re-ran at `18b053d`: embed unit tests 25/25, `embeds.spec.ts` 10/10.
-- `65a1b8f` + `6812e1e`: **B-214 found and fixed** — typing anywhere on a page rebuilt its embeds
+- Re-ran at `ef479e7`: embed unit tests 25/25, `embeds.spec.ts` 10/10.
+- `4bfed0e` + `50a8a4d`: **B-214 found and fixed** — typing anywhere on a page rebuilt its embeds
   (placeholder flash, page jumps, unfolded rows fold). Fix in `BlockRowView.tsx` (string memo); e2e
   test added, seen failing first. Web unit 709/709, web typecheck 0.
-- `3b9512d` + `1b7755f`: **B-215** — Shift+click on an embedded row shelved a "This block is gone."
+- `dde10cf` + `1e9a5ed`: **B-215** — Shift+click on an embedded row shelved a "This block is gone."
   card (BlockTree filled in the host page id). `NavigateTarget` block kind takes an optional `pageId`.
-- `b4ed719` (inbox entry in its predecessor): **B-216** — web links inside embedded rows were dead
+- `e10b820` (inbox entry in its predecessor): **B-216** — web links inside embedded rows were dead
   (row handler's `preventDefault`); `EmbedRow#go` lets `a[href]` targets through. e2e + component test.
 - Probes that found nothing wrong: Czech page name in another case, `[[Sep 29th, 2024]]` journal
   title, 961-block page embed (842 ms page load, keystroke paint 5–24 ms, no long tasks), trashed
   target page, undo/redo of the host block, Enter on a focused row, zoomed host, phone width in dark.
 - Not fixed, noted: right-click on an embedded row opens the HOST block's menu (same as query hits);
   `nooklet serve --help` ignores `--help` and serves the default graph (B-217).
-- Broader e2e on 6407 after `b4ed719`: render, rendering, editing, parity, references, tasks, query,
+- Broader e2e on 6407 after `e10b820`: render, rendering, editing, parity, references, tasks, query,
   shelf, shelf-outline, selection, popups, focus — 147/147; context-menu, navigation, remote-device,
   history, assets, autocomplete, replace, refactor, templates, journals, link-unlinked, phone, views,
   references-filters, trash, pages — 110 passed, 1 skipped (a `test.fixme`), 0 failed. embeds.spec

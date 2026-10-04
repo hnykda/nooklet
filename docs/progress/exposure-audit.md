@@ -30,10 +30,10 @@ the tree is to be changed by this task.
 
 - audit3 done: aliases work in `[[`/`#` on the rebuilt build; D14 withdrawn; §1.9 patched.
 - Part 3 written. "Defects noticed" written (D1–D13, D14 withdrawn). "What landed" section
-  written (tree moved 750cc25 → 1c200eb during the audit: trash/history/replace views, refactor
+  written (tree moved a4d137f → f5b5248 during the audit: trash/history/replace views, refactor
   commands, query fence, highlight/KaTeX, templates, appearance).
 
-- Re-grep at HEAD `1c200eb` done: every dead-surface claim still holds; "re-checked at HEAD"
+- Re-grep at HEAD `f5b5248` done: every dead-surface claim still holds; "re-checked at HEAD"
   line added to §1.10.
 - Servers on 6361/6362 stopped (`pkill -f 'serve --port 636[12]'`).
 

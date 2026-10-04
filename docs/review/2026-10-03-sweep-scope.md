@@ -1,6 +1,6 @@
 # Scope sweep: PLAN v1 against the code, 2026-10-03
 
-Agent: sweep-scope (coordinator.md "In flight"). Base: `main` at `c322269`. This is a reading
+Agent: sweep-scope (coordinator.md "In flight"). Base: `main` at `319b6d9`. This is a reading
 pass plus one probe. No code was changed. "e2e" means a spec in `e2e/tests/`, which runs real
 Chromium against a real `nooklet serve` and a production build. "unit" means vitest only. Per
 CLAUDE.md, anything backed only by unit tests counts as *believed* to work.
@@ -21,7 +21,7 @@ for each feature. One probe was run against a scratch server on port 6377
 | Backup | done, unit only | `nooklet backup`/`restore`/`gc`/`verify` (`backup/`, `gc.ts`, `verify.ts`; server unit tests). Nothing schedules them: backups are manual. The mirror (`mirror/live.ts`, e2e `mirror-live.spec.ts`) is a second copy, on by default. |
 | Token for a new device | done, e2e | `nooklet token create --label phone --scope write --sync [--graph id]`, paste-a-token (`views/ConnectView.tsx`). e2e: `remote-device.spec.ts` "a device with no token gets the connect screen, and pairing works". **Typing a 51-char token on an iPhone is the whole pairing UX**: the PLAN's link/QR pairing does not exist. |
 | Connect UX, Mac app | done, unverified by hand | The desktop picker holds remote graphs (ADR 025 M6), and its webview navigates to the server's own origin, so it has no CORS issue. `multi-graph-hosting.md`: "no GUI interaction was exercised at all". e2e `desktop-launcher.spec.ts` stubs the Rust commands. |
-| Connect UX, iPhone **Capacitor app** | **likely broken** | The app runs at `capacitor://localhost` and calls the server at an absolute URL (`data/bootstrap.ts` `apiBaseUrl`), so every fetch that carries `Authorization` is cross-origin. The server has **no CORS handling at all**: grepping `packages/server/src` for `cors\|Access-Control` finds nothing. Probe on `c322269`: `OPTIONS /g/default/sync/pull` with `Origin: capacitor://localhost` → `404`, no `Access-Control-*`. A GET with the token → 200 but no `Access-Control-Allow-Origin`. Capacitor's docs (https://capacitorjs.com/docs/apis/http) treat CORS as the server's job unless `CapacitorHttp` is enabled. It is not enabled (`apps/web/capacitor.config.ts`), and that patch would not reach the sync Worker anyway. **Not run on a device.** The sweep-devices agent has a Simulator probe for exactly this (`tools/probes/capacitor-network/` in worktree `agent-aaca187…`). |
+| Connect UX, iPhone **Capacitor app** | **likely broken** | The app runs at `capacitor://localhost` and calls the server at an absolute URL (`data/bootstrap.ts` `apiBaseUrl`), so every fetch that carries `Authorization` is cross-origin. The server has **no CORS handling at all**: grepping `packages/server/src` for `cors\|Access-Control` finds nothing. Probe on `319b6d9`: `OPTIONS /g/default/sync/pull` with `Origin: capacitor://localhost` → `404`, no `Access-Control-*`. A GET with the token → 200 but no `Access-Control-Allow-Origin`. Capacitor's docs (https://capacitorjs.com/docs/apis/http) treat CORS as the server's job unless `CapacitorHttp` is enabled. It is not enabled (`apps/web/capacitor.config.ts`), and that patch would not reach the sync Worker anyway. **Not run on a device.** The sweep-devices agent has a Simulator probe for exactly this (`tools/probes/capacitor-network/` in worktree `agent-aaca187…`). |
 | Connect UX, iPhone **Safari PWA** | plausible, unverified | Same-origin, so no CORS. It needs HTTPS: OPFS and `navigator.locks` need a secure context (wiki Sync.md). A plain `http://host.tailnet.ts.net:6100` is not a secure context, so the PWA needs `tailscale serve` (research/12 §10), and no doc says so. **Still unverified**: whether `tailscale serve`, proxying to 127.0.0.1, presents a loopback peer *and* a loopback `Host`. If it does, `isLoopbackRequest` (`http/app.ts:83`) hands every tailnet device a token automatically. If it forwards the `ts.net` Host, the guard holds. |
 | Sync | done, e2e | `sync/sync-client.ts`, core property tests, `apps/web/src/sync/e2e.test.ts`. Two browser contexts sync in `ref-pages`, `remote-rewrite`, `page-delete`, `journal-agenda` and `ref-label-flash` specs. B-587 (rebuild-parity divergence) is open and not investigated. |
 | Offline | done, thin e2e | One e2e: `sync-indicator.spec.ts` "offline shows the offline state…" (type offline, reconnect, the server has it). No e2e covers an offline cold start of the PWA, i.e. reload with the network off. The only offline reload is in the unmerged `mermaid-lazy-cache.spec.ts`. |
@@ -52,14 +52,14 @@ on the owner's graph. **M4** met: three built-ins through the public API.
 
 | Slug | Branch state | Closes |
 |---|---|---|
-| b585 | `7784d54` committed | B-585 (contradicted → done if the e2e goes green); B-587 re-check pending |
-| keys-small | progress file says "one commit", but the branch tip is still `fd779f4` (on main): uncommitted | B-450, B-594, B-592 (test fix): no gap on the device path |
+| b585 | `ec791f5` committed | B-585 (contradicted → done if the e2e goes green); B-587 re-check pending |
+| keys-small | progress file says "one commit", but the branch tip is still `c28097a` (on main): uncommitted | B-450, B-594, B-592 (test fix): no gap on the device path |
 | top-menu | nothing committed | discoverability only |
-| mermaid-lazy | `ce99b82` | precache 8 MB → 3 MB (faster first PWA load on the phone); B-401 confirmed |
+| mermaid-lazy | `183b058` | precache 8 MB → 3 MB (faster first PWA load on the phone); B-401 confirmed |
 | refs-count | in progress | cosmetic |
 | empty-journal | in progress | B-595 (partial → done) |
 | real-device-test | **no progress file found** in any worktree at sweep time | the runbook this test needs |
-| journal-headings, tag-autocomplete | merged (`9f41585`, `c6fe3bc`) | B-560, B-380 |
+| journal-headings, tag-autocomplete | merged (`5e9d772`, `14ca14d`) | B-560, B-380 |
 
 None of them touches CORS, QR pairing, the share extension, B-491's remaining `confirm()` calls,
 keybinding customization or typed property editors.

@@ -1,12 +1,12 @@
 # M7 · templates — progress log
 
 Agent task: research/13 §4.2 item 2 — `/template`, journal template, dynamic tokens, ADR 019.
-Working from HEAD `c9a98f9`. Updated after every meaningful step; if you are reading this after
+Working from HEAD `fe3273e`. Updated after every meaningful step; if you are reading this after
 a restart, continue from "Next steps".
 
 ## 1. Done (commit hashes)
 
-- `78970b1` core `templates.ts` (+tests), client `data/templates.ts`, `/template` command +
+- `ced489d` core `templates.ts` (+tests), client `data/templates.ts`, `/template` command +
   picker, slash row, wiring. NOTE: this commit swept in the query agent's uncommitted
   `export * from "./query.js"` line in `packages/core/src/index.ts` (it was in the working tree
   when the file was staged) — HEAD references `query.ts`, which is still untracked until the
@@ -28,8 +28,8 @@ a restart, continue from "Next steps".
 
 ## 3. Next steps, in order
 
-1. DONE: unit 2 committed as `e7e6b1f` (journal paths, Settings section, ADR 019, B-87..B-89).
-2. BLOCKER (not mine, being fixed): since `c916c29` the app was a blank page — `refactor.ts`
+1. DONE: unit 2 committed as `3e7374d` (journal paths, Settings section, ADR 019, B-87..B-89).
+2. BLOCKER (not mine, being fixed): since `e6aac6f` the app was a blank page — `refactor.ts`
    registered `page.mergeInto`/`graph.findReplace`, `registry.ts#CORE_AREAS` rejected them,
    `CommandProvider` threw at mount. The refactors agent has the fix uncommitted in the shared
    tree (ids renamed) and logged it as "B-87" — which COLLIDES with my committed B-87 (no client
