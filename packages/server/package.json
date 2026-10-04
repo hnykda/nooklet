@@ -27,6 +27,7 @@
     "transit-js": "0.8.874",
     "uqr": "0.1.3",
     "ws": "^8.21.3",
+    "yauzl": "2.10.0",
     "zod": "^4.6.1"
   },
   "devDependencies": {

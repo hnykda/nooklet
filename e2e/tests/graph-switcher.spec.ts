@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openGraphMenu } from "../helpers/index.js";
 
 function dataDir(): string {
   const port = process.env.NOOKLET_E2E_PORT ?? "6188";
@@ -89,7 +90,7 @@ test("adding an existing remote graph never mixes its content with the one alrea
   });
 
   await page.goto("/journals");
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   await page.getByText("Add a graph").click();
   await page.getByLabel("Server address").fill(`${base}/g/gs-second`);
   await page.getByLabel("Device token").fill(token);
@@ -160,7 +161,7 @@ test("promoting a local-only graph pushes its full pre-existing local history to
   await expect(page.locator(".vr-outliner").first()).toContainText(probeText);
 
   await page.unroute("**/api/session");
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   await page.getByRole("button", { name: "Add a server for GS Local Only" }).click();
   await page.getByLabel("Server address").fill(base);
   await page.getByLabel("New graph id").fill("gs-promoted");
@@ -195,7 +196,7 @@ test("B-618: rows carry the server's graph names, a bare address is not added tw
 
   await page.goto("/journals");
   const switcher = page.getByRole("dialog", { name: "Switch graph" });
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   // Named after the server's graph (the default graph's label is its slug), with its address —
   // not the old placeholder "This graph".
   const rows = switcher.locator(".graph-switcher-row");
@@ -235,9 +236,74 @@ test("B-618: rows carry the server's graph names, a bare address is not added tw
   await expect(page).toHaveURL(/\/g\/gs-labelled\//, { timeout: 15_000 });
 
   // Two graphs on one server, told apart by name.
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   await expect(switcher.locator(".graph-switcher-label")).toHaveText([
     "default",
     "Labelled Second",
   ]);
+});
+
+test("B-709: the open graph's name heads the sidebar and opens the graph menu; the top bar has no switcher", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/g/default/journals");
+  await expect(page.locator(".app-topbar")).toBeVisible();
+  // Nothing in the top bar switches graphs any more.
+  await expect(
+    page.locator(".app-topbar").getByRole("button", { name: /switch graph/i }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+  const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+  const title = sidebar.getByRole("button", { name: "default, switch graph" });
+  await expect(title).toBeVisible();
+  // The title is the first thing in the sidebar, above the nav.
+  const [titleBox, navBox] = await Promise.all([
+    title.boundingBox(),
+    sidebar.locator(".sidebar-nav").boundingBox(),
+  ]);
+  expect((titleBox?.y ?? 0) + (titleBox?.height ?? 0)).toBeLessThanOrEqual(navBox?.y ?? 0);
+
+  await title.click();
+  const menu = page.getByRole("dialog", { name: "Switch graph" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("list", { name: "On a server" })).toContainText("default");
+  await expect(menu.locator("[aria-current='true']")).toContainText("default");
+  // Wider than the sidebar it hangs from, and not clipped by it: fully on screen.
+  const box = await menu.boundingBox();
+  expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(1280);
+  await expect(menu.getByRole("button", { name: /Add a graph/ })).toBeInViewport();
+  // An outside click closes it.
+  await page.locator(".page-scroll").click({ position: { x: 400, y: 400 } });
+  await expect(menu).toHaveCount(0);
+});
+
+test("B-704: a browser tab says a server on another origin opens in its own tab, and contacts nothing", async ({
+  page,
+}) => {
+  const elsewhere = "http://127.0.0.1:6549";
+  const contacted: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().startsWith(elsewhere)) contacted.push(r.url());
+  });
+  await page.goto("/journals");
+  await openGraphMenu(page);
+  await page.getByText("Add a graph").click();
+  await page.getByLabel("Server address").fill(`${elsewhere}/g/work`);
+  const note = page.getByRole("note");
+  await expect(note).toContainText("can only add graphs on");
+  const link = note.getByRole("link", { name: /Open 127\.0\.0\.1:6549 in a new tab/ });
+  await expect(link).toHaveAttribute("href", `${elsewhere}/g/work`);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(page.getByLabel("Device token")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Connect" })).toHaveCount(0);
+  // Enter in the address field submits nothing either.
+  await page.getByLabel("Server address").press("Enter");
+  await expect(note).toBeVisible();
+  expect(contacted).toEqual([]);
+  // Back to this server's own address: the token field and Connect come back.
+  await page.getByLabel("Server address").fill(`${new URL(page.url()).origin}/g/default`);
+  await expect(page.getByLabel("Device token")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
 });

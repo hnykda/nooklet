@@ -14,7 +14,7 @@
  * from the palette closes it first.
  */
 
-import { For, type JSX, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import { render } from "solid-js/web";
 import { rememberFocus } from "../commands/focus-return.js";
 import { claimPopupKeys } from "../commands/popup-keys.js";
@@ -31,11 +31,21 @@ export interface ConfirmOptions {
   /** No Cancel button: the dialog only reports something (`noticeDialog`), standing in for
    * `window.alert`, which the desktop app's webview swallows as well (B-491). */
   acknowledgeOnly?: boolean;
+  /** B-712: a loud banner above the message, for an action that loses data. */
+  warning?: string;
+  /** B-712: the word the person must type before the confirm button enables (case and
+   * surrounding spaces ignored). Focus starts in the field, so Enter cannot confirm early. */
+  typeToConfirm?: string;
 }
 
 function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }): JSX.Element {
   let confirmEl: HTMLButtonElement | undefined;
   let cancelEl: HTMLButtonElement | undefined;
+  let typedEl: HTMLInputElement | undefined;
+  const [typed, setTyped] = createSignal("");
+  const armed = (): boolean =>
+    props.typeToConfirm === undefined ||
+    typed().trim().toLowerCase() === props.typeToConfirm.toLowerCase();
 
   onMount(() => {
     // Escape must reach the dialog, not the editor's keymap behind it (which would turn the block
@@ -49,7 +59,7 @@ function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }
     // The action has focus: Enter confirms, as in a native sheet. Nothing here is irreversible —
     // Delete page moves a page to the Trash, History's undos are themselves undoable — and a person who opened the dialog from the
     // palette with Enter has already let go of the key by the time it renders.
-    queueMicrotask(() => confirmEl?.focus());
+    queueMicrotask(() => (typedEl ?? confirmEl)?.focus());
   });
 
   function onKeyDown(e: KeyboardEvent): void {
@@ -58,9 +68,15 @@ function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }
       e.stopPropagation();
       props.onDone(false);
     } else if (e.key === "Tab") {
-      // Two buttons (or just the one); keep Tab between them rather than walking into the page behind the scrim.
+      // Keep Tab among the dialog's own controls rather than walking into the page behind the
+      // scrim. A disabled confirm button is skipped (B-712).
       e.preventDefault();
-      (document.activeElement === confirmEl ? cancelEl : confirmEl)?.focus();
+      const order = [typedEl, cancelEl, confirmEl].filter(
+        (el): el is HTMLInputElement | HTMLButtonElement => el !== undefined && !el.disabled,
+      );
+      const at = order.indexOf(document.activeElement as HTMLInputElement | HTMLButtonElement);
+      const step = e.shiftKey ? -1 : 1;
+      order[(at + step + order.length) % order.length]?.focus();
     }
   }
 
@@ -80,9 +96,36 @@ function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }
         <h2 id="confirm-dialog-title" class="confirm-dialog-title">
           {props.title}
         </h2>
+        <Show when={props.warning}>
+          <p class="confirm-dialog-warning" role="alert">
+            {props.warning}
+          </p>
+        </Show>
         <div id="confirm-dialog-message" class="confirm-dialog-message">
           <For each={props.message}>{(line) => <p>{line}</p>}</For>
         </div>
+        <Show when={props.typeToConfirm}>
+          {(word) => (
+            <label class="confirm-dialog-type">
+              <span>
+                Type <strong>{word()}</strong> to confirm
+              </span>
+              <input
+                ref={typedEl}
+                type="text"
+                autocomplete="off"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck={false}
+                value={typed()}
+                onInput={(e) => setTyped(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && armed()) props.onDone(true);
+                }}
+              />
+            </label>
+          )}
+        </Show>
         <div class="confirm-dialog-buttons">
           <Show when={props.acknowledgeOnly !== true}>
             <button
@@ -99,6 +142,7 @@ function ConfirmDialog(props: ConfirmOptions & { onDone: (ok: boolean) => void }
             type="button"
             class="confirm-dialog-button confirm-dialog-confirm"
             classList={{ "confirm-dialog-destructive": props.destructive === true }}
+            disabled={!armed()}
             onClick={() => props.onDone(true)}
           >
             {props.confirmLabel}

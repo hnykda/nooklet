@@ -104,6 +104,7 @@ import {
 } from "./graphs/retire.js";
 import { liveServer, liveServerMessage, writeServerLock } from "./graphs/server-lock.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
+import { attachImportService, ImportService } from "./importer/jobs.js";
 import { detectLogseqGraph, importLogseqGraph } from "./importer/logseq.js";
 import {
   configureLiveLimits,
@@ -225,6 +226,18 @@ function open(args: Args, opts: OpenOptions = {}): { ctx: ServerContext; config:
  * directory. A build with neither — no `plugins/` three levels above it — silently finds none,
  * which is how the desktop app shipped without them (B-180).
  */
+/** `--import-max-mb <n>`: the largest graph upload Settings → Import from Logseq accepts
+ * (ADR 031). Default 1024. */
+function importMaxBytes(args: Args): number | undefined {
+  const flag = args.flags.get("import-max-mb");
+  if (flag === undefined) return undefined;
+  const mb = typeof flag === "string" ? Number(flag) : Number.NaN;
+  if (!Number.isInteger(mb) || mb < 1 || mb > 64 * 1024) {
+    throw new CliArgError("--import-max-mb needs a whole number of megabytes, 1-65536");
+  }
+  return mb * 1024 * 1024;
+}
+
 function die(message: string): never {
   process.stderr.write(`nooklet: ${message}\n`);
   process.exit(1);
@@ -244,6 +257,8 @@ const USAGE = `nooklet — a local-first outliner server
 
   nooklet serve  [--data <dir>] [--port <n>] [--web <dir>]
                  [--host <addr>] [--allow-host <h,h>]   expose on a LAN/tailnet
+                 [--import-max-mb <n>]   largest graph Settings → Import from Logseq accepts
+                                         (default 1024)
                  [--no-loopback-token]   never auto-issue a token to "this machine"; use
                                          behind a same-host reverse proxy (docs/OPERATIONS.md).
                                          Default: on for a loopback bind, off with a non-loopback
@@ -319,6 +334,12 @@ async function main(): Promise<void> {
       const indexers = new Map<string, EmbeddingIndexer>();
       // Per graph too, so retiring one (B-713) stops its mirror before its database closes.
       const mirrors = new Map<string, ReturnType<typeof startLiveMirror>>();
+      // ADR 031: Settings → Import from Logseq. One per process (one import at a time).
+      const importer = new ImportService({
+        rootDataDir: dir,
+        baseConfig,
+        maxUploadBytes: cliArg(() => importMaxBytes(args)),
+      });
       const registry = new GraphRegistry(dir, {
         registry: buildRegistry(),
         baseConfig,
@@ -331,6 +352,7 @@ async function main(): Promise<void> {
           if (handle.config.mirror.enabled) {
             mirrors.set(handle.id, startLiveMirror(handle.ctx, handle.config.dataDir));
           }
+          attachImportService(handle.ctx, handle.config, importer);
 
           // ADR 003 / sql-schema.md rule 26: "A dev-mode server SHOULD run rebuild() into a
           // scratch database on every start and diff it against the live state tables." Dev-only

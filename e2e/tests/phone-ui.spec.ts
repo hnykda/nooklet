@@ -9,7 +9,15 @@
  */
 
 import { devices, expect, test } from "@playwright/test";
-import { editor, isoOffset, openEditing, openPage, pagePath, rowTexts } from "../helpers/index.js";
+import {
+  editor,
+  isoOffset,
+  openEditing,
+  openGraphMenu,
+  openPage,
+  pagePath,
+  rowTexts,
+} from "../helpers/index.js";
 
 test.use({ ...devices["iPhone 13"] });
 
@@ -106,14 +114,84 @@ test("B-649: Back and Forward are greyed out when there is nowhere to go", async
 
 test("B-650: the graph switcher closes when tapping outside it", async ({ page }) => {
   await openPage(page, "Phone Switcher Close", "- one");
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   const popover = page.locator(".graph-switcher-popover");
   await expect(popover).toBeVisible();
   // A tap inside leaves it open.
-  await popover.click({ position: { x: 5, y: 5 } });
+  await popover.tap({ position: { x: 5, y: 5 } });
   await expect(popover).toBeVisible();
-  await page.locator(".page-scroll").tap({ position: { x: 200, y: 600 } });
+  // B-709: the menu hangs from the sidebar drawer's title. A tap elsewhere in the drawer closes the
+  // menu and leaves the drawer...
+  const drawer = page.getByRole("complementary", { name: "Sidebar" });
+  const drawerBox = await drawer.boundingBox();
+  await drawer.tap({ position: { x: 20, y: (drawerBox?.height ?? 800) - 20 } });
   await expect(popover).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  // ...and a tap beside the drawer closes the drawer (B-576), menu or not.
+  await openGraphMenu(page);
+  await expect(popover).toBeVisible();
+  await page.locator(".sidebar-backdrop").tap({ position: { x: 370, y: 600 } });
+  await expect(popover).toHaveCount(0);
+  await expect(drawer).toHaveCount(0);
+});
+
+test("B-709: on the phone the graph menu opens from the drawer's title and fits the screen", async ({
+  page,
+}) => {
+  await openPage(page, "Phone Graph Menu", "- one");
+  // No switcher icon in the top bar.
+  await expect(
+    page.locator(".app-topbar").getByRole("button", { name: /switch graph/i }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Toggle sidebar" }).tap();
+  const title = page.getByRole("button", { name: /, switch graph$/ });
+  await expect(title).toBeVisible();
+  await title.tap();
+  const menu = page.getByRole("dialog", { name: "Switch graph" });
+  await expect(menu).toBeVisible();
+  await expect(menu.locator("[aria-current='true']")).toHaveCount(1);
+  const box = await menu.boundingBox();
+  const width = page.viewportSize()?.width ?? 390;
+  expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+  await expect(menu.getByRole("button", { name: /Add a graph/ })).toBeInViewport();
+  // The page did not grow sideways.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    width,
+  );
+});
+
+test("B-708: on a phone the agent channel stays shut and its badge hidden until turned on in Settings", async ({
+  page,
+}) => {
+  const sockets: string[] = [];
+  page.on("websocket", (ws) => sockets.push(ws.url()));
+  await openPage(page, "Phone Agent Access", "- one");
+  // Nothing on screen says "the channel would have opened by now", so give it the time it takes on
+  // a desktop (`agent-access.spec.ts` sees it well within this) — and the opt-in below shows the
+  // same page opening it within the poll's default timeout once allowed.
+  await page.waitForTimeout(2500);
+  const badge = page.locator(".vr-live-badge");
+  await expect(badge).toHaveCount(0);
+  expect(sockets.filter((u) => u.includes("/ui/live"))).toEqual([]);
+
+  // The opt-in: Settings → Agent access.
+  await page.getByRole("button", { name: "More" }).tap();
+  await page.getByRole("menuitem", { name: "Settings" }).tap();
+  const view = page.getByRole("checkbox", { name: "Let agents view this window" });
+  await expect(view).not.toBeChecked();
+  await view.tap();
+  await expect.poll(() => sockets.some((u) => u.includes("/ui/live"))).toBe(true);
+  await expect(badge).toHaveCount(1);
+
+  // Off again: the badge goes, and a reload opens no channel.
+  await view.tap();
+  await expect(badge).toHaveCount(0);
+  sockets.length = 0;
+  await page.reload();
+  await expect(page.locator(".vr-outliner").first()).toBeVisible();
+  await page.waitForTimeout(2500);
+  expect(sockets.filter((u) => u.includes("/ui/live"))).toEqual([]);
 });
 
 test("B-651: the toolbar's task button cycles a block through the workflow, DOING/NOW included", async ({
@@ -152,9 +230,7 @@ test("B-651: the task checkbox is an icon with checkbox semantics, not a text gl
   await expect(box).toHaveText("");
   const size = await box.locator("svg").boundingBox();
   expect(size?.width ?? 0).toBeGreaterThanOrEqual(14);
-  // `click`, not `tap`: in Chromium's touch emulation the marker's pointerdown preventDefault
-  // swallows the click a tap would make (`tools/probes/phone-ui/marker-tap-chromium.spec.ts`).
-  // A real tap on iOS does tick it (Simulator, `tools/probes/phone-ui/6-checkbox-tapped.png`).
+  // A mouse click here; a touch tap is `phone-input.spec.ts` (B-661, which this used to dodge).
   await box.click();
   await expect(outliner.getByRole("checkbox", { name: "Task: DONE" })).toHaveAttribute(
     "aria-checked",

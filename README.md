@@ -34,8 +34,9 @@ pnpm --filter @nooklet/web build
 pnpm nooklet serve
 ```
 
-Open <http://127.0.0.1:6100>. Bring a Logseq file graph with
-`pnpm nooklet import /absolute/path/to/graph`.
+Open <http://127.0.0.1:6100>. To bring a Logseq file graph, open Settings → Import from Logseq
+and choose the graph's folder (or a .zip of it). From a terminal, `pnpm nooklet import
+/absolute/path/to/graph` does the same.
 
 Or skip the build: the [Releases page](https://github.com/hnykda/nooklet/releases) has the desktop
 apps and an Android APK, and the server runs from a published image:

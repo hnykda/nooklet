@@ -379,7 +379,15 @@ export function createAppHost(deps: AppDeps): AppHost {
       deps.setTheme(THEME_CYCLE[deps.getTheme()]);
     },
     hideKeyboard() {
-      // Blurring the focused editable is the only way a web page can dismiss the soft keyboard.
+      // End the editing session, not just the focus (B-664). A blur alone dropped the keyboard
+      // but left the block in edit mode — a blur ends nothing here (only a click outside or this
+      // request does, `BlockTree`) — so `editorFocused` stayed true and the toolbar stayed on
+      // screen at the bottom, still scrolled to this button. Ending the session renders the
+      // block, withdraws the context (the toolbar unmounts, so it comes back scrolled to its
+      // start) and detaches the editor.
+      requestEditingEnd();
+      // Blurring the focused editable is the only way a web page can dismiss the soft keyboard;
+      // the detach above normally has already, this covers anything else holding it.
       (document.activeElement as HTMLElement | null)?.blur();
     },
     syncNow() {

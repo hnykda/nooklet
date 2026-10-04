@@ -28,6 +28,7 @@ import {
   type JSX,
   Match,
   onCleanup,
+  onMount,
   Show,
   Switch as SolidSwitch,
 } from "solid-js";
@@ -51,8 +52,11 @@ import {
 } from "../data/page-title.js";
 import { chooseTaskWorkflow, taskWorkflow } from "../data/task-workflow.js";
 import { listTemplates, setJournalTemplate, type TemplateSummary } from "../data/templates.js";
+import { liveConsent } from "../live/consent.js";
+import { liveOffByDefault } from "../live/device-default.js";
 import { DevicesSection } from "./DevicesSection.js";
 import { openDiagnostics } from "./DiagnosticsPanel.js";
+import { ImportSection } from "./ImportSection.js";
 import { PluginsSection } from "./PluginsSection.js";
 import { scrollSectionIntoView } from "./scroll-section.js";
 import "./settings.css";
@@ -663,6 +667,48 @@ function TasksSection(): JSX.Element {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Agent access (ADR 015, B-708)
+// ---------------------------------------------------------------------------------------------
+
+/** The live agent channel's two switches, the same ones the top-bar badge holds. Here because on
+ * a phone the badge is hidden until agent access is on (B-708, `live/device-default.ts`), so this
+ * is where it is turned on; on a desktop it is a second way to the same switches. */
+function AgentAccessSection(): JSX.Element {
+  const [consent, setConsent] = createSignal(liveConsent.get());
+  onMount(() => onCleanup(liveConsent.subscribe(setConsent)));
+  const offByDefault = liveOffByDefault();
+  return (
+    <section id="set-agent-access">
+      <h3>Agent access</h3>
+      <Row label="Let agents view this window">
+        <input
+          type="checkbox"
+          aria-label="Let agents view this window"
+          checked={consent().viewEnabled}
+          onChange={(e) => liveConsent.setViewEnabled(e.currentTarget.checked)}
+        />
+      </Row>
+      <Row label="Let agents control this window">
+        <input
+          type="checkbox"
+          aria-label="Let agents control this window"
+          checked={consent().controlEnabled}
+          onChange={(e) => liveConsent.setControlEnabled(e.currentTarget.checked)}
+        />
+      </Row>
+      <p class="set-note">
+        An AI agent working beside you (over MCP) can see which page this window shows and, with
+        control on, run commands in it as you would.{" "}
+        {offByDefault
+          ? "Off by default on a phone or tablet; while it is off this device makes no connection for it."
+          : "While viewing is off this window makes no connection for it."}{" "}
+        Stored per device.
+      </p>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
 
 export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
   return (
@@ -687,7 +733,11 @@ export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
         <TemplatesSection />
         <EmbeddingsSection />
         <DevicesSection />
+        <AgentAccessSection />
         <PluginsSection />
+        {/* After Plugins: it grows once `import.info` answers, and above Plugins that pushed the
+            plugin list out of view after "Open plugin manager" had scrolled to it (B-98 e2e). */}
+        <ImportSection onClose={props.onClose} />
         <AboutSection onClose={props.onClose} />
       </div>
     </div>

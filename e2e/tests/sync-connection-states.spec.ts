@@ -104,7 +104,7 @@ test("a refused token says so, keeps the edit, and re-pairing sends it", async (
     `${new URL(page.url()).origin}${base}`,
   );
   await expect(repair.getByLabel("Server address")).toHaveAttribute("readonly", "");
-  await repair.getByLabel("Device token").fill("nk_still_not_valid");
+  await repair.getByLabel("Device token").fill(`nk_${"0".repeat(48)}`); // the right shape (B-706), not a real token;
   await repair.getByRole("button", { name: "Connect" }).click();
   await expect(repair.locator(".connect-error")).toContainText("rejected");
   await repair.getByLabel("Device token").fill(good);

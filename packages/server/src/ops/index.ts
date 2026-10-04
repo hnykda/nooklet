@@ -31,6 +31,7 @@ import { embeddingsConfigure, embeddingsReindex, embeddingsStatus } from "./embe
 import { graphLinks } from "./graph-links.js";
 import { graphOverview } from "./graph-overview.js";
 import { graphReplace } from "./graph-replace.js";
+import { IMPORT_OPS } from "./import.js";
 import { pageAppend } from "./page-append.js";
 import { pageBacklinks } from "./page-backlinks.js";
 import { pageCreate } from "./page-create.js";
@@ -94,6 +95,8 @@ export const CORE_OPS = [
   pairingRedeem,
   tokenList,
   tokenRevoke,
+  // ADR 031: import a Logseq graph from the app (`admin`, HTTP only).
+  ...IMPORT_OPS,
 ];
 
 export function buildRegistry(): OpRegistry {

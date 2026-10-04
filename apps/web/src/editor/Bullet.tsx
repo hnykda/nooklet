@@ -7,6 +7,7 @@
  */
 import { onCleanup, onMount, Show } from "solid-js";
 import { attachLongPressDrag } from "./gestures/longPressDragAttach.js";
+import { keepEditorFocus } from "./keep-focus.js";
 
 export function Bullet(props: {
   hasChildren: boolean;
@@ -36,7 +37,8 @@ export function Bullet(props: {
           class="vr-collapse-arrow"
           classList={{ "vr-collapsed": props.collapsed }}
           aria-label={props.collapsed ? "Expand block" : "Collapse block"}
-          onPointerDown={(e) => e.preventDefault()}
+          onPointerDown={keepEditorFocus.onPointerDown}
+          onMouseDown={keepEditorFocus.onMouseDown}
           onClick={props.onToggleCollapse}
         >
           <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true">
@@ -49,7 +51,8 @@ export function Bullet(props: {
         class="vr-bullet"
         classList={{ "vr-bullet-parent": props.hasChildren }}
         aria-label="Zoom into block"
-        onPointerDown={(e) => e.preventDefault()}
+        onPointerDown={keepEditorFocus.onPointerDown}
+        onMouseDown={keepEditorFocus.onMouseDown}
         onClick={props.onZoomIn}
       >
         <span class="vr-bullet-dot" />

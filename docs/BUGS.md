@@ -892,25 +892,10 @@ Open by design; with no rate limit, a public server's asset links can be brute-f
 
 2026-10-04: entropy measured (25 random bits + ms time) — not practically guessable blind; the real gap is that a revoked device keeps every asset URL it has seen. Recommendation H5: short-lived signed URLs.
 
-### B-661 · A tap on the task marker does nothing in Chromium touch emulation
-**Status:** open · **Severity:** low (iOS-only app today) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
-
-Its `onPointerDown preventDefault` swallows the click (probe `tools/probes/phone-ui/marker-tap-chromium.spec.ts`). iOS is fine (Simulator). Would affect Chromium on Android, and probably the R61 toolbar buttons (same pattern).
-
-### B-662 · iOS: Return in an empty day's draft inserts a newline instead of creating a block
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, phone-ui agent · **Test:** none
-
-Simulator event log: `keydown Enter` then `beforeinput insertLineBreak`, draft `"ab\n"`; the keydown `preventDefault` does not stop it on iOS. Unverified on a physical iPhone.
-
 ### B-663 · `tasks.spec.ts` Mod+Enter tests are order-dependent since empty graphs default to `now`
 **Status:** open · **Severity:** low (test) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
 
 Run alone (fresh server, empty graph) they expect TODO and get LATER (`7641c43`); in the full suite earlier specs leave TODO markers so the workflow is inferred `todo`.
-
-### B-664 · After the toolbar's hide-keyboard button the toolbar stays at the bottom, scrolled sideways
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, phone-ui agent · **Test:** none
-
-Phone UI agent, Simulator.
 
 ### B-666 · A page rename leaves its own blocks' `path_ref` under the old key
 **Status:** open · **Severity:** low · **Found:** 2026-10-04 · **Test:** none
@@ -960,59 +945,10 @@ Owner: like B-648 (Properties), the viewport grows beyond the screen width after
 `spawnSync("pnpm")` without a shell (pnpm.cmd), esbuild.exe looked up under `bin/`, zip extracted
 with `unzip`. Fixed by reading; no Windows machine.
 
-### B-699 · The pairing confirm screen shows the server address twice
-**Status:** open (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
-
-Read-only box and the editable field, for token and code links (pre-existing from B-603).
-
 ### B-700 · Behind a same-machine proxy, one client can lock out pairing for a minute
 **Status:** open (2026-10-04, qr-pairing) · **Severity:** low (security) · **Found:** 2026-10-04, qr-pairing agent · **Test:** none
 
 Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
-
-### B-704 · In the desktop app, adding a remote server graph from the in-app switcher fails with "Load failed"
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner adding the production server (`https://<tailnet host>/g/alpha`) from the desktop app · **Test:** none yet
-
-"Could not reach https://<tailnet host>/g/alpha: Load failed" (`data/connect-graph.ts`). The page in
-the desktop window is served by another server (the bundled sidecar or a test server on
-`127.0.0.1:<port>`), so the connect check is a cross-origin request; the server's CORS allowlist
-admits only the app-shell origins (`capacitor://localhost`, `https://localhost`), so the preflight
-gets 401 and WebKit reports "Load failed". Verified with curl: preflight from `capacitor://localhost`
-→ 204 with ACAO; from `http://127.0.0.1:6200` / `tauri://localhost` → 401. Workaround: the native
-menu's Switch Server… → Add a server (navigates the window to the server; same-origin). Fix: in the
-desktop shell, the switcher's "add a server graph" should hand the URL to the shell (like B-643's
-`nooklet-desktop.invalid` request) instead of fetching cross-origin; on plain web it should say
-plainly that a different server must be opened in its own tab.
-
-### B-705 · iOS zooms in when focusing the add-graph server URL field and the page stays too wide
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
-
-Same mechanism as B-648: iOS auto-zooms on focusing a form control whose font-size is under 16px
-and never zooms back, leaving the viewport wider than the screen. B-648's fix covered specific
-fields (properties, search, task filter); every new form (here the graph switcher's server URL)
-reintroduces it. Owner: "try to fix this globally".
-
-### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
-**Status:** open · **Severity:** medium (blocked the owner pairing a phone) · **Found:** 2026-10-04, owner adding `alpha` on the iPhone · **Test:** none yet
-
-The owner copied a device token with a trailing `.` (it followed the token in a chat message). The
-app sent it as is; the server answered 401 and the connect screen said "That token was rejected.
-Check it was copied whole, and not revoked." — while the real token was valid (its `last used` never
-moved, confirmed on the server). Every token has a fixed shape (`nk_` + hex, see
-`packages/server/src/auth/tokens.ts`; root `nkroot_`). Fix: strip surrounding whitespace, quotes,
-backticks and trailing punctuation from a pasted token, and if what remains does not match the
-shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
-with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
-
-### B-708 · The live agent-control channel (`/ui/live`) is offered on the phone
-**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
-
-Owner: "agents control should probably be off for mobile? that doesn't make much sense". ADR 015's live UI control lets an agent drive an open window; on a phone that's rarely wanted. Decide: hidden/off by default on Capacitor (and touch), still opt-in in Settings?
-
-### B-709 · Move graph switching into the left sidebar, with the current graph's name at the top
-**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
-
-Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
 
 ### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
 **Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
@@ -1025,17 +961,6 @@ file's identity wins, page properties keep the first value per key, and both fil
 (journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
 19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
 stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
-
-### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
-**Status:** open · **Severity:** high (one tap can destroy the only copy of a local-only graph) · **Found:** 2026-10-04, owner on the iPhone ("removing a graph seems to be dangerously easy on mobile phone (and maybe elsewhere?)") · **Test:** none yet
-
-Owner's requirement: a huge warning that removing deletes this device's copy, which may be the
-only one, and the user must type "delete" to confirm. Distinguish: (a) a local-only graph — the
-device's copy IS the graph; removal is irreversible; offer export/backup first; (b) a server graph
-— the server keeps it, but unsynced local changes (pending ops) would be lost; say how many, and
-block or require the typed confirmation when there are any. Applies on every platform (phone,
-desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
-the bundled server's data without the same confirmation.
 
 ### B-718 · self-hosting.md still says to restart the server after revoking a token
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, ws-hardening · **Test:** none
@@ -1082,7 +1007,217 @@ A data guard landed (`updateGraph` refuses a `baseUrl` for a `detachedFrom` entr
 
 249 property values that are themselves blocks stay as child blocks; 7 embeds arrive as copies rather than embeds. Real-graph counts from the dry run.
 
+### B-732 · A paired phone cannot start an import
+**Status:** open (2026-10-04, in-app import) · **Severity:** low · **Found:** 2026-10-04, in-app import agent · **Test:** none
+
+Its token is `write`; import is `admin` (ADR 029/031). The phone is told to import from the desktop app.
+
+### B-734 · Under `pnpm desktop` (dev build), Switch Server… exits the app instead of restarting it
+**Status:** open · **Severity:** medium (the only working desktop path to a remote server is unusable in dev) · **Found:** 2026-10-04, owner · **Test:** none yet
+
+`restart_app` / `on_menu` call `app.request_restart()`; under `tauri dev` a restart ends the dev
+process and nothing relaunches it, so the picker never appears and the in-app add form is blocked by
+B-704. Workaround used: edit `desktop.json` (add the remote entry, set `active_graph_id`) and run
+`pnpm desktop` again. Fix: in dev, show the picker in place (navigate the window to the bundled
+launcher with forcePicker) instead of restarting, or detect `tauri dev` and print how to relaunch.
+
+### B-736 · Clicking an image only opens the block editor; no way to view, copy or download it
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** none yet
+
+Clicking a rendered `![…](assets/….png)` switches the block to its raw markdown, so the image
+disappears and there is nothing to act on. Expected (Logseq does this): clicking the image itself
+opens it (a lightbox / full view) with Copy image and Download/Save, while clicking the
+rest of the block still edits. Must work in the browser, the desktop shell (WKWebView: a download
+needs the shell, not `<a download>`) and on the phone (long-press / share sheet).
+
+### B-737 · Tokenless `GET /assets/:id` relies on ids being unguessable, but asset ids are 45 time bits + 25 random bits, sequential within a millisecond
+**Status:** open · **Severity:** high (security) · **Found:** 2026-10-04, checking image load time on the production server · **Test:** none yet
+
+`PUBLIC_ROUTES` (`packages/server/src/http/guards.ts`) lets `/assets/:id` through without a token
+because `<img src>` cannot carry a bearer header, on the stated grounds that "ids are unguessable".
+They are not: assets use `newId()` (`packages/core/src/ids.ts`, ADR 004), whose only randomness is
+25 bits, re-rolled per millisecond and **incremented by one** for every further id inside the same
+millisecond. A bulk import creates many assets per millisecond, so one known asset URL leads
+straight to its neighbours, and the time part narrows any search to an import window. Verified:
+a production asset answered 200 to a request with no token. Exposure is limited by where the server is reachable
+(tailnet-only for the owner), but the default must be safe without that.
+Fix options: (a) a separate 128-bit random asset key in the URL (capability URL done properly),
+(b) an HttpOnly same-site cookie set from the bearer token so `<img>` is authenticated,
+(c) short-lived signed URLs. Whichever: the content stays `sandbox`-CSP; existing block content
+keeps its `assets/<id>.<ext>` form, so the mapping happens in `assetUrl()` / the server.
+
+### B-738 · Images load slowly, even the second time the same image is shown
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner ("probably OK") · **Test:** none yet
+
+Imported photos are stored and served at full size (the largest images on the production graph are 2.7 to 4 MB),
+and there are no thumbnails, so each one is several MB to download. Measured from the Mac over a
+direct tailnet path: about 1.6 MB/s (a 67 MB asset in 41 s). `/assets/:id` already sends
+`cache-control: public, max-age=31536000, immutable`, so a slow *second* load means the
+webview is not reusing its HTTP cache. That is unverified: check the Tauri/WKWebView and Capacitor caches, and
+whether the URL changes between renders. Possible fixes: server-side resized variants
+(`/assets/:id?w=…`) and `loading="lazy"`/`decoding="async"`.
+
+### B-739 · In the desktop app on a remote server's page, ConnectView's "Just this device" may create a replica inside that server's origin
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, graph-menu agent (B-704) · **Test:** none yet
+
+That is ADR 028's rejected model. Not checked what `App.tsx#skip` does there.
+
+### B-740 · No whole-graph export or backup in the client
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, graph-menu agent (B-712) · **Test:** none yet
+
+B-712's "export first" can only point at per-page Export as markdown and promote-to-server; a local-only graph on a phone has no one-step way out.
+
+### B-741 · A removed graph's client replica is never deleted
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, graph-menu agent (B-712) · **Test:** none yet
+
+`removeGraph` drops the list entry only; the OPFS file `/nooklet-<id>.sqlite3` and its journal/draft keys stay, unreachable: a storage leak.
+
 ## Fixed
+
+### B-706 · A token pasted with a stray trailing character reads as "rejected" instead of being cleaned or flagged
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `token-input.test.ts`, `GraphSwitcher.test.tsx` "B-706: …" ×2
+
+The owner copied a device token with a trailing `.` (it followed the token in a chat message). The
+app sent it as is; the server answered 401 and the connect screen said "That token was rejected.
+Check it was copied whole, and not revoked." — while the real token was valid (its `last used` never
+moved, confirmed on the server). Every token has a fixed shape (`nk_` + hex, see
+`packages/server/src/auth/tokens.ts`; root `nkroot_`). Fix: strip surrounding whitespace, quotes,
+backticks and trailing punctuation from a pasted token, and if what remains does not match the
+shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
+with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
+
+**Fix (phone-input):** `data/token-input.ts`: normalise (whitespace, quotes, backticks, trailing punctuation) and check the shape (`nk_`/`vrt_` + 48 hex = 51; `nkroot_` + 48 hex = 55) before any request; a root token in a device field (and the reverse) is named. **Test:** `token-input.test.ts`, `GraphSwitcher.test.tsx` "B-706: …" ×2; Simulator: token typed with a trailing `.` connects (server `last used`).
+
+### B-705 · iOS zooms in when focusing the add-graph server URL field and the page stays too wide
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `phone-fields.spec.ts` (every form
+
+Same mechanism as B-648: iOS auto-zooms on focusing a form control whose font-size is under 16px
+and never zooms back, leaving the viewport wider than the screen. B-648's fix covered specific
+fields (properties, search, task filter); every new form (here the graph switcher's server URL)
+reintroduces it. Owner: "try to fix this globally".
+
+**Fix (phone-input):** One `(pointer: coarse)` rule, `!important`, in `shell.css`; B-648's per-field rules removed; the iOS app also gets `maximum-scale=1` (pinch is already off in Capacitor's WKWebView; not on the web, where Android Chrome would lose pinch-zoom). **Test:** `phone-fields.spec.ts` (every form; focus keeps scale 1); `viewport-meta.test.ts`; Simulator `8-b705-*`, `9-b705-*`.
+
+### B-699 · The pairing confirm screen shows the server address twice
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `PairingLinkPrompt.test.tsx` (token and code link)
+
+Read-only box and the editable field, for token and code links (pre-existing from B-603).
+
+**Fix (phone-input):** **Test:** `PairingLinkPrompt.test.tsx` (token and code link); Simulator `10/11-b699-*`.
+
+### B-661 · A tap on the task marker does nothing in Chromium touch emulation
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** see below
+
+Its `onPointerDown preventDefault` swallows the click (probe `tools/probes/phone-ui/marker-tap-chromium.spec.ts`). iOS is fine (Simulator). Would affect Chromium on Android, and probably the R61 toolbar buttons (same pattern).
+
+**Fix (phone-input):** Focus is kept by cancelling `mousedown` (and `pointerdown` only for a mouse or pen); cancelling a touch `pointerdown` made Chromium drop the tap's `click`. Marker, bullet, collapse arrow and the R61 toolbar (all four were affected). `editor/keep-focus.ts`. **Test:** `phone-input.spec.ts` "B-661: …" ×4 with real `tap()`, Chromium + WebKit (red before in Chromium); Simulator: marker and toolbar taps keep the keyboard (`2-b661-*`). Android itself unverified (no device/emulator run).
+
+### B-664 · After the toolbar's hide-keyboard button the toolbar stays at the bottom, scrolled sideways
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** `phone-input.spec.ts` "B-664: …"
+
+Phone UI agent, Simulator.
+
+**Fix (phone-input):** A blur ends nothing in `BlockTree`, so `editorFocused` stayed true. "Hide keyboard" now ends the editing session (`requestEditingEnd`) then blurs; the toolbar unmounts and comes back at its start. **Test:** `phone-input.spec.ts` "B-664: …"; Simulator `3/4/5-b664-*`.
+
+### B-662 · iOS: Return in an empty day's draft inserts a newline instead of creating a block
+**Status:** fixed 2026-10-04 (phone-input) · **Test:** see below
+
+Simulator event log: `keydown Enter` then `beforeinput insertLineBreak`, draft `"ab\n"`; the keydown `preventDefault` does not stop it on iOS. Unverified on a physical iPhone.
+
+**Fix (phone-input):** Cause (Simulator log with `shiftKey`): iOS's soft keyboard reports its auto-capitalisation shift as `shiftKey=true`, so Return arrived as Shift+Enter — the draft's soft line break, and `block.newline` in a block (the command layer takes Enter before CodeMirror, which has the same workaround internally). The draft's keydown never ran its `preventDefault`; iOS did not ignore it. Fix: `platform/ios-enter-shift.ts` (iOS + soft keyboard up + field auto-capitalises → drop the Shift), used by the draft and the command layer; the draft also handles `beforeinput insertLineBreak`. **Test:** `phone-input.spec.ts` "B-662: the iOS soft keyboard's Return (auto-capitalisation Shift) starts a block from the draft" / "…splits a block" (red without the fix), plus the beforeinput and hardware-Enter tests; `ios-enter-shift.test.ts`; Simulator `tools/probes/phone-input/0-…before…`, `1-…fixed`. Also a block's Return on the Simulator — previously a newline in the block when shift was lit. How often shift is lit for a real thumb on a physical iPhone is unverified.
+
+### B-742 · On the Mac app, typing shows an iOS-style autocorrect bubble under the word
+**Status:** fixed 2026-10-04 (verified with Chromium e2e for the attribute; the bubble itself not re-checked in a real desktop window) · **Test:** `e2e/tests/editor-autocorrect.spec.ts` (fails without the fix)
+
+The block editor sets `autocorrect="on"` on every platform (`apps/web/src/editor/surface.ts`). On a
+phone that is wanted; in WKWebView on macOS (the desktop shell, and Safari) the same attribute
+shows the system autocorrect bubble (`Dad ×` under `dad`), which no other Mac editor the owner uses
+does. Chromium ignores the attribute, so the e2e suite never saw it. Fix: autocorrect and
+writing suggestions only on coarse-pointer (touch) devices; spellcheck underlines stay.
+
+**Fix:** `surface.ts` sets `autocorrect`/`writingsuggestions` on only when `(pointer: coarse)` matches.
+
+### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
+**Status:** fixed 2026-10-04 (graph-menu) · **Test:** `e2e/tests/graph-remove.spec.ts` (4), `graph-removal.test.ts` (5), `pending-memo.test.ts` (2), `GraphSwitcher.test.tsx` "B-712" (2)
+
+Owner's requirement: a huge warning that removing deletes this device's copy, which may be the
+only one, and the user must type "delete" to confirm. Distinguish: (a) a local-only graph — the
+device's copy IS the graph; removal is irreversible; offer export/backup first; (b) a server graph
+— the server keeps it, but unsynced local changes (pending ops) would be lost; say how many, and
+block or require the typed confirmation when there are any. Applies on every platform (phone,
+desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
+the bundled server's data without the same confirmation.
+
+**Fix:** an in-app dialog; typing `delete` is required for local-only, This-Mac, and server graphs with unsynced (or unknown) changes; a fully synced server graph gets a plain confirm.
+
+### B-704 · In the desktop app, adding a remote server graph from the in-app switcher fails with "Load failed"
+**Status:** fixed 2026-10-04 (graph-menu; page side tested, a real desktop window not yet) · **Test:** `desktop-local-graph.spec.ts` "B-704: …" (incl. remote-server page with no token), `graph-switcher.spec.ts` "B-704: …", `GraphSwitcher.test.tsx` "B-704" (4), `desktop-shell.test.ts`, Rust `b704_*`
+
+"Could not reach https://<tailnet host>/g/alpha: Load failed" (`data/connect-graph.ts`). The page in
+the desktop window is served by another server (the bundled sidecar or a test server on
+`127.0.0.1:<port>`), so the connect check is a cross-origin request; the server's CORS allowlist
+admits only the app-shell origins (`capacitor://localhost`, `https://localhost`), so the preflight
+gets 401 and WebKit reports "Load failed". Verified with curl: preflight from `capacitor://localhost`
+→ 204 with ACAO; from `http://127.0.0.1:6200` / `tauri://localhost` → 401. Workaround: the native
+menu's Switch Server… → Add a server (navigates the window to the server; same-origin). Fix: in the
+desktop shell, the switcher's "add a server graph" should hand the URL to the shell (like B-643's
+`nooklet-desktop.invalid` request) instead of fetching cross-origin; on plain web it should say
+plainly that a different server must be opened in its own tab.
+
+**Fix:** in the desktop app, a server on another origin is handed to the shell (`add-server-graph`); `main.rs` remembers it, activates it and restarts. A browser tab says the graph opens in its own tab and links it. ADR 028 amendment.
+**Why the owner reached the token-only screen:** the window showed the remote server's page with no token for it, so `App.tsx` rendered `ConnectView`, whose "Sync with a server" only asks for a token for `location.host` outside Capacitor. That screen now offers "Open a different graph instead" and "Back to This Mac" in the desktop app (`DesktopServerSwitch`).
+
+### B-708 · The live agent-control channel (`/ui/live`) is offered on the phone
+**Status:** fixed 2026-10-04 (graph-menu) · **Test:** `phone-ui.spec.ts` "B-708: …" (Chromium + WebKit), `agent-access.spec.ts`, `consent.test.ts` "B-708" (3)
+
+Owner: "agents control should probably be off for mobile? that doesn't make much sense". ADR 015's live UI control lets an agent drive an open window; on a phone that's rarely wanted. Decide: hidden/off by default on Capacitor (and touch), still opt-in in Settings?
+
+**Fix:** on Capacitor/touch-only devices `/ui/live` is not opened and the agent badge is hidden until Settings → Agent access turns it on. ADR 015 amendment.
+
+### B-709 · Move graph switching into the left sidebar, with the current graph's name at the top
+**Status:** fixed 2026-10-04 (graph-menu) · **Test:** `e2e/tests/graph-switcher.spec.ts` "B-709: …", `phone-ui.spec.ts` "B-709: on the phone …" (Chromium + WebKit), `GraphSwitcher.test.tsx` "B-709" (3)
+
+Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
+
+**Fix:** the open graph's name heads the left sidebar; clicking it opens the graph menu, grouped On this device / On this Mac / On a server, the open one checked. Top-bar icon removed.
+
+### B-735 · Keyword search matches whole words only: `rationalit` does not find `rationality`
+**Status:** fixed 2026-10-04 · **Severity:** high · **Found:** 2026-10-04, owner on the production graph · **Test:** `packages/core/src/fts-query.test.ts` › finds a half-typed word without a `*`
+
+`toFtsQuery` (`packages/core/src/fts-query.ts`) emits each bare word as an exact FTS5 token
+(`"rationalit"`), so a partly typed word finds nothing, and an inflected Czech word only finds
+the same form. Prefix matching existed but only with an explicit trailing `*`, which no one types.
+Same grammar on the server (`search` op) and the client replica (`local-search.ts`), so both
+miss. Fix: every bare positive word is a prefix term; quoted phrases and `-exclusions` stay exact.
+Infix matching (`ationali`) is out of scope here: the server has `block_tri`/`page_tri` trigram
+tables but the client replica does not (index cost, `tools/probes/client-fts-cost.mjs`).
+
+**Fix:** every bare word with at least two letters/digits is a prefix term (`"rationalit"*`).
+One-character terms stay exact, because `c++` tokenizes to `c` and `c*` would match every c-word.
+Quoted phrases and exclusions stay exact. The `search` op description and `docs/spec/mcp-tools.md`
+say so. Infix/fuzzy matching is still not done (see above).
+
+### B-733 · `leak-check --staged` skips staged files with non-ASCII names but reports clean
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** medium (the guard silently missed files) · **Test:** manual repro: a staged `pokus-ščř.md` with a home path — old guard "clean", new guard 1 finding
+
+Found while committing fixtures with accented names. Likely `git diff --name-only` quoting (core.quotePath); use `-z`.
+
+**Fixed.** Cause: git prints non-ASCII paths quoted and octal-escaped, `git show :<quoted>` failed, and the `catch` skipped the file silently. Now `--name-only -z` / `ls-files -z` (NUL-separated, unquoted), and an unreadable file is reported as a finding (fail closed) instead of skipped.
+
+### B-731 · Page names with diacritics turn into mojibake when the graph was zipped on a Mac
+**Status:** fixed (2026-10-04, in-app import) · **Severity:** medium · **Found:** 2026-10-04, in-app import agent · **Test:** server unzip tests
+
+macOS `zip` writes UTF-8 names without the UTF-8 flag; decoded correctly now. Finder's Compress not tested.
+
+### B-730 · An uploaded graph zip with an image over ~768 KB never finishes unpacking
+**Status:** fixed (2026-10-04, in-app import) · **Severity:** high (import hangs) · **Found:** 2026-10-04, in-app import agent · **Test:** probe `tools/probes/zip-stall.mjs` + server tests
+
+yauzl 2.10 stalls on large entries under Node 26; the server now reads those entries itself.
+
+### B-729 · Importing a Logseq graph needed a terminal
+**Status:** fixed (2026-10-04, in-app import) · **Severity:** medium (owner request) · **Found:** 2026-10-04, in-app import agent · **Test:** `e2e/tests/logseq-import.spec.ts`, server import-upload tests (incl. a DB-format zip)
+
+Settings → Import from Logseq (ADR 031): a folder (desktop/web) zipped in the browser or a .zip (phone), uploaded in 4 MiB chunks through `import.*` ops (admin-only, HTTP-only; `serve --import-max-mb`, default 1024); zip-slip/symlink/bomb guards; built in staging, verified, moved into place; into a new graph, or the current graph only while empty. Both Logseq formats via the shared importer core. Local-only graphs cannot import (needs the server).
 
 ### B-727 · A DB-version mirror's properties imported as empty blocks
 **Status:** fixed (2026-10-04, logseq-db-import) · **Severity:** medium · **Found:** 2026-10-04, logseq-db-import audit · **Test:** logseq-db-import.test.ts
@@ -1267,6 +1402,8 @@ and nothing re-checks until the next input; B-646 added re-detection on `input`,
 reached for the `/` itself in the block editor.
 
 Cause addressed: trigger detection ran only on DOM events, and CodeMirror can take a typed character in after them (iOS composition, `DOMObserver.flushSoon`). Now also re-detected on every CodeMirror update that changes the text or the caret.
+
+**2026-10-04, phone-input:** confirmed on the Simulator: the menu opens on the `/` itself in a block (10 ms) and in an empty day's draft (150 ms, before keyup). Event sequences in `docs/progress/phone-input.md`. A physical iPhone with predictive text is still the owner's check.
 
 ### B-698 · `isPairPath` matched any path ending in `/pair` (pre-ship)
 **Status:** fixed (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** `apps/web/src/data/pairing.test.ts`

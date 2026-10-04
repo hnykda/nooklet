@@ -1,0 +1,1 @@
+- An old backup copy. The importer must never read this folder.

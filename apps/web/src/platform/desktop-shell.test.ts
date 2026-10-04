@@ -61,6 +61,14 @@ describe("shellRequestUrl (B-643)", () => {
       "http://nooklet-desktop.invalid/open-local-graph?id=quiet-otter",
     );
   });
+
+  it("B-704: an add-server request carries the address, encoded (main.rs reads `url`)", () => {
+    expect(
+      shellRequestUrl({ kind: "add-server-graph", url: "https://notes.example.com/g/work" }),
+    ).toBe(
+      "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fnotes.example.com%2Fg%2Fwork",
+    );
+  });
 });
 
 describe("listenToDesktopMenu (B-533)", () => {

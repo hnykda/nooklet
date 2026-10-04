@@ -9,7 +9,12 @@
  * an e-mail address or a C++ note is not an edge case.
  *
  * The grammar this accepts is the one `search`'s description promises: words, `"quoted phrases"`,
- * and `-exclusions`, plus a trailing `*` on a bare word for prefix matching. Every term is emitted
+ * and `-exclusions`. Every bare word is a *prefix* term (B-735): a search box is typed into
+ * left to right, so `rationalit` must already find `rationality`, and in Czech a stem such as
+ * `zahrad` must find `zahrada`, `zahradě`, `zahradní`. Exact-token matching found nothing for a
+ * half-typed word, which read as "search is broken". Quoted phrases stay exact (that is what the
+ * quotes are for), and so do exclusions: `-test` should not also hide `testament`. A trailing `*`
+ * is still accepted, and is the only way to get a one-character prefix. Every term is emitted
  * as an FTS5 string literal (`"…"` with inner quotes doubled), which is the one form the parser
  * takes verbatim, so nothing the user types can reach the query language itself.
  *
@@ -61,8 +66,13 @@ function toTerms(raw: string): Term[] {
     let text = tok.text;
     let prefix = false;
     if (!tok.quoted && text.endsWith("*") && text.length > 1) {
-      prefix = true;
       text = text.slice(0, -1);
+      prefix = true; // asked for explicitly, so honoured even for one character
+    }
+    // A one-character prefix (`c` from `c++`, which the tokenizer reduces to `c`) matches every
+    // word starting with that letter, so such a term stays exact.
+    if (!tok.quoted && !tok.negated && /[\p{L}\p{N}][^\p{L}\p{N}]*[\p{L}\p{N}]/u.test(text)) {
+      prefix = true;
     }
     // A bare `"` pair, a lone `*`, or a token that was only its `-` sign carries no term.
     text = text.trim();

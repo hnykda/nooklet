@@ -5,6 +5,7 @@
  */
 import SquareCheck from "lucide-solid/icons/square-check";
 import { createMemo, For, Show } from "solid-js";
+import { keepEditorFocus } from "../../editor/keep-focus.js";
 import { useCommands } from "../provider/CommandProvider.js";
 import type { CommandContext, ToolbarButton } from "../types.js";
 import { matchesWhen } from "../when/index.js";
@@ -66,9 +67,10 @@ export function MobileKeyboardToolbar(props: MobileKeyboardToolbarProps) {
               class="cmd-toolbar-button"
               disabled={!isEnabled(button.command)}
               aria-label={button.command}
-              // R61: preventDefault on pointerdown (not just click) so focus never leaves the
-              // mounted Surface for even one frame — losing it drops the iOS keyboard.
-              onPointerDown={(e) => e.preventDefault()}
+              // R61: focus never leaves the mounted Surface, not for one frame — losing it drops
+              // the iOS keyboard. On `mousedown`, not `pointerdown`, for a touch (B-661).
+              onPointerDown={keepEditorFocus.onPointerDown}
+              onMouseDown={keepEditorFocus.onMouseDown}
               onClick={() => void tap(button.command)}
             >
               {/* An icon, not the text glyph: `☐`/`☑` read as a missing character on iOS (B-651). */}

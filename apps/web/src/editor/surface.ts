@@ -99,6 +99,7 @@ const KEY_BINDINGS: Array<{ cmKey: string; kd: KeyDescriptor }> = [
 
 export function createSurface(deps: SurfaceDeps): Surface {
   let current: string | null = null;
+  const touchFirst = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
   const outlinerKeymap = keymap.of(
     KEY_BINDINGS.map(({ cmKey, kd }) => ({
@@ -116,7 +117,12 @@ export function createSurface(deps: SurfaceDeps): Surface {
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({
       spellcheck: "true",
-      autocorrect: "on",
+      // Autocorrect is for typing on glass. On a Mac, WebKit (the desktop shell, Safari) turns the
+      // same attribute into the iOS-style suggestion bubble under every word, which no Mac editor
+      // shows (B-742); Chromium ignores it, so e2e never saw it. `writingsuggestions` is Safari's
+      // inline-prediction switch, same reasoning.
+      autocorrect: touchFirst ? "on" : "off",
+      writingsuggestions: touchFirst ? "true" : "false",
       autocapitalize: "sentences",
       enterkeyhint: "enter",
       "aria-label": "Block content",

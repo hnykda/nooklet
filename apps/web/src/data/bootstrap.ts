@@ -512,6 +512,26 @@ export function adoptAddressBarGraph(): void {
  * (`hasSyncTarget()`'s own doc comment). `shell/GraphSwitcher.tsx` is the only caller, and only
  * offers this action under Capacitor.
  */
+/**
+ * ADR 031: a graph the server just made for this device (Settings → Import from Logseq), with the
+ * token it handed back. Reuses an entry that already points at the same address. Made active; the
+ * caller navigates (`graphEntryUrl`). Same-origin addresses (`/g/<id>`) are `kind: "local"` like
+ * every other same-origin entry; an absolute one (the phone) is `"remote"`.
+ */
+export function addServerGraph(baseUrl: string, token: string, label: string): GraphListEntry {
+  const existing = findGraphByAddress(baseUrl);
+  const entry: GraphListEntry = {
+    id: existing?.id ?? newGraphEntryId(),
+    label,
+    kind: /^https?:\/\//i.test(baseUrl) ? "remote" : "local",
+    baseUrl: existing?.baseUrl ?? baseUrl,
+    token,
+  };
+  addGraph(entry);
+  setActiveGraphId(entry.id);
+  return entry;
+}
+
 export function createLocalOnlyGraph(label: string = newLocalGraphName()): void {
   const id = newGraphEntryId();
   addGraph({ id, label, kind: "local" });

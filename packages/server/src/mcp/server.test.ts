@@ -104,6 +104,14 @@ const HTTP_ONLY_OP_NAMES = [
   "asset.sizes",
   // The one tokenless op: its caller is a device with no credential, never an MCP client.
   "pairing.redeem",
+  // ADR 031: the in-app Logseq import. An agent has `nooklet import`; base64-ing a whole graph
+  // through tool calls is not a path worth offering.
+  "import.info",
+  "import.begin",
+  "import.chunk",
+  "import.start",
+  "import.status",
+  "import.cancel",
 ];
 
 describe("MCP tools/list", () => {

@@ -36,3 +36,9 @@ actually wants migrated.
 - `docs/PLAN.md` and ADR 002 are updated to say "Logseq file graph" where they previously said
   "Logseq file graphs and Logseq DB markdown mirrors."
 - If DB-version import is ever wanted later, it is new scope, not an extension of this ADR.
+
+## Amendment (2026-10-04)
+
+ADR 031 adds a second way in: Settings → Import from Logseq uploads the graph (a zip, built in the
+browser from a picked folder, or picked on a phone) and the server runs this same importer on it.
+What is imported is unchanged.

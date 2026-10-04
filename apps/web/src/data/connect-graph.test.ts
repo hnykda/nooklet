@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { graphBaseUrl, parsePairingLink, repairTargetFor } from "./connect-graph.js";
+import {
+  graphBaseUrl,
+  parsePairingLink,
+  rejectedTokenMessage,
+  repairTargetFor,
+} from "./connect-graph.js";
 
 describe("repairTargetFor (B-613: re-pair the SAME entry)", () => {
   it("a same-origin entry re-pairs in place (null base) and shows the full address", () => {
@@ -105,5 +110,26 @@ describe("parsePairingLink (B-603)", () => {
       parsePairingLink(`https://connect?url=https://h.example&token=${TOKEN}`),
     ).toBeUndefined();
     expect(parsePairingLink("not a url")).toBeUndefined();
+  });
+});
+
+describe("rejectedTokenMessage", () => {
+  it("a bare address (checked against the default graph) points at /g/<graph>", () => {
+    for (const typed of [
+      "https://n.example.ts.net",
+      "https://n.example.ts.net/",
+      "http://192.168.1.5:6100",
+    ]) {
+      const msg = rejectedTokenMessage(typed);
+      expect(msg).toContain("isn't valid for the server's default graph");
+      expect(msg).toContain(`${new URL(typed).origin}/g/work`);
+    }
+  });
+
+  it("an address naming a graph, or none typed (same origin), blames the token", () => {
+    const old = "That token was rejected. Check it was copied whole, and not revoked.";
+    expect(rejectedTokenMessage("https://n.example.ts.net/g/work")).toBe(old);
+    expect(rejectedTokenMessage("https://n.example.ts.net/g/default")).toBe(old);
+    expect(rejectedTokenMessage(null)).toBe(old);
   });
 });

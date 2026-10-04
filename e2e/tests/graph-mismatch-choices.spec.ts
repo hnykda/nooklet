@@ -20,6 +20,7 @@ import {
   typeToday,
   waitForWritesApplied,
 } from "../helpers/graph-mismatch.js";
+import { openGraphMenu } from "../helpers/index.js";
 
 interface StoredEntry {
   id: string;
@@ -57,7 +58,7 @@ async function noHorizontalScroll(page: Page): Promise<void> {
 
 /** `server`: the row that has an address (the copy, named after the same graph, has none). */
 async function openSwitcherRow(page: Page, name: string, server = false): Promise<void> {
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   const rows = page.locator(".graph-switcher-name", { hasText: name });
   await (server ? rows.filter({ has: page.locator(".graph-switcher-address") }) : rows).click();
 }
@@ -217,7 +218,7 @@ test("B-714: open another graph without deciding; the screen comes back for this
   await page.getByRole("button", { name: /Just this device/s }).click();
   await typeToday(page, localNote);
   await waitForWritesApplied(page);
-  await page.getByRole("button", { name: "Switch graph" }).click();
+  await openGraphMenu(page);
   await page.getByText("Add a graph").click();
   await connectFromSetup(page, base, graphId, token);
 

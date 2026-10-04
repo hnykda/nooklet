@@ -55,7 +55,7 @@ test("a device with no token gets the connect screen, and pairing works", async 
   await expect(connect).toContainText("same machine as the server");
 
   // A bad token is rejected with a readable message rather than a silent permanent "offline".
-  await connect.locator("input").fill("nk_definitely_not_a_real_token");
+  await connect.locator("input").fill(`nk_${"0".repeat(48)}`); // the right shape (B-706), not a real token
   await connect.locator('button[type="submit"]').click();
   await expect(connect.locator(".connect-error")).toContainText("rejected");
 

@@ -94,7 +94,8 @@ export const search = defineOp({
   summary: "Search blocks and pages",
   description:
     'Finds blocks and pages. mode: "hybrid" (default) combines full-text and semantic ' +
-    'similarity; "keyword" for exact words or "quoted phrases" and -exclusions; "semantic" for ' +
+    'similarity; "keyword" for words (each matches as a prefix: "rational" finds "rationality"), ' +
+    '"quoted phrases" (exact) and -exclusions; "semantic" for ' +
     "meaning-based matches (falls back to keyword if semantic search is unavailable - mode_used " +
     "says which ran, and fallback says why: not set up, still indexing, embedding server " +
     "unreachable, ...). Filters: tags (all must match), properties (exact key=value, e.g. finding " +

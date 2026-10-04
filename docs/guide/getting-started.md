@@ -67,8 +67,29 @@ graph is `graphs/default/graph.sqlite` inside it, with the markdown mirror next 
 and `journals/`. On first start the server prints a **root token**; save it. You need it to create
 graphs or list them from another device. `pnpm nooklet token root` prints it again.
 
-To bring a Logseq graph, either a classic file graph or a DB-version graph's folder (the one with
-`db.sqlite`):
+### Bring a Logseq graph
+
+In the app: **Settings → Import from Logseq**.
+
+1. Choose the graph's folder, or a .zip of that folder. Both kinds of Logseq graph work: a classic
+   file graph (the folder with `pages/` and `journals/`) and a DB-version graph (the folder with
+   `db.sqlite`, with Logseq's Markdown Mirror turned on). On a phone, zip it first (Files →
+   long-press → Compress) and choose the zip.
+2. Choose where it goes: a new graph (give it a name), or this graph if it is still empty.
+3. Watch it upload, unpack and import. At the end you see how many pages, journals, blocks and
+   images came across, and anything the importer noticed: block references that point nowhere,
+   images missing from `assets/`, and the date format your journals used.
+4. Open the new graph.
+
+Your Logseq folder is only read, and only what the importer reads is sent: `pages/`, `journals/`,
+`assets/` and `logseq/config.edn`, or for a DB-version graph `db.sqlite`, `mirror/markdown/` and
+`assets/`. Backups and the rest stay behind. Importing needs the server's owner session: the
+desktop app, or a browser on the server's own machine (a paired phone cannot start one). The largest
+upload the server takes is 1 GB; `serve --import-max-mb <n>` changes that. A graph that lives only
+on a phone ("Just this device") cannot import on its own: import on a server, then add that graph.
+
+From a terminal instead (a classic file graph's folder, or a DB-version graph's folder, the one
+with `db.sqlite`):
 
 ```sh
 pnpm nooklet import ~/notes/my-logseq-graph

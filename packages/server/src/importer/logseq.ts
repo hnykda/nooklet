@@ -26,6 +26,9 @@
  *     as uuids, SCHEDULED, favourites) is put back from `db.sqlite` by `logseq-db-import.ts`.
  *
  * Detection lives here, not in the CLI, so the in-app import calls the same thing.
+ *
+ * Callers: `nooklet import`, and the in-app import (ADR 031, `./jobs.ts`), which also passes
+ * progress, cancellation and a write lock.
  */
 
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -294,7 +297,11 @@ function errMsg(err: unknown): string {
  *  twice — a one-line stub under `pages/` (scanned first, so it won) and the real five-line day
  *  under `journals/` (skipped). Now a journal file's identity wins (it is a journal day), page
  *  properties keep the first value per key, and both files' blocks are kept, journal first. */
-function resolveFileEntries(graphDir: string, warnings: string[]): FileEntry[] {
+async function resolveFileEntries(
+  graphDir: string,
+  warnings: string[],
+  hooks: ImportHooks,
+): Promise<FileEntry[]> {
   const entries: FileEntry[] = [];
   const seenKeys = new Map<string, number>();
 
@@ -324,7 +331,13 @@ function resolveFileEntries(graphDir: string, warnings: string[]): FileEntry[] {
   };
 
   const pagesDir = join(graphDir, "pages");
-  for (const fileName of listMdFiles(pagesDir)) {
+  const journalsDir = join(graphDir, "journals");
+  const pageFiles = listMdFiles(pagesDir);
+  const journalFiles = listMdFiles(journalsDir);
+  hooks.progress.filesTotal = pageFiles.length + journalFiles.length;
+  for (const fileName of pageFiles) {
+    await hooks.checkpoint();
+    hooks.progress.filesRead++;
     const filePath = join(pagesDir, fileName);
     const base = fileName.slice(0, -3);
     let parsed: ParsedPage;
@@ -341,8 +354,9 @@ function resolveFileEntries(graphDir: string, warnings: string[]): FileEntry[] {
     record({ isJournal: false, journalDay: null, parsed, resolvedName }, filePath);
   }
 
-  const journalsDir = join(graphDir, "journals");
-  for (const fileName of listMdFiles(journalsDir)) {
+  for (const fileName of journalFiles) {
+    await hooks.checkpoint();
+    hooks.progress.filesRead++;
     const filePath = join(journalsDir, fileName);
     const base = fileName.slice(0, -3);
     let parsed: ParsedPage;
@@ -455,12 +469,13 @@ const ASSET_LINK_RE = /\]\((?:\.\.\/)?assets\/([^)\s]+)\)/g;
  * original file name to the markdown path blocks should now carry. Content-addressed, so a
  * re-run after a partial failure copies nothing twice.
  */
-function importAssets(
+async function importAssets(
   ctx: ServerContext,
   graphDir: string,
   dataDir: string,
   warnings: string[],
-): { paths: Map<string, string>; imported: number } {
+  hooks: ImportHooks,
+): Promise<{ paths: Map<string, string>; imported: number }> {
   const dir = join(graphDir, "assets");
   const paths = new Map<string, string>();
   let imported = 0;
@@ -474,9 +489,12 @@ function importAssets(
     warnings.push("assets/ is a symbolic link, not followed: no assets were imported");
     return { paths, imported };
   }
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  const dirents = readdirSync(dir, { withFileTypes: true });
+  hooks.progress.assetsTotal = dirents.filter((d) => d.isFile() && !d.name.startsWith(".")).length;
+  for (const entry of dirents) {
     const name = entry.name;
     if (name.startsWith(".")) continue;
+    await hooks.checkpoint();
     if (entry.isSymbolicLink()) {
       warnings.push(`assets/${name}: a symbolic link, not followed`);
       continue;
@@ -497,9 +515,11 @@ function importAssets(
       // NFC, or every asset with a diacritic in its name is "missing".
       paths.set(name.normalize("NFC"), assetMarkdownPath(stored));
       if (!stored.deduped) imported++;
+      hooks.progress.assetsImported = imported;
     } catch (err) {
       warnings.push(`assets/${name}: not imported (${errMsg(err)})`);
     }
+    hooks.progress.assetsDone++;
   }
   return { paths, imported };
 }
@@ -701,6 +721,75 @@ export interface ImportLogseqOptions {
   /** The nooklet data directory, where `assets/` lives. Without it the graph's `assets/*` are
    *  left behind and every `![](../assets/…)` stays a dead link — reported as a warning. */
   dataDir?: string;
+  /** Called with the same object, mutated in place, as the import moves along (ADR 031: the
+   *  in-app import polls it). */
+  onProgress?: (progress: ImportProgress) => void;
+  /** Checked between files; an aborted signal stops the import by throwing its reason. */
+  signal?: AbortSignal;
+  /**
+   * Runs each page's writes. The in-app import into a graph that is being served passes the
+   * server's `writeLock` (`../ops/trial-lock.ts`): without it, a page's ops could land inside a
+   * `dry_run`/`batch` trial's open savepoint on the same connection and be rolled back with it.
+   * The CLI has the database to itself and needs nothing.
+   */
+  runExclusive?: <T>(fn: () => T) => Promise<T>;
+  /** Every page this import created, as it is created — so a cancelled in-app import into an
+   *  existing graph can move what it already made to Trash. */
+  onPageCreated?: (pageId: string) => void;
+}
+
+/** Live counters for an import in flight (ADR 031). */
+export interface ImportProgress {
+  phase: "reading" | "assets" | "pages" | "references" | "done";
+  /** Markdown files in `pages/` + `journals/`. */
+  filesTotal: number;
+  filesRead: number;
+  assetsTotal: number;
+  assetsDone: number;
+  assetsImported: number;
+  pagesDone: number;
+  pagesImported: number;
+  journalsImported: number;
+  blocksImported: number;
+}
+
+export function emptyImportProgress(): ImportProgress {
+  return {
+    phase: "reading",
+    filesTotal: 0,
+    filesRead: 0,
+    assetsTotal: 0,
+    assetsDone: 0,
+    assetsImported: 0,
+    pagesDone: 0,
+    pagesImported: 0,
+    journalsImported: 0,
+    blocksImported: 0,
+  };
+}
+
+interface ImportHooks {
+  progress: ImportProgress;
+  /** Reports progress, honours the abort signal, and every so often yields to the event loop so a
+   *  server stays responsive (status polls, other graphs) while a big graph imports. */
+  checkpoint(): Promise<void>;
+}
+
+/** Files between yields: small enough that a poll waits well under a second, large enough that
+ *  the yields cost nothing measurable. */
+const YIELD_EVERY = 25;
+
+function makeHooks(opts: ImportLogseqOptions): ImportHooks {
+  const progress = emptyImportProgress();
+  let n = 0;
+  return {
+    progress,
+    async checkpoint() {
+      if (opts.signal?.aborted) throw opts.signal.reason ?? new Error("import cancelled");
+      opts.onProgress?.(progress);
+      if (++n % YIELD_EVERY === 0) await new Promise<void>((r) => setImmediate(r));
+    },
+  };
 }
 
 export interface ImportStats {
@@ -765,6 +854,9 @@ export async function importLogseqGraph(
   const warnings: string[] = [];
   const errors: string[] = [];
 
+  const hooks = makeHooks(opts);
+  const { progress } = hooks;
+  const exclusive = opts.runExclusive ?? (<T>(fn: () => T) => Promise.resolve(fn()));
   const layout = detectLogseqGraph(graphDir);
   // Read before anything is written, so a database that cannot be read fails the import cleanly.
   const dbGraph = layout.kind === "db" ? LogseqDbGraph.fromFile(layout.sqliteFile) : null;
@@ -783,13 +875,14 @@ export async function importLogseqGraph(
   }
   // B-608: Mod+Enter, the slash menu and the checkbox start tasks the way this graph did.
   if (config.preferredWorkflow) setRecordedTaskWorkflow(ctx.driver, config.preferredWorkflow);
-  const entries = resolveFileEntries(layout.markdownDir, warnings);
+  const entries = await resolveFileEntries(layout.markdownDir, warnings, hooks);
   const ids = assignIds(entries, warnings);
 
   let assetsImported = 0;
   let assetPaths: Map<string, string> = new Map();
+  progress.phase = "assets";
   if (opts.dataDir) {
-    const assets = importAssets(ctx, graphDir, opts.dataDir, warnings);
+    const assets = await importAssets(ctx, graphDir, opts.dataDir, warnings, hooks);
     assetPaths = assets.paths;
     assetsImported = assets.imported;
   } else if (existsSync(join(graphDir, "assets"))) {
@@ -822,21 +915,20 @@ export async function importLogseqGraph(
   let danglingBlockRefs = 0;
   let danglingAssetLinks = 0;
 
+  progress.phase = "pages";
   for (const entry of entries) {
+    await hooks.checkpoint();
+    progress.pagesDone++;
     try {
       const createdAt = Math.round(statSync(entry.filePath).mtimeMs);
-      // Importing into a graph that already references this name: the empty page the reference
-      // made gives way to the file's page (ADR 024). Minted before `buildPageOps` takes its HLCs,
-      // so the deletion precedes the create in the log's own order too.
-      evictUnclaimedReferencePage(ctx, entry.resolvedName, entry.journalDay);
-      const { ops, dangling, danglingAssets } = buildPageOps(
-        entry,
-        ids,
-        assetPaths,
-        ctx.hlc,
-        createdAt,
-      );
-      const results = applyChunked(ctx, ops);
+      const { results, pageId, dangling, danglingAssets } = await exclusive(() => {
+        // Importing into a graph that already references this name: the empty page the reference
+        // made gives way to the file's page (ADR 024). Minted before `buildPageOps` takes its
+        // HLCs, so the deletion precedes the create in the log's own order too.
+        evictUnclaimedReferencePage(ctx, entry.resolvedName, entry.journalDay);
+        const built = buildPageOps(entry, ids, assetPaths, ctx.hlc, createdAt);
+        return { ...built, results: applyChunked(ctx, built.ops) };
+      });
       const pageResult = results[0];
 
       if (!pageResult || pageResult.status === "rejected") {
@@ -856,11 +948,15 @@ export async function importLogseqGraph(
         );
       }
 
+      opts.onPageCreated?.(pageId);
       blocksImported += appliedBlocks;
       danglingBlockRefs += dangling;
       danglingAssetLinks += danglingAssets;
       if (entry.isJournal) journalsImported++;
       else pagesImported++;
+      progress.blocksImported = blocksImported;
+      progress.pagesImported = pagesImported;
+      progress.journalsImported = journalsImported;
     } catch (err) {
       errors.push(`${entry.relPath}: ${errMsg(err)}`);
       pagesSkipped++;
@@ -869,13 +965,15 @@ export async function importLogseqGraph(
 
   // ADR 024: every name the graph references and no file defined becomes a page, now that every
   // file had its chance to define it.
-  const referenced = mintDanglingReferencedPages(ctx);
+  progress.phase = "references";
+  await hooks.checkpoint();
+  const referenced = await exclusive(() => mintDanglingReferencedPages(ctx));
 
-  const favorites = markFavorites(
-    ctx,
-    dbStats ? dbStats.favoritePageNames : config.favorites,
-    warnings,
+  const favorites = await exclusive(() =>
+    markFavorites(ctx, dbStats ? dbStats.favoritePageNames : config.favorites, warnings),
   );
+  progress.phase = "done";
+  opts.onProgress?.(progress);
 
   return {
     format: layout.kind,

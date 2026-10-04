@@ -14,6 +14,7 @@ import { Bullet } from "./Bullet.js";
 import { resolveClickOffset } from "./caret.js";
 import { DateChips } from "./DateChips.js";
 import { attachSwipeRow } from "./gestures/swipeAttach.js";
+import { keepEditorFocus } from "./keep-focus.js";
 import { RemoteChangeNotice } from "./RemoteChangeNotice.js";
 import { BlockContentView, type Navigate } from "./render/tokens.js";
 import { markerChecked, TaskMarkerIcon } from "./TaskMarkerIcon.js";
@@ -153,7 +154,8 @@ export function BlockRowView(props: {
             class={`vr-marker vr-marker-${props.block.marker}`}
             aria-label={`Task: ${props.block.marker}`}
             title={`${props.block.marker} — ${props.block.marker === "DONE" ? "click to reopen" : "click to mark done"}`}
-            onPointerDown={(e) => e.preventDefault()}
+            onPointerDown={keepEditorFocus.onPointerDown}
+            onMouseDown={keepEditorFocus.onMouseDown}
             onClick={props.onToggleMarker}
           >
             <TaskMarkerIcon marker={props.block.marker ?? ""} />

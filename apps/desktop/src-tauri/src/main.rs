@@ -505,16 +505,35 @@ fn add_graph(app: tauri::AppHandle, url: String) -> Result<RemoteGraph, String> 
     let normalized = normalize_remote_url(&url)?;
     let url = normalized.ok_or_else(|| "Enter your server's address.".to_string())?;
     let mut config = read_config(&app);
-    let entry = match config.remote_graphs.iter().find(|g| g.url == url) {
-        Some(existing) => existing.clone(),
-        None => {
-            let entry = RemoteGraph { id: graph_id_for_url(&url), url };
-            config.remote_graphs.push(entry.clone());
-            entry
-        }
-    };
+    let entry = remember_remote_graph(&mut config, &url);
     write_config(&app, &config)?;
     Ok(entry)
+}
+
+/// The graph an address opens, spelled one way: a bare server address is its default graph (the
+/// server's own bare-origin redirect, `apps/web/src/data/connect-graph.ts#graphBaseUrl`), so
+/// `https://h` and `https://h/g/default` are one graph (B-618). An unparseable address is itself.
+fn graph_address(url: &str) -> String {
+    match tauri::Url::parse(url) {
+        Ok(parsed) => {
+            let path = parsed.path().trim_end_matches('/');
+            let path = if path.is_empty() { "/g/default" } else { path };
+            format!("{}{}", parsed.origin().ascii_serialization(), path)
+        }
+        Err(_) => url.trim_end_matches('/').to_string(),
+    }
+}
+
+/// `url`'s entry in `config.remote_graphs`, added if no entry opens the same graph already
+/// (`graph_address`), so the same server added twice is one entry with one replica.
+fn remember_remote_graph(config: &mut DesktopConfig, url: &str) -> RemoteGraph {
+    let wanted = graph_address(url);
+    if let Some(existing) = config.remote_graphs.iter().find(|g| graph_address(&g.url) == wanted) {
+        return existing.clone();
+    }
+    let entry = RemoteGraph { id: graph_id_for_url(url), url: url.to_string() };
+    config.remote_graphs.push(entry.clone());
+    entry
 }
 
 /// Forgets a remembered server. Never removes "This Mac" — that entry is not stored here at all
@@ -652,19 +671,24 @@ fn slug_for_label(label: &str, taken: &[String]) -> String {
 /// `SHELL_REQUEST_HOST` (B-643). The window shows a SERVER's page — the bundled one or a remote one
 /// — and Tauri gives such a page no IPC at all (no capability is defined; `desktop-remote-mode.md`
 /// proved an `invoke` from there is rejected). A navigation, though, always reaches
-/// `on_navigation`, whatever the origin: this is the one door, and it opens on two harmless
-/// actions only — make an empty graph on This Mac, or switch to one that is there — both of which
-/// end in a visible restart. Nothing is read, deleted or sent anywhere.
+/// `on_navigation`, whatever the origin: this is the one door, and it opens on three actions only
+/// — make an empty graph on This Mac, switch to one that is there, or (B-704) remember a server
+/// graph and switch to it — each of which ends in a visible restart. Nothing is read, deleted or
+/// sent anywhere; no token passes through here (the server's own page asks for one).
 #[derive(Debug, PartialEq)]
 enum ShellRequest {
     NewLocalGraph { label: String },
     OpenLocalGraph { id: String },
+    /// B-704: the in-app switcher's "add a server graph". The page cannot check a server on another
+    /// origin itself (CORS refuses it), so the shell does what Switch Server… → Add a server does.
+    AddServerGraph { url: String },
 }
 
 /// `.invalid` is reserved never to resolve (RFC 2606): if this shell is not there to intercept the
 /// address (a browser, an older app), the navigation fails instead of reaching anyone.
 const SHELL_REQUEST_HOST: &str = "nooklet-desktop.invalid";
 const MAX_LABEL_CHARS: usize = 80;
+const MAX_URL_CHARS: usize = 2048;
 
 fn parse_shell_request(url: &tauri::Url) -> Option<ShellRequest> {
     if url.host_str() != Some(SHELL_REQUEST_HOST) {
@@ -680,6 +704,16 @@ fn parse_shell_request(url: &tauri::Url) -> Option<ShellRequest> {
         "/open-local-graph" => {
             let id = param("id")?;
             is_valid_graph_id(&id).then_some(ShellRequest::OpenLocalGraph { id })
+        }
+        "/add-server-graph" => {
+            let raw = param("url")?;
+            if raw.len() > MAX_URL_CHARS || raw.chars().any(|c| c.is_control()) {
+                return None;
+            }
+            // The same rule as `add_graph`, plus a host: `http://` alone is not a server.
+            let url = normalize_remote_url(&raw).ok()??;
+            tauri::Url::parse(&url).ok()?.host_str()?;
+            Some(ShellRequest::AddServerGraph { url })
         }
         _ => None,
     }
@@ -738,6 +772,21 @@ fn report_to_page(app: &tauri::AppHandle, message: &str) {
 /// app restarts into it (`restart_app`'s doc comment: the spawn-or-not decision is made once per
 /// launch, and in remote mode nothing local is running yet).
 fn handle_shell_request(app: &tauri::AppHandle, resource_dir: &PathBuf, data_dir: &PathBuf, request: ShellRequest) {
+    if let ShellRequest::AddServerGraph { url } = &request {
+        // B-704: as the launcher's picker does for "Add a server": remember it, make it active,
+        // restart; the launcher then opens it and that server's page asks for its token.
+        let mut config = read_config(app);
+        let entry = remember_remote_graph(&mut config, url);
+        config.active_graph_id = Some(entry.id);
+        match write_config(app, &config) {
+            Ok(()) => app.request_restart(),
+            Err(err) => {
+                eprintln!("nooklet: {err}");
+                report_to_page(app, &format!("Could not save that server: {err}"));
+            }
+        }
+        return;
+    }
     let graphs = list_local_graphs(data_dir);
     let chosen = match request {
         ShellRequest::NewLocalGraph { label } => {
@@ -746,6 +795,7 @@ fn handle_shell_request(app: &tauri::AppHandle, resource_dir: &PathBuf, data_dir
             create_local_graph(resource_dir, data_dir, &id, &label).map(|()| Some(id))
         }
         ShellRequest::OpenLocalGraph { id } => local_graph_choice(&graphs, Some(&id)),
+        ShellRequest::AddServerGraph { .. } => unreachable!("handled above"),
     };
     let result = chosen.and_then(|local| {
         let mut config = read_config(app);
@@ -1438,11 +1488,46 @@ mod tests {
             "http://nooklet-desktop.invalid/new-local-graph",
             "http://nooklet-desktop.invalid/open-local-graph?id=../etc",
             "http://nooklet-desktop.invalid/delete-everything",
+            "http://nooklet-desktop.invalid/add-server-graph",
+            "http://nooklet-desktop.invalid/add-server-graph?url=",
+            "http://nooklet-desktop.invalid/add-server-graph?url=ftp%3A%2F%2Fexample.com",
+            "http://nooklet-desktop.invalid/add-server-graph?url=example.com",
+            "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2F",
+            "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fa%0A.example.com",
             "http://127.0.0.1:6100/new-local-graph?label=x",
             "https://evil.example/new-local-graph?label=x",
         ] {
             assert_eq!(parse_shell_request(&url(none)), None, "{none}");
         }
+    }
+
+    #[test]
+    fn b704_an_add_server_request_carries_a_normalized_address() {
+        assert_eq!(
+            parse_shell_request(&url(
+                "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fnotes.example.com%2Fg%2Fwork%2F"
+            )),
+            Some(ShellRequest::AddServerGraph { url: "https://notes.example.com/g/work".into() })
+        );
+        let long = format!(
+            "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fa.example%2F{}",
+            "a".repeat(MAX_URL_CHARS)
+        );
+        assert_eq!(parse_shell_request(&url(&long)), None);
+    }
+
+    #[test]
+    fn b704_adding_a_known_server_again_reuses_its_entry() {
+        let mut config = DesktopConfig::default();
+        let first = remember_remote_graph(&mut config, "https://notes.example.com");
+        // The bare address and its default graph are one graph (B-618).
+        let again = remember_remote_graph(&mut config, "https://notes.example.com/g/default");
+        assert_eq!(first.id, again.id);
+        let other = remember_remote_graph(&mut config, "https://notes.example.com/g/work");
+        assert_ne!(first.id, other.id);
+        assert_eq!(config.remote_graphs.len(), 2);
+        assert_eq!(graph_address("https://notes.example.com/"), "https://notes.example.com/g/default");
+        assert_eq!(graph_address("http://192.168.1.5:6100/g/x/"), "http://192.168.1.5:6100/g/x");
     }
 
     #[test]

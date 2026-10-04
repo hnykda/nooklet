@@ -1,0 +1,4 @@
+{:meta/version 1
+ ;; Invented fixture for the in-app import e2e (ADR 030).
+ :preferred-workflow :todo
+ :journal/page-title-format "EEE, dd.MM.yyyy"}

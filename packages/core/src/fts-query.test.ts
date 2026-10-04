@@ -4,22 +4,25 @@ import { ftsPhrase, toFtsQuery } from "./fts-query.js";
 
 describe("toFtsQuery", () => {
   it.each([
-    ["hello", '"hello"'],
-    ["hello world", '"hello" "world"'],
+    // Bare words are prefix terms (B-735); quoted phrases and exclusions are exact.
+    ["hello", '"hello"*'],
+    ["hello world", '"hello"* "world"*'],
     ['"foo bar"', '"foo bar"'],
-    ['"foo bar" baz', '"foo bar" "baz"'],
-    ["foo -bar", '"foo" NOT "bar"'],
-    ['foo -"bar baz"', '"foo" NOT "bar baz"'],
+    ['"foo bar" baz', '"foo bar" "baz"*'],
+    ["foo -bar", '"foo"* NOT "bar"'],
+    ['foo -"bar baz"', '"foo"* NOT "bar baz"'],
     ["foo*", '"foo"*'],
     ['"unbalanced', '"unbalanced"'],
-    ['say "hi" there', '"say" "hi" "there"'],
-    ["c++", '"c++"'],
-    ["what's", '"what\'s"'],
-    ["e-mail", '"e-mail"'],
-    ["a.b", '"a.b"'],
-    ["AND", '"AND"'],
+    ['say "hi" there', '"say"* "hi" "there"*'],
+    ["c++", '"c++"'], // one letter once tokenized: a prefix `c` would match every c-word
+    ["c", '"c"'],
+    ["c*", '"c"*'],
+    ["what's", '"what\'s"*'],
+    ["e-mail", '"e-mail"*'],
+    ["a.b", '"a.b"*'],
+    ["AND", '"AND"*'],
     ["(", '"("'],
-    ["  padded   ", '"padded"'],
+    ["  padded   ", '"padded"*'],
   ])("%s -> %s", (raw, expected) => {
     expect(toFtsQuery(raw)).toBe(expected);
   });
@@ -94,5 +97,12 @@ describe("toFtsQuery against real FTS5", () => {
     expect(hits('"foo bar"')).toEqual(["foo bar"]);
     expect(hits("clovek")).toEqual(["člověk a stroj"]); // remove_diacritics on both sides
     expect(hits("wor*")).toEqual(["hello world c++ what's up"]);
+  });
+
+  it("finds a half-typed word without a `*` (B-735: `rationalit` found nothing)", () => {
+    expect(hits("wor")).toEqual(["hello world c++ what's up"]);
+    expect(hits("clov")).toEqual(["člověk a stroj"]); // a stem, diacritics folded
+    expect(hits('"wor"')).toEqual([]); // quotes still mean this exact word
+    expect(hits("foo -ba")).toEqual(["foo bar", "foo-bar baz"]); // `-ba` hides only the word `ba`
   });
 });

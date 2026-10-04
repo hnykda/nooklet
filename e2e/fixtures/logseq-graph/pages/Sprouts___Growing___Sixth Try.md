@@ -1,0 +1,2 @@
+- Soak overnight
+	- Rinse twice a day

@@ -73,3 +73,42 @@
     min-height: var(--touch, 44px);
   }
 }
+
+.confirm-dialog-confirm[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* B-712: the "this loses data" banner — the first thing read, in the danger colour, not a line of
+   grey text among others. */
+.confirm-dialog-warning {
+  margin: 0 0 var(--space-md, 8px);
+  padding: var(--space-md, 8px) var(--space-lg, 12px);
+  border-left: 4px solid var(--danger, #bf2f2f);
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--danger, #bf2f2f) 12%, transparent);
+  color: var(--fg, inherit);
+  font-size: var(--text-md, 15px);
+  font-weight: var(--weight-semibold, 600);
+  line-height: var(--leading-snug, 1.4);
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-type {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs, 4px);
+  margin-top: var(--space-md, 8px);
+  font-size: var(--text-sm, 13px);
+}
+
+/* 16px so iOS does not zoom in on focus (B-648/B-705). */
+.confirm-dialog-type input {
+  font: inherit;
+  font-size: 16px;
+  padding: var(--space-sm, 6px) var(--space-md, 8px);
+  border: 1px solid var(--border, #d4d4dd);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-1, #fff);
+  color: inherit;
+}

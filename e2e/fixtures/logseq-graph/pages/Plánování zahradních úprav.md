@@ -1,0 +1,2 @@
+- Navazuje na ((6512bd43-d9ca-4c1e-9d0b-1f2e3d4c5b6a))
+- Odkaz, který nikam nevede: ((00000000-0000-4000-8000-000000000000))
