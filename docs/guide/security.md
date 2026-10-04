@@ -123,6 +123,8 @@ hint ask you first. Every agent write is recorded with the token's label and can
 So that `nooklet serve` and the desktop app work with no setup, the server hands a `write` + sync
 token to a browser on the same machine. It does so only when all of these hold:
 
+- the server itself is bound to loopback (the default `--host 127.0.0.1`); on any other `--host` the
+  auto-token is off unless you pass `--loopback-token`;
 - the TCP peer address is loopback (`127.x` or `::1`), read from the socket, not from a header;
 - the `Host` header names loopback (`localhost`, `127.0.0.1`, `::1`);
 - the request carries none of `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`.
@@ -130,8 +132,8 @@ token to a browser on the same machine. It does so only when all of these hold:
 The reasoning: anything that can already open a page on the server's own machine as you can read
 `graph.sqlite` directly, so the token adds nothing. The gap is a reverse proxy on the same machine
 that rewrites `Host` to `127.0.0.1` and adds no forwarding header; every client of such a proxy looks
-local. `nooklet serve --no-loopback-token` turns the auto-token off entirely. The container image
-sets it by default. Use it behind any proxy.
+local. `nooklet serve --no-loopback-token` turns the auto-token off entirely, even on a loopback
+bind. The container image sets it by default. Use it behind any proxy on the same machine.
 
 The server mints one web-client token per process and retires the previous one at startup.
 

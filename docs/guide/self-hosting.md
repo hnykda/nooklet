@@ -24,7 +24,7 @@ There are three ways to expose it. Pick the first unless you have a reason not t
 ```text
 nooklet serve [--data <dir>] [--port <n>] [--web <dir>]
               [--host <addr>] [--allow-host <h,h>]
-              [--no-loopback-token] [--no-mirror]
+              [--no-loopback-token | --loopback-token] [--no-mirror]
 ```
 
 | Flag | Default | Meaning |
@@ -33,7 +33,8 @@ nooklet serve [--data <dir>] [--port <n>] [--web <dir>]
 | `--port <n>` | `6100` | TCP port. |
 | `--host <addr>` | `127.0.0.1` | Bind address. Use `0.0.0.0` only in a container or when a proxy on another host must reach it. |
 | `--allow-host <h,h>` | none | Comma-separated `Host` names clients may use besides `localhost`/`127.0.0.1`. On a non-loopback bind every other name gets 403, and `/mcp` checks the list on any bind. |
-| `--no-loopback-token` | off | Never hand a token to "this machine" automatically. Set it behind any proxy and in containers. |
+| `--no-loopback-token` | on for a loopback bind, off otherwise | Never hand a token to "this machine" automatically, even on a loopback bind. Set it behind a proxy on the same machine and in containers. |
+| `--loopback-token` | off | Turn the automatic token back on for a non-loopback `--host` (it is off there by default). Rarely what you want. |
 | `--web <dir>` | the built client, if found | Where the web client is. Without one the server is API-only. |
 | `--no-mirror` | mirror on | Do not write the markdown mirror. |
 
