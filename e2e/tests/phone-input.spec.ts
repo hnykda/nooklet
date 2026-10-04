@@ -62,7 +62,8 @@ test("B-662: a line break arriving as `beforeinput` (iOS Return) starts the day,
   await expect(editor(page)).toBeFocused();
   await expect(editor(page)).toHaveText("");
   const outliner = page.locator(".page-view .vr-outliner").first();
-  expect(await rowTexts(page, outliner)).toEqual(["ab", ""]);
+  // The typed rows come last: a journal template another spec set may add its own rows first.
+  expect((await rowTexts(page, outliner)).slice(-2)).toEqual(["ab", ""]);
   await page.keyboard.type("cd");
   await expect(editor(page)).toHaveText("cd");
 });
@@ -79,10 +80,14 @@ test("B-662: a hardware Enter in the draft still makes exactly one new block; Sh
   await expect(editor(page)).toBeFocused();
   await expect(editor(page)).toHaveText("");
   const outliner = page.locator(".page-view .vr-outliner").first();
-  // Two rows, not three: keydown and `beforeinput` must not both count the one Enter.
-  await expect(outliner.locator(".vr-row")).toHaveCount(2);
-  // And Shift+Enter's line break stayed inside the first block.
-  expect(await outliner.locator(".vr-row").first().innerText()).toMatch(/^one\n+two$/);
+  // One new row, not two: keydown and `beforeinput` must not both count the one Enter. (Rows
+  // before the typed ones are a journal template another spec may have set.)
+  const rows = outliner.locator(".vr-row");
+  const texts = await rowTexts(page, outliner);
+  expect(texts.at(-1)).toBe("");
+  expect(texts.filter((t) => t === "")).toHaveLength(1);
+  // And Shift+Enter's line break stayed inside the typed block.
+  expect(await rows.nth(texts.length - 2).innerText()).toMatch(/^one\n+two$/);
 });
 
 /**
@@ -106,7 +111,8 @@ test("B-662: the iOS soft keyboard's Return (auto-capitalisation Shift) starts a
   await expect(editor(page)).toBeFocused();
   await expect(editor(page)).toHaveText("");
   const outliner = page.locator(".page-view .vr-outliner").first();
-  expect(await rowTexts(page, outliner)).toEqual(["ab", ""]);
+  // The typed rows come last: a journal template another spec set may add its own rows first.
+  expect((await rowTexts(page, outliner)).slice(-2)).toEqual(["ab", ""]);
 });
 
 test("B-662: the iOS soft keyboard's Return (auto-capitalisation Shift) splits a block", async ({
