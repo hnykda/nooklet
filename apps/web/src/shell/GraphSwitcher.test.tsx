@@ -251,81 +251,6 @@ describe("GraphSwitcher", () => {
     expect(GRAPH_NAMES).toContain(entry?.label);
   });
 
-  describe("B-643: the desktop app", () => {
-    function injectShell(localGraphs: { id: string; label: string }[]): void {
-      Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
-        configurable: true,
-        value: Object.freeze({ platform: "macos", port: 6100, localGraphs }),
-      });
-    }
-    afterEach(() => {
-      delete (window as { __NOOKLET_DESKTOP__?: unknown }).__NOOKLET_DESKTOP__;
-    });
-
-    it("offers a new graph on this Mac, named uniquely, and asks the shell to make it", () => {
-      injectShell([{ id: "default", label: "default" }]);
-      addGraph({ id: "r", label: "Remote", kind: "remote", baseUrl: "/g/default" });
-      setActiveGraphId("r");
-      const assign = mockAssign();
-      render(() => <GraphSwitcher />);
-      openSwitcher();
-      fireEvent.click(screen.getByText("Add a graph"));
-      expect(screen.getByText("Sync with a server")).toBeTruthy();
-      fireEvent.click(screen.getByText("New graph on this Mac"));
-
-      expect(assign).toHaveBeenCalledOnce();
-      const url = new URL(assign.mock.calls[0]?.[0] as string);
-      expect(url.origin).toBe("http://nooklet-desktop.invalid");
-      expect(url.pathname).toBe("/new-local-graph");
-      expect(GRAPH_NAMES).toContain(url.searchParams.get("label"));
-      // Nothing is added to this origin's list: the graph lives on This Mac's server.
-      expect(listGraphs()).toHaveLength(1);
-      expect(screen.getByRole("status").textContent).toContain(url.searchParams.get("label"));
-    });
-
-    it("a name already used by a This-Mac graph is not handed out again", () => {
-      const all = GRAPH_NAMES.slice(1).map((label, i) => ({ id: `g${i}`, label }));
-      injectShell(all);
-      const assign = mockAssign();
-      render(() => <GraphSwitcher />);
-      openSwitcher();
-      fireEvent.click(screen.getByText("Add a graph"));
-      fireEvent.click(screen.getByText("New graph on this Mac"));
-      expect(new URL(assign.mock.calls[0]?.[0] as string).searchParams.get("label")).toBe(
-        GRAPH_NAMES[0],
-      );
-    });
-
-    it("lists This Mac's graphs from a remote server's page; picking one asks the shell to open it", () => {
-      injectShell([
-        { id: "default", label: "default" },
-        { id: "quiet-otter", label: "Quiet Otter" },
-      ]);
-      const assign = mockAssign();
-      render(() => <GraphSwitcher />);
-      openSwitcher();
-      const group = screen.getByRole("list", { name: "On this Mac" });
-      expect(group.textContent).toContain("This Mac");
-      expect(group.textContent).toContain("Quiet Otter");
-      fireEvent.click(screen.getByText("Quiet Otter"));
-      expect(assign).toHaveBeenCalledWith(
-        "http://nooklet-desktop.invalid/open-local-graph?id=quiet-otter",
-      );
-    });
-
-    it("shows the shell's error when it could not make the graph", async () => {
-      injectShell([]);
-      mockAssign();
-      render(() => <GraphSwitcher />);
-      openSwitcher();
-      fireEvent.click(screen.getByText("Add a graph"));
-      fireEvent.click(screen.getByText("New graph on this Mac"));
-      window.dispatchEvent(new CustomEvent("nooklet:desktop-error", { detail: "disk full" }));
-      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("disk full"));
-      expect(screen.queryByRole("status")).toBeNull();
-    });
-  });
-
   it("add-a-server form: verifies against the typed address, adds a new entry, and navigates there", async () => {
     // Capacitor: its origin is on every server's CORS allowlist, so any server is added in-page.
     fakePlatform.name = "capacitor";
@@ -467,10 +392,6 @@ describe("GraphSwitcher", () => {
   });
 
   describe("B-709: the sidebar's title and grouped rows", () => {
-    afterEach(() => {
-      delete (window as { __NOOKLET_DESKTOP__?: unknown }).__NOOKLET_DESKTOP__;
-    });
-
     it("the title is the open graph's name, and its row is marked as the open one", () => {
       addGraph({ id: "a", label: "Garden Notes", kind: "remote", baseUrl: "/g/a" });
       addGraph({ id: "b", label: "Work", kind: "remote", baseUrl: "/g/b" });
@@ -484,59 +405,21 @@ describe("GraphSwitcher", () => {
       expect(menu().getByRole("button", { name: /^Work/ }).getAttribute("aria-current")).toBeNull();
     });
 
-    it("groups this device's local graphs apart from server graphs (Capacitor)", () => {
+    it("B-780: groups this phone's local graphs apart from server graphs, in the desktop app's words", () => {
       fakePlatform.name = "capacitor";
       addGraph({ id: "l", label: "Pocket", kind: "local" });
       addGraph({ id: "r", label: "Home", kind: "remote", baseUrl: "https://home.example.com/g/x" });
       setActiveGraphId("l");
       render(() => <GraphSwitcher />);
       openSwitcher();
-      expect(menu().getByRole("list", { name: "On this device" }).textContent).toContain("Pocket");
-      const servers = menu().getByRole("list", { name: "On a server" });
+      expect(menu().getByRole("list", { name: "On this phone" }).textContent).toContain("Pocket");
+      const servers = menu().getByRole("list", { name: "On servers" });
       expect(servers.textContent).toContain("Home");
       expect(servers.textContent).not.toContain("Pocket");
-    });
-
-    it("desktop: This Mac's graphs, listed or not, sit under 'On this Mac', apart from servers", () => {
-      Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
-        configurable: true,
-        value: Object.freeze({
-          platform: "macos",
-          port: 6100,
-          localGraphs: [
-            { id: "default", label: "default" },
-            { id: "quiet-otter", label: "Quiet Otter" },
-          ],
-        }),
-      });
-      addGraph({
-        id: "m",
-        label: "Mac default",
-        kind: "remote",
-        baseUrl: "http://127.0.0.1:6100/g/default",
-      });
-      addGraph({ id: "s", label: "Remote", kind: "remote", baseUrl: "/g/s" });
-      setActiveGraphId("s");
-      render(() => <GraphSwitcher />);
-      openSwitcher();
-      const mac = menu().getByRole("list", { name: "On this Mac" });
-      expect(mac.textContent).toContain("Mac default");
-      expect(mac.textContent).toContain("Quiet Otter");
-      expect(menu().getByRole("list", { name: "On a server" }).textContent).toContain("Remote");
     });
   });
 
   describe("B-704: a server on another origin", () => {
-    function injectShell(): void {
-      Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
-        configurable: true,
-        value: Object.freeze({ platform: "macos", port: 6100, localGraphs: [] }),
-      });
-    }
-    afterEach(() => {
-      delete (window as { __NOOKLET_DESKTOP__?: unknown }).__NOOKLET_DESKTOP__;
-    });
-
     it("a browser tab says it cannot add it here and links it in a new tab, sending nothing", () => {
       render(() => <GraphSwitcher />);
       openSwitcher();
@@ -572,48 +455,6 @@ describe("GraphSwitcher", () => {
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
       await waitFor(() => expect(assign).toHaveBeenCalledOnce());
       expect(String(assign.mock.calls[0]?.[0])).toMatch(/\/g\/work\/$/);
-    });
-
-    it("the desktop app hands it to the shell, with no token and no fetch", () => {
-      injectShell();
-      const assign = mockAssign();
-      render(() => <GraphSwitcher />);
-      openSwitcher();
-      fireEvent.click(screen.getByText("Add a graph"));
-      fireEvent.click(screen.getByText("Sync with a server"));
-      fireEvent.input(screen.getByLabelText("Server address"), {
-        target: { value: "https://other.example.com" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Add and restart" }));
-
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(assign).toHaveBeenCalledOnce();
-      const url = new URL(assign.mock.calls[0]?.[0] as string);
-      expect(url.origin).toBe("http://nooklet-desktop.invalid");
-      expect(url.pathname).toBe("/add-server-graph");
-      // A bare origin is its default graph, as everywhere else (`connect-graph.ts#graphBaseUrl`).
-      expect(url.searchParams.get("url")).toBe("https://other.example.com/g/default");
-      expect(listGraphs()).toEqual([]);
-      expect(screen.getByRole("status").textContent).toContain("other.example.com");
-    });
-
-    it("the desktop app shows the shell's refusal", async () => {
-      injectShell();
-      mockAssign();
-      render(() => <GraphSwitcher />);
-      openSwitcher();
-      fireEvent.click(screen.getByText("Add a graph"));
-      fireEvent.click(screen.getByText("Sync with a server"));
-      fireEvent.input(screen.getByLabelText("Server address"), {
-        target: { value: "https://other.example.com" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Add and restart" }));
-      window.dispatchEvent(
-        new CustomEvent("nooklet:desktop-error", { detail: "could not save that" }),
-      );
-      await waitFor(() =>
-        expect(screen.getByRole("alert").textContent).toBe("could not save that"),
-      );
     });
   });
 });

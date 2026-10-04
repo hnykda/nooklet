@@ -41,13 +41,4 @@ describe("B-712: removing a graph from this device", () => {
     expect(d.typeToConfirm).toBe("delete");
     expect(d.warning).toContain("cannot tell");
   });
-
-  it("a This-Mac graph: always typed, and says nothing is deleted from the Mac", () => {
-    const d = removalDialog({ name: "Quiet Otter", place: "mac", pending: 0 });
-    expect(d.typeToConfirm).toBe("delete");
-    expect(d.message.join(" ")).toContain("nothing is deleted from the Mac");
-    expect(removalDialog({ name: "Q", place: "mac", pending: 2 }).warning).toContain(
-      "this Mac's server",
-    );
-  });
 });

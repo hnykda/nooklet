@@ -22,6 +22,7 @@ import {
   isLocalOnlyEntry,
   samePathGraphPrefix,
 } from "./data/bootstrap.js";
+import { desktopShell } from "./platform/desktop-shell.js";
 import { platform } from "./platform/index.js";
 import { CaptureRoute } from "./routes/CaptureRoute.js";
 import { GraphRoute } from "./routes/GraphRoute.js";
@@ -32,6 +33,7 @@ import { SearchRoute } from "./routes/SearchRoute.js";
 import { TasksRoute } from "./routes/TasksRoute.js";
 import { AppShell } from "./shell/AppShell.js";
 import { ConnectView } from "./views/ConnectView.js";
+import { DesktopConnectView } from "./views/DesktopConnectView.js";
 import { FindReplaceView } from "./views/FindReplaceView.js";
 import { GraphMismatchView } from "./views/GraphMismatchView.js";
 import { HistoryRoute } from "./views/HistoryView.js";
@@ -66,6 +68,7 @@ export function App() {
   // exactly how the missing-token bug presented), ask for one up front. Loopback clients are
   // handed a token by the server and never see this.
   const config = bootstrapConfig();
+  const desktop = desktopShell();
   const [skipped, setSkipped] = createSignal(false);
   // `/capture` is deliberately exempt: quick capture must open instantly and writes locally. Ends
   // with rather than equals: this runs before `<Router>` exists to strip its own `base` (below),
@@ -77,8 +80,8 @@ export function App() {
 
   /** B-612: under Capacitor, "Just this device" is a real list entry (so the switcher can come back
    * to it once a server graph is added), not an in-memory flag that the next "Add a graph" strands.
-   * Web/desktop keep the in-memory skip: there the page is always served by some graph's origin,
-   * which already has an entry (`initBootstrap`). */
+   * A browser tab keeps the in-memory skip: there the page is always served by some graph's origin,
+   * which already has an entry (`initBootstrap`). Never in the desktop app (below). */
   function skip(): void {
     if (platform.name === "capacitor" && !activeGraph()) {
       if (chooseLocalOnly().reload) {
@@ -107,7 +110,15 @@ export function App() {
       <PairingLinkPrompt />
       <Show
         when={config.token !== null || skipped() || localOnly || isCapture()}
-        fallback={<ConnectView reason={config.reason} onSkip={skip} />}
+        fallback={
+          // ADR 032: the desktop app asks on its own add form, pre-filled with this graph's
+          // address — never "Just this device" (an unsaved flag there, B-739) nor a token-only field.
+          desktop ? (
+            <DesktopConnectView shell={desktop} />
+          ) : (
+            <ConnectView reason={config.reason} onSkip={skip} />
+          )
+        }
       >
         {/* ADR 025: routes below are defined app-relative ("/journals", not "/g/default/journals");
           `base` is what lets the router match/generate them correctly wherever this page actually

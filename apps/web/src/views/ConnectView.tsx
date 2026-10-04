@@ -1,5 +1,7 @@
 /**
- * Shown when this device has no token for the server it just loaded from.
+ * Shown when this device has no token for the server it just loaded from. Not in the desktop app,
+ * which asks on its own add form instead (`DesktopConnectView.tsx`, proposal 005): there, "Just
+ * this device" and a token-only field were a second, different way to add a graph (B-782, B-783).
  *
  * The server injects a token only for a loopback caller (`server/src/http/app.ts`) — over a LAN,
  * a tailnet or the internet it would otherwise hand a write credential to anyone who opens the
@@ -57,7 +59,6 @@ import { defaultDeviceLabel, redeemPairingCode } from "../data/pairing.js";
 import { normalizeToken, tokenShapeProblem } from "../data/token-input.js";
 import { platform } from "../platform/index.js";
 import "./connect.css";
-import { DesktopServerSwitch } from "./DesktopServerSwitch.js";
 
 export function ConnectView(props: {
   reason?: string;
@@ -428,10 +429,6 @@ export function ConnectView(props: {
           Sending a token over plain HTTP exposes it to anyone on the network path. Outside a
           trusted LAN, put the server behind HTTPS or reach it over a tailnet such as Tailscale.
         </p>
-      </Show>
-      {/* B-704: in the desktop app, a way to another server (or This Mac) from here. */}
-      <Show when={!props.repair && !prefill}>
-        <DesktopServerSwitch />
       </Show>
     </main>
   );

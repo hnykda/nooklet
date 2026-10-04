@@ -11,6 +11,7 @@ import {
   adoptAddressBarGraph,
   adoptLegacyReplica,
   apiBaseUrl,
+  bootstrapConfig,
   canPromoteGraph,
   chooseLocalOnly,
   createLocalOnlyGraph,
@@ -19,6 +20,7 @@ import {
   initBootstrap,
   isLocalOnlyEntry,
   keepAsDeviceOnlyCopy,
+  legacyDesktopToken,
   listGraphs,
   newLocalGraphName,
   removeGraph,
@@ -420,5 +422,60 @@ describe("B-714: keeping a mismatched replica as a device-only copy", () => {
       vi.unstubAllGlobals();
       history.replaceState(null, "", "/");
     }
+  });
+});
+
+describe("ADR 032: the desktop app's token is the shell's, never this origin's", () => {
+  function inShell(graphToken: string | null): void {
+    Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
+      configurable: true,
+      value: Object.freeze({ platform: "macos", port: 6100, key: "k", graphs: [], graphToken }),
+    });
+  }
+
+  afterEach(() => {
+    delete (window as { __NOOKLET_DESKTOP__?: unknown }).__NOOKLET_DESKTOP__;
+    vi.unstubAllGlobals();
+    history.replaceState(null, "", "/");
+  });
+
+  it("B-782: uses the shell's token, keeps it out of storage, and drops a copy an older version stored", async () => {
+    history.replaceState(null, "", "/g/work/journals");
+    addGraph({ id: "w", label: "Work", kind: "remote", baseUrl: "/g/work", token: "nk_old" });
+    setActiveGraphId("w");
+    inShell("nk_keychain");
+    vi.stubGlobal("fetch", async () => Response.json({ token: null, graphId: "g1" }));
+    const config = await initBootstrap();
+    expect(config.token).toBe("nk_keychain");
+    expect(activeGraph()?.token).toBeUndefined();
+    expect(JSON.stringify({ ...localStorage })).not.toContain("nk_keychain");
+  });
+
+  it("with no shell token a token stored here is NOT used (it only pre-fills the add form)", async () => {
+    history.replaceState(null, "", "/g/work/journals");
+    addGraph({ id: "w", label: "Work", kind: "remote", baseUrl: "/g/work", token: "nk_old" });
+    setActiveGraphId("w");
+    inShell(null);
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ token: null, reason: "non_loopback_host", graphId: "g1" }),
+    );
+    const config = await initBootstrap();
+    expect(config.token).toBeNull();
+    expect(legacyDesktopToken()).toBe("nk_old");
+  });
+
+  it("This Mac: its own server's loopback token is used as in a browser", async () => {
+    history.replaceState(null, "", "/g/default/journals");
+    inShell(null);
+    vi.stubGlobal("fetch", async () => Response.json({ token: "nk_loopback", graphId: "g1" }));
+    const config = await initBootstrap();
+    expect(config.token).toBe("nk_loopback");
+  });
+
+  it("offline, the fallback is the shell's token too", () => {
+    addGraph({ id: "w", label: "Work", kind: "remote", baseUrl: "/g/work", token: "nk_old" });
+    setActiveGraphId("w");
+    inShell("nk_keychain");
+    expect(bootstrapConfig().token).toBe("nk_keychain");
   });
 });

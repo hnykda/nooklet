@@ -1,0 +1,136 @@
+/* The desktop app's "Add a graph" form (`DesktopAddGraph.tsx`) and its graph menu's server groups
+   (`DesktopGraphMenu.tsx`). Used both inside the graph menu's popover and on the full-page screen
+   a server graph shows before it has a token (`views/DesktopConnectView.tsx`), so it styles its own
+   fields rather than leaning on either container. */
+
+.desktop-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.desktop-add-way {
+  padding: var(--space-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.desktop-add-way h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--fg);
+}
+
+.desktop-add-hint {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: var(--leading-normal, 1.45);
+}
+
+.desktop-add-hint code {
+  font-family: var(--font-mono);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  padding: 0.05em 0.3em;
+}
+
+.desktop-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-sm);
+}
+
+.desktop-add-field span {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--fg);
+}
+
+.desktop-add-field input {
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-sm);
+  background: var(--surface-1);
+  color: var(--fg);
+}
+
+.desktop-add-error {
+  margin: 0 0 var(--space-sm);
+  color: var(--danger);
+  font-size: var(--text-xs);
+}
+
+.desktop-add button[type="submit"] {
+  width: 100%;
+  min-height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.desktop-add button[type="submit"]:hover {
+  background: var(--accent-strong);
+}
+
+.desktop-add button[type="submit"][disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* "On servers" holds one sub-list per server, headed by its host. */
+.desktop-graph-host {
+  margin: var(--space-xs) 0 2px;
+  padding: 0 var(--space-md);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The full-page list of other graphs on the no-token screen and the mismatch screen. */
+.desktop-graph-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.desktop-graph-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desktop-graph-choices button:hover {
+  background: var(--surface-2);
+}
+
+.desktop-graph-choices .desktop-graph-where {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}

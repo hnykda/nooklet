@@ -4,22 +4,20 @@
  * used to be a database icon in the top bar, which said nothing about WHICH graph was open and
  * added one more icon to a bar the owner wanted calmer.
  *
+ * In the desktop app the menu is `./DesktopGraphMenu.tsx` instead (proposal 005, ADR 032): there
+ * the shell owns the one list of graphs, and this origin's own list below is not shown. This file
+ * is the phone's (Capacitor) and a plain browser tab's menu.
+ *
  * The menu is `position: fixed`, placed under the name when it opens (`placeUnder`): the sidebar
  * scrolls (`overflow-y: auto`), which would clip an absolutely positioned popover to its 15rem.
- * Rows are grouped by where the graph lives — this device (a phone's local-only replica), this Mac
- * (ADR 028's bundled server), a server — so the three kinds read apart before any address does.
+ * Rows are grouped by where the graph lives — on this phone (a local-only replica), or on a server.
  *
  * The three legal moves the ADR settled on:
- *  1. New local-only graph — Capacitor and the desktop app (`showLocalOption` below), never a plain
- *     browser tab: a tab always has SOME origin behind it (`data/bootstrap.ts#hasSyncTarget`'s own
- *     doc comment), so "no server at all" is not a real choice there. On the phone it is a replica
- *     with no server. On the desktop (B-643) it is a new graph on This Mac's bundled server, made
- *     by the shell (`platform/desktop-shell.ts#shellRequestUrl`, `main.rs#ShellRequest`): a replica
- *     inside the window's origin would belong to whichever server the window happens to show, and
- *     vanish with it (`docs/progress/desktop-local-graph.md` has the reasoning). The desktop's This-
- *     Mac graphs are also listed ("On this Mac") from any server the window is on.
- *  2. Add an existing remote graph — every platform: `data/connect-graph.ts#connectToGraph`, the
- *     exact verify-then-remember logic `ConnectView.tsx` already used, reused as-is.
+ *  1. New local-only graph — Capacitor only (`showLocalOption` below), never a plain browser tab:
+ *     a tab always has SOME origin behind it (`data/bootstrap.ts#hasSyncTarget`'s own doc comment),
+ *     so "no server at all" is not a real choice there.
+ *  2. Add an existing remote graph — `data/connect-graph.ts#connectToGraph`, the exact
+ *     verify-then-remember logic `ConnectView.tsx` already used, reused as-is.
  *  3. Promote a local-only graph to a new remote one — a per-row action on any `kind: "local"`
  *     entry (`data/connect-graph.ts#createGraphOnServer`): creates a genuinely empty graph with the
  *     server's ROOT token, then points this SAME entry at it (not a new one) — the device's own
@@ -35,18 +33,15 @@
  * entry still on a placeholder label ("This graph"/"Remote graph", from before labels existed) is
  * relabelled the next time the switcher opens; a label the owner typed is never replaced.
  *
- * B-704: a server on ANOTHER origin cannot be added from a served page. The connect check is a
- * cross-origin request, and the server's CORS allowlist admits only the app shells' origins
- * (`capacitor://localhost`), so it fails as "Load failed". Inside the desktop shell the request is
- * handed to the shell instead (`add-server-graph`, as B-643's local-graph requests), which remembers
- * the server and restarts onto it, as its own Switch Server… → Add a server does; that server's own
- * page then asks for its token. In a plain browser tab the form says so and offers the server in a
- * new tab. Capacitor is unaffected: its origin is on every server's allowlist.
+ * B-704: a server on ANOTHER origin cannot be added from a page served by a server. The connect
+ * check is a cross-origin request, and the server's CORS allowlist admits only the app shells'
+ * origins (`capacitor://localhost`), so it fails as "Load failed". In a plain browser tab the form
+ * says so and offers the server in a new tab. Capacitor is unaffected: its origin is on every
+ * server's allowlist.
  */
 import Check from "lucide-solid/icons/check";
 import ChevronsUpDown from "lucide-solid/icons/chevrons-up-down";
 import ExternalLink from "lucide-solid/icons/external-link";
-import Laptop from "lucide-solid/icons/laptop";
 import Pencil from "lucide-solid/icons/pencil";
 import Plus from "lucide-solid/icons/plus";
 import Server from "lucide-solid/icons/server";
@@ -83,49 +78,29 @@ import {
 } from "../data/connect-graph.js";
 import { forgetPendingCount, knownPendingCount } from "../data/pending-memo.js";
 import { normalizeToken, tokenShapeProblem } from "../data/token-input.js";
-import {
-  DESKTOP_ERROR_EVENT,
-  type DesktopLocalGraph,
-  type DesktopShell,
-  desktopShell,
-  localGraphAddress,
-  onBundledServer,
-  shellRequestUrl,
-} from "../platform/desktop-shell.js";
+import { desktopShell } from "../platform/desktop-shell.js";
 import { platform } from "../platform/index.js";
+import { DesktopGraphMenu } from "./DesktopGraphMenu.js";
 import { removalDialog } from "./graph-removal.js";
+import { placeUnder } from "./place-under.js";
 import "./graph-switcher.css";
 
-/** The desktop's This-Mac graph as a row title: its default graph is "This Mac" itself, the name
- * the launcher's picker uses for it. */
-function macGraphName(g: DesktopLocalGraph): string {
-  return g.id === "default" ? "This Mac" : g.label;
-}
+export { placeUnder };
 
 type Mode = "list" | "add-choice" | "add-form" | "promote-form";
 
-/** Where a graph lives, which is how the menu groups its rows (B-709): this device's own replica
- * with no server (Capacitor's local-only graphs), This Mac's bundled server (ADR 028, desktop only),
- * or any other server. */
-export type GraphPlace = "device" | "mac" | "server";
+/** Where a graph lives, which is how the menu groups its rows (B-709): this phone's own replica
+ * with no server (Capacitor's local-only graphs), or a server. Proposal 005's words, the same ones
+ * the desktop app uses ("On this Mac" / "On servers"). */
+export type GraphPlace = "device" | "server";
 
 export const GRAPH_PLACE_HEADING: Record<GraphPlace, string> = {
-  device: "On this device",
-  mac: "On this Mac",
-  server: "On a server",
+  device: "On this phone",
+  server: "On servers",
 };
 
-export function graphPlace(entry: GraphListEntry, shell: DesktopShell | null): GraphPlace {
-  if (!entry.baseUrl) return "device";
-  if (shell) {
-    const address = resolvedGraphAddress(entry.baseUrl);
-    try {
-      if (address && new URL(address).origin === `http://127.0.0.1:${shell.port}`) return "mac";
-    } catch {
-      // Not an absolute address: not This Mac's either.
-    }
-  }
-  return "server";
+export function graphPlace(entry: GraphListEntry): GraphPlace {
+  return entry.baseUrl ? "server" : "device";
 }
 
 /** B-704: whether `url` is a server this page cannot verify from here, i.e. another origin. Never
@@ -137,19 +112,6 @@ export function needsOwnOrigin(url: string, pageOrigin: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Where the fixed-position menu goes: under `anchor`, as wide as a phone drawer allows, and no
- * taller than the space left below it (it scrolls past that). */
-export function placeUnder(
-  anchor: { left: number; bottom: number },
-  viewport: { width: number; height: number },
-  margin = 8,
-): { left: number; top: number; width: number; maxHeight: number } {
-  const width = Math.min(288, viewport.width - 2 * margin);
-  const left = Math.max(margin, Math.min(anchor.left, viewport.width - width - margin));
-  const top = anchor.bottom + 4;
-  return { left, top, width, maxHeight: Math.max(160, viewport.height - top - margin) };
 }
 
 /** What a row is called: the label, unless it is a placeholder nobody chose — then the graph's
@@ -184,6 +146,13 @@ function slugify(label: string): string {
 }
 
 export function GraphSwitcher(): JSX.Element {
+  // ADR 032: the desktop app's menu lists the shell's graphs, not this origin's.
+  const shell = desktopShell();
+  if (shell) return <DesktopGraphMenu shell={shell} />;
+  return <DeviceGraphSwitcher />;
+}
+
+function DeviceGraphSwitcher(): JSX.Element {
   const [open, setOpen] = createSignal(false);
   const [mode, setMode] = createSignal<Mode>("list");
   // Read at mount, not only on open: the sidebar's title is the active graph's name (B-709).
@@ -201,49 +170,35 @@ export function GraphSwitcher(): JSX.Element {
   const [serverGraphs, setServerGraphs] = createSignal<ServerGraph[] | undefined>();
   const [pickedNote, setPickedNote] = createSignal<string | undefined>();
 
-  const [macGraphs, setMacGraphs] = createSignal<DesktopLocalGraph[]>([]);
-  const [pendingNote, setPendingNote] = createSignal<string | undefined>();
   const [placement, setPlacement] = createSignal<ReturnType<typeof placeUnder> | undefined>();
 
-  // Capacitor and the desktop app, never a plain browser tab — see this file's own header.
-  const shell = desktopShell();
-  const showLocalOption = platform.name === "capacitor" || shell !== null;
-
-  /** This Mac's graphs that are not already a row above: on the bundled server's own page, the
-   * ones this origin has opened are ordinary same-origin entries. */
-  function unlistedMacGraphs(): DesktopLocalGraph[] {
-    if (!shell) return [];
-    return shell.localGraphs.filter((g) => !findGraphByAddress(localGraphAddress(shell, g.id)));
-  }
+  // Capacitor only, never a plain browser tab — see this file's own header.
+  const showLocalOption = platform.name === "capacitor";
 
   function refresh(): void {
     setGraphs(listGraphs());
-    setMacGraphs(unlistedMacGraphs());
   }
 
   const activeEntry = createMemo(() => graphs().find((g) => g.id === activeGraphId()));
-  /** The sidebar's title. With no entry yet (a first load before bootstrap adopts one), the page's
-   * own place stands in: This Mac on the bundled server, else this server's host. */
+  /** The sidebar's title. With no entry yet (a first load before bootstrap adopts one), this
+   * server's host stands in. */
   const titleText = (): string => {
     const entry = activeEntry();
     if (entry) return graphDisplayName(entry);
-    if (shell && onBundledServer(shell)) return "This Mac";
     return typeof location === "undefined" ? "nooklet" : location.host || "nooklet";
   };
   const titlePlace = (): GraphPlace => {
     const entry = activeEntry();
-    if (entry) return graphPlace(entry, shell);
-    return shell && onBundledServer(shell) ? "mac" : "server";
+    return entry ? graphPlace(entry) : "server";
   };
   /** Rows grouped by place, in a fixed order; empty groups are left out. */
   const grouped = createMemo(() =>
-    (["device", "mac", "server"] as const)
+    (["device", "server"] as const)
       .map((place) => ({
         place,
-        entries: graphs().filter((g) => graphPlace(g, shell) === place),
-        mac: place === "mac" ? macGraphs() : [],
+        entries: graphs().filter((g) => graphPlace(g) === place),
       }))
-      .filter((group) => group.entries.length > 0 || group.mac.length > 0),
+      .filter((group) => group.entries.length > 0),
   );
 
   /** B-704: the add form's address is a server on another origin, which this page cannot reach. */
@@ -300,7 +255,6 @@ export function GraphSwitcher(): JSX.Element {
     setMode("list");
     setRenamingId(undefined);
     setError(undefined);
-    setPendingNote(undefined);
     setBusy(false);
     place();
     setOpen(true);
@@ -331,16 +285,6 @@ export function GraphSwitcher(): JSX.Element {
       document.removeEventListener("pointerdown", onDown);
       window.removeEventListener("resize", onResize);
     });
-    if (!shell) return;
-    // B-643: the shell could not do what was asked (`main.rs#report_to_page`).
-    const onShellError = (e: Event): void => {
-      const detail = (e as CustomEvent<unknown>).detail;
-      setPendingNote(undefined);
-      setBusy(false);
-      setError(typeof detail === "string" && detail ? detail : "nooklet could not do that.");
-    };
-    window.addEventListener(DESKTOP_ERROR_EVENT, onShellError);
-    onCleanup(() => window.removeEventListener(DESKTOP_ERROR_EVENT, onShellError));
   });
 
   function switchTo(id: string): void {
@@ -369,7 +313,7 @@ export function GraphSwitcher(): JSX.Element {
   /** B-712: never one tap. What is lost, said plainly, and `delete` typed wherever data can be
    * lost (`./graph-removal.ts`). The in-app dialog, never `window.confirm` (B-491). */
   async function confirmRemove(entry: GraphListEntry): Promise<void> {
-    const where = graphPlace(entry, shell);
+    const where = graphPlace(entry);
     const address = resolvedGraphAddress(entry.baseUrl);
     let host: string | undefined;
     try {
@@ -398,13 +342,9 @@ export function GraphSwitcher(): JSX.Element {
       setError(parsed.error);
       return;
     }
-    // B-704: another origin cannot be verified from this page (see this file's header).
-    const elsewhere = addTargetElsewhere();
-    if (elsewhere) {
-      if (shell) handServerToShell(elsewhere);
-      // A browser tab: the form already says so and links the server instead of a Connect button.
-      return;
-    }
+    // B-704: another origin cannot be verified from this page (see this file's header). The form
+    // already says so and links the server instead of a Connect button.
+    if (addTargetElsewhere()) return;
     // B-706: drop what was copied around the token (a sentence's `.`, backticks, a newline), show
     // what will be sent, and name a token of the wrong shape before the server can only say 401.
     const tokenValue = normalizeToken(token());
@@ -432,18 +372,6 @@ export function GraphSwitcher(): JSX.Element {
       return;
     }
     goToActiveGraph();
-  }
-
-  /** B-704: the desktop shell remembers the server and restarts onto it, exactly as its own Switch
-   * Server… → Add a server does (`main.rs#ShellRequest::AddServerGraph`). No token travels: the
-   * window then shows that server's own page, which asks for one (`ConnectView.tsx`). */
-  function handServerToShell(url: string): void {
-    setError(undefined);
-    setBusy(true);
-    setPendingNote(
-      `Opening ${new URL(url).host}. nooklet restarts, then that server asks for its token…`,
-    );
-    location.assign(shellRequestUrl({ kind: "add-server-graph", url }));
   }
 
   /** B-618: offer the graphs the server hosts, when the token in the form can list them. */
@@ -483,33 +411,8 @@ export function GraphSwitcher(): JSX.Element {
   }
 
   function addLocalOnly(): void {
-    if (shell) {
-      // B-643/B-644: a new graph on This Mac, named so it is unique among this list and This
-      // Mac's own graphs. The shell makes it and restarts the app into it.
-      const label = newLocalGraphName(shell.localGraphs.map((g) => g.label));
-      setError(undefined);
-      setBusy(true);
-      setPendingNote(`Creating “${label}” on this Mac. nooklet restarts to open it…`);
-      location.assign(shellRequestUrl({ kind: "new-local-graph", label }));
-      return;
-    }
     createLocalOnlyGraph();
     goToActiveGraph();
-  }
-
-  /** A This-Mac graph from the "On this Mac" group. On the bundled server's own page it is just
-   * another graph on this origin (the address bar's graph is adopted at load, and the shell
-   * remembers it for the next launch); from a remote server's page, the shell switches to This Mac,
-   * which takes a restart. */
-  function openMacGraph(g: DesktopLocalGraph): void {
-    if (!shell) return;
-    if (onBundledServer(shell)) {
-      location.assign(`/g/${g.id}/`);
-      return;
-    }
-    setBusy(true);
-    setPendingNote(`Opening “${macGraphName(g)}”. nooklet restarts to open it…`);
-    location.assign(shellRequestUrl({ kind: "open-local-graph", id: g.id }));
   }
 
   function startPromote(entry: GraphListEntry): void {
@@ -565,8 +468,6 @@ export function GraphSwitcher(): JSX.Element {
   const placeIcon = (where: GraphPlace, size: number): JSX.Element =>
     where === "device" ? (
       <Smartphone size={size} aria-hidden="true" />
-    ) : where === "mac" ? (
-      <Laptop size={size} aria-hidden="true" />
     ) : (
       <Server size={size} aria-hidden="true" />
     );
@@ -665,23 +566,6 @@ export function GraphSwitcher(): JSX.Element {
     );
   };
 
-  /** A This-Mac graph this origin has no entry for (desktop only, B-643). */
-  const macRow = (g: DesktopLocalGraph): JSX.Element => (
-    <li class="graph-switcher-row">
-      <button
-        type="button"
-        class="graph-switcher-name"
-        disabled={busy()}
-        onClick={() => openMacGraph(g)}
-      >
-        <span class="graph-switcher-name-text">
-          <span class="graph-switcher-label">{macGraphName(g)}</span>
-          <span class="graph-switcher-address">on this Mac</span>
-        </span>
-      </button>
-    </li>
-  );
-
   return (
     <div class="graph-switcher-wrap" ref={wrap}>
       {/* B-709: the sidebar's title. Its accessible name keeps "Switch graph" (what it does) after
@@ -722,16 +606,10 @@ export function GraphSwitcher(): JSX.Element {
                   </p>
                   <ul class="graph-switcher-list" aria-labelledby={`graph-switcher-${group.place}`}>
                     <For each={group.entries}>{entryRow}</For>
-                    <For each={group.mac}>{macRow}</For>
                   </ul>
                 </section>
               )}
             </For>
-            <Show when={pendingNote()}>
-              <p class="graph-switcher-hint" role="status">
-                {pendingNote()}
-              </p>
-            </Show>
             <Show when={error()}>
               <p class="graph-switcher-error" role="alert">
                 {error()}
@@ -762,16 +640,10 @@ export function GraphSwitcher(): JSX.Element {
                 disabled={busy()}
                 onClick={addLocalOnly}
               >
-                <Show when={shell} fallback={<Smartphone size={18} />}>
-                  <Laptop size={18} />
-                </Show>
+                <Smartphone size={18} />
                 <span>
-                  <strong>{shell ? "New graph on this Mac" : "Just this device"}</strong>
-                  <p>
-                    {shell
-                      ? "Kept in nooklet's own folder on this Mac. Works offline."
-                      : "A fresh, unsynced graph."}
-                  </p>
+                  <strong>Just this device</strong>
+                  <p>A fresh, unsynced graph.</p>
                 </span>
               </button>
               <button
@@ -786,11 +658,6 @@ export function GraphSwitcher(): JSX.Element {
                 </span>
               </button>
             </div>
-            <Show when={pendingNote()}>
-              <p class="graph-switcher-hint" role="status">
-                {pendingNote()}
-              </p>
-            </Show>
             <Show when={error()}>
               <p class="graph-switcher-error" role="alert">
                 {error()}
@@ -825,7 +692,7 @@ export function GraphSwitcher(): JSX.Element {
                 <code>/g/&lt;graph&gt;</code> at the end picks a graph; without it you get the
                 server's default graph.
               </p>
-              {/* B-704: a server on another origin asks for its token on its own page. */}
+              {/* B-704: a server on another origin is opened in its own tab, which asks for it. */}
               <label class="graph-switcher-field" hidden={addTargetElsewhere() !== undefined}>
                 <span>Device token</span>
                 <input
@@ -849,47 +716,22 @@ export function GraphSwitcher(): JSX.Element {
               </Show>
               <Show when={addTargetElsewhere()}>
                 {(target) => (
-                  <Show
-                    when={shell}
-                    fallback={
-                      <div class="graph-switcher-elsewhere" role="note">
-                        <p>
-                          This page can only add graphs on {location.host}. A graph on{" "}
-                          {new URL(target()).host} opens in its own tab, which asks for its device
-                          token.
-                        </p>
-                        <a href={target()} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink size={14} aria-hidden="true" /> Open{" "}
-                          {new URL(target()).host} in a new tab
-                        </a>
-                      </div>
-                    }
-                  >
-                    <p class="graph-switcher-hint">
-                      nooklet restarts onto this server; its page then asks for the device token.
+                  <div class="graph-switcher-elsewhere" role="note">
+                    <p>
+                      This page can only add graphs on {location.host}. A graph on{" "}
+                      {new URL(target()).host} opens in its own tab, which asks for its device
+                      token.
                     </p>
-                  </Show>
+                    <a href={target()} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink size={14} aria-hidden="true" /> Open {new URL(target()).host} in
+                      a new tab
+                    </a>
+                  </div>
                 )}
               </Show>
-              <Show when={mode() === "add-form" && pendingNote()}>
-                <p class="graph-switcher-hint" role="status">
-                  {pendingNote()}
-                </p>
-              </Show>
-              <Show when={!addTargetElsewhere() || shell}>
-                <button
-                  type="submit"
-                  disabled={
-                    busy() || !serverUrl().trim() || (!addTargetElsewhere() && !token().trim())
-                  }
-                >
-                  {addTargetElsewhere()
-                    ? busy()
-                      ? "Restarting…"
-                      : "Add and restart"
-                    : busy()
-                      ? "Checking…"
-                      : "Connect"}
+              <Show when={!addTargetElsewhere()}>
+                <button type="submit" disabled={busy() || !serverUrl().trim() || !token().trim()}>
+                  {busy() ? "Checking…" : "Connect"}
                 </button>
               </Show>
               <button

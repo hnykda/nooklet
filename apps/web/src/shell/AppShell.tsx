@@ -23,6 +23,7 @@ import {
   settingsOpen,
 } from "../views/SettingsPanel.js";
 import { CalendarButton } from "./CalendarButton.js";
+import { requestGraphMenu } from "./graph-menu-request.js";
 import { HelpMenu, openShortcuts } from "./HelpMenu.js";
 import { useHistoryPosition } from "./history-position.js";
 import { MoreMenu } from "./MoreMenu.js";
@@ -41,8 +42,15 @@ export function AppShell(props: { children?: JSX.Element }) {
   onMount(() => {
     const handle = platform.startKeyboardWatcher();
     onCleanup(() => handle.stop());
-    // The desktop app's menu bar: Settings… and Help → Keyboard Shortcuts (B-533). No-op in a browser.
-    onCleanup(listenToDesktopMenu({ settings: openSettings, shortcuts: openShortcuts }));
+    // The desktop app's menu bar: Settings…, Graphs… (proposal 005) and Help → Keyboard Shortcuts
+    // (B-533). No-op in a browser.
+    onCleanup(
+      listenToDesktopMenu({
+        settings: openSettings,
+        shortcuts: openShortcuts,
+        graphs: requestGraphMenu,
+      }),
+    );
   });
 
   return (

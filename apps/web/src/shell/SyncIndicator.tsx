@@ -24,7 +24,9 @@ import { repairTargetFor } from "../data/connect-graph.js";
 import { rememberPendingCount } from "../data/pending-memo.js";
 import { useSyncStatus } from "../data/store.js";
 import { storageInfo } from "../db/client.js";
+import { desktopShell } from "../platform/desktop-shell.js";
 import { ConnectView } from "../views/ConnectView.js";
+import { DesktopConnectView } from "../views/DesktopConnectView.js";
 import { openDiagnostics } from "../views/DiagnosticsPanel.js";
 import {
   createQuietView,
@@ -97,12 +99,23 @@ export function SyncIndicator() {
       <Show when={repairing()}>
         <Portal>
           <div class="app-sync-repair-overlay">
-            <ConnectView
-              repair={{
-                ...repairTargetFor(activeGraph()?.baseUrl, location.origin),
-                onCancel: () => setRepairing(false),
-              }}
-            />
+            {/* ADR 032: in the desktop app the new token goes to the keychain through the shell's
+                add form, pre-filled with this graph's address. */}
+            <Show
+              when={desktopShell()}
+              fallback={
+                <ConnectView
+                  repair={{
+                    ...repairTargetFor(activeGraph()?.baseUrl, location.origin),
+                    onCancel: () => setRepairing(false),
+                  }}
+                />
+              }
+            >
+              {(shell) => (
+                <DesktopConnectView shell={shell()} rejected onCancel={() => setRepairing(false)} />
+              )}
+            </Show>
           </div>
         </Portal>
       </Show>

@@ -1,4 +1,8 @@
 /**
+ * OBSOLETE since ADR 032 (proposal 005): the launcher no longer has a picker, an add form or any
+ * Tauri command but `server_status`; the graph list moved into the app's own graph menu. Kept as
+ * the record of what this checked at the time; re-running it against today's launcher fails.
+ *
  * Flow 4: the desktop launcher's picker (apps/desktop/launcher/index.html) — list / add / remove /
  * switch, and the unreachable-at-startup recheck — driven in Chromium with Tauri's `invoke`
  * stubbed and recording its ARGUMENTS (the e2e spec records only command names). Same serving

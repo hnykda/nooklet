@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  currentDesktopGraph,
   DESKTOP_MENU_EVENT,
+  DESKTOP_REPLY_EVENT,
+  type DesktopGraph,
   desktopShell,
   listenToDesktopMenu,
+  shellRequest,
   shellRequestUrl,
 } from "./desktop-shell.js";
 
 type ShellWindow = Window & { __NOOKLET_DESKTOP__?: unknown };
 
-/** What `shell_script` in apps/desktop/src-tauri/src/main.rs defines, byte for byte in shape. */
+/** What `shell_script` in apps/desktop/src-tauri/src/main.rs defines, in shape. */
 function injectShell(value: unknown): void {
   Object.defineProperty(window, "__NOOKLET_DESKTOP__", { value, configurable: true });
 }
@@ -17,6 +21,21 @@ function injectShell(value: unknown): void {
 function menu(detail: unknown): void {
   window.dispatchEvent(new CustomEvent(DESKTOP_MENU_EVENT, { detail }));
 }
+
+const MAC: DesktopGraph = {
+  key: "mac:default",
+  place: "mac",
+  id: "default",
+  label: "This Mac",
+  address: "http://127.0.0.1:6100/g/default",
+};
+const WORK: DesktopGraph = {
+  key: "server:s1",
+  place: "server",
+  id: "s1",
+  label: "Work",
+  address: "https://notes.example.com/g/work",
+};
 
 afterEach(() => {
   delete (window as ShellWindow).__NOOKLET_DESKTOP__;
@@ -32,8 +51,10 @@ describe("desktopShell", () => {
     expect(desktopShell(window)).toEqual({
       platform: "macos",
       port: 6420,
-      localGraphs: [],
       downloads: false,
+      key: "",
+      graphs: [],
+      graphToken: null,
     });
   });
 
@@ -42,16 +63,20 @@ describe("desktopShell", () => {
     expect(desktopShell(window)?.downloads).toBe(true);
   });
 
-  it("B-643: reads This Mac's graphs, dropping malformed ones", () => {
+  it("B-781: reads the shell's graph list, its request key and the graph's token, dropping malformed rows", () => {
     injectShell({
       platform: "macos",
       port: 6100,
-      localGraphs: [{ id: "default", label: "default" }, { id: 3 }, null, { id: "q", label: "Q" }],
+      key: "k123",
+      graphToken: "nk_abc",
+      graphs: [MAC, { ...WORK, place: "phone" }, null, { key: "x" }, WORK],
     });
-    expect(desktopShell(window)?.localGraphs).toEqual([
-      { id: "default", label: "default" },
-      { id: "q", label: "Q" },
-    ]);
+    const shell = desktopShell(window);
+    expect(shell?.graphs).toEqual([MAC, WORK]);
+    expect(shell?.key).toBe("k123");
+    expect(shell?.graphToken).toBe("nk_abc");
+    injectShell({ platform: "macos", port: 6100, graphToken: "" });
+    expect(desktopShell(window)?.graphToken).toBeNull();
   });
 
   it("ignores a malformed flag rather than half-trusting it", () => {
@@ -62,39 +87,90 @@ describe("desktopShell", () => {
   });
 });
 
-describe("shellRequestUrl (B-643)", () => {
-  it("addresses the reserved host main.rs#parse_shell_request reads, with the label encoded", () => {
-    expect(shellRequestUrl({ kind: "new-local-graph", label: "Quiet Otter & co" })).toBe(
-      "http://nooklet-desktop.invalid/new-local-graph?label=Quiet+Otter+%26+co",
+describe("currentDesktopGraph", () => {
+  it("is the graph whose address this page is at or under, never one that only shares a prefix", () => {
+    const graphs = [MAC, WORK];
+    const at = (href: string) => currentDesktopGraph(graphs, new URL(href));
+    expect(at("https://notes.example.com/g/work/journals")?.key).toBe("server:s1");
+    expect(at("https://notes.example.com/g/work")?.key).toBe("server:s1");
+    expect(at("https://notes.example.com/g/workshop")).toBeUndefined();
+    expect(at("http://127.0.0.1:6100/g/default/page/A")?.key).toBe("mac:default");
+    expect(at("http://127.0.0.1:6200/g/default")).toBeUndefined();
+  });
+});
+
+describe("shellRequest (ADR 032)", () => {
+  it("addresses the reserved host with the window's key and a request id (main.rs#parse_shell_request)", () => {
+    expect(
+      shellRequestUrl(
+        {
+          kind: "connect-server",
+          address: "https://notes.example.com/g/work",
+          token: "nk_abc",
+        },
+        "k1",
+        "r1",
+      ),
+    ).toBe(
+      "http://nooklet-desktop.invalid/connect-server?key=k1&req=r1&address=https%3A%2F%2Fnotes.example.com%2Fg%2Fwork&token=nk_abc",
     );
-    expect(shellRequestUrl({ kind: "open-local-graph", id: "quiet-otter" })).toBe(
-      "http://nooklet-desktop.invalid/open-local-graph?id=quiet-otter",
+    expect(shellRequestUrl({ kind: "new-local-graph", label: "Quiet Otter & co" }, "k", "r")).toBe(
+      "http://nooklet-desktop.invalid/new-local-graph?key=k&req=r&label=Quiet+Otter+%26+co",
+    );
+    expect(shellRequestUrl({ kind: "remove", graph: "server:s1" }, "k", "r")).toBe(
+      "http://nooklet-desktop.invalid/remove?key=k&req=r&graph=server%3As1",
     );
   });
 
-  it("B-704: an add-server request carries the address, encoded (main.rs reads `url`)", () => {
-    expect(
-      shellRequestUrl({ kind: "add-server-graph", url: "https://notes.example.com/g/work" }),
-    ).toBe(
-      "http://nooklet-desktop.invalid/add-server-graph?url=https%3A%2F%2Fnotes.example.com%2Fg%2Fwork",
+  it("resolves with the reply to ITS request only, and the list that came with it", async () => {
+    const assign = vi.fn();
+    const win = Object.assign(new EventTarget(), { location: { assign } }) as unknown as Window;
+    const shell = {
+      platform: "macos",
+      port: 6100,
+      downloads: true,
+      key: "k",
+      graphs: [],
+      graphToken: null,
+    };
+    const pending = shellRequest(shell, { kind: "rename", graph: "server:s1", label: "Job" }, win);
+    const sent = new URL(String(assign.mock.calls[0]?.[0]));
+    const req = sent.searchParams.get("req");
+    expect(sent.pathname).toBe("/rename");
+    win.dispatchEvent(
+      new CustomEvent(DESKTOP_REPLY_EVENT, { detail: { req: "other", ok: false, error: "x" } }),
     );
+    win.dispatchEvent(
+      new CustomEvent(DESKTOP_REPLY_EVENT, {
+        detail: { req, ok: true, error: null, graphs: [{ ...WORK, label: "Job" }, { bad: 1 }] },
+      }),
+    );
+    await expect(pending).resolves.toEqual({
+      ok: true,
+      error: undefined,
+      graphs: [{ ...WORK, label: "Job" }],
+    });
   });
 });
 
 describe("listenToDesktopMenu (B-533)", () => {
-  it("routes Settings… and Keyboard Shortcuts from the native menu", () => {
+  it("routes Settings…, Graphs… and Keyboard Shortcuts from the native menu", () => {
     injectShell({ platform: "macos", port: 6100 });
     const settings = vi.fn();
     const shortcuts = vi.fn();
-    const stop = listenToDesktopMenu({ settings, shortcuts }, window);
+    const graphs = vi.fn();
+    const stop = listenToDesktopMenu({ settings, shortcuts, graphs }, window);
 
     menu("settings");
     expect(settings).toHaveBeenCalledTimes(1);
     expect(shortcuts).not.toHaveBeenCalled();
     menu("shortcuts");
     expect(shortcuts).toHaveBeenCalledTimes(1);
+    menu("graphs");
+    expect(graphs).toHaveBeenCalledTimes(1);
     // Items the shell handles itself (reload, docs, report-bug) and junk are not the client's.
     menu("reload");
+    menu("switch-server");
     menu({ action: "settings" });
     expect(settings).toHaveBeenCalledTimes(1);
 

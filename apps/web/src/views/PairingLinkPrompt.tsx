@@ -15,8 +15,10 @@
 import { createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { samePathGraphPrefix } from "../data/bootstrap.js";
 import { PAIRING_CODE_RE, type PairingLink, parsePairingLink } from "../data/connect-graph.js";
+import { desktopShell } from "../platform/desktop-shell.js";
 import { platform } from "../platform/index.js";
 import { ConnectView } from "./ConnectView.js";
+import { DesktopConnectView } from "./DesktopConnectView.js";
 import "./connect.css";
 
 type Pending = { link: PairingLink } | { error: string };
@@ -77,7 +79,23 @@ export function PairingLinkPrompt(): JSX.Element {
           >
             {(link) => (
               <Show when={generation()} keyed>
-                <ConnectView prefill={link} onCancel={dismiss} />
+                {/* ADR 032: in the desktop app a pairing goes through the shell (the redeem and the
+                    check are cross-origin from here), and its token to the keychain. */}
+                <Show
+                  when={desktopShell()}
+                  fallback={<ConnectView prefill={link} onCancel={dismiss} />}
+                >
+                  {(shell) => (
+                    <DesktopConnectView
+                      shell={shell()}
+                      prefill={{
+                        address: link.serverUrl,
+                        credential: link.code ?? link.token ?? "",
+                      }}
+                      onCancel={dismiss}
+                    />
+                  )}
+                </Show>
               </Show>
             )}
           </Show>
