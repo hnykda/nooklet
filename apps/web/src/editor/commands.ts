@@ -56,6 +56,21 @@ export interface OpsFocusResult extends OpsResult {
   focus: FocusChange;
 }
 
+/**
+ * The zoomed view a command runs in (B-788). Zoomed into a block, that block is the fixed top of
+ * the view, as in Logseq: everything typed goes under it, and nothing done in the view may land
+ * outside its subtree — a block placed outside it simply is not on screen, which looks like lost
+ * typing. The tree has no notion of a zoom root, so the caller (`BlockTree`) supplies it. Absent or
+ * `null`: not zoomed, every command behaves as on the page.
+ */
+export interface ZoomScope {
+  zoomRootId?: BlockId | null;
+}
+
+function isZoomRoot(scope: ZoomScope | undefined, id: BlockId): boolean {
+  return scope?.zoomRootId != null && scope.zoomRootId === id;
+}
+
 // -------------------------------------------------------------------------------------------
 // R16 — split
 // -------------------------------------------------------------------------------------------
@@ -63,23 +78,32 @@ export interface OpsFocusResult extends OpsResult {
 /** `block.split`: split `content` at `head`. Per R16, the new block is the block's first child
  * (before any existing children) when the block is expanded and has children; otherwise it is the
  * block's next sibling. Degenerates correctly to "insert an empty sibling after and focus it"
- * when `head` is 0 and the block was already empty (`before = after = ''`). */
+ * when `head` is 0 and the block was already empty (`before = after = ''`).
+ *
+ * The zoom root is the exception (B-788): its split is ALWAYS its first child — collapsed or not,
+ * leaf or not — because a sibling would be outside the zoomed view and never show. Logseq does the
+ * same (`editor.cljs#insert-new-block-aux!`: `sibling?` is false for the route's own block, and the
+ * outliner then orders it before the first child). Enter in the middle or at the start splits the
+ * same way: the root keeps the text before the caret and the rest becomes the first child, so the
+ * top stays put and what you were typing moves down into the view. */
 export function splitBlock(
   tree: EditorTree,
   id: BlockId,
   head: number,
   clock: Clock,
   now: number = Date.now(),
+  scope?: ZoomScope,
 ): OpsFocusResult {
   const b = getBlock(tree, id);
   const before = b.content.slice(0, head);
   const after = b.content.slice(head);
   const newBlockId = newId(now);
   const kids = childrenIds(tree, id);
-  const asFirstChild = kids.length > 0 && !b.collapsed;
+  const asFirstChild = isZoomRoot(scope, id) || (kids.length > 0 && !b.collapsed);
 
+  const firstKid = kids[0];
   const newPlace = asFirstChild
-    ? place(tree.pageId, id, orderBetween(null, getBlock(tree, kids[0] as BlockId).order))
+    ? place(tree.pageId, id, orderBetween(null, firstKid ? getBlock(tree, firstKid).order : null))
     : place(tree.pageId, b.parentId, orderBetween(b.order, nextSiblingOrder(tree, b.parentId, id)));
 
   const ops: Op[] = [];
@@ -102,8 +126,15 @@ export function splitBlock(
 // R18 — indent
 // -------------------------------------------------------------------------------------------
 
-/** `block.indent` (Tab): no-op if `id` has no previous sibling (R18). */
-export function indentBlock(tree: EditorTree, id: BlockId, clock: Clock): OpsResult | null {
+/** `block.indent` (Tab): no-op if `id` has no previous sibling (R18), and on the zoom root, whose
+ * previous sibling is outside the view (B-788). */
+export function indentBlock(
+  tree: EditorTree,
+  id: BlockId,
+  clock: Clock,
+  scope?: ZoomScope,
+): OpsResult | null {
+  if (isZoomRoot(scope, id)) return null;
   const b = getBlock(tree, id);
   const siblings = childrenIds(tree, b.parentId);
   const idx = siblings.indexOf(id);
@@ -119,10 +150,7 @@ export function indentBlock(tree: EditorTree, id: BlockId, clock: Clock): OpsRes
 // R19 — logical outdent
 // -------------------------------------------------------------------------------------------
 
-export interface OutdentOptions {
-  /** No-op when `id` is the current zoom root (R19.1's "or the zoom root"); the tree itself has
-   * no notion of a zoom root, so the caller supplies it. */
-  zoomRootId?: BlockId | null;
+export interface OutdentOptions extends ZoomScope {
   /** R31: when outdenting a *contiguous* multi-selection, a non-selected trailing sibling must
    * attach to the LAST block of the selected run, not the first — e.g. selecting siblings B and
    * C (in that order) and outdenting both must not split D (the sibling right after C) onto B
@@ -150,7 +178,10 @@ export function outdentBlock(
 ): OpsResult | null {
   const b = getBlock(tree, id);
   if (b.parentId === null) return null;
-  if (opts.zoomRootId !== undefined && opts.zoomRootId === id) return null;
+  // R19.1's "or the zoom root" — and its direct children too (B-788): outdenting one of those put
+  // it next to the root, outside the zoomed view, where it vanished.
+  if (opts.zoomRootId != null && (opts.zoomRootId === id || opts.zoomRootId === b.parentId))
+    return null;
 
   const parentId = b.parentId;
   const P = getBlock(tree, parentId);
@@ -292,13 +323,16 @@ export function deleteForwardMerge(
 // -------------------------------------------------------------------------------------------
 
 /** `block.moveUp`/`block.moveDown`: reorder only, swapping with the previous/next sibling under
- * the same parent. No-op at the first/last sibling position. */
+ * the same parent. No-op at the first/last sibling position, and on the zoom root, whose siblings
+ * are outside the view (B-788). */
 export function moveBlock(
   tree: EditorTree,
   id: BlockId,
   direction: "up" | "down",
   clock: Clock,
+  scope?: ZoomScope,
 ): OpsResult | null {
+  if (isZoomRoot(scope, id)) return null;
   const b = getBlock(tree, id);
   const siblings = childrenIds(tree, b.parentId);
   const idx = siblings.indexOf(id);
@@ -344,13 +378,15 @@ export function setCollapsed(id: BlockId, collapsed: boolean, clock: Clock): Op 
 /** `block.duplicate`: a deep copy of `id`'s subtree as its own next sibling, with fresh ids for
  * every copied block (never reusing an id, R32) and every task/schedule field copied verbatim
  * (duplication does not clear task state). Focus moves to the copy's top block at the original
- * caret offset. */
+ * caret offset. `null` on the zoom root: its copy would be its sibling, outside the view (B-788). */
 export function duplicateBlock(
   tree: EditorTree,
   id: BlockId,
   clock: Clock,
   now: number = Date.now(),
-): OpsFocusResult {
+  scope?: ZoomScope,
+): OpsFocusResult | null {
+  if (isZoomRoot(scope, id)) return null;
   const root = getBlock(tree, id);
   const rootOrder = orderBetween(root.order, nextSiblingOrder(tree, root.parentId, id));
   const ops: Op[] = [];
@@ -406,12 +442,18 @@ export function blockRefText(id: BlockId): string {
 
 /** `block.deleteSelected`: every selected block and its whole subtree, tombstoned. Deletion does
  * not cascade at the storage layer (`sql-schema.md`), so every descendant needs its own
- * `block.delete` — the union avoids double-deleting a block whose ancestor is also selected. */
+ * `block.delete` — the union avoids double-deleting a block whose ancestor is also selected.
+ *
+ * The zoom root is never deleted from its own view (B-788): that left the view showing nothing,
+ * under a breadcrumb naming a block that is gone. Select all + Delete in a zoomed view clears what
+ * is under the root, as in Logseq, where the root is the view's title rather than a row you can
+ * select. Selected blocks under it still go. */
 export function deleteSelectedBlocks(
   tree: EditorTree,
   ids: readonly BlockId[],
   clock: Clock,
   now: number = Date.now(),
+  scope?: ZoomScope,
 ): OpsResult {
   const seen = new Set<BlockId>();
   const ops: Op[] = [];
@@ -421,7 +463,10 @@ export function deleteSelectedBlocks(
     ops.push(op(clock, id, { kind: "block.delete", deletedAt: now }));
     for (const c of childrenIds(tree, id)) visit(c);
   };
-  for (const id of ids) visit(id);
+  for (const id of ids) {
+    // The root's own row stays; the selected blocks under it are visited on their own turn.
+    if (!isZoomRoot(scope, id)) visit(id);
+  }
   return { ops };
 }
 
@@ -433,11 +478,12 @@ export function indentSelectedBlocks(
   tree: EditorTree,
   ids: readonly BlockId[],
   clock: Clock,
+  scope?: ZoomScope,
 ): OpsResult {
   const work = cloneTree(tree);
   const ops: Op[] = [];
   for (const id of ids) {
-    const r = indentBlock(work, id, clock);
+    const r = indentBlock(work, id, clock, scope);
     if (!r) continue;
     ops.push(...r.ops);
     for (const o of r.ops)
@@ -457,13 +503,18 @@ export function outdentSelectedBlocks(
   tree: EditorTree,
   ids: readonly BlockId[],
   clock: Clock,
+  scope?: ZoomScope,
 ): OpsResult {
   const selected = new Set(ids);
   const work = cloneTree(tree);
   const insertionCursor = new Map<BlockId, { lower: string | null; upper: string | null }>();
   const ops: Op[] = [];
   for (const id of ids) {
-    const r = outdentBlock(work, id, clock, { excludeFromYounger: selected, insertionCursor });
+    const r = outdentBlock(work, id, clock, {
+      excludeFromYounger: selected,
+      insertionCursor,
+      zoomRootId: scope?.zoomRootId,
+    });
     if (!r) continue;
     ops.push(...r.ops);
     for (const o of r.ops)

@@ -81,6 +81,7 @@ import {
   outdentSelectedBlocks,
   setCollapsed,
   splitBlock,
+  type ZoomScope,
 } from "./commands.js";
 import { findTreeNode, toCoreBlock } from "./current-block.js";
 import {
@@ -446,6 +447,9 @@ export function BlockTree(props: {
   });
   const [localZoomRoot, setLocalZoomRoot] = createSignal<BlockId | undefined>(undefined);
   const effectiveRoot = createMemo(() => localZoomRoot() ?? props.rootBlockId);
+  /** Handed to every structural command, so nothing done in a zoomed view lands outside it
+   * (B-788, `commands.ts#ZoomScope`). */
+  const zoomScope = (): ZoomScope => ({ zoomRootId: effectiveRoot() ?? null });
   createEffect(() => {
     // A new page or an externally-driven zoom target resets any in-editor zoom-in/out state.
     void props.pageId;
@@ -859,7 +863,7 @@ export function BlockTree(props: {
     }
     const clock = clockSig();
     if (!clock) return;
-    const r = indentBlock(editorTree(), id, clock);
+    const r = indentBlock(editorTree(), id, clock, zoomScope());
     if (r) runStructural({ ops: r.ops });
   }
 
@@ -870,7 +874,7 @@ export function BlockTree(props: {
     }
     const clock = clockSig();
     if (!clock) return;
-    const r = outdentBlock(editorTree(), id, clock, { zoomRootId: effectiveRoot() ?? null });
+    const r = outdentBlock(editorTree(), id, clock, zoomScope());
     if (r) runStructural({ ops: r.ops });
   }
 
@@ -881,7 +885,7 @@ export function BlockTree(props: {
     }
     const clock = clockSig();
     if (!clock) return;
-    const r = moveBlock(editorTree(), id, direction, clock);
+    const r = moveBlock(editorTree(), id, direction, clock, zoomScope());
     if (!r) return;
     runStructural({ ops: r.ops });
     refocusAfterReorder(id);
@@ -1077,6 +1081,8 @@ export function BlockTree(props: {
             id,
             contentOffsetOf(view.state.doc.toString(), view.state.selection.main.head),
             clock,
+            Date.now(),
+            zoomScope(),
           ),
         );
         return true;
@@ -1136,6 +1142,9 @@ export function BlockTree(props: {
         return true;
       }
       case "block.collapse":
+        // The zoom root is always open in its view (B-788): folding it would change nothing on
+        // screen and only surprise you once you zoom out.
+        if (id === effectiveRoot()) return true;
         commitOne(setCollapsed(id, true, clock));
         return true;
       case "block.expand":
@@ -1179,7 +1188,7 @@ export function BlockTree(props: {
         return true;
       }
       case "block.duplicate":
-        runStructural(duplicateBlock(tree, id, clock));
+        runStructural(duplicateBlock(tree, id, clock, Date.now(), zoomScope()));
         return true;
       case "block.copyRef":
         void navigator.clipboard?.writeText(blockRefText(id));
@@ -1286,7 +1295,7 @@ export function BlockTree(props: {
     event.preventDefault();
     const clock = clockSig();
     if (!clock) return true;
-    runStructural(pasteMarkdownAsTree(editorTree(), id, text, clock));
+    runStructural(pasteMarkdownAsTree(editorTree(), id, text, clock, Date.now(), zoomScope()));
     return true;
   }
 
@@ -1463,34 +1472,47 @@ export function BlockTree(props: {
         void cutToClipboard(text, navigator.clipboard, () => {
           const now = editorTree();
           const live = sel.ids.filter((id) => now.byId.has(id));
-          commit(deleteSelectedBlocks(now, live, clock).ops, now, "structure", null, null);
+          commit(
+            deleteSelectedBlocks(now, live, clock, Date.now(), zoomScope()).ops,
+            now,
+            "structure",
+            null,
+            null,
+          );
           if (selection() === sel) setSelection(null);
         });
         return;
       }
       case "block.deleteSelected": {
-        const r = deleteSelectedBlocks(tree, sel.ids, clock);
+        const r = deleteSelectedBlocks(tree, sel.ids, clock, Date.now(), zoomScope());
         commit(r.ops, tree, "structure", null, null);
         setSelection(null);
         return;
       }
       case "block.indentSelected": {
-        const r = indentSelectedBlocks(tree, sel.ids, clock);
+        const r = indentSelectedBlocks(tree, sel.ids, clock, zoomScope());
         commit(r.ops, tree, "structure", null, null);
         return;
       }
       case "block.outdentSelected": {
-        const r = outdentSelectedBlocks(tree, sel.ids, clock);
+        const r = outdentSelectedBlocks(tree, sel.ids, clock, zoomScope());
         commit(r.ops, tree, "structure", null, null);
         return;
       }
       case "block.moveUp":
       case "block.moveDown": {
-        const r = moveBlock(tree, sel.focusId, cmd === "block.moveUp" ? "up" : "down", clock);
+        const r = moveBlock(
+          tree,
+          sel.focusId,
+          cmd === "block.moveUp" ? "up" : "down",
+          clock,
+          zoomScope(),
+        );
         if (r) commit(r.ops, tree, "structure", null, null);
         return;
       }
       case "block.collapse":
+        if (sel.focusId === effectiveRoot()) return; // always open in its view (B-788)
         commit([setCollapsed(sel.focusId, true, clock)], tree, "structure", null, null);
         return;
       case "block.expand":
@@ -1524,7 +1546,7 @@ export function BlockTree(props: {
         return;
       }
       case "block.duplicate":
-        runStructural(duplicateBlock(tree, sel.focusId, clock));
+        runStructural(duplicateBlock(tree, sel.focusId, clock, Date.now(), zoomScope()));
         return;
       case "block.copyRef":
         void navigator.clipboard?.writeText(blockRefText(sel.focusId));
@@ -1730,6 +1752,7 @@ export function BlockTree(props: {
                         depth={r().depth}
                         hasChildren={r().hasChildren}
                         collapsed={r().collapsed}
+                        zoomRoot={id === effectiveRoot()}
                         childCount={childrenIds(editorTree(), id).length}
                         block={b()}
                         numbering={numbering().get(id)}
