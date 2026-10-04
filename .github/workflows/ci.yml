@@ -35,8 +35,10 @@ jobs:
 
       # The suite that actually catches integration bugs: a real Chromium against a real server
       # serving a real production build. See docs/BUGS.md for why this is not optional.
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      # Both browsers: e2e/playwright.config.ts runs a WebKit project too (B-686). It is the
+      # engine the iOS app and Safari run, so it stays in CI rather than being scoped out.
+      - name: Install Chromium and WebKit
+        run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: End-to-end tests
         run: pnpm e2e
@@ -45,8 +47,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
+          name: playwright-traces
+          # Playwright writes traces, videos and screenshots to e2e/test-results/<port>/
+          # (outputDir in e2e/playwright.config.ts), not the repo root (B-687). CI uses the list
+          # reporter only, so there is no HTML report to upload.
+          path: e2e/test-results/
+          if-no-files-found: warn
           retention-days: 7

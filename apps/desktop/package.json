@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build",
+    "build": "node build-sidecar.mjs && tauri build",
     "tauri": "tauri",
     "sidecar": "node build-sidecar.mjs",
     "test": "node --test \"test/*.test.mjs\""
