@@ -88,6 +88,8 @@ export type ActionResult = { ok: true; message: string } | { ok: false; message:
  * blob is handed over as a PROMISE: Safari/WebKit only allows `clipboard.write` while the click
  * is still the current user gesture, and a fetch in between would end it.
  */
+const COPY_TIMEOUT_MS = 10_000;
+
 export async function copyImage(url: string): Promise<ActionResult> {
   if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
     return {
@@ -98,8 +100,20 @@ export async function copyImage(url: string): Promise<ActionResult> {
   }
   try {
     const png = fetchImageBlob(url).then(toPng);
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-    return { ok: true, message: "Image copied." };
+    // B-744: in the Mac app the write was seen never to settle; a bound turns that into an
+    // answer instead of a button that stays busy forever.
+    const timedOut = new Promise<"timeout">((r) => setTimeout(() => r("timeout"), COPY_TIMEOUT_MS));
+    const done = await Promise.race([
+      navigator.clipboard.write([new ClipboardItem({ "image/png": png })]),
+      timedOut,
+    ]);
+    if (done === "timeout") {
+      return {
+        ok: false,
+        message: "Copying didn't finish — this app may not allow it. Use Download instead.",
+      };
+    }
+    return { ok: true, message: "Image copied to the clipboard." };
   } catch (err) {
     return { ok: false, message: `Couldn't copy the image (${describeError(err)}).` };
   }
@@ -151,14 +165,18 @@ export async function downloadImage(
           resolve({ ok: true, message: "Saving to Downloads…" });
         }, DESKTOP_REPORT_MS);
         function onDone(e: Event): void {
-          const d = (e as CustomEvent<{ ok?: unknown; name?: unknown; url?: unknown }>).detail;
+          const d = (
+            e as CustomEvent<{ ok?: unknown; name?: unknown; path?: unknown; url?: unknown }>
+          ).detail;
           if (d?.url !== undefined && d.url !== abs) return;
           clearTimeout(timer);
           window.removeEventListener(DESKTOP_DOWNLOAD_EVENT, onDone);
           const saved = typeof d?.name === "string" && d.name ? d.name : name;
+          // The whole path (B-744): "Downloads" alone left the owner asking where it went.
+          const where = typeof d?.path === "string" && d.path ? d.path : `~/Downloads/${saved}`;
           resolve(
             d?.ok === true
-              ? { ok: true, message: `Saved to Downloads as ${saved}.` }
+              ? { ok: true, message: `Saved to ${where}` }
               : { ok: false, message: "The download failed." },
           );
         }
@@ -186,7 +204,8 @@ export async function downloadImage(
     clickDownloadLink(href, name);
     // Revoked later, not now: the browser reads the blob after the click returns.
     setTimeout(() => URL.revokeObjectURL(href), 60_000);
-    return { ok: true, message: `Downloaded ${name}.` };
+    // A page cannot learn where the browser put it; say what to look for and where it usually is.
+    return { ok: true, message: `Downloaded ${name} to your browser's downloads folder.` };
   } catch (err) {
     return { ok: false, message: `Couldn't download the image (${describeError(err)}).` };
   }

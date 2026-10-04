@@ -773,13 +773,24 @@ fn report_to_page(app: &tauri::AppHandle, message: &str) {
 /// B-736: tells the page how a download it started ended (`apps/web/src/platform/desktop-shell.ts#
 /// DESKTOP_DOWNLOAD_EVENT`). `name` is the file actually written — wry picks `name (1).ext` when
 /// the suggested one is taken — so the page can say where to look.
-fn report_download(app: &tauri::AppHandle, url: &str, ok: bool, name: Option<&str>) {
+fn report_download(app: &tauri::AppHandle, url: &str, ok: bool, name: Option<&str>, path: Option<&str>) {
     if let Some(window) = app.get_webview_window("main") {
-        let detail = serde_json::json!({ "ok": ok, "url": url, "name": name });
+        let detail = serde_json::json!({ "ok": ok, "url": url, "name": name, "path": path });
         let _ = window.eval(format!(
             "window.dispatchEvent(new CustomEvent(\"nooklet:desktop-download\",{{detail:{detail}}}))"
         ));
     }
+}
+
+/// B-744: the saved file's path as a person would type it, `~/Downloads/x.png` rather than the
+/// full home path, for the page's "Saved to …" message.
+fn display_path(path: &std::path::Path) -> String {
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        if let Ok(rest) = path.strip_prefix(&home) {
+            return format!("~/{}", rest.display());
+        }
+    }
+    path.display().to_string()
 }
 
 /// Carries out a `ShellRequest`: on success, This Mac becomes active on the chosen graph and the
@@ -1173,7 +1184,8 @@ fn main() {
                                     .as_ref()
                                     .and_then(|p| p.file_name())
                                     .map(|n| n.to_string_lossy().into_owned());
-                                report_download(&app, url.as_str(), success, name.as_deref());
+                                let shown = path.as_deref().map(display_path);
+                                report_download(&app, url.as_str(), success, name.as_deref(), shown.as_deref());
                             }
                             _ => {}
                         }
@@ -1542,6 +1554,13 @@ mod tests {
         ] {
             assert_eq!(parse_shell_request(&url(none)), None, "{none}");
         }
+    }
+
+    #[test]
+    fn b744_a_saved_file_is_shown_under_the_home_shorthand() {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set in tests"));
+        assert_eq!(display_path(&home.join("Downloads/shed (1).png")), "~/Downloads/shed (1).png");
+        assert_eq!(display_path(std::path::Path::new("/Volumes/x/a.png")), "/Volumes/x/a.png");
     }
 
     #[test]

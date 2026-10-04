@@ -1079,6 +1079,19 @@ re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. B
 flakes and are noted here rather than logged separately.
 
 ## Fixed
+
+### B-744 · Image viewer: Copy disables both buttons (stuck in the Mac app), and Download does not say where the file went
+**Status:** fixed 2026-10-04 (the Mac-app copy hang itself not reproduced; now bounded) · **Severity:** low (UX) · **Found:** 2026-10-04, owner in the desktop app · **Test:** `image-viewer.test.tsx` "B-744: …" (3), `e2e/tests/image-viewer.spec.ts` copy test (Download right after Copy), Rust `b744_a_saved_file_is_shown_under_the_home_shorthand`
+
+`ImageViewer.tsx` runs one action at a time and disables Copy and Download while it does
+(`busy`). After Copy in the Mac app both stayed disabled, so the clipboard write most likely never
+settled there (unverified: not reproduced outside the real window). A result was one easy-to-miss
+status line, and Download named only the file, not where it went. Wanted: both buttons usable
+at any time, each result as a toast, the full saved path (`~/Downloads/<name>` in the desktop
+shell), and a copy that cannot hang forever.
+
+**Fix:** no button is disabled; a running action only relabels itself ("Copying…") and ignores a repeat click. Each result is a toast over the picture (5 s, errors 9 s). The shell reports the saved path (`~/Downloads/<name>`), and the toast says `Saved to <path>`. In a browser the toast says the file went to the browser's downloads folder. A clipboard write that has not settled after 10 s ends in "Copying didn't finish … Use Download instead."
+
 ### B-736 · Clicking an image only opens the block editor; no way to view, copy or download it
 **Status:** fixed (2026-10-04, image-viewer agent) · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** `e2e/tests/image-viewer.spec.ts` ("B-736: clicking an image opens the viewer, not the editor; Download saves it" — Chromium and WebKit; "B-736: Copy image puts a PNG on the clipboard" — Chromium), `apps/web/src/editor/render/image-viewer.test.tsx` (11), `apps/web/src/platform/desktop-shell.test.ts` ("B-736: knows whether the shell saves downloads"), probe `tools/probes/wkwebview-download.swift`
 

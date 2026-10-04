@@ -44,7 +44,9 @@ test("B-736: clicking an image opens the viewer, not the editor; Download saves 
   expect(download.suggestedFilename()).toBe("garden shed.png");
   const saved = await download.path();
   expect(Buffer.compare(await readFile(saved), bytes)).toBe(0);
-  await expect(dialog.getByRole("status")).toHaveText("Downloaded garden shed.png.");
+  await expect(dialog.getByRole("status")).toContainText(
+    "Downloaded garden shed.png to your browser's downloads folder.",
+  );
   expect(await editingRowIndex(page, outliner)).toBe(-1);
 
   // Escape closes it — and only it: the block does not enter editing or selection.
@@ -91,10 +93,16 @@ test("B-736: Copy image puts a PNG on the clipboard", async ({
   await outliner.locator("img.vr-image").first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Copy image" }).click();
-  await expect(dialog.getByRole("status")).toHaveText("Image copied.");
+  await expect(dialog.getByRole("status")).toContainText("Image copied to the clipboard.");
   const types = await page.evaluate(async () => {
     const items = await navigator.clipboard.read();
     return items.flatMap((i) => [...i.types]);
   });
   expect(types).toContain("image/png");
+
+  // B-744: copying does not use up the viewer: Download still works right after, and says where.
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download" }).click();
+  await download;
+  await expect(dialog.getByRole("status")).toContainText("to your browser's downloads folder.");
 });

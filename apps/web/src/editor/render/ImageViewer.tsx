@@ -11,7 +11,7 @@
  * underneath would delete it while the viewer is up. Every key stops there; Enter/Space still
  * press the focused button, because only propagation is stopped, not the default action.
  */
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { claimPopupKeys } from "../../commands/popup-keys.js";
 import { type ActionResult, copyImage, downloadImage, imageHost } from "./image-actions.js";
@@ -27,20 +27,37 @@ export function ImageViewer(props: {
   onEditBlock?: () => void;
 }) {
   const host = imageHost();
-  const [status, setStatus] = createSignal<ActionResult | undefined>();
-  const [busy, setBusy] = createSignal(false);
+  // B-744: results are toasts, and no button is ever disabled. One action at a time used to
+  // disable both, and a clipboard write that never settled (seen in the Mac app) left them dead;
+  // copying and then downloading the same picture is an ordinary thing to want.
+  const [toasts, setToasts] = createSignal<Array<ActionResult & { id: number }>>([]);
+  const [pending, setPending] = createSignal<ReadonlySet<"copy" | "download">>(new Set());
+  let nextToast = 0;
   let panel: HTMLDivElement | undefined;
   let closeButton: HTMLButtonElement | undefined;
   const opener = document.activeElement as HTMLElement | null;
 
-  async function run(action: () => Promise<ActionResult>): Promise<void> {
-    if (busy()) return;
-    setBusy(true);
-    setStatus(undefined);
+  function toast(result: ActionResult): void {
+    const id = nextToast++;
+    setToasts((list) => [...list, { ...result, id }]);
+    // Errors stay longer: they usually say what to do instead.
+    setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), result.ok ? 5000 : 9000);
+  }
+
+  async function run(
+    kind: "copy" | "download",
+    action: () => Promise<ActionResult>,
+  ): Promise<void> {
+    if (pending().has(kind)) return; // a second click on the same, still-running action
+    setPending((set) => new Set(set).add(kind));
     try {
-      setStatus(await action());
+      toast(await action());
     } finally {
-      setBusy(false);
+      setPending((set) => {
+        const next = new Set(set);
+        next.delete(kind);
+        return next;
+      });
     }
   }
 
@@ -111,16 +128,18 @@ export function ImageViewer(props: {
             <button
               type="button"
               class="image-viewer-btn"
-              disabled={busy()}
-              onClick={() => void run(() => copyImage(props.url))}
+              aria-busy={pending().has("copy")}
+              onClick={() => void run("copy", () => copyImage(props.url))}
             >
-              Copy image
+              {pending().has("copy") ? "Copying…" : "Copy image"}
             </button>
             <button
               type="button"
               class="image-viewer-btn"
-              disabled={busy()}
-              onClick={() => void run(() => downloadImage(props.url, props.src, props.alt, host))}
+              aria-busy={pending().has("download")}
+              onClick={() =>
+                void run("download", () => downloadImage(props.url, props.src, props.alt, host))
+              }
             >
               {host === "phone" ? "Save / Share…" : "Download"}
             </button>
@@ -158,14 +177,20 @@ export function ImageViewer(props: {
           <div class="image-viewer-stage" onClick={() => props.onClose()}>
             <img class="image-viewer-img" src={props.url} alt={props.alt} />
           </div>
-          <p
-            class="image-viewer-status"
-            classList={{ "image-viewer-status-error": status()?.ok === false }}
-            role="status"
-            aria-live="polite"
-          >
-            {status()?.message ?? ""}
-          </p>
+          <div class="image-viewer-toasts" role="status" aria-live="polite">
+            <For each={toasts()}>
+              {(t) => (
+                <p
+                  class="image-viewer-toast"
+                  classList={{ "image-viewer-toast-error": !t.ok }}
+                  // Clicking a toast must not close the viewer (the stage behind closes on click).
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {t.message}
+                </p>
+              )}
+            </For>
+          </div>
         </div>
       </div>
     </Portal>

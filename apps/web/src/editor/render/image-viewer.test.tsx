@@ -87,6 +87,43 @@ describe("clicking an image (B-736)", () => {
     expect(onEnterEdit).not.toHaveBeenCalled();
   });
 
+  it("B-744: a copy that never settles leaves both buttons usable; a download still toasts where it went", async () => {
+    // What the Mac app did: the clipboard write never resolved, and both buttons stayed disabled.
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(public items: unknown) {}
+      },
+    );
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: () => new Promise(() => {}) },
+      configurable: true,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("png", { headers: { "content-type": "image/png" } })),
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, { createObjectURL: () => "blob:x", revokeObjectURL() {} }),
+    );
+    const { container } = renderRow(`![a shed](${IMG})`);
+    fireEvent.click(container.querySelector("img.vr-image") as HTMLImageElement);
+    await screen.findByRole("dialog");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy image" }));
+    const copy = await screen.findByRole("button", { name: "Copying…" });
+    const download = screen.getByRole("button", { name: "Download" }) as HTMLButtonElement;
+    expect((copy as HTMLButtonElement).disabled).toBe(false);
+    expect(download.disabled).toBe(false);
+
+    fireEvent.click(download);
+    expect(
+      await screen.findByText("Downloaded a shed.png to your browser's downloads folder."),
+    ).toBeTruthy();
+  });
+
   it("'Edit block' closes the viewer and edits, the caret after the image", async () => {
     const content = `![x](${IMG}) tail`;
     const { container, onEnterEdit } = renderRow(content);
@@ -154,7 +191,10 @@ describe("image actions (B-736)", () => {
       clicked.push(this);
     });
     const r = await downloadImage("/assets/aaaaaaaaaaaaaa.png", IMG, "a shed", "web");
-    expect(r).toEqual({ ok: true, message: "Downloaded a shed.png." });
+    expect(r).toEqual({
+      ok: true,
+      message: "Downloaded a shed.png to your browser's downloads folder.",
+    });
     expect(clicked[0]?.download).toBe("a shed.png");
     expect(clicked[0]?.getAttribute("href")).toBe("blob:fake");
   });
@@ -166,12 +206,31 @@ describe("image actions (B-736)", () => {
       // What main.rs's on_download does once WKWebView's download finishes.
       window.dispatchEvent(
         new CustomEvent(DESKTOP_DOWNLOAD_EVENT, {
-          detail: { ok: true, url: this.href, name: "a shed (1).png" },
+          detail: {
+            ok: true,
+            url: this.href,
+            name: "a shed (1).png",
+            path: "~/Downloads/a shed (1).png",
+          },
         }),
       );
     });
     const r = await downloadImage("/assets/aaaaaaaaaaaaaa.png", IMG, "a shed", "desktop");
-    expect(r).toEqual({ ok: true, message: "Saved to Downloads as a shed (1).png." });
+    expect(r).toEqual({ ok: true, message: "Saved to ~/Downloads/a shed (1).png" });
+  });
+
+  it("B-744: desktop: an older shell that reports no path still says where to look", async () => {
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      window.dispatchEvent(
+        new CustomEvent(DESKTOP_DOWNLOAD_EVENT, {
+          detail: { ok: true, url: this.href, name: "a shed.png" },
+        }),
+      );
+    });
+    const r = await downloadImage("/assets/aaaaaaaaaaaaaa.png", IMG, "a shed", "desktop");
+    expect(r).toEqual({ ok: true, message: "Saved to ~/Downloads/a shed.png" });
   });
 
   it("phone: goes to the share sheet with the bytes", async () => {
@@ -194,6 +253,31 @@ describe("image actions (B-736)", () => {
     expect(r.message).toMatch(/isn't supported/);
   });
 
+  it("B-744: copy: a clipboard write that never settles ends in an answer, not a hang", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "ClipboardItem",
+        class {
+          constructor(public items: unknown) {}
+        },
+      );
+      Object.defineProperty(navigator, "clipboard", {
+        value: { write: () => new Promise(() => {}) },
+        configurable: true,
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise(() => {})),
+      );
+      const r = copyImage("/assets/aaaaaaaaaaaaaa.png");
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await r).toEqual({ ok: false, message: expect.stringMatching(/didn't finish/) });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("copy: writes a PNG ClipboardItem", async () => {
     const write = vi.fn(async () => {});
     class FakeItem {
@@ -206,7 +290,7 @@ describe("image actions (B-736)", () => {
       vi.fn(async () => new Response("png", { headers: { "content-type": "image/png" } })),
     );
     const r = await copyImage("/assets/aaaaaaaaaaaaaa.png");
-    expect(r).toEqual({ ok: true, message: "Image copied." });
+    expect(r).toEqual({ ok: true, message: "Image copied to the clipboard." });
     const item = (write.mock.calls[0] as unknown as [FakeItem[]])[0][0] as FakeItem;
     expect(Object.keys(item.items)).toEqual(["image/png"]);
     expect((await item.items["image/png"])?.type).toBe("image/png");
