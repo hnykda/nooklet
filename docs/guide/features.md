@@ -142,6 +142,11 @@ cursor with fresh ids, and expands tokens such as `<% today %>`.
 - **iOS app.** A Capacitor shell around the same client. It can run "Just this device" with no
   server, or sync with one. You build and sign it yourself in Xcode today. **Partial:** tested on
   the iOS Simulator and one physical iPhone; phone layout issues are being fixed.
+- **Capture from anywhere on the phone.** `nooklet://capture` links, long-press the app icon (New
+  note, Today, Search), "Add to nooklet" in Shortcuts, Siri, Spotlight and the iPhone Action Button
+  (works without opening the app), and Android's share sheet. See
+  [Capturing from anywhere on the phone](capture.md). **Partial:** verified on the iOS Simulator;
+  the Action Button, Siri and Android have not run on a device.
 - **Multiple graphs.** One server hosts any number of graphs, each under `/g/<graph-id>/` with its
   own database, mirror, assets and tokens. A device keeps a list of graphs and switches between
   them; a local-only graph can be promoted to a new graph on a server. Two populated graphs are
