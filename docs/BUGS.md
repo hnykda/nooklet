@@ -1120,6 +1120,15 @@ storage nodes, transit-encoded datoms `[e, attr, value, tx]`). Fix: a Logseq DB-
 that reads `db.sqlite` (read-only copy) for asset entities (and anything else the mirror loses),
 turning those title lines into image embeds.
 
+### B-716 · Favorite pages are not preserved by the Logseq import
+**Status:** open (in progress with the Logseq DB-import agent) · **Severity:** medium · **Found:** 2026-10-04, owner after the production re-import · **Test:** none yet
+
+The owner's favorites did not come over. File-based graphs keep them in `logseq/config.edn :favorites`
+(already parsed by `parseLogseqConfigEdn`; whether the import applies them is to be checked);
+DB-version graphs keep them in `db.sqlite`, which the markdown mirror does not carry. Owner decision
+the same day: support BOTH Logseq formats explicitly (auto-detected), and document what carries over
+from each.
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
