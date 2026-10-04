@@ -877,8 +877,10 @@ async function main(): Promise<void> {
     }
 
     case "verify": {
-      const { ctx } = open(args);
-      const report = verifyRebuildParity(ctx.driver);
+      const { ctx, config } = open(args);
+      // On disk beside the graph, not in memory: the replica holds the whole replayed op log.
+      const scratchPath = join(config.dataDir, `.verify-scratch-${process.pid}.sqlite`);
+      const report = verifyRebuildParity(ctx.driver, { scratchPath });
       process.stdout.write(`${formatVerifyReport(report)}\n`);
       if (!report.ok) process.exit(1);
       return;

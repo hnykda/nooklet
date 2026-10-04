@@ -156,6 +156,10 @@ describe("runGc", () => {
     expect(report.refused).toBe(false);
     expect(report.floor).toBe(2);
     expect(report.dropCount).toBeGreaterThan(0);
+    // Counted in SQL now (no whole-log load); must still agree with the materialised plan.
+    const plan = planGc(ctx.driver);
+    expect(report.dropCount).toBe(plan.drop.length);
+    expect(report.retainCount).toBe(plan.retain.length);
     expect(report.backupPath).toBeUndefined();
 
     expect(dumpState(ctx.driver)).toEqual(before);
