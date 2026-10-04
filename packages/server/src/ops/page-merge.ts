@@ -5,7 +5,7 @@
  * safety net for whatever the rewrite cannot reach (unlinked mentions, files outside the graph).
  */
 
-import { normalizePageName, type Op, splitList } from "@nooklet/core";
+import { aliasKeysOf, normalizePageName, type Op, pageLookupKeys, splitList } from "@nooklet/core";
 import { z } from "zod";
 import {
   boundsForPageEnd,
@@ -13,7 +13,6 @@ import {
   newOrderKeys,
   subtreePlaceOps,
 } from "../data-api.js";
-import { aliasKeysOf, pageLookupKeys } from "../page-aliases.js";
 import { applyAllOrNothing } from "./apply-all-or-nothing.js";
 import { runWithDryRun } from "./dry-run.js";
 import { defineOp, OpError } from "./registry.js";

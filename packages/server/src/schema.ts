@@ -12,9 +12,12 @@
  */
 
 import type { SqlDriver } from "@nooklet/core";
-import { CORE_SCHEMA_STATEMENTS } from "@nooklet/core";
-import { rebuildPageAliases, reresolveIndexTargets } from "./page-aliases.js";
-import { rebuildPageTags } from "./page-tags.js";
+import {
+  CORE_SCHEMA_STATEMENTS,
+  rebuildPageAliases,
+  rebuildPageTags,
+  reresolveIndexTargets,
+} from "@nooklet/core";
 
 export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE schema_migration (

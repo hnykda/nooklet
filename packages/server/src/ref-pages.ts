@@ -44,10 +44,10 @@ import {
   newId,
   normalizePageName,
   parseJournalTitle,
+  resolvePageIdForKey,
   splitList,
   TASK_TAG,
 } from "@nooklet/core";
-import { resolvePageIdForKey } from "./page-aliases.js";
 import type { BlockChangeSnapshot, PageChangeSnapshot } from "./rows.js";
 
 /** Reserved device id stamped on every op this module authors. Not hex, so never a real device;

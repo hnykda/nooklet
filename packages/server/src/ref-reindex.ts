@@ -15,8 +15,8 @@
  * A page whose own name contains `|` makes its blocks candidates too; rebuilding them is a no-op.
  */
 
-import { reindexBlockAndSubtree, type ServerContext } from "./apply-ops.js";
-import { childLookup } from "./block-children.js";
+import { childLookup, reindexBlockAndSubtree } from "@nooklet/core";
+import type { ServerContext } from "./apply-ops.js";
 
 const DONE_KEY = "refs.pipe_alias.path_ref";
 

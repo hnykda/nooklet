@@ -17,10 +17,18 @@ export * from "./refs.js";
 // (packages/core/src/sync/node-sqlite-driver.ts) and is deliberately NOT re-exported here, so a
 // browser bundle importing this main entry point never sees a `node:sqlite` import (ADR 001).
 export * from "./sync/apply-ops.js";
+export * from "./sync/backlinks.js";
+// The reference index (`ref`/`path_ref`/`page_tag`/`page_alias`), kept by the server and by every
+// client replica (B-641), and the reads over it.
+export * from "./sync/block-children.js";
 export * from "./sync/driver.js";
 export * from "./sync/gc.js";
+export * from "./sync/link-graph.js";
+export * from "./sync/page-alias-index.js";
 export * from "./sync/page-outline.js";
+export * from "./sync/page-tag-index.js";
 export * from "./sync/queries.js";
+export * from "./sync/ref-index.js";
 export * from "./sync/schema.js";
 export * from "./sync/text-merge.js";
 export * from "./sync/types.js";

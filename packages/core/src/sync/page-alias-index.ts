@@ -14,13 +14,8 @@
  *    keys (`pageLookupKeys`, rule 13).
  */
 
-import type { SqlDriver } from "@nooklet/core";
-import { aliasKeysOf } from "@nooklet/core";
-
-// The parser itself is in core (`packages/core/src/page-alias.ts`) so the client's `/page/<alias>`
-// lookup (B-104) reads an `alias::` value exactly the way this index does. Re-exported so the ops
-// that already import it from here keep doing so.
-export { aliasKeysOf };
+import { aliasKeysOf } from "../page-alias.js";
+import type { SqlDriver } from "./driver.js";
 
 /** Current alias keys of a page, from the index. */
 export function pageAliasKeys(driver: SqlDriver, pageId: string): string[] {

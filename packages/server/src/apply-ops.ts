@@ -16,19 +16,7 @@
  */
 
 import type { AppliedOpResult, ApplyOpsResult, Op, OpPayload, SqlDriver } from "@nooklet/core";
-import {
-  canonicalRefName,
-  applyOps as coreApplyOps,
-  extractRefs,
-  Hlc,
-  makeOp,
-  newId,
-  normalizePageName,
-  TASK_TAG,
-} from "@nooklet/core";
-import { type ChildRow, childLookup } from "./block-children.js";
-import { reindexPageIdentity, resolvePageIdForKey } from "./page-aliases.js";
-import { rebuildPageTags } from "./page-tags.js";
+import { applyOps as coreApplyOps, Hlc, makeOp, newId, reindexRefs } from "@nooklet/core";
 import { runBeforeWrite } from "./plugins/before-write.js";
 import { planReferencedPages, REFERENCE_DEVICE_ID, referenceKeysBefore } from "./ref-pages.js";
 import {
@@ -214,9 +202,10 @@ export function serverApplyOps(
   return { ...result, batchId, corrections };
 }
 
-/** Rebuild `ref`/`path_ref` for exactly the blocks whose content or properties an op could have
- *  changed, and enqueue `embed_dirty`. Idempotent and cheap to call even for a noop/rejected op —
- *  it re-derives from current state rather than trusting the op's own before/after. */
+/** Rebuild `ref`/`path_ref`/`page_tag`/`page_alias` for exactly the blocks and pages an op could
+ *  have changed (`@nooklet/core`'s `reindexRefs`, the same code a client replica keeps its copy
+ *  with, B-641), and enqueue `embed_dirty`. Idempotent and cheap to call even for a noop/rejected
+ *  op — it re-derives from current state rather than trusting the op's own before/after. */
 function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
   const touchedBlocks = new Set<string>();
   const touchedPages = new Set<string>();
@@ -224,178 +213,18 @@ function reindexTouchedEntities(driver: SqlDriver, ops: readonly Op[]): void {
     if (op.payload.kind.startsWith("block.")) touchedBlocks.add(op.entity);
     else if (op.payload.kind.startsWith("page.")) touchedPages.add(op.entity);
   }
-  // `ref` for every touched block first, then `path_ref` once for the union of their subtrees:
-  // a descendant's path reads its ancestors' `ref` rows, and a batch that moves a subtree touches
-  // every block in it — rebuilding each block's whole subtree per block was O(n·depth) walks.
-  const children = childLookup(driver);
-  const pathBlocks = new Set<string>();
-  for (const blockId of touchedBlocks) indexBlockRefs(driver, blockId);
-  for (const blockId of touchedBlocks) {
-    if (pathBlocks.has(blockId)) continue; // reached from an ancestor's walk, subtree included
-    for (const id of subtreeIds(blockId, children)) pathBlocks.add(id);
+  const now = Date.now();
+  for (const blockId of reindexRefs(driver, touchedBlocks, touchedPages)) {
+    driver.run(
+      "INSERT OR IGNORE INTO embed_dirty(unit_kind, unit_id, enqueued_at) VALUES ('block', ?, ?)",
+      [blockId, now],
+    );
   }
-  for (const id of pathBlocks) rebuildPathRef(driver, id);
   for (const pageId of touchedPages) {
-    // Page-level tags are derived from the page's `tags` property and its journal day, so any
-    // page write can change them (ADR 017) — the page equivalent of `rebuildRefRows` above.
-    rebuildPageTags(driver, pageId);
-    // Likewise its aliases (`alias::`), and — because a page write can change what its name
-    // resolves to (create, rename, delete) — every reference addressed by any name this page
-    // answered to before or answers to now. Runs AFTER the block loop above so a batch that
-    // creates a page and a block referencing it in one go ends up resolved either way.
-    reindexPageIdentity(driver, pageId);
     driver.run(
       "INSERT OR IGNORE INTO embed_dirty(unit_kind, unit_id, enqueued_at) VALUES ('page', ?, ?)",
-      [pageId, Date.now()],
+      [pageId, now],
     );
-  }
-}
-
-/** Recompute `ref` for one block and `path_ref` for it and every descendant (sql-schema.md rule 12).
- * Exported for the one-time re-index in `./ref-reindex.ts`, which must rebuild both. */
-export function reindexBlockAndSubtree(
-  driver: SqlDriver,
-  blockId: string,
-  children: (parentId: string) => ChildRow[] = childLookup(driver),
-): void {
-  if (!indexBlockRefs(driver, blockId)) return;
-  for (const id of subtreeIds(blockId, children)) rebuildPathRef(driver, id);
-}
-
-/** `ref` rows and `embed_dirty` for one block; false (and its derived rows gone) when the block
- * does not exist. `path_ref` is the caller's, because it spans the subtree. */
-function indexBlockRefs(driver: SqlDriver, blockId: string): boolean {
-  const block = driver.get<{ id: string; page_id: string; content: string }>(
-    "SELECT id, page_id, content FROM block WHERE id = ?",
-    [blockId],
-  );
-  if (!block) {
-    // Block never existed (a rejected create) or was hard-deleted: nothing to index.
-    driver.run("DELETE FROM ref WHERE src_block_id = ?", [blockId]);
-    driver.run("DELETE FROM path_ref WHERE block_id = ?", [blockId]);
-    return false;
-  }
-  rebuildRefRows(driver, block.id, block.page_id, block.content);
-  driver.run(
-    "INSERT OR IGNORE INTO embed_dirty(unit_kind, unit_id, enqueued_at) VALUES ('block', ?, ?)",
-    [blockId, Date.now()],
-  );
-  return true;
-}
-
-export function rebuildRefRows(
-  driver: SqlDriver,
-  blockId: string,
-  pageId: string,
-  content: string,
-): void {
-  driver.run("DELETE FROM ref WHERE src_block_id = ?", [blockId]);
-  const props = driver.all<{ key: string; value: string | null }>(
-    "SELECT key, value FROM block_prop WHERE block_id = ? AND value IS NOT NULL",
-    [blockId],
-  );
-  const properties: Record<string, string> = {};
-  for (const p of props) if (p.value !== null) properties[p.key] = p.value;
-  const extracted = extractRefs(content, properties);
-
-  const insert = (kind: "page" | "tag", key: string): void => {
-    const pageKey = normalizeKey(key);
-    driver.run(
-      "INSERT INTO ref(src_block_id, src_page_id, kind, dst_page_key, dst_page_id, dst_block_id) VALUES (?, ?, ?, ?, ?, NULL)",
-      [blockId, pageId, kind, pageKey, resolvePageIdForKey(driver, pageKey)],
-    );
-  };
-  for (const p of extracted.pageRefs) insert("page", p);
-  for (const t of extracted.tags) insert("tag", t);
-
-  // A block with a task marker also refs the `Task` page, so tasks live in the same reference
-  // machinery as everything else: `[[Task]]` lists them all, a tag query finds them, and nothing
-  // has to special-case "tasks" as a separate concept.
-  //
-  // DERIVED from `block.marker` rather than written into the block's text as a literal `#Task`.
-  // Writing it would put the same fact in two places that can disagree — delete the tag and you
-  // have a task that is not a Task; change the marker by hand in the markdown mirror and the tag
-  // is stale. Here the marker stays the single source of truth and the tag is a projection of it,
-  // rebuilt on every write. Note the block is re-read from the database above, so the marker is
-  // already current by the time this runs.
-  const marked = driver.get<{ marker: string | null }>("SELECT marker FROM block WHERE id = ?", [
-    blockId,
-  ]);
-  if (marked?.marker) insert("tag", TASK_TAG);
-  for (const blockRefId of extracted.blockRefs) {
-    const target = driver.get<{ id: string; page_id: string }>(
-      "SELECT id, page_id FROM block WHERE id = ?",
-      [blockRefId],
-    );
-    const dstPage = target
-      ? driver.get<{ key: string }>("SELECT key FROM page WHERE id = ?", [target.page_id])
-      : undefined;
-    driver.run(
-      "INSERT INTO ref(src_block_id, src_page_id, kind, dst_page_key, dst_page_id, dst_block_id) VALUES (?, ?, 'block', ?, ?, ?)",
-      [blockId, pageId, dstPage?.key ?? null, target?.page_id ?? null, blockRefId],
-    );
-  }
-}
-
-/**
- * The key a reference is indexed under. Case and whitespace are folded as ever; on top of that a
- * journal day written in any recognised title format collapses to its ISO name (ADR 018), so
- * `[[Mon, 07.09.2026]]`, `[[Sep 7th, 2026]]` and `[[2026-09-07]]` are one reference and land in
- * one backlinks list — and all three resolve to the page, which is stored under the ISO name.
- */
-function normalizeKey(name: string): string {
-  return normalizePageName(canonicalRefName(name));
-}
-
-/** The block and every descendant, tombstoned ones included. Through `childLookup`, not a bare
- * `WHERE parent_id = ?`: that cannot use the partial `block_children` index and scanned the whole
- * table once per visited block (`./block-children.ts`). */
-function subtreeIds(rootId: string, children: (parentId: string) => ChildRow[]): string[] {
-  const ids: string[] = [rootId];
-  const queue = [rootId];
-  while (queue.length > 0) {
-    const parent = queue.shift() as string;
-    for (const c of children(parent)) {
-      ids.push(c.id);
-      queue.push(c.id);
-    }
-  }
-  return ids;
-}
-
-function rebuildPathRef(driver: SqlDriver, blockId: string): void {
-  driver.run("DELETE FROM path_ref WHERE block_id = ?", [blockId]);
-  const keys = new Map<string, string | null>();
-  let cur = driver.get<{ id: string; page_id: string; parent_id: string | null }>(
-    "SELECT id, page_id, parent_id FROM block WHERE id = ?",
-    [blockId],
-  );
-  if (!cur) return;
-  const page = driver.get<{ key: string; id: string }>("SELECT key, id FROM page WHERE id = ?", [
-    cur.page_id,
-  ]);
-  if (page) keys.set(page.key, page.id);
-
-  let guard = 0;
-  while (cur && guard++ < 1000) {
-    const selfRefs = driver.all<{ dst_page_key: string | null; dst_page_id: string | null }>(
-      "SELECT DISTINCT dst_page_key, dst_page_id FROM ref WHERE src_block_id = ? AND dst_page_key IS NOT NULL",
-      [cur.id],
-    );
-    for (const r of selfRefs) if (r.dst_page_key) keys.set(r.dst_page_key, r.dst_page_id);
-    cur = cur.parent_id
-      ? driver.get<{ id: string; page_id: string; parent_id: string | null }>(
-          "SELECT id, page_id, parent_id FROM block WHERE id = ?",
-          [cur.parent_id],
-        )
-      : undefined;
-  }
-  for (const [key, pageId] of keys) {
-    driver.run("INSERT OR IGNORE INTO path_ref(block_id, page_key, page_id) VALUES (?, ?, ?)", [
-      blockId,
-      key,
-      pageId,
-    ]);
   }
 }
 

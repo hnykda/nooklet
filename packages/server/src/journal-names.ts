@@ -23,10 +23,10 @@ import {
   makeOp,
   normalizePageName,
   type Op,
+  reresolveIndexTargets,
   type SqlDriver,
 } from "@nooklet/core";
 import { SERVER_DEVICE_ID, type ServerContext, serverApplyOps } from "./apply-ops.js";
-import { reresolveIndexTargets } from "./page-aliases.js";
 
 const DONE_KEY = "journal.iso_names";
 
