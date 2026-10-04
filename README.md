@@ -7,8 +7,18 @@ users: the same operations the app uses are an MCP server and an HTTP API, so Cl
 can search your notes, read pages with stable block ids, and edit one bullet at a time. The server
 also writes every page to plain markdown you can grep, commit or open in Logseq and Obsidian.
 
-MIT licensed, self-hosted, no account, no telemetry. **Status: early.** The author uses it daily;
-expect rough edges and breaking changes before 1.0.
+MIT licensed, self-hosted, no account, no telemetry.
+
+> **Project status**
+>
+> The basic functionality is there: you can run a sync server, and the clients (the desktop app,
+> the browser, and the mobile app, tested on an iPhone) sync with it in both directions. The
+> everyday features (editing text, nested bullets, links and tags, journals, tasks, images, search)
+> should work. It is of course not bug-free, and not as feature-rich as projects with years of
+> development behind them. What it does have is a codebase that is easy to hack on, and a design
+> that is extensible from the ground up: one operation registry drives the app, the HTTP API, the
+> MCP server and the typed client, and features can ship as plugins. Expect rough edges and
+> breaking changes before 1.0. See [Platform support](#platform-support) for what is tested where.
 
 > Screenshot placeholder: the journal view with the shelf open.
 
