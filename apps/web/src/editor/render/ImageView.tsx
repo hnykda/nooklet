@@ -121,11 +121,14 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
   const editable = () => props.ctx.onRewrite !== undefined && !inLink();
   const showControls = () => !touch && !inLink();
 
-  function rewrite(change: ImageMetaChange): void {
+  /** Writes `change` into the block; whether a write was made. */
+  function rewrite(change: ImageMetaChange): boolean {
     const write = props.ctx.onRewrite;
-    if (!write) return;
+    if (!write) return false;
     const next = setImageMeta(props.ctx.source, props.tok.metaAt, change);
-    if (next !== props.ctx.source) write(next);
+    if (next === props.ctx.source) return false;
+    write(next);
+    return true;
   }
 
   // ---- the viewer (B-736) -----------------------------------------------------------------
@@ -136,10 +139,13 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
     !(e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) && el.closest("a") === null;
 
   // ---- the resize handle ------------------------------------------------------------------
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(releaseTimer));
   function onHandleDown(e: PointerEvent): void {
     if (e.button !== 0 || !box) return;
     e.preventDefault();
     e.stopPropagation();
+    clearTimeout(releaseTimer);
     const handle = e.currentTarget as HTMLElement;
     const startX = e.clientX;
     const startWidth = box.getBoundingClientRect().width;
@@ -165,11 +171,11 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
         setDragWidth(null);
         return;
       }
-      // ONE write, now (B-789): the whole drag is one edit and one undo step.
-      rewrite({ width: current });
-      // If nothing changed the text (a locked page refuses, a width it already had), the
-      // effect above never fires: let go of the preview anyway.
-      setTimeout(() => setDragWidth(null), 1500);
+      // ONE write, now (B-789): the whole drag is one edit and one undo step. The preview stays
+      // until the text says the same (the effect above); if no write lands (the width it already
+      // had, a tree that refused), it lets go anyway.
+      if (!rewrite({ width: current })) setDragWidth(null);
+      else releaseTimer = setTimeout(() => setDragWidth(null), 1500);
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", end);
