@@ -71,8 +71,8 @@ This repository is public, so anyone can open a pull request, and a pull request
 every file in `.woodpecker/`. Nothing in the YAML can stop a hostile PR, so the protections
 are Woodpecker server-side settings. Whoever enables the repo in Woodpecker must:
 
-1. **Secrets are filtered by event.** Create every secret `images.yaml` reads (`registry`,
-   `registry_buildkit_config`, `server_image`, `site_image`, `deploy_trigger_url`,
+1. **Secrets are filtered by event.** Create every secret `images.yaml` reads (`registry`, `server_image`,
+   `site_image`, `deploy_trigger_url`,
    `deploy_trigger_token`) with events `push`, `tag`, `manual` only, never `pull_request`.
    Woodpecker enforces this filter when it hands secrets to a step, so a PR pipeline gets none,
    whatever its YAML says.
