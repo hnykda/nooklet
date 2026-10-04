@@ -1,7 +1,17 @@
 # Builds and pushes the two images, then (main only) asks the deployment side to roll them out.
 #
-#   server  deploy/docker/Dockerfile       -> <server_image>:sha-<8>  (+ :<git tag> on tags)
-#   site    deploy/docker/site.Dockerfile  -> <site_image>:sha-<8>    (+ :<git tag> on tags)
+#   server  deploy/docker/Dockerfile       -> <server_image>:sha-<8>
+#   site    deploy/docker/site.Dockerfile  -> <site_image>:sha-<8>
+#
+# On main: linux/amd64 only (what the deployment runs, and fast). On a release tag v* (made by
+# `pnpm release`, RELEASING.md): linux/amd64 + linux/arm64, tagged sha-<8> + vX.Y.Z, plus `latest`
+# for a final (non -rc) release (tools/ci/image-tags.sh). A tag pipeline does not deploy. The
+# public GHCR image is built separately by .github/workflows/release.yml with the same tags.
+#
+# arm64 here is emulated (QEMU through buildx), which needs binfmt handlers registered on the build
+# node; an arm64 half failing with "exec format error" means they are missing (RELEASING.md,
+# "Woodpecker"). The tag steps are written against the plugin's documented `platforms` setting and
+# have not run on the owner's CI yet.
 #
 # Never runs for pull requests: the `when` below has no pull_request event, and every secret it
 # reads must be configured in Woodpecker for the push/tag/manual events only. A pull request can
@@ -18,6 +28,7 @@ when:
   - event: push
     branch: main
   - event: tag
+    ref: refs/tags/v*
   - event: manual
     branch: main
 
@@ -30,10 +41,14 @@ steps:
     commands:
       - sh tools/ci/image-tags.sh
 
+  # --- main: amd64 only ---------------------------------------------------------------------
   - name: server-image
     depends_on: [tags]
+    when:
+      - event: [push, manual]
+        branch: main
     image: woodpeckerci/plugin-docker-buildx:5-insecure
-    settings:
+    settings: &server_settings
       registry:
         from_secret: registry
       repo:
@@ -56,8 +71,11 @@ steps:
 
   - name: site-image
     depends_on: [tags]
+    when:
+      - event: [push, manual]
+        branch: main
     image: woodpeckerci/plugin-docker-buildx:5-insecure
-    settings:
+    settings: &site_settings
       registry:
         from_secret: registry
       repo:
@@ -70,6 +88,36 @@ steps:
       provenance: false
       context: .
       dockerfile: deploy/docker/site.Dockerfile
+
+  # --- release tags: amd64 + arm64 ----------------------------------------------------------
+  - name: server-image-release
+    depends_on: [tags]
+    when:
+      - event: tag
+        ref: refs/tags/v*
+    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    settings:
+      <<: *server_settings
+      platforms: linux/amd64,linux/arm64
+    # The arm64 half runs pnpm install and the Vite build under emulation: several times slower
+    # than amd64 and somewhat hungrier.
+    backend_options:
+      kubernetes:
+        resources:
+          limits:
+            memory: 6Gi
+
+  - name: site-image-release
+    depends_on: [tags]
+    when:
+      - event: tag
+        ref: refs/tags/v*
+    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    settings:
+      <<: *site_settings
+      # Cheap: site.Dockerfile builds the static export on the BUILD platform and only the nginx
+      # stage is per-architecture.
+      platforms: linux/amd64,linux/arm64
 
   - name: deploy
     depends_on: [server-image, site-image]

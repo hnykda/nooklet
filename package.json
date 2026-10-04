@@ -9,7 +9,8 @@
   "scripts": {
     "nooklet": "pnpm --filter @nooklet/server exec tsx src/cli.ts",
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && node --test tools/*.test.mjs",
+    "release": "node tools/release.mjs",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
     "format": "biome format --write .",
@@ -20,7 +21,9 @@
     "desktop:install": "pnpm desktop:build --bundles app && rm -rf /Applications/nooklet.app && cp -R apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app /Applications/",
     "ios:sync": "pnpm --filter @nooklet/web build && pnpm --filter @nooklet/web exec cap sync ios",
     "ios:open": "pnpm --filter @nooklet/web exec cap open ios",
-    "ios": "pnpm ios:sync && pnpm ios:open"
+    "ios": "pnpm ios:sync && pnpm ios:open",
+    "android:sync": "pnpm --filter @nooklet/web build && pnpm --filter @nooklet/web exec cap sync android",
+    "android:open": "pnpm --filter @nooklet/web exec cap open android"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

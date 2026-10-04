@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the sidecar's executables (node, esbuild, vec0.dylib) when the release build
+  signs them with a Developer ID under the hardened runtime (tools/ci/desktop-bundle.sh). Unused
+  in unsigned builds.
+
+  - allow-jit, allow-unsigned-executable-memory: V8 generates machine code at run time; Node
+    under the hardened runtime crashes on start without them.
+  - disable-library-validation: node loads sqlite-vec's vec0.dylib with dlopen. Both are signed
+    with the same team, which library validation accepts, but an ad-hoc or differently signed
+    copy (a developer's local build) would be refused with no useful error.
+
+  Unverified: no Developer ID exists yet, so this has never been through notarization.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

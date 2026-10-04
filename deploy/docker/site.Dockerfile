@@ -7,7 +7,9 @@
 #
 # The image holds static files only: no secrets, no server, nothing that talks to a nooklet server.
 
-FROM node:26-alpine AS build
+# On the BUILD platform: the export is plain static files, identical for every architecture, so a
+# multi-arch build (.woodpecker/images.yaml on release tags) emulates only the nginx stage below.
+FROM --platform=$BUILDPLATFORM node:26-alpine AS build
 RUN npm install -g pnpm@12.3.4
 WORKDIR /src
 COPY . .

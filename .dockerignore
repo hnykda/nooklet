@@ -8,6 +8,7 @@ apps/desktop/sidecar
 apps/desktop/.cache
 apps/desktop/src-tauri/target
 apps/web/ios
+apps/web/android
 e2e/test-results
 e2e/playwright-report
 apps/site/out

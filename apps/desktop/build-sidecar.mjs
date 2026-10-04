@@ -74,9 +74,11 @@ function findEsbuildBinary() {
   const store = join(repoRoot, "node_modules", ".pnpm");
   const candidates = readdirSync(store)
     .filter((name) => name.startsWith(`@esbuild+${target}@`))
-    .map((name) =>
-      join(store, name, "node_modules", "@esbuild", target, "bin", `esbuild${PLATFORM.exe}`),
-    )
+    // Unix packages keep the binary in bin/; @esbuild/win32-* keeps esbuild.exe at the root.
+    .flatMap((name) => {
+      const pkg = join(store, name, "node_modules", "@esbuild", target);
+      return [join(pkg, "bin", `esbuild${PLATFORM.exe}`), join(pkg, `esbuild${PLATFORM.exe}`)];
+    })
     .filter((p) => existsSync(p));
   const found = candidates[0];
   if (!found) {
@@ -109,10 +111,13 @@ async function officialNodeBinary(version) {
   if (!res.ok) throw new Error(`could not download Node ${version} for ${target}: ${res.status}`);
   const archive = join(cacheDir, `${name}.${isZip ? "zip" : "tar.xz"}`);
   writeFileSync(archive, Buffer.from(await res.arrayBuffer()));
-  // `tar` and `unzip`/Expand-Archive are present on every GitHub runner and every dev machine
-  // this targets; bundling an extractor would be more moving parts than it is worth.
+  // `tar` is present on every GitHub runner and every dev machine this targets; bundling an
+  // extractor would be more moving parts than it is worth.
+  // On Windows, the bsdtar that ships with Windows 10+ reads zips; `unzip` is not reliably on
+  // PATH, and a bare `tar` may resolve to Git for Windows' GNU tar, which cannot. So by path.
+  const winTar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
   const r = isZip
-    ? spawnSync("unzip", ["-q", "-o", archive, "-d", cacheDir], { stdio: "inherit" })
+    ? spawnSync(winTar, ["-xf", archive, "-C", cacheDir], { stdio: "inherit" })
     : spawnSync("tar", ["-xJf", archive, "-C", cacheDir], { stdio: "inherit" });
   if (r.status !== 0) throw new Error("could not extract the Node archive");
   if (!existsSync(extracted)) throw new Error(`no node binary at ${extracted}`);
@@ -186,6 +191,9 @@ console.log("building the web client…");
 const webBuild = spawnSync("pnpm", ["--filter", "@nooklet/web", "build"], {
   cwd: repoRoot,
   stdio: "inherit",
+  // pnpm is pnpm.cmd on Windows, and Node refuses to spawn a .cmd without a shell
+  // (CVE-2024-27980): without this the Windows release build fails with EINVAL/ENOENT here.
+  shell: process.platform === "win32",
 });
 if (webBuild.status !== 0) throw new Error("web client build failed");
 if (!existsSync(join(webDist, "index.html"))) {
