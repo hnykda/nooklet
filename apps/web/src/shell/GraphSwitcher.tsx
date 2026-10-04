@@ -82,6 +82,7 @@ import {
   type ServerGraph,
 } from "../data/connect-graph.js";
 import { forgetPendingCount, knownPendingCount } from "../data/pending-memo.js";
+import { normalizeToken, tokenShapeProblem } from "../data/token-input.js";
 import {
   DESKTOP_ERROR_EVENT,
   type DesktopLocalGraph,
@@ -404,8 +405,16 @@ export function GraphSwitcher(): JSX.Element {
       // A browser tab: the form already says so and links the server instead of a Connect button.
       return;
     }
-    const tokenValue = token().trim();
+    // B-706: drop what was copied around the token (a sentence's `.`, backticks, a newline), show
+    // what will be sent, and name a token of the wrong shape before the server can only say 401.
+    const tokenValue = normalizeToken(token());
     if (!tokenValue) return;
+    setToken(tokenValue);
+    const problem = tokenShapeProblem(tokenValue, "device");
+    if (problem) {
+      setError(problem);
+      return;
+    }
     // B-618: the graph is already on this device — switch to it rather than adding it twice (each
     // entry has its own replica, so a duplicate is a second, separately-synced copy). Its token is
     // still verified and refreshed by `connectToGraph`, which matches the existing entry the same way.
@@ -444,9 +453,16 @@ export function GraphSwitcher(): JSX.Element {
       setError(parsed.error);
       return;
     }
+    const rootToken = normalizeToken(token());
+    setToken(rootToken);
+    const problem = tokenShapeProblem(rootToken, "root"); // B-706
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setBusy(true);
     setError(undefined);
-    const result = await listServerGraphs(parsed.url, token().trim());
+    const result = await listServerGraphs(parsed.url, rootToken);
     setBusy(false);
     if (!result.ok) {
       setServerGraphs(undefined);
@@ -516,9 +532,15 @@ export function GraphSwitcher(): JSX.Element {
       setError("This graph cannot be given a server.");
       return;
     }
-    const rootToken = promoteRootToken().trim();
+    const rootToken = normalizeToken(promoteRootToken());
     const graphId = promoteGraphId().trim();
     if (!rootToken || !graphId) return;
+    setPromoteRootToken(rootToken);
+    const problem = tokenShapeProblem(rootToken, "root"); // B-706
+    if (problem) {
+      setError(problem);
+      return;
+    }
     const parsed = parseServerUrl(promoteServerUrl());
     if ("error" in parsed) {
       setError(parsed.error);

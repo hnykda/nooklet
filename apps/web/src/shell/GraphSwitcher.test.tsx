@@ -339,7 +339,9 @@ describe("GraphSwitcher", () => {
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: "https://nooklet.example.com" },
     });
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"a".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     // Capacitor reloads its own bundle in place (`bootstrap.ts#graphEntryUrl`); the new entry is
@@ -362,10 +364,54 @@ describe("GraphSwitcher", () => {
     fireEvent.input(screen.getByLabelText("Server address"), {
       target: { value: `${location.origin}/g/work` },
     });
-    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_bad" } });
+    fireEvent.input(screen.getByLabelText("Device token"), {
+      target: { value: `nk_${"e".repeat(48)}` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     await screen.findByText(/rejected/);
+    expect(listGraphs()).toEqual([]);
+  });
+
+  it("B-706: a token pasted with a trailing dot and backticks is cleaned, then sent", async () => {
+    const good = `nk_${"a".repeat(48)}`;
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByText("Add a graph"));
+    fireEvent.input(screen.getByLabelText("Server address"), {
+      target: { value: `${location.origin}/g/work` }, // same origin: a tab adds it in-page (B-704)
+    });
+    const field = screen.getByLabelText("Device token") as HTMLInputElement;
+    fireEvent.input(field, { target: { value: ` \`${good}\`.\n` } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${good}`);
+    expect(field.value).toBe(good);
+  });
+
+  it("B-706: a token of the wrong shape is named before any request; a root token gets its own hint", async () => {
+    render(() => <GraphSwitcher />);
+    openSwitcher();
+    fireEvent.click(screen.getByText("Add a graph"));
+    fireEvent.input(screen.getByLabelText("Server address"), {
+      target: { value: `${location.origin}/g/work` }, // same origin: a tab adds it in-page (B-704)
+    });
+    const field = screen.getByLabelText("Device token");
+    fireEvent.input(field, { target: { value: `nk_${"a".repeat(40)}` } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That doesn't look like a nooklet token — it should start with nk_ and be 51 characters.",
+    );
+
+    fireEvent.input(field, { target: { value: `nkroot_${"a".repeat(48)}` } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("the server's root token"),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(listGraphs()).toEqual([]);
   });
 
@@ -396,7 +442,7 @@ describe("GraphSwitcher", () => {
     });
     fireEvent.input(screen.getByLabelText("New graph id"), { target: { value: "promoted" } });
     fireEvent.input(screen.getByLabelText("Root token"), {
-      target: { value: "nkroot_abc" },
+      target: { value: `nkroot_${"a".repeat(48)}` },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
@@ -408,7 +454,7 @@ describe("GraphSwitcher", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("https://home.example.com/graphs");
     expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
-      "Bearer nkroot_abc",
+      `Bearer nkroot_${"a".repeat(48)}`,
     );
     // Same entry id, not a new one — the whole point is this device's existing local content
     // reconnects to the newly created graph, not that it gets a second, empty entry.
@@ -520,7 +566,9 @@ describe("GraphSwitcher", () => {
         target: { value: `${location.origin}/g/work` },
       });
       expect(screen.queryByRole("note")).toBeNull();
-      fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_abc" } });
+      fireEvent.input(screen.getByLabelText("Device token"), {
+        target: { value: `nk_${"c".repeat(48)}` }, // a well-formed token (B-706 checks the shape)
+      });
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
       await waitFor(() => expect(assign).toHaveBeenCalledOnce());
       expect(String(assign.mock.calls[0]?.[0])).toMatch(/\/g\/work\/$/);

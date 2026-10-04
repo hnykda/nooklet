@@ -64,6 +64,7 @@ import {
   setLiveConnected,
 } from "../live/index.js";
 import { platform as hostPlatform } from "../platform/index.js";
+import { enterShiftIsAutoCaps } from "../platform/ios-enter-shift.js";
 import { ClientPlugins } from "../plugins/ClientPlugins.js";
 import { pageRoutePath, pathToPageName } from "../routes/page-path.js";
 import { openShortcuts } from "../shell/HelpMenu.js";
@@ -106,7 +107,19 @@ function KeyboardDispatch(props: { getContext: () => ContextBase }): null {
       if (textFieldOwnsKey(e, base.platform === "mac")) return;
       // Nor may any other key from a field outside the outliner act on blocks (B-300).
       const ctx = isFieldOutsideOutliner(e.target) ? withoutOutliner(base) : base;
-      if (dispatcher.handleKeyDown(e, buildContext(ctx))) {
+      // B-662: iOS's soft-keyboard Return carries the auto-capitalisation Shift, which made it
+      // `block.newline` (Shift+Enter) instead of `block.split` (`../platform/ios-enter-shift.ts`).
+      const key = enterShiftIsAutoCaps(e)
+        ? {
+            key: e.key,
+            metaKey: e.metaKey,
+            ctrlKey: e.ctrlKey,
+            altKey: e.altKey,
+            shiftKey: false,
+            preventDefault: () => e.preventDefault(),
+          }
+        : e;
+      if (dispatcher.handleKeyDown(key, buildContext(ctx))) {
         e.preventDefault();
         e.stopPropagation();
       }

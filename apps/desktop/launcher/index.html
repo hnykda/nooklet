@@ -106,7 +106,7 @@
         <p id="help-message"></p>
         <pre>pnpm nooklet serve</pre>
         <div class="row">
-          <input id="url" aria-label="Server address" />
+          <input id="url" aria-label="Server address" type="text" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <button id="retry" type="button">Retry</button>
         </div>
         <p id="err"></p>
@@ -141,7 +141,7 @@
             Enter the address of the nooklet server you already run. Add <code>/g/&lt;graph&gt;</code>
             for a graph other than its default one.
           </p>
-          <input id="picker-url" aria-label="Server address" placeholder="https://nooklet.example.com/g/work" />
+          <input id="picker-url" aria-label="Server address" type="text" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://nooklet.example.com/g/work" />
           <div class="row">
             <button type="submit">Connect</button>
           </div>

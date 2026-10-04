@@ -60,10 +60,7 @@ export async function connectToGraph(
       body: "{}",
     });
     if (res.status === 401 || res.status === 403) {
-      return {
-        ok: false,
-        error: "That token was rejected. Check it was copied whole, and not revoked.",
-      };
+      return { ok: false, error: rejectedTokenMessage(typedBaseUrl) };
     }
     if (!res.ok) {
       return { ok: false, error: `Server returned ${res.status}. Is this the right address?` };
@@ -83,6 +80,34 @@ export async function connectToGraph(
         ? `Could not reach ${baseUrl}: ${describeError(err)}`
         : `Could not reach the server: ${describeError(err)}`,
     };
+  }
+}
+
+/**
+ * What a refused token means depends on the address it was checked against. An address typed with
+ * no `/g/<graph>` is checked against the server's DEFAULT graph (`graphBaseUrl`), and a token is
+ * per graph: a good token for `work` is refused there, and "check it was copied whole" sent the
+ * owner hunting for a copying mistake that was not there. The likelier fix is then the address.
+ * With a graph named (or same-origin), the token itself is the suspect.
+ */
+export function rejectedTokenMessage(typedBaseUrl: string | null): string {
+  const origin = typedBaseUrl === null ? undefined : originIfNoPath(typedBaseUrl);
+  if (origin !== undefined) {
+    return (
+      "This token isn't valid for the server's default graph. If it's for another graph, add " +
+      `/g/<graph> to the address (e.g. ${origin}/g/work).`
+    );
+  }
+  return "That token was rejected. Check it was copied whole, and not revoked.";
+}
+
+/** The origin of an absolute address with no path; `undefined` for one with a path. */
+function originIfNoPath(url: string): string | undefined {
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.pathname === "/" || parsed.pathname === "" ? parsed.origin : undefined;
+  } catch {
+    return undefined;
   }
 }
 
