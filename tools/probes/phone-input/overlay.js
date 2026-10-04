@@ -12,7 +12,7 @@
   box.id = "probe-overlay";
   box.style.cssText =
     "position:fixed;left:0;right:0;top:0;z-index:99999;margin:0;padding:4px;font:9px/1.25 monospace;" +
-    "background:rgba(255,255,200,.85);color:#000;pointer-events:none;white-space:pre-wrap;max-height:34%;overflow:hidden";
+    "background:rgba(255,255,200,.6);color:#000;pointer-events:none;white-space:pre-wrap;max-height:34%;overflow:hidden";
   const t0 = performance.now();
   const cm = () => document.querySelector(".cm-content")?.textContent ?? "-";
   const pop = () => (document.querySelector(".cmd-popup") ? "P" : "-");
@@ -22,9 +22,17 @@
   };
   const rows = () =>
     JSON.stringify(
-      [...document.querySelectorAll(".page-view .vr-outliner .vr-row, .journal-day .vr-outliner .vr-row")]
+      [
+        ...document.querySelectorAll(
+          ".page-view .vr-outliner .vr-row, .journal-day .vr-outliner .vr-row",
+        ),
+      ]
         .slice(0, 6)
-        .map((r) => (r.querySelector(".cm-content") ?? r.querySelector(".vr-block-view"))?.textContent ?? "?"),
+        .map(
+          (r) =>
+            (r.querySelector(".cm-content") ?? r.querySelector(".vr-block-view"))?.textContent ??
+            "?",
+        ),
     );
   const active = () => {
     const a = document.activeElement;
@@ -37,7 +45,7 @@
   };
   function push(s) {
     if (s) lines.push(`${Math.round(performance.now() - t0)} ${s}`);
-    while (lines.length > (window.PROBE_LINES ?? 22)) lines.shift();
+    while (lines.length > (window.PROBE_LINES ?? 13)) lines.shift();
     const kb = getComputedStyle(document.documentElement).getPropertyValue("--kb").trim() || "0";
     box.textContent =
       `popup=${pop()} ${toolbar()} kb=${kb} vv=${window.visualViewport?.width.toFixed(0)}@${window.visualViewport?.scale.toFixed(2)} ` +
@@ -68,10 +76,19 @@
     );
   const tgt = (e) => {
     const t = e.target;
-    return t instanceof Element ? `${t.tagName.toLowerCase()}.${String(t.className).split(" ")[0]}` : "?";
+    return t instanceof Element
+      ? `${t.tagName.toLowerCase()}.${String(t.className).split(" ")[0]}`
+      : "?";
   };
-  on("keydown", (e) => `keydown ${JSON.stringify(e.key)} ${e.keyCode} shift=${e.shiftKey} comp=${e.isComposing}`);
-  on("beforeinput", (e) => `beforeinput ${e.inputType} ${JSON.stringify(e.data)} comp=${e.isComposing}`);
+  on(
+    "keydown",
+    (e) =>
+      `keydown ${JSON.stringify(e.key)} ${e.keyCode} shift=${e.shiftKey} comp=${e.isComposing}`,
+  );
+  on(
+    "beforeinput",
+    (e) => `beforeinput ${e.inputType} ${JSON.stringify(e.data)} comp=${e.isComposing}`,
+  );
   on("input", (e) => `input ${e.inputType}`);
   on("keyup", (e) => `keyup ${JSON.stringify(e.key)}`, false);
   on("compositionstart", () => "compstart", false);

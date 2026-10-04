@@ -29,6 +29,15 @@ final class PhoneUITests: XCTestCase {
       case "draftslash": try draftSlash()
       case "switcher": try switcher()
       case "small": try small()
+      // B-699: the confirm screen a pairing link opens shows the address once, read-only.
+      case "tokenlink":
+        pairingLink(
+          "nooklet://connect?url=http%3A%2F%2F192.168.1.5%3A6100%2Fg%2Fwork&token=nk_"
+            + String(repeating: "0", count: 48), "18-token-link")
+      case "codelink":
+        pairingLink(
+          "nooklet://connect?url=http%3A%2F%2F192.168.1.5%3A6100%2Fg%2Fwork&code=nkp_"
+            + String(repeating: "a", count: 22), "19-code-link")
       default: XCTFail("unknown step \(step)")
       }
     }
@@ -162,15 +171,21 @@ final class PhoneUITests: XCTestCase {
     shot("13-draft-slash")
   }
 
+  /// Any element by its accessibility label (web buttons and fields do not always carry it as the
+  /// identifier the subscript matches).
+  func labelled(_ label: String) -> XCUIElement {
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+  }
+
   /// B-705: focus the switcher's server address; B-706: a token pasted with a trailing `.`.
   func switcher() throws {
-    app.buttons["Switch graph"].tap()
+    labelled("Switch graph").tap()
     sleep(1)
     app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Add a graph")).firstMatch.tap()
     sleep(1)
     let sync = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sync with a server")).firstMatch
     if sync.waitForExistence(timeout: 2) { sync.tap(); sleep(1) }
-    let address = app.textFields["Server address"]
+    let address = labelled("Server address")
     XCTAssertTrue(address.waitForExistence(timeout: 5), "no server address field")
     address.tap()
     sleep(2)
@@ -179,20 +194,30 @@ final class PhoneUITests: XCTestCase {
     let base = env["SECOND_BASE"] ?? ""
     let token = env["SECOND_TOKEN"] ?? ""
     guard !base.isEmpty, !token.isEmpty else { return }
-    address.typeText(base)
-    let tokenField = app.textFields["Device token"]
-    tokenField.tap()
+    // `labelled` finds the field's <label> text; the tap on it focused the field, so type into
+    // whatever has focus.
+    app.typeText(base)
+    labelled("Device token").tap()
     sleep(1)
-    // As copied out of a chat message: the sentence's full stop came along (B-706).
-    UIPasteboard.general.string = "\(token)."
-    tokenField.press(forDuration: 1.2)
-    let paste = app.menuItems["Paste"]
-    if paste.waitForExistence(timeout: 3) { paste.tap() } else { tokenField.typeText("\(token).") }
+    // As copied out of a chat message: the sentence's full stop came along (B-706). Typed, not
+    // pasted: the paste menu is the system's, and what reaches the field is the same text.
+    app.typeText("\(token).")
     sleep(1)
     shot("15-switcher-filled")
-    app.buttons["Connect"].tap()
+    labelled("Connect").tap()
     sleep(6)
     shot("16-switcher-connected")
+  }
+
+  /// Opens a `nooklet://` link the way another app would; iOS asks "Open in nooklet?" first.
+  func pairingLink(_ link: String, _ name: String) {
+    app.open(URL(string: link)!)
+    let open = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Open"]
+    if open.waitForExistence(timeout: 5) { open.tap() }
+    sleep(3)
+    shot(name)
+    let cancel = labelled("Cancel")
+    if cancel.exists { cancel.tap(); sleep(1) }
   }
 
   /// B-705 belt and braces: a 12px field the CSS floor cannot reach (inline !important, ../overlay.js).

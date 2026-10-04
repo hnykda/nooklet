@@ -152,9 +152,7 @@ test("B-651: the task checkbox is an icon with checkbox semantics, not a text gl
   await expect(box).toHaveText("");
   const size = await box.locator("svg").boundingBox();
   expect(size?.width ?? 0).toBeGreaterThanOrEqual(14);
-  // `click`, not `tap`: in Chromium's touch emulation the marker's pointerdown preventDefault
-  // swallows the click a tap would make (`tools/probes/phone-ui/marker-tap-chromium.spec.ts`).
-  // A real tap on iOS does tick it (Simulator, `tools/probes/phone-ui/6-checkbox-tapped.png`).
+  // A mouse click here; a touch tap is `phone-input.spec.ts` (B-661, which this used to dodge).
   await box.click();
   await expect(outliner.getByRole("checkbox", { name: "Task: DONE" })).toHaveAttribute(
     "aria-checked",
