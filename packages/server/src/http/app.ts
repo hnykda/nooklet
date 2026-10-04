@@ -7,6 +7,7 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import type { ServerContext } from "../apply-ops.js";
 import { createSoleToken } from "../auth/tokens.js";
 import { graphInstanceId } from "../graph-identity.js";
@@ -271,6 +272,12 @@ export function createApp(opts: CreateAppOptions): Hono {
   // (`app.route("/", mcpApp)`, `../mcp/server.ts`), which installs request handling that runs for
   // every path on this app, not only `/mcp` — registering `/sync/*` first means Hono matches
   // these static routes before that catch-all ever runs.
+  // The two sync downloads are large JSON (a real 18.6k-block graph's snapshot is ~17 MB) and were
+  // sent uncompressed even to clients that asked for gzip; on a phone over a tailnet that alone
+  // outlasted the client's request bound. Only these two routes: push is an upload, `/sync/live` a
+  // WebSocket upgrade that compression must not touch.
+  app.use("/sync/snapshot", compress());
+  app.use("/sync/pull", compress());
   mountSync(app, serverCtx);
 
   // `/ui/live` (ADR 015): a second, dedicated WebSocket, deliberately separate from `/sync/*`

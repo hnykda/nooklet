@@ -1038,7 +1038,28 @@ backticks and trailing punctuation from a pasted token, and if what remains does
 shape, say so before asking the server ("That doesn't look like a nooklet token — it should start
 with nk_ and be N characters"). Related: the token fields became plain text the same day (`3c857e83`).
 
+### B-708 · The live agent-control channel (`/ui/live`) is offered on the phone
+**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
+
+Owner: "agents control should probably be off for mobile? that doesn't make much sense". ADR 015's live UI control lets an agent drive an open window; on a phone that's rarely wanted. Decide: hidden/off by default on Capacitor (and touch), still opt-in in Settings?
+
+### B-709 · Move graph switching into the left sidebar, with the current graph's name at the top
+**Status:** open (owner request) · **Severity:** low (UX) · **Found:** 2026-10-04, owner · **Test:** none
+
+Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
+
 ## Fixed
+
+### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** high (a large graph could never sync to a new device) · **Found:** 2026-10-04, owner adding the production `alpha` graph to the iPhone ("AbortError: fetch is aborted"; Settings says offline) · **Test:** `apps/web/src/sync/http-transport-stall.test.ts` (3); gzip checked against a scratch server with curl
+
+Measured: `alpha`'s snapshot is 17.3 MB of JSON, sent **uncompressed** even with `Accept-Encoding:
+gzip`, and took 8.4–8.9 s from a laptop over the tailnet. The client bounded every sync request with
+a 10 s *total* deadline (`AbortSignal.timeout`, B-566), so on a phone the download was aborted every
+time and retried forever. Fix: (1) the server gzips `/sync/snapshot` and `/sync/pull` (`hono/compress`;
+push and the WebSocket untouched); (2) the client's pull/snapshot use `fetchJsonStallAware`: no
+headers within 10 s or no body bytes for 20 s aborts (a hung server still fails fast), a slow steady
+download finishes; push gets a 60 s total bound. Not yet confirmed on the owner's phone.
 
 ### B-701 · A long `$$…$$` display formula widened the page at phone width
 **Status:** fixed (2026-10-04, phone-images) · **Severity:** low · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** `phone-images.spec.ts` "phone overflow sweep…"
