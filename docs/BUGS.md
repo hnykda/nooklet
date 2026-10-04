@@ -1097,8 +1097,22 @@ creates its first child, and nothing typed in the zoomed view can land outside t
 (no sibling of the root, no outdent past it, no Backspace-merge of the root into its previous
 sibling).
 
+### B-841 · A task marker clicked with nothing edited cannot be undone with Cmd/Ctrl+Z
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, while building B-789 · **Test:** none yet
+
+On a page where no block has been edited or selected yet, click a `TODO` marker (it becomes
+`DONE`), then press Cmd/Ctrl+Z: nothing happens; the step sits in the tree's history and no key
+reaches it. Reproduced in Chromium e2e (a throwaway probe: seed `- TODO water the plants`, click
+`.vr-marker`, Cmd+Z, the marker stays `vr-marker-DONE` after 1.5 s). Cause, by reading:
+`historyEditorHost()` (`app/editor-host.ts`) only knows a tree once it has been the active host;
+`onToggleMarker` writes through `commitStep` without making its tree the undo target. B-789 hit the
+same hole for an image's resize and closed it with `noteUndoTarget(editorHost)` after the commit;
+the same line in `onToggleMarker` (and probably `onToggleCollapse`) is the likely fix.
+
+## Fixed
+
 ### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
-**Status:** in progress (image-sizing branch, `docs/progress/image-sizing.md`) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** none yet
+**Status:** fixed (image-sizing branch) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** `e2e/tests/image-resize.spec.ts` (Chromium + WebKit), `phone-images.spec.ts` "B-789: a chosen size…", `apps/web/src/editor/render/image-box.test.tsx`, `packages/core/src/image-meta.test.ts`, corpus case 51, `logseq.test.ts` "B-789 / ADR 034", `logseq-db-import.test.ts`, Rust `b789_reveal_asset_is_read_strictly_and_finds_only_that_graphs_file`
 
 The owner wants Logseq's image handling: a drag handle on the image's right edge to make it bigger
 or smaller (the size saved with the block), a ⋯ menu with Download and, on desktop, Show in Finder,
@@ -1106,7 +1120,25 @@ and optionally left / centre / right alignment. Logseq stores the size after the
 `{:height 236, :width 500}`; whatever nooklet stores must survive the Markdown mirror and Logseq
 import/export.
 
-## Fixed
+**Fix** (ADR 034): the size and alignment are Logseq's own map after the image,
+`![a](assets/x.png){:width 320, :align "center"}`, parsed by the inline grammar
+(`packages/core/src/image-meta.ts`) and rewritten in place. The picture's box carries the width
+(`min(100%, Npx)`, never wider than the column); a handle on its edge (left edge when right-aligned)
+previews locally and writes one `block.text` when the drag ends, through `BlockTree`'s normal
+commit, so one Cmd/Ctrl+Z restores the old size (`noteUndoTarget` makes the tree the undo target).
+The ⋯ menu (`render/ImageView.tsx`) has Copy image, Download, Show in Finder (desktop, This Mac
+graphs only: a `reveal-asset` shell request, the shell finds the file and runs `open -R`), Open in
+new tab, alignment and Original size. A click still opens the B-736 viewer. On touch neither
+control is shown (the tap opens the viewer). The DB-version importer restores
+`:logseq.property.asset/resize-metadata` and `/align`.
+
+### B-840 · A Logseq image size shows as text after the picture
+**Status:** fixed (with B-789) · **Severity:** low · **Found:** 2026-10-04, while building B-789 · **Test:** corpus case 51, `logseq.test.ts` "B-789 / ADR 034", `image-resize.spec.ts` "a size Logseq wrote renders as a size"
+
+A block imported from a Logseq file graph with a resized picture, `![x](../assets/x.png){:height
+236, :width 500}`, rendered the picture at its own size followed by the literal text
+`{:height 236, :width 500}`: the importer kept the map (correctly, verified in a unit test) and the
+inline grammar had no rule for it. Now part of the image token (ADR 034).
 
 ### B-766 · Linked references sorted by "Recent" are not in date order
 **Status:** fixed 2026-10-04 · **Severity:** medium · **Found:** 2026-10-04, owner on the production graph · **Test:** `referenceGrouping.test.ts` "B-766: …" (2; both fail without the fix)

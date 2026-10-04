@@ -37,6 +37,7 @@ root itself. A DB graph with no mirror is refused with a message saying how to t
 | Tasks (TODO/DOING/DONE…) | yes | yes |
 | SCHEDULED / DEADLINE | yes | yes, the exact date and time from the database |
 | Pasted images and files | yes, copied from `assets/` | yes. The database says which picture each line stands for |
+| An image's size (and, DB version, alignment) | yes, `{:height …, :width …}` is kept and shown as the size | yes, from the database |
 | Page and block properties | yes | yes. A property whose value is a set of blocks stays as child blocks |
 | Favourites | yes, from `config.edn` | yes, from the database |
 | Tags | yes | yes, as `#tag` in the text |
