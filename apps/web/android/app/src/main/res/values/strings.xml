@@ -4,4 +4,7 @@
     <string name="title_activity_main">nooklet</string>
     <string name="package_name">sh.nooklet.app</string>
     <string name="custom_url_scheme">sh.nooklet.app</string>
+    <string name="shortcut_capture">New note</string>
+    <string name="shortcut_today">Today</string>
+    <string name="shortcut_search">Search</string>
 </resources>
