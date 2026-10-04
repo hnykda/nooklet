@@ -4,6 +4,20 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
+## Production `alpha` — 2026-10-04
+
+The owner's real graph lives on the production server as graph `alpha` (tailnet-only). It was
+first imported from a STALE file-based copy (newest journal 2026-09-07); re-imported the same day
+from the current Logseq DB-version graph's markdown mirror + assets (864 journals, 19,993 blocks,
+172 assets), after fixing B-711 (the importer dropped duplicate-name journal days). Swap procedure:
+import into a scratch data dir, carry the `token` rows over (devices keep their tokens), copy in via
+a tar stream, checksum, move the old dir to `/data/graphs-retired/alpha-stale-import-20261004`,
+rename the new one into place, `rollout restart`, `verify` in the pod. Devices then see
+GraphMismatch → "Discard the local copy and re-sync". B-713 (agent `graph-retire`) is turning
+this into a supported command. Deploys: every push to `main` redeploys; the pre-deploy backup
+needed a 2Gi limit (B-710; streaming fix in progress). Where the real graph lives is in the
+coordinator's private memory, never in this repo.
+
 ## Note — 2026-10-04 late evening
 
 Another session (the owner's, activating Woodpecker on the home server) pushed two commits to
