@@ -200,6 +200,16 @@ export function restoreBackup(archivePath: string, opts: RestoreOptions): Restor
   }
 
   mkdirSync(opts.dataDir, { recursive: true });
+  // A WAL and its index left by the database being replaced (a server killed hard never
+  // checkpoints) belong to THAT file. SQLite does not check that a `-wal` matches the database
+  // beside it, so the next open replays the old frames onto the restored file: "database disk
+  // image is malformed" (tools/probes/restore-stale-wal.mjs). The archive's database is a
+  // self-contained VACUUM INTO snapshot; nothing in the old WAL is wanted.
+  if (entries.some((e) => e.path === "graph.sqlite")) {
+    const db = dbPath(opts.dataDir);
+    rmSync(`${db}-wal`, { force: true });
+    rmSync(`${db}-shm`, { force: true });
+  }
   let filesRestored = 0;
   for (const entry of entries) {
     if (entry.path === "manifest.json") continue;

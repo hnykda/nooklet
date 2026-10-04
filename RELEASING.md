@@ -21,7 +21,9 @@ git push origin main && git push origin v0.2.0
 3. Writes the one version into every `package.json`, `apps/desktop/src-tauri/tauri.conf.json`,
    `Cargo.toml` and `Cargo.lock`, the iOS project (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`)
    and the Android project (`versionName`, `versionCode`). The help menu's version comes from
-   `apps/web/package.json` at build time, so it follows.
+   `apps/web/package.json` at build time, so it follows. The server's comes from
+   `packages/server/package.json` (`packages/server/src/version.ts`): `nooklet --version`, the
+   `serve` banner's first line and the MCP `serverInfo.version` all report it.
 4. Adds a `CHANGELOG.md` section from the commit subjects since the last tag: `feat` and `fix`
    listed, everything else under Other, docs/test/chore only counted. `B-123` ids link to
    `docs/BUGS.md`. It opens `$VISUAL`/`$EDITOR` (or waits for Enter) so you can edit it;
@@ -171,7 +173,9 @@ update again, so it should be created once, deliberately, and backed up with the
   usual way: revert on `main`, or set the previous `sha-` tag in the infra repo.
 - **Data:** releases only ever add schema (migrations add tables and columns), and an older build
   refuses newer data rather than damaging it. Going back a version that migrated the schema
-  means restoring the backup taken before the upgrade (docs/guide/self-hosting.md, "Upgrades").
+  means restoring the backup taken before the upgrade, one graph at a time: stop the server,
+  `nooklet restore <archive> --graph <id> --force` for each graph, `nooklet verify --graph <id>`,
+  start the server (docs/guide/self-hosting.md, "Backups and restore").
 - **Android:** a bad APK can be replaced by a higher `versionCode` only; users of a debug-signed APK
   must uninstall (losing local data) to move to a signed one.
 

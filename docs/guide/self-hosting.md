@@ -96,7 +96,8 @@ CLI commands run inside the container:
 ```sh
 docker exec nooklet /app/node /app/server.mjs token create --label phone --scope write --sync
 docker exec nooklet /app/node /app/server.mjs token root
-docker exec nooklet /app/node /app/server.mjs backup
+docker exec nooklet /app/node /app/server.mjs backup --graph default --out /data/backups/default.tar.gz
+docker exec nooklet /app/node /app/server.mjs --version
 ```
 
 ### Kubernetes
@@ -262,18 +263,31 @@ timer: schedule it with cron, a `launchd` job or a CronJob.
 
 Do not rely on a file-level copy of a live `graph.sqlite`. Back up the archives instead.
 
+With several graphs, back up each one; an archive holds exactly one graph:
+
+```sh
+nooklet backup --graph default --out /backups/default-$(date +%F).tar.gz
+nooklet backup --graph alpha   --out /backups/alpha-$(date +%F).tar.gz
+```
+
 To restore:
 
 ```sh
 # stop the server first
 nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
-nooklet verify --data <dir>
+nooklet verify --graph <id> --data <dir>
 # start the server again
 ```
 
+`restore` writes into `graphs/<id>/` only, so restoring `alpha` leaves every other graph as it
+is. Without `--graph` it restores `default`. Restore an archive into the graph it came from: the
+archive does not record which graph that was.
+
 `restore` refuses to overwrite an existing database unless you pass `--force`, and refuses an
-archive from a newer schema than the build understands. Do a drill once: restore into a scratch
-`--data` directory and run `verify`. It should print `OK`.
+archive from a newer schema than the build understands. With `--force` it also discards the old
+database's leftover `-wal`/`-shm` files, which a server that was killed rather than stopped leaves
+behind. Do a drill once: restore into a scratch `--data` directory and run `verify`. It should
+print `OK`.
 
 ### Trimming the op log
 
@@ -284,7 +298,7 @@ has never synced holds a token; revoke tokens of devices you no longer use.
 
 ## Upgrades
 
-1. Take a backup.
+1. Take a backup of each graph, and note the running version (`nooklet --version`).
 2. Update: `git pull && pnpm install && pnpm --filter @nooklet/web build`, or change the image tag
    to the new version (the [Releases page](https://github.com/hnykda/nooklet/releases) and
    `CHANGELOG.md` say what changed).
