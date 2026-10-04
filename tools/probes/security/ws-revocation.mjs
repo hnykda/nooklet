@@ -10,6 +10,9 @@
 // Result 2026-10-04 at 02fa3dc: revoked token's /sync/live socket STAYED OPEN and kept receiving
 // pokes; its next HTTP request was 401 at once. An unauthenticated socket that never sends hello
 // was still open after the hold period (no server-side handshake timeout).
+//
+// Result 2026-10-04, ws-hardening branch (B-676 H3 + H4): A's socket closed 4401 at the revoke,
+// no pokes after; the unauthenticated socket closed 4408 (hello timeout, 10 s).
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";

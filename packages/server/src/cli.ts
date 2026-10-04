@@ -43,7 +43,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { renderUnicodeCompact } from "uqr";
-import { WebSocketServer } from "ws";
 import type { ServerContext } from "./apply-ops.js";
 import { createPairingCode } from "./auth/pairing-codes.js";
 import {
@@ -105,6 +104,11 @@ import {
 import { liveServer, liveServerMessage, writeServerLock } from "./graphs/server-lock.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
 import { importLogseqGraph } from "./importer/logseq.js";
+import {
+  configureLiveLimits,
+  createLiveWebSocketServer,
+  parseLiveLimitFlags,
+} from "./live-limits.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
 import { startLiveMirror } from "./mirror/live.js";
@@ -243,6 +247,7 @@ const USAGE = `nooklet — a local-first outliner server
                                          behind a same-host reverse proxy (docs/OPERATIONS.md).
                                          Default: on for a loopback bind, off with a non-loopback
                                          --host (--loopback-token turns it back on)
+                 [--ws-max-per-token <n>] [--ws-max-total <n>]   live-socket caps (default 20, 500)
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
@@ -302,6 +307,8 @@ async function main(): Promise<void> {
       migrateLegacyLayoutIfNeeded(dir);
       const baseConfig = baseServerConfig(args);
       const webClientDir = resolveWebClientDir(args.flags.get("web"));
+      // B-676 H4: caps on /sync/live and /ui/live sockets (`live-limits.ts`).
+      configureLiveLimits(cliArg(() => parseLiveLimitFlags(args)));
 
       // One indexer per graph this process ends up opening (ADR 025 — a graph is opened lazily,
       // the first time something asks for it, not necessarily at boot), so shutdown can stop all
@@ -379,8 +386,9 @@ async function main(): Promise<void> {
       // `/sync/live` (../sync/live.ts) needs a real `ws` WebSocketServer wired into the Node
       // adapter's `serve()` call — `upgradeWebSocket` (used by that route) only handles the Hono
       // side of the handshake; `@hono/node-server` needs a `{ noServer: true }` WebSocketServer
-      // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs.
-      const wss = new WebSocketServer({ noServer: true });
+      // to hand upgraded connections to. See `@hono/node-server`'s own WebSocket docs. It carries
+      // the frame-size limit (B-676 H12, `live-limits.ts`).
+      const wss = createLiveWebSocketServer();
       const shutdown = (): void => {
         for (const indexer of indexers.values()) indexer.stop();
         process.exit(0);

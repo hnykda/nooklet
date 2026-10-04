@@ -12,15 +12,12 @@
  */
 
 import { upgradeWebSocket } from "@hono/node-server";
+import { LIVE_CLOSE } from "@nooklet/core";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
-import {
-  trackGraphSocket,
-  trackTokenSocket,
-  untrackGraphSocket,
-  untrackTokenSocket,
-} from "../auth/token-sockets.js";
+import { socketTokenId, trackTokenSocket, untrackTokenSocket } from "../auth/token-sockets.js";
 import { verifyToken } from "../auth/tokens.js";
+import { acceptHello, admitSocket, releaseSocket, shouldReadFrame } from "../live-limits.js";
 import { registerLiveConnection, unregisterLiveConnection, wirePokeOnCommit } from "./realtime.js";
 
 interface HelloMessage {
@@ -41,11 +38,14 @@ export function registerSyncLive(app: Hono, serverCtx: ServerContext): void {
   app.get(
     "/sync/live",
     upgradeWebSocket(() => ({
-      // B-713: so retiring this graph can close the socket, hello or not.
+      // B-676 H4: the hello timeout, connection caps and pre-hello frame limit
+      // (`../live-limits.ts`). `maxPayload` is the `ws` server's (`createLiveWebSocketServer`).
+      // Admitted with this graph's driver, so retiring the graph (B-713) closes it, hello or not.
       onOpen(_evt, ws) {
-        trackGraphSocket(serverCtx.driver, ws);
+        admitSocket(ws, serverCtx.driver);
       },
       onMessage(evt, ws) {
+        if (!shouldReadFrame(ws, evt.data)) return;
         let parsed: unknown;
         try {
           parsed = JSON.parse(String(evt.data));
@@ -55,17 +55,19 @@ export function registerSyncLive(app: Hono, serverCtx: ServerContext): void {
         if (!isHello(parsed)) return;
         const verified = verifyToken(serverCtx.driver, parsed.token);
         if (!verified?.canSync) {
-          ws.close(4403, "forbidden");
+          ws.close(LIVE_CLOSE.forbidden, "forbidden");
           return;
         }
+        const tracked = socketTokenId(serverCtx.driver, ws) !== undefined;
+        if (!acceptHello(serverCtx, ws, verified.id, tracked)) return;
         registerLiveConnection(serverCtx, ws, parsed.device_id);
         // B-676: so `token.revoke` can close it, and the poke can re-check the token.
         trackTokenSocket(serverCtx.driver, verified.id, ws);
       },
       onClose(_evt, ws) {
+        releaseSocket(ws);
         unregisterLiveConnection(serverCtx, ws);
         untrackTokenSocket(serverCtx.driver, ws);
-        untrackGraphSocket(serverCtx.driver, ws);
       },
     })),
   );

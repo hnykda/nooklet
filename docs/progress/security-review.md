@@ -162,7 +162,8 @@ advisories.
 - **NEW — loopback auto-token on by default for a non-loopback bind.** Fixed (behaviour change,
   above). Test `security-defaults.test.ts` "loopback auto-token default".
 - **NEW — revoked token's open WebSockets stay open; unauthenticated sockets never time out.**
-  Open; H3/H4. Probe `ws-revocation.mjs`.
+  Fixed: H3 (qr-pairing), H4/H12 (ws-hardening, `docs/progress/ws-hardening.md`). Probes
+  `ws-revocation.mjs`, `ws-limits.mjs`; test `live-limits.test.ts`.
 - **NEW — mermaid dependency advisories (lodash-es, dompurify).** Open; H9.
 
 ## Hardening backlog
@@ -172,7 +173,7 @@ advisories.
 | H1 | Rate limiting / lockout on failed auth (B-654) | Medium on a public server | M (1-2 days) | In-process token-bucket keyed by token id for authenticated calls (the limits `mcp-tools.md:241` already documents) and by client IP for 401s — the IP only from a configured `--trust-proxy` hop, never from raw `X-Forwarded-For`. 429 `rate_limited` with `Retry-After`. Until then: proxy-level limits (tier-2 checklist). Or amend the spec to say limits are the proxy's job. |
 | H2 | Audit log of auth failures | Low | S | One stderr line per 401/403 with route, peer/forwarded-for, token id prefix if any; sampled (first N per minute per source) so it cannot flood logs. Lets fail2ban/CrowdSec act on it. |
 | H3 | Close WebSockets on revocation | Medium | S | Re-check the token row on each poke/command send (cheap: one indexed SELECT) and close 4401 when revoked; or add a 60 s periodic sweep of registered sockets. Revocation happens in another process (CLI), so a notification will not reach the server. |
-| H4 | WebSocket handshake timeout and connection caps | Medium | S | Close a socket that has not sent a valid `hello` within 10 s; cap sockets per token (e.g. 20) and total (e.g. 500); set `ws` `maxPayload` (default 100 MB) to e.g. 64 KB — these sockets only carry small JSON. |
+| H4 | WebSocket handshake timeout and connection caps | Medium | S | **Done 2026-10-04** (`docs/progress/ws-hardening.md`): 10 s hello timeout (4408), 20 per token / 500 total (4429, `--ws-max-per-token`/`--ws-max-total`), `maxPayload` 512 KiB (1009; 64 KiB is too small for a select-all `state.result`). Original recommendation: Close a socket that has not sent a valid `hello` within 10 s; cap sockets per token (e.g. 20) and total (e.g. 500); set `ws` `maxPayload` (default 100 MB) to e.g. 64 KB — these sockets only carry small JSON. |
 | H5 | Asset access (B-659) | Low | M | Short-lived signed URLs: `/assets/:id?exp=..&sig=HMAC(graph secret, id, exp)` minted by an authenticated op the client calls when rendering; or an HttpOnly same-site cookie set by `/api/session` exchange for same-origin `<img>`. Either makes revocation cover assets. Rotating the graph secret revokes every outstanding URL. |
 | H6 | Give `admin` a meaning or drop it (B-655) | Low | S-M | Recommended: keep it and gate server-administration ops on it as they land — token list/create/revoke over the API (needed to revoke a lost phone from another device), plugin settings, gc/backup triggers. Keep destructive *content* ops (delete, replace, merge, undo) at `write`: the phone app uses them with a device token and every one is undoable. Until then, document "admin = write today" and stop minting `admin` for `POST /graphs` creators (mint `write` + sync). |
 | H7 | Host check on loopback binds | Low | S | Today the Host allowlist applies only to non-loopback binds (except `/mcp`). A loopback-bound server behind a same-host proxy accepts any Host. Enforcing always would require `--allow-host` for every proxy setup (B-616 trade). Recommend: enforce when `--no-loopback-token` is set (a proxied deployment by definition). |
@@ -180,7 +181,7 @@ advisories.
 | H9 | Dependency update policy | Low | S | `pnpm.overrides` for lodash-es >=4.18.1 and dompurify >=3.4.16 now; CI job running `pnpm audit --prod --audit-level high` weekly and on lockfile changes; Renovate/Dependabot grouped monthly for minor/patch. |
 | H10 | Vulnerability disclosure | Low | S | `SECURITY.md` with a private contact (GitHub private vulnerability reporting enabled on the repo), supported versions = latest release, 90-day disclosure. (Docs agent added a `SECURITY.md`; check it names the channel.) |
 | H11 | Remote image loading | Low | S | Optional `img-src 'self' data: blob:` setting (privacy mode) — off by default because notes legitimately embed remote images. |
-| H12 | `ws` `maxPayload`, Node `server.requestTimeout`/`headersTimeout` | Low | S | Node defaults (300 s / 60 s) are fine behind a proxy; set `maxPayload` as in H4. |
+| H12 | `ws` `maxPayload`, Node `server.requestTimeout`/`headersTimeout` | Low | S | **Done 2026-10-04**: `maxPayload` 512 KiB, see H4. Node's request/header timeouts left at their defaults (300 s / 60 s), fine behind a proxy. |
 
 ## For the docs (tier 2 checklist)
 
@@ -194,12 +195,11 @@ holds**:
    same-host proxy that rewrites `Host` must also add `X-Forwarded-For`/`Forwarded`.
 3. **`--allow-host <your public name>`**, and nothing broader.
 4. **Per-device tokens**, `--scope write --sync` for devices, `read` for read-only agents; revoke
-   with `nooklet token revoke` on any doubt. After revoking, **restart the server** if the device
-   may still be connected (open WebSockets are not closed by revocation yet) — and treat any
-   asset URLs that device saw as still readable (B-659).
+   with `nooklet token revoke` on any doubt. Revocation closes the token's open WebSockets (H3);
+   treat any asset URLs that device saw as still readable (B-659).
 5. **Proxy-level limits** (nooklet has none yet, B-654): request rate per IP (e.g. 10 r/s burst
-   50 on `/g/*/api`, `/mcp`, `/sync`), concurrent connections per IP, WebSocket idle/connection
-   limits, client body size ≤ 48 MB (nooklet enforces 16/48 MB itself), and optionally
+   50 on `/g/*/api`, `/mcp`, `/sync`), concurrent connections per IP, WebSocket connections per
+   IP (nooklet caps per token and in total, H4), client body size ≤ 48 MB (nooklet enforces 16/48 MB itself), and optionally
    fail2ban/CrowdSec on repeated 401s.
 6. **WebSocket upgrade** forwarded for `/g/*/sync/live` and `/g/*/ui/live`, with an idle timeout.
 7. **Keep the root token off the network**: it is printed once on first start (container logs);
@@ -212,5 +212,5 @@ holds**:
 **Verdict:** reasonable today for one owner with a few devices, under the checklist above — the
 API is deny-by-default and enforced by a test, tokens are 192-bit and hashed, bodies are capped,
 and the shell has a script CSP. Not yet reasonable for multiple users or a high-profile host:
-missing in-process rate limiting (H1), WebSocket revocation/timeouts (H3/H4) and revocable asset
-URLs (H5). The tailnet-only default remains the recommendation.
+missing in-process rate limiting (H1) and revocable asset URLs (H5). (WebSocket revocation and
+limits, H3/H4, are done.) The tailnet-only default remains the recommendation.

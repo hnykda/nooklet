@@ -15,7 +15,7 @@
 // ADR 015: live-UI-control ops, kept in `../live/` (tightly coupled to the window registry/RPC
 // there) and registered into CORE_OPS here, same as every other op.
 import { uiHighlight, uiNavigate, uiRun, uiState, uiWindows } from "../live/index.js";
-import { assetUpload } from "./asset-upload.js";
+import { assetSizesOp, assetUpload } from "./asset-upload.js";
 import { batch } from "./batch.js";
 import { batchUndo } from "./batch-undo.js";
 import { blockDelete } from "./block-delete.js";
@@ -74,6 +74,8 @@ export const CORE_OPS = [
   pageDelete,
   batchUndo,
   assetUpload,
+  // B-703: HTTP-only, for the renderer's image boxes.
+  assetSizesOp,
   trashList,
   trashRestore,
   pageHistory,

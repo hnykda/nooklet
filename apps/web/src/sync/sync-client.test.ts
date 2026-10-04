@@ -21,6 +21,7 @@ import {
   type PushResponse,
   type SnapshotResponse,
   SyncAuthError,
+  SyncGraphRetiredError,
   type SyncLiveHandlers,
   type SyncTransport,
 } from "./types.js";
@@ -791,6 +792,32 @@ describe("SyncClient connection states (B-613 token refused, B-614 live socket d
     expect(client.getStatus().state).toBe("unauthorized");
   });
 
+  it("B-713: the live socket closed with 4410 is 'retired' at once, with no probe pull, and stays so", async () => {
+    client.connectLive();
+    await vi.advanceTimersByTimeAsync(0);
+    const pullsBefore = transport.pullCalls.length;
+    transport.liveHandlers?.onClose?.(4410);
+    expect(client.getStatus().state).toBe("retired");
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS * 2);
+    expect(transport.pullCalls.length).toBe(pullsBefore);
+    // An empty outbox flush asks the server nothing, so it must not read as "synced".
+    await client.flush();
+    expect(client.getStatus().state).toBe("retired");
+    transport.failPull = new Error("Failed to fetch");
+    await client.pull();
+    expect(client.getStatus().state).toBe("retired");
+  });
+
+  it("B-713: a sync request answered with the server's 'No graph' 404 is 'retired'", async () => {
+    transport.failPull = new SyncGraphRetiredError();
+    await client.pull();
+    expect(client.getStatus().state).toBe("retired");
+    // Unretired on the server: the next successful pull clears it.
+    transport.failPull = undefined;
+    await client.pull();
+    expect(client.getStatus().state).toBe("idle");
+  });
+
   it("the live socket closing probes with a pull after the grace period; failure is 'offline'", async () => {
     client.connectLive();
     await vi.advanceTimersByTimeAsync(0);
@@ -821,5 +848,21 @@ describe("SyncClient connection states (B-613 token refused, B-614 live socket d
     transport.liveHandlers?.onClose?.(1006);
     await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS);
     expect(client.getStatus().state).toBe("idle");
+  });
+
+  it("B-676 H4: a socket refused for capacity (4429) stays in sync with a note, not 'unauthorized'", async () => {
+    client.connectLive();
+    transport.liveHandlers?.onClose?.(4429);
+    await vi.advanceTimersByTimeAsync(LIVE_DOWN_GRACE_MS);
+    expect(client.getStatus().state).toBe("idle");
+    expect(client.getStatus().liveNote).toMatch(/connection limit/);
+    // A poke proves a later socket was accepted; the note goes.
+    transport.liveHandlers?.onPoke(1);
+    expect(client.getStatus().liveNote).toBeUndefined();
+    // So does a close for any other reason: the note would be stale.
+    transport.liveHandlers?.onClose?.(1009);
+    expect(client.getStatus().liveNote).toMatch(/too large/);
+    transport.liveHandlers?.onClose?.(1006);
+    expect(client.getStatus().liveNote).toBeUndefined();
   });
 });

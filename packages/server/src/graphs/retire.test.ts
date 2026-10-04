@@ -11,12 +11,13 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
+import { LIVE_CLOSE } from "@nooklet/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { WebSocket, WebSocketServer } from "ws";
-import { GRAPH_RETIRED_CLOSE_CODE } from "../auth/token-sockets.js";
+import { WebSocket, type WebSocketServer } from "ws";
 import { createToken } from "../auth/tokens.js";
 import { closeDb } from "../db.js";
 import { graphInstanceId } from "../graph-identity.js";
+import { createLiveWebSocketServer, openLiveSocketCount } from "../live-limits.js";
 import { buildRegistry } from "../ops/index.js";
 import { post } from "../test-helpers.js";
 import { verifyRebuildParity } from "../verify.js";
@@ -172,7 +173,7 @@ describe("GraphRegistry#retire behind DELETE /graphs/<id>", () => {
   }
 
   async function listen(app: ReturnType<typeof createMultiGraphApp>): Promise<number> {
-    const ws = new WebSocketServer({ noServer: true });
+    const ws = createLiveWebSocketServer();
     wss = ws;
     return new Promise<number>((resolve) => {
       server = serve(
@@ -226,7 +227,12 @@ describe("GraphRegistry#retire behind DELETE /graphs/<id>", () => {
     const synced = await open(port, "/g/work/sync/live");
     synced.send(JSON.stringify({ type: "hello", device_id: "aaaaaaaa", token }));
     const silent = await open(port, "/g/work/ui/live");
+    // A socket on another graph must be left alone.
+    const otherToken = (await post(app, "/graphs", ROOT, { id: "other" })).json.token as string;
+    const bystander = await open(port, "/g/other/sync/live");
+    bystander.send(JSON.stringify({ type: "hello", device_id: "bbbbbbbb", token: otherToken }));
     await new Promise((r) => setTimeout(r, 50));
+    expect(openLiveSocketCount()).toBe(3);
     const syncedClosed = closeCode(synced);
     const silentClosed = closeCode(silent);
 
@@ -235,8 +241,11 @@ describe("GraphRegistry#retire behind DELETE /graphs/<id>", () => {
     const body = (await res.json()) as { retired: string; restore: string; path: string };
     expect(body.retired).toMatch(/^work-\d{8}T\d{6}Z$/);
     expect(body.restore).toBe(`nooklet graph unretire ${body.retired}`);
-    expect(await syncedClosed).toBe(GRAPH_RETIRED_CLOSE_CODE);
-    expect(await silentClosed).toBe(GRAPH_RETIRED_CLOSE_CODE);
+    expect(await syncedClosed).toBe(LIVE_CLOSE.graphRetired);
+    expect(await silentClosed).toBe(LIVE_CLOSE.graphRetired);
+    // Released from the one registry the connection caps count (B-676 H4) at once.
+    expect(openLiveSocketCount()).toBe(1);
+    expect(bystander.readyState).toBe(WebSocket.OPEN);
     expect(closed).toEqual(["work"]);
     // The old handle's database is closed: nothing can keep writing to the moved file.
     expect(() => handle.ctx.driver.get("SELECT 1")).toThrow();

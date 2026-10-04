@@ -1097,6 +1097,38 @@ retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10
 did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
 encode.
 
+### B-714 · The "different graph" screen is a dead end: discard is the only way out, and its wording assumes localhost
+**Status:** open · **Severity:** medium (UX; pushes users toward a destructive action) · **Found:** 2026-10-04, owner after production `alpha` was re-imported · **Test:** none yet
+
+`GraphMismatchView` offers only "Discard the local copy and re-sync", and its text says "the server at
+localhost" and blames a moved `--data` directory, even for a remote server whose graph was
+re-imported under the same address. Owner: there should be other options, such as keeping this copy
+as a device-only graph and optionally adding the server graph. Wanted: (1) keep the local copy as a
+device-only graph (detached from the server, renamed, never synced; B-633's no-sync rule kept) and add
+the server's graph as a new entry; (2) go to another graph without deciding; (3) discard and re-sync.
+Wording names the real server address and lists the likely causes (re-imported/replaced graph on the
+server, a different data directory).
+
+### B-715 · Images from a Logseq DB-version graph import as their timestamp names, not images
+**Status:** open · **Severity:** high for DB-version users (every pasted image is lost as an image) · **Found:** 2026-10-04, owner on the phone (a block from yesterday shows `2026-10-03-15-56-42` instead of the picture) · **Test:** none yet
+
+Logseq's DB version stores a pasted image as an asset entity (title = a timestamp like
+`YYYY-MM-DD-HH-MM-SS`, file = `assets/<entity uuid>.<ext>`). Its markdown mirror writes only the
+entity's title as a plain line: no `![](…)` link and no `id::`; 0 of 177 asset files are referenced
+anywhere in the mirror. The mapping exists only in the graph's `db.sqlite` (table `kvs`: Datascript
+storage nodes, transit-encoded datoms `[e, attr, value, tx]`). Fix: a Logseq DB-version import path
+that reads `db.sqlite` (read-only copy) for asset entities (and anything else the mirror loses),
+turning those title lines into image embeds.
+
+### B-716 · Favorite pages are not preserved by the Logseq import
+**Status:** open (in progress with the Logseq DB-import agent) · **Severity:** medium · **Found:** 2026-10-04, owner after the production re-import · **Test:** none yet
+
+The owner's favorites did not come over. File-based graphs keep them in `logseq/config.edn :favorites`
+(already parsed by `parseLogseqConfigEdn`; whether the import applies them is to be checked);
+DB-version graphs keep them in `db.sqlite`, which the markdown mirror does not carry. Owner decision
+the same day: support BOTH Logseq formats explicitly (auto-detected), and document what carries over
+from each.
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever

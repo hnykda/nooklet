@@ -37,14 +37,36 @@ replace a graph (B-713)`).
   written inside the mirror debounce is in the retired folder's `pages/`, healthz 404 after, no
   server errors, `serve.pid` gone after SIGTERM. Ran 2026-10-04: all as expected.
 
-## Verification run (2026-10-04)
+### Merge of main (WebSocket hardening B-676 H4/H12) and the client's 4410 state
 
-- `pnpm -r test`: core 479, plugin-api 17, server 865, web 1640, all passed.
+Coordinator asked (2026-10-04) to merge `main` and resolve against the WS hardening:
+- One socket registry: `live-limits.ts#admitted` (the hardening's) now records each socket's graph
+  driver (`admitSocket(ws, driver)`), and `closeGraphSockets(driver, reason)` lives there: it
+  releases each socket from the total at once and closes it with `LIVE_CLOSE.graphRetired` (4410,
+  added to core's `LIVE_CLOSE`). My separate `graphSockets` set in `token-sockets.ts` is gone; the
+  per-token map stays the hardening's (`tokenSocketCount`). Pre-hello and capped sockets are in
+  `admitted`, so retire closes them too (a socket refused at admit is already closing).
+- Client: 4410 is terminal (`LIVE_TERMINAL_CODES` in `sync/types.ts`, used by `live-backoff.ts`
+  for both `/sync/live` and `/ui/live`). `SyncClient` has a sticky `graphRetired` -> state
+  `retired`, checked before `unauthorized`; a sync request's 404 with the server's own
+  `No graph "<id>"` body (`isGraphGoneResponse`) throws `SyncGraphRetiredError` -> `retired` too
+  (what a reloaded page sees, having no socket to close). Cleared only by a push the server
+  accepted or a successful pull. Indicator: danger dot, label "This graph was retired on the server
+  — changes made here stay on this device", a "Graph retired" pill that opens diagnostics.
+- Tests: `live-backoff.test.ts`, `sync-client.test.ts` (2), `http-transport-retired.test.ts` (3),
+  `sync-indicator-state.test.ts`, `retire.test.ts` (other graph's socket stays open, total count
+  drops), e2e `e2e/tests/graph-retired.spec.ts` (fails with 4410 not terminal: 3 sockets vs 1).
+
+## Verification run (2026-10-04, after merging main)
+
+- `pnpm -r test`: core 491, plugin-api 17, server 887, web 1664, all passed.
 - `pnpm -r typecheck`: clean.
+- `pnpm e2e` `graph-retired`, `live-limits`, `qr-pairing`: 5 passed (port 6560).
 - `pnpm exec biome check . --diagnostic-level=error`: 2 errors, both in
-  `apps/web/src/sync/http-transport-stall.test.ts` (from `c9d993bb`, B-707), not in this change.
+  `apps/web/src/sync/http-transport-stall.test.ts` (from `c9d993bb`, B-707; still on main), not in
+  this change.
 - `node tools/leak-check.mjs --tree`: clean.
-- Not run: `pnpm e2e` (no UI change), `nooklet verify` against a real graph.
+- Not run: the full e2e suite, `nooklet verify` against a real graph.
 
 ## Decisions
 
@@ -52,8 +74,7 @@ replace a graph (B-713)`).
   and writes a database the server holds without error, so there is nothing to probe.
 - `unretire` is allowed while serving (it only adds a folder under an unused id; the server opens
   it lazily, and the stale-handle check covers an id it had cached). There is no API unretire.
-- Close code 4410 for retired-graph sockets. The web client treats unknown codes as offline and
-  reconnects; the reconnect then gets 404 (see follow-up below).
+- Close code 4410 for retired-graph sockets; terminal on the client (see the merge section).
 - `replace` copies (not moves) the source, so a scratch dir on another filesystem works and
   survives; device rows are not carried (they describe replicas of the old instance).
 - Couldn't run `git config core.hooksPath tools/git-hooks` here (the worktree sandbox refuses any
@@ -73,20 +94,14 @@ replace a graph (B-713)`).
 new in). Retire/replace refuse while `<data>/serve.pid` names a live server. Root-token
 `DELETE /graphs/<id>` retires from a running server: closes the graph's sockets (4410), plugins,
 mirror, indexer and SQLite handle first. The registry also drops a cached handle whose
-`graph.sqlite` was moved or replaced underneath it (dev/inode check per request). Docs:
-self-hosting.md "Retiring, restoring and replacing a graph", faq.md.
+`graph.sqlite` was moved or replaced underneath it (dev/inode check per request). Sockets close
+through the WS hardening's one registry (`live-limits.ts`), pre-hello and capped ones included.
+The client treats 4410 (or a sync request's "No graph" 404) as terminal: no reconnect, indicator
+"This graph was retired on the server" + "Graph retired" pill (`e2e/tests/graph-retired.spec.ts`).
+Docs: self-hosting.md "Retiring, restoring and replacing a graph", faq.md.
 ```
 
 **New, open (found in passing):**
-
-```
-### B-7xx · The web client shows a retired graph as plain "Offline"
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, graph-retire agent (B-713) · **Test:** none
-
-`DELETE /graphs/<id>` closes the graph's live sockets with 4410 and the graph then 404s, but the
-client only knows 4401/4403 (`LIVE_AUTH_REJECTED_CODES`), so it shows "Offline" and retries forever.
-It could say "This graph was removed from the server" and stop retrying.
-```
 
 ```
 ### B-7xx · biome check fails on main: unsafe optional chaining in http-transport-stall.test.ts

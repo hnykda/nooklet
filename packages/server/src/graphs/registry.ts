@@ -8,8 +8,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
-import { closeGraphSockets, GRAPH_RETIRED_CLOSE_CODE } from "../auth/token-sockets.js";
 import { closeDb } from "../db.js";
+import { closeGraphSockets } from "../live-limits.js";
 import type { OpRegistry } from "../ops/registry.js";
 import { createAppWithPlugins } from "../plugins/bootstrap.js";
 import type { PluginHost } from "../plugins/host.js";
@@ -233,7 +233,7 @@ export class GraphRegistry {
     } catch (err) {
       process.stderr.write(`nooklet: [${graphId}] closing the graph: ${(err as Error).message}\n`);
     }
-    closeGraphSockets(handle.ctx.driver, GRAPH_RETIRED_CLOSE_CODE, reason);
+    closeGraphSockets(handle.ctx.driver, reason);
     closeDb(handle.ctx.driver);
   }
 

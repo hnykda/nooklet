@@ -10,9 +10,18 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { newId, type SqlDriver } from "@nooklet/core";
+import { type ImageSize, imageSize } from "./image-size.js";
 
 export const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 
@@ -79,6 +88,9 @@ export interface StoredAsset {
   byteSize: number;
   /** True when identical bytes were already stored and that record was returned instead. */
   deduped: boolean;
+  /** Pixel size as displayed, for PNG/JPEG/GIF/WebP (`./image-size.ts`, B-703); else `null`. */
+  width: number | null;
+  height: number | null;
 }
 
 interface ExistingAssetRow {
@@ -87,6 +99,8 @@ interface ExistingAssetRow {
   ext: string;
   mime_type: string;
   byte_size: number;
+  width: number | null;
+  height: number | null;
 }
 
 /** Write `bytes` as a new asset (or find the identical one already stored). Throws on an empty
@@ -104,8 +118,9 @@ export function storeAssetBytes(
   }
 
   const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const size = imageSize(bytes);
   const existing = driver.get<ExistingAssetRow>(
-    "SELECT id, ext, mime_type, byte_size, file_name FROM asset WHERE sha256 = ? AND deleted_at IS NULL",
+    "SELECT id, ext, mime_type, byte_size, file_name, width, height FROM asset WHERE sha256 = ? AND deleted_at IS NULL",
     [sha256],
   );
   if (existing) {
@@ -131,6 +146,7 @@ export function storeAssetBytes(
       mimeType: existing.mime_type,
       byteSize: existing.byte_size,
       deduped: true,
+      ...backfillFromBytes(driver, existing, size),
     };
   }
 
@@ -147,9 +163,19 @@ export function storeAssetBytes(
 
   const now = Date.now();
   driver.run(
-    `INSERT INTO asset(id, graph_id, file_name, ext, mime_type, byte_size, sha256, created_at)
-     VALUES (?, 'default', ?, ?, ?, ?, ?, ?)`,
-    [id, input.fileName, ext, input.mimeType, bytes.length, sha256, now],
+    `INSERT INTO asset(id, graph_id, file_name, ext, mime_type, byte_size, sha256, width, height, created_at)
+     VALUES (?, 'default', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      input.fileName,
+      ext,
+      input.mimeType,
+      bytes.length,
+      sha256,
+      size?.width ?? null,
+      size?.height ?? null,
+      now,
+    ],
   );
 
   // Not in the op log (ADR 003) -> op_ids_json is '[]' (sql-schema.md rule 21's one documented
@@ -173,7 +199,108 @@ export function storeAssetBytes(
     ],
   );
 
-  return { id, ext, mimeType: input.mimeType, byteSize: bytes.length, deduped: false };
+  return {
+    id,
+    ext,
+    mimeType: input.mimeType,
+    byteSize: bytes.length,
+    deduped: false,
+    width: size?.width ?? null,
+    height: size?.height ?? null,
+  };
+}
+
+/** An identical upload of an asset stored before sizes were recorded fills its size in. */
+function backfillFromBytes(
+  driver: SqlDriver,
+  row: ExistingAssetRow,
+  size: ImageSize | null,
+): { width: number | null; height: number | null } {
+  if (row.width !== null && row.height !== null) return { width: row.width, height: row.height };
+  if (!size) return { width: null, height: null };
+  driver.run("UPDATE asset SET width = ?, height = ? WHERE id = ?", [
+    size.width,
+    size.height,
+    row.id,
+  ]);
+  return size;
+}
+
+/** Formats `imageSize` reads; anything else is not worth opening the file for. */
+const SIZED_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+
+/** Header reads tried in turn. A JPEG's size sits after its EXIF/ICC/XMP segments — usually inside
+ * the first 64 KB, but a phone photo's embedded thumbnail and colour profile can push it further. */
+const HEADER_READS = [64 * 1024, 1024 * 1024];
+
+/** A stored file's displayed pixel size, reading as little of it as finds the size. */
+export function readImageSizeFromFile(path: string, ext: string): ImageSize | null {
+  if (!SIZED_EXTS.has(ext.toLowerCase())) return null;
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const total = fstatSync(fd).size;
+    for (const want of [...HEADER_READS, total]) {
+      const len = Math.min(want, total);
+      const buf = Buffer.alloc(len);
+      const got = readSync(fd, buf, 0, len, 0);
+      const size = imageSize(buf.subarray(0, got));
+      if (size || len >= total) return size;
+    }
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export interface AssetSizeRow {
+  id: string;
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * The recorded sizes of `ids`, filling in any that are missing from the files on disk (B-703).
+ *
+ * The backfill for assets stored before sizes were recorded — the owner's imported Logseq assets
+ * among them — happens here, on first read, rather than in a schema migration: a migration runs
+ * at startup, before the server answers anything, and would open every asset file of every graph
+ * (thousands, some on slow disks) to fill rows most of which nobody will look at soon. Here the
+ * cost is one header read per asset, the first time a client shows it, and then never again. A
+ * file that has no size we can read (an SVG, a PDF, a damaged image) stays `null` and is simply
+ * re-tried on its next read; only image extensions are opened at all.
+ */
+export function assetSizes(
+  driver: SqlDriver,
+  dataDir: string,
+  ids: readonly string[],
+): AssetSizeRow[] {
+  const out: AssetSizeRow[] = [];
+  for (const id of ids) {
+    const row = driver.get<AssetSizeRow & { ext: string }>(
+      "SELECT id, ext, width, height FROM asset WHERE id = ? AND deleted_at IS NULL",
+      [id],
+    );
+    if (!row) continue;
+    if (row.width === null || row.height === null) {
+      const size = readImageSizeFromFile(join(dataDir, "assets", `${row.id}.${row.ext}`), row.ext);
+      if (size) {
+        driver.run("UPDATE asset SET width = ?, height = ? WHERE id = ?", [
+          size.width,
+          size.height,
+          row.id,
+        ]);
+        row.width = size.width;
+        row.height = size.height;
+      }
+    }
+    out.push({ id: row.id, width: row.width, height: row.height });
+  }
+  return out;
 }
 
 /** The markdown-relative reference for a stored asset — what goes into block content. Always

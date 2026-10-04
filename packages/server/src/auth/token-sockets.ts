@@ -15,10 +15,10 @@
  * (`../sync/realtime.ts`), so such a socket is closed at the next commit instead.
  */
 
-import type { SqlDriver } from "@nooklet/core";
+import { LIVE_CLOSE, type SqlDriver } from "@nooklet/core";
 import type { WSContext } from "hono/ws";
 
-export const REVOKED_CLOSE_CODE = 4401;
+export const REVOKED_CLOSE_CODE = LIVE_CLOSE.revoked;
 
 const sockets = new WeakMap<SqlDriver, Map<WSContext, string>>();
 
@@ -72,43 +72,12 @@ export function isTokenRevoked(driver: SqlDriver, tokenId: string): boolean {
   return !row || row.revoked_at !== null;
 }
 
-/** Close code for "this graph is no longer served here" (B-713): `DELETE /graphs/<id>` retired it,
- * or its folder was replaced underneath the running server. HTTP's 410 Gone, in the 4xxx range
- * applications own. Distinct from 4401/4403 so a client never reads it as a bad token. */
-export const GRAPH_RETIRED_CLOSE_CODE = 4410;
-
-/** Every open socket on a graph, authenticated or not (B-713). `sockets` above only holds sockets
- * that finished their hello; a retire must also close the ones that have not, or one could say
- * hello after the graph's database is closed. */
-const graphSockets = new WeakMap<SqlDriver, Set<WSContext>>();
-
-export function trackGraphSocket(driver: SqlDriver, ws: WSContext): void {
-  let s = graphSockets.get(driver);
-  if (!s) {
-    s = new Set();
-    graphSockets.set(driver, s);
-  }
-  s.add(ws);
-}
-
-export function untrackGraphSocket(driver: SqlDriver, ws: WSContext): void {
-  graphSockets.get(driver)?.delete(ws);
-}
-
-/** Close every socket open on this graph (`/sync/live` and `/ui/live`). Returns how many. */
-export function closeGraphSockets(driver: SqlDriver, code: number, reason: string): number {
-  const all = graphSockets.get(driver);
-  graphSockets.delete(driver);
-  sockets.delete(driver);
-  if (!all) return 0;
-  let closed = 0;
-  for (const ws of all) {
-    try {
-      ws.close(code, reason);
-    } catch {
-      // Already closing.
-    }
-    closed++;
-  }
-  return closed;
+/** How many open sockets `tokenId` authenticated in this graph (the per-token cap,
+ * `../live-limits.ts`). Linear in the graph's open sockets, which the total cap bounds. */
+export function tokenSocketCount(driver: SqlDriver, tokenId: string): number {
+  const m = sockets.get(driver);
+  if (!m) return 0;
+  let n = 0;
+  for (const id of m.values()) if (id === tokenId) n++;
+  return n;
 }
