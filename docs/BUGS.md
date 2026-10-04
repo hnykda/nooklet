@@ -928,6 +928,41 @@ copy. The B-642 Playwright spec did not hit it in 9 runs (pull went first each t
 keep the base/text of recently acknowledged `block.text` ops until the next pull completes, or pull
 before push on reconnect.
 
+### B-653 · `--graph` and `--no-mirror` are missing from `nooklet --help`
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+The flags work but `--help` does not list them.
+
+### B-654 · Rate limiting is documented (ADR 008, MCP spec) but nothing returns 429
+**Status:** open · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+No rate limiting or lockout exists anywhere. The public-tier checklist says to rate-limit at the proxy; see M13 backlog and the security review.
+
+### B-655 · The `admin` token scope grants nothing beyond `write`
+**Status:** open · **Severity:** low (security model clarity) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+No operation requires `admin`, so an admin token can do exactly what a write token can.
+
+### B-656 · ADR 015's live-UI tool names differ from what the server exposes
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+The server exposes `ui_windows`, `ui_state`, `ui_run`, …; ADR 015 names them differently.
+
+### B-657 · The old README advertised a Homebrew cask, Release downloads and a bare `/mcp` URL
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+No tap and no releases exist; bare `/mcp` answers 307. Fixed in the README rewrite (`36fdac6`).
+
+### B-658 · `apps/web/README.md` and OPERATIONS §3 (restore paths) predate the current code
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+Both describe the pre-ADR-025 layout or older flows.
+
+### B-659 · `/assets/<id>` needs no token
+**Status:** open · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+
+Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
+
 ## Fixed
 
 ### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
