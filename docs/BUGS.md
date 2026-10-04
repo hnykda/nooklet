@@ -1108,7 +1108,7 @@ Infix matching (`ationali`) is out of scope here: the server has `block_tri`/`pa
 tables but the client replica does not (index cost, `tools/probes/client-fts-cost.mjs`).
 
 ### B-736 · Clicking an image only opens the block editor; no way to view, copy or download it
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** none yet
+**Status:** in progress (2026-10-04, image-viewer agent) · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** none yet
 
 Clicking a rendered `![…](assets/….png)` switches the block to its raw markdown, so the image
 disappears and there is nothing to act on. Expected (Logseq does this): clicking the image itself
