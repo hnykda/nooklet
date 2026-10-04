@@ -5,7 +5,24 @@ merged, not pushed.
 
 ## Status
 
-Fixes + tests committed (see Done). In flight: Simulator re-run on the fixed build, full suite.
+**Done.** `35757ee` (fixes + tests), `45c1a91` (probe screenshots/helpers), then this file.
+Nothing in flight. Coordinator: fold the section at the bottom into BUGS.md.
+
+## Verification (2026-10-04, on `45c1a91`)
+
+- `pnpm e2e` (port 6482, both projects): **789 passed, 2 skipped, 0 failed** (23.5 min).
+  `phone-images.spec.ts` 12/12 (6 tests × Chromium + WebKit).
+- `pnpm --filter @nooklet/web test`: 184 files, 1627 tests passed. `pnpm -r typecheck` clean.
+  `pnpm exec biome check . --diagnostic-level=error` clean. `node tools/leak-check.mjs --tree`
+  clean.
+- Simulator, fixed build (`tools/probes/phone-images/`): `2-after-slash.png` — `/` tapped on the
+  soft keyboard's 123 layer; log shows `input insertText` at 17620 ms and `popup -> P` at
+  17624 ms, before `keyup`; menu directly under the caret, above the keyboard.
+  `7-photo-rendered.png` — a 4032×3024 library photo inserted via `/image`: `img=342x257`
+  (4:3), `docW=402 innerW=402 vv=402@1.00`. `0-seeded-image-before-fix.png` — the base build,
+  same numbers for a seeded 1200×900 PNG.
+- Simulator device deleted, scratch server stopped, `pnpm ios:sync` re-run (no overlay in the
+  built bundle).
 
 ## Reproduction on current code, real Capacitor app (before any fix)
 
@@ -73,11 +90,7 @@ as `|` (`tools/probes/phone-images/table-cells.spec.ts`).
 
 ## Next
 
-1. Re-run the Simulator probe on the fixed build: slash menu with keyboard up, image block,
-   `visualViewport.scale` after inserting an image. Keep screenshots of seeded fixture data only.
-2. `pnpm --filter @nooklet/web test`, `pnpm -r typecheck`, biome, leak-check, e2e.
-3. `pnpm ios:sync` (remove probe overlay from the built bundle), delete the Simulator device, stop
-   the scratch server.
+Nothing. Owner re-check below.
 
 ## For the owner to re-check on the phone (after `pnpm ios:sync`, then ⌘R in Xcode)
 
