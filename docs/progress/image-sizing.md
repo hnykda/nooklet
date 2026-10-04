@@ -5,14 +5,15 @@ e2e port 6510. New bug numbers from B-840 (used: B-840 fixed, B-841 open).
 
 ## Status
 
-Built and committed; full verification in progress (see Verification).
+**Done.** Built, committed, verified (below). Nothing in flight. Not merged, not pushed.
 
 - `0cfdff8c` docs: B-789 in progress, this file.
 - `99846316` core + importer: the `{:width …}` map in the inline grammar (`image-meta.ts`,
   corpus case 51), `setImageMeta`, the DB-version importer restoring `resize-metadata`/`align`.
 - `11853589` web + shell: `render/ImageView.tsx` (box, handle, ⋯ menu), `BlockTree#onRewrite`,
   `noteUndoTarget`, `reveal-asset` in `main.rs`, e2e `image-resize.spec.ts` + a phone test.
-- docs commit: ADR 034, BUGS (B-789 fixed, B-840 fixed, B-841 open), import guide row.
+- `49d92949` docs: ADR 034, BUGS (B-789 fixed, B-840 fixed, B-841 open), import guide row.
+- `a24c045d` fix: a second drag is not cut short by the first one's preview release.
 
 ## Decisions (ADR 034)
 
@@ -53,7 +54,17 @@ Built and committed; full verification in progress (see Verification).
 - `cargo test` (apps/desktop/src-tauri): 34 passed, 1 ignored (the real keychain).
 - Targeted e2e (port 6510): `image-resize`, `phone-images`, `image-viewer`, `image-layout`, both
   projects: 25 passed.
-- Full `pnpm e2e`, `pnpm nooklet verify`, leak-check: see below once run.
+- Full `pnpm e2e` (port 6510, on `49d92949`, both projects): **866 passed, 6 skipped, 1 failed**
+  (1.1 h). The failure, `caret-after-link.spec.ts` B-606, ran for 38.4 min stuck on "Loading…" —
+  the same 38.4 min stall hit another agent's concurrent run at the same moment, so a machine-wide
+  pause, not this change. Re-run alone on `a24c045d` with every image spec: `caret-after-link`,
+  `image-resize`, `image-viewer`, `phone-images`, `image-layout`: **59 passed, 1 skipped**
+  (the skip is B-736's clipboard test, Chromium only).
+- `pnpm nooklet verify` on a scratch data dir with an imported fixture file graph (sized images,
+  a Czech stand-in heading): OK, 5 ops replayed. `nooklet export` wrote
+  `![shed](assets/<id>.png){:height 236, :width 500}` back unchanged.
+- `node tools/leak-check.mjs --tree`: clean.
+- Screenshots of fixture data (hover, menu, dark menu) looked at; none committed.
 
 ## Not verified
 
@@ -66,4 +77,4 @@ Built and committed; full verification in progress (see Verification).
 
 ## How to resume
 
-Everything is committed. Remaining: full e2e, `pnpm nooklet verify`, leak-check, then report.
+Everything is committed and verified. Next for whoever picks it up: B-841 (one line, see BUGS).
