@@ -1087,12 +1087,14 @@ A data guard landed (`updateGraph` refuses a `baseUrl` for a `detachedFrom` entr
 
 Its token is `write`; import is `admin` (ADR 029/031). The phone is told to import from the desktop app.
 
+## Fixed
+
 ### B-733 · `leak-check --staged` skips staged files with non-ASCII names but reports clean
-**Status:** open (2026-10-04, in-app import) · **Severity:** medium (the guard silently misses files) · **Found:** 2026-10-04, in-app import agent · **Test:** none
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** medium (the guard silently missed files) · **Test:** manual repro: a staged `pokus-ščř.md` with a home path — old guard "clean", new guard 1 finding
 
 Found while committing fixtures with accented names. Likely `git diff --name-only` quoting (core.quotePath); use `-z`.
 
-## Fixed
+**Fixed.** Cause: git prints non-ASCII paths quoted and octal-escaped, `git show :<quoted>` failed, and the `catch` skipped the file silently. Now `--name-only -z` / `ls-files -z` (NUL-separated, unquoted), and an unreadable file is reported as a finding (fail closed) instead of skipped.
 
 ### B-731 · Page names with diacritics turn into mojibake when the graph was zipped on a Mac
 **Status:** fixed (2026-10-04, in-app import) · **Severity:** medium · **Found:** 2026-10-04, in-app import agent · **Test:** server unzip tests

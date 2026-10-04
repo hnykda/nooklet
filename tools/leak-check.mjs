@@ -102,16 +102,21 @@ function* candidates(mode, arg) {
     }
     return;
   }
+  // `-z`: NUL-separated, unquoted paths. Without it git prints a non-ASCII name quoted and
+  // octal-escaped (`"pages/\303\241.md"`), `git show :<that>` fails, and the file used to be skipped
+  // in silence — the guard reported clean while never reading Czech-named files (B-733).
   const files =
     mode === "--staged"
-      ? git("diff", "--cached", "--name-only", "--diff-filter=ACMR").split("\n")
-      : git("ls-files").split("\n");
+      ? git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR").split("\0")
+      : git("ls-files", "-z").split("\0");
   for (const file of files) {
     if (!file || SKIP.some((s) => s.test(file))) continue;
     let text;
     try {
       text = mode === "--staged" ? git("show", `:${file}`) : readFileSync(file, "utf8");
-    } catch {
+    } catch (err) {
+      // Fail closed: a file we could not read is a file we did not check.
+      yield { file, line: 0, text: "", unreadable: String(err) };
       continue;
     }
     if (text.includes("\u0000")) continue; // binary
@@ -127,7 +132,12 @@ if (!["--staged", "--tree", "--range"].includes(mode) || (mode === "--range" && 
 }
 const rules = [...RULES, ...loadDenylist()];
 let hits = 0;
-for (const { file, line, text } of candidates(mode, arg)) {
+for (const { file, line, text, unreadable } of candidates(mode, arg)) {
+  if (unreadable) {
+    hits++;
+    console.error(`${file}: [unreadable] could not read this file to check it (${unreadable})`);
+    continue;
+  }
   if (SKIP.some((s) => s.test(file)) || text.includes("leak-check: allow")) continue;
   for (const rule of rules) {
     const m = rule.re.exec(text);
