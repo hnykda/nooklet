@@ -1,9 +1,17 @@
+import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
 import { emojiDataPlugin } from "./src/emoji/build-data.js";
 import { lazyOnlyChunks } from "./src/sw/lazy-only-chunks.js";
+
+/** The one release version (`tools/release.mjs` writes it into every package.json). Read, not
+ * hard-coded: a literal here said "0.1.0" while every package said something else, so the help
+ * menu would have named the wrong build in every bug report after the first release. */
+const APP_VERSION: string = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+).version;
 
 /**
  * mermaid's chunks, filled in by `mermaidChunks()` when Rollup has the bundle and read by the
@@ -38,7 +46,7 @@ function mermaidChunks(): Plugin {
 // dedicated worker (`db/db.worker.ts`) to use `import`/Comlink instead of classic-worker `importScripts`.
 export default defineConfig({
   // Surfaced in the help menu so a bug report can name its build without anyone remembering.
-  define: { __APP_VERSION__: JSON.stringify("0.1.0") },
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   plugins: [
     solid(),
     mermaidChunks(),

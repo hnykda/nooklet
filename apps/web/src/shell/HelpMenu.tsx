@@ -158,8 +158,18 @@ export function HelpMenu(): JSX.Element {
               <Lightbulb size={15} /> Request a feature
             </a>
             <div class="help-sep" />
-            <a class="help-item help-item-quiet" href={REPO} target="_blank" rel="noreferrer">
-              nooklet {APP_VERSION}
+            {/* "Check for updates" is a link, not an updater: the Tauri updater needs a signing
+                key and a hosted manifest (RELEASING.md, "Auto-update"), so until then the
+                Releases page is where a newer build is, and the version beside it says whether
+                this one is older. */}
+            <a
+              class="help-item help-item-quiet"
+              href={`${REPO}/releases`}
+              target="_blank"
+              rel="noreferrer"
+              title="Check for updates on the Releases page"
+            >
+              nooklet {APP_VERSION} · check for updates
             </a>
           </div>
         </div>
