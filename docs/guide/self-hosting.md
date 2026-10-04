@@ -147,8 +147,7 @@ dedicated security review yet.** Treat it as your own risk until that review lan
 
 > **Security review (2026-10-04).** Public exposure behind a TLS proxy is reasonable for one owner
 > with a few devices **if every item below holds**. It is not yet suitable for several users or a
-> high-profile host. What is missing is rate limiting inside nooklet, revoked tokens' WebSockets
-> being closed, and revocable asset URLs. Tailnet-only stays the recommendation. Details are in
+> high-profile host. What is missing is rate limiting inside nooklet and revocable asset URLs. Tailnet-only stays the recommendation. Details are in
 > `docs/progress/security-review.md`, and the route-by-route list is in
 > `docs/spec/security-inventory.md`.
 >
@@ -159,11 +158,14 @@ dedicated security review yet.** Treat it as your own risk until that review lan
 > - HSTS is sent when the proxy sends `X-Forwarded-Proto: https`.
 > - Request bodies are capped at 16 MB, or 48 MB for uploads and sync pushes.
 > - The automatic local token is off whenever `--host` is not loopback.
+> - The sync and live-UI WebSockets close a connection that has not authenticated within 10 s,
+>   allow 20 per token and 500 in total (`--ws-max-per-token`, `--ws-max-total`), and refuse
+>   messages over 512 KiB.
 >
 > In addition to the checklist below:
 > - **Make the proxy send `X-Forwarded-Proto: https`.**
-> - **Limit WebSockets at the proxy:** connections per IP and an idle timeout. nooklet does not
->   time out a socket that never authenticates.
+> - **Limit WebSockets per IP at the proxy.** nooklet's caps are per token and in total, so one
+>   client without a token can still take every free slot for 10 seconds at a time.
 > - **After revoking a device's token, restart the server** if that device may still be connected.
 >   Revocation stops its HTTP requests at once, but not a WebSocket it already has open.
 > - **Assume a revoked device can still read the attachments (`/assets/<id>`) it has seen.** An
