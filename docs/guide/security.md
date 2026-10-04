@@ -1,7 +1,7 @@
 ---
 title: Security model
 description: What nooklet protects against, how tokens and scopes work, what the server trusts, and the recommended deployment.
-order: 7
+order: 8
 ---
 
 # Security model

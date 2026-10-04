@@ -1,7 +1,7 @@
 ---
 title: FAQ and troubleshooting
 description: Fixes for the problems people hit in real testing, from secure-context errors and Host 403s to the iOS local-network prompt.
-order: 9
+order: 11
 ---
 
 # FAQ and troubleshooting
