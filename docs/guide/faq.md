@@ -141,14 +141,20 @@ files, import into a scratch data dir and run `nooklet graph replace <id> --from
 keeps every device's token. See
 [Self-hosting](self-hosting.md#retiring-restoring-and-replacing-a-graph).
 
-## The app says "This device holds a different graph"
+## The app says "The server has a different graph now"
 
 The server now serves a different graph instance at this address: it was replaced (re-imported or
 restored from elsewhere), or the server points at another data directory. After a replace this is
 expected. Press **Discard the local copy and re-sync**. It affects only this graph on this device,
-but edits on this device that never reached the server are lost. If that might matter, point the
-server back at the old graph first (retire the replacement, `nooklet graph unretire` the old one),
-let the device sync, then replace again.
+but edits on this device that never reached the server are lost. If that might matter, choose
+**Keep as a device-only graph**, or point the server back at the old graph first (retire the
+replacement, `nooklet graph unretire` the old one), let the device sync, then replace again.
+
+## The sync indicator says "Graph retired"
+
+The server's operator retired this graph (`DELETE /graphs/<id>` or `nooklet graph retire`). The
+device stops trying to sync it. Your local copy and any unsynced edits stay on the device. Ask the
+operator to bring it back with `nooklet graph unretire`, then reload.
 
 ## Is my data safe if the server dies?
 

@@ -57,14 +57,17 @@ Coordinator asked (2026-10-04) to merge `main` and resolve against the WS harden
   `sync-indicator-state.test.ts`, `retire.test.ts` (other graph's socket stays open, total count
   drops), e2e `e2e/tests/graph-retired.spec.ts` (fails with 4410 not terminal: 3 sockets vs 1).
 
-## Verification run (2026-10-04, after merging main)
+A second `git merge main` (`47863f2`, clean) picked up B-714's new mismatch screen ("The server has
+a different graph now", with "Keep as a device-only graph"); the docs, FAQ and `graph replace`'s
+message now quote it.
 
-- `pnpm -r test`: core 491, plugin-api 17, server 887, web 1664, all passed.
+## Verification run (2026-10-04, after the second merge of main)
+
+- `pnpm -r test`: core 491, plugin-api 17, server 906, web 1669, all passed.
 - `pnpm -r typecheck`: clean.
-- `pnpm e2e` `graph-retired`, `live-limits`, `qr-pairing`: 5 passed (port 6560).
-- `pnpm exec biome check . --diagnostic-level=error`: 2 errors, both in
-  `apps/web/src/sync/http-transport-stall.test.ts` (from `c9d993bb`, B-707; still on main), not in
-  this change.
+- `pnpm exec biome check . --diagnostic-level=error`: clean (main fixed the stall-test lint).
+- `pnpm e2e` `graph-retired`, `live-limits`, `qr-pairing`, `graph-mismatch-discard`: 7 passed
+  (port 6560).
 - `node tools/leak-check.mjs --tree`: clean.
 - Not run: the full e2e suite, `nooklet verify` against a real graph.
 
@@ -101,16 +104,8 @@ The client treats 4410 (or a sync request's "No graph" 404) as terminal: no reco
 Docs: self-hosting.md "Retiring, restoring and replacing a graph", faq.md.
 ```
 
-**New, open (found in passing):**
-
-```
-### B-7xx · biome check fails on main: unsafe optional chaining in http-transport-stall.test.ts
-**Status:** open · **Severity:** low (lint gate red) · **Found:** 2026-10-04, graph-retire agent · **Test:** `pnpm exec biome check . --diagnostic-level=error`
-
-`apps/web/src/sync/http-transport-stall.test.ts:49-50` (`(init?.signal as AbortSignal).…`, from
-`c9d993bb`, B-707) trips `lint/correctness/noUnsafeOptionalChaining`, 2 errors.
-```
+No new bugs to log from this task.
 
 ## How to resume
 
-Nothing in flight. Coordinator: fold the BUGS.md text above in (B-7xx numbers to assign).
+Nothing in flight. Coordinator: fold the B-713 text above into BUGS.md.

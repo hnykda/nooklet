@@ -543,8 +543,8 @@ async function main(): Promise<void> {
           process.stdout.write(
             `replaced "${r.id}" with ${r.source} (${r.tokensCarried} token${r.tokensCarried === 1 ? "" : "s"} carried over)\n` +
               `The old graph is in ${r.retired.path}; nothing was deleted.\n` +
-              `Devices that synced the old graph will show "This is a different graph" and need ` +
-              `"Discard the local copy and re-sync": the replacement is a new graph instance.\n`,
+              `Devices that synced the old graph will show "The server has a different graph now"; ` +
+              `"Discard the local copy and re-sync" is expected: the replacement is a new graph instance.\n`,
           );
         } catch (err) {
           if (err instanceof GraphRetireError) die(err.message);

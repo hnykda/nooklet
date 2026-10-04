@@ -367,10 +367,11 @@ directory is left as it was. `--from` takes a scratch data dir, or a graph folde
 that contains `graph.sqlite`).
 
 **What devices see.** The replacement is a new graph instance, even with the same id, address and
-tokens. Each device that synced the old graph shows "This device holds a different graph" and
-offers **Discard the local copy and re-sync**. This is expected. The discard affects only that
+tokens. Each device that synced the old graph shows "The server has a different graph now". This
+is expected. The usual answer is **Discard the local copy and re-sync**, which affects only that
 graph's copy on that device; other graphs on the device are not touched. Edits on that device that
-had not reached the server are lost with the discard. So before you replace a graph, let every
+had not reached the server are lost with the discard (the screen counts them and asks again). To
+keep them, choose **Keep as a device-only graph** instead. So before you replace a graph, let every
 device sync, and import from a source that already has those edits. Edits made after the scratch
 import was taken are not in the replacement, but the retired copy still holds them.
 
