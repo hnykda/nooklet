@@ -1,0 +1,8 @@
+- Now
+	- [[Piranesi]] by Susanna Clarke #fiction
+	- The Dispossessed by Ursula K. Le Guin #fiction
+- Next
+	- How Buildings Learn by Stewart Brand #architecture
+	- A Pattern Language #architecture
+- Finished
+	- DONE Klara and the Sun
