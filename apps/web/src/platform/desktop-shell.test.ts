@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DESKTOP_MENU_EVENT, desktopShell, listenToDesktopMenu } from "./desktop-shell.js";
+import {
+  DESKTOP_MENU_EVENT,
+  desktopShell,
+  listenToDesktopMenu,
+  shellRequestUrl,
+} from "./desktop-shell.js";
 
 type ShellWindow = Window & { __NOOKLET_DESKTOP__?: unknown };
 
@@ -24,7 +29,19 @@ describe("desktopShell", () => {
 
   it("reads the flag the Tauri shell injects", () => {
     injectShell(Object.freeze({ platform: "macos", port: 6420 }));
-    expect(desktopShell(window)).toEqual({ platform: "macos", port: 6420 });
+    expect(desktopShell(window)).toEqual({ platform: "macos", port: 6420, localGraphs: [] });
+  });
+
+  it("B-643: reads This Mac's graphs, dropping malformed ones", () => {
+    injectShell({
+      platform: "macos",
+      port: 6100,
+      localGraphs: [{ id: "default", label: "default" }, { id: 3 }, null, { id: "q", label: "Q" }],
+    });
+    expect(desktopShell(window)?.localGraphs).toEqual([
+      { id: "default", label: "default" },
+      { id: "q", label: "Q" },
+    ]);
   });
 
   it("ignores a malformed flag rather than half-trusting it", () => {
@@ -32,6 +49,17 @@ describe("desktopShell", () => {
     expect(desktopShell(window)).toBeNull();
     injectShell("desktop");
     expect(desktopShell(window)).toBeNull();
+  });
+});
+
+describe("shellRequestUrl (B-643)", () => {
+  it("addresses the reserved host main.rs#parse_shell_request reads, with the label encoded", () => {
+    expect(shellRequestUrl({ kind: "new-local-graph", label: "Quiet Otter & co" })).toBe(
+      "http://nooklet-desktop.invalid/new-local-graph?label=Quiet+Otter+%26+co",
+    );
+    expect(shellRequestUrl({ kind: "open-local-graph", id: "quiet-otter" })).toBe(
+      "http://nooklet-desktop.invalid/open-local-graph?id=quiet-otter",
+    );
   });
 });
 

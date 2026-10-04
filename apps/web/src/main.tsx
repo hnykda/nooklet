@@ -3,6 +3,7 @@ import { App } from "./App.js";
 import { initFocusLog } from "./app/focus-log.js";
 import {
   activeGraph,
+  adoptAddressBarGraph,
   adoptLegacyReplica,
   apiBaseUrl,
   authToken,
@@ -37,6 +38,9 @@ async function start(): Promise<void> {
   // whether to show the connect screen from the same config — so both must wait for it. Everything
   // else (the local replica, rendering) proceeds normally afterwards; Solid resources handle the
   // pending state on their own.
+  // Which graph this page is for comes first of all: the address bar, when it names another graph
+  // on this origin than the active entry (`adoptAddressBarGraph`'s doc comment).
+  adoptAddressBarGraph();
   const bootstrap = await initBootstrap();
 
   // Before anything renders, so no journal title is painted in one format and repainted in another:

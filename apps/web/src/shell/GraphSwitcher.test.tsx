@@ -16,6 +16,7 @@ import {
   resetBootstrapForTests,
   setActiveGraphId,
 } from "../data/bootstrap.js";
+import { GRAPH_NAMES } from "../data/graph-names.js";
 
 const fakePlatform = vi.hoisted(() => ({ name: "web" as "web" | "capacitor" }));
 vi.mock("../platform/index.js", () => ({ platform: fakePlatform }));
@@ -132,7 +133,7 @@ describe("GraphSwitcher", () => {
     expect(listGraphs().map((g) => g.id)).toEqual(["a"]);
   });
 
-  it("web/desktop: 'Add a graph' goes straight to the server form, no local-only choice", () => {
+  it("a plain browser tab: 'Add a graph' goes straight to the server form, no local-only choice", () => {
     render(() => <GraphSwitcher />);
     openSwitcher();
     fireEvent.click(screen.getByText("Add a graph"));
@@ -164,6 +165,83 @@ describe("GraphSwitcher", () => {
     expect(entry?.kind).toBe("local");
     expect(entry?.baseUrl).toBeUndefined();
     expect(activeGraph()?.id).toBe(entry?.id);
+    // B-644: not "This device" any more, a curated name.
+    expect(GRAPH_NAMES).toContain(entry?.label);
+  });
+
+  describe("B-643: the desktop app", () => {
+    function injectShell(localGraphs: { id: string; label: string }[]): void {
+      Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
+        configurable: true,
+        value: Object.freeze({ platform: "macos", port: 6100, localGraphs }),
+      });
+    }
+    afterEach(() => {
+      delete (window as { __NOOKLET_DESKTOP__?: unknown }).__NOOKLET_DESKTOP__;
+    });
+
+    it("offers a new graph on this Mac, named uniquely, and asks the shell to make it", () => {
+      injectShell([{ id: "default", label: "default" }]);
+      addGraph({ id: "r", label: "Remote", kind: "remote", baseUrl: "/g/default" });
+      setActiveGraphId("r");
+      const assign = mockAssign();
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      fireEvent.click(screen.getByText("Add a graph"));
+      expect(screen.getByText("Sync with a server")).toBeTruthy();
+      fireEvent.click(screen.getByText("New graph on this Mac"));
+
+      expect(assign).toHaveBeenCalledOnce();
+      const url = new URL(assign.mock.calls[0]?.[0] as string);
+      expect(url.origin).toBe("http://nooklet-desktop.invalid");
+      expect(url.pathname).toBe("/new-local-graph");
+      expect(GRAPH_NAMES).toContain(url.searchParams.get("label"));
+      // Nothing is added to this origin's list: the graph lives on This Mac's server.
+      expect(listGraphs()).toHaveLength(1);
+      expect(screen.getByRole("status").textContent).toContain(url.searchParams.get("label"));
+    });
+
+    it("a name already used by a This-Mac graph is not handed out again", () => {
+      const all = GRAPH_NAMES.slice(1).map((label, i) => ({ id: `g${i}`, label }));
+      injectShell(all);
+      const assign = mockAssign();
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      fireEvent.click(screen.getByText("Add a graph"));
+      fireEvent.click(screen.getByText("New graph on this Mac"));
+      expect(new URL(assign.mock.calls[0]?.[0] as string).searchParams.get("label")).toBe(
+        GRAPH_NAMES[0],
+      );
+    });
+
+    it("lists This Mac's graphs from a remote server's page; picking one asks the shell to open it", () => {
+      injectShell([
+        { id: "default", label: "default" },
+        { id: "quiet-otter", label: "Quiet Otter" },
+      ]);
+      const assign = mockAssign();
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      const group = screen.getByRole("list", { name: "On this Mac" });
+      expect(group.textContent).toContain("This Mac");
+      expect(group.textContent).toContain("Quiet Otter");
+      fireEvent.click(screen.getByText("Quiet Otter"));
+      expect(assign).toHaveBeenCalledWith(
+        "http://nooklet-desktop.invalid/open-local-graph?id=quiet-otter",
+      );
+    });
+
+    it("shows the shell's error when it could not make the graph", async () => {
+      injectShell([]);
+      mockAssign();
+      render(() => <GraphSwitcher />);
+      openSwitcher();
+      fireEvent.click(screen.getByText("Add a graph"));
+      fireEvent.click(screen.getByText("New graph on this Mac"));
+      window.dispatchEvent(new CustomEvent("nooklet:desktop-error", { detail: "disk full" }));
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("disk full"));
+      expect(screen.queryByRole("status")).toBeNull();
+    });
   });
 
   it("add-a-server form: verifies against the typed address, adds a new entry, and navigates there", async () => {

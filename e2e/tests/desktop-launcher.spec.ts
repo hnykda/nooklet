@@ -40,6 +40,8 @@ async function openLauncher(
     forcePicker?: boolean;
     graphs?: Array<{ id: string; url: string }>;
     activeGraphId?: string | null;
+    localGraphs?: Array<{ id: string; label: string }>;
+    activeLocalGraph?: string | null;
   },
 ) {
   let answering = false;
@@ -58,15 +60,19 @@ async function openLauncher(
         const w = window as unknown as {
           __status: unknown;
           __invoked: string[];
+          __args: unknown[];
           __TAURI_INTERNALS__: unknown;
           __NOOKLET_DESKTOP__?: unknown;
         };
         w.__status = initial;
         w.__invoked = [];
+        w.__args = [];
         if (desktopInit) {
           const init = desktopInit as {
             graphs?: Array<{ id: string; url: string }>;
             activeGraphId?: string | null;
+            localGraphs?: Array<{ id: string; label: string }>;
+            activeLocalGraph?: string | null;
             forcePicker?: boolean;
           };
           w.__NOOKLET_DESKTOP__ = Object.freeze({
@@ -74,12 +80,15 @@ async function openLauncher(
             port: 6100,
             graphs: init.graphs ?? [],
             activeGraphId: init.activeGraphId ?? null,
+            localGraphs: init.localGraphs ?? [],
+            activeLocalGraph: init.activeLocalGraph ?? null,
             forcePicker: Boolean(init.forcePicker),
           });
         }
         w.__TAURI_INTERNALS__ = {
           invoke: async (cmd: string, args?: { url?: string }) => {
             w.__invoked.push(cmd);
+            w.__args.push(args ?? null);
             if (cmd === "server_status") return w.__status;
             // `add_graph` answers with the entry, as `main.rs` does; the picker then activates it.
             if (cmd === "add_graph") return { id: "added", url: args?.url ?? "" };
@@ -102,6 +111,7 @@ async function openLauncher(
         (window as unknown as { __status: unknown }).__status = s;
       }, next),
     invoked: () => page.evaluate(() => (window as unknown as { __invoked: string[] }).__invoked),
+    args: () => page.evaluate(() => (window as unknown as { __args: unknown[] }).__args),
   };
 }
 
@@ -209,4 +219,40 @@ test("B-618: two graphs on one server get distinct titles, and a bare address fo
   await page.locator("#picker-form").getByRole("button", { name: "Connect" }).click();
   await expect.poll(() => launcher.invoked()).toContain("set_active_graph");
   expect(await launcher.invoked()).not.toContain("add_graph");
+});
+
+test("B-643: This Mac opens the graph it was last on, by its own /g/<id>", async ({ page }) => {
+  const launcher = await openLauncher(page, fixtures.ready, {
+    localGraphs: [
+      { id: "default", label: "default" },
+      { id: "quiet-otter", label: "Quiet Otter" },
+    ],
+    activeLocalGraph: "quiet-otter",
+  });
+  launcher.serverAnswers();
+  await page.waitForURL(`${APP_SERVER}/g/quiet-otter`);
+});
+
+test("B-643: the picker lists This Mac's graphs; picking one makes This Mac active on it", async ({
+  page,
+}) => {
+  const launcher = await openLauncher(page, fixtures.ready, {
+    forcePicker: true,
+    localGraphs: [
+      { id: "default", label: "default" },
+      { id: "quiet-otter", label: "Quiet Otter" },
+      { id: "paper-lantern", label: "Paper Lantern" },
+    ],
+    activeLocalGraph: "quiet-otter",
+  });
+  const rows = page.locator("#graph-list .choice-option:not(.is-add) h2");
+  await expect(rows).toHaveText(["This Mac", "Quiet Otter (current)", "Paper Lantern"]);
+  await page.getByRole("button", { name: /Paper Lantern/ }).click();
+  await expect.poll(() => launcher.invoked()).toContain("restart_app");
+  const invoked = await launcher.invoked();
+  const args = await launcher.args();
+  expect(args[invoked.indexOf("set_active_graph")]).toEqual({
+    id: null,
+    localGraph: "paper-lantern",
+  });
 });

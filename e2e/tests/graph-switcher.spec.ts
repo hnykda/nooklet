@@ -96,7 +96,9 @@ test("adding an existing remote graph never mixes its content with the one alrea
   await page.getByRole("button", { name: "Connect" }).click();
 
   await expect(page).toHaveURL(/\/g\/gs-second\//, { timeout: 15_000 });
-  await page.goto("/page/GS%20Only%20On%20Second");
+  // The graph's own address: a bare path redirects to `/g/default`, and the address bar's graph
+  // now wins over the active entry (`bootstrap.ts#adoptAddressBarGraph`), so it would open default.
+  await page.goto("/g/gs-second/page/GS%20Only%20On%20Second");
   await expect(page.locator(".vr-outliner").first()).toContainText("only on the second graph");
 
   // Never combined into "default"'s own history — queried straight off the server, not the UI,
