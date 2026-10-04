@@ -157,6 +157,58 @@ test.describe("desktop app", () => {
     await expect(page.getByRole("list", { name: "On a server" })).toHaveCount(0);
   });
 
+  test("B-704: on a remote server's page with no token, the set-up screen can open another server or This Mac", async ({
+    page,
+  }) => {
+    // The owner's case: the window shows a REMOTE server's page (this test server; the shell's own
+    // server is on 6100) and this device has no token for it, so the app is the set-up screen, not
+    // the shell — the graph menu is out of reach.
+    await injectShell(page, 6100, []);
+    const requests = await catchShellRequests(page);
+    await page.route("**/api/session", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ token: null, reason: "non_loopback_host" }),
+      }),
+    );
+    await page.goto("/journals");
+    const elsewhere = page.getByRole("region", { name: "Open a different graph instead" });
+    await expect(elsewhere).toBeVisible();
+    // This server's own address is the token form's job, not this one's.
+    await elsewhere.getByLabel("Another server's address").fill(new URL(page.url()).origin);
+    await elsewhere.getByRole("button", { name: "Open and restart" }).click();
+    await expect(elsewhere.getByRole("alert")).toContainText("paste its token above");
+    expect(requests).toEqual([]);
+
+    await elsewhere.getByLabel("Another server's address").fill("https://notes.example.com/g/work");
+    await elsewhere.getByRole("button", { name: "Open and restart" }).click();
+    await expect
+      .poll(() => requests.map((u) => u.toString()))
+      .toEqual([
+        `http://nooklet-desktop.invalid/add-server-graph?url=${encodeURIComponent("https://notes.example.com/g/work")}`,
+      ]);
+  });
+
+  test("B-704: the set-up screen on a remote server's page offers the way back to This Mac", async ({
+    page,
+  }) => {
+    await injectShell(page, 6100, []);
+    const requests = await catchShellRequests(page);
+    await page.route("**/api/session", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ token: null, reason: "non_loopback_host" }),
+      }),
+    );
+    await page.goto("/journals");
+    await page.getByRole("button", { name: "Back to This Mac" }).click();
+    await expect
+      .poll(() => requests.map((u) => u.toString()))
+      .toEqual(["http://nooklet-desktop.invalid/open-local-graph?id=default"]);
+  });
+
   test("B-704: adding a server on another origin asks the shell, with no cross-origin request", async ({
     page,
   }) => {

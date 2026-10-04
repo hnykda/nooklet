@@ -20,7 +20,11 @@ Branch `worktree-agent-aead121208475562a`, based on `main` at `c9d993b`. Not mer
 - [x] B-712 (coordinator, HIGH, added mid-task): typed-`delete` removal dialog
       (`shell/graph-removal.ts`, `app/confirm-dialog.tsx` `warning`/`typeToConfirm`), per-graph
       unsynced count (`data/pending-memo.ts`, recorded by `shell/SyncIndicator.tsx`).
-- [ ] Verification recorded below; commit B-712.
+- [x] B-712 committed `5d71ff3`; merged main (B-714) `f1fe169`: "Add a server" disabled with a
+      reason on a B-714 device-only copy, and `submitPromote` refuses it before creating anything.
+- [x] B-704 remote-origin follow-up (owner report via coordinator): `views/DesktopServerSwitch.tsx`
+      on the set-up screen (desktop shell only): "Open a different graph instead" (address →
+      `add-server-graph`) and "Back to This Mac" (`open-local-graph?id=default`).
 
 ## Decisions
 
@@ -76,7 +80,19 @@ Read this file, `git log c9d993b..HEAD`, then continue with the first unchecked 
 
 ## Verification (exact)
 
-(filled below)
+On `f1fe169` (merge of main incl. B-714) unless noted:
+- `pnpm e2e` (full, port 6545): **817 passed, 5 skipped, 0 failed** (26.0 min). (An earlier full
+  run is void: `git merge main` landed mid-run and the phone-input agent's run shares this
+  scratchpad's log name.)
+- After the remote-origin follow-up: `pnpm e2e desktop-local-graph connect` 14 passed.
+- `pnpm -r test`: core 491, plugin-api 17, server 891, web 1683 — all passed.
+  `apps/desktop` `pnpm test`: 4 passed. `cargo test` (src-tauri): 19 passed.
+- `pnpm -r typecheck` clean; `pnpm exec biome check . --diagnostic-level=error` clean;
+  `node tools/leak-check.mjs --tree` clean.
+- Simulator (own headless iPhone 17 / iOS 26.5, by UDID, deleted after):
+  `tools/probes/phone-ui/run.sh` step `graphmenu` passed; screenshots committed.
+- Not verified: the real desktop window (WKWebView) delivering `add-server-graph` to
+  `on_navigation` and the restart onto the remote entry; no GUI run.
 
 ## BUGS.md updates to fold in
 
@@ -97,6 +113,17 @@ Read this file, `git log c9d993b..HEAD`, then continue with the first unchecked 
   nothing. ADR 028 amendment. Tests: `desktop-local-graph.spec.ts` "B-704: …",
   `graph-switcher.spec.ts` "B-704: …", `GraphSwitcher.test.tsx` "B-704" (4),
   `desktop-shell.test.ts` "B-704", Rust `b704_*` (2) + 6 new rejected-URL cases.
+- **B-704, why the owner reached ConnectView (add to the entry).** The window showed a remote
+  server's page with no token for it, so `App.tsx` rendered `ConnectView`, not the shell — the
+  graph menu was never on screen. ConnectView's "Sync with a server" outside Capacitor only asks
+  for a token for `location.host` (`showServerField` is Capacitor-only); it never navigated
+  anywhere. Fixed by `DesktopServerSwitch` on that screen (desktop shell only). The shell's flag
+  and `on_navigation` apply to every document whatever its origin (`main.rs#shell_script`'s doc;
+  read, not observed in a real window). Tests: `desktop-local-graph.spec.ts` "B-704: on a remote
+  server's page with no token…" and "…the way back to This Mac".
+- **New, out of scope (low): ConnectView's "Just this device" inside the desktop app on a remote
+  server's page** would make a replica within that server's origin (ADR 028's rejected model) —
+  not checked what `App.tsx#skip` does there; worth a look alongside B-704.
 - **B-712 → Fixed.** As in Decisions. Tests: `e2e/tests/graph-remove.spec.ts` (4; the phone case in
   Chromium + WebKit), `graph-removal.test.ts` (5), `pending-memo.test.ts` (2),
   `GraphSwitcher.test.tsx` "B-712" (2) + the rewritten remove case.

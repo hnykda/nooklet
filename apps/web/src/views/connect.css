@@ -246,6 +246,27 @@
   overflow-wrap: anywhere;
 }
 
+/* B-704: the desktop app's way to another server, or back to This Mac, from this screen
+   (`DesktopServerSwitch.tsx`). Set apart from the token form: a different action. */
+.connect-elsewhere {
+  margin-top: var(--space-3xl);
+  padding-top: var(--space-xl);
+  border-top: 1px solid var(--hairline);
+}
+
+.connect-elsewhere h2 {
+  margin: 0 0 var(--space-lg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--fg);
+}
+
+.connect-elsewhere .connect-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
 /* `PairingLinkPrompt.tsx`: the connect screen over whatever the app was showing. */
 .pairing-overlay {
   position: fixed;

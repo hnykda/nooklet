@@ -69,6 +69,11 @@ screen asks for one. The switcher hides its token field for such an address and 
 browser tab cannot hand anything to a shell; there the form says a graph on another server opens
 in its own tab and links it, and sends no request.
 
+The same two requests are also offered on the set-up screen (`views/DesktopServerSwitch.tsx`):
+a window on a remote server this device has no token for shows `ConnectView`, not the app, so the
+graph menu is unreachable there; "Open a different graph instead" and "Back to This Mac" are the
+way out without the native menu.
+
 **Rejected.** Widening the server's CORS allowlist to `http://127.0.0.1:*` or `tauri://localhost`:
 every page on the loopback origin of every machine could then call a server with a token it holds,
 and the token would still have to be pasted into a page that is not that server's own.
