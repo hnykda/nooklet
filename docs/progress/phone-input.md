@@ -5,7 +5,7 @@ the token-field change). Not merged, not pushed.
 
 ## Status
 
-Done apart from the full e2e run (in flight at the time of writing; result below once in).
+Done. Nothing in flight. Coordinator: fold the section at the bottom into BUGS.md.
 Commits: `00eae60a` (B-662 beforeinput, B-664, B-661, B-699), `575bd56f` + `8a835048` (B-705,
 B-706), the connect-message/launcher commit, `a8df8137` (B-662 real cause), then the probe +
 this file.
@@ -126,7 +126,19 @@ named data dir.
 - `pnpm --filter @nooklet/web test`: 189 files, 1653 tests passed.
 - `pnpm -r typecheck` clean; `pnpm exec biome check . --diagnostic-level=error` clean;
   `node tools/leak-check.mjs --tree` clean.
-- Full `pnpm e2e` (port 6520): see below.
+- Full `pnpm e2e`, run 1 (port 6520, on `aeb8dd55`): 805 passed, 2 skipped, 9 failed. 6 were
+  this branch's draft tests (`phone-input.spec.ts`): a journal template set by an earlier spec
+  adds rows above the typed ones — assertions now look at the tail (`c6ba6ee9`). 1 was
+  `remote-device.spec.ts` typing a malformed fake token, now refused by B-706 before the server —
+  given a well-shaped wrong token (`c6ba6ee9`). `plugins.spec.ts` B-610 and
+  `autocomplete-inside-link.spec.ts` B-382 passed when re-run.
+- Run 2 was killed partway with no summary (not by this agent; cause unknown).
+- Run 3 (port 6522, on `c6ba6ee9`, 37.7 min on a loaded machine): **810 passed, 2 skipped,
+  4 failed** — `commands.spec.ts` B-98 (`toBeInViewport`), `plugins.spec.ts` B-610 (again),
+  `sync-connection-states.spec.ts` "a refused token says so…" (outliner not found after reload),
+  webkit `phone-ui.spec.ts` B-651 toolbar cycle (marker not found). Those four specs re-run
+  together: **37/37 passed**. Not checked whether B-610 also fails in a full run on `main`
+  (it failed in both full runs here and passed alone both times) — order- or load-dependent.
 
 ## BUGS.md updates to fold in
 
