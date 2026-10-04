@@ -20,7 +20,6 @@
 #
 # Registry and image names are secrets so this public file names no infrastructure. Secret NAMES:
 #   registry                  registry host[:port] the plugin logs in to / pushes to
-#   registry_buildkit_config  buildkitd.toml for that registry (e.g. `http = true` for a plain-HTTP one)
 #   server_image              full repository for the server image, without tag
 #   site_image                full repository for the site image, without tag
 #   deploy_trigger_url, deploy_trigger_token   see tools/ci/trigger-deploy.sh
@@ -47,15 +46,15 @@ steps:
     when:
       - event: [push, manual]
         branch: main
-    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    image: woodpeckerci/plugin-docker-buildx:6.1.2
     settings: &server_settings
       registry:
         from_secret: registry
       repo:
         from_secret: server_image
-      buildkit_config:
-        from_secret: registry_buildkit_config
+      # buildx v6 has no buildkit_config; mark the plain-HTTP registry insecure per push instead.
       insecure: true
+      output: type=image,push=true,registry.insecure=true
       tags_file: .image-tags
       platforms: linux/amd64
       provenance: false
@@ -74,15 +73,15 @@ steps:
     when:
       - event: [push, manual]
         branch: main
-    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    image: woodpeckerci/plugin-docker-buildx:6.1.2
     settings: &site_settings
       registry:
         from_secret: registry
       repo:
         from_secret: site_image
-      buildkit_config:
-        from_secret: registry_buildkit_config
+      # buildx v6 has no buildkit_config; mark the plain-HTTP registry insecure per push instead.
       insecure: true
+      output: type=image,push=true,registry.insecure=true
       tags_file: .image-tags
       platforms: linux/amd64
       provenance: false
@@ -95,7 +94,7 @@ steps:
     when:
       - event: tag
         ref: refs/tags/v*
-    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    image: woodpeckerci/plugin-docker-buildx:6.1.2
     settings:
       <<: *server_settings
       platforms: linux/amd64,linux/arm64
@@ -112,7 +111,7 @@ steps:
     when:
       - event: tag
         ref: refs/tags/v*
-    image: woodpeckerci/plugin-docker-buildx:5-insecure
+    image: woodpeckerci/plugin-docker-buildx:6.1.2
     settings:
       <<: *site_settings
       # Cheap: site.Dockerfile builds the static export on the BUILD platform and only the nginx

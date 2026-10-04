@@ -68,3 +68,7 @@ keywords = ["age-secret-key"]
 [allowlist]
 description = "Lockfile integrity hashes and generated Tauri schemas are not secrets"
 paths = ['''pnpm-lock\.yaml''', '''apps/desktop/src-tauri/gen/''', '''\.png$''']
+# generic-api-key false positives, matched exactly: a keymap binding (`key: "Mod+Shift+Enter"`),
+# RFC 6455's sample Sec-WebSocket-Key nonce, and a SQL literal for a `page_key` column.
+regexTarget = "match"
+regexes = ['''key"?: "Mod\+Shift\+Enter"''', '''Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==''', '''page_key = 'sprouts/growing/sixth ''']
