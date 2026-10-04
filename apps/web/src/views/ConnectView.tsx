@@ -320,7 +320,11 @@ export function ConnectView(props: {
         </Show>
 
         <form onSubmit={(e) => void connect(e)}>
-          <Show when={showServerField}>
+          {/* B-699: not for a pairing link. Its address is already shown, read-only, above
+              (`pairing-server`) — the one thing to check before tapping Connect — and an editable
+              copy under it showed the same address twice and invited editing a link's target.
+              `serverUrl()` still holds the link's address for `connect`. */}
+          <Show when={showServerField && !prefill}>
             <label class="connect-field">
               <span>Server address</span>
               <input

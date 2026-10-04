@@ -106,6 +106,11 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
   const [error, setError] = createSignal<string | undefined>(undefined);
 
   let textarea: HTMLTextAreaElement | undefined;
+  // B-662: what the last Enter keydown already decided, for the `beforeinput` that may follow it.
+  // `handled`: keydown ran `onEnter`, so a line break arriving anyway (iOS) is swallowed rather
+  // than taken as a second Enter. `soft`: Shift+Enter, whose line break is the draft's own soft
+  // line break. Reset by the next keydown and by keyup.
+  let enterKey: "handled" | "soft" | undefined;
   let disposed = false;
   let committing = false;
   let prepared: Prepared | undefined;
@@ -410,10 +415,32 @@ export function VirtualJournalDay(props: VirtualJournalDayProps): JSX.Element {
                     }
                   }}
                   onBlur={() => !disposed && void commit()}
+                  onBeforeInput={(e) => {
+                    // B-662: iOS's soft keyboard Return reached this textarea as `keydown Enter`
+                    // then `beforeinput insertLineBreak`, and the line break went in: Return put
+                    // a newline in the draft instead of starting a block (Simulator log). The
+                    // line break is the one event every way of pressing Return sends (hardware,
+                    // soft keyboard, dictation), so it is handled here, not only on keydown —
+                    // as an editor that owns its text does (CodeMirror reads iOS's Enter back
+                    // from the DOM change for the same reason).
+                    if (e.inputType !== "insertLineBreak" && e.inputType !== "insertParagraph") {
+                      return;
+                    }
+                    const decided = enterKey;
+                    enterKey = undefined;
+                    if (decided === "soft") return; // Shift+Enter: a line break in this line
+                    e.preventDefault();
+                    if (decided !== "handled") onEnter();
+                  }}
+                  onKeyUp={(e) => {
+                    if (e.key === "Enter") enterKey = undefined;
+                  }}
                   onKeyDown={(e) => {
+                    enterKey = e.key === "Enter" && e.shiftKey ? "soft" : undefined;
                     if (e.isComposing) return;
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
+                      enterKey = "handled";
                       onEnter();
                     } else if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey) {
                       // Never the browser's focus move: the keys after it would go elsewhere.

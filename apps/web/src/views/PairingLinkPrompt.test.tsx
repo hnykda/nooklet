@@ -62,9 +62,10 @@ describe("PairingLinkPrompt (B-603)", () => {
     // Simulator as "…reach localhost", which is not the server being confirmed).
     expect(screen.queryByText(/needs a token to reach/)).toBeNull();
     expect(screen.getByTestId("pairing-server").textContent).toBe("http://192.168.1.5:6100");
-    expect((screen.getByLabelText("Server address") as HTMLInputElement).value).toBe(
-      "http://192.168.1.5:6100",
-    );
+    // B-699: the address once, read-only — no editable "Server address" copy under it.
+    expect(screen.getAllByText("http://192.168.1.5:6100")).toHaveLength(1);
+    expect(screen.queryByLabelText("Server address")).toBeNull();
+    expect(screen.queryByDisplayValue("http://192.168.1.5:6100")).toBeNull();
     expect((screen.getByLabelText("Device token") as HTMLInputElement).value).toBe(TOKEN);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(activeGraph()).toBeUndefined();
@@ -124,6 +125,11 @@ describe("PairingLinkPrompt (B-603)", () => {
     );
     await screen.findByRole("dialog");
     expect(screen.queryByLabelText("Device token")).toBeNull();
+    // B-699: a code link shows its address once too, read-only.
+    expect(screen.getByTestId("pairing-server").textContent).toBe(
+      "https://n.example.ts.net/g/default",
+    );
+    expect(screen.queryByLabelText("Server address")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled(); // never by itself
     const name = screen.getByLabelText("Name this device") as HTMLInputElement;
     fireEvent.input(name, { target: { value: "Test phone" } });
