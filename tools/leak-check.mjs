@@ -29,6 +29,9 @@ const RULES = [
   { id: "anthropic-key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/ },
   { id: "aws-key", re: /\bAKIA[0-9A-Z]{16}\b/ },
   { id: "slack-token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}/ },
+  // Xcode writes the signing team into project.pbxproj when you pick it in the UI; it belongs in the
+  // gitignored apps/web/ios/signing.local.xcconfig instead (see debug.xcconfig).
+  { id: "apple-team-id", re: /\bDEVELOPMENT_TEAM = [A-Z0-9]{10}\b/ },
   {
     id: "home-path",
     re: /(?:\/Users|\/home)\/[A-Za-z][A-Za-z0-9._-]+\//,

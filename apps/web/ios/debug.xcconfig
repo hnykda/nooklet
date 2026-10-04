@@ -1,1 +1,6 @@
 CAPACITOR_DEBUG = true
+
+// Your Apple signing team, kept out of the public repo: Xcode would otherwise write it into
+// project.pbxproj. Put `DEVELOPMENT_TEAM = <your team id>` in signing.local.xcconfig next to this
+// file (gitignored). `#include?` makes the file optional.
+#include? "signing.local.xcconfig"

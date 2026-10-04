@@ -48,6 +48,12 @@ keywords = ["192.168.", "10."]
 regexes = ['''192\.168\.1\.[56]\b''', '''192\.168\.139\.3\b''', '''192\.168\.0\.0''', '''10\.0\.0\.[0-9]+''']
 
 [[rules]]
+id = "apple-team-id"
+description = "An Apple signing team in project.pbxproj (use the gitignored signing.local.xcconfig)"
+regex = '''\bDEVELOPMENT_TEAM = [A-Z0-9]{10}\b'''
+keywords = ["development_team"]
+
+[[rules]]
 id = "personal-email"
 description = "A personal mailbox address"
 regex = '''\b[A-Za-z0-9._%+-]+@(?:gmail|googlemail|icloud|me|outlook|hotmail|proton|protonmail|seznam|email)\.(?:com|cz|me)\b'''
