@@ -10,6 +10,7 @@ Resume file. If you are reading this because the previous session was cut off, s
 |---|---|---|
 | releases | `pnpm release <v>`; Woodpecker images (owner registry + public GHCR, multi-arch); GitHub Actions release on `v*` tags: macOS (unsigned, signing-ready), Linux, Windows, Android APK (new Capacitor android project), checksums, draft→publish; RELEASING.md. Owner decisions 2026-10-04: CI split Woodpecker+Actions; no Apple program yet; targets GHCR, Linux, Android, Windows | 6475-6479 |
 | phone-images | B-681 slash popup position, B-682 image letterboxing, B-683 image widens viewport; reproduce on current main first (owner may have run a pre-fix build); overflow sweep | 6480-6484 |
+| build-docs | docs/guide/building.md (toolchain, every build/test command, troubleshooting) + docs/guide/ios-from-source.md (step-by-step iPhone install with a free Apple ID: connect the phone before signing, Developer Mode, trust, 7-day expiry, server address, Web Inspector) | 6485-6489 |
 | qr-pairing | QR pairing with one-time, expiring pairing codes (not long-lived tokens in links); Settings → Devices (list/revoke, `admin`-gated per B-655); `nooklet pair` terminal QR; iPhone-camera custom-scheme check | 6470-6474 |
 
 ## Published — 2026-10-04 (READ THIS FIRST)
