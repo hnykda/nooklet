@@ -210,23 +210,38 @@ function errMsg(err: unknown): string {
 }
 
 /** Scans `pages/` then `journals/` (in that order; each sorted by file name) and resolves each
- *  file's page name, deduplicating by normalized key (first file wins, later ones are skipped
- *  with a warning — ADR 012 §3: "rare, malformed graphs"). */
+ *  file's page name, deduplicating by normalized key. Two files that name the same page are
+ *  MERGED, never dropped: the old "first file wins, later ones are skipped" rule silently lost
+ *  notes on a real graph exported by Logseq's DB version, whose mirror wrote three journal days
+ *  twice — a one-line stub under `pages/` (scanned first, so it won) and the real five-line day
+ *  under `journals/` (skipped). Now a journal file's identity wins (it is a journal day), page
+ *  properties keep the first value per key, and both files' blocks are kept, journal first. */
 function resolveFileEntries(graphDir: string, warnings: string[]): FileEntry[] {
   const entries: FileEntry[] = [];
-  const seenKeys = new Map<string, string>();
+  const seenKeys = new Map<string, number>();
 
   const record = (candidate: Omit<FileEntry, "relPath" | "filePath">, filePath: string): void => {
     const relPath = relative(graphDir, filePath);
     const key = normalizePageName(candidate.resolvedName);
-    const firstSeenAt = seenKeys.get(key);
-    if (firstSeenAt !== undefined) {
+    const firstIndex = seenKeys.get(key);
+    if (firstIndex !== undefined) {
+      const first = entries[firstIndex] as FileEntry;
+      const journalWins = candidate.isJournal && !first.isJournal;
+      const primary = journalWins ? { ...candidate, filePath, relPath } : first;
+      const secondary = journalWins ? first : { ...candidate, filePath, relPath };
+      entries[firstIndex] = {
+        ...primary,
+        parsed: {
+          properties: { ...secondary.parsed.properties, ...primary.parsed.properties },
+          blocks: [...primary.parsed.blocks, ...secondary.parsed.blocks],
+        },
+      };
       warnings.push(
-        `${relPath}: page name "${candidate.resolvedName}" already imported from ${firstSeenAt}; this file was skipped`,
+        `${relPath}: page name "${candidate.resolvedName}" also came from ${first.relPath}; the two files were merged (${primary.relPath}'s blocks first)`,
       );
       return;
     }
-    seenKeys.set(key, relPath);
+    seenKeys.set(key, entries.length);
     entries.push({ ...candidate, filePath, relPath });
   };
 

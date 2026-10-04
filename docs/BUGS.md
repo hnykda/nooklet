@@ -1048,6 +1048,87 @@ Owner: "agents control should probably be off for mobile? that doesn't make much
 
 Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
 
+### B-710 · `nooklet backup` holds the whole graph in memory: OOMKilled on a 280 MB graph, blocking every deploy and the nightly backup
+**Status:** stopgap applied (2026-10-04); real fix in progress (streaming backup agent) · **Severity:** high (no backups of the real graph; deploys blocked) · **Found:** 2026-10-04, coordinator — production deploys stopped rolling out after `alpha` was imported · **Test:** pending (streaming agent: peak RSS for a 400 MB graph)
+
+After importing `alpha` (50 MB db + ~230 MB assets), every pre-deploy backup job (created from the
+`nooklet-backup` CronJob, 512Mi limit) was `OOMKilled`, so the infra repo's nooklet deploy pipeline
+failed and production stayed on an old image while the nooklet pipelines reported success.
+Cause: `backup/index.ts#createBackup` `readFileSync`s the VACUUM'd db and every asset, and
+`backup/tar.ts#createTarGz` `Buffer.concat`s all parts then `gzipSync`s them: several copies of the
+graph in memory. The nightly backup of `alpha` would have failed the same way. Stopgap (owner
+approved): the CronJob limit raised to 2Gi in the infra repo and patched live; deploy re-run →
+pre-deploy backup completed in 17 s, `nooklet-alpha-2026-10-04.tar` (251 MB) exists. Owner: "we can't
+just rely on everything fitting into memory" — streaming backup/restore plus an audit of other
+whole-graph-in-memory paths (snapshot, export, gc, rebuild, assets) is in progress.
+
+### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
+
+The DB-version mirror writes some journal days twice: a one-line stub under `pages/` and the real
+day under `journals/`. The importer scans `pages/` first and kept the first file per normalized
+name, skipping the rest with a warning, so 3 real journal days (12 blocks) were dropped while the
+stub survived. Fix: `importer/logseq.ts#resolveFileEntries` merges same-name files — the journal
+file's identity wins, page properties keep the first value per key, and both files' blocks are kept
+(journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
+19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
+stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
+
+### B-712 · Removing a graph from a device is dangerously easy, even when that device holds the only copy
+**Status:** open · **Severity:** high (one tap can destroy the only copy of a local-only graph) · **Found:** 2026-10-04, owner on the iPhone ("removing a graph seems to be dangerously easy on mobile phone (and maybe elsewhere?)") · **Test:** none yet
+
+Owner's requirement: a huge warning that removing deletes this device's copy, which may be the
+only one, and the user must type "delete" to confirm. Distinguish: (a) a local-only graph — the
+device's copy IS the graph; removal is irreversible; offer export/backup first; (b) a server graph
+— the server keeps it, but unsynced local changes (pending ops) would be lost; say how many, and
+block or require the typed confirmation when there are any. Applies on every platform (phone,
+desktop, web), and to the desktop's This-Mac graphs (ADR 028), where removal must never delete
+the bundled server's data without the same confirmation.
+
+### B-713 · There is no supported way to retire/delete a graph on the server
+**Status:** open · **Severity:** medium (operators delete folders by hand while the server runs) · **Found:** 2026-10-04, owner asked; coordinator had to swap production `alpha` by hand · **Test:** none yet
+
+CLI has only `graph create`/`graph list`; the API only `POST /graphs` and `GET /graphs`. Removing a
+graph today means moving `graphs/<id>/` by hand, which is unsafe while the server runs (the
+registry caches an open handle; clients hold replicas) and undocumented. Proposal: `nooklet graph
+retire <id>` (moves to `graphs-retired/<id>-<date>`, reversible; refuses while a server holds it
+unless the server does it), a root-token `DELETE /graphs/<id>` that closes the handle first and
+retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10-04's manual swap
+did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
+encode.
+
+### B-714 · The "different graph" screen is a dead end: discard is the only way out, and its wording assumes localhost
+**Status:** open · **Severity:** medium (UX; pushes users toward a destructive action) · **Found:** 2026-10-04, owner after production `alpha` was re-imported · **Test:** none yet
+
+`GraphMismatchView` offers only "Discard the local copy and re-sync", and its text says "the server at
+localhost" and blames a moved `--data` directory, even for a remote server whose graph was
+re-imported under the same address. Owner: there should be other options, such as keeping this copy
+as a device-only graph and optionally adding the server graph. Wanted: (1) keep the local copy as a
+device-only graph (detached from the server, renamed, never synced; B-633's no-sync rule kept) and add
+the server's graph as a new entry; (2) go to another graph without deciding; (3) discard and re-sync.
+Wording names the real server address and lists the likely causes (re-imported/replaced graph on the
+server, a different data directory).
+
+### B-715 · Images from a Logseq DB-version graph import as their timestamp names, not images
+**Status:** open · **Severity:** high for DB-version users (every pasted image is lost as an image) · **Found:** 2026-10-04, owner on the phone (a block from yesterday shows `2026-10-03-15-56-42` instead of the picture) · **Test:** none yet
+
+Logseq's DB version stores a pasted image as an asset entity (title = a timestamp like
+`YYYY-MM-DD-HH-MM-SS`, file = `assets/<entity uuid>.<ext>`). Its markdown mirror writes only the
+entity's title as a plain line: no `![](…)` link and no `id::`; 0 of 177 asset files are referenced
+anywhere in the mirror. The mapping exists only in the graph's `db.sqlite` (table `kvs`: Datascript
+storage nodes, transit-encoded datoms `[e, attr, value, tx]`). Fix: a Logseq DB-version import path
+that reads `db.sqlite` (read-only copy) for asset entities (and anything else the mirror loses),
+turning those title lines into image embeds.
+
+### B-716 · Favorite pages are not preserved by the Logseq import
+**Status:** open (in progress with the Logseq DB-import agent) · **Severity:** medium · **Found:** 2026-10-04, owner after the production re-import · **Test:** none yet
+
+The owner's favorites did not come over. File-based graphs keep them in `logseq/config.edn :favorites`
+(already parsed by `parseLogseqConfigEdn`; whether the import applies them is to be checked);
+DB-version graphs keep them in `db.sqlite`, which the markdown mirror does not carry. Owner decision
+the same day: support BOTH Logseq formats explicitly (auto-detected), and document what carries over
+from each.
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
@@ -1060,6 +1141,8 @@ time and retried forever. Fix: (1) the server gzips `/sync/snapshot` and `/sync/
 push and the WebSocket untouched); (2) the client's pull/snapshot use `fetchJsonStallAware`: no
 headers within 10 s or no body bytes for 20 s aborts (a hung server still fails fast), a slow steady
 download finishes; push gets a 60 s total bound. Not yet confirmed on the owner's phone.
+
+2026-10-04, live on production (`sha-c9d993bb`): `alpha`'s snapshot over the tailnet is now 1.94 MB gzipped (from 17.3 MB) in 1.5 s (from 8.4–8.9 s).
 
 ### B-701 · A long `$$…$$` display formula widened the page at phone width
 **Status:** fixed (2026-10-04, phone-images) · **Severity:** low · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** `phone-images.spec.ts` "phone overflow sweep…"
