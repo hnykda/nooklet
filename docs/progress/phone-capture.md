@@ -46,6 +46,17 @@ a physical iPhone, Android (no JDK/SDK here: not even compiled).
 Swift queue writer outside the app (`capture-queue-probe.swift`, macOS): 14 checks, all pass;
 sample file `{"created_at":"2026-10-04T07:46:40.123Z","text":"…"}`.
 
+## Checks (2026-10-04, at 0ff52f2c)
+
+- `pnpm -r typecheck`: clean. `pnpm exec biome check --write .`: no fixes, only pre-existing warnings.
+- `pnpm test`: core 506, plugin-api 17, server 951, web 1784 (204 files), tools 10; all pass.
+- `pnpm e2e` (full, port 6490, retries off): 859 passed, 1 failed, 6 skipped. The failure was
+  `[webkit] webkit-refresh-focus.spec.ts:127` timing out inside an API seed POST after 38.3 minutes
+  of wall time on a 30 s test (the run stalled outside the app; it is not a capture path). Alone:
+  6/6 pass; that test `--repeat-each 5`: 5/5 pass. Treated as an environment stall, not a bug.
+- Release Simulator build: succeeds (DEBUG hooks compiled out).
+- `node tools/leak-check.mjs --tree`: clean.
+
 ## Decisions
 
 - Pre-fill only for links; the App Intent is the only silent write (ADR 033 §2–3).
