@@ -250,11 +250,26 @@ pnpm desktop:build      # build nooklet.app and a .dmg under apps/desktop/src-ta
 The app does not update itself yet. The version is at the bottom of the `?` menu, which links to the
 Releases page; download the newer build and replace the app. Your data stays where it is.
 
-- **Local mode ("This Mac").** The app starts its own bundled server on `127.0.0.1:6100`, using
-  `~/.nooklet/default` (or `$NOOKLET_DATA`). If something already answers on 6100, the app uses that
-  server instead. `NOOKLET_PORT` moves it to another port.
-- **A remote server.** Menu → **Switch Server…** → **Add a server** → the server's `https://`
-  address. The window then loads the app from that server and asks for a token.
+The app shows one graph at a time. Each graph lives either **on this Mac** or **on a server**.
+Click the graph's name at the top of the sidebar (or choose **nooklet → Graphs…** in the menu bar)
+to see them all and switch; switching never restarts the app.
+
+- **On this Mac.** The app runs its own bundled server on `127.0.0.1:6100`, using
+  `~/.nooklet/default` (or `$NOOKLET_DATA`), whichever graph is open. If something already answers
+  on 6100, the app uses that server instead. `NOOKLET_PORT` moves it to another port.
+- **Add a graph** (at the bottom of the graph menu) does one of two things:
+  - **Create on this Mac**: give it a name. It is a new folder under `~/.nooklet/default/graphs/`.
+  - **Connect to a server**: the graph's address (`https://host/g/<graph>`; a bare
+    `https://host` means its default graph) and a device token from
+    `nooklet token create --scope write --sync` on the server's machine, or a pairing link from
+    Settings → Devices → Add a device on another device. Press **Connect**. The app checks the
+    token with the server, and if the server is unreachable or refuses it, says so on the same
+    form. The token is kept in the macOS Keychain, not in a file.
+- Rename a graph or remove a server graph from the list with the icons on its row. Removing one
+  forgets its address and token on this Mac; the server keeps the graph.
+- If an update from an older version finds a server graph whose token is not in the Keychain yet,
+  opening it shows the same form with the address filled in. The first time macOS may ask whether
+  nooklet may use its Keychain item; choose **Always Allow**.
 
 ## The iOS app
 
@@ -282,7 +297,8 @@ After a code change, run `pnpm ios:sync` again before building; Xcode only bundl
 copied.
 
 In the app, choose **Just this device** for a local-only graph, or **Sync with a server** and enter
-the server address and a token, or open a pairing link. The server address can be bare
+the server address and a token, or open a pairing link. The graph menu lists them under **On this
+phone** and **On servers**. The server address can be bare
 (`https://host`); the app adds `/g/default`.
 
 If the phone reaches the server over the local network instead of Tailscale, iOS asks once whether

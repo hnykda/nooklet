@@ -135,10 +135,11 @@ cursor with fresh ids, and expands tokens such as `<% today %>`.
 
 - **Web client.** The server serves it. It works as an installable PWA and keeps its replica in the
   browser's origin-private file system (OPFS). It needs a secure context: HTTPS, or `localhost`.
-- **macOS desktop app.** A Tauri window. In local mode it starts its own bundled server on port 6100
-  with the data directory `~/.nooklet/default` (or `$NOOKLET_DATA`). It can also point at a server
-  elsewhere: menu → Switch Server…. **Being improved:** adding a local graph from the graph switcher
-  in the desktop app.
+- **macOS desktop app.** A Tauri window. It runs its own bundled server on port 6100 with the data
+  directory `~/.nooklet/default` (or `$NOOKLET_DATA`), and keeps one list of graphs: those on this
+  Mac and those on servers (device tokens in the macOS Keychain). The graph menu (or menu bar →
+  Graphs…) switches between them without a restart; **Add a graph** creates one on this Mac or
+  connects to one on a server, checking the token before it is saved.
 - **iOS app.** A Capacitor shell around the same client. It can run "Just this device" with no
   server, or sync with one. You build and sign it yourself in Xcode today. **Partial:** tested on
   the iOS Simulator and one physical iPhone; phone layout issues are being fixed.

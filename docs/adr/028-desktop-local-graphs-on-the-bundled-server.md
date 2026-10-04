@@ -1,6 +1,8 @@
 # ADR 028: On the desktop, a "local graph" is a new graph on This Mac's bundled server
 
-Date: 2026-10-04. Status: accepted. Extends ADR 025 (move 1, "new local-only graph"). Work record:
+Date: 2026-10-04. Status: accepted; its mechanism (restarts, `active_local_graph`, the three
+requests) superseded by ADR 032, its decision (a local graph on the desktop is a graph on This
+Mac's bundled server) stands. Extends ADR 025 (move 1, "new local-only graph"). Work record:
 `docs/progress/desktop-local-graph.md`. Bug: B-643.
 
 ## Context
@@ -84,3 +86,19 @@ could not get by being opened in a browser: no token or note content passes thro
 That the real WKWebView window delivers this navigation to `on_navigation` is, as for the other two
 requests, read from wry rather than observed (`cargo test` covers parsing and the config change;
 `e2e/tests/desktop-local-graph.spec.ts` "B-704…" covers the page's side in Chromium).
+
+## Amendment (2026-10-04, proposal 005): superseded in part by ADR 032
+
+The decision above stands: on the desktop a new local graph is a graph on This Mac's bundled
+server, never a replica inside some server's page storage (ADR 032 extends it to the mismatch
+screen, which no longer makes a device-only graph on desktop). What changed, see
+`docs/adr/032-desktop-shell-owns-the-graph-list.md`:
+
+- **No restarts.** The bundled server always runs; switching is a navigation the shell routes.
+  `active_local_graph` / `active_graph_id` became `desktop.json`'s `open` (migrated once).
+- **The requests.** `new-local-graph` remains (now with a request key and a reply);
+  `open-local-graph` is gone (the page navigates to the graph's address), and so is the B-704
+  amendment's `add-server-graph`: adding a server is now `connect-server`, which carries the token,
+  is checked by the shell from Rust, and stores the token in the keychain. "No token passes
+  through the door" no longer holds; ADR 032 records what that costs.
+- **The B-704 set-up screen** (`DesktopServerSwitch`) is gone with ConnectView on desktop.
