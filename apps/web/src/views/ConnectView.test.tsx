@@ -165,8 +165,27 @@ describe("Capacitor: a server-address field is required first", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("rejected");
+    // A bare address is checked against the default graph: the hint is about the address.
+    expect(alert.textContent).toContain("isn't valid for the server's default graph");
+    expect(alert.textContent).toContain("https://nooklet.example.com/g/work");
     expect(activeGraph()).toBeUndefined();
+  });
+
+  it("a refused token for an address that names a graph keeps the copy-or-revoked message", async () => {
+    fakePlatform.name = "capacitor";
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+    render(() => <ConnectView />);
+    fireEvent.input(screen.getByLabelText("Server address"), {
+      target: { value: "https://nooklet.example.com/g/work" },
+    });
+    fireEvent.input(screen.getByLabelText("Device token"), { target: { value: "nk_bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      "That token was rejected. Check it was copied whole, and not revoked.",
+    );
   });
 });
 
