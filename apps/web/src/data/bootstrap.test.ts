@@ -11,11 +11,14 @@ import {
   adoptAddressBarGraph,
   adoptLegacyReplica,
   apiBaseUrl,
+  canPromoteGraph,
   chooseLocalOnly,
   createLocalOnlyGraph,
   graphEntryUrl,
   hasSyncTarget,
+  initBootstrap,
   isLocalOnlyEntry,
+  keepAsDeviceOnlyCopy,
   listGraphs,
   newLocalGraphName,
   removeGraph,
@@ -302,5 +305,120 @@ describe("adoptAddressBarGraph: the address bar's graph wins over another same-o
     adoptAddressBarGraph();
     expect(activeGraph()?.id).toBe("d");
     expect(listGraphs()).toHaveLength(3);
+  });
+});
+
+describe("B-714: keeping a mismatched replica as a device-only copy", () => {
+  const server = { id: "s", label: "Notes", kind: "remote" as const };
+
+  it("re-points nothing on disk: the copy keeps the replica key, the server graph gets a new one", () => {
+    fakePlatform.name = "capacitor";
+    addGraph({ id: "other", label: "Elsewhere", kind: "local" });
+    addGraph({
+      ...server,
+      baseUrl: "https://notes.example/g/alpha",
+      token: "nk_old",
+      graphInstanceId: "old-instance",
+    });
+    setActiveGraphId("s");
+    const before = replicaKey(activeGraph());
+
+    const { copy, server: added } = keepAsDeviceOnlyCopy("s", "new-instance", {
+      addServerGraph: true,
+    });
+
+    // The copy IS the old entry: same id, so the same OPFS file, B-247 journal, checkpoint,
+    // drafts and shelf (all keyed by `replicaKey`).
+    expect(copy.id).toBe("s");
+    expect(replicaKey(copy)).toBe(before);
+    expect(copy).toMatchObject({
+      label: "Notes (old copy)",
+      kind: "local",
+      graphInstanceId: "old-instance",
+      detachedFrom: {
+        address: "https://notes.example/g/alpha",
+        graphInstanceId: "old-instance",
+        replacedBy: "new-instance",
+      },
+    });
+    expect(copy.baseUrl).toBeUndefined();
+    expect(copy.token).toBeUndefined();
+    expect(isLocalOnlyEntry(copy)).toBe(true);
+
+    // The server's graph is a new entry, so a new, empty replica that syncs fresh, and it already
+    // knows the server's current identity (no mismatch on the next load).
+    expect(added?.id).toBeDefined();
+    expect(added?.id).not.toBe("s");
+    expect(replicaKey(added)).not.toBe(before);
+    expect(added).toMatchObject({
+      label: "Notes",
+      kind: "remote",
+      baseUrl: "https://notes.example/g/alpha",
+      token: "nk_old",
+      graphInstanceId: "new-instance",
+    });
+    expect(activeGraph()?.id).toBe(added?.id);
+    expect(listGraphs().map((g) => g.id)).toEqual(["other", "s", added?.id]);
+
+    // Opening the copy: no sync target (B-633), and it can never be given an address again.
+    setActiveGraphId("s");
+    expect(hasSyncTarget()).toBe(false);
+    expect(canPromoteGraph(copy)).toBe(false);
+    expect(canPromoteGraph({ id: "other", label: "Elsewhere", kind: "local" })).toBe(true);
+    expect(() =>
+      updateGraph("s", { baseUrl: "https://x.example/g/new", kind: "remote" }),
+    ).toThrow();
+    expect(activeGraph()?.baseUrl).toBeUndefined();
+    updateGraph("s", { label: "Renamed" });
+    expect(activeGraph()?.label).toBe("Renamed");
+  });
+
+  it("a legacy (un-namespaced) replica stays legacy; without the server graph the copy is active", () => {
+    fakePlatform.name = "capacitor";
+    addGraph({ ...server, baseUrl: "https://n.example/g/a", legacyReplica: true });
+    setActiveGraphId("s");
+    const { copy, server: added } = keepAsDeviceOnlyCopy("s", "new", { addServerGraph: false });
+    expect(added).toBeUndefined();
+    expect(copy.legacyReplica).toBe(true);
+    expect(replicaKey(copy)).toBeUndefined();
+    expect(activeGraph()?.id).toBe("s");
+    expect(listGraphs()).toHaveLength(1);
+  });
+
+  it("names: a placeholder label uses the slug; a taken name is numbered", () => {
+    addGraph({ id: "x", label: "default (old copy)", kind: "local" });
+    addGraph({ id: "a", label: "This graph", kind: "local", baseUrl: "/g/default" });
+    expect(keepAsDeviceOnlyCopy("a", "n", { addServerGraph: false }).copy.label).toBe(
+      "default (old copy 2)",
+    );
+  });
+
+  it("refuses an entry with no address, changing nothing", () => {
+    addGraph({ id: "l", label: "L", kind: "local" });
+    expect(() => keepAsDeviceOnlyCopy("l", "n", { addServerGraph: true })).toThrow();
+    expect(listGraphs()).toEqual([{ id: "l", label: "L", kind: "local" }]);
+  });
+
+  it("initBootstrap asks no server for a local-only entry, so the copy is never 'mismatched'", async () => {
+    // Web: the page is still under the server graph's `/g/<slug>`, which would answer.
+    history.replaceState(null, "", "/g/alpha/journals");
+    addGraph({ ...server, baseUrl: "/g/alpha", token: "nk_t", graphInstanceId: "old" });
+    setActiveGraphId("s");
+    keepAsDeviceOnlyCopy("s", "new", { addServerGraph: false });
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ token: "nk_fresh", graphId: "new" }, { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const config = await initBootstrap();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(config.graphMismatch).toBeFalsy();
+      expect(config.token).toBeNull();
+      expect(activeGraph()?.token).toBeUndefined();
+      expect(activeGraph()?.graphInstanceId).toBe("old");
+    } finally {
+      vi.unstubAllGlobals();
+      history.replaceState(null, "", "/");
+    }
   });
 });

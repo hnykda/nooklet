@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -16,9 +26,10 @@ import {
   fileSizeOf,
   graphDbPath,
   restoreBackup,
+  STALE_TEMP_MS,
   sha256File,
 } from "./index.js";
-import { createTarGz } from "./tar.js";
+import { createTarGz, readTarGz, type TarEntry } from "./tar.js";
 
 let dataDir: string;
 let ctx: ServerContext;
@@ -102,18 +113,18 @@ function seedGraph(): void {
 }
 
 describe("createBackup / restoreBackup", () => {
-  it("round-trips: a restored database has identical state to the source", () => {
+  it("round-trips: a restored database has identical state to the source", async () => {
     seedGraph();
     const before = dumpAll(ctx.driver);
 
-    const backup = createBackup(ctx.driver, { dataDir });
+    const backup = await createBackup(ctx.driver, { dataDir });
     expect(existsSync(backup.path)).toBe(true);
     expect(backup.manifest.format).toBe(BACKUP_FORMAT);
     expect(backup.manifest.schemaVersion).toBe(SCHEMA_VERSION);
 
     const restoreDir = mkdtempSync(join(tmpdir(), "nooklet-restore-test-"));
     try {
-      const result = restoreBackup(backup.path, { dataDir: restoreDir });
+      const result = await restoreBackup(backup.path, { dataDir: restoreDir });
       expect(result.filesRestored).toBeGreaterThanOrEqual(1); // at least graph.sqlite
       expect(existsSync(graphDbPath(restoreDir))).toBe(true);
 
@@ -128,7 +139,7 @@ describe("createBackup / restoreBackup", () => {
     }
   });
 
-  it("includes assets/ in the archive and restores them", () => {
+  it("includes assets/ in the archive and restores them", async () => {
     seedGraph();
     const assetsDir = join(dataDir, "assets");
     mkdirSync(assetsDir, { recursive: true });
@@ -136,10 +147,10 @@ describe("createBackup / restoreBackup", () => {
     mkdirSync(join(assetsDir, "sub"), { recursive: true });
     writeFileSync(join(assetsDir, "sub", "nested.txt"), "nested");
 
-    const backup = createBackup(ctx.driver, { dataDir });
+    const backup = await createBackup(ctx.driver, { dataDir });
     const restoreDir = mkdtempSync(join(tmpdir(), "nooklet-restore-assets-"));
     try {
-      restoreBackup(backup.path, { dataDir: restoreDir });
+      await restoreBackup(backup.path, { dataDir: restoreDir });
       expect(
         readFileSync(join(restoreDir, "assets", "1k7f3q9xz2hav4.png")).equals(
           Buffer.from([1, 2, 3, 4]),
@@ -151,12 +162,12 @@ describe("createBackup / restoreBackup", () => {
     }
   });
 
-  it("is a true point-in-time snapshot: a write committed after VACUUM INTO starts does not corrupt it, and one before it is included", () => {
+  it("is a true point-in-time snapshot: a write committed after VACUUM INTO starts does not corrupt it, and one before it is included", async () => {
     // Committed BEFORE the backup call -- must be present.
     const before = createPage("Before");
     createBlock(before, "already here");
 
-    const backup = createBackup(ctx.driver, { dataDir });
+    const backup = await createBackup(ctx.driver, { dataDir });
 
     // Committed AFTER the backup call returns -- must NOT be present in the archive just taken.
     const after = createPage("After");
@@ -164,7 +175,7 @@ describe("createBackup / restoreBackup", () => {
 
     const restoreDir = mkdtempSync(join(tmpdir(), "nooklet-restore-snapshot-"));
     try {
-      restoreBackup(backup.path, { dataDir: restoreDir });
+      await restoreBackup(backup.path, { dataDir: restoreDir });
       const restoredCtx = createServerContext(openDb({ path: graphDbPath(restoreDir) }));
       const names = restoredCtx.driver
         .all<{ name: string }>("SELECT name FROM page ORDER BY name")
@@ -176,25 +187,25 @@ describe("createBackup / restoreBackup", () => {
     }
   });
 
-  it("refuses to restore into a data dir that already has a database, unless --force", () => {
+  it("refuses to restore into a data dir that already has a database, unless --force", async () => {
     seedGraph();
-    const backup = createBackup(ctx.driver, { dataDir });
+    const backup = await createBackup(ctx.driver, { dataDir });
 
     const targetDir = mkdtempSync(join(tmpdir(), "nooklet-restore-clobber-"));
     try {
       openDb({ path: graphDbPath(targetDir) }); // pre-existing database at the target
-      expect(() => restoreBackup(backup.path, { dataDir: targetDir })).toThrow(/refusing/);
-      const result = restoreBackup(backup.path, { dataDir: targetDir, force: true });
+      await expect(restoreBackup(backup.path, { dataDir: targetDir })).rejects.toThrow(/refusing/);
+      const result = await restoreBackup(backup.path, { dataDir: targetDir, force: true });
       expect(result.filesRestored).toBeGreaterThan(0);
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
   });
 
-  it("--force over a database whose writer died with an un-checkpointed WAL: the stale WAL is not replayed onto the restored file", () => {
+  it("--force over a database whose writer died with an un-checkpointed WAL: the stale WAL is not replayed onto the restored file", async () => {
     seedGraph();
     const before = dumpAll(ctx.driver);
-    const backup = createBackup(ctx.driver, { dataDir });
+    const backup = await createBackup(ctx.driver, { dataDir });
 
     // The target's previous database, abandoned mid-WAL the way a killed server leaves it: a
     // second connection with checkpointing off, never closed. Its -wal/-shm stay on disk.
@@ -210,7 +221,7 @@ describe("createBackup / restoreBackup", () => {
       old.close();
       writeFileSync(`${graphDbPath(targetDir)}-wal`, wal);
 
-      restoreBackup(backup.path, { dataDir: targetDir, force: true });
+      await restoreBackup(backup.path, { dataDir: targetDir, force: true });
       expect(existsSync(`${graphDbPath(targetDir)}-wal`)).toBe(false);
       const restored = createServerContext(openDb({ path: graphDbPath(targetDir) }));
       expect(dumpAll(restored.driver)).toEqual(before);
@@ -219,7 +230,7 @@ describe("createBackup / restoreBackup", () => {
     }
   });
 
-  it("refuses to restore an archive newer than the running build", () => {
+  it("refuses to restore an archive newer than the running build", async () => {
     const futureManifest = {
       format: BACKUP_FORMAT,
       formatVersion: BACKUP_FORMAT_VERSION,
@@ -236,35 +247,176 @@ describe("createBackup / restoreBackup", () => {
 
     const restoreDir = mkdtempSync(join(tmpdir(), "nooklet-restore-future-"));
     try {
-      expect(() => restoreBackup(archivePath, { dataDir: restoreDir })).toThrow(/newer/);
+      await expect(restoreBackup(archivePath, { dataDir: restoreDir })).rejects.toThrow(/newer/);
     } finally {
       rmSync(restoreDir, { recursive: true, force: true });
     }
   });
 
-  it("restoring the real archive from this build succeeds (sanity: version guard doesn't false-positive)", () => {
+  it("restoring the real archive from this build succeeds (sanity: version guard doesn't false-positive)", async () => {
     seedGraph();
-    const backup = createBackup(ctx.driver, { dataDir });
+    const backup = await createBackup(ctx.driver, { dataDir });
     const restoreDir = mkdtempSync(join(tmpdir(), "nooklet-restore-version-"));
     try {
-      expect(() => restoreBackup(backup.path, { dataDir: restoreDir })).not.toThrow();
+      await expect(restoreBackup(backup.path, { dataDir: restoreDir })).resolves.toBeDefined();
     } finally {
       rmSync(restoreDir, { recursive: true, force: true });
     }
   });
 
-  it("defaultBackupPath lives under <dataDir>/backups and fileSizeOf reads a real file", () => {
+  it("defaultBackupPath lives under <dataDir>/backups and fileSizeOf reads a real file", async () => {
     const p = defaultBackupPath(dataDir, new Date("2026-09-11T12:00:00Z"));
     expect(p.startsWith(join(dataDir, "backups"))).toBe(true);
     expect(p.endsWith(".tar.gz")).toBe(true);
 
-    const backup = createBackup(ctx.driver, { dataDir, outPath: p });
+    const backup = await createBackup(ctx.driver, { dataDir, outPath: p });
     expect(fileSizeOf(backup.path)).toBe(backup.archiveBytes);
     expect(fileSizeOf(join(dataDir, "does-not-exist"))).toBeUndefined();
   });
 
-  it("sha256File is stable for identical bytes", () => {
-    const backup = createBackup(ctx.driver, { dataDir });
+  it("sha256File is stable for identical bytes", async () => {
+    const backup = await createBackup(ctx.driver, { dataDir });
     expect(sha256File(backup.path)).toBe(sha256File(backup.path));
+  });
+});
+
+describe("streaming backup/restore: compatibility and failure modes", () => {
+  let scratch: string;
+  beforeEach(() => {
+    scratch = mkdtempSync(join(tmpdir(), "nooklet-backup-stream-"));
+  });
+  afterEach(() => {
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  function seedAssets(): void {
+    const assetsDir = join(dataDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(join(assetsDir, "1k7f3q9xz2hav4.png"), Buffer.alloc(70_001, 7));
+    writeFileSync(join(assetsDir, "2k7f3q9xz2hav4.txt"), "plain text asset");
+  }
+
+  it("restores an archive written by the old in-memory backup (fixture from c9d993b)", async () => {
+    const fixture = join(import.meta.dirname, "fixtures", "v1-c9d993b.tar.gz");
+    const target = join(scratch, "g");
+    const result = await restoreBackup(fixture, { dataDir: target });
+    expect(result.filesRestored).toBe(3);
+    const restored = createServerContext(openDb({ path: graphDbPath(target) }));
+    const names = restored.driver
+      .all<{ name: string }>("SELECT name FROM page WHERE journal_day IS NULL ORDER BY name")
+      .map((r) => r.name);
+    expect(names).toEqual(expect.arrayContaining(["Fixture Home", "Fixture Other"]));
+    expect(readFileSync(join(target, "assets", "fixtureasset02.txt"), "utf8")).toBe(
+      "hello from an old archive\n",
+    );
+    expect(readFileSync(join(target, "assets", "fixtureasset01.png"))).toHaveLength(1500);
+  });
+
+  it("a new archive restores with the old reader: readTarGz + write every entry, as c9d993b did", async () => {
+    seedGraph();
+    seedAssets();
+    const before = dumpAll(ctx.driver);
+    const backup = await createBackup(ctx.driver, { dataDir });
+
+    const entries = readTarGz(readFileSync(backup.path));
+    const manifest = JSON.parse(
+      (entries.find((e) => e.path === "manifest.json") as TarEntry).data.toString("utf8"),
+    );
+    expect(manifest.format).toBe(BACKUP_FORMAT);
+    expect(manifest.schemaVersion).toBe(SCHEMA_VERSION);
+    const target = join(scratch, "old-reader");
+    for (const e of entries) {
+      if (e.path === "manifest.json") continue;
+      mkdirSync(join(target, e.path, ".."), { recursive: true });
+      writeFileSync(join(target, e.path), e.data);
+    }
+    const restored = createServerContext(openDb({ path: graphDbPath(target) }));
+    expect(dumpAll(restored.driver)).toEqual(before);
+    expect(readFileSync(join(target, "assets", "1k7f3q9xz2hav4.png"))).toEqual(
+      Buffer.alloc(70_001, 7),
+    );
+  });
+
+  it("a truncated archive is refused and --force leaves the existing graph exactly as it was", async () => {
+    seedGraph();
+    seedAssets();
+    const backup = await createBackup(ctx.driver, { dataDir });
+    const bytes = readFileSync(backup.path);
+    const cut = join(scratch, "cut.tar.gz");
+    writeFileSync(cut, bytes.subarray(0, Math.floor(bytes.length * 0.7)));
+
+    // The target: a restore of the good archive, then fingerprinted.
+    const target = join(scratch, "target");
+    await restoreBackup(backup.path, { dataDir: target });
+    const dbBefore = sha256File(graphDbPath(target));
+    const assetsBefore = readdirSync(join(target, "assets")).sort();
+
+    await expect(restoreBackup(cut, { dataDir: target, force: true })).rejects.toThrow();
+    expect(sha256File(graphDbPath(target))).toBe(dbBefore);
+    expect(readdirSync(join(target, "assets")).sort()).toEqual(assetsBefore);
+    expect(readdirSync(target).filter((n) => n.startsWith(".restore-"))).toEqual([]);
+  });
+
+  it("an archive with a manifest but no graph.sqlite is refused", async () => {
+    const manifest = {
+      format: BACKUP_FORMAT,
+      formatVersion: BACKUP_FORMAT_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+      createdAt: 0,
+      sourceDataDir: "/x",
+    };
+    const archivePath = join(scratch, "nodb.tar.gz");
+    writeFileSync(
+      archivePath,
+      createTarGz([{ path: "manifest.json", data: Buffer.from(JSON.stringify(manifest)) }]),
+    );
+    await expect(restoreBackup(archivePath, { dataDir: join(scratch, "t") })).rejects.toThrow(
+      /no graph\.sqlite/,
+    );
+  });
+
+  it("--force makes assets/ exactly the archive's: an asset added after the backup is gone", async () => {
+    seedGraph();
+    seedAssets();
+    const backup = await createBackup(ctx.driver, { dataDir });
+    writeFileSync(join(dataDir, "assets", "added-later.png"), "x");
+    await restoreBackup(backup.path, { dataDir, force: true });
+    expect(readdirSync(join(dataDir, "assets")).sort()).toEqual([
+      "1k7f3q9xz2hav4.png",
+      "2k7f3q9xz2hav4.txt",
+    ]);
+  });
+
+  it("sweeps a killed backup's stale snapshot/partial files, but not a running backup's", async () => {
+    const outDir = join(scratch, "backups");
+    mkdirSync(outDir);
+    const stale = [".nooklet-snapshot-aaaaaaaaaaaa.sqlite", "x.tar.gz.partial-aaaaaaaaaaaa"];
+    const fresh = [".nooklet-snapshot-bbbbbbbbbbbb.sqlite", "x.tar.gz.partial-bbbbbbbbbbbb"];
+    const old = new Date(Date.now() - STALE_TEMP_MS - 60_000);
+    for (const n of stale) {
+      writeFileSync(join(outDir, n), "left by a SIGKILL");
+      utimesSync(join(outDir, n), old, old);
+    }
+    for (const n of fresh) writeFileSync(join(outDir, n), "another backup, still running");
+    await createBackup(ctx.driver, { dataDir, outPath: join(outDir, "new.tar.gz") });
+    expect(readdirSync(outDir).sort()).toEqual([...fresh, "new.tar.gz"].sort());
+  });
+
+  it("a backup that fails part-way leaves nothing at the final path and no temp files", async () => {
+    seedGraph();
+    seedAssets();
+    // An unreadable asset (sorted last) makes the stream fail mid-way, after the manifest, the
+    // database and the first assets are already in the partial archive.
+    const unreadable = join(dataDir, "assets", "3k7f3q9xz2hav4.png");
+    writeFileSync(unreadable, "secret");
+    chmodSync(unreadable, 0o000);
+    const out = join(scratch, "backups", "b.tar.gz");
+    try {
+      await expect(createBackup(ctx.driver, { dataDir, outPath: out })).rejects.toThrow();
+    } finally {
+      chmodSync(unreadable, 0o644);
+    }
+    expect(existsSync(out)).toBe(false);
+    expect(readdirSync(join(scratch, "backups"))).toEqual([]);
   });
 });

@@ -47,6 +47,19 @@ export interface GraphListEntry {
    * entry ever: the one that adopted what a "Just this device" install wrote before local-only was
    * a list entry (`adoptLegacyReplica`). */
   legacyReplica?: true;
+  /** B-714: this local entry is a replica that once belonged to the server graph at `address`,
+   * kept as a device-only copy when that address started serving a different graph
+   * (`keepAsDeviceOnlyCopy`). Its replica holds a server's history with only the unsynced tail in
+   * `pending_op`, so it must never be given an address again (`canPromoteGraph`). */
+  detachedFrom?: {
+    address: string;
+    /** The graph identity this replica was a copy of (also kept as `graphInstanceId`). */
+    graphInstanceId?: string;
+    /** The different graph the address served when this copy was detached. */
+    replacedBy: string;
+    /** ISO timestamp. */
+    at: string;
+  };
 }
 
 const GRAPHS_KEY = "nooklet.graphs";
@@ -206,7 +219,94 @@ export function addGraph(entry: GraphListEntry): void {
 }
 
 export function updateGraph(id: string, patch: Partial<Omit<GraphListEntry, "id">>): void {
+  const current = readGraphs().find((g) => g.id === id);
+  // B-714: a detached copy's `pending_op` holds only what never synced, not its history (that was
+  // the server's), so pointing it at a server — the switcher's "Promote" — would seed a new graph
+  // with fragments, and the server's corrective ops for orphaned blocks would come back into the
+  // copy. Refused here, below any UI, so no caller can do it by accident.
+  if (current?.detachedFrom && patch.baseUrl) {
+    throw new Error("A device-only copy of an earlier graph cannot be connected to a server.");
+  }
   writeGraphs(readGraphs().map((g) => (g.id === id ? { ...g, ...patch } : g)));
+}
+
+/** Whether "Promote to a server graph" makes sense for this entry: a local-only graph whose whole
+ * history is still in its own `pending_op` — not a B-714 detached copy of a server's graph. */
+export function canPromoteGraph(entry: GraphListEntry): boolean {
+  return isLocalOnlyEntry(entry) && !entry.detachedFrom;
+}
+
+/**
+ * B-714 "Keep this copy as a device-only graph". The address `entryId` syncs with now serves a
+ * different graph (`serverGraphInstanceId`); this keeps the replica this device already has, as a
+ * graph of its own that never syncs, and (unless `addServerGraph` is false) lists the server's
+ * graph as a NEW entry and makes it active.
+ *
+ * Moves no data. Everything per-graph on the device is keyed by `replicaKey(entry)`, which is the
+ * entry id (or the un-namespaced replica for a `legacyReplica` entry): the OPFS file and writer
+ * lock, the B-247 journal, the native checkpoint, journal drafts, the shelf. So the mismatched
+ * entry keeps its id and flags and BECOMES the device-only copy, and the server's graph is the
+ * entry with the new id, whose replica starts empty and syncs fresh. Giving the copy the new id
+ * instead would mean renaming the pool file and re-keying four stores, with a crash window between
+ * them; the id is device-local and never shown, so reusing it costs nothing.
+ *
+ * Never syncs (B-633): without `baseUrl` there is no sync target (`hasSyncTarget`), `callOp`
+ * refuses, and `initBootstrap` neither hands it a token nor compares its identity. Its unsynced
+ * ops stay in its own `pending_op`. The list is written once, so a crash leaves either the old
+ * list or the new one, never half; the active pointer is set after it, and a crash in between
+ * leaves the copy active, which is safe.
+ */
+export function keepAsDeviceOnlyCopy(
+  entryId: string,
+  serverGraphInstanceId: string,
+  opts: { addServerGraph: boolean },
+): { copy: GraphListEntry; server?: GraphListEntry } {
+  const list = readGraphs();
+  const entry = list.find((g) => g.id === entryId);
+  if (!entry?.baseUrl) throw new Error("This graph has no server address to detach from.");
+  const address = resolvedGraphAddress(entry.baseUrl) ?? entry.baseUrl;
+  const copy: GraphListEntry = {
+    id: entry.id,
+    label: oldCopyLabel(entry, list),
+    kind: "local",
+    graphInstanceId: entry.graphInstanceId,
+    ...(entry.legacyReplica ? { legacyReplica: true as const } : {}),
+    detachedFrom: {
+      address,
+      graphInstanceId: entry.graphInstanceId,
+      replacedBy: serverGraphInstanceId,
+      at: new Date().toISOString(),
+    },
+  };
+  const server: GraphListEntry | undefined = opts.addServerGraph
+    ? {
+        id: newGraphEntryId(),
+        label: entry.label,
+        kind: entry.kind,
+        baseUrl: entry.baseUrl,
+        // Kept: on loopback `initBootstrap` replaces it with the server's own; elsewhere it may
+        // still be valid (a restored backup keeps its tokens), and if not the app asks again.
+        ...(entry.token ? { token: entry.token } : {}),
+        graphInstanceId: serverGraphInstanceId,
+      }
+    : undefined;
+  writeGraphs([...list.map((g) => (g.id === entry.id ? copy : g)), ...(server ? [server] : [])]);
+  setActiveGraphId(server?.id ?? copy.id);
+  return { copy, server };
+}
+
+/** "<name> (old copy)", numbered when taken. A placeholder label ("This graph") says nothing, so
+ * the graph's slug stands in for it, as the switcher does (B-618). */
+function oldCopyLabel(entry: GraphListEntry, list: GraphListEntry[]): string {
+  const slug = entry.baseUrl ? /\/g\/([a-z0-9-]+)\/?$/.exec(entry.baseUrl)?.[1] : undefined;
+  const name = isPlaceholderGraphLabel(entry.label) ? (slug ?? entry.label) : entry.label;
+  const taken = new Set(list.map((g) => g.label));
+  const base = `${name} (old copy)`;
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${name} (old copy ${n})`;
+    if (!taken.has(candidate)) return candidate;
+  }
 }
 
 export function removeGraph(id: string): void {
@@ -489,6 +589,15 @@ let cached: BootstrapConfig | undefined;
 const SESSION_TIMEOUT_MS = 10_000;
 
 export async function initBootstrap(): Promise<BootstrapConfig> {
+  if (isLocalOnlyEntry(activeGraph())) {
+    // B-714: a local-only entry has no server, so nothing is asked. On web/desktop the page's own
+    // `/g/<slug>` would answer — for a detached copy, the very graph it was split from — and
+    // adopting its token or comparing its identity would flag the copy as mismatched on every
+    // load. No token at all, so nothing that reads `authToken()` reaches that server on this
+    // graph's behalf.
+    cached = { token: null, reason: "local_only" };
+    return cached;
+  }
   const base = apiBaseUrl();
   try {
     const res = await fetch(`${base}/api/session`, {

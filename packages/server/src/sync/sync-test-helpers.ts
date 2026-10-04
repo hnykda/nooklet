@@ -9,7 +9,7 @@ import { initSchema } from "@nooklet/core";
 import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 import type { Hono } from "hono";
 import { createToken } from "../auth/tokens.js";
-import { makeTestServer, type TestServer } from "../test-helpers.js";
+import { makeTestServer, type TestServer, type TestServerOptions } from "../test-helpers.js";
 
 export interface SyncTestServer extends TestServer {
   /** A sync-capable (write scope, can_sync) token, standing in for "device A"'s credential. */
@@ -19,8 +19,8 @@ export interface SyncTestServer extends TestServer {
   syncToken2: string;
 }
 
-export function makeSyncTestServer(): SyncTestServer {
-  const base = makeTestServer();
+export function makeSyncTestServer(opts: TestServerOptions = {}): SyncTestServer {
+  const base = makeTestServer(opts);
   const syncToken = createToken(base.serverCtx.driver, {
     label: "device-a",
     scope: "write",
