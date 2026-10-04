@@ -37,7 +37,7 @@ replace a graph (B-713)`).
   written inside the mirror debounce is in the retired folder's `pages/`, healthz 404 after, no
   server errors, `serve.pid` gone after SIGTERM. Ran 2026-10-04: all as expected.
 
-### Merge of main (WebSocket hardening B-676 H4/H12) and the client's 4410 state
+### Merge of main (WebSocket hardening B-676 H4/H12) and the client's 4410 state: `f588344`
 
 Coordinator asked (2026-10-04) to merge `main` and resolve against the WS hardening:
 - One socket registry: `live-limits.ts#admitted` (the hardening's) now records each socket's graph
