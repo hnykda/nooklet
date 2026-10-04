@@ -382,6 +382,17 @@ entirely if the parent is the page root); `when: zoomed` disables it once alread
 root. Clicking a breadcrumb ancestor is the equivalent pointer affordance for zooming to any
 ancestor directly, not just one level.
 
+**R27.1 (B-788).** While `zoomed`, the zoom root is the fixed top of the view, and no command run
+from the view may place a block outside the zoom root's subtree. Overriding the rules above:
+`block.split` on the zoom root ALWAYS inserts `after` as its **first child** (collapsed or not,
+leaf or not; Logseq does the same); `block.indent`, `block.moveUp`/`moveDown` and
+`block.duplicate` on the zoom root are no-ops; `block.outdent` on the zoom root **or one of its
+direct children** is a no-op (also per block in `block.outdentSelected`); `block.deleteSelected`
+and `block.cutSelection` never delete the zoom root (selected blocks under it still go); a
+multi-line `edit.paste` on the zoom root inserts the pasted blocks as its first children and never
+replaces it. The zoom root is always rendered expanded, whatever its `collapsed` flag, has no
+collapse arrow, and `block.collapse` on it is a no-op.
+
 **R28.** `block.selectBlock` (Escape while `editorFocused && !popupOpen`) commits the surface's
 content, unmounts it, and enters block-selection mode with exactly the current block selected
 (anchor = focus = that block). `block.clearSelection` (Escape while `blockSelected`) empties the

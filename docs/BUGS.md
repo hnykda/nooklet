@@ -1086,16 +1086,25 @@ folder by hand. Needs a decision on what "remove" should do to data on this Mac 
 The phone/browser form can list a server's graphs with its root token. From the desktop page that
 call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
 
-### B-788 · Zoomed into a block, Enter on it creates a sibling outside the view, so new blocks vanish
-**Status:** in progress (agent, worktree; notes in `docs/progress/zoom-root.md`) · **Severity:** high (looks like lost typing) · **Found:** 2026-10-04, owner on the phone · **Test:** none yet
+### B-820 · Zoomed in, `/template` on the zoom root inserts the template outside the view
+**Status:** open · **Severity:** medium (looks like lost typing, as B-788) · **Found:** 2026-10-04, agent, while auditing B-788 · **Test:** none yet
 
-Zoomed into a block (especially one with no children), `flattenVisible` (`editor/tree.ts`) shows the
-zoom root itself as the first row, and Enter at its end splits it into a *sibling*, a block outside
-the zoomed subtree, so it does not appear; the owner found the new blocks only after zooming out.
-Wanted (Logseq's model, the owner): the zoomed block is the fixed top of the view; Enter on it
-creates its first child, and nothing typed in the zoomed view can land outside the zoomed subtree
-(no sibling of the root, no outdent past it, no Backspace-merge of the root into its previous
-sibling).
+Zoomed into a block with text, `/template` on that block inserts the template as its following
+sibling(s) (`data/templates.ts#templateAfterOps`), which is outside the zoomed view, so nothing
+appears. Into an EMPTY zoom root the first template node goes into the root, but any further
+top-level nodes are its siblings and vanish the same way. Found by reading the code, not
+reproduced in a browser. The template command (`commands/registrations/templates.ts`) does not know
+the zoom root (its context has `zoomed`, not which block); the fix is to pass it through and insert
+as the root's first children, like B-788's paste.
+
+### B-821 · Zoomed in, the zoom root looks like any other row, not like the view's title
+**Status:** open (follow-up to B-788) · **Severity:** low (UX) · **Found:** 2026-10-04, agent · **Test:** none
+
+Logseq draws the zoomed-into block larger, as the title of the view. nooklet now treats the root as
+the fixed top (B-788; the row has a `vr-row-zoom-root` class and no collapse arrow) but draws it at
+body size. Left out of B-788 on purpose: a larger font on the row that hosts the editor touches
+caret geometry, heading blocks (`# …` already have their own sizes), task markers and images in
+the root, which is a design pass rather than two CSS lines.
 
 ### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
 **Status:** open (owner request) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** none yet
@@ -1107,6 +1116,26 @@ and optionally left / centre / right alignment. Logseq stores the size after the
 import/export.
 
 ## Fixed
+
+### B-788 · Zoomed into a block, Enter on it creates a sibling outside the view, so new blocks vanish
+**Status:** fixed 2026-10-04 (`605d8297`) · **Severity:** high (looks like lost typing) · **Found:** 2026-10-04, owner on the phone · **Test:** `editor/zoom-root.test.ts` "B-788: …" (22; 13 fail without the fix, the other 9 pin behaviour that was already right), `e2e/tests/zoom-root.spec.ts` (3) and `e2e/tests/phone-zoom-root.spec.ts` (3, iPhone 13), each in Chromium and WebKit — all 12 fail without the fix
+
+Zoomed into a block (especially one with no children), typing into it and pressing Enter showed
+nothing; the owner found the new blocks only after zooming out.
+
+**Cause:** `flattenVisible` (`editor/tree.ts`) shows the zoom root as the view's first row, and
+Enter at its end split it into a *sibling* (R16), outside the zoomed subtree. Other commands could
+do the same: Tab/Alt+Up/Down/Duplicate on the root, Shift+Tab on its direct children (only the
+root itself was guarded), Shift+Tab in selection mode (not guarded at all), Delete with the root
+selected (emptied the view), a multi-line paste on the root (siblings; an empty root was deleted).
+**Fix:** Logseq's model — the zoomed block is the fixed top. Every structural command takes the
+zoom root (`commands.ts#ZoomScope`): Enter anywhere in the root splits it and the rest becomes its
+FIRST child (Logseq: `editor.cljs#insert-new-block-aux!`, `sibling?` false for the route's block;
+sources in `docs/progress/zoom-root.md`); the moves above are no-ops; paste on the root goes in as
+its first children. The root is always open in its view (no collapse arrow, collapse key a no-op),
+so a child made under a collapsed root shows. Backspace at the root's start, Delete at the end of
+the last row and ArrowUp off the top were already bounded by the visible rows; now pinned by tests.
+Not covered: `/template` on the root (B-820). The root's title look is B-821.
 
 ### B-766 · Linked references sorted by "Recent" are not in date order
 **Status:** fixed 2026-10-04 · **Severity:** medium · **Found:** 2026-10-04, owner on the production graph · **Test:** `referenceGrouping.test.ts` "B-766: …" (2; both fail without the fix)

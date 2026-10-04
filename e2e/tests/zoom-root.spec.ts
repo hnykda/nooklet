@@ -69,8 +69,15 @@ test("B-788: Enter in the middle of the zoom root moves the rest of its text int
   page,
 }) => {
   const name = unique("Zoom Root Split");
-  const outliner = await openPage(page, name, "- before\n- head tail\n  - kid\n- after");
+  // Collapsed on the page: zoomed in, the root is open anyway, and Enter on a collapsed block —
+  // a sibling everywhere else — is still the root's first child.
+  const outliner = await openPage(
+    page,
+    name,
+    "- before\n- head tail\n  collapsed:: true\n  - kid\n- after",
+  );
   const zoomed = await zoomInto(page, outliner, 1);
+  await expect.poll(() => rowTexts(page, zoomed)).toEqual(["head tail", "kid"]);
   await editRow(page, zoomed, 0);
   await page.keyboard.press("End");
   for (let i = 0; i < " tail".length; i++) await page.keyboard.press("ArrowLeft");
