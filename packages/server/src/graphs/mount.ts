@@ -70,10 +70,18 @@ export interface CreateMultiGraphAppOptions {
 
 /**
  * Origins of nooklet's own bundled app shells, which load the client from a custom scheme and so
- * reach every server cross-origin. Only the iOS Capacitor shell today (`apps/web/
- * capacitor.config.ts` keeps Capacitor's default `iosScheme`/`hostname`, which that file pins
- * because the origin is also the OPFS storage key). Add Android's default (`https://localhost`)
- * only once an Android project exists — it is an origin a local dev server can also claim.
+ * reach every server cross-origin: the iOS Capacitor shell (`capacitor://localhost`) and, since
+ * the Android project exists (2026-10-04, experimental), Android's (`https://localhost`).
+ * `apps/web/capacitor.config.ts` keeps Capacitor's default `iosScheme`/`androidScheme`/`hostname`
+ * and pins them, because the origin is also the OPFS storage key.
+ *
+ * The cost of the Android entry, accepted when it was added: unlike `capacitor://`, an
+ * `https://localhost` page can also be served by something else on the server's own machine (a
+ * local dev server with a trusted certificate), and such a page could then read `/api/session`'s
+ * loopback token. That needs code already running on the server machine; `--no-loopback-token`
+ * (which every exposed deployment sets) removes the token from that response entirely. Capacitor
+ * cannot give Android a hostname of its own without changing iOS's origin too (`server.hostname`
+ * is shared), which would orphan every iOS install's data.
  *
  * Deliberately an exact allowlist, never `*`: `/api/session` hands a write token to any loopback
  * caller, and a wildcard would let any website open in a browser on the server's own machine read
@@ -81,7 +89,10 @@ export interface CreateMultiGraphAppOptions {
  * only from an installed app shell. The web/PWA client and the desktop app are same-origin with
  * the server and never send a cross-origin request, so they are unaffected.
  */
-export const APP_SHELL_ORIGINS: ReadonlySet<string> = new Set(["capacitor://localhost"]);
+export const APP_SHELL_ORIGINS: ReadonlySet<string> = new Set([
+  "capacitor://localhost",
+  "https://localhost",
+]);
 
 /**
  * Without this, the iOS app could not reach any server at all: every request it makes carries an

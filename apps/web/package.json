@@ -36,6 +36,7 @@
     "solid-js": "^1.9.15"
   },
   "devDependencies": {
+    "@capacitor/android": "8.5.1",
     "@capacitor/cli": "8.5.1",
     "@capacitor/ios": "8.5.1",
     "@nooklet/server": "workspace:*",

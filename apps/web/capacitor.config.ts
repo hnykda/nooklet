@@ -15,11 +15,11 @@ import { KeyboardResize } from "@capacitor/keyboard";
  * §2.1's citation) is to keep `capacitor.config.ts` at the root of the web project it wraps, so
  * `npx cap` commands run from `apps/web/` naturally find both the config and `dist/`.
  *
- * This repo does NOT check in generated `ios/`/`android/` Xcode/Gradle projects — there is no
- * Xcode or Android Studio in this environment to generate or verify them (`npx cap add ios` /
- * `npx cap add android` need the respective native SDKs installed). See `README.md`'s "Capacitor:
- * what a human must run" section for the exact commands and the native-file edits (deep-link
- * scheme registration, share extension) that only make sense once those folders exist.
+ * The generated native projects ARE checked in, as Capacitor intends: `ios/` (2026-09-14) and
+ * `android/` (2026-10-04, `npx cap add android`; experimental, never run on a device or emulator
+ * by the maintainer). Hand edits that `cap sync` leaves alone: the `nooklet://` URL type in
+ * `ios/App/App/Info.plist`, the matching intent filter and network security config in
+ * `android/app/src/main/`. See `README.md`'s Capacitor section.
  */
 const config: CapacitorConfig = {
   appId: "sh.nooklet.app",
@@ -32,6 +32,15 @@ const config: CapacitorConfig = {
   // avoids this entirely" (once BUILD item 6's native-SQLite follow-up lands; until then the
   // OPFS-backed replica is exactly as origin-sensitive as that warning describes, so this must
   // not change after the first release).
+
+  android: {
+    // The WebView's origin is https://localhost (androidScheme's default), so a fetch or
+    // WebSocket to a LAN server over plain http:// is mixed content, which Android's WebView
+    // blocks by default. Allowing it is the Android half of the cleartext decision documented in
+    // android/app/src/main/res/xml/network_security_config.xml (prefer HTTPS; this exists for
+    // http://192.168.x.x servers). Unverified on a device, including whether ws:// passes too.
+    allowMixedContent: true,
+  },
 
   plugins: {
     Keyboard: {

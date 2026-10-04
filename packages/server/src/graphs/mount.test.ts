@@ -360,6 +360,23 @@ describe("createMultiGraphApp: CORS for nooklet's own app shells", () => {
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
   });
 
+  it("answers the Android shell's preflight too (https://localhost; without it the APK reaches no server)", async () => {
+    const { app } = makeApp();
+    await createGraph(app, "default");
+    const res = await app.request(
+      "/g/default/api/v1/graph.overview",
+      preflight("https://localhost"),
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://localhost");
+    // Only that exact origin: another port on localhost is a different (local web) origin.
+    const other = await app.request(
+      "/g/default/api/v1/graph.overview",
+      preflight("https://localhost:5173"),
+    );
+    expect(other.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
   it("answers a preflight at bare origin too, rather than 307-redirecting it (a redirected preflight fails outright)", async () => {
     const { app } = makeApp();
     await createGraph(app, "default");

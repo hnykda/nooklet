@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">nooklet</string>
+    <string name="title_activity_main">nooklet</string>
+    <string name="package_name">sh.nooklet.app</string>
+    <string name="custom_url_scheme">sh.nooklet.app</string>
+</resources>

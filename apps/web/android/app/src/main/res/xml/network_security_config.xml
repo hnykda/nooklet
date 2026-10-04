@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Which servers the app may talk to in clear text. The Android counterpart of
+  NSAllowsLocalNetworking in ios/App/App/Info.plist.
+
+  The trade-off, decided 2026-10-04 (docs/progress/releases.md, "Android cleartext"):
+
+  - nooklet servers are self-hosted. The recommended setup is HTTPS (Tailscale serve, or a
+    reverse proxy with a real certificate), and HTTPS needs nothing in this file.
+  - But a server on the home LAN (`http://192.168.1.5:6100`) is a real, documented setup, and
+    Android's default since API 28 refuses all cleartext. iOS lets it through for local
+    addresses. Android cannot express "local addresses only": a domain-config matches host
+    names, and an IP literal like 192.168.1.5 is not matched by it. So the only way to allow a
+    LAN server by IP is to permit cleartext in base-config.
+  - The cost: over plain HTTP the device token travels unencrypted, so anyone on the same
+    network can read it and the notes. That is the same exposure the iOS build already accepts
+    for local networks, and the same as opening the web client over http:// in a browser.
+    Prefer HTTPS. A future build could drop this and require HTTPS once pairing hands out
+    https URLs.
+
+  The WebView also has to allow an http:// fetch from its https://localhost origin; that is
+  `android.allowMixedContent` in capacitor.config.ts.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
