@@ -4,6 +4,12 @@ Resume file. If you are reading this because the previous session was cut off, s
 `git log --oneline -30`, then every other file in `docs/progress/` (one per agent), then
 `docs/BUGS.md`'s Open section.
 
+## In flight — 2026-10-04 evening
+
+| Slug | Task | Ports |
+|---|---|---|
+| qr-pairing | QR pairing with one-time, expiring pairing codes (not long-lived tokens in links); Settings → Devices (list/revoke, `admin`-gated per B-655); `nooklet pair` terminal QR; iPhone-camera custom-scheme check | 6470-6474 |
+
 ## Published — 2026-10-04 (READ THIS FIRST)
 
 All agent work is merged; no worktrees or agents are running. Final verification on the scrubbed
