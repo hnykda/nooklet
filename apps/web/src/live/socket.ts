@@ -3,12 +3,13 @@
  * shape and its own header comment's reasoning: NOT unit tested — it needs a real `WebSocket` — so
  * it is kept deliberately thin, wiring `./message-handler.ts#handleIncomingFrame` (where all the
  * protocol logic actually lives and is tested) to real socket events. Reconnects with the same
- * backoff `http-transport.ts#connectLive` uses.
+ * backoff policy `http-transport.ts#connectLive` uses (`../sync/live-backoff.ts`, by close code).
  *
  * Callers (`../app/CommandLayer.tsx`) own the policy of WHEN to call `connectLiveSocket`/`stop` —
  * "only while the user has enabled viewing" (ADR 015 §2.6) — this module just connects when asked.
  */
 
+import { createLiveRetry } from "../sync/live-backoff.js";
 import { handleIncomingFrame, type MessageHandlerDeps } from "./message-handler.js";
 import type { HelloMessage } from "./types.js";
 
@@ -38,7 +39,7 @@ export interface LiveSocketHandle {
 export function connectLiveSocket(opts: LiveSocketOptions): LiveSocketHandle {
   let closedByCaller = false;
   let socket: WebSocket | undefined;
-  let retryDelayMs = 1000;
+  const retry = createLiveRetry();
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   const wsUrl = (): string => {
@@ -63,7 +64,7 @@ export function connectLiveSocket(opts: LiveSocketOptions): LiveSocketHandle {
     if (closedByCaller) return;
     socket = new WebSocket(wsUrl());
     socket.addEventListener("open", () => {
-      retryDelayMs = 1000;
+      retry.onOpen();
       socket?.send(JSON.stringify(hello()));
       opts.onConnectedChange?.(true);
     });
@@ -72,11 +73,12 @@ export function connectLiveSocket(opts: LiveSocketOptions): LiveSocketHandle {
         if (reply) socket?.send(reply);
       });
     });
-    const scheduleReconnect = (): void => {
+    const scheduleReconnect = (ev: CloseEvent): void => {
       opts.onConnectedChange?.(false);
-      if (closedByCaller) return;
-      retryTimer = setTimeout(connect, retryDelayMs);
-      retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
+      // `null` for a refused token (4401/4403): stop, as `/sync/live` does; re-pairing reloads.
+      const delay = retry.onClose(ev.code);
+      if (closedByCaller || delay === null) return;
+      retryTimer = setTimeout(connect, delay);
     };
     socket.addEventListener("close", scheduleReconnect);
     socket.addEventListener("error", () => socket?.close());

@@ -15,10 +15,10 @@
  * (`../sync/realtime.ts`), so such a socket is closed at the next commit instead.
  */
 
-import type { SqlDriver } from "@nooklet/core";
+import { LIVE_CLOSE, type SqlDriver } from "@nooklet/core";
 import type { WSContext } from "hono/ws";
 
-export const REVOKED_CLOSE_CODE = 4401;
+export const REVOKED_CLOSE_CODE = LIVE_CLOSE.revoked;
 
 const sockets = new WeakMap<SqlDriver, Map<WSContext, string>>();
 
@@ -70,4 +70,14 @@ export function isTokenRevoked(driver: SqlDriver, tokenId: string): boolean {
     [tokenId],
   );
   return !row || row.revoked_at !== null;
+}
+
+/** How many open sockets `tokenId` authenticated in this graph (the per-token cap,
+ * `../live-limits.ts`). Linear in the graph's open sockets, which the total cap bounds. */
+export function tokenSocketCount(driver: SqlDriver, tokenId: string): number {
+  const m = sockets.get(driver);
+  if (!m) return 0;
+  let n = 0;
+  for (const id of m.values()) if (id === tokenId) n++;
+  return n;
 }

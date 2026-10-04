@@ -61,6 +61,14 @@ describe("syncLabel", () => {
     expect(syncLabel("pending", 1)).toBe("1 change waiting to sync");
     expect(syncLabel("pending", 3)).toBe("3 changes waiting to sync");
     expect(syncLabel("synced", 0)).toBe("Synced");
+    // B-676 H4: the live socket refused for capacity; push/pull still work.
+    expect(syncLabel("synced", 0, "the server is at its connection limit")).toBe(
+      "Synced — live updates paused (the server is at its connection limit); other devices' " +
+        "changes arrive every few minutes",
+    );
+    expect(syncLabel("pending", 2, "x")).toMatch(
+      /^2 changes waiting to sync — live updates paused/,
+    );
     expect(syncLabel("offline", 2)).toBe("Offline — changes are kept and sent when back online");
   });
 

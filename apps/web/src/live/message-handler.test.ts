@@ -1,3 +1,4 @@
+import { LIVE_MAX_PAYLOAD_BYTES } from "@nooklet/core";
 import { describe, expect, it } from "vitest";
 import { buildHello, handleIncomingFrame, type MessageHandlerDeps } from "./message-handler.js";
 import type { UiWindowStateWire } from "./state-snapshot.js";
@@ -158,5 +159,41 @@ describe("buildHello", () => {
       page: { id: "p1", name: "Projects/Aurora" },
       focused: true,
     });
+  });
+});
+
+describe("state.result under the live socket's frame limit (B-676 H12)", () => {
+  const id = (i: number) => i.toString(32).padStart(14, "0");
+  const selecting = (n: number): UiWindowStateWire => ({
+    ...STATE_STUB,
+    focus: {
+      mode: "block_selection",
+      block_id: id(0),
+      selected_block_ids: Array.from({ length: n }, (_, i) => id(i)),
+      cursor: null,
+    },
+  });
+  const ask = async (n: number) =>
+    JSON.parse(
+      (await handleIncomingFrame(
+        JSON.stringify({ type: "state.get", request_id: "r1" }),
+        deps({ buildState: () => selecting(n) }),
+      )) as string,
+    );
+
+  it("10,000 selected blocks (a select-all on a very large page) go through whole", async () => {
+    const reply = await ask(10_000);
+    expect(reply.state.focus.selected_block_ids).toHaveLength(10_000);
+    expect(reply.state.focus.selected_block_count).toBeUndefined();
+  });
+
+  it("past what fits, the id list is cut and the real count is reported, under the limit", async () => {
+    const reply = await ask(50_000);
+    expect(new TextEncoder().encode(JSON.stringify(reply)).length).toBeLessThanOrEqual(
+      LIVE_MAX_PAYLOAD_BYTES,
+    );
+    expect(reply.state.focus.selected_block_count).toBe(50_000);
+    expect(reply.state.focus.selected_block_ids.length).toBeGreaterThan(25_000);
+    expect(reply.state.focus.selected_block_ids.length).toBeLessThan(50_000);
   });
 });

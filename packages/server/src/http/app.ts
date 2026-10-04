@@ -184,18 +184,26 @@ export function loopbackTokenEnabled(config: ServerConfig): boolean {
  * process that minted it (it is gone), so it is retired here, by its successor. Without that,
  * every `nooklet serve` left one more live write credential in the table forever. */
 export const WEB_CLIENT_TOKEN_LABEL = "web-client (auto)";
-const webClientTokens = new WeakMap<ServerContext, string>();
+const webClientTokens = new WeakMap<ServerContext, { id: string; token: string }>();
 function webClientToken(ctx: ServerContext): string {
-  let token = webClientTokens.get(ctx);
-  if (!token) {
-    token = createSoleToken(ctx.driver, {
+  let minted = webClientTokens.get(ctx);
+  if (!minted) {
+    minted = createSoleToken(ctx.driver, {
       label: WEB_CLIENT_TOKEN_LABEL,
       scope: "admin",
       canSync: true,
-    }).token;
-    webClientTokens.set(ctx, token);
+    });
+    webClientTokens.set(ctx, minted);
   }
-  return token;
+  return minted.token;
+}
+
+/** Whether `tokenId` is this process's loopback auto-token. Every local tab and the desktop app
+ * share it, so the per-token WebSocket cap (`../live-limits.ts`) does not apply to it: a desktop
+ * user with a dozen windows would otherwise lose live sync in the thirteenth. By id, not label: a
+ * CLI token can carry any label. */
+export function isWebClientTokenId(ctx: ServerContext, tokenId: string): boolean {
+  return webClientTokens.get(ctx)?.id === tokenId;
 }
 
 export function createApp(opts: CreateAppOptions): Hono {
