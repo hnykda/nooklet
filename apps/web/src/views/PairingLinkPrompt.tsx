@@ -13,7 +13,8 @@
  * and remain reachable from the graph switcher.
  */
 import { createSignal, type JSX, onCleanup, Show } from "solid-js";
-import { type PairingLink, parsePairingLink } from "../data/connect-graph.js";
+import { samePathGraphPrefix } from "../data/bootstrap.js";
+import { PAIRING_CODE_RE, type PairingLink, parsePairingLink } from "../data/connect-graph.js";
 import { platform } from "../platform/index.js";
 import { ConnectView } from "./ConnectView.js";
 import "./connect.css";
@@ -24,6 +25,24 @@ export function PairingLinkPrompt(): JSX.Element {
   const [pending, setPending] = createSignal<Pending | undefined>();
   // A new link replaces the one on screen; remounting ConnectView resets its fields.
   const [generation, setGeneration] = createSignal(0);
+
+  // B-655, browser path: the pairing page's "Use this browser" (`../pair/PairLanding.tsx`) lands
+  // here as `<graph>/#pair=<code>`. The fragment is dropped from the address bar and history at
+  // once; the code lives on only in this component, for the one Connect it is for.
+  const fromHash = PAIRING_CODE_RE.exec(
+    new URLSearchParams(globalThis.location?.hash?.replace(/^#/, "") ?? "").get("pair") ?? "",
+  )?.[0];
+  if (fromHash) {
+    history.replaceState(history.state, "", location.pathname + location.search);
+    setPending({
+      link: {
+        serverUrl: `${location.origin}${samePathGraphPrefix() ?? ""}`,
+        code: fromHash,
+        sameOrigin: true,
+      },
+    });
+    setGeneration(1);
+  }
 
   const stop = platform.deepLinks.onOpen((url) => {
     const parsed = parsePairingLink(url);

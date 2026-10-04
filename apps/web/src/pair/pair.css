@@ -1,0 +1,22 @@
+/* The QR pairing page (`PairLanding.tsx`). Builds on `../views/connect.css`. */
+
+.pair-primary,
+.pair-secondary {
+  display: block;
+  text-align: center;
+  padding: var(--space-lg) var(--space-xl);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  margin: 0 0 var(--space-lg);
+}
+
+.pair-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.pair-secondary {
+  border: 1px solid var(--hairline);
+  color: var(--fg);
+}

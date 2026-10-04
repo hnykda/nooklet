@@ -25,6 +25,7 @@ import { suggestedTaskWorkflow } from "../task-workflow.js";
 import { mountAssetRoutes } from "./assets.js";
 import { installRequestGuards } from "./guards.js";
 import { hostName, isLoopbackName } from "./host-names.js";
+import { createRateLimiter, PAIRING_RATE_LIMIT, rateLimit } from "./rate-limit.js";
 import { mountWebClient } from "./web-client.js";
 
 export { isLoopbackName } from "./host-names.js";
@@ -170,9 +171,14 @@ export function loopbackTokenEnabled(config: ServerConfig): boolean {
   return config.loopbackToken ?? isLoopbackName(config.host ?? "127.0.0.1");
 }
 
-/** Per-process web-client token, minted lazily on the first page load. `write` + `can_sync` is
- * what the app itself does; `ui_control` is deliberately NOT granted — that capability is for an
- * agent driving this window, and `/ui/live` only needs `can_sync` to expose one (ADR 015 §2.1).
+/** Per-process web-client token, minted lazily on the first page load. `admin` + `can_sync`: the
+ * app edits and syncs, and on the server's own machine it is also where the owner pairs and revokes
+ * devices (Settings → Devices, B-655). `admin` adds nothing a loopback caller lacks — anything that
+ * can load this page as this machine can read `graph.sqlite` and `root.token` directly, which is
+ * the same argument that justifies handing it a token at all. A phone's token is never `admin`
+ * (pairing codes grant at most `write`). `ui_control` is deliberately NOT granted — that
+ * capability is for an agent driving this window, and `/ui/live` only needs `can_sync` to expose
+ * one (ADR 015 §2.1).
  *
  * `createSoleToken`, not `createToken`: the previous process's token cannot be retired by the
  * process that minted it (it is gone), so it is retired here, by its successor. Without that,
@@ -184,7 +190,7 @@ function webClientToken(ctx: ServerContext): string {
   if (!token) {
     token = createSoleToken(ctx.driver, {
       label: WEB_CLIENT_TOKEN_LABEL,
-      scope: "write",
+      scope: "admin",
       canSync: true,
     }).token;
     webClientTokens.set(ctx, token);
@@ -225,9 +231,23 @@ export function createApp(opts: CreateAppOptions): Hono {
   // `/api/v1/*` is authenticated by the guard above (`./guards.ts`), which also sets
   // `authScopes`/`authActorLabel`/`authTokenId` for `buildOpContext` here.
 
-  mountHttp(app, registry, async (c) => {
+  // The one unauthenticated op (`pairing.redeem`) checks a secret, so it is rate-limited here,
+  // before its body is even parsed. One limiter per graph app.
+  app.post("/api/v1/pairing.redeem", rateLimit(createRateLimiter(PAIRING_RATE_LIMIT)));
+
+  mountHttp(app, registry, async (c, op) => {
     const scopes = c.get("authScopes");
-    if (!scopes) return null; // bearerAuth middleware already answered 401 before this ever runs
+    if (!scopes) {
+      // No token. Only an `auth: "none"` op runs this way (and only because its route is also on
+      // `PUBLIC_ROUTES`, or the guard would have answered 401 already); it gets no scopes at all.
+      if (op.auth !== "none") return null;
+      return buildOpContext(
+        serverCtx,
+        config,
+        { scopes: [], actor: { label: "anonymous" }, origin: { kind: "api" } },
+        { transport: "http", requestId: crypto.randomUUID() },
+      );
+    }
     const actorLabel = c.get("authActorLabel");
     const tokenId = c.get("authTokenId");
     return buildOpContext(

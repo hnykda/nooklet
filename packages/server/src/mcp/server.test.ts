@@ -83,6 +83,9 @@ const CORE_TOOL_NAMES = [
 
 const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_highlight"].sort();
 
+/** B-655: server administration, listed only for an `admin` token (rule 10 again). */
+const ADMIN_TOOL_NAMES = ["pairing_create", "token_list", "token_revoke"].sort();
+
 /**
  * Core ops that are deliberately NOT MCP tools (`expose: { mcp: false }`), so `CORE_OPS.length`
  * stops being the tool count.
@@ -93,7 +96,13 @@ const UI_TOOL_NAMES = ["ui_windows", "ui_state", "ui_run", "ui_navigate", "ui_hi
  * an agent should do mid-answer; `system_diagnostics` already tells an agent whether semantic
  * search is worth attempting, which is the only part of this an agent needs.
  */
-const HTTP_ONLY_OP_NAMES = ["embeddings.status", "embeddings.configure", "embeddings.reindex"];
+const HTTP_ONLY_OP_NAMES = [
+  "embeddings.status",
+  "embeddings.configure",
+  "embeddings.reindex",
+  // The one tokenless op: its caller is a device with no credential, never an MCP client.
+  "pairing.redeem",
+];
 
 describe("MCP tools/list", () => {
   it("lists every core op as a tool, with correct annotations, for a write-scoped token", async () => {
@@ -106,7 +115,9 @@ describe("MCP tools/list", () => {
     // 30 core ops -> 22 tools here: minus the 5 ui_* ones (a plain write-scoped token has no
     // ui:control, ADR 015 §7 rule 10 — "not even listed for this token") and minus the 3
     // HTTP-only embeddings.* ones.
-    expect(tools).toHaveLength(CORE_OPS.length - UI_TOOL_NAMES.length - HTTP_ONLY_OP_NAMES.length);
+    expect(tools).toHaveLength(
+      CORE_OPS.length - UI_TOOL_NAMES.length - HTTP_ONLY_OP_NAMES.length - ADMIN_TOOL_NAMES.length,
+    );
     expect(tools).toHaveLength(CORE_TOOL_NAMES.length);
     expect(CORE_OPS.filter((op) => op.expose?.mcp === false).map((op) => op.name)).toEqual(
       HTTP_ONLY_OP_NAMES,
@@ -144,6 +155,16 @@ describe("MCP tools/list", () => {
     expect(names).toContain("graph_overview");
     // Write ops still require "write", which this ui:control token was not given.
     expect(names).not.toContain("page_create");
+  });
+
+  it("B-655: lists the server-administration tools only for an admin token", async () => {
+    const admin = await rpc(s.app, s.adminToken, "tools/list", {});
+    const adminNames = admin.body.result.tools.map((t: { name: string }) => t.name);
+    for (const n of ADMIN_TOOL_NAMES) expect(adminNames).toContain(n);
+    expect(adminNames).not.toContain("pairing_redeem");
+    const write = await rpc(s.app, s.writeToken, "tools/list", {});
+    const writeNames = write.body.result.tools.map((t: { name: string }) => t.name);
+    for (const n of ADMIN_TOOL_NAMES) expect(writeNames).not.toContain(n);
   });
 
   it("ADR 015: ui_run requires ui:control even for an admin (write+read) token", async () => {

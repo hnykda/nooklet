@@ -41,6 +41,7 @@ import { pageList } from "./page-list.js";
 import { pageMerge } from "./page-merge.js";
 import { pageRead } from "./page-read.js";
 import { pageUpdate } from "./page-update.js";
+import { pairingCreate, pairingRedeem, tokenList, tokenRevoke } from "./pairing.js";
 import { OpRegistry } from "./registry.js";
 import { relatedFind } from "./related.js";
 import { search } from "./search.js";
@@ -86,6 +87,11 @@ export const CORE_OPS = [
   uiRun,
   uiNavigate,
   uiHighlight,
+  // B-655: device management under `admin`, and QR pairing (`./pairing.ts`).
+  pairingCreate,
+  pairingRedeem,
+  tokenList,
+  tokenRevoke,
 ];
 
 export function buildRegistry(): OpRegistry {

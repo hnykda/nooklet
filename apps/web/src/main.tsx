@@ -12,6 +12,7 @@ import {
   replicaKey,
 } from "./data/bootstrap.js";
 import { suggestJournalTitleFormat } from "./data/page-title.js";
+import { isPairPath } from "./data/pairing.js";
 import { initTaskWorkflow } from "./data/task-workflow.js";
 import { initDb } from "./db/client.js";
 import {
@@ -90,7 +91,13 @@ async function start(): Promise<void> {
 }
 
 const appRoot = document.getElementById("app");
-if (appRoot && cannotRunHere(currentContextFacts())) {
+if (appRoot && platform.name !== "capacitor" && isPairPath(location.pathname)) {
+  // B-655: the QR pairing page. First, before the insecure-context check (a phone on a plain-http
+  // LAN address still needs the "Open in the nooklet app" button) and without starting the app.
+  // Its own chunk: nobody else needs it.
+  const { mountPairLanding } = await import("./pair/PairLanding.js");
+  mountPairLanding(appRoot, location, !cannotRunHere(currentContextFacts()));
+} else if (appRoot && cannotRunHere(currentContextFacts())) {
   renderInsecureContextPage(appRoot, location);
 } else {
   await start();

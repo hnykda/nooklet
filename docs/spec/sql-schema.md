@@ -833,6 +833,22 @@ CREATE TABLE token (
   revoked_at   INTEGER
 );
 
+-- One-time pairing codes (B-655, SCHEMA_VERSION 8, packages/server/src/auth/pairing-codes.ts).
+-- sha256 only, like tokens. Single use: redeem claims the row with
+-- `UPDATE … WHERE used_at IS NULL AND expires_at > now` in the transaction that mints the token.
+-- A cancelled code (superseded by its creator's next one) has used_at set and no token_id.
+CREATE TABLE pairing_code (
+  id         TEXT PRIMARY KEY,
+  code_hash  TEXT NOT NULL UNIQUE,
+  scope      TEXT NOT NULL CHECK (scope IN ('read','write')),  -- never admin
+  can_sync   INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT,                    -- creating token id; NULL = the CLI (`nooklet pair`)
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at    INTEGER,
+  token_id   TEXT REFERENCES token(id)
+);
+
 CREATE TABLE device (
   id           TEXT PRIMARY KEY,     -- 8 lowercase hex, hlc.ts
   graph_id     TEXT NOT NULL DEFAULT 'default',

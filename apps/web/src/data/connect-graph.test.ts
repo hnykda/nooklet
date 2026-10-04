@@ -85,6 +85,20 @@ describe("parsePairingLink (B-603)", () => {
     expect(parsePairingLink(link(`url=${url}&token=${TOKEN}`))).toHaveProperty("error");
   });
 
+  it("B-655: reads a one-time code instead of a token, strictly shaped, never both", () => {
+    const CODE = "nkp_abcdefghijklmnopqrst-_";
+    const url = encodeURIComponent("https://n.example.ts.net/g/default");
+    expect(parsePairingLink(link(`url=${url}&code=${CODE}`))).toEqual({
+      serverUrl: "https://n.example.ts.net/g/default",
+      code: CODE,
+    });
+    expect(parsePairingLink(link(`url=${url}&code=nkp_short`))).toHaveProperty("error");
+    expect(parsePairingLink(link(`url=${url}&code=${TOKEN}`))).toHaveProperty("error");
+    expect(parsePairingLink(link(`url=${url}&code=${CODE}&token=${TOKEN}`))).toHaveProperty(
+      "error",
+    );
+  });
+
   it("does not claim other links", () => {
     expect(parsePairingLink("nooklet://page/Foo")).toBeUndefined();
     expect(

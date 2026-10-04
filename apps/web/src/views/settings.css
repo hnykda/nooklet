@@ -315,3 +315,56 @@
   outline: 2px solid var(--focus, #2f55d4);
   outline-offset: 1px;
 }
+
+/* ── Devices (B-655) ────────────────────────────────────────────────────────────────────────── */
+
+.set-device .set-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.set-device-meta {
+  color: var(--muted);
+  font-size: var(--text-sm, 0.8125rem);
+}
+
+.set-device-revoke {
+  margin-top: 0;
+}
+
+.set-pairing {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--hairline, rgb(0 0 0 / 12%));
+  border-radius: var(--radius-lg, 0.5rem);
+}
+
+.set-pairing .set-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.set-qr {
+  margin-top: 0.5rem;
+}
+
+/* Always dark-on-white, whatever the theme: a QR inverted for dark mode is one many scanners
+   cannot read. */
+.set-qr-image {
+  display: block;
+  width: min(15rem, 100%);
+  height: auto;
+  background: #fff;
+  border-radius: var(--radius-md, 0.4rem);
+  image-rendering: pixelated;
+}
+
+.set-qr-url {
+  display: block;
+  margin-top: 0.4rem;
+  word-break: break-all;
+  user-select: all;
+}

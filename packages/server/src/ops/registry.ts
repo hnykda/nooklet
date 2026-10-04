@@ -97,6 +97,14 @@ export interface OpDef<I extends z.ZodType = z.ZodType, O extends z.ZodType = z.
   /** Minimum token permissions required to call this op (the read/write/admin scopes, plus the
    * orthogonal `"ui:control"` capability — see `Permission`). */
   scopes: Permission[];
+  /**
+   * `"none"`: callable with no token at all. Exactly one op uses it, `pairing.redeem` (the device
+   * that calls it has no credential yet; `./pairing.ts`). Two locks, both required: this flag
+   * (without it `buildOpCtx` refuses a tokenless call) and the route's entry in `PUBLIC_ROUTES`
+   * (`../http/guards.ts`; without it the guard answers 401 first). `scopes` must be `[]` and the op
+   * must not be MCP-exposed (`OpRegistry.register` checks both). Plugin ops cannot set it.
+   */
+  auth?: "none";
   /** Defaults: http true always; mcp true for core ops, false for plugin ops. */
   expose?: Partial<OpExpose>;
   /** Text for MCP `content[0].text`. Required iff expose.mcp !== false. */
@@ -351,6 +359,13 @@ export class OpRegistry {
         );
       }
     }
+    if (op.auth === "none") {
+      // Fail at startup, not at the first anonymous request: see `OpDef.auth`.
+      if (owner !== "core") throw new Error(`plugin op "${op.name}" cannot be auth: "none"`);
+      if (op.scopes.length > 0) throw new Error(`auth: "none" op "${op.name}" must have no scopes`);
+      if ((op.expose?.mcp ?? true) !== false)
+        throw new Error(`auth: "none" op "${op.name}" must not be exposed to MCP`);
+    }
     if ((op.expose?.mcp ?? owner === "core") !== false && !op.render) {
       throw new Error(`op "${op.name}" is exposed to MCP but has no render()`);
     }
@@ -569,6 +584,7 @@ export function buildOpenApi(reg: OpRegistry): Record<string, unknown> {
         tags: [op.name.split(".")[0]],
         "x-annotations": op.annotations,
         "x-scopes": op.scopes,
+        ...(op.auth === "none" ? { "x-auth": "none" } : {}),
         requestBody: {
           required: true,
           content: {
@@ -587,7 +603,7 @@ export function buildOpenApi(reg: OpRegistry): Record<string, unknown> {
             content: { "application/json": { schema: ErrorEnvelopeJsonSchema } },
           },
         },
-        security: [{ bearer: [] }],
+        security: op.auth === "none" ? [] : [{ bearer: [] }],
       },
     };
   }

@@ -123,17 +123,24 @@ export function parseServerUrl(raw: string): { url: string } | { error: string }
   return { url: value };
 }
 
-export interface PairingLink {
+/** A one-time pairing code (B-655). Matches the server's `PAIRING_CODE_RE`
+ * (`packages/server/src/auth/pairing-codes.ts`). */
+export const PAIRING_CODE_RE = /^nkp_[A-Za-z0-9_-]{22}$/;
+
+export type PairingLink = {
   /** The server address, validated as by `parseServerUrl` (so a bare origin is still mapped to
    * `/g/default` later by `connectToGraph`, exactly as for a typed address). */
   serverUrl: string;
-  token: string;
-}
+  /** This page's own graph (the browser path of the pairing page): connect same-origin, as the
+   * web/desktop connect screen does, rather than adding a "remote" entry for our own address. */
+  sameOrigin?: boolean;
+} & ({ token: string; code?: undefined } | { code: string; token?: undefined });
 
 /**
  * B-603: `nooklet://connect?url=<server address>&token=<device token>`, as printed by
- * `nooklet token create --link <public url>` (server `cli.ts`). Returns `undefined` for a
- * `nooklet://` link that is not a pairing link at all, so other deep links can be added later
+ * `nooklet token create --link <public url>` (server `cli.ts`), and (B-655) the same with
+ * `code=<one-time pairing code>` instead of a token, from the QR pairing page. Returns `undefined`
+ * for a `nooklet://` link that is not a pairing link at all, so other deep links can be added later
  * without this claiming them.
  *
  * Strict on purpose. Anything that can open a URL on the phone can craft one of these: a web page,
@@ -157,10 +164,16 @@ export function parsePairingLink(raw: string): PairingLink | { error: string } |
 
   const url = link.searchParams.get("url");
   const token = link.searchParams.get("token")?.trim();
+  const code = link.searchParams.get("code")?.trim();
   if (!url) return { error: "This pairing link has no server address (url=…)." };
-  if (!token) return { error: "This pairing link has no token (token=…)." };
-  if (!/^[A-Za-z0-9_-]{8,256}$/.test(token)) {
+  // Exactly one credential. Both at once is not something either producer writes.
+  if (token && code) return { error: "This pairing link has both a token and a code." };
+  if (!token && !code) return { error: "This pairing link has no pairing code (code=…)." };
+  if (token !== undefined && !/^[A-Za-z0-9_-]{8,256}$/.test(token)) {
     return { error: "This pairing link's token is not a nooklet token." };
+  }
+  if (code !== undefined && !PAIRING_CODE_RE.test(code)) {
+    return { error: "This pairing link's code is not a nooklet pairing code." };
   }
   const parsed = parseServerUrl(url);
   if ("error" in parsed)
@@ -174,7 +187,7 @@ export function parsePairingLink(raw: string): PairingLink | { error: string } |
   if (server.username || server.password) {
     return { error: "This pairing link's server address contains a user name; refusing it." };
   }
-  return { serverUrl: parsed.url, token };
+  return code ? { serverUrl: parsed.url, code } : { serverUrl: parsed.url, token: token as string };
 }
 
 export type CreateGraphResult =

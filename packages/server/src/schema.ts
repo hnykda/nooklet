@@ -19,6 +19,19 @@ import {
   reresolveIndexTargets,
 } from "@nooklet/core";
 
+/** Shared by the fresh schema and migration 8, so the two cannot drift. */
+const PAIRING_CODE_TABLE = `CREATE TABLE pairing_code (
+    id         TEXT PRIMARY KEY,
+    code_hash  TEXT NOT NULL UNIQUE,
+    scope      TEXT NOT NULL CHECK (scope IN ('read','write')),
+    can_sync   INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at    INTEGER,
+    token_id   TEXT REFERENCES token(id)
+  )`;
+
 export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE schema_migration (
     version     INTEGER PRIMARY KEY,
@@ -185,6 +198,12 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
     last_used_at INTEGER,
     revoked_at   INTEGER
   )`,
+
+  // One-time pairing codes (`auth/pairing-codes.ts`, B-655 / QR pairing). Stored as sha256 only,
+  // like tokens. A code grants at most `write`: a leaked QR must never be an admin credential.
+  // No `graph_id`: this table lives in the graph's own file, and that is the binding (ADR 025).
+  // Added in SCHEMA_VERSION 8.
+  PAIRING_CODE_TABLE,
 
   `CREATE TABLE device (
     id           TEXT PRIMARY KEY,
@@ -383,9 +402,16 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     },
   },
+  {
+    version: 8,
+    description: "add pairing_code (one-time QR pairing codes, B-655)",
+    up: (driver) => {
+      driver.exec(PAIRING_CODE_TABLE.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"));
+    },
+  },
 ];
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {

@@ -50,6 +50,7 @@ import {
 } from "../data/page-title.js";
 import { chooseTaskWorkflow, taskWorkflow } from "../data/task-workflow.js";
 import { listTemplates, setJournalTemplate, type TemplateSummary } from "../data/templates.js";
+import { DevicesSection } from "./DevicesSection.js";
 import { openDiagnostics } from "./DiagnosticsPanel.js";
 import { PluginsSection } from "./PluginsSection.js";
 import "./settings.css";
@@ -679,6 +680,7 @@ export function SettingsPanel(props: { onClose: () => void }): JSX.Element {
         <TasksSection />
         <TemplatesSection />
         <EmbeddingsSection />
+        <DevicesSection />
         <PluginsSection />
         <AboutSection onClose={props.onClose} />
       </div>

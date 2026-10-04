@@ -17,6 +17,12 @@
 
 import type { WSContext } from "hono/ws";
 import type { ServerContext } from "../apply-ops.js";
+import {
+  isTokenRevoked,
+  REVOKED_CLOSE_CODE,
+  socketTokenId,
+  untrackTokenSocket,
+} from "../auth/token-sockets.js";
 
 export interface CommitEvent {
   seq: number;
@@ -84,6 +90,19 @@ export function wirePokeOnCommit(ctx: ServerContext): void {
     const message = JSON.stringify({ type: "poke", seq });
     for (const [ws, deviceId] of s.connections) {
       if (deviceId === originDeviceId) continue;
+      // B-676: a token revoked from another process (`nooklet token revoke`) cannot close this
+      // socket directly (`../auth/token-sockets.ts`); it is closed here, before it hears anything.
+      const tokenId = socketTokenId(ctx.driver, ws);
+      if (tokenId !== undefined && isTokenRevoked(ctx.driver, tokenId)) {
+        s.connections.delete(ws);
+        untrackTokenSocket(ctx.driver, ws);
+        try {
+          ws.close(REVOKED_CLOSE_CODE, "token revoked");
+        } catch {
+          // already closing
+        }
+        continue;
+      }
       try {
         ws.send(message);
       } catch {

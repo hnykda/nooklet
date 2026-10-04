@@ -74,13 +74,16 @@ traffic never reach the server.
 > - **No script from notes found.** The review found no way for a note's content to run script:
 >   links are scheme-checked, markdown has no raw HTML, KaTeX runs untrusted and mermaid strict.
 >
+> Since then (QR pairing, 2026-10-04): revoking a token closes the WebSockets it has open, the
+> one endpoint that takes no token (redeeming a pairing code) is rate-limited, and the `admin`
+> scope gates device management.
+>
 > Known gaps:
-> - **No rate limiting inside nooklet.** Limit at the proxy. Nothing returns 429 yet.
-> - **WebSockets.** Revoking a token does not close the WebSockets it already has open, and a
->   socket that never authenticates is not timed out.
+> - **Little rate limiting inside nooklet.** Only pairing-code redemption is limited. Limit
+>   everything else at the proxy.
+> - **WebSockets.** A socket that never authenticates is not timed out.
 > - **Attachments.** `/assets/<id>` needs no token. An id holds 25 random bits plus its upload
 >   time, which is impractical to guess, but a revoked device keeps the URLs it has seen.
-> - **`admin` scope.** It means `write`.
 > - **Public without a token.** Health checks, the op list (`/openapi.json`) and which graph ids
 >   exist.
 
@@ -88,8 +91,9 @@ traffic never reach the server.
 
 | Credential | Created by | Grants |
 |---|---|---|
-| Device or agent token (`nk_…`) | `nooklet token create` | Access to **one graph**, at its scope and capabilities |
-| Web-client token | The server, for a browser on the same machine (below) | `write` + sync on that graph |
+| Device or agent token (`nk_…`) | `nooklet token create`, or pairing a device (below) | Access to **one graph**, at its scope and capabilities |
+| Web-client token | The server, for a browser on the same machine (below) | `admin` + sync on that graph |
+| Pairing code (`nkp_…`) | Settings → Devices → Add a device, or `nooklet pair` | Nothing by itself. Traded once, within 10 minutes, for a new device token (`write` + sync by default, never `admin`) |
 | Root token (`nkroot_…`) | Minted on first `serve`, kept in `<data>/root.token` (mode 0600) | `GET /graphs` and `POST /graphs` only: list graphs, create a graph. No access to graph content by itself. |
 
 A token belongs to one graph: it lives in that graph's own database and cannot verify against
@@ -99,7 +103,10 @@ Scopes and capabilities:
 
 - `--scope read` (the default): read, search, list. No writes.
 - `--scope write`: everything `read` can, plus writes, refactors, trash and undo.
-- `--scope admin`: accepted, but no operation requires it today; it behaves like `write`.
+- `--scope admin`: everything `write` can, plus managing devices: listing tokens, revoking them,
+  and creating pairing codes. The desktop app (and any browser on the server's own machine) gets
+  an `admin` token automatically; a paired phone never does, so a lost phone cannot lock out your
+  other devices or mint itself new access.
 - `--sync`: may use `/sync/*` (push, pull, snapshot, the live socket). Devices need it; agents do
   not.
 - `--ui-control`: may see and drive a live window through the `ui_*` tools. Separate from the scope,
@@ -111,8 +118,29 @@ Scopes and capabilities:
 The server prints a token once and stores only its SHA-256 hash. The client keeps its token in the
 browser's `localStorage` for that origin.
 
-Revoking: `nooklet token list`, then `nooklet token revoke <id>`. A device whose token is revoked
-shows "Token rejected" and keeps its unsent edits until you pair it again.
+Revoking: Settings → Devices → Revoke (from an `admin` session), or `nooklet token list`, then
+`nooklet token revoke <id>`. The device's next request is refused and its open sync connection is
+closed. It shows "Token rejected" and keeps its unsent edits until you pair it again.
+
+### Pairing a phone
+
+Settings → Devices → Add a device (or `nooklet pair --link <address>` on a headless server) shows
+a QR code. It holds `https://<server>/g/<graph>/pair#code=nkp_…`, a page with an "Open in the
+nooklet app" button. The code:
+
+- works **once**, and expires after **10 minutes**; making a new one cancels the old one;
+- is stored only as a hash, and sits in the URL **fragment**, which browsers never send, so it is
+  never in a server, proxy or tailnet log;
+- is traded by the phone for its own token (`write` + sync), named after the device, through the
+  only endpoint that needs no token. That endpoint answers the same way for an unknown, expired or
+  used code and allows 10 attempts a minute per address.
+
+The QR holds an https page rather than a `nooklet://` link because the iPhone Camera app is not
+documented to open custom-scheme links; it always opens https.
+
+`nooklet token create --link` still prints a `nooklet://connect?…&token=…` link, but that link
+**is** the token, valid until revoked, wherever it travels (clipboard, chat, screenshots). Prefer
+pairing codes.
 
 The `page_delete` MCP tool is marked as requiring user interaction, so MCP clients that honour the
 hint ask you first. Every agent write is recorded with the token's label and can be reversed with
