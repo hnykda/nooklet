@@ -1,6 +1,6 @@
 # Proposal 005: one graph list on desktop, one way to add a graph
 
-**Status:** proposed 2026-10-04, awaiting the owner's decision · **Prompted by:** the owner, after
+**Status:** accepted 2026-10-04 by the owner ("yes, try that"); being built, see `docs/progress/desktop-graphs.md` · **Prompted by:** the owner, after
 using the desktop app against the production server: "the graph behaviour on desktop is still super
 confusing … 'This computer' or 'Sync with server' and add new somehow which then gets you back and
 then just token. Is this really the best we can do?"
