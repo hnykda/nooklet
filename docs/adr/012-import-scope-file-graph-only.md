@@ -1,6 +1,7 @@
 # ADR 012: The importer targets the Logseq file graph only, not the DB version's markdown export
 
-Date: 2026-09-10. Status: accepted.
+Date: 2026-09-10. Status: superseded in scope by ADR 030 (2026-10-04): DB-version graphs are imported
+too, from their mirror plus `db.sqlite`.
 
 ## Decision
 
