@@ -961,11 +961,6 @@ Revoked sockets keep receiving sync pokes (sequence numbers only, no note conten
 
 Reachability unverified. Recommendation H9: `pnpm.overrides` now; weekly `pnpm audit --prod --audit-level high` in CI; grouped monthly updates.
 
-### B-681 · On the phone, the `/` slash menu opens away from the caret
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
-
-Owner: typing `/` now opens the menu, but it does not appear next to the cursor/slash.
-
 ### B-682 · An uploaded image shows black bars above and below instead of fitting its own size
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
 
@@ -977,6 +972,13 @@ Owner on the iPhone: after uploading an image it renders letterboxed (black boxe
 Owner: like B-648 (Properties), the viewport grows beyond the screen width after the image is inserted.
 
 ## Fixed
+
+### B-681 · On the phone, the `/` slash menu opens away from the caret
+**Status:** fixed (confirmed by the owner on a physical iPhone, 2026-10-04, after rebuilding on current main) · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** pending (phone-images agent may add a positioning regression test)
+
+Owner: typing `/` now opens the menu, but it does not appear next to the cursor/slash.
+
+The owner's first report was from a pre-fix build; after rebuilding, the menu appears next to the caret. Most likely fixed by B-646 (`a1b9e09`), which made `/` on an empty day start a real block editor.
 
 ### B-680 · `e2e.test.ts` B-642 "one device offline" was flaky (6/20): a same-millisecond HLC tie
 **Status:** fixed (2026-10-04, `6484cd0`) · **Severity:** low (test) · **Found:** 2026-10-04, b652 agent · **Test:** the test itself
