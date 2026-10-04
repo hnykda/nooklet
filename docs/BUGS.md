@@ -1048,6 +1048,20 @@ Owner: "agents control should probably be off for mobile? that doesn't make much
 
 Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
 
+### B-710 · `nooklet backup` holds the whole graph in memory: OOMKilled on a 280 MB graph, blocking every deploy and the nightly backup
+**Status:** stopgap applied (2026-10-04); real fix in progress (streaming backup agent) · **Severity:** high (no backups of the real graph; deploys blocked) · **Found:** 2026-10-04, coordinator — production deploys stopped rolling out after `alpha` was imported · **Test:** pending (streaming agent: peak RSS for a 400 MB graph)
+
+After importing `alpha` (50 MB db + ~230 MB assets), every pre-deploy backup job (created from the
+`nooklet-backup` CronJob, 512Mi limit) was `OOMKilled`, so the infra repo's nooklet deploy pipeline
+failed and production stayed on an old image while the nooklet pipelines reported success.
+Cause: `backup/index.ts#createBackup` `readFileSync`s the VACUUM'd db and every asset, and
+`backup/tar.ts#createTarGz` `Buffer.concat`s all parts then `gzipSync`s them: several copies of the
+graph in memory. The nightly backup of `alpha` would have failed the same way. Stopgap (owner
+approved): the CronJob limit raised to 2Gi in the infra repo and patched live; deploy re-run →
+pre-deploy backup completed in 17 s, `nooklet-alpha-2026-10-04.tar` (251 MB) exists. Owner: "we can't
+just rely on everything fitting into memory" — streaming backup/restore plus an audit of other
+whole-graph-in-memory paths (snapshot, export, gc, rebuild, assets) is in progress.
+
 ## Fixed
 
 ### B-707 · The first sync of a real graph is aborted mid-download, so the app stays offline forever
@@ -1060,6 +1074,8 @@ time and retried forever. Fix: (1) the server gzips `/sync/snapshot` and `/sync/
 push and the WebSocket untouched); (2) the client's pull/snapshot use `fetchJsonStallAware`: no
 headers within 10 s or no body bytes for 20 s aborts (a hung server still fails fast), a slow steady
 download finishes; push gets a 60 s total bound. Not yet confirmed on the owner's phone.
+
+2026-10-04, live on production (`sha-c9d993bb`): `alpha`'s snapshot over the tailnet is now 1.94 MB gzipped (from 17.3 MB) in 1.5 s (from 8.4–8.9 s).
 
 ### B-701 · A long `$$…$$` display formula widened the page at phone width
 **Status:** fixed (2026-10-04, phone-images) · **Severity:** low · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** `phone-images.spec.ts` "phone overflow sweep…"
