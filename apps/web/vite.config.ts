@@ -98,8 +98,14 @@ export default defineConfig({
           // diagram seen once still renders offline. Precached files never reach this route (the
           // precache route is registered first). Hashed names are immutable, hence CacheFirst;
           // the expiry only bounds what superseded builds leave behind.
+          //
+          // With or without the graph prefix (ADR 025), like the rules below: a document loaded
+          // from the network at `/g/<slug>/…` asks for `/g/<slug>/static/…`, which a bare
+          // `startsWith("/static/")` never matched, so those chunks were offline only while the
+          // HTTP cache still held them (the intermittent `mermaid-lazy-cache.spec.ts` failure).
           {
-            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/static/"),
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin && /^(\/g\/[^/]+)?\/static\//.test(url.pathname),
             handler: "CacheFirst",
             options: {
               cacheName: "lazy-chunks",

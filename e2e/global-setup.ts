@@ -5,7 +5,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,6 +81,11 @@ export default async function globalSetup(): Promise<void> {
 
   const dataDir = mkdtempSync(join(tmpdir(), "nooklet-e2e-"));
   const log = join(dataDir, "server.log");
+  // The server writes its output straight into the log file. It used to be piped into this
+  // process and rewritten with `writeFileSync` on every chunk, and output arriving as teardown
+  // killed the server landed after teardown had deleted `dataDir`: an uncaught ENOENT that exited
+  // the run 1 with every test passed (B-670). The child owns this fd; nothing here writes later.
+  const logFd = openSync(log, "a");
 
   const server = spawn(
     "pnpm",
@@ -96,20 +101,15 @@ export default async function globalSetup(): Promise<void> {
       "--port",
       String(PORT),
     ],
-    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"], detached: true },
+    { cwd: repoRoot, stdio: ["ignore", logFd, logFd], detached: true },
   );
-  let out = "";
-  const capture = (d: Buffer) => {
-    out += d.toString();
-    writeFileSync(log, out);
-  };
-  server.stdout.on("data", capture);
-  server.stderr.on("data", capture);
+  closeSync(logFd);
 
   try {
     await waitForHealth(`http://127.0.0.1:${PORT}/healthz`);
   } catch (e) {
     server.kill("SIGKILL");
+    const out = readFileSync(log, "utf8");
     rmSync(dataDir, { recursive: true, force: true });
     throw new Error(`${e}\n--- server output ---\n${out}`);
   }

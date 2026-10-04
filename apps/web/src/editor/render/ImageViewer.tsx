@@ -180,12 +180,7 @@ export function ImageViewer(props: {
           <div class="image-viewer-toasts" role="status" aria-live="polite">
             <For each={toasts()}>
               {(t) => (
-                <p
-                  class="image-viewer-toast"
-                  classList={{ "image-viewer-toast-error": !t.ok }}
-                  // Clicking a toast must not close the viewer (the stage behind closes on click).
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <p class="image-viewer-toast" classList={{ "image-viewer-toast-error": !t.ok }}>
                   {t.message}
                 </p>
               )}

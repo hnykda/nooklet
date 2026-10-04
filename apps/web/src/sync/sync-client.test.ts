@@ -289,6 +289,46 @@ describe("SyncClient.pull (cursor advancement, corrections)", () => {
     expect(cursor?.value).toBe("3");
   });
 
+  // A poke (or the live socket's `onOpen`) that arrives while a pull is in flight used to be
+  // dropped: `pull()` returned at once, and the in-flight pull had read the server before the
+  // commit the poke was about. Nothing pulled again until the next poke, so a trash restore made
+  // right as the socket (re)connected stayed invisible on this device (page-delete.spec.ts, ~50%
+  // under --repeat-each).
+  it("a pull asked for while one is in flight runs again after it (no lost poke)", async () => {
+    const remoteOp = makeOp("2026-01-01T00:00:00.010Z-0000-deadbeef", "deadbeef", "pgLate", {
+      kind: "page.create",
+      name: "Late",
+      journalDay: null,
+      createdAt: 0,
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let call = 0;
+    transport.pull = async (deviceId, since) => {
+      transport.pullCalls.push({ deviceId, since });
+      call++;
+      if (call === 1) {
+        // The server answered before the commit; the response is still on its way.
+        await gate;
+        return { ops: [], cursor: 3, has_more: false };
+      }
+      return { ops: [remoteOp], cursor: 4, has_more: false };
+    };
+
+    const first = client.pull();
+    // The commit lands and the poke arrives while the first pull is still in flight.
+    const poked = client.pull();
+    release();
+    await first;
+    await poked;
+
+    expect(transport.pullCalls.map((c) => c.since)).toEqual([0, 3]);
+    expect(driver.get("SELECT id FROM page WHERE id = ?", ["pgLate"])).toBeDefined();
+    expect(client.getStatus().serverCursor).toBe(4);
+  });
+
   it("does NOT pull again when a page is full but has_more is false (exact-multiple last page)", async () => {
     // Regression guard for the old `ops.length === pullLimit` heuristic: the server can return a
     // page exactly as large as `limit` that is also the last page (rows remaining == limit

@@ -180,11 +180,19 @@ test("the section disappears, heading and all, once its day has nothing left", a
 });
 
 test("finishing a task elsewhere takes it off today's list without a reload", async ({ page }) => {
-  await seedPage(page, "Agenda Live", `- TODO agx finish me\n  scheduled:: ${isoOffset(0)}`);
-  const [block] = await readBlocks(page, "Agenda Live");
+  // This run's own page and text: the test finishes the task, and `seedPage` returns an existing
+  // page untouched, so a second run (`--repeat-each`, a retry) found it DONE already.
+  const run = `${test.info().repeatEachIndex}-${test.info().retry}`;
+  const live = `Agenda Live ${run}`;
+  await seedPage(page, live, `- TODO agx finish me ${run}\n  scheduled:: ${isoOffset(0)}`);
+  const [block] = await readBlocks(page, live);
 
   await page.goto("/journals");
-  const row = todayAgenda(page).locator(".journal-agenda-item", { hasText: "agx finish me" });
+  // Before the lost-poke fix (`sync-client.ts#pull`) the DONE below could arrive while the page's
+  // first pull was in flight, and the row stayed until the next unrelated write.
+  const row = todayAgenda(page).locator(".journal-agenda-item", {
+    hasText: `agx finish me ${run}`,
+  });
   await expect(row).toHaveCount(1);
 
   await api(page, "block.update", { id: block?.id, properties: { marker: "DONE" } });

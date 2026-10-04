@@ -165,7 +165,9 @@ export class SyncClient {
   private pushTimer: ReturnType<typeof setTimeout> | undefined;
   private flushing = false;
   private flushAgain = false;
-  private pulling = false;
+  /** The pull in flight, if any, and whether another was asked for while it ran (see `pull`). */
+  private pulling: Promise<void> | null = null;
+  private pullAgain = false;
   private unsubscribeLive: (() => void) | undefined;
   private liveDownTimer: ReturnType<typeof setTimeout> | undefined;
   /** B-613: the server refused this device's token. Sticky until a request succeeds again: a
@@ -400,10 +402,36 @@ export class SyncClient {
    * landing on an exact multiple of `limit`). Driven off `has_more` this way, a device that is far
    * behind (fresh install, or offline for a week) drains every page in one `pull()` call instead
    * of crawling forward one page per poke.
+   *
+   * A call while a pull is in flight is not dropped: it runs once more after that one, and its
+   * promise covers the re-run. The in-flight pull may have read the server before the commit a
+   * poke is about — returning at once lost that poke, and the device stayed behind until the next
+   * one (a trash restore made as the live socket reconnected never appeared, page-delete.spec.ts).
+   * Not re-run after a failed pull: the failure is what the status reports, and the next poke,
+   * reconnect or lifecycle event retries.
    */
-  async pull(): Promise<void> {
-    if (this.pulling) return;
-    this.pulling = true;
+  pull(): Promise<void> {
+    if (this.pulling) {
+      this.pullAgain = true;
+      return this.pulling;
+    }
+    const run = async () => {
+      try {
+        do {
+          this.pullAgain = false;
+          if (!(await this.pullOnce())) break;
+        } while (this.pullAgain);
+      } finally {
+        this.pullAgain = false;
+        this.pulling = null;
+      }
+    };
+    this.pulling = run();
+    return this.pulling;
+  }
+
+  /** One `pull()`: every page until `has_more` is false. False if it failed. */
+  private async pullOnce(): Promise<boolean> {
     try {
       this.setStatus({ state: this.busyState("pulling") });
       for (;;) {
@@ -459,10 +487,10 @@ export class SyncClient {
       this.authRejected = false;
       this.graphRetired = false;
       this.setStatus({ state: "idle" });
+      return true;
     } catch (err) {
       this.setStatus({ state: this.failureState(err), lastError: String(err) });
-    } finally {
-      this.pulling = false;
+      return false;
     }
   }
 

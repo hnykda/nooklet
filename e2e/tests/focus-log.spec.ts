@@ -93,9 +93,11 @@ test("stays on across a reload, with the previous page load's entries, until swi
   expect(log).toMatch(/--- previous page load ---\n[\s\S]*editor attach block/);
   expect(log).toContain("--- this page load ---");
 
+  // Switched off before Clear: while recording, any focus change after the clear is an entry, and
+  // under load one landed ("Entries 1", WebKit, full run).
+  await page.getByLabel("Record focus changes").uncheck();
   await page.locator(".diag-focus-log").getByRole("button", { name: "Clear" }).click();
   await expect(page.locator(".diag-focus-log .diag-row")).toContainText("0");
-  await page.getByLabel("Record focus changes").uncheck();
   await page.reload();
   await openDiagnostics(page);
   await expect(page.getByLabel("Record focus changes")).not.toBeChecked();

@@ -58,6 +58,7 @@ import { DevicesSection } from "./DevicesSection.js";
 import { openDiagnostics } from "./DiagnosticsPanel.js";
 import { ImportSection } from "./ImportSection.js";
 import { PluginsSection } from "./PluginsSection.js";
+import { scrollSectionIntoView } from "./scroll-section.js";
 import "./settings.css";
 
 /** Injected at build time (`vite.config.ts`), same as `shell/HelpMenu.tsx`. */
@@ -357,11 +358,15 @@ function EmbeddingsSection(): JSX.Element {
     callOp<EmbeddingsStatus>("embeddings.status", {}),
   );
   let sectionEl: HTMLElement | undefined;
+  // Held while the panel fills in (`./scroll-section.ts`); stopped by the component, not the
+  // effect, which clearing the request re-runs.
+  let stopHold = (): void => {};
+  onCleanup(() => stopHold());
   createEffect(() => {
     if (!embeddingsScrollRequested() || !sectionEl) return;
     setEmbeddingsScrollRequested(false);
-    // `scrollIntoView` is absent under jsdom; a missing scroll must not take the panel down.
-    sectionEl.scrollIntoView?.({ block: "start" });
+    stopHold();
+    stopHold = scrollSectionIntoView(sectionEl);
   });
   // Reading an errored resource re-throws, so every read goes through this.
   const data = (): EmbeddingsStatus | undefined =>

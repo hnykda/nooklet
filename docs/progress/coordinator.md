@@ -28,6 +28,15 @@ the home server allows). Merged, not rebased; the releases agent's tag-build ste
 sensitivity, not worth another rewrite). Always `git fetch` before pushing: main has more than one
 writer now.
 
+## In flight — 2026-10-04 night
+
+| Slug | Task | Ports |
+|---|---|---|
+| desktop-graphs | Proposal 005 (accepted): one shell-owned graph list, one add form verified from Rust, tokens in Keychain, no restarts, launcher only "Connecting…", ADR 032. Progress: `docs/progress/desktop-graphs.md` (in its worktree). Bug numbers from B-780. | 6480-6484 |
+| e2e-flaky | Load flakes + real races it found (reload writer lock, mermaid offline under `/g/`, B-98 scroll); merge its branch, renumber its B-760.. entries if they collide | — |
+
+Merged and pushed tonight: graph-menu (B-704/708/709/712), phone-input (B-661/662/664/699/705/706), image viewer (B-736, B-744), search prefixes (B-735), Mac autocorrect (B-742), dark caret (B-745), popup scroll (B-746). Open: B-737 (guessable public asset ids; owner to decide the scheme), B-738 slow images.
+
 ## In flight — 2026-10-04 evening
 
 | Slug | Task | Ports |

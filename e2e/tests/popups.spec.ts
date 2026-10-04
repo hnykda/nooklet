@@ -27,6 +27,23 @@ import {
   typeWatchingFocus,
 } from "../helpers/index.js";
 
+/** This run's own name for a page a test edits. `openEditing` returns an existing page untouched,
+ * so a second run (`--repeat-each`, a retry) met the first run's edits (B-635). Pages the tests
+ * only read (link targets, ref sources) keep fixed names: nothing changes them. */
+function nm(base: string): string {
+  const info = test.info();
+  return `${base} ${info.repeatEachIndex}-${info.retry}`;
+}
+
+/** Letters only, one per run: part of a page name typed into the editor, where it must stay a
+ * single word for `#tag`. A page the test creates exists from the second run on otherwise, and
+ * "New page" is no longer offered (B-635). */
+function runLetters(): string {
+  const info = test.info();
+  const n = info.repeatEachIndex * 4 + info.retry;
+  return String.fromCharCode(97 + (Math.floor(n / 26) % 26)) + String.fromCharCode(97 + (n % 26));
+}
+
 function popup(page: Page): Locator {
   return page.locator(".cmd-popup");
 }
@@ -45,7 +62,7 @@ test.describe("[[ page autocomplete", () => {
   test("opens on the second [ with date shortcuts first while the query is empty", async ({
     page,
   }) => {
-    await openEditing(page, "Popup Wiki Open", "- see");
+    await openEditing(page, nm("Popup Wiki Open"), "- see");
     await page.keyboard.type(" [");
     await expect(popup(page)).toHaveCount(0);
     await page.keyboard.type("[");
@@ -62,7 +79,7 @@ test.describe("[[ page autocomplete", () => {
   }) => {
     await seedPage(page, "Popup Wiki Apple", "- a");
     await seedPage(page, "Popup Wiki Apricot", "- b");
-    await openEditing(page, "Popup Wiki Filter", "- x");
+    await openEditing(page, nm("Popup Wiki Filter"), "- x");
     await page.keyboard.type(" [[Popup Wiki Ap");
     await expect(popup(page)).toBeVisible();
     await expect(rowsOf(page).filter({ hasText: "Popup Wiki Apple" })).toHaveCount(1);
@@ -79,7 +96,7 @@ test.describe("[[ page autocomplete", () => {
   test("ArrowDown and ArrowUp move the highlight without moving the caret or losing focus", async ({
     page,
   }) => {
-    await openEditing(page, "Popup Wiki Arrows", "- x");
+    await openEditing(page, nm("Popup Wiki Arrows"), "- x");
     await page.keyboard.type(" [[");
     await expect(popup(page)).toBeVisible();
     const before = await caret(page);
@@ -104,7 +121,7 @@ test.describe("[[ page autocomplete", () => {
     page,
   }) => {
     await seedPage(page, "Popup Wiki Target", "- t");
-    await openEditing(page, "Popup Wiki Enter", "- link");
+    await openEditing(page, nm("Popup Wiki Enter"), "- link");
     await page.keyboard.type(" [[Popup Wiki Targ");
     await expect(activeRow(page)).toContainText("Popup Wiki Target");
     await page.keyboard.press("Enter");
@@ -118,13 +135,13 @@ test.describe("[[ page autocomplete", () => {
     await page.keyboard.type(" after");
     // The live preview hides `[[`/`]]` once the caret leaves the link, so read what is stored.
     await expect
-      .poll(async () => (await readBlocks(page, "Popup Wiki Enter")).map((b) => b.content))
+      .poll(async () => (await readBlocks(page, nm("Popup Wiki Enter"))).map((b) => b.content))
       .toEqual(["link [[Popup Wiki Target]] after"]);
   });
 
   test("Tab also accepts the highlighted item (R59)", async ({ page }) => {
     await seedPage(page, "Popup Wiki TabTarget", "- t");
-    await openEditing(page, "Popup Wiki Tab", "- x");
+    await openEditing(page, nm("Popup Wiki Tab"), "- x");
     await page.keyboard.type(" [[Popup Wiki TabTar");
     await expect(activeRow(page)).toContainText("Popup Wiki TabTarget");
     await page.keyboard.press("Tab");
@@ -140,7 +157,7 @@ test.describe("[[ page autocomplete", () => {
 
   test("clicking a row inserts [[Title]] with the caret after it", async ({ page }) => {
     await seedPage(page, "Popup Wiki ClickTarget", "- t");
-    await openEditing(page, "Popup Wiki Click", "- x");
+    await openEditing(page, nm("Popup Wiki Click"), "- x");
     await page.keyboard.type(" [[Popup Wiki ClickTar");
     await rowsOf(page).filter({ hasText: "Popup Wiki ClickTarget" }).first().click();
     await expect(popup(page)).toHaveCount(0);
@@ -149,7 +166,7 @@ test.describe("[[ page autocomplete", () => {
 
   test("clicking a row leaves the editor focused", async ({ page }) => {
     await seedPage(page, "Popup Wiki FocusTarget", "- t");
-    await openEditing(page, "Popup Wiki ClickFocus", "- x");
+    await openEditing(page, nm("Popup Wiki ClickFocus"), "- x");
     await page.keyboard.type(" [[Popup Wiki FocusTar");
     await rowsOf(page).filter({ hasText: "Popup Wiki FocusTarget" }).first().click();
     await expect(popup(page)).toHaveCount(0);
@@ -157,14 +174,14 @@ test.describe("[[ page autocomplete", () => {
     await page.keyboard.type("!");
     // The live preview hides `[[`/`]]` once the caret is past the link, so read what is stored.
     await expect
-      .poll(async () => (await readBlocks(page, "Popup Wiki ClickFocus")).map((b) => b.content))
+      .poll(async () => (await readBlocks(page, nm("Popup Wiki ClickFocus"))).map((b) => b.content))
       .toEqual(["x [[Popup Wiki FocusTarget]]!"]);
   });
 
   test("Escape closes the popup, keeps the typed text and keeps the editor focused", async ({
     page,
   }) => {
-    await openEditing(page, "Popup Wiki Escape", "- x");
+    await openEditing(page, nm("Popup Wiki Escape"), "- x");
     await page.keyboard.type(" [[quer");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.press("Escape");
@@ -178,7 +195,7 @@ test.describe("[[ page autocomplete", () => {
   });
 
   test("typing the closing ] closes the popup", async ({ page }) => {
-    await openEditing(page, "Popup Wiki Close Bracket", "- x");
+    await openEditing(page, nm("Popup Wiki Close Bracket"), "- x");
     await page.keyboard.type(" [[abc");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.type("]]");
@@ -187,7 +204,7 @@ test.describe("[[ page autocomplete", () => {
   });
 
   test("backspacing through the trigger closes the popup", async ({ page }) => {
-    await openEditing(page, "Popup Wiki Backspace", "- x");
+    await openEditing(page, nm("Popup Wiki Backspace"), "- x");
     await page.keyboard.type(" [[ab");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.press("Backspace");
@@ -199,7 +216,7 @@ test.describe("[[ page autocomplete", () => {
   });
 
   test("clicking elsewhere dismisses the popup", async ({ page }) => {
-    await openEditing(page, "Popup Wiki Click Away", "- x");
+    await openEditing(page, nm("Popup Wiki Click Away"), "- x");
     await page.keyboard.type(" [[abc");
     await expect(popup(page)).toBeVisible();
     await clickAway(page);
@@ -209,7 +226,7 @@ test.describe("[[ page autocomplete", () => {
   test("a namespaced query keeps focus on every keystroke and does not open the slash menu", async ({
     page,
   }) => {
-    await openEditing(page, "Popup Wiki Namespace", "- x");
+    await openEditing(page, nm("Popup Wiki Namespace"), "- x");
     await page.keyboard.type(" [[");
     const losses = await typeWatchingFocus(page, "Popup Wiki Namespace/child");
     expect(losses, JSON.stringify(losses, null, 2)).toEqual([]);
@@ -221,19 +238,20 @@ test.describe("[[ page autocomplete", () => {
   });
 
   test("the New page row creates the page and links it", async ({ page }) => {
-    await openEditing(page, "Popup Wiki Create", "- x");
-    await page.keyboard.type(" [[Popup Wiki Created Fresh");
-    const create = rowsOf(page).filter({ hasText: 'New page "Popup Wiki Created Fresh"' });
+    await openEditing(page, nm("Popup Wiki Create"), "- x");
+    const fresh = `Popup Wiki Created Fresh ${runLetters()}`;
+    await page.keyboard.type(` [[${fresh}`);
+    const create = rowsOf(page).filter({ hasText: `New page "${fresh}"` });
     await expect(create).toHaveCount(1);
     await create.click();
-    await expect(editor(page)).toHaveText("x [[Popup Wiki Created Fresh]]");
+    await expect(editor(page)).toHaveText(`x [[${fresh}]]`);
 
     // It really exists now, as an ordinary page.
     await expect
       .poll(async () => {
         try {
           const r = await api<{ page: { kind: string } }>(page, "page.read", {
-            page: "Popup Wiki Created Fresh",
+            page: fresh,
           });
           return r.page.kind;
         } catch {
@@ -244,7 +262,7 @@ test.describe("[[ page autocomplete", () => {
   });
 
   test("a date shortcut inserts the day in the reader's title format", async ({ page }) => {
-    await openEditing(page, "Popup Wiki Date", "- due");
+    await openEditing(page, nm("Popup Wiki Date"), "- due");
     await page.keyboard.type(" [[");
     const tomorrow = rowsOf(page).filter({ hasText: "Tomorrow" });
     await expect(tomorrow).toHaveCount(1);
@@ -259,7 +277,7 @@ test.describe("[[ page autocomplete", () => {
   }) => {
     await seedPage(page, "Popup Wiki BlockSrc", "- a very findable thought zebra");
     const [src] = await readBlocks(page, "Popup Wiki BlockSrc");
-    const outliner = await openEditing(page, "Popup Wiki BlockPick", "- x\n- other");
+    const outliner = await openEditing(page, nm("Popup Wiki BlockPick"), "- x\n- other");
     await page.keyboard.type(" [[findable thought zebra");
     const blockRow = rowsOf(page).filter({ hasText: "a very findable thought zebra" });
     await expect(blockRow).toHaveCount(1);
@@ -278,7 +296,7 @@ test.describe("[[ page autocomplete", () => {
 
 test.describe("# tag autocomplete", () => {
   test("opens at the start of a run, not mid-word (R57)", async ({ page }) => {
-    await openEditing(page, "Popup Tag Trigger", "- word");
+    await openEditing(page, nm("Popup Tag Trigger"), "- word");
     await page.keyboard.type("#x");
     await expect(popup(page)).toHaveCount(0);
     await page.keyboard.type(" #y");
@@ -286,7 +304,7 @@ test.describe("# tag autocomplete", () => {
   });
 
   test("keeps the editor focused while the query is typed", async ({ page }) => {
-    await openEditing(page, "Popup Tag Focus", "- x");
+    await openEditing(page, nm("Popup Tag Focus"), "- x");
     await page.keyboard.type(" #");
     const losses = await typeWatchingFocus(page, "someTagQuery");
     expect(losses, JSON.stringify(losses, null, 2)).toEqual([]);
@@ -294,7 +312,7 @@ test.describe("# tag autocomplete", () => {
   });
 
   test("a space closes it", async ({ page }) => {
-    await openEditing(page, "Popup Tag Space", "- x");
+    await openEditing(page, nm("Popup Tag Space"), "- x");
     await page.keyboard.type(" #abc");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.type(" ");
@@ -302,7 +320,7 @@ test.describe("# tag autocomplete", () => {
   });
 
   test("Escape closes it and leaves #query in place", async ({ page }) => {
-    await openEditing(page, "Popup Tag Escape", "- x");
+    await openEditing(page, nm("Popup Tag Escape"), "- x");
     await page.keyboard.type(" #abc");
     await page.keyboard.press("Escape");
     await expect(popup(page)).toHaveCount(0);
@@ -311,16 +329,17 @@ test.describe("# tag autocomplete", () => {
   });
 
   test("New page from # creates the page and inserts #Name with no closer", async ({ page }) => {
-    await openEditing(page, "Popup Tag Create", "- x");
-    await page.keyboard.type(" #PopupTagFreshOne");
-    const create = rowsOf(page).filter({ hasText: 'New page "PopupTagFreshOne"' });
+    await openEditing(page, nm("Popup Tag Create"), "- x");
+    const fresh = `PopupTagFreshOne${runLetters()}`;
+    await page.keyboard.type(` #${fresh}`);
+    const create = rowsOf(page).filter({ hasText: `New page "${fresh}"` });
     await expect(create).toHaveCount(1);
     await create.click();
-    await expect(editor(page)).toHaveText("x #PopupTagFreshOne");
+    await expect(editor(page)).toHaveText(`x #${fresh}`);
     await expect
       .poll(async () => {
         try {
-          await api(page, "page.read", { page: "PopupTagFreshOne" });
+          await api(page, "page.read", { page: fresh });
           return "exists";
         } catch {
           return "missing";
@@ -333,7 +352,7 @@ test.describe("# tag autocomplete", () => {
     // A page becomes a tag by being referenced as one (PLAN.md: tags are pages).
     await seedPage(page, "PopupTagKnown", "- the tag page");
     await seedPage(page, "Popup Tag Known User", "- tagged #PopupTagKnown");
-    await openEditing(page, "Popup Tag List", "- x");
+    await openEditing(page, nm("Popup Tag List"), "- x");
     await page.keyboard.type(" #PopupTagKno");
     await expect(popup(page)).toBeVisible();
     await expect(rowsOf(page).filter({ hasText: "PopupTagKnown" })).toHaveCount(1);
@@ -345,7 +364,7 @@ test.describe("# tag autocomplete", () => {
 test.describe("(( block autocomplete", () => {
   test("lists matching blocks with their page, and no Create row (R58)", async ({ page }) => {
     await seedPage(page, "Popup Ref Source", "- unique quokka sentence");
-    await openEditing(page, "Popup Ref List", "- see");
+    await openEditing(page, nm("Popup Ref List"), "- see");
     await page.keyboard.type(" ((quokka");
     await expect(popup(page)).toBeVisible();
     const row = rowsOf(page).filter({ hasText: "unique quokka sentence" });
@@ -357,7 +376,7 @@ test.describe("(( block autocomplete", () => {
   test("Enter inserts ((id)) with the caret after it (R58)", async ({ page }) => {
     await seedPage(page, "Popup Ref EnterSrc", "- unique wombat sentence");
     const [src] = await readBlocks(page, "Popup Ref EnterSrc");
-    await openEditing(page, "Popup Ref Enter", "- see");
+    await openEditing(page, nm("Popup Ref Enter"), "- see");
     await page.keyboard.type(" ((wombat");
     await expect(activeRow(page)).toContainText("unique wombat sentence");
     await page.keyboard.press("Enter");
@@ -370,7 +389,7 @@ test.describe("(( block autocomplete", () => {
   test("clicking a row inserts ((id)) and it renders as the block's text", async ({ page }) => {
     await seedPage(page, "Popup Ref ClickSrc", "- unique numbat sentence");
     const [src] = await readBlocks(page, "Popup Ref ClickSrc");
-    const outliner = await openEditing(page, "Popup Ref Click", "- see\n- other");
+    const outliner = await openEditing(page, nm("Popup Ref Click"), "- see\n- other");
     await page.keyboard.type(" ((numbat");
     await rowsOf(page).filter({ hasText: "unique numbat sentence" }).click();
     await expect(editor(page)).toHaveText(`see ((${src?.id}))`);
@@ -381,14 +400,14 @@ test.describe("(( block autocomplete", () => {
   });
 
   test("keeps the editor focused while the query is typed", async ({ page }) => {
-    await openEditing(page, "Popup Ref Focus", "- x");
+    await openEditing(page, nm("Popup Ref Focus"), "- x");
     await page.keyboard.type(" ((");
     const losses = await typeWatchingFocus(page, "some words");
     expect(losses, JSON.stringify(losses, null, 2)).toEqual([]);
   });
 
   test("typing ) closes it", async ({ page }) => {
-    await openEditing(page, "Popup Ref Close", "- x");
+    await openEditing(page, nm("Popup Ref Close"), "- x");
     await page.keyboard.type(" ((ab");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.type(")");
@@ -397,7 +416,7 @@ test.describe("(( block autocomplete", () => {
   });
 
   test("Escape closes it leaving the text", async ({ page }) => {
-    await openEditing(page, "Popup Ref Escape", "- x");
+    await openEditing(page, nm("Popup Ref Escape"), "- x");
     await page.keyboard.type(" ((cd");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.press("Escape");
@@ -456,7 +475,7 @@ test.describe("/ slash menu", () => {
     page,
   }) => {
     await pinTodoWorkflow(page);
-    await openEditing(page, "Popup Slash Open", "- x");
+    await openEditing(page, nm("Popup Slash Open"), "- x");
     await page.keyboard.type(" /");
     await expect(popup(page)).toBeVisible();
     await expect(rowsOf(page)).toHaveText(SLASH_ORDER);
@@ -464,7 +483,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("opens as the first character of an empty block", async ({ page }) => {
-    await openEditing(page, "Popup Slash Empty", "- x");
+    await openEditing(page, nm("Popup Slash Empty"), "- x");
     await page.keyboard.press("Enter");
     await page.keyboard.type("/");
     await expect(popup(page)).toBeVisible();
@@ -472,7 +491,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("does not open mid-word (a/b), and a space closes it (R53)", async ({ page }) => {
-    await openEditing(page, "Popup Slash Midword", "- a");
+    await openEditing(page, nm("Popup Slash Midword"), "- a");
     await page.keyboard.type("/b");
     await expect(popup(page)).toHaveCount(0);
     await page.keyboard.type(" /");
@@ -482,7 +501,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("a second / does not open a second menu (R53)", async ({ page }) => {
-    await openEditing(page, "Popup Slash Double", "- x");
+    await openEditing(page, nm("Popup Slash Double"), "- x");
     await page.keyboard.type(" /");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.type("/");
@@ -495,7 +514,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("filters by label and by keyword", async ({ page }) => {
-    await openEditing(page, "Popup Slash Filter", "- x");
+    await openEditing(page, nm("Popup Slash Filter"), "- x");
     await page.keyboard.type(" /head");
     await expect(rowsOf(page)).toHaveText(["Heading 1", "Heading 2", "Heading 3"]);
     for (let i = 0; i < 4; i++) await page.keyboard.press("Backspace");
@@ -507,14 +526,14 @@ test.describe("/ slash menu", () => {
   });
 
   test("keeps the editor focused while the query is typed", async ({ page }) => {
-    await openEditing(page, "Popup Slash Focus", "- x");
+    await openEditing(page, nm("Popup Slash Focus"), "- x");
     await page.keyboard.type(" /");
     const losses = await typeWatchingFocus(page, "heading");
     expect(losses, JSON.stringify(losses, null, 2)).toEqual([]);
   });
 
   test("ArrowDown then Enter runs the item and removes the trigger text", async ({ page }) => {
-    await openEditing(page, "Popup Slash Enter", "- my title");
+    await openEditing(page, nm("Popup Slash Enter"), "- my title");
     await page.keyboard.type(" /");
     await page.keyboard.press("ArrowDown");
     await expect(activeRow(page)).toHaveText("Heading 1");
@@ -522,21 +541,21 @@ test.describe("/ slash menu", () => {
     await expect(popup(page)).toHaveCount(0);
     // The live preview hides the `# ` marker unless the caret touches it, so read what is stored.
     await expect
-      .poll(async () => (await readBlocks(page, "Popup Slash Enter")).map((b) => b.content))
+      .poll(async () => (await readBlocks(page, nm("Popup Slash Enter"))).map((b) => b.content))
       .toEqual(["# my title "]);
     await expect(page.locator(".vr-outliner").first().locator(".vr-row")).toHaveCount(1);
     await expectEditorFocusedNow(page, "after running a slash item");
   });
 
   test("Tab accepts the highlighted item and does not indent (R55)", async ({ page }) => {
-    const outliner = await openEditing(page, "Popup Slash Tab", "- first\n- second");
+    const outliner = await openEditing(page, nm("Popup Slash Tab"), "- first\n- second");
     await clickRow(page, outliner, 1);
     await page.keyboard.press("End");
     await page.keyboard.type(" /h3");
     await expect(activeRow(page)).toHaveText("Heading 3");
     await page.keyboard.press("Tab");
     await expect
-      .poll(async () => (await readBlocks(page, "Popup Slash Tab")).map((b) => b.content))
+      .poll(async () => (await readBlocks(page, nm("Popup Slash Tab"))).map((b) => b.content))
       .toEqual(["first", "### second "]);
     const depth = await outliner
       .locator(".vr-row")
@@ -546,7 +565,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("Escape closes the menu and leaves the / in place", async ({ page }) => {
-    await openEditing(page, "Popup Slash Escape", "- x");
+    await openEditing(page, nm("Popup Slash Escape"), "- x");
     await page.keyboard.type(" /he");
     await page.keyboard.press("Escape");
     await expect(popup(page)).toHaveCount(0);
@@ -556,7 +575,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("backspacing through the / closes the menu", async ({ page }) => {
-    await openEditing(page, "Popup Slash Backspace", "- x");
+    await openEditing(page, nm("Popup Slash Backspace"), "- x");
     await page.keyboard.type(" /h");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.press("Backspace");
@@ -566,7 +585,7 @@ test.describe("/ slash menu", () => {
 
   test("TODO / task turns the block into a task and removes the trigger", async ({ page }) => {
     await pinTodoWorkflow(page);
-    const outliner = await openEditing(page, "Popup Slash Todo", "- buy milk");
+    const outliner = await openEditing(page, nm("Popup Slash Todo"), "- buy milk");
     await page.keyboard.type(" /todo");
     await expect(activeRow(page)).toHaveText("TODO / task");
     await activeRow(page).click();
@@ -578,12 +597,12 @@ test.describe("/ slash menu", () => {
   test("Heading 1 prefixes the block and re-applying a level replaces it (R48)", async ({
     page,
   }) => {
-    await openEditing(page, "Popup Slash Heading", "- my title");
+    await openEditing(page, nm("Popup Slash Heading"), "- my title");
     await page.keyboard.type(" /h1");
     await rowsOf(page).filter({ hasText: "Heading 1" }).click();
     // The live preview hides the `# ` marker unless the caret touches it, so read what is stored.
     const stored = async () =>
-      (await readBlocks(page, "Popup Slash Heading")).map((b) => b.content);
+      (await readBlocks(page, nm("Popup Slash Heading"))).map((b) => b.content);
     // The typed space before `/h1` survives: block text set through the editor is kept verbatim.
     await expect.poll(stored).toEqual(["# my title "]);
     await editor(page).click();
@@ -596,7 +615,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("Code block wraps the content in a fence", async ({ page }) => {
-    await openEditing(page, "Popup Slash Code", "- const x = 1");
+    await openEditing(page, nm("Popup Slash Code"), "- const x = 1");
     await page.keyboard.type(" /code");
     await rowsOf(page).filter({ hasText: "Code block" }).click();
     expect(await editorText(page)).toMatch(/^```/);
@@ -606,7 +625,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("Table on an empty block inserts a skeleton that renders as a table", async ({ page }) => {
-    await openEditing(page, "Popup Slash Table", "- x");
+    await openEditing(page, nm("Popup Slash Table"), "- x");
     await page.keyboard.press("Enter");
     await page.keyboard.type("/table");
     await rowsOf(page).filter({ hasText: "Table" }).first().click();
@@ -617,7 +636,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("Today's date inserts a link to today in the reader's format", async ({ page }) => {
-    await openEditing(page, "Popup Slash Today", "- x");
+    await openEditing(page, nm("Popup Slash Today"), "- x");
     await page.keyboard.type(" /today");
     await rowsOf(page).filter({ hasText: "Today's date" }).click();
     const text = await editorText(page);
@@ -629,7 +648,7 @@ test.describe("/ slash menu", () => {
   });
 
   test("Page reference inserts [[ and chains into the page popup (R47)", async ({ page }) => {
-    await openEditing(page, "Popup Slash PageRef", "- x");
+    await openEditing(page, nm("Popup Slash PageRef"), "- x");
     await page.keyboard.type(" /wikilink");
     await expect(activeRow(page)).toHaveText("Page reference");
     await activeRow(page).click();

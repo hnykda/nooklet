@@ -18,6 +18,7 @@ import {
   migrateUnscopedCheckpoint,
   readCheckpoint,
 } from "./capacitor-checkpoint.js";
+import { leaderLockWaitMs, markLeaderTab } from "./leader-tab.js";
 import {
   createUnappliedOpsJournal,
   discardScopeBatches,
@@ -112,9 +113,16 @@ export function initDb(opts: WorkerInitOptions = {}): Promise<InitResult> {
           )
         : Promise.resolve(undefined);
     initPromise = restoreBytes
-      .then((bytes) => api.init({ ...opts, restoreBytes: bytes }))
+      .then((bytes) =>
+        api.init({
+          ...opts,
+          restoreBytes: bytes,
+          leaderLockWaitMs: opts.leaderLockWaitMs ?? leaderLockWaitMs(replicaScopeNow),
+        }),
+      )
       .then((r) => {
         setStorageState({ storage: r.storage, error: r.storageError });
+        if (r.storage === "opfs") markLeaderTab(replicaScopeNow);
         return r;
       });
     for (const event of ["online", "offline", "visible", "hidden", "pause", "resume"] as const) {

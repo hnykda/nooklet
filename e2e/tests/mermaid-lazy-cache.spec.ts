@@ -54,16 +54,27 @@ test("a diagram rendered once renders again offline, from the runtime cache", as
 
   // The runtime rule matched: the chunk is in its cache, which it never would be with a RegExp
   // rule anchored at `^\/` (B-401).
+  const cached = () =>
+    page.evaluate(async () => {
+      const cache = await caches.open("lazy-chunks");
+      return (await cache.keys()).map((r) => new URL(r.url).pathname);
+    });
+  await expect.poll(cached, { timeout: 15_000 }).toContain(new URL(core as string).pathname);
+  // And so is every other chunk the diagram loaded and the precache does not hold (the flowchart's
+  // own chunk, dagre, …). Checking the core alone hid that the rule matched only `/static/`: a
+  // document loaded at `/g/<slug>/…` asks for `/g/<slug>/static/…`, those 34 chunks never reached
+  // the cache, and the offline render below worked only while the browser's HTTP cache still held
+  // them — intermittently not, in full runs. Red 10/10 with the old rule.
+  const precached = new Set((await precacheUrls(page)).map((u) => `/${u}`));
+  const lazy = [...new Set(chunkUrls.map((u) => new URL(u).pathname))].filter(
+    (p) => ![...precached].some((q) => p.endsWith(q)),
+  );
   await expect
-    .poll(
-      () =>
-        page.evaluate(async () => {
-          const cache = await caches.open("lazy-chunks");
-          return (await cache.keys()).map((r) => new URL(r.url).pathname);
-        }),
-      { timeout: 15_000 },
-    )
-    .toContain(new URL(core as string).pathname);
+    .poll(async () => {
+      const have = await cached();
+      return lazy.filter((p) => !have.includes(p));
+    })
+    .toEqual([]);
 
   // Offline, a fresh document: every chunk now has to come from the service worker.
   await context.setOffline(true);

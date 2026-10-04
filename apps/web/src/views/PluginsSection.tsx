@@ -11,9 +11,18 @@
  * hookup for it.
  */
 
-import { createEffect, createResource, createSignal, For, type JSX, Show } from "solid-js";
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  Show,
+} from "solid-js";
 import { describeError } from "../data/api-client.js";
 import { type InstalledPlugin, listInstalledPlugins } from "../data/plugins.js";
+import { scrollSectionIntoView } from "./scroll-section.js";
 
 // A signal, not a flag: the section may already be mounted (Settings open underneath the palette)
 // when the request arrives, and only a tracked read makes the effect below see it.
@@ -37,10 +46,15 @@ export function PluginsSection(): JSX.Element {
   const list = (): InstalledPlugin[] => (plugins.error !== undefined ? [] : (plugins() ?? []));
   let sectionEl: HTMLElement | undefined;
 
+  // The hold's stop is the component's to clean up, not the effect's: clearing the request below
+  // re-runs the effect, and an effect-scoped cleanup would end the hold at once.
+  let stopHold = (): void => {};
+  onCleanup(() => stopHold());
   createEffect(() => {
     if (!scrollRequested() || !sectionEl) return;
     setScrollRequested(false);
-    sectionEl.scrollIntoView({ block: "start" });
+    stopHold();
+    stopHold = scrollSectionIntoView(sectionEl);
   });
 
   return (
