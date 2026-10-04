@@ -2,7 +2,8 @@
  * B-641: a client replica creates the reference index from `@nooklet/core`'s
  * `REF_INDEX_STATEMENTS`; the server from its own `schema.ts` (and migrations). They must declare
  * the same tables, columns and indexes, or the shared derivation and reads would work on one side
- * and fail on the other.
+ * and fail on the other. Foreign keys are the one deliberate difference (the replica has none —
+ * `REF_INDEX_STATEMENTS`' doc says why), so they are compared as exactly that.
  */
 import { DatabaseSync } from "node:sqlite";
 import { initSchema, REF_INDEX_STATEMENTS } from "@nooklet/core";
@@ -26,6 +27,7 @@ function shape(driver: {
         )
         // `IF NOT EXISTS` is how the replica runs them on every open; the index is the same.
         .map((r) => ({ name: r.name, sql: r.sql?.replace(/ IF NOT EXISTS/, "") ?? null })),
+      foreignKeys: driver.all<{ table: string }>(`PRAGMA foreign_key_list(${t})`).length,
       withoutRowid:
         driver
           .all<{ sql: string }>("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [
@@ -43,6 +45,13 @@ describe("REF_INDEX_STATEMENTS (B-641)", () => {
     const client = createNodeSqliteDriver(new DatabaseSync(":memory:"));
     initSchema(client);
     for (const stmt of REF_INDEX_STATEMENTS) client.exec(stmt);
-    expect(shape(client)).toEqual(shape(server));
+    const strip = (x: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(x).map(([k, v]) => [k, { ...(v as object), foreignKeys: undefined }]),
+      );
+    expect(strip(shape(client))).toEqual(strip(shape(server)));
+    // The replica's index never blocks a hard delete of the rows it describes.
+    for (const t of TABLES)
+      expect((shape(client)[t] as { foreignKeys: number }).foreignKeys).toBe(0);
   });
 });

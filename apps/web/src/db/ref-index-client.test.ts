@@ -13,8 +13,9 @@ import {
   type OpPayload,
   type SqlDriver,
 } from "@nooklet/core";
-import { createNodeSqliteDriver } from "@nooklet/core/node-sqlite";
+import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { captureAndRemoveRefusedPage } from "../sync/refused-page.js";
 import type {
   PullResponse,
   PushRequestBody,
@@ -149,6 +150,23 @@ describe("references from the replica (B-641)", () => {
     const graph = db.graphLinks({ includeJournals: false, limit: 1500 });
     expect(graph.edges).toHaveLength(1);
     expect(graph.nodes.map((n) => n.name).sort()).toEqual(["Other", "Target"]);
+  });
+});
+
+describe("hard deletes on the replica", () => {
+  it("removing a page the server refused is not blocked by its index rows (foreign keys on)", () => {
+    // The browser's driver turns foreign keys on; the first cut of the index declared them and
+    // this DELETE failed, losing the offline page `refused-page.ts` was making room for.
+    driver = createNodeSqliteDriver(openNodeSqlite());
+    db = new WorkerDb({ driver, transport: new NoopTransport(), hasSyncTarget: false });
+    page("Target");
+    const refused = page("Refused");
+    block(refused, "written offline, links [[Target]]");
+    expect(db.pageBacklinks("Target", OPTS).linked_total).toBe(1);
+
+    expect(captureAndRemoveRefusedPage(driver, refused)?.blocks).toHaveLength(1);
+    expect(db.pageBacklinks("Target", OPTS).linked_total).toBe(0);
+    expect(driver.all("SELECT 1 FROM ref")).toEqual([]);
   });
 });
 

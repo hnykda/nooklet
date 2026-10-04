@@ -25,16 +25,23 @@ import {
 import { rebuildPageTags } from "./page-tag-index.js";
 
 /**
- * The four tables and their indexes, `IF NOT EXISTS` so a host can run them on every open. The
- * server's own DDL (`packages/server/src/schema.ts`) declares the same shapes for a fresh graph and
+ * The four tables and their indexes, `IF NOT EXISTS` so a host can run them on every open — a
+ * client replica (`apps/web/src/db/ref-index-client.ts`). The server's own DDL
+ * (`packages/server/src/schema.ts`) declares the same columns and indexes for a fresh graph and
  * migrates old ones; `packages/server/src/ref-index-ddl.test.ts` asserts the two agree, so a column
  * added on one side cannot be forgotten on the other.
+ *
+ * One deliberate difference: no `REFERENCES block(id)`/`page(id)`. A replica hard-deletes rows the
+ * server never does — a page the server refused, with its blocks (`apps/web/src/sync/refused-page.ts`)
+ * — and with `foreign_keys = ON` an index row pointing at them made that DELETE fail, which lost the
+ * offline-written page it was making room for (`e2e/tests/ref-pages.spec.ts`, caught while building
+ * B-641). The index is derived: a row for a vanished block or page is dropped on the next drain.
  */
 export const REF_INDEX_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS ref (
     id           INTEGER PRIMARY KEY,
-    src_block_id TEXT NOT NULL REFERENCES block(id),
-    src_page_id  TEXT NOT NULL REFERENCES page(id),
+    src_block_id TEXT NOT NULL,
+    src_page_id  TEXT NOT NULL,
     kind         TEXT NOT NULL CHECK (kind IN ('page','tag','block','embed')),
     dst_page_key TEXT,
     dst_page_id  TEXT,
@@ -45,7 +52,7 @@ export const REF_INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS ref_dst_block ON ref(dst_block_id) WHERE dst_block_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS ref_dst_page_id ON ref(dst_page_id) WHERE dst_page_id IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS path_ref (
-    block_id TEXT NOT NULL REFERENCES block(id),
+    block_id TEXT NOT NULL,
     page_key TEXT NOT NULL,
     page_id  TEXT,
     PRIMARY KEY (block_id, page_key)
@@ -53,7 +60,7 @@ export const REF_INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS path_ref_page_key ON path_ref(page_key)`,
   `CREATE INDEX IF NOT EXISTS path_ref_page_id ON path_ref(page_id) WHERE page_id IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS page_tag (
-    page_id     TEXT NOT NULL REFERENCES page(id),
+    page_id     TEXT NOT NULL,
     tag_key     TEXT NOT NULL,
     tag_page_id TEXT,
     source      TEXT NOT NULL CHECK (source IN ('property','intrinsic')),
@@ -62,7 +69,7 @@ export const REF_INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS page_tag_key ON page_tag(tag_key)`,
   `CREATE INDEX IF NOT EXISTS page_tag_page ON page_tag(tag_page_id) WHERE tag_page_id IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS page_alias (
-    page_id   TEXT NOT NULL REFERENCES page(id),
+    page_id   TEXT NOT NULL,
     alias_key TEXT NOT NULL,
     PRIMARY KEY (page_id, alias_key)
   ) WITHOUT ROWID`,
