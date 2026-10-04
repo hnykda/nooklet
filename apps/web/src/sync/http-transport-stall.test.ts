@@ -45,11 +45,10 @@ describe("fetchJsonStallAware (the first sync of a real graph was aborted mid-do
   it("fails fast when no response arrives at all", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       (_i, init) =>
-        new Promise((_res, rej) =>
-          (init?.signal as AbortSignal).addEventListener("abort", () =>
-            rej((init?.signal as AbortSignal).reason),
-          ),
-        ),
+        new Promise((_res, rej) => {
+          const signal = init?.signal as AbortSignal;
+          signal.addEventListener("abort", () => rej(signal.reason));
+        }),
     );
     const started = Date.now();
     await expect(fetchJsonStallAware("x", {}, { headersMs: 50, idleMs: 1000 })).rejects.toThrow(
