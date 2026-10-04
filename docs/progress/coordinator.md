@@ -19,7 +19,7 @@ writer now.
 | Slug | Task | Ports |
 |---|---|---|
 | releases | **merged**: `pnpm release`, release.yml (draft→publish), Woodpecker multi-arch on tags, Android project (experimental), RELEASING.md, platform table; B-691 CORS hardening by coordinator | 6475-6479 |
-| phone-images | B-681 slash popup position, B-682 image letterboxing, B-683 image widens viewport; reproduce on current main first (owner may have run a pre-fix build); overflow sweep | 6480-6484 |
+| phone-images | **merged**: B-681 popup clamp, B-684 re-detect on CM updates (believed), B-682/683 not reproduced; table-pipe bug B-702 | 6480-6484 |
 | build-docs | docs/guide/building.md (toolchain, every build/test command, troubleshooting) + docs/guide/ios-from-source.md (step-by-step iPhone install with a free Apple ID: connect the phone before signing, Developer Mode, trust, 7-day expiry, server address, Web Inspector) | 6485-6489 |
 | qr-pairing | **merged** (ADR 029): one-time codes, Devices list/revoke, `nooklet pair`, https pair page (Camera can't open custom schemes); B-655 done | 6470-6474 |
 

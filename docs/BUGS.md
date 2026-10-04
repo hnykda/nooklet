@@ -955,23 +955,16 @@ Revoked sockets keep receiving sync pokes (sequence numbers only, no note conten
 Reachability unverified. Recommendation H9: `pnpm.overrides` now; weekly `pnpm audit --prod --audit-level high` in CI; grouped monthly updates.
 
 ### B-682 · An uploaded image shows black bars above and below instead of fitting its own size
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
+**Status:** not reproduced on current code (2026-10-04, Simulator, real photo picker, EXIF orientations 3 and 6); owner to re-check on a rebuilt app · **Severity:** low · **Test:** `phone-images.spec.ts` "B-682/B-683: an image picked with /image keeps its aspect ratio…", "B-682: a small image keeps its own size, a tall one is capped…"
 
 Owner on the iPhone: after uploading an image it renders letterboxed (black boxes top and bottom) rather than taking the minimum size it could.
 
+Hardening: `.vr-image` max-height 70vh, auto width/height. The owner's report was likely from a pre-fix build.
+
 ### B-683 · An uploaded image makes the page wider than the phone screen
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** none yet
+**Status:** not reproduced on current code (2026-10-04, Simulator: page width = screen width, scale 1.00 after inserting a photo); owner to re-check · **Severity:** medium · **Test:** as B-682, plus "phone overflow sweep…"
 
 Owner: like B-648 (Properties), the viewport grows beyond the screen width after the image is inserted.
-
-### B-684 · On the phone, the slash menu opens only after the character following `/`, not on `/` itself
-**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app (current build) · **Test:** none yet
-
-Owner: "as soon as you type / nothing shows, but if you type something then it shows up. It should
-show up right after /." Positioning is fine once it shows (B-681). Suspected: on iOS the trigger
-detection runs on an event that fires before the `/` is in the document (keydown / `beforeinput`),
-and nothing re-checks until the next input; B-646 added re-detection on `input`, which may not be
-reached for the `/` itself in the block editor.
 
 ### B-685 · `nooklet serve` on a port already in use dies with a raw `EADDRINUSE` stack trace
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, build-docs agent · **Test:** none
@@ -999,7 +992,35 @@ Read-only box and the editable field, for token and code links (pre-existing fro
 
 Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
 
+### B-702 · A markdown table written with leading pipes renders every cell as `|`
+**Status:** open · **Severity:** medium (the usual table form, and Logseq's) · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** probe `tools/probes/phone-images/table-cells.spec.ts`
+
+`| a | b |` renders each cell as `<span data-from="0" data-to="1">|`; the no-leading-pipe form
+(`a | b`) renders correctly. The unit test `tokens.test.tsx` "table -> …" checks structure only, with
+the no-pipe form.
+
+### B-703 · Images have no reserved size, so rows below jump when one loads
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, phone-images · **Test:** none
+
+An image is `loading="lazy"` with no width/height, so it is 0×0 until scrolled near. Reserving space needs the dimensions, which `asset.upload` does not record.
+
 ## Fixed
+
+### B-701 · A long `$$…$$` display formula widened the page at phone width
+**Status:** fixed (2026-10-04, phone-images) · **Severity:** low · **Found:** 2026-10-04, phone-images overflow sweep · **Test:** `phone-images.spec.ts` "phone overflow sweep…"
+
+Now scrolls inside itself.
+
+### B-684 · On the phone, the slash menu opens only after the character following `/`, not on `/` itself
+**Status:** believed fixed (2026-10-04, phone-images) — not reproduced on the Simulator; owner to re-check on the iPhone · **Severity:** medium · **Test:** `phone-images.spec.ts` "B-684: a `/` that reaches the editor with no event after it still opens the menu" (red without the fix, Chromium + WebKit)
+
+Owner: "as soon as you type / nothing shows, but if you type something then it shows up. It should
+show up right after /." Positioning is fine once it shows (B-681). Suspected: on iOS the trigger
+detection runs on an event that fires before the `/` is in the document (keydown / `beforeinput`),
+and nothing re-checks until the next input; B-646 added re-detection on `input`, which may not be
+reached for the `/` itself in the block editor.
+
+Cause addressed: trigger detection ran only on DOM events, and CodeMirror can take a typed character in after them (iOS composition, `DOMObserver.flushSoon`). Now also re-detected on every CodeMirror update that changes the text or the caret.
 
 ### B-698 · `isPairPath` matched any path ending in `/pair` (pre-ship)
 **Status:** fixed (2026-10-04, qr-pairing) · **Severity:** low · **Found:** 2026-10-04, qr-pairing agent · **Test:** `apps/web/src/data/pairing.test.ts`
@@ -1078,6 +1099,8 @@ Fixed 2026-10-04 (`c434c4f8`): the team comes from a gitignored `apps/web/ios/si
 Owner: typing `/` now opens the menu, but it does not appear next to the cursor/slash.
 
 The owner's first report was from a pre-fix build; after rebuilding, the menu appears next to the caret. Most likely fixed by B-646 (`a1b9e09`), which made `/` on an empty day start a real block editor.
+
+2026-10-04 follow-up (phone-images): the popup is clamped to the screen and flips above the caret when the keyboard leaves no room (`commands/popup-position.ts`); same for `[[`/`#`/`((`. Test: `phone-images.spec.ts` "B-681: the slash menu opens at the caret and stays on the screen" (failed before: popup past 390 px), `popup-position.test.ts`.
 
 ### B-680 · `e2e.test.ts` B-642 "one device offline" was flaky (6/20): a same-millisecond HLC tie
 **Status:** fixed (2026-10-04, `6484cd0`) · **Severity:** low (test) · **Found:** 2026-10-04, b652 agent · **Test:** the test itself
