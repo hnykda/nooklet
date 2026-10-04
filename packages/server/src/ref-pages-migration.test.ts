@@ -151,7 +151,7 @@ describe("migrateReferencedPages", () => {
       "Sprouts/Growing": [3_000, 3_000],
       "Sprouts/Growing/Sixth Try": [3_000, 3_000],
       Task: [5_000, 5_000],
-      "coaching": [9_000, 9_000],
+      coaching: [9_000, 9_000],
     });
     // All pages' default sort ("Recently edited", `updated_at` descending): Home, written last,
     // comes first — not the pages the sweep made.

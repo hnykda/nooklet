@@ -23,7 +23,9 @@ const errors = [];
 await page.exposeFunction("__reportViolation", (v) => violations.push(v));
 await page.addInitScript(() => {
   document.addEventListener("securitypolicyviolation", (e) =>
-    window.__reportViolation(`${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber}`),
+    window.__reportViolation(
+      `${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber}`,
+    ),
   );
 });
 page.on("console", (m) => {
@@ -72,6 +74,9 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(300);
 console.log("injected inline script ran:", await page.evaluate(() => window.__pwned === true));
-console.log(`control: ${violations.length - appViolations} new violation(s)`, violations.slice(appViolations));
+console.log(
+  `control: ${violations.length - appViolations} new violation(s)`,
+  violations.slice(appViolations),
+);
 console.log("console errors:", errors.slice(0, 10));
 await browser.close();
