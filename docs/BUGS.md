@@ -1086,6 +1086,26 @@ folder by hand. Needs a decision on what "remove" should do to data on this Mac 
 The phone/browser form can list a server's graphs with its root token. From the desktop page that
 call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
 
+### B-788 · Zoomed into a block, Enter on it creates a sibling outside the view, so new blocks vanish
+**Status:** open · **Severity:** high (looks like lost typing) · **Found:** 2026-10-04, owner on the phone · **Test:** none yet
+
+Zoomed into a block (especially one with no children), `flattenVisible` (`editor/tree.ts`) shows the
+zoom root itself as the first row, and Enter at its end splits it into a *sibling*, a block outside
+the zoomed subtree, so it does not appear; the owner found the new blocks only after zooming out.
+Wanted (Logseq's model, the owner): the zoomed block is the fixed top of the view; Enter on it
+creates its first child, and nothing typed in the zoomed view can land outside the zoomed subtree
+(no sibling of the root, no outdent past it, no Backspace-merge of the root into its previous
+sibling).
+
+### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
+**Status:** open (owner request) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** none yet
+
+The owner wants Logseq's image handling: a drag handle on the image's right edge to make it bigger
+or smaller (the size saved with the block), a ⋯ menu with Download and, on desktop, Show in Finder,
+and optionally left / centre / right alignment. Logseq stores the size after the image as
+`{:height 236, :width 500}`; whatever nooklet stores must survive the Markdown mirror and Logseq
+import/export.
+
 ## Fixed
 
 ### B-766 · Linked references sorted by "Recent" are not in date order
