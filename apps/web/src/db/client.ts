@@ -226,6 +226,19 @@ export async function queryAs<T>(sql: string, params: unknown[] = []): Promise<T
   return (await query(sql, params)) as unknown as T[];
 }
 
+/** B-641: references from the replica's own index (`worker-api.ts#pageBacklinks`). */
+export async function localPageBacklinks(
+  target: string,
+  opts: Parameters<WorkerApi["pageBacklinks"]>[1],
+) {
+  return (await readyWorker()).pageBacklinks(target, opts);
+}
+
+/** B-641: the link graph from the replica (`worker-api.ts#graphLinks`). */
+export async function localGraphLinks(opts: Parameters<WorkerApi["graphLinks"]>[0]) {
+  return (await readyWorker()).graphLinks(opts);
+}
+
 export async function getPageTree(pageId: string) {
   return (await readyWorker()).getPageTree(pageId);
 }

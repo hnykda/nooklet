@@ -8,8 +8,7 @@
  *   pnpm --filter @nooklet/server exec tsx ../../tools/probes/reindex-parity-real-graph.ts /tmp/x/graph.sqlite
  */
 
-import { reindexBlockAndSubtree } from "../../packages/server/src/apply-ops.ts";
-import { childLookup } from "../../packages/server/src/block-children.ts";
+import { childLookup, reindexBlockAndSubtree } from "../../packages/core/src/index.ts";
 import { openDb } from "../../packages/server/src/db.ts";
 
 const path = process.argv[2];

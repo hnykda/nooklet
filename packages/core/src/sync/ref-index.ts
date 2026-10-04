@@ -76,6 +76,13 @@ export const REF_INDEX_STATEMENTS: readonly string[] = [
  * whole subtree per block was O(n·depth) walks. Pages after blocks: a page write can change what a
  * name resolves to, and a batch that creates a page and a block linking it must end up resolved.
  *
+ * `samePlace`: blocks the caller knows were not moved, created or deleted — only their text,
+ * properties or marker changed. When such a block's set of referenced keys comes out the same as
+ * before, no path in its subtree can have changed and the subtree walk is skipped. That walk is
+ * the cost of typing in a block with a big subtree: 0.16–0.49 s per edit for the owner's
+ * 961-block one in sqlite-wasm (`tools/probes/client-ref-index-cost.ts`), and most edits do not
+ * touch a link. Omitted (the server), every block's subtree is walked, as before.
+ *
  * Idempotent, and cheap to call for an id that no longer exists (its rows go). Returns the blocks
  * that do exist, for a host that queues further work per block (the server's `embed_dirty`).
  */
@@ -83,13 +90,21 @@ export function reindexRefs(
   driver: SqlDriver,
   blockIds: Iterable<string>,
   pageIds: Iterable<string>,
+  opts: { samePlace?: ReadonlySet<string> } = {},
 ): string[] {
   const children = childLookup(driver);
   const indexed: string[] = [];
   const blocks = [...blockIds];
-  for (const blockId of blocks) if (indexBlockRefs(driver, blockId)) indexed.push(blockId);
+  const pathUnchanged = new Set<string>();
+  for (const blockId of blocks) {
+    const before = opts.samePlace?.has(blockId) ? refKeysOf(driver, blockId) : undefined;
+    if (!indexBlockRefs(driver, blockId)) continue;
+    indexed.push(blockId);
+    if (before !== undefined && before === refKeysOf(driver, blockId)) pathUnchanged.add(blockId);
+  }
   const pathBlocks = new Set<string>();
   for (const blockId of blocks) {
+    if (pathUnchanged.has(blockId)) continue;
     if (pathBlocks.has(blockId)) continue; // reached from an ancestor's walk, subtree included
     for (const id of subtreeIds(blockId, children)) pathBlocks.add(id);
   }
@@ -103,26 +118,122 @@ export function reindexRefs(
   return indexed;
 }
 
+/** What `rebuildPathRef` reads of one block's own refs — key and resolved page — as one
+ * comparable string. */
+function refKeysOf(driver: SqlDriver, blockId: string): string {
+  return driver
+    .all<{ k: string; p: string | null }>(
+      "SELECT DISTINCT dst_page_key AS k, dst_page_id AS p FROM ref WHERE src_block_id = ? AND dst_page_key IS NOT NULL ORDER BY k, p",
+      [blockId],
+    )
+    .map((r) => `${r.k}\u0000${r.p ?? ""}`)
+    .join("\n");
+}
+
 /**
  * Throw the whole index away and derive it again from every page and block. For a host that has
  * rows the index never saw — a client replica that predates the tables, or one bootstrapped from a
- * snapshot — and for tests comparing it with the incremental path.
+ * snapshot.
+ *
+ * The same rows `reindexRefs` would produce for every block and page (asserted by
+ * `ref-index.test.ts` and, on a real graph, `tools/probes/client-ref-index-cost.ts`), computed in
+ * memory instead: per-block derivation is a dozen statements per block plus an ancestor walk, which
+ * took 2.8 s on the owner's 18.6k blocks in sqlite-wasm, where every statement is compiled afresh.
+ * Here a block's path is its parent's path plus its own refs, memoised, and every resolved page id
+ * is filled in at the end by one `reresolveIndexTargets` pass — the step the incremental path ends
+ * every page write with anyway.
  */
 export function rebuildRefIndex(driver: SqlDriver): void {
   driver.exec("DELETE FROM ref");
   driver.exec("DELETE FROM path_ref");
   driver.exec("DELETE FROM page_tag");
   driver.exec("DELETE FROM page_alias");
-  const pages = driver.all<{ id: string }>("SELECT id FROM page").map((r) => r.id);
-  // Aliases before any ref is resolved: `resolvePageIdForKey` reads `page_alias`.
-  for (const id of pages) rebuildPageAliases(driver, id);
-  const blocks = driver.all<{ id: string }>("SELECT id FROM block").map((r) => r.id);
-  for (const id of blocks) indexBlockRefs(driver, id);
-  // Every block is in the set, so one path walk each — no subtree walks needed.
-  for (const id of blocks) rebuildPathRef(driver, id);
-  for (const id of pages) rebuildPageTags(driver, id);
-  // `rebuildPageTags` resolves a tag by own key only; the incremental path then re-resolves every
-  // key through aliases too (`reindexPageIdentity`). Same end state, in one pass.
+  const pages = driver.all<{ id: string; key: string }>("SELECT id, key FROM page");
+  const pageKey = new Map(pages.map((p) => [p.id, p.key]));
+  for (const p of pages) rebuildPageAliases(driver, p.id);
+
+  const blocks = driver.all<{
+    id: string;
+    page_id: string;
+    parent_id: string | null;
+    content: string;
+    marker: string | null;
+  }>("SELECT id, page_id, parent_id, content, marker FROM block");
+  const byId = new Map(blocks.map((b) => [b.id, b]));
+  const props = new Map<string, Record<string, string>>();
+  for (const r of driver.all<{ block_id: string; key: string; value: string }>(
+    "SELECT block_id, key, value FROM block_prop WHERE value IS NOT NULL",
+  )) {
+    const bag = props.get(r.block_id);
+    if (bag) bag[r.key] = r.value;
+    else props.set(r.block_id, { [r.key]: r.value });
+  }
+
+  // `ref`, as `rebuildRefRows` writes it; `dst_page_id` of page/tag refs is resolved below.
+  const ownKeys = new Map<string, string[]>();
+  for (const b of blocks) {
+    const extracted = extractRefs(b.content, props.get(b.id) ?? {});
+    const keys: string[] = [];
+    const insert = (kind: "page" | "tag", name: string): void => {
+      const key = normalizeKey(name);
+      keys.push(key);
+      driver.run(
+        "INSERT INTO ref(src_block_id, src_page_id, kind, dst_page_key, dst_page_id, dst_block_id) VALUES (?, ?, ?, ?, NULL, NULL)",
+        [b.id, b.page_id, kind, key],
+      );
+    };
+    for (const name of extracted.pageRefs) insert("page", name);
+    for (const name of extracted.tags) insert("tag", name);
+    if (b.marker) insert("tag", TASK_TAG);
+    for (const blockRefId of extracted.blockRefs) {
+      const target = byId.get(blockRefId);
+      const dstKey = target ? (pageKey.get(target.page_id) ?? null) : null;
+      if (dstKey !== null) keys.push(dstKey);
+      driver.run(
+        "INSERT INTO ref(src_block_id, src_page_id, kind, dst_page_key, dst_page_id, dst_block_id) VALUES (?, ?, 'block', ?, ?, ?)",
+        [b.id, b.page_id, dstKey, target?.page_id ?? null, blockRefId],
+      );
+    }
+    ownKeys.set(b.id, keys);
+  }
+
+  // `path_ref`, as `rebuildPathRef` walks it: the block's own page, then its refs and every
+  // ancestor's (tombstoned ancestors included; the walk stops at a parent with no row).
+  const upMemo = new Map<string, ReadonlySet<string>>();
+  const up = (id: string): ReadonlySet<string> => {
+    const chain: string[] = [];
+    const onChain = new Set<string>();
+    let cur: string | undefined = id;
+    while (cur !== undefined && !upMemo.has(cur) && !onChain.has(cur) && chain.length < 1000) {
+      chain.push(cur);
+      onChain.add(cur);
+      const parent: string | null = byId.get(cur)?.parent_id ?? null;
+      cur = parent !== null && byId.has(parent) ? parent : undefined;
+    }
+    let acc: ReadonlySet<string> = (cur !== undefined && upMemo.get(cur)) || new Set<string>();
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const next = new Set(acc);
+      for (const k of ownKeys.get(chain[i] as string) ?? []) next.add(k);
+      upMemo.set(chain[i] as string, next);
+      acc = next;
+    }
+    return upMemo.get(id) ?? acc;
+  };
+  for (const b of blocks) {
+    const keys = new Set<string>();
+    const own = pageKey.get(b.page_id);
+    if (own !== undefined) keys.add(own);
+    for (const k of up(b.id)) keys.add(k);
+    for (const key of keys) {
+      driver.run(
+        "INSERT OR IGNORE INTO path_ref(block_id, page_key, page_id) VALUES (?, ?, NULL)",
+        [b.id, key],
+      );
+    }
+  }
+
+  for (const p of pages) rebuildPageTags(driver, p.id);
+  // Every key in all three tables pointed at the page it names now, own key first, then alias.
   reresolveIndexTargets(driver);
 }
 

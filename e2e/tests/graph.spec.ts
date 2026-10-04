@@ -161,14 +161,24 @@ test("journals are excluded by default, and the view says what that costs", asyn
   expect(Number(await wrap.getAttribute("data-node-count"))).toBeGreaterThan(withoutJournals);
 });
 
-test("says so when the graph request fails", async ({ page }) => {
-  await page.goto("/journals");
-  await page.route("**/api/v1/graph.links", (route) => route.abort("failed"));
+test("draws from the device when the server's graph.links cannot be reached (B-641)", async ({
+  page,
+}) => {
+  // It used to say "Couldn't load the graph": the link graph was a server read. The replica keeps
+  // the reference index now and draws the same graph from it, offline and in local-only mode.
+  await seed(page);
+  let serverReads = 0;
+  await page.route("**/api/v1/graph.links", (route) => {
+    serverReads++;
+    return route.abort("failed");
+  });
   await page.goto("/graph");
 
-  await expect(page.locator(".graph-error")).toContainText("Couldn't load the graph", {
-    timeout: 15_000,
-  });
+  const wrap = page.locator(".graph-canvas-wrap");
+  await expect(wrap).toHaveAttribute("data-settled", "true", { timeout: 20_000 });
+  expect(Number(await wrap.getAttribute("data-node-count"))).toBeGreaterThan(0);
+  await expect(page.locator(".graph-error")).toHaveCount(0);
+  expect(serverReads).toBe(0);
 });
 
 test("the sidebar links to it", async ({ page }) => {

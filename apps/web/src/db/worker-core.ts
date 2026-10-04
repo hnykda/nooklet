@@ -17,15 +17,20 @@
 import {
   type ApplyOpsResult,
   type BlockRow,
+  backlinkRows,
   getBlock,
   getPage,
   initSchema,
+  type LinkGraph,
+  linkGraph,
   listChildren,
   makeOp,
   newId,
   type Op,
   type PageRow,
+  resolveBacklinksTarget,
   type SqlDriver,
+  wirePageNameById,
 } from "@nooklet/core";
 import { planLocalReferencedPages } from "../data/local-ref-pages.js";
 import { buildBlockTree } from "../data/tree.js";
@@ -37,13 +42,20 @@ import type {
 } from "../data/types.js";
 import { SyncClient } from "../sync/sync-client.js";
 import type { SyncStatus, SyncTransport } from "../sync/types.js";
+import { drainRefIndex, ensureClientRefIndex } from "./ref-index-client.js";
 import { ensureClientIndexes, ensureClientSearchIndex, initClientSchema } from "./schema-client.js";
-import type { ChangedTable, ChangeEvent, LifecycleKind } from "./worker-api.js";
+import type {
+  ChangedTable,
+  ChangeEvent,
+  LifecycleKind,
+  LocalBacklinks,
+  LocalBacklinksOptions,
+} from "./worker-api.js";
 
 /** Apply `@nooklet/core`'s schema plus this app's client-only tables, but only on a genuinely
  * empty database — `initSchema`'s plain `CREATE TABLE` (no `IF NOT EXISTS`) would otherwise throw
  * on every subsequent worker start against the same OPFS file. */
-function ensureSchema(driver: SqlDriver): void {
+function ensureSchema(driver: SqlDriver): { search: boolean; refs: boolean } {
   const exists = driver.get<{ name: string }>(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'page'",
   );
@@ -53,8 +65,12 @@ function ensureSchema(driver: SqlDriver): void {
   }
   // Every open, fresh or not: an existing replica gets indexes added since it was created.
   ensureClientIndexes(driver);
-  ensureClientSearchIndex(driver);
+  return { search: ensureClientSearchIndex(driver), refs: ensureClientRefIndex(driver) };
 }
+
+/** Thrown by the local reference reads when this replica could not build its index (a SQLite
+ * without what it needs); the caller asks the server instead (`../data/store.ts`). */
+export const LOCAL_REFS_UNAVAILABLE = "local_refs_unavailable";
 
 /** Every block of a page, depth-first, reusing `@nooklet/core`'s exported `listChildren` so this
  * file never duplicates its row-mapping logic. One round trip per tree level, not per graph —
@@ -144,11 +160,12 @@ export class WorkerDb {
   readonly sync: SyncClient;
   private readonly hasSyncTarget: boolean;
   private readonly localReferencePages: boolean;
+  private readonly indexes: { search: boolean; refs: boolean };
   private onChangeCb: ((e: ChangeEvent) => void) | undefined;
 
   constructor(opts: WorkerDbOptions) {
     this.driver = opts.driver;
-    ensureSchema(this.driver);
+    this.indexes = ensureSchema(this.driver);
     this.hasSyncTarget = opts.hasSyncTarget ?? true;
     this.localReferencePages = opts.localReferencePages ?? false;
     this.onChangeCb = opts.onChange;
@@ -334,6 +351,57 @@ export class WorkerDb {
 
   query<T = Record<string, unknown>>(sql: string, params: readonly unknown[] = []): T[] {
     return this.driver.all<T>(sql, params);
+  }
+
+  /**
+   * B-641: linked and unlinked references from this replica — `@nooklet/core`'s `backlinkRows`,
+   * the reading the server's `page.backlinks` does, over the replica's own copy of the index
+   * (`./ref-index-client.ts`), brought up to date first. Shaped like that op's answer with every
+   * linked row up to `linkedLimit` (no cursor: there is no request to page). Unlinked mentions need
+   * the replica's FTS index; without it the list is empty and `unlinkedAvailable` says why.
+   */
+  pageBacklinks(target: string, opts: LocalBacklinksOptions): LocalBacklinks {
+    if (!this.indexes.refs) throw new Error(LOCAL_REFS_UNAVAILABLE);
+    drainRefIndex(this.driver);
+    const resolved = resolveBacklinksTarget(this.driver, target);
+    const rows = backlinkRows(this.driver, resolved, {
+      includeUnlinked: opts.includeUnlinked && this.indexes.search,
+      unlinkedLimit: opts.unlinkedLimit,
+    });
+    const firstLine = (content: string): string => (content.split("\n")[0] ?? "").trim();
+    return {
+      target: resolved.kind === "page" ? wirePageNameById(this.driver, resolved.page.id) : target,
+      linked: rows.linked.slice(0, opts.linkedLimit).map((r) => ({
+        id: r.block_id,
+        page: wirePageNameById(this.driver, r.page_id),
+        text: firstLine(r.content),
+        updated_at: new Date(r.updated_at).toISOString(),
+        direct: r.direct === 1,
+      })),
+      linked_total: rows.linked.length,
+      linked_direct_total: rows.linked.filter((r) => r.direct === 1).length,
+      unlinked: rows.unlinked.slice(0, opts.unlinkedLimit).map((r) => ({
+        id: r.block_id,
+        page: wirePageNameById(this.driver, r.page_id),
+        text: firstLine(r.content),
+      })),
+      unlinked_truncated: rows.unlinked.length > opts.unlinkedLimit,
+      unlinkedAvailable: this.indexes.search,
+      tagged_pages: rows.tagged.slice(0, opts.linkedLimit).map((r) => ({
+        id: r.page_id,
+        page: wirePageNameById(this.driver, r.page_id),
+        source: r.source,
+      })),
+      tagged_total: rows.tagged.length,
+    };
+  }
+
+  /** B-641: the page-to-page link graph from this replica (`@nooklet/core`'s `linkGraph`, what the
+   * server's `graph.links` answers with). */
+  graphLinks(opts: { includeJournals: boolean; limit: number }): LinkGraph {
+    if (!this.indexes.refs) throw new Error(LOCAL_REFS_UNAVAILABLE);
+    drainRefIndex(this.driver);
+    return linkGraph(this.driver, opts);
   }
 
   private notify(tables: ChangedTable[], pageIds: readonly string[]): void {

@@ -13,10 +13,14 @@ import type { ReferenceFilter } from "./referenceGrouping.js";
 
 const state: {
   result: BacklinksResult;
+  error: unknown;
+  hasServer: boolean;
   trees: ReferenceTrees | undefined;
   filter: ReferenceFilter;
 } = {
   result: emptyResult(),
+  error: undefined,
+  hasServer: true,
   trees: undefined,
   filter: { include: [], exclude: [] },
 };
@@ -35,9 +39,20 @@ function emptyResult(): BacklinksResult {
 }
 
 vi.mock("../data/store.js", () => {
-  const resource = Object.assign(() => state.result, { loading: false, error: undefined });
+  const resource = Object.defineProperties(
+    () => {
+      if (state.error !== undefined) throw state.error;
+      return state.result;
+    },
+    { loading: { get: () => false }, error: { get: () => state.error } },
+  );
   return { useLinkedReferences: () => [resource, { refetch: () => {} }] };
 });
+vi.mock("../data/bootstrap.js", () => ({
+  hasSyncTarget: () => state.hasServer,
+  apiBaseUrl: () => "",
+  authToken: () => undefined,
+}));
 vi.mock("../data/reference-trees.js", () => ({
   useReferenceListTrees: () => () => state.trees,
 }));
@@ -88,6 +103,8 @@ beforeEach(() => {
     ancestorText: new Map(),
   } as unknown as ReferenceTrees;
   state.filter = { include: [], exclude: [] };
+  state.error = undefined;
+  state.hasServer = true;
 });
 
 function heading(container: HTMLElement): string | null | undefined {
@@ -132,5 +149,34 @@ describe("ReferencesPanel linked heading count", () => {
       container.querySelector(".unlinked-references .references-toggle .reference-count")
         ?.textContent,
     ).toBe("2");
+  });
+});
+
+describe("ReferencesPanel failure and local-only (B-641)", () => {
+  it("says so, with Retry, when neither the device nor a server could answer", () => {
+    // References come from the replica now; this is left only for a replica that could not
+    // build its reference index (and no server to fall back on). The e2e that used to cover it
+    // (a refused `page.backlinks`) now shows the device answering instead.
+    state.error = new Error("local_refs_unavailable");
+    const { container } = render(() => <ReferencesPanel target="T" onNavigate={() => {}} />);
+    expect(container.querySelector(".references-error")?.textContent).toContain(
+      "Couldn't load references",
+    );
+    expect(container.querySelector(".references-retry")).not.toBeNull();
+  });
+
+  it("offers Link all only when there is a server to run it", () => {
+    state.result = {
+      ...state.result,
+      unlinked: [{ id: "u", page: "Wed", text: "T in passing" }],
+    };
+    const withServer = render(() => <ReferencesPanel target="T" onNavigate={() => {}} />);
+    expect(withServer.container.querySelector(".references-link-all")).not.toBeNull();
+    cleanup();
+    state.hasServer = false;
+    const localOnly = render(() => <ReferencesPanel target="T" onNavigate={() => {}} />);
+    expect(localOnly.container.querySelector(".references-link-all")).toBeNull();
+    // The mentions themselves are still there: they come from the device.
+    expect(localOnly.container.querySelector(".unlinked-references")).not.toBeNull();
   });
 });
