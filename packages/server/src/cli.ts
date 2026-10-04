@@ -799,7 +799,7 @@ async function main(): Promise<void> {
     case "backup": {
       const { ctx, config } = open(args);
       const outFlag = args.flags.get("out");
-      const result = createBackup(ctx.driver, {
+      const result = await createBackup(ctx.driver, {
         dataDir: config.dataDir,
         ...(typeof outFlag === "string" ? { outPath: resolve(outFlag) } : {}),
       });
@@ -822,7 +822,7 @@ async function main(): Promise<void> {
       // Targets this graph's own subdirectory (ADR 025) so a restored archive lands exactly where
       // `serve`/`open()` will look for it — migrateLegacyLayoutIfNeeded never needs to touch it.
       const dir = graphDir(dataDir(args), graphIdFlag(args));
-      const result = restoreBackup(resolve(archivePath), { dataDir: dir, force });
+      const result = await restoreBackup(resolve(archivePath), { dataDir: dir, force });
       // Into a fresh data dir this is the graph's first database; give it its graph.json (B-607).
       ensureGraphMeta(dataDir(args), graphIdFlag(args));
       process.stdout.write(
@@ -837,7 +837,7 @@ async function main(): Promise<void> {
       // Parsed before the database is opened: a flag gc does not understand stops the run.
       const gcFlags = cliArg(() => parseGcFlags(args));
       const { ctx, config } = open(args);
-      const report = runGc(ctx, { dataDir: config.dataDir, ...gcFlags });
+      const report = await runGc(ctx, { dataDir: config.dataDir, ...gcFlags });
       // The op-log half can be refused (no device has synced yet); the asset half never is, so
       // both are always reported.
       if (report.refused) {

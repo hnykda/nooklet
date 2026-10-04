@@ -384,7 +384,7 @@ export function planGc(driver: SqlDriver): {
  * something vacuums it -- `docs/spec/sql-schema.md` rule 28 calls the op log the single largest
  * contributor to file size at scale, so this is the whole point of running GC at all).
  */
-export function runGc(ctx: ServerContext, opts: RunGcOptions): GcReport {
+export async function runGc(ctx: ServerContext, opts: RunGcOptions): Promise<GcReport> {
   const dryRun = opts.dryRun ?? false;
   const now = Date.now();
   const { floor, drop, retain } = planGc(ctx.driver);
@@ -408,7 +408,7 @@ export function runGc(ctx: ServerContext, opts: RunGcOptions): GcReport {
   // dropped) AND `assets/` (with the files about to be unlinked).
   let backupPath: string | undefined;
   if (!opts.noBackup) {
-    backupPath = createBackup(ctx.driver, { dataDir: opts.dataDir }).path;
+    backupPath = (await createBackup(ctx.driver, { dataDir: opts.dataDir })).path;
   }
 
   let reclaimedBytes: number | undefined;
