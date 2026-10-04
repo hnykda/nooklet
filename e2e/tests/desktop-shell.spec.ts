@@ -15,12 +15,27 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 
 test.use({ viewport: { width: 1100, height: 800 } });
 
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
+test.beforeEach(async ({ page, baseURL }) => {
+  const port = Number(new URL(baseURL as string).port);
+  await page.addInitScript((p) => {
     Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
-      value: Object.freeze({ platform: "macos", port: 6100 }),
+      value: Object.freeze({
+        platform: "macos",
+        port: p,
+        key: "k",
+        graphToken: null,
+        graphs: [
+          {
+            key: "mac:default",
+            place: "mac",
+            id: "default",
+            label: "This Mac",
+            address: `http://127.0.0.1:${p}/g/default`,
+          },
+        ],
+      }),
     });
-  });
+  }, port);
 });
 
 /** A control a pointer can actually hit: inside the viewport, and the topmost element at its centre. */
@@ -114,4 +129,19 @@ test("the native menu's Settings… and Keyboard Shortcuts open the client's own
   const shortcuts = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   await expect(shortcuts).toBeVisible();
   await expect(shortcuts).toContainText("Open settings");
+});
+
+test("proposal 005: the native menu's Graphs… opens the graph menu, sidebar closed or not", async ({
+  page,
+}) => {
+  await page.goto("/g/default/journals");
+  await expect(page.locator(".app-topbar")).toBeVisible();
+  // The sidebar starts closed; the menu lives in it.
+  await expect(page.getByRole("complementary", { name: "Sidebar" })).toHaveCount(0);
+  await page.evaluate(() =>
+    window.dispatchEvent(new CustomEvent("nooklet:desktop-menu", { detail: "graphs" })),
+  );
+  const menu = page.getByRole("dialog", { name: "Graphs" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("list", { name: "On this Mac" })).toContainText("This Mac");
 });
