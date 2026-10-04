@@ -47,7 +47,7 @@ B-640..B-651 from the owner's feedback. Agents in flight (worktrees, all based o
 | phone-ui | B-646 `/` on phone, B-648 properties overflow, B-649 forward greyed, B-650 switcher outside-tap, B-651 task cycling + checkbox | 6415-6419 |
 | desktop-local-graph | B-643 local graph from the desktop app, B-644 whimsical names | 6420-6424 |
 | all-pages | B-645 counts + delete in All pages | 6425-6429 |
-| icon-picker | B-647 searchable emoji picker | 6430-6434 |
+| icon-picker | B-647 emoji picker, **merged** (`f45e6bb`) | 6430-6434 |
 
 ## Ready for the first real-device test — 2026-10-03 evening (READ THIS FIRST)
 

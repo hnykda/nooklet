@@ -236,6 +236,8 @@ Fix direction (not done, outside this branch's scope): poll the read, and use `h
 
 ---
 
+2026-10-04: `page-icons.spec.ts` "…clearing the field removes the icon" now clears through the emoji picker's Remove button (same server-poll assertions).
+
 ### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
 m10/editor-keys (`/template`: pre-existing; `/mermaid`: reachable since the B-344 fix, `30e9a71`) ·
@@ -893,12 +895,6 @@ Owner: extra columns such as word count or block count, and actions such as dele
 
 Owner on the iPhone app.
 
-### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
-
-Owner: on the phone it just inserts a default smiling face; typing inputs raw characters instead of
-searching emoji. Same on desktop.
-
 ### B-648 · On the phone, opening Properties makes the page wider than the screen until the app is restarted
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner, first real-device test (Mac desktop + iPhone, test server `~/nooklet-test` on 6200) · **Test:** none yet
 
@@ -933,6 +929,20 @@ keep the base/text of recently acknowledged `block.text` ops until the next pull
 before push on reconnect.
 
 ## Fixed
+
+### B-647 · The page icon editor is barebones: no picker on the phone, typing does not search
+**Status:** fixed (2026-10-04, `f45e6bb`) · **Severity:** low · **Test:** `e2e/tests/page-icon-picker.spec.ts` (3),
+`apps/web/src/views/EmojiPicker.test.tsx`, `apps/web/src/emoji/search.test.ts`
+
+Owner: on the phone it just inserts a default smiling face; typing inputs raw characters instead of
+searching emoji. Same on desktop.
+
+**Fixed 2026-10-04.** The icon slot opens an emoji picker (`views/EmojiPicker.tsx`): search by English
+name/keyword (emojibase-data 17, MIT, build-time trimmed to 1,898 emoji, lazy chunk 38 KB gz,
+precached so it works offline), recents + category grid, arrows/Enter/Escape, touch at phone width,
+Remove, typed/pasted emoji taken as is; stored `icon` property unchanged. Shaped after Logseq's
+`components/icon.cljs` minus Tabler icons/colours/skin tones. Not checked on a real phone or in the
+Capacitor app; no Czech keywords (the dataset has none).
 
 ### B-642 · A same-block edit conflict is kept as a `conflict_copy::` property instead of something readable
 **Status:** fixed (2026-10-04, `1827b8c`, ADR 027) · **Severity:** medium (UX) · **Test:** `packages/server/src/conflict-copy.test.ts`,
@@ -3124,6 +3134,8 @@ replaced by one read failed 3 of 3 (`Received value: "🇨🇿"`); the polled te
 of 8 in the 96-test run under 56 busy loops (load average up to 69).
 
 ---
+
+2026-10-04: `page-icons.spec.ts` "…clearing the field removes the icon" now clears through the emoji picker's Remove button (same server-poll assertions).
 
 ### B-335 · `editing.spec.ts`'s `openJournal` can wait 30 s to blur a journal draft that has already become an outline
 **Status:** fixed · **Severity:** low (test harness) · **Found:** 2026-09-13, m9 cleanup, e2e
