@@ -1014,20 +1014,6 @@ Owner: "agents control should probably be off for mobile? that doesn't make much
 
 Owner: "hide the graph change/selection into the left sidebar, maybe with the main graph being named at the top left and when you click on it it would offer options of the graphs" (like Logseq's graph menu). Replace the top-bar switcher icon.
 
-### B-710 · `nooklet backup` holds the whole graph in memory: OOMKilled on a 280 MB graph, blocking every deploy and the nightly backup
-**Status:** stopgap applied (2026-10-04); real fix in progress (streaming backup agent) · **Severity:** high (no backups of the real graph; deploys blocked) · **Found:** 2026-10-04, coordinator — production deploys stopped rolling out after `alpha` was imported · **Test:** pending (streaming agent: peak RSS for a 400 MB graph)
-
-After importing `alpha` (50 MB db + ~230 MB assets), every pre-deploy backup job (created from the
-`nooklet-backup` CronJob, 512Mi limit) was `OOMKilled`, so the infra repo's nooklet deploy pipeline
-failed and production stayed on an old image while the nooklet pipelines reported success.
-Cause: `backup/index.ts#createBackup` `readFileSync`s the VACUUM'd db and every asset, and
-`backup/tar.ts#createTarGz` `Buffer.concat`s all parts then `gzipSync`s them: several copies of the
-graph in memory. The nightly backup of `alpha` would have failed the same way. Stopgap (owner
-approved): the CronJob limit raised to 2Gi in the infra repo and patched live; deploy re-run →
-pre-deploy backup completed in 17 s, `nooklet-alpha-2026-10-04.tar` (251 MB) exists. Owner: "we can't
-just rely on everything fitting into memory" — streaming backup/restore plus an audit of other
-whole-graph-in-memory paths (snapshot, export, gc, rebuild, assets) is in progress.
-
 ### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
 **Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
 
@@ -1062,18 +1048,6 @@ unless the server does it), a root-token `DELETE /graphs/<id>` that closes the h
 retires, and docs in self-hosting.md. Also `graph restore-retired`. What 2026-10-04's manual swap
 did (moved aside, renamed into place, restarted, carried token rows over) is the procedure to
 encode.
-
-### B-714 · The "different graph" screen is a dead end: discard is the only way out, and its wording assumes localhost
-**Status:** open · **Severity:** medium (UX; pushes users toward a destructive action) · **Found:** 2026-10-04, owner after production `alpha` was re-imported · **Test:** none yet
-
-`GraphMismatchView` offers only "Discard the local copy and re-sync", and its text says "the server at
-localhost" and blames a moved `--data` directory, even for a remote server whose graph was
-re-imported under the same address. Owner: there should be other options, such as keeping this copy
-as a device-only graph and optionally adding the server graph. Wanted: (1) keep the local copy as a
-device-only graph (detached from the server, renamed, never synced; B-633's no-sync rule kept) and add
-the server's graph as a new entry; (2) go to another graph without deciding; (3) discard and re-sync.
-Wording names the real server address and lists the likely causes (re-imported/replaced graph on the
-server, a different data directory).
 
 ### B-715 · Images from a Logseq DB-version graph import as their timestamp names, not images
 **Status:** open · **Severity:** high for DB-version users (every pasted image is lost as an image) · **Found:** 2026-10-04, owner on the phone (a block from yesterday shows `2026-10-03-15-56-42` instead of the picture) · **Test:** none yet
@@ -1110,7 +1084,76 @@ nooklet reads it back exactly, but a GFM viewer or Logseq sees a broken table. S
 
 GFM unescapes the pipe before inline parsing, even in code spans. Not seen in the real graph.
 
+### B-722 · The client parses the whole `/sync/snapshot` body before inserting any of it
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+The worker reads the body to the end, `JSON.parse`s it, then inserts every row in one transaction (B-660). Recommendation: `GET /sync/snapshot?format=ndjson` (cursor line first, `{"end":true}` last so truncation is detectable) from the same streaming generator, JSON kept as default; the client splits lines over `res.body` and inserts ~1,000 rows per batch inside one savepoint with `defer_foreign_keys`, rolling back on stall/truncation.
+
+### B-723 · The Logseq importer parses every page before importing any, and reads assets whole
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+226 MiB peak for a 12 MB, 1,500-page source (synthetic); one 2 GB video in assets/ would be a 2 GB buffer. Recommendation: a name-resolution pass reading only titles, then parse/import one page at a time; stream assets to a temp file while hashing. Coordinate with in-app import.
+
+### B-724 · `graph.replace` loads every in-scope block's content at once
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+O(graph text) per request, over HTTP and MCP. Recommendation: keyset batches of ~2,000 and accumulate only matches.
+
+### B-725 · "Promote" on a device-only copy (B-714) would seed a new server graph with only its unsynced ops
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+A data guard landed (`updateGraph` refuses a `baseUrl` for a `detachedFrom` entry) but only after `createGraphOnServer` made an empty server graph; the button must be hidden via `canPromoteGraph` (sent to the graph-menu agent).
+
+### B-726 · `ConnectView` may be cut off on a short phone screen
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, streaming audit / b714 agent · **Test:** none
+
+`body` is `overflow: hidden` and `.connect` has no scroll container (the mismatch screen hit exactly this). Not reproduced.
+
 ## Fixed
+
+### B-714 · The "different graph" screen is a dead end: discard is the only way out, and its wording assumes localhost
+**Status:** fixed (2026-10-04, `2316556e`) · **Test:** `e2e/tests/graph-mismatch-choices.spec.ts` (3), `graph-mismatch-discard.spec.ts`, `data/bootstrap.test.ts` "B-714: …" (5)
+
+`GraphMismatchView` offers only "Discard the local copy and re-sync", and its text says "the server at
+localhost" and blames a moved `--data` directory, even for a remote server whose graph was
+re-imported under the same address. Owner: there should be other options, such as keeping this copy
+as a device-only graph and optionally adding the server graph. Wanted: (1) keep the local copy as a
+device-only graph (detached from the server, renamed, never synced; B-633's no-sync rule kept) and add
+the server's graph as a new entry; (2) go to another graph without deciding; (3) discard and re-sync.
+Wording names the real server address and lists the likely causes (re-imported/replaced graph on the
+server, a different data directory).
+
+**Fixed.** Three choices: keep as device-only (no data moves; the entry loses its address and becomes "<name> (old copy)", the server graph is added as a new entry), open another graph, discard (secondary, confirmed when unsynced). Names the real address, lists causes, shows the unsynced count. Fixed in passing: on web/desktop a local-only entry was given the page's graph token and compared against it. Not run on a real device.
+
+### B-721 · `/sync/snapshot`, `nooklet verify` and `nooklet gc` held the whole graph in memory
+**Status:** fixed (2026-10-04, streaming audit `d1107b28`) · **Severity:** medium · **Found:** 2026-10-04, streaming audit · **Test:** `snapshot.test.ts` "streamed from a file-backed database" (4); `verify.test.ts` (batch boundaries); `gc.test.ts` dry-run counts
+
+Snapshot: +332 MiB server RSS per request on a 60,000-block graph → +40 MiB, same bytes, one
+consistent read (old clients unaffected). Verify 582 → 194 MiB. gc no longer loads the op log to
+count it.
+
+### B-710 · `nooklet backup` holds the whole graph in memory: OOMKilled on a 280 MB graph, blocking every deploy and the nightly backup
+**Status:** fixed (2026-10-04, streaming-backup `bc640c0e`; stopgap 2Gi limit stays) · **Severity:** high · **Test:** `backup.test.ts` "streaming backup/restore: compatibility and failure modes" (6), `tar.test.ts` (7); probes `backup-memory.mjs`, `backup-sigkill.mjs`
+
+After importing `alpha` (50 MB db + ~230 MB assets), every pre-deploy backup job (created from the
+`nooklet-backup` CronJob, 512Mi limit) was `OOMKilled`, so the infra repo's nooklet deploy pipeline
+failed and production stayed on an old image while the nooklet pipelines reported success.
+Cause: `backup/index.ts#createBackup` `readFileSync`s the VACUUM'd db and every asset, and
+`backup/tar.ts#createTarGz` `Buffer.concat`s all parts then `gzipSync`s them: several copies of the
+graph in memory. The nightly backup of `alpha` would have failed the same way. Stopgap (owner
+approved): the CronJob limit raised to 2Gi in the infra repo and patched live; deploy re-run →
+pre-deploy backup completed in 17 s, `nooklet-alpha-2026-10-04.tar` (251 MB) exists. Owner: "we can't
+just rely on everything fitting into memory" — streaming backup/restore plus an audit of other
+whole-graph-in-memory paths (snapshot, export, gc, rebuild, assets) is in progress.
+
+**Fixed.** Backup streams 64 KiB chunks through one backpressured gzip into `<out>.partial-*`,
+fsynced then renamed (a SIGKILLed backup leaves nothing at the final path); the VACUUM snapshot sits
+beside the output, not in /tmp; photos/video/zip are stored, not recompressed. Restore extracts into
+`<graph>/.restore-*`, validates manifest, schema, checksums, then swaps. Peak RSS for a 400 MB graph:
+backup 1465 → 183–205 MiB, restore 1382 → 182–230 MiB (137/120 MiB with
+`NODE_OPTIONS=--max-semi-space-size=2`, recommended for the backup jobs only). Old archives restore
+with the new code and vice versa. Behaviour change: `restore --force` leaves `assets/` exactly as the
+archive had it.
 
 ### B-703 · Images have no reserved size, so rows below jump when one loads
 **Status:** fixed (2026-10-04, tables-images) · **Test:** `assets/image-size.test.ts`, `asset-upload.http.test.ts` "B-703", `render/image-size.test.tsx`, e2e `image-layout.spec.ts` (red: 396 px / 224 px jump)
