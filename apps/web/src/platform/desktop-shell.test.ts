@@ -29,7 +29,17 @@ describe("desktopShell", () => {
 
   it("reads the flag the Tauri shell injects", () => {
     injectShell(Object.freeze({ platform: "macos", port: 6420 }));
-    expect(desktopShell(window)).toEqual({ platform: "macos", port: 6420, localGraphs: [] });
+    expect(desktopShell(window)).toEqual({
+      platform: "macos",
+      port: 6420,
+      localGraphs: [],
+      downloads: false,
+    });
+  });
+
+  it("B-736: knows whether the shell saves downloads", () => {
+    injectShell(Object.freeze({ platform: "macos", port: 6420, downloads: true }));
+    expect(desktopShell(window)?.downloads).toBe(true);
   });
 
   it("B-643: reads This Mac's graphs, dropping malformed ones", () => {

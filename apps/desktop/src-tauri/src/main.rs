@@ -40,6 +40,8 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+// Two lines, not one `{…}`: `tools/probes/desktop-harness/wire.py` anchors on the second.
+use tauri::webview::DownloadEvent;
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
@@ -768,6 +770,29 @@ fn report_to_page(app: &tauri::AppHandle, message: &str) {
     }
 }
 
+/// B-736: tells the page how a download it started ended (`apps/web/src/platform/desktop-shell.ts#
+/// DESKTOP_DOWNLOAD_EVENT`). `name` is the file actually written — wry picks `name (1).ext` when
+/// the suggested one is taken — so the page can say where to look.
+fn report_download(app: &tauri::AppHandle, url: &str, ok: bool, name: Option<&str>, path: Option<&str>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let detail = serde_json::json!({ "ok": ok, "url": url, "name": name, "path": path });
+        let _ = window.eval(format!(
+            "window.dispatchEvent(new CustomEvent(\"nooklet:desktop-download\",{{detail:{detail}}}))"
+        ));
+    }
+}
+
+/// B-744: the saved file's path as a person would type it, `~/Downloads/x.png` rather than the
+/// full home path, for the page's "Saved to …" message.
+fn display_path(path: &std::path::Path) -> String {
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        if let Ok(rest) = path.strip_prefix(&home) {
+            return format!("~/{}", rest.display());
+        }
+    }
+    path.display().to_string()
+}
+
 /// Carries out a `ShellRequest`: on success, This Mac becomes active on the chosen graph and the
 /// app restarts into it (`restart_app`'s doc comment: the spawn-or-not decision is made once per
 /// launch, and in remote mode nothing local is running yet).
@@ -838,9 +863,12 @@ fn restart_app(app: tauri::AppHandle) {
 /// B-643: `localGraphs` (This Mac's own graphs, `list_local_graphs`) and `activeLocalGraph` (which
 /// of them This Mac opens, `null` for its default) are read by the launcher, to open and list them,
 /// and by the client's graph switcher, to list them from whatever server the window is showing.
+///
+/// B-736: `downloads: true` says this shell saves `<a download>` (`on_download` below). The client
+/// reads it to choose how to save an image; a shell without it cancels every download.
 fn shell_script(config: &DesktopConfig, local_graphs: &[LocalGraph], force_picker: bool) -> String {
     format!(
-        "Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{:?},port:{},graphs:{},activeGraphId:{},localGraphs:{},activeLocalGraph:{},forcePicker:{}}})}});",
+        "Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{:?},port:{},graphs:{},activeGraphId:{},localGraphs:{},activeLocalGraph:{},forcePicker:{},downloads:true}})}});",
         std::env::consts::OS,
         port(),
         serde_json::to_string(&config.remote_graphs).unwrap_or_else(|_| "[]".to_string()),
@@ -1136,6 +1164,33 @@ fn main() {
                 .on_new_window(|url, _features| {
                     open_in_browser(url.as_str());
                     NewWindowResponse::Deny
+                })
+                // B-736: without a download handler wry answers every `<a download>` (and every
+                // response WebKit cannot show) with `Cancel`, so "Download" on an image did
+                // nothing. Saved where a browser would save it: ~/Downloads, under the page's
+                // suggested name, de-duplicated by wry. macOS reports no path on `Finished`, so
+                // the chosen one is remembered from `Requested` to tell the page.
+                .on_download({
+                    let app = handle.clone();
+                    let pending: Arc<Mutex<std::collections::HashMap<String, PathBuf>>> = Default::default();
+                    move |_webview, event| {
+                        match event {
+                            DownloadEvent::Requested { url, destination } => {
+                                pending.lock().unwrap().insert(url.to_string(), destination.clone());
+                            }
+                            DownloadEvent::Finished { url, success, .. } => {
+                                let path = pending.lock().unwrap().remove(url.as_str());
+                                let name = path
+                                    .as_ref()
+                                    .and_then(|p| p.file_name())
+                                    .map(|n| n.to_string_lossy().into_owned());
+                                let shown = path.as_deref().map(display_path);
+                                report_download(&app, url.as_str(), success, name.as_deref(), shown.as_deref());
+                            }
+                            _ => {}
+                        }
+                        true
+                    }
                 })
                 .build()?;
 
@@ -1502,6 +1557,13 @@ mod tests {
     }
 
     #[test]
+    fn b744_a_saved_file_is_shown_under_the_home_shorthand() {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set in tests"));
+        assert_eq!(display_path(&home.join("Downloads/shed (1).png")), "~/Downloads/shed (1).png");
+        assert_eq!(display_path(std::path::Path::new("/Volumes/x/a.png")), "/Volumes/x/a.png");
+    }
+
+    #[test]
     fn b704_an_add_server_request_carries_a_normalized_address() {
         assert_eq!(
             parse_shell_request(&url(
@@ -1577,6 +1639,7 @@ mod tests {
         let script = shell_script(&DesktopConfig { active_local_graph: Some("quiet-otter".into()), ..Default::default() }, &listed, false);
         assert!(script.contains(r#"localGraphs:[{"id":"adopted","label":"adopted"}"#), "{script}");
         assert!(script.contains(r#"activeLocalGraph:"quiet-otter""#), "{script}");
+        assert!(script.contains("downloads:true"), "{script}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

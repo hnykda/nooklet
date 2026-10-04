@@ -305,6 +305,13 @@
 .vr-surface-host .cm-dropCursor {
   border-left-color: var(--fg);
 }
+/* The caret people actually see is the browser's own: there is no `drawSelection()`, so the
+   `.cm-cursor` rule above never applies to it. CodeMirror's base theme sets `caret-color: black`
+   on `.cm-content` for its light theme ((0,2,0)), which in dark mode is a black caret on a
+   near-black page (B-745). One class deeper wins without `!important`. */
+.vr-surface-host .cm-editor .cm-content {
+  caret-color: var(--fg);
+}
 /* Specificity rather than `!important`: CodeMirror's own theme reaches (0, 2, 0) via
    `.cm-editor.cm-focused .cm-selectionBackground`, so a selector one level deeper wins outright. */
 .vr-surface-host .cm-editor .cm-selectionBackground,
@@ -501,6 +508,133 @@
   max-height: 70vh;
   border-radius: var(--radius-sm);
   display: block;
+  /* A click opens the viewer (B-736), not the editor. */
+  cursor: zoom-in;
+}
+
+.vr-image:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* B-736: the full-size view an image opens into. */
+.image-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--sat) + var(--space-xl)) calc(var(--sar) + var(--space-xl))
+    calc(var(--sab) + var(--space-xl)) calc(var(--sal) + var(--space-xl));
+}
+
+.image-viewer {
+  position: relative; /* the toasts are placed against it */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  padding: var(--space-md);
+  background: var(--surface-1);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.image-viewer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.image-viewer-spacer {
+  flex: 1;
+}
+
+.image-viewer-btn {
+  font: inherit;
+  font-size: var(--text-sm);
+  min-height: 32px;
+  padding: 0 var(--space-lg);
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.image-viewer-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.image-viewer-close {
+  padding: 0 var(--space-md);
+}
+
+.image-viewer-stage {
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.image-viewer-img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - var(--sat) - var(--sab) - 140px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+/* B-744: results float over the picture, newest last, and fade on their own. */
+.image-viewer-toasts {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+
+.image-viewer-toast {
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--fg);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+  animation: image-viewer-toast-in 160ms ease-out;
+}
+
+.image-viewer-toast-error {
+  color: var(--danger);
+}
+
+@keyframes image-viewer-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-viewer-toast {
+    animation: none;
+  }
 }
 
 .vr-highlight {

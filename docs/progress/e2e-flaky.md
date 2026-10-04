@@ -78,6 +78,18 @@ fixed). Second merge of main (`7a65a90`, includes `1d9845d2`), then coordinator 
 B-651 = B-764, desktop-local-graph:113 = B-765 (`588581f`). BUGS.md entries B-760..B-765 written
 directly at the coordinator's request.
 
+**Final three full runs** on `5ed53a6` (this branch + main incl. `aa2b942f`), `--retries=0`,
+sequential, port 6500: A 848 passed / 0 failed / 5 skipped (31.2 m, exit 0); B 848 / 0 / 5
+(28.1 m, exit 0); C 848 / 0 / 5 (28.1 m, exit 0). `pnpm -r test` twice on that tree beside the
+e2e runs: 506 + 17 + 951 + 1716, green both times (after giving the multi-plugin `host.test.ts`
+tests 20 s, `30e1d83`; before that, B-406's test timed out in both runs). Then merged main again
+(11 commits; BUGS.md conflict, both sides kept). Typecheck clean, leak-check clean; biome reports
+1 error, in main's image-viewer toast markup, not touched here.
+
+CI retries: keep `retries: 1` on CI. It no longer hides the flakes above, but `sw-update.spec.ts`
+(B-636) is unexplained and a loaded CI runner sees timing local runs do not. Playwright reports a
+retried pass as "flaky", so it stays visible.
+
 ## In flight / next
 
 - Three full `pnpm e2e --retries=0` runs on `588581f`: running (scratchpad `three-runs.sh`, logs

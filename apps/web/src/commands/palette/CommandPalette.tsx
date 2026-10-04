@@ -17,6 +17,7 @@ import { rankItems } from "../ranking/rank.js";
 import type { CommandContext } from "../types.js";
 import { matchesWhen } from "../when/index.js";
 import "../styles.css";
+import { keepActiveInView } from "../keep-active-in-view.js";
 
 export interface CommandPaletteProps {
   pages: PageSource;
@@ -47,6 +48,8 @@ interface Row {
 export function CommandPalette(props: CommandPaletteProps) {
   const { registry, palette, mru, buildContext } = useCommands();
   const [highlight, setHighlight] = createSignal(0);
+  let listEl: HTMLDivElement | undefined;
+  keepActiveInView(() => listEl, highlight); // B-746
   const [pages, setPages] = createSignal<PageSummary[]>([]);
 
   onMount(() => {
@@ -255,7 +258,7 @@ export function CommandPalette(props: CommandPaletteProps) {
             }
             aria-label="Command palette"
           />
-          <div id="cmd-palette-listbox" class="cmd-list" role="listbox">
+          <div ref={listEl} id="cmd-palette-listbox" class="cmd-list" role="listbox">
             <For each={rows()}>
               {(row, i) => (
                 // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard selection is handled by the input's onKeyDown (Up/Down/Enter) above, not per-row.
