@@ -58,6 +58,7 @@ import {
 } from "./api-client.js";
 import { invalidateBlockRefs } from "./block-ref-cache.js";
 import { type AliasCandidate, findPageByAlias } from "./page-alias.js";
+import { PAGE_STATS_SQL, type PageStats, tallyPageStats } from "./page-stats.js";
 import type { JournalDayEntry, JournalStreamOptions, PageTreeResult, TaskRow } from "./types.js";
 
 // ---------------------------------------------------------------------------------------------
@@ -433,6 +434,21 @@ export function useAllPages(): InitializedResource<PageRow[]> {
       return rows.map(toPageRow);
     },
     { initialValue: [] },
+  );
+  return resource;
+}
+
+/**
+ * Block and word counts per page, for the All pages view's columns (B-645) — `./page-stats.ts`
+ * says how they are counted. Refetched when any block changes; nothing is mounted to ask unless
+ * that view is open.
+ */
+export function usePageStats(): InitializedResource<Map<string, PageStats>> {
+  ensureWired();
+  const [resource] = createResource(
+    () => stamped(true, ["block"]),
+    async () => tallyPageStats(await queryAs<{ page_id: string; content: string }>(PAGE_STATS_SQL)),
+    { initialValue: new Map<string, PageStats>() },
   );
   return resource;
 }

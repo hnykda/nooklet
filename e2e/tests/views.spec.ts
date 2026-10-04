@@ -284,7 +284,8 @@ test("All Pages sorts by name, shows journals only on request, and counts its ro
   await seedPage(page, "Views AllPages Alpha", "- a");
   await page.goto("/pages");
   await page.locator(".all-pages-filter").fill("Views AllPages");
-  await page.locator(".all-pages-sort").selectOption("name");
+  // B-645: on a desktop-width view the column headers sort; the menu is the phone's.
+  await page.getByRole("button", { name: "Sort by name" }).click();
   await expect(page.locator(".all-pages-row .all-pages-name")).toHaveText([
     "Views AllPages Alpha",
     "Views AllPages Beta",
