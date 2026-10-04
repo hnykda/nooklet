@@ -113,7 +113,7 @@ describe("rebuildRefIndex", () => {
   it("produces exactly the rows the per-write path does", () => {
     buildGraph();
     const incremental = snapshot();
-    expect(incremental.ref.length).toBeGreaterThan(5);
+    expect(incremental.ref?.length).toBeGreaterThan(5);
     rebuildRefIndex(driver);
     expect(snapshot()).toEqual(incremental);
   });

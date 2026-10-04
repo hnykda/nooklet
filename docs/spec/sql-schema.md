@@ -62,6 +62,13 @@ the `rebuild()` contract; migration convention; a worked example; and sizing/PRA
    with the server's DDL and triggers, created `IF NOT EXISTS` and rebuilt once on the first open
    that lacks them (`schema-client.ts#ensureClientSearchIndex`) — the device's own keyword search,
    which the server's semantic matches are added to when reachable.
+   *As built (2026-10-04, B-641):* the replica also keeps `ref`, `path_ref`, `page_tag` and
+   `page_alias` (`@nooklet/core`'s `REF_INDEX_STATEMENTS`: the server's columns and indexes, but
+   **no foreign keys** — the replica hard-deletes a page the server refused, and an index row must
+   not block that), derived by the server's own code (`reindexRefs`). Client-only beside them:
+   `ref_dirty(kind, id)` and its triggers on `block`/`block_prop`/`page`/`page_prop`, the queue of
+   rows to re-derive before the next read (`apps/web/src/db/ref-index-client.ts`). A replica that
+   predates the index is rebuilt whole on its first read (`rebuildRefIndex`).
 2. Every top-level writable table (state and bookkeeping, not derived tables) MUST carry
    `graph_id TEXT NOT NULL DEFAULT 'default'` per `00-conventions.md` ("one graph per server in
    v1... every table still carries `graph_id`"). Derived tables (`ref`, `path_ref`, `page_alias`,
