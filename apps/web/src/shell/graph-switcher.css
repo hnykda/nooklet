@@ -284,6 +284,14 @@
   color: var(--muted);
 }
 
+/* B-643: the desktop's "On this Mac" group, under the device's own list. */
+.graph-switcher-group {
+  margin: var(--space-xs) var(--space-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+}
+
 .graph-switcher-hint code {
   font-family: var(--font-mono);
 }

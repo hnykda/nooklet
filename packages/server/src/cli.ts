@@ -76,6 +76,7 @@ import type { BaseServerConfig } from "./graphs/open-graph.js";
 import { graphDir } from "./graphs/paths.js";
 import { pluginDirsFor } from "./graphs/plugin-dirs.js";
 import {
+  createGraphForCommand,
   ensureGraphMeta,
   GraphRegistry,
   GraphSelectionError,
@@ -215,6 +216,8 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet import <logseq-graph-dir> [--data <dir>]
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
+  nooklet graph create <id> [--label <label>] [--data <dir>]
+  nooklet graph list [--data <dir>]
   nooklet token create --label <label> [--scope read|write|admin] [--sync] [--ui-control]
                       [--link <public url>]   also print a nooklet://connect pairing link
   nooklet token list
@@ -379,6 +382,42 @@ async function main(): Promise<void> {
         config,
         ...(typeof token === "string" ? { token } : {}),
       });
+      return;
+    }
+
+    // ADR 025: graphs on this data dir, without a running server. `create` is how the desktop app
+    // adds a graph to This Mac (B-643); the HTTP equivalent is `POST /graphs` with the root token.
+    case "graph": {
+      const sub = args._[1];
+      const dir = dataDir(args);
+      migrateLegacyLayoutIfNeeded(dir);
+      if (sub === "create") {
+        const id = args._[2];
+        if (!id) die("graph create needs an id, e.g. nooklet graph create work --label Work");
+        const label = args.flags.get("label");
+        try {
+          const meta = createGraphForCommand(
+            dir,
+            id,
+            baseServerConfig(args),
+            typeof label === "string" ? label : undefined,
+          );
+          process.stdout.write(`${JSON.stringify(meta)}\n`);
+        } catch (err) {
+          if (err instanceof GraphSelectionError) die(err.message);
+          throw err;
+        }
+        return;
+      }
+      if (sub === "list") {
+        const registry = new GraphRegistry(dir, {
+          registry: buildRegistry(),
+          baseConfig: baseServerConfig(args),
+        });
+        for (const g of await registry.list()) process.stdout.write(`${g.id}\t${g.label}\n`);
+        return;
+      }
+      die(`unknown graph subcommand "${sub ?? ""}" (expected create or list)`);
       return;
     }
 

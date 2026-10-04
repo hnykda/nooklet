@@ -18,6 +18,7 @@
  */
 
 import { platform } from "../platform/index.js";
+import { generateGraphName } from "./graph-names.js";
 
 /**
  * One graph this device knows about. `id` is a LOCAL, device-generated id (not the server's own
@@ -98,10 +99,21 @@ function legacyAdopted(): boolean {
 }
 
 /**
+ * B-644: a fresh name for a new local graph, unique among this device's list (and `alsoTaken`:
+ * the desktop app's This-Mac graphs, which live on its own server rather than in this list).
+ * Existing entries keep whatever they are called, "This device" included: nothing is renamed.
+ */
+export function newLocalGraphName(alsoTaken: Iterable<string> = []): string {
+  return generateGraphName([...readGraphs().map((g) => g.label), ...alsoTaken]);
+}
+
+/**
  * B-612: gives the un-namespaced replica a list entry, once per device. Returns the entry, or
  * `undefined` when it was adopted before (the entry may have been removed since; it is not
  * resurrected). `ConnectView`'s "Just this device" (`chooseLocalOnly`) and the boot-time check for
- * an install stranded by B-612 (`main.tsx`) are the callers.
+ * an install stranded by B-612 (`main.tsx`) are the callers. The stranded rescue keeps "This
+ * device": it is the device's old notes coming back, not a new graph. "Just this device" passes a
+ * fresh name (B-644).
  */
 export function adoptLegacyReplica(label = "This device"): GraphListEntry | undefined {
   if (legacyAdopted() || readGraphs().some((g) => g.legacyReplica)) return undefined;
@@ -128,12 +140,12 @@ export function adoptLegacyReplica(label = "This device"): GraphListEntry | unde
  * Returns whether the page must reload: only when the new entry's replica is not the open one.
  */
 export function chooseLocalOnly(): { reload: boolean } {
-  const adopted = adoptLegacyReplica();
+  const adopted = adoptLegacyReplica(newLocalGraphName());
   if (adopted) {
     setActiveGraphId(adopted.id);
     return { reload: false };
   }
-  createLocalOnlyGraph("This device");
+  createLocalOnlyGraph();
   return { reload: true };
 }
 
@@ -357,13 +369,50 @@ export function findGraphByAddress(baseUrl: string): GraphListEntry | undefined 
 }
 
 /**
+ * The address bar names a graph on this origin (`/g/X`) but the active entry is a DIFFERENT graph
+ * on this same origin (`/g/Y`): make X's entry active (adding one if this device has none), before
+ * anything reads `apiBaseUrl()`. Without this the page showed Y's data under X's address, because
+ * `apiBaseUrl()` prefers the active entry; the router (`samePathGraphPrefix`) followed the URL and
+ * every request followed the entry. Reached by any navigation that is not the switcher's own (which
+ * sets the active entry first): a bookmark, a typed URL, and the desktop launcher opening the This-
+ * Mac graph it was asked for (B-643, `apps/desktop/launcher/index.html`).
+ *
+ * Deliberately narrow: an active entry with no address (local-only) or on another origin is left
+ * alone — that is a choice this page cannot second-guess, and Capacitor never has a `/g/` prefix.
+ * The new entry has no token; `initBootstrap` fills it from `/api/session` on loopback, and anywhere
+ * else the set-up screen asks for one, as for any graph this device has not opened before.
+ */
+export function adoptAddressBarGraph(): void {
+  if (platform.name === "capacitor" || typeof location === "undefined") return;
+  const prefix = samePathGraphPrefix();
+  const entry = activeGraph();
+  if (!prefix || !entry?.baseUrl) return;
+  const here = resolvedGraphAddress(prefix);
+  const active = resolvedGraphAddress(entry.baseUrl);
+  if (!here || !active || here === active) return;
+  try {
+    if (new URL(active).origin !== location.origin) return;
+  } catch {
+    return;
+  }
+  const existing = findGraphByAddress(prefix);
+  if (existing) {
+    setActiveGraphId(existing.id);
+    return;
+  }
+  const id = newGraphEntryId();
+  addGraph({ id, label: "This graph", kind: "local", baseUrl: prefix });
+  setActiveGraphId(id);
+}
+
+/**
  * ADR 025 move 1 — "new local-only graph": adds a genuinely bare entry (no `baseUrl` at all) and
  * makes it active. Meaningful only where "no server at all" is a real state to begin with —
  * Capacitor's B-563 "Just this device" — since web/desktop are always served BY some origin
  * (`hasSyncTarget()`'s own doc comment). `shell/GraphSwitcher.tsx` is the only caller, and only
  * offers this action under Capacitor.
  */
-export function createLocalOnlyGraph(label: string): void {
+export function createLocalOnlyGraph(label: string = newLocalGraphName()): void {
   const id = newGraphEntryId();
   addGraph({ id, label, kind: "local" });
   setActiveGraphId(id);

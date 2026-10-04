@@ -98,6 +98,45 @@ export function openGraphForCommand(
   return opened;
 }
 
+/**
+ * `nooklet graph create` — the same thing `POST /graphs` does, without a running server or the root
+ * token: the desktop app uses it to make a new graph on This Mac's own data dir (B-643,
+ * `apps/desktop/src-tauri/src/main.rs#create_local_graph`), whether or not its server is running
+ * (a running `serve` opens a graph lazily, on its first request, so a database created beside it
+ * is picked up with no restart).
+ *
+ * On a data dir with no graphs at all, "default" is created first: `serve` only adds its
+ * zero-config "default" when it finds no graphs, so without this a fresh install whose first graph
+ * came from here would have no default graph, and its bare address (which redirects to
+ * `/g/default`) would answer 404.
+ */
+export function createGraphForCommand(
+  dataDir: string,
+  graphId: string,
+  base: BaseServerConfig,
+  label?: string,
+): GraphMeta {
+  if (!isValidGraphId(graphId)) {
+    throw new GraphSelectionError(
+      `"${graphId}" is not a valid graph id (lowercase letters, digits, hyphens, 1-64 chars, not starting/ending with a hyphen)`,
+    );
+  }
+  if (existsSync(graphDbPath(dataDir, graphId))) {
+    throw new GraphSelectionError(`a graph called "${graphId}" already exists`);
+  }
+  mkdirSync(graphsRootDir(dataDir), { recursive: true });
+  const hasAnyGraph = readdirSync(graphsRootDir(dataDir), { withFileTypes: true }).some(
+    (e) => e.isDirectory() && existsSync(graphDbPath(dataDir, e.name)),
+  );
+  if (!hasAnyGraph && graphId !== "default") {
+    openGraphForCommand(dataDir, "default", base);
+  }
+  // `SqlDriver` has no close: a one-shot command's process exits right after, like every other.
+  openGraph(dataDir, graphId, base, { migrate: true, log: () => {} });
+  ensureGraphMeta(dataDir, graphId, label);
+  return JSON.parse(readFileSync(graphMetaPath(dataDir, graphId), "utf8")) as GraphMeta;
+}
+
 export class GraphRegistry {
   #dataDir: string;
   #opts: GraphRegistryOptions;

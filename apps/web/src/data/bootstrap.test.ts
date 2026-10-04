@@ -8,13 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activeGraph,
   addGraph,
+  adoptAddressBarGraph,
   adoptLegacyReplica,
   apiBaseUrl,
   chooseLocalOnly,
+  createLocalOnlyGraph,
   graphEntryUrl,
   hasSyncTarget,
   isLocalOnlyEntry,
   listGraphs,
+  newLocalGraphName,
   removeGraph,
   replicaKey,
   resetBootstrapForTests,
@@ -23,6 +26,7 @@ import {
   soleLegacyStateOwner,
   updateGraph,
 } from "./bootstrap.js";
+import { GRAPH_NAMES } from "./graph-names.js";
 
 const fakePlatform = vi.hoisted(() => ({ name: "web" as "web" | "capacitor" }));
 vi.mock("../platform/index.js", () => ({ platform: fakePlatform }));
@@ -185,6 +189,25 @@ describe('B-612: "Just this device" is a real list entry', () => {
     expect(replicaKey(activeGraph())).toBe(activeGraph()?.id);
   });
 
+  it("B-644: each new local graph gets its own curated name; existing names are left alone", () => {
+    fakePlatform.name = "capacitor";
+    addGraph({ id: "old", label: "This device", kind: "local" });
+    chooseLocalOnly();
+    chooseLocalOnly();
+    createLocalOnlyGraph();
+    const labels = listGraphs().map((g) => g.label);
+    expect(labels[0]).toBe("This device");
+    const fresh = labels.slice(1);
+    expect(fresh).toHaveLength(3);
+    for (const label of fresh) expect(GRAPH_NAMES).toContain(label);
+    expect(new Set(fresh).size).toBe(3);
+    // The desktop's This-Mac graphs are not in this list, but their names count as taken too.
+    const taken = GRAPH_NAMES.filter((n) => !fresh.includes(n)).slice(1);
+    expect(newLocalGraphName(taken)).toBe(
+      GRAPH_NAMES.find((n) => !fresh.includes(n) && !taken.includes(n)),
+    );
+  });
+
   it("a stranded install (remote entry active) gets its local data back as a second entry", () => {
     fakePlatform.name = "capacitor";
     addGraph({ id: "r", label: "Remote graph", kind: "remote", baseUrl: "https://s.example/g/x" });
@@ -228,5 +251,56 @@ describe("graphEntryUrl under Capacitor", () => {
       baseUrl: "https://s.example/g/x",
     };
     expect(graphEntryUrl(remote, loc)).toBe("/journals");
+  });
+});
+
+describe("adoptAddressBarGraph: the address bar's graph wins over another same-origin entry", () => {
+  afterEach(() => history.replaceState(null, "", "/"));
+
+  it("switches to the entry for /g/<slug>, adding one when this device has none", () => {
+    addGraph({ id: "d", label: "default", kind: "local", baseUrl: "/g/default", token: "nk_d" });
+    setActiveGraphId("d");
+    history.replaceState(null, "", "/g/quiet-otter/journals");
+    adoptAddressBarGraph();
+    const entry = activeGraph();
+    expect(entry?.id).not.toBe("d");
+    expect(entry).toMatchObject({ baseUrl: "/g/quiet-otter", kind: "local" });
+    expect(entry?.token).toBeUndefined();
+    expect(apiBaseUrl()).toBe("/g/quiet-otter");
+
+    // Back to the default graph's address: its existing entry (and token) is reused, not duplicated.
+    history.replaceState(null, "", "/g/default/journals");
+    adoptAddressBarGraph();
+    expect(activeGraph()?.id).toBe("d");
+    expect(listGraphs()).toHaveLength(2);
+  });
+
+  it("an absolute spelling of the same graph is the same graph", () => {
+    addGraph({ id: "d", label: "x", kind: "local", baseUrl: `${location.origin}/g/default` });
+    setActiveGraphId("d");
+    history.replaceState(null, "", "/g/default/page/A");
+    adoptAddressBarGraph();
+    expect(activeGraph()?.id).toBe("d");
+    expect(listGraphs()).toHaveLength(1);
+  });
+
+  it("leaves a local-only entry, another origin's graph, and Capacitor alone", () => {
+    history.replaceState(null, "", "/g/other/journals");
+    addGraph({ id: "l", label: "L", kind: "local" });
+    setActiveGraphId("l");
+    adoptAddressBarGraph();
+    expect(activeGraph()?.id).toBe("l");
+
+    addGraph({ id: "r", label: "R", kind: "remote", baseUrl: "https://elsewhere.example/g/x" });
+    setActiveGraphId("r");
+    adoptAddressBarGraph();
+    expect(activeGraph()?.id).toBe("r");
+
+    fakePlatform.name = "capacitor";
+    addGraph({ id: "d", label: "D", kind: "local", baseUrl: "/g/default" });
+    setActiveGraphId("d");
+    adoptAddressBarGraph();
+    expect(activeGraph()?.id).toBe("d");
+    expect(listGraphs()).toHaveLength(3);
   });
 });

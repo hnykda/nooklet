@@ -178,6 +178,14 @@
 
       const KEY = "nooklet.desktop.serverUrl";
       const DEFAULT_URL = `http://127.0.0.1:${APP_PORT}`;
+      // B-643: This Mac's own graphs (`main.rs#list_local_graphs`, every graph on the bundled
+      // server) and which one This Mac opens (`null`: its "default" graph, the bare address).
+      const localGraphs = Array.isArray(desktop.localGraphs) ? desktop.localGraphs : [];
+      const activeLocalGraph =
+        typeof desktop.activeLocalGraph === "string" ? desktop.activeLocalGraph : null;
+      /** Where on the local server to land: the active This-Mac graph's own `/g/<id>`, so the
+       * client opens that graph (it adopts the address bar's graph, `adoptAddressBarGraph`). */
+      const LOCAL_GRAPH_PATH = activeLocalGraph ? `/g/${encodeURIComponent(activeLocalGraph)}` : "";
       // Purely a local-mode recovery memory (unchanged from before remote mode existed): which
       // fallback address last actually answered, e.g. after `--port` was passed by hand. A remote
       // entry's address of record lives natively (`desktop.json`, read into `activeUrl` above), not
@@ -224,13 +232,19 @@
         }
       }
 
-      function graphRow(entry) {
+      /** `entry === null` is This Mac; `localGraph` then picks which of its graphs (`null`: its
+       * default graph, the row titled "This Mac"; B-643: one row per other graph on it). */
+      function graphRow(entry, localGraph = null) {
         const isLocal = entry === null;
         const id = isLocal ? null : entry.id;
-        const isActive = id === activeGraphId;
+        const localId = isLocal && localGraph ? localGraph.id : null;
+        const isActive = id === activeGraphId && (!isLocal || localId === activeLocalGraph);
         let title;
         let subtitle;
-        if (isLocal) {
+        if (isLocal && localGraph) {
+          title = localGraph.label;
+          subtitle = "On this Mac";
+        } else if (isLocal) {
           title = "This Mac";
           subtitle = "Works offline, nothing to set up.";
         } else {
@@ -265,7 +279,7 @@
         p.textContent = subtitle;
         text.append(h2, p);
         btn.append(icon, text);
-        btn.addEventListener("click", () => chooseGraph(id));
+        btn.addEventListener("click", () => chooseGraph(id, localId));
         wrap.appendChild(btn);
 
         if (!isLocal && !isActive) {
@@ -294,6 +308,9 @@
         const list = $("graph-list");
         list.replaceChildren();
         list.appendChild(graphRow(null));
+        for (const g of localGraphs) {
+          if (g && typeof g.id === "string" && g.id !== "default") list.appendChild(graphRow(null, g));
+        }
         for (const entry of graphs) list.appendChild(graphRow(entry));
 
         const add = document.createElement("button");
@@ -433,10 +450,12 @@
       }
 
       /** Picking a row from the list (`graphRow`'s click handler) — "This Mac" (`id === null`) and
-       * any remembered server go through this one path. */
-      async function chooseGraph(id) {
+       * any remembered server go through this one path. `localGraph`: which This-Mac graph, when
+       * `id` is `null` (B-643). */
+      async function chooseGraph(id, localGraph = null) {
         stopRecheck();
-        const alreadyActive = id === activeGraphId;
+        const alreadyActive =
+          id === activeGraphId && (id !== null || localGraph === activeLocalGraph);
         if (alreadyActive && !forcePicker) {
           cancelPicker();
           return;
@@ -452,7 +471,7 @@
           // the next, normal launch actually spawn/connect.
         } else {
           try {
-            await invoke("set_active_graph", { id });
+            await invoke("set_active_graph", { id, localGraph });
           } catch {
             // Best effort: worst case they relaunch unchanged and can try again.
             return;
@@ -522,7 +541,7 @@
           // A remote entry's address of record is the native config, not this — see
           // `localServerUrl`.
           if (!activeUrl) localStorage.setItem(KEY, base);
-          location.replace(base);
+          location.replace(activeUrl ? base : `${base.replace(/\/+$/, "")}${LOCAL_GRAPH_PATH}`);
           return true;
         }
         if (activeUrl) {

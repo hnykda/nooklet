@@ -163,7 +163,11 @@ test("B-611/B-612: local-only notes never reach a server graph added right after
     await page.getByRole("button", { name: "Switch graph" }).click();
     const rows = page.locator(".graph-switcher-row");
     await expect(rows).toHaveCount(2);
-    await page.getByRole("button", { name: "This device", exact: true }).click();
+    // B-644: the local graph has a generated name now; it is the row with no server address.
+    await rows
+      .filter({ hasNot: page.locator(".graph-switcher-address") })
+      .locator(".graph-switcher-name")
+      .click();
     await expect(today(page)).toContainText(noteA, { timeout: 15_000 });
     await expect(today(page)).toContainText(noteB, { timeout: 15_000 });
     await ctx.close();

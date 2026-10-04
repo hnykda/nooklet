@@ -74,6 +74,56 @@ describe("first run: a data dir that does not exist yet (B-638)", () => {
   }, 60_000);
 });
 
+describe("graph create (B-643: how the desktop app adds a graph to This Mac)", () => {
+  it("on a fresh dir: makes the graph AND default, serve lists both, and both answer", async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "nooklet-graph-create-")), "fresh");
+    const out = run(dir, "graph", "create", "quiet-otter", "--label", "Quiet Otter");
+    expect(JSON.parse(out)).toMatchObject({ id: "quiet-otter", label: "Quiet Otter" });
+    expect(run(dir, "graph", "list")).toBe("default\tdefault\nquiet-otter\tQuiet Otter\n");
+    // A second create of the same id fails rather than touching the existing graph.
+    expect(() => run(dir, "graph", "create", "quiet-otter")).toThrow(/already exists/);
+    expect(() => run(dir, "graph", "create", "Not Valid")).toThrow(/not a valid graph id/);
+
+    const port = await serve(dir);
+    // The bare address still lands on default (serve's zero-config default was not skipped).
+    const bare = await fetch(`http://127.0.0.1:${port}/healthz`);
+    expect(bare.status).toBe(200);
+    const token = run(dir, "token", "create", "--label", "t", "--graph", "quiet-otter")
+      .split("\n")[0]
+      ?.trim();
+    const res = await fetch(`http://127.0.0.1:${port}/g/quiet-otter/api/v1/graph.overview`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { graph?: { id: string; label: string } };
+    expect(body.graph?.label).toBe("Quiet Otter");
+    const def = await fetch(`http://127.0.0.1:${port}/g/default/api/v1/graph.overview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    // Exists (401 without a token), as opposed to 404 for a graph that is not there.
+    expect(def.status).toBe(401);
+  }, 60_000);
+
+  it("next to a running serve: the new graph answers with no restart", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nooklet-graph-create-"));
+    const port = await serve(dir);
+    run(dir, "graph", "create", "paper-lantern", "--label", "Paper Lantern");
+    const token = run(dir, "token", "create", "--label", "t", "--graph", "paper-lantern")
+      .split("\n")[0]
+      ?.trim();
+    const res = await fetch(`http://127.0.0.1:${port}/g/paper-lantern/api/v1/graph.overview`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+  }, 60_000);
+});
+
 describe("first run: a command before the first serve (B-607)", () => {
   it("token create, then serve: serve starts and the token works", async () => {
     const dir = mkdtempSync(join(tmpdir(), "nooklet-first-run-"));

@@ -209,7 +209,12 @@ test("B-631: discarding a mismatched graph's local copy keeps every other graph'
 
   // 7. The local-only graph's note is still there.
   await page.getByRole("button", { name: "Switch graph" }).click();
-  await page.getByRole("button", { name: "This device", exact: true }).click();
+  // B-644: the local graph has a generated name now; it is the row with no server address.
+  await page
+    .locator(".graph-switcher-row")
+    .filter({ hasNot: page.locator(".graph-switcher-address") })
+    .locator(".graph-switcher-name")
+    .click();
   await expect(today(page)).toContainText(localNote, { timeout: 15_000 });
   expect(await hits(base, graphId, token, localNote)).toBe(0);
   await ctx.close();
