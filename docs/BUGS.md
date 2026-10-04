@@ -1086,12 +1086,6 @@ folder by hand. Needs a decision on what "remove" should do to data on this Mac 
 The phone/browser form can list a server's graphs with its root token. From the desktop page that
 call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
 
-### B-788 · `biome check --diagnostic-level=error` fails on main: `ImageViewer.tsx` toast `onClick` without a key handler
-**Status:** open · **Severity:** low (lint) · **Found:** 2026-10-04, desktop-graphs agent, in passing · **Test:** `pnpm exec biome check . --diagnostic-level=error`
-
-`apps/web/src/editor/render/ImageViewer.tsx:183` (`lint/a11y/useKeyWithClickEvents` on the toast
-`<p onClick={stopPropagation}>`), from the B-744 work. Not touched here.
-
 ## Fixed
 
 ### B-780 · Desktop: graphs are confusing (two lists, an add loop, phone words, restarts); build proposal 005

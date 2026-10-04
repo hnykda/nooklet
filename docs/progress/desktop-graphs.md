@@ -7,7 +7,7 @@ Design: `docs/proposals/005-one-graph-list-on-desktop.md` (accepted 2026-10-04).
 
 - [x] Read proposal 005, ADR 025/028/029, `graph-menu.md`, `main.rs`, launcher, web switcher.
 - [x] BUGS.md: B-780 (umbrella) + B-781..B-785 logged before any fix (`d4053b9f`); marked fixed
-      with their tests; B-739 closed; follow-ups B-786, B-787, B-788 (pre-existing lint error).
+      with their tests; B-739 closed; follow-ups B-786, B-787. (A B-788 for a pre-existing biome error in `ImageViewer.tsx` was dropped: main had fixed it by the merge at `6efdb0ae`.)
 - [x] Rust: shell-owned list (`graph_list.rs`), migration, Keychain (`token_store.rs`), verify
       (`connect.rs`), always-on sidecar, per-target window, door requests with a request key
       (`c47acd84`); no self-rebuild loop for a token-less server window (`28db1e3f`).
