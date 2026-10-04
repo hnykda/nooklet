@@ -37,3 +37,13 @@
   text-overflow: ellipsis;
   color: var(--fg-soft);
 }
+
+/* ADR 027: the losing side of a same-block edit conflict. One small warm badge, enough to notice on
+   a scan of the page without turning the block into an alarm. */
+.vr-prop-conflict {
+  padding: 0 var(--space-xs);
+  border-radius: 999px;
+  font-weight: var(--weight-medium);
+  color: var(--warn);
+  background-color: color-mix(in srgb, var(--warn) 14%, transparent);
+}

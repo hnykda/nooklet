@@ -593,7 +593,8 @@ export class SyncClient {
    * person's edit. Instead we three-way merge against the pre-edit content captured in
    * `pending_op.base` (see `applyLocal`). A clean merge yields a fresh `block.text` op carrying
    * the combined text; a genuine overlapping edit falls back to LWW but preserves the losing
-   * text as a `conflict_copy` property, so nothing is ever lost quietly. Either way the returned
+   * text as a `conflict_copy` property, so nothing is ever lost quietly — a report the server turns
+   * into a block after the winner, clearing the property (ADR 027). Either way the returned
    * ops carry newer HLCs than both sides, so every device converges on the same result.
    */
   private resolveTextConflicts(incoming: readonly Op[]): Op[] {

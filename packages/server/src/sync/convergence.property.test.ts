@@ -33,6 +33,7 @@ type Action =
   | { t: "renamePage"; dev: number; pick: number; name: number }
   | { t: "createBlock"; dev: number; pick: number; content: number }
   | { t: "editBlock"; dev: number; pick: number; content: number }
+  | { t: "conflictReport"; dev: number; pick: number; content: number }
   | { t: "push"; dev: number }
   | { t: "devicePull"; dev: number }
   | { t: "replicaPull"; replica: number; limit: number }
@@ -59,6 +60,14 @@ const actionArb: fc.Arbitrary<Action> = fc.oneof(
   }),
   fc.record({
     t: fc.constant("editBlock" as const),
+    dev: fc.nat(2),
+    pick: fc.nat(50),
+    content: fc.nat(CONTENTS.length - 1),
+  }),
+  // B-642 / ADR 027: a device's text-merge fallback reporting a loser; the server turns it into a
+  // sibling block. Two devices reporting the same text is the duplicate the derived id absorbs.
+  fc.record({
+    t: fc.constant("conflictReport" as const),
     dev: fc.nat(2),
     pick: fc.nat(50),
     content: fc.nat(CONTENTS.length - 1),
@@ -200,6 +209,17 @@ function run(actions: Action[], lags: number[]): void {
         if (b) mint(d, b.id, { kind: "block.text", content: CONTENTS[a.content] as string });
         break;
       }
+      case "conflictReport": {
+        const d = devices[a.dev] as Device;
+        const b = d.blocks[a.pick % Math.max(1, d.blocks.length)];
+        if (b)
+          mint(d, b.id, {
+            kind: "block.prop",
+            key: "conflict_copy",
+            value: CONTENTS[a.content] as string,
+          });
+        break;
+      }
       case "push": {
         const d = devices[a.dev] as Device;
         if (d.outbox.length === 0) break;
@@ -246,6 +266,12 @@ function run(actions: Action[], lags: number[]): void {
     expect({ replica: i, state: dumpState(r.driver) }).toEqual({ replica: i, state: want });
   }
   expect(verifyRebuildParity(server.driver).divergences).toEqual([]);
+  // Every report became a block and the property was cleared (ADR 027).
+  expect(
+    server.driver.all(
+      "SELECT block_id FROM block_prop WHERE key = 'conflict_copy' AND value IS NOT NULL",
+    ),
+  ).toEqual([]);
 }
 
 describe("server-mediated convergence with lagging clocks (B-587, ADR 026)", () => {

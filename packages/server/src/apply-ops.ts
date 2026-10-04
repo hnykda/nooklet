@@ -27,6 +27,7 @@ import {
   TASK_TAG,
 } from "@nooklet/core";
 import { type ChildRow, childLookup } from "./block-children.js";
+import { CONFLICT_DEVICE_ID, planConflictCopies } from "./conflict-copy.js";
 import { reindexPageIdentity, resolvePageIdForKey } from "./page-aliases.js";
 import { rebuildPageTags } from "./page-tags.js";
 import { runBeforeWrite } from "./plugins/before-write.js";
@@ -159,6 +160,29 @@ export function serverApplyOps(
       }
       corrections.push(...repairs);
       for (const one of coreApplyOps(driver, repairs).results) r.results.push(one);
+    }
+
+    // B-642 / ADR 027: a device's text-merge fallback reported the losing text of a same-block
+    // conflict as `conflict_copy`; it becomes its own block right after the winner, minted here
+    // once rather than by every device that noticed (`./conflict-copy.ts`). Sync pushes only: that
+    // is the one writer whose `conflict_copy` means "a merge gave up", and an API or MCP caller
+    // setting the key keeps the plain property it asked for.
+    if (opts.origin === "sync") {
+      const copies = planConflictCopies(
+        driver,
+        ops,
+        r.results,
+        beforeSnapshots,
+        (entity, payload) => makeOp(ctx.hlc.next(), CONFLICT_DEVICE_ID, entity, payload),
+      );
+      if (copies.length > 0) {
+        for (const op of copies) {
+          if (!beforeSnapshots.has(op.entity))
+            beforeSnapshots.set(op.entity, snapshotBlock(driver, op.entity));
+        }
+        corrections.push(...copies);
+        for (const one of coreApplyOps(driver, copies).results) r.results.push(one);
+      }
     }
 
     let allOps = ops.concat(corrections);

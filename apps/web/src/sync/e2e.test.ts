@@ -745,4 +745,161 @@ describe("sync e2e: real SyncClient <-> real @nooklet/server app, over app.reque
     );
     expect(parentRowB?.parent_id).toBeNull();
   });
+
+  /**
+   * B-642 / ADR 027, the owner's report: one block edited on two devices, one of them offline,
+   * both replacing the whole text — a true conflict. The losing text must end as its own block
+   * right after the winner (marked `sync-conflict`), on every replica, with no `conflict_copy`
+   * chip left behind.
+   */
+  describe("a same-block conflict leaves the losing text as a block after the winner (B-642)", () => {
+    function livePage(driver: SqlDriver, pageId: string) {
+      return driver
+        .all<{ id: string; content: string }>(
+          "SELECT id, content FROM block WHERE page_id = ? AND deleted_at IS NULL ORDER BY order_key, id",
+          [pageId],
+        )
+        .map((b) => ({
+          content: b.content,
+          props: Object.fromEntries(
+            driver
+              .all<{ key: string; value: string | null }>(
+                "SELECT key, value FROM block_prop WHERE block_id = ? AND value IS NOT NULL",
+                [b.id],
+              )
+              .map((p) => [p.key, p.value]),
+          ),
+        }));
+    }
+
+    async function seed(): Promise<{
+      a: ReturnType<typeof makeReplicaClient>;
+      b: ReturnType<typeof makeReplicaClient>;
+      pageId: string;
+      blockId: string;
+    }> {
+      const a = makeReplicaClient(server.app, server.token);
+      const pageId = newId();
+      const blockId = newId();
+      a.client.applyLocal([
+        makeOp(a.client.nextHlc(), a.client.getDeviceId(), pageId, {
+          kind: "page.create",
+          name: "Conflict Page",
+          journalDay: null,
+          createdAt: Date.now(),
+        }),
+        makeOp(a.client.nextHlc(), a.client.getDeviceId(), blockId, {
+          kind: "block.create",
+          place: { pageId, parentId: null, order: "a0" },
+          content: "Something",
+          createdAt: Date.now(),
+        }),
+        makeOp(a.client.nextHlc(), a.client.getDeviceId(), newId(), {
+          kind: "block.create",
+          place: { pageId, parentId: null, order: "a1" },
+          content: "the next block",
+          createdAt: Date.now(),
+        }),
+      ]);
+      await a.client.flush();
+      const b = makeReplicaClient(server.app, server.token);
+      await b.client.pull();
+      return { a, b, pageId, blockId };
+    }
+
+    const want = [
+      { content: "Nothing", props: {} },
+      { content: "There is this", props: { "sync-conflict": "true" } },
+      { content: "the next block", props: {} },
+    ];
+
+    it("one device offline: it comes back, notices, and both devices read both texts", async () => {
+      const { a, b, pageId, blockId } = await seed();
+
+      // A is offline and rewrites the block; B, online, rewrites it later (so B's text wins LWW).
+      a.client.applyLocal([
+        makeOp(a.client.nextHlc(), a.client.getDeviceId(), blockId, {
+          kind: "block.text",
+          content: "There is this",
+        }),
+      ]);
+      b.client.applyLocal([
+        makeOp(b.client.nextHlc(), b.client.getDeviceId(), blockId, {
+          kind: "block.text",
+          content: "Nothing",
+        }),
+      ]);
+      await b.client.flush();
+
+      // A comes back: pull first (as `connectLive`'s onOpen does), then its outbox.
+      await a.client.pull();
+      await a.client.flush();
+      await a.client.pull();
+      await b.client.pull();
+
+      const s = server.serverCtx.driver;
+      expect(livePage(s, pageId)).toEqual(want);
+      expect(livePage(a.driver, pageId)).toEqual(want);
+      expect(livePage(b.driver, pageId)).toEqual(want);
+      expect(dumpState(a.driver)).toEqual(dumpState(s));
+      expect(dumpState(b.driver)).toEqual(dumpState(s));
+      expect(verifyRebuildParity(s).divergences).toEqual([]);
+    });
+
+    it("both devices notice the same conflict: still exactly one copy", async () => {
+      const { a, b, pageId, blockId } = await seed();
+
+      // A's push reaches the server but its response is lost, so A's edit stays pending — A will
+      // treat B's later edit as a conflict too, exactly as B does.
+      const real = makeInProcessTransport(server.app, server.token);
+      const lossy = new SyncClient({
+        driver: a.driver,
+        transport: {
+          ...real,
+          async push(body) {
+            await real.push(body);
+            throw new Error("response lost");
+          },
+        },
+      });
+      lossy.init();
+
+      lossy.applyLocal([
+        makeOp(lossy.nextHlc(), lossy.getDeviceId(), blockId, {
+          kind: "block.text",
+          content: "There is this",
+        }),
+      ]);
+      b.client.applyLocal([
+        makeOp(b.client.nextHlc(), b.client.getDeviceId(), blockId, {
+          kind: "block.text",
+          content: "Nothing",
+        }),
+      ]);
+      await lossy.flush();
+      expect(a.driver.all("SELECT id FROM pending_op WHERE kind = 'block.text'")).toHaveLength(1);
+
+      // B pulls A's edit while its own is pending: conflict, reported.
+      await b.client.pull();
+      await b.client.flush();
+      // A pulls B's edit while its own is (as far as it knows) still pending: the same conflict,
+      // reported again with a newer clock.
+      await lossy.pull();
+      const reports = a.driver.all<{ payload: string }>(
+        "SELECT payload FROM pending_op WHERE kind = 'block.prop'",
+      );
+      expect(reports.map((r) => JSON.parse(r.payload).key)).toEqual(["conflict_copy"]);
+      const aReal = new SyncClient({ driver: a.driver, transport: real });
+      aReal.init();
+      await aReal.flush();
+      await aReal.pull();
+      await b.client.pull();
+
+      const s = server.serverCtx.driver;
+      expect(livePage(s, pageId)).toEqual(want);
+      expect(dumpState(a.driver)).toEqual(dumpState(s));
+      expect(dumpState(b.driver)).toEqual(dumpState(s));
+      expect(verifyRebuildParity(s).divergences).toEqual([]);
+    });
+  });
 });
