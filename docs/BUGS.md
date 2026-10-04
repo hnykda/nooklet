@@ -980,7 +980,37 @@ detection runs on an event that fires before the `/` is in the document (keydown
 and nothing re-checks until the next input; B-646 added re-detection on `input`, which may not be
 reached for the `/` itself in the block editor.
 
+### B-685 · `nooklet serve` on a port already in use dies with a raw `EADDRINUSE` stack trace
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, build-docs agent · **Test:** none
+
+Should print a one-line explanation ("port 6100 is in use; pick --port").
+
+### B-686 · CI installs only Chromium, but `pnpm e2e` also runs the WebKit project
+**Status:** open · **Severity:** medium (CI) · **Found:** 2026-10-04, build-docs agent · **Test:** none
+
+The WebKit specs will likely fail in CI. Forwarded to the releases agent.
+
+### B-687 · CI uploads failure traces from the repo root, but Playwright writes them to `e2e/test-results/`
+**Status:** open · **Severity:** low (CI) · **Found:** 2026-10-04, build-docs agent · **Test:** none
+
+The artifact upload probably finds nothing. Forwarded to the releases agent.
+
+### B-689 · `capacitor.config.ts` has a stale comment
+**Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, build-docs agent · **Test:** none
+
+Describes an older setup.
+
+### B-690 · Root `pnpm build` runs a bare `tauri build` without the sidecar step
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, build-docs agent · **Test:** none
+
+Same class as B-580 (stale sidecar): the bundled server may be out of date.
+
 ## Fixed
+
+### B-688 · The Xcode project committed the owner's Apple `DEVELOPMENT_TEAM`
+**Status:** fixed · **Severity:** low (hygiene; a team id is public in any signed app) · **Found:** 2026-10-04, build-docs agent · **Test:** none
+
+Fixed 2026-10-04 (`c434c4f8`): the team comes from a gitignored `apps/web/ios/signing.local.xcconfig` (`#include?` in debug.xcconfig, verified with `xcodebuild -showBuildSettings`); a leak-check/gitleaks rule `apple-team-id` blocks it in the project file. Cause: a coordinator `git add -A` after the owner picked a team in Xcode.
 
 ### B-681 · On the phone, the `/` slash menu opens away from the caret
 **Status:** fixed (confirmed by the owner on a physical iPhone, 2026-10-04, after rebuilding on current main) · **Severity:** medium · **Found:** 2026-10-04, owner on the iPhone app · **Test:** pending (phone-images agent may add a positioning regression test)

@@ -1,7 +1,7 @@
 ---
 title: For AI agents
 description: Connect Claude Code, Cursor or any MCP client to nooklet, or call the HTTP API directly. Tools, tokens, the outline format and a worked example.
-order: 8
+order: 9
 ---
 
 # For AI agents

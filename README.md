@@ -72,6 +72,12 @@ If you run nooklet on Linux, Windows or Android, a
 checklist: sync both ways, offline, resume, keyboard, deep links) is the most useful thing you can
 send. What to expect on Android: [Getting started](docs/guide/getting-started.md#android-experimental).
 
+## Build from source
+
+[Building from source](docs/guide/building.md) covers the toolchain, every build command, the test
+layers and CI. [Build and install nooklet on your iPhone](docs/guide/ios-from-source.md) walks through
+Xcode, signing with a free Apple ID, and pairing the phone with your server.
+
 ## Documentation
 
 - [What nooklet is](docs/guide/what-is-nooklet.md): who it is for, what is different, non-goals
@@ -80,8 +86,10 @@ send. What to expect on Android: [Getting started](docs/guide/getting-started.md
 - [Sync, offline and conflicts](docs/guide/sync-and-offline.md)
 - [Getting started](docs/guide/getting-started.md)
 - [Self-hosting](docs/guide/self-hosting.md): Tailscale, Docker, Kubernetes, proxies, backups, Ollama
+- [Build and install nooklet on your iPhone](docs/guide/ios-from-source.md): Xcode, free signing, pairing, Web Inspector
 - [Security model](docs/guide/security.md)
 - [For AI agents](docs/guide/agents.md): MCP, the HTTP API, an example
+- [Building from source](docs/guide/building.md): toolchain, build commands, tests, CI
 - [FAQ and troubleshooting](docs/guide/faq.md)
 
 Design records live in [docs/adr](docs/adr/), specifications in [docs/spec](docs/spec/), and known
