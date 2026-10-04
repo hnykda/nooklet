@@ -23,7 +23,7 @@ data — do NOT push until the leak audit's remediation is decided by the owner.
 | site | apps/site, **merged** | 6445-6449 |
 | b660 | real data loss after gc on a new device, **merged** (`2cd8b92`) | 6465-6469 |
 | b652 | B-652: prove/fix the push-before-pull conflict race (silent text loss?) | 6460-6464 |
-| security-review | public-exposure review: route inventory, tokens, brute force/DoS, headers, XSS, plugins; small fixes; tier-2 checklist | 6455-6459 |
+| security-review | **merged**: enforced route inventory, headers/CSP, body limits, loopback-token default; B-672..B-677; backlog H1-H12 in PLAN M13 | 6455-6459 |
 | infra | generic deploy/ + .woodpecker, **merged**; infra-repo draft PR #59 | 6450-6454 |
 
 Incident: the first launch of these four ran in **infra-repo** worktrees, because the coordinator's

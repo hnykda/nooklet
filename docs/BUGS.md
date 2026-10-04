@@ -879,10 +879,14 @@ The flags work but `--help` does not list them.
 
 No rate limiting or lockout exists anywhere. The public-tier checklist says to rate-limit at the proxy; see M13 backlog and the security review.
 
+2026-10-04: confirmed by the security review; recommendation H1 (token-bucket per token id, per-IP for 401s only via a configured trusted proxy hop). Until then the tier-2 docs require proxy-level limits.
+
 ### B-655 · The `admin` token scope grants nothing beyond `write`
 **Status:** open · **Severity:** low (security model clarity) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
 
 No operation requires `admin`, so an admin token can do exactly what a write token can.
+
+2026-10-04: confirmed (0 ops require it). Recommendation H6: gate server-administration ops (token list/create/revoke over the API, plugin settings, gc/backup triggers) on `admin`; keep content ops at `write`. **Owner decision pending.**
 
 ### B-656 · ADR 015's live-UI tool names differ from what the server exposes
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
@@ -903,6 +907,8 @@ Both describe the pre-ADR-025 layout or older flows.
 **Status:** open · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
 
 Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
+
+2026-10-04: entropy measured (25 random bits + ms time) — not practically guessable blind; the real gap is that a revoked device keeps every asset URL it has seen. Recommendation H5: short-lived signed URLs.
 
 ### B-661 · A tap on the task marker does nothing in Chromium touch emulation
 **Status:** open · **Severity:** low (iOS-only app today) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
@@ -954,7 +960,37 @@ Failed once in `pnpm -r test` while an e2e build ran; passed 3/3 alone.
 
 `RESTORE_FLAGS` in `packages/server/src/cli-args.ts` is `["data", "force"]` but `cli.ts`'s restore reads `graphIdFlag(args)`. Only the default graph can be restored from the CLI. Found by the infra agent.
 
+### B-676 · Revoking a token does not close its open WebSockets; unauthenticated sockets never time out
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** none
+
+Revoked sockets keep receiving sync pokes (sequence numbers only, no note content). Recommendations H3 (re-check the token on each send, close 4401) and H4 (10 s hello timeout, per-token and total caps, `maxPayload` 64 KB). Probe `tools/probes/security/ws-revocation.mjs`.
+
+### B-677 · Dependency advisories via the mermaid plugin (lodash-es, dompurify)
+**Status:** open · **Severity:** low · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** none
+
+Reachability unverified. Recommendation H9: `pnpm.overrides` now; weekly `pnpm audit --prod --audit-level high` in CI; grouped monthly updates.
+
 ## Fixed
+
+### B-675 · The loopback auto-token was on by default for a non-loopback bind
+**Status:** fixed (2026-10-04, security review) · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** `security-defaults.test.ts` "loopback auto-token default"
+
+Now off unless `--host` is loopback; `--loopback-token` re-enables. Behaviour change: `--host 0.0.0.0` + a browser on localhost now needs a token (the runbook's option L adds `--loopback-token`). The desktop sidecar binds loopback: unaffected.
+
+### B-674 · No security headers or CSP
+**Status:** fixed (2026-10-04, security review) · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** `http/security-defaults.test.ts`; probe `csp-violations.mjs`
+
+Now `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, HSTS when forwarded proto is https, and a script CSP on the app shell (no violations from the app in real Chromium; an injected inline script is blocked).
+
+### B-673 · Plugin routes skipped the Host (DNS-rebinding) guard
+**Status:** fixed (2026-10-04, security review) · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** `http/route-inventory.test.ts`; probe `unauth-surface.mjs`
+
+Routes mounted before `createApp` answered 200 to `Host: evil.example`. Guards now install first.
+
+### B-672 · No request body size limit: a 300 MB body grew the server to 1.46 GB
+**Status:** fixed (2026-10-04, security review) · **Severity:** medium · **Found:** 2026-10-04, security review (`docs/progress/security-review.md`) · **Test:** `http/security-defaults.test.ts` "request body limits"; probe `tools/probes/security/body-size.mjs`
+
+Now 16 MB, 48 MB for uploads/MCP/sync push; oversized requests get 413 in ~25 ms.
 
 ### B-641 · Offline, the references panel says "Couldn't load references · Retry"
 **Status:** fixed (2026-10-04, branch b641-local-references) · **Severity:** medium

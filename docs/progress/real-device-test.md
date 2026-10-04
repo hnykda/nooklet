@@ -254,7 +254,7 @@ In a terminal you keep open:
 
 ```sh
 ipconfig getifaddr en0                       # e.g. 192.168.1.5 — the Mac's LAN IP
-pnpm nooklet serve --data ~/nooklet-test --port 6200 --host 0.0.0.0 --allow-host 192.168.1.5
+pnpm nooklet serve --data ~/nooklet-test --port 6200 --host 0.0.0.0 --allow-host 192.168.1.5 --loopback-token
 ```
 
 - Empty `~/nooklet-test` the first time: `serve` creates the `default` graph and prints a root
@@ -308,7 +308,9 @@ AirDropped, shell history, screenshots, Safari history if pasted there. Delete t
 revoke with `nooklet token revoke <id>` (`token list` shows ids) on any doubt.
 
 The Mac desktop app needs **no** token: it loads from `http://127.0.0.1:6200`, a loopback caller,
-and the server hands it one automatically (unless the server runs `--no-loopback-token`).
+and the server hands it one automatically. Because this server binds `0.0.0.0` (so the phone can
+reach it), that needs `--loopback-token` (step 0's command has it): since the 2026-10-04 security
+review the auto-token is off by default on any non-loopback bind.
 (Option H: `kubectl -n apps exec deploy/nooklet -- /app/node /app/server.mjs token create --label
 iphone --scope write --sync --link https://nooklet.<tailnet>.ts.net`.)
 
