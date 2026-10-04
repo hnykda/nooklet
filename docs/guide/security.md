@@ -56,8 +56,33 @@ traffic never reach the server.
 | 2 | Public behind a TLS reverse proxy | Possible; follow the [checklist](self-hosting.md#tier-2-public-behind-a-tls-reverse-proxy). No dedicated security review yet. |
 | 3 | Plain `http://` beyond localhost | Unsupported. The browser client refuses to start without a secure context. |
 
-> **TODO (security review):** A review of public (tier 2) exposure is in progress. Its findings and
-> any resulting changes will be recorded here.
+> **Security review of tier 2 (2026-10-04).** Verdict: public exposure behind a TLS proxy is
+> reasonable for a single owner who follows the checklist in
+> [self-hosting](self-hosting.md). It is not yet suitable for multiple users. Tailnet-only stays
+> the default.
+>
+> Already in place:
+> - **Deny by default.** Every request needs a valid token unless the route is on an explicit
+>   public list. `docs/spec/security-inventory.md` has the list, and a test probes every
+>   registered route to enforce it.
+> - **Tokens.** Tokens are 192 random bits and stored only as SHA-256. The root token is compared
+>   in constant time. Revocation applies to the next HTTP request.
+> - **Headers.** Responses carry security headers, and the app page carries a hash-based script
+>   CSP. HSTS is sent behind TLS.
+> - **Request size.** Request bodies are capped.
+> - **Local token.** The automatic local token is off on a non-loopback bind.
+> - **No script from notes found.** The review found no way for a note's content to run script:
+>   links are scheme-checked, markdown has no raw HTML, KaTeX runs untrusted and mermaid strict.
+>
+> Known gaps:
+> - **No rate limiting inside nooklet.** Limit at the proxy. Nothing returns 429 yet.
+> - **WebSockets.** Revoking a token does not close the WebSockets it already has open, and a
+>   socket that never authenticates is not timed out.
+> - **Attachments.** `/assets/<id>` needs no token. An id holds 25 random bits plus its upload
+>   time, which is impractical to guess, but a revoked device keeps the URLs it has seen.
+> - **`admin` scope.** It means `write`.
+> - **Public without a token.** Health checks, the op list (`/openapi.json`) and which graph ids
+>   exist.
 
 ## Tokens and scopes
 

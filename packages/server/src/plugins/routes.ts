@@ -14,6 +14,7 @@ import type { HttpMethod, Origin, RouteInfo } from "@nooklet/plugin-api";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
 import { verifyToken } from "../auth/tokens.js";
+import { allowPublicRoute } from "../http/guards.js";
 
 export type RouteAuth = "required" | "none";
 
@@ -58,6 +59,20 @@ export function mountPluginRoute(
 ): () => void {
   let active = true;
   const base = `/api/plugins/${pluginId}`;
+
+  // `auth: "none"` is the plugin author's explicit opt-out of the deny-by-default guard
+  // (`../http/guards.ts`); recorded there so it is listed, not merely possible.
+  if (source.auth === "none") {
+    const path =
+      source.kind === "app"
+        ? `${base}/*`
+        : `${base}${source.path.startsWith("/") ? source.path : `/${source.path}`}`;
+    allowPublicRoute(app, {
+      method: source.kind === "app" ? "ALL" : source.method,
+      path,
+      why: `plugin "${pluginId}" registered it with auth: "none"`,
+    });
+  }
 
   if (source.kind === "app") {
     app.all(`${base}/*`, async (c) => {

@@ -17,6 +17,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { requireRootToken } from "../auth/root-token.js";
 import { createToken } from "../auth/tokens.js";
+import { limitBody, securityHeaders } from "../http/guards.js";
 import { serveStaticFile } from "../http/web-client.js";
 import { graphDbPath } from "./paths.js";
 import type { GraphRegistry } from "./registry.js";
@@ -103,6 +104,10 @@ export function createMultiGraphApp(opts: CreateMultiGraphAppOptions): Hono {
   const app = new Hono();
   const { registry, rootToken, dataDir, webClientDir } = opts;
 
+  // nosniff / DENY / no-referrer (+ HSTS behind TLS) on everything this app answers itself; each
+  // graph's own app sets the same (`../http/guards.ts`), and only absent headers are added.
+  app.use("*", securityHeaders);
+
   app.use("*", (c, next) => {
     // Any other origin (or none — same-origin, curl, agents) passes through untouched, so this
     // changes nothing for any client except the app shells above. A WebSocket upgrade is not
@@ -144,6 +149,8 @@ export function createMultiGraphApp(opts: CreateMultiGraphAppOptions): Hono {
 
   const graphs = new Hono();
   graphs.use("*", requireRootToken(rootToken));
+  // Bounded before the root token is even checked would be nicer, but the gate reads no body.
+  graphs.use("*", limitBody);
   graphs.get("/", async (c) => {
     const list = await registry.list();
     return c.json({ graphs: list });

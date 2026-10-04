@@ -141,8 +141,32 @@ Unverified: which `Host` header the operator's proxy forwards. If the server ans
 You can put nooklet on the internet behind Caddy, nginx or similar. **Public exposure has not had a
 dedicated security review yet.** Treat it as your own risk until that review lands on this page.
 
-> **TODO (security review):** A security review of public exposure is in progress. Its conclusions
-> and any changes to this checklist go here.
+> **Security review (2026-10-04).** Public exposure behind a TLS proxy is reasonable for one owner
+> with a few devices **if every item below holds**. It is not yet suitable for several users or a
+> high-profile host. What is missing is rate limiting inside nooklet, revoked tokens' WebSockets
+> being closed, and revocable asset URLs. Tailnet-only stays the recommendation. Details are in
+> `docs/progress/security-review.md`, and the route-by-route list is in
+> `docs/spec/security-inventory.md`.
+>
+> What nooklet now does by default, so you don't have to configure it:
+> - Every API route needs a token unless it is on the public list. A test enforces this.
+> - Responses carry `nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. The app
+>   page also carries a script CSP.
+> - HSTS is sent when the proxy sends `X-Forwarded-Proto: https`.
+> - Request bodies are capped at 16 MB, or 48 MB for uploads and sync pushes.
+> - The automatic local token is off whenever `--host` is not loopback.
+>
+> In addition to the checklist below:
+> - **Make the proxy send `X-Forwarded-Proto: https`.**
+> - **Limit WebSockets at the proxy:** connections per IP and an idle timeout. nooklet does not
+>   time out a socket that never authenticates.
+> - **After revoking a device's token, restart the server** if that device may still be connected.
+>   Revocation stops its HTTP requests at once, but not a WebSocket it already has open.
+> - **Assume a revoked device can still read the attachments (`/assets/<id>`) it has seen.** An
+>   asset URL is a capability. It needs no token.
+> - **Keep the startup log private.** The root token is printed once on first start, and container
+>   logs keep it.
+> - **Only install server plugins you have read.** They run with the server's full rights.
 
 Checklist:
 
