@@ -40,6 +40,8 @@ export interface DesktopShell {
   /** B-736: the shell saves `<a download>` to ~/Downloads and answers with
    * `DESKTOP_DOWNLOAD_EVENT`. */
   downloads: boolean;
+  /** B-789: the shell answers `reveal-asset` ("Show in Finder" on an image). */
+  reveal: boolean;
   /** Signs every request; only this window's main-frame documents have it. */
   key: string;
   /** Every graph this Mac knows: This Mac's own, then servers', as the shell lists them. */
@@ -72,7 +74,10 @@ export type ShellRequest =
       device?: string;
     }
   | { kind: "rename"; graph: string; label: string }
-  | { kind: "remove"; graph: string };
+  | { kind: "remove"; graph: string }
+  /** B-789: select an asset's file in Finder. `graph` is a `mac:` key, `asset` the asset's id; the
+   * shell finds the file itself, in that graph's own folder. */
+  | { kind: "reveal-asset"; graph: string; asset: string };
 
 export function shellRequestUrl(request: ShellRequest, key: string, req: string): string {
   const params = new URLSearchParams({ key, req });
@@ -176,12 +181,16 @@ function readGraphs(raw: unknown[]): DesktopGraph[] {
 export function desktopShell(win: Window | undefined = globalThis.window): DesktopShell | null {
   const raw = (win as ShellWindow | undefined)?.__NOOKLET_DESKTOP__;
   if (typeof raw !== "object" || raw === null) return null;
-  const { platform, port, downloads, key, graphs, graphToken } = raw as Record<string, unknown>;
+  const { platform, port, downloads, reveal, key, graphs, graphToken } = raw as Record<
+    string,
+    unknown
+  >;
   if (typeof platform !== "string" || typeof port !== "number") return null;
   return {
     platform,
     port,
     downloads: downloads === true,
+    reveal: reveal === true,
     key: typeof key === "string" ? key : "",
     graphs: Array.isArray(graphs) ? readGraphs(graphs) : [],
     graphToken: typeof graphToken === "string" && graphToken ? graphToken : null,

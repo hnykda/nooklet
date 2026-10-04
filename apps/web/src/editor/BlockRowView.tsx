@@ -44,6 +44,8 @@ export function BlockRowView(props: {
   onToggleCollapse: () => void;
   onZoomIn: () => void;
   onToggleMarker: () => void;
+  /** B-789: replace this block's text from its rendered view (an image's size or alignment). */
+  onRewrite?: (content: string) => void;
   onSelectClick: (e: MouseEvent) => void;
   /** Right-click anywhere on the row. `BlockTree` decides what to focus and opens the menu. */
   onContextMenu?: (e: MouseEvent) => void;
@@ -223,6 +225,8 @@ export function BlockRowView(props: {
                     embedPath: [props.id],
                     // B-736: the image viewer's "Edit block" — an image takes its own click.
                     onEditBlock: props.readOnly ? undefined : (offset) => props.onEnterEdit(offset),
+                    // B-789: an image's resize handle and ⋯ menu write its size and alignment.
+                    onRewrite: props.readOnly ? undefined : props.onRewrite,
                     // `((id))` renders the referenced block's own text rather than an opaque id.
                     // Resolved through a cache that fetches on a miss and re-renders when the
                     // text lands (`../data/block-ref-cache.ts`).

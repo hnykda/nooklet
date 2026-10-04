@@ -329,6 +329,12 @@ export function moveBlock(
 // R25 — collapse / expand
 // -------------------------------------------------------------------------------------------
 
+/** B-789: a block's whole text, replaced from outside the editor (an image's resize handle or ⋯
+ * menu, ADR 034): the same `block.text` typing writes, so undo and sync need nothing new. */
+export function setBlockText(id: BlockId, content: string, clock: Clock): Op {
+  return op(clock, id, { kind: "block.text", content });
+}
+
 export function setCollapsed(id: BlockId, collapsed: boolean, clock: Clock): Op {
   return op(clock, id, {
     kind: "block.prop",

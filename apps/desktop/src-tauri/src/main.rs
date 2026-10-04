@@ -438,6 +438,11 @@ enum ShellRequest {
     ConnectServer { req: String, address: String, credential: Credential },
     Rename { req: String, graph: GraphKey, label: String },
     Remove { req: String, graph: GraphKey },
+    /// B-789: "Show in Finder" on an image. Only This Mac's graphs have their files here, so only
+    /// a `mac:` graph is accepted; `asset` is an asset id (`[a-z0-9]`, no extension, no path), and
+    /// the file is looked up in that graph's own `assets/` (`find_asset_file`), so the page names
+    /// nothing on disk.
+    RevealAsset { req: String, graph: String, asset: String },
 }
 
 #[derive(Debug, PartialEq)]
@@ -452,7 +457,8 @@ impl ShellRequest {
             ShellRequest::NewLocalGraph { req, .. }
             | ShellRequest::ConnectServer { req, .. }
             | ShellRequest::Rename { req, .. }
-            | ShellRequest::Remove { req, .. } => req,
+            | ShellRequest::Remove { req, .. }
+            | ShellRequest::RevealAsset { req, .. } => req,
         }
     }
 }
@@ -495,7 +501,53 @@ fn parse_shell_request(url: &tauri::Url, key: &str) -> Option<ShellRequest> {
             (!label.is_empty()).then_some(ShellRequest::Rename { req, graph, label })
         }
         "/remove" => Some(ShellRequest::Remove { req, graph: GraphKey::parse(&param("graph")?)? }),
+        "/reveal-asset" => {
+            let GraphKey::Mac(graph) = GraphKey::parse(&param("graph")?)? else {
+                return None;
+            };
+            let asset = param("asset").filter(|a| is_asset_id(a))?;
+            Some(ShellRequest::RevealAsset { req, graph, asset })
+        }
         _ => None,
+    }
+}
+
+/// An asset id as the server makes them (ADR 004: lowercase base-36), with room to spare. Nothing
+/// that could be a path: no `.`, no `/`.
+fn is_asset_id(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+}
+
+/// B-789: the file of asset `asset` in a This-Mac graph: `<data>/graphs/<graph>/assets/<asset>.<ext>`
+/// (the server's layout, `packages/server/src/assets/store.ts`). Found by listing the folder
+/// rather than trusting an extension from the page; a symlink is not followed, as the importer
+/// does not follow one either.
+fn find_asset_file(data_dir: &Path, graph: &str, asset: &str) -> Option<PathBuf> {
+    if !graph_list::is_valid_graph_id(graph) || !is_asset_id(asset) {
+        return None;
+    }
+    let dir = data_dir.join("graphs").join(graph).join("assets");
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let name = entry.file_name();
+        let name = name.to_str()?;
+        let (stem, _ext) = name.rsplit_once('.')?;
+        let file = entry.file_type().ok()?.is_file();
+        (stem == asset && file).then(|| entry.path())
+    })
+}
+
+/// Selects `path` in a Finder window (`open -R`), or opens its folder elsewhere.
+fn reveal_in_file_manager(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open").arg("-R").arg(path).status();
+    #[cfg(target_os = "windows")]
+    let status = Command::new("explorer").arg(format!("/select,{}", path.display())).status();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let status = Command::new("xdg-open").arg(path.parent().unwrap_or(path)).status();
+    match status {
+        Ok(s) if s.success() || cfg!(target_os = "windows") => Ok(()),
+        Ok(s) => Err(format!("Couldn't show the file ({s}).")),
+        Err(err) => Err(format!("Couldn't show the file ({err}).")),
     }
 }
 
@@ -591,7 +643,8 @@ struct ScopedToken<'a> {
 /// nooklet pages in practice.
 ///
 /// `graphs` is the menu's list (`PageGraph`), `connect` the launcher's target, `key` the request
-/// key (`ShellRequest`), `downloads: true` that `<a download>` is saved (B-736).
+/// key (`ShellRequest`), `downloads: true` that `<a download>` is saved (B-736), `reveal: true` that
+/// this shell answers `reveal-asset` (B-789: an older one never would).
 fn shell_script(port: u16, key: &str, graphs: &[PageGraph], connect: Option<&ConnectTarget>, token: Option<&ScopedToken>) -> String {
     let scoped = token.and_then(|t| {
         let url = tauri::Url::parse(t.address).ok()?;
@@ -603,7 +656,7 @@ fn shell_script(port: u16, key: &str, graphs: &[PageGraph], connect: Option<&Con
     });
     let json = |v: serde_json::Value| serde_json::to_string(&v).unwrap_or_else(|_| "null".into());
     format!(
-        "(function(){{var t={scoped};var here=t!==null&&location.origin===t.origin&&(location.pathname===t.path||location.pathname.indexOf(t.path+\"/\")===0);Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{os},port:{port},downloads:true,key:{key},graphs:Object.freeze({graphs}),connect:{connect},graphToken:here?t.token:null}})}});}})();",
+        "(function(){{var t={scoped};var here=t!==null&&location.origin===t.origin&&(location.pathname===t.path||location.pathname.indexOf(t.path+\"/\")===0);Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{os},port:{port},downloads:true,reveal:true,key:{key},graphs:Object.freeze({graphs}),connect:{connect},graphToken:here?t.token:null}})}});}})();",
         scoped = json(scoped.unwrap_or(serde_json::Value::Null)),
         os = json(serde_json::Value::from(std::env::consts::OS)),
         key = json(serde_json::Value::from(key)),
@@ -849,6 +902,13 @@ fn handle_shell_request(app: &tauri::AppHandle, request: ShellRequest) {
             }
             let rows = config.page_graphs(&list_local_graphs(&shell.data_dir), port());
             reply(app, &req, result, Some(rows));
+            return;
+        }
+        ShellRequest::RevealAsset { graph, asset, .. } => {
+            let result = find_asset_file(&shell.data_dir, &graph, &asset)
+                .ok_or_else(|| "That picture's file isn't in this graph's folder on this Mac.".to_string())
+                .and_then(|path| reveal_in_file_manager(&path));
+            reply(app, &req, result, None);
             return;
         }
         ShellRequest::Remove { graph, .. } => {
@@ -1412,9 +1472,42 @@ mod tests {
             format!("/remove?key={KEY}&req=a"),
             format!("/add-server-graph?key={KEY}&req=a&url=https%3A%2F%2Fh.example"),
             format!("/open-local-graph?key={KEY}&req=a&id=default"),
+            // B-789: only This Mac's graphs, and only an asset id — never a path.
+            format!("/reveal-asset?key={KEY}&req=a&graph=server%3As1&asset=abc"),
+            format!("/reveal-asset?key={KEY}&req=a&graph=mac%3Adefault&asset=..%2F..%2Fgraph.sqlite"),
+            format!("/reveal-asset?key={KEY}&req=a&graph=mac%3Adefault&asset=abc.png"),
+            format!("/reveal-asset?key={KEY}&req=a&graph=mac%3A..&asset=abc"),
+            format!("/reveal-asset?key={KEY}&req=a&graph=mac%3Adefault"),
         ] {
             assert_eq!(request(&bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn b789_reveal_asset_is_read_strictly_and_finds_only_that_graphs_file() {
+        assert_eq!(
+            request(&format!("/reveal-asset?key={KEY}&req=a&graph=mac%3Adefault&asset=1k7f3q9xz2havc")),
+            Some(ShellRequest::RevealAsset { req: "a".into(), graph: "default".into(), asset: "1k7f3q9xz2havc".into() })
+        );
+        let root = std::env::temp_dir().join(format!("nooklet-reveal-{}", random_key()));
+        let assets = root.join("graphs").join("garden").join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        std::fs::write(assets.join("1k7f3q9xz2havc.png"), b"png").unwrap();
+        std::fs::write(assets.join("1k7f3q9xz2havd.jpg"), b"jpg").unwrap();
+        std::fs::create_dir_all(root.join("graphs").join("other").join("assets")).unwrap();
+        assert_eq!(find_asset_file(&root, "garden", "1k7f3q9xz2havc"), Some(assets.join("1k7f3q9xz2havc.png")));
+        assert_eq!(find_asset_file(&root, "garden", "1k7f3q9xz2havd"), Some(assets.join("1k7f3q9xz2havd.jpg")));
+        // Not in that graph, not an id, not a graph.
+        assert_eq!(find_asset_file(&root, "other", "1k7f3q9xz2havc"), None);
+        assert_eq!(find_asset_file(&root, "garden", "1k7f3q9xz2hav"), None);
+        assert_eq!(find_asset_file(&root, "garden", "../garden/assets/1k7f3q9xz2havc"), None);
+        assert_eq!(find_asset_file(&root, "..", "1k7f3q9xz2havc"), None);
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("/etc/hosts", assets.join("1k7f3q9xz2have.png")).unwrap();
+            assert_eq!(find_asset_file(&root, "garden", "1k7f3q9xz2have"), None, "a symlink is not followed");
+        }
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[derive(Default)]
@@ -1581,6 +1674,7 @@ mod tests {
         let script = shell_script(6100, KEY, &graphs, Some(&target), None);
         assert!(script.contains(&format!("key:\"{KEY}\"")), "{script}");
         assert!(script.contains("downloads:true"), "{script}");
+        assert!(script.contains("reveal:true"), "{script}");
         assert!(script.contains(r#""connect":"#) || script.contains(r#"connect:{"url":"http://127.0.0.1:6100/g/default","place":"mac","label":"This Mac"}"#), "{script}");
         assert!(script.contains(r#"\"Mac\""#), "labels are JSON-escaped: {script}");
         let harness = format!(

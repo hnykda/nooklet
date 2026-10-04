@@ -39,9 +39,13 @@ describe("image box (B-703)", () => {
     await waitFor(() => expect(a?.getAttribute("width")).toBe("1200"));
     expect(a?.getAttribute("height")).toBe("900");
     expect(a?.getAttribute("style")).toContain("aspect-ratio: 1200 / 900");
-    expect(a?.getAttribute("style")).toContain("width: min(100%, 1200px, "); // and a 70vh cap
+    // B-789: the width is on the box around the picture, which fills it.
+    const boxA = a?.closest(".vr-image-box");
+    expect(boxA?.getAttribute("style")).toContain("width: min(100%, 1200px, "); // and a 70vh cap
+    expect(boxA?.classList.contains("vr-image-sized")).toBe(true);
     expect(b?.hasAttribute("width")).toBe(false);
     expect(b?.getAttribute("style")).toBeNull();
+    expect(b?.closest(".vr-image-box")?.getAttribute("style")).toBeNull();
     expect(c?.hasAttribute("width")).toBe(false);
     expect(callOp).toHaveBeenCalledTimes(1);
     expect(callOp).toHaveBeenCalledWith("asset.sizes", {

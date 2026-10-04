@@ -102,6 +102,17 @@ function commitThroughEditor(batch: OpBatch): boolean {
   return false;
 }
 
+/**
+ * B-789: `host`'s tree just wrote a step from a click on its rendered rows, with nothing in it
+ * edited or selected (an image's resize handle or ⋯ menu): Cmd/Ctrl+Z must go there next. Without
+ * this the step sat in a history no key reached — the same hole `commitThroughEditor` closes for
+ * a command's batch (B-142, B-281), and closed the same way.
+ */
+export function noteUndoTarget(host: EditorHost): void {
+  if (active !== null && active !== host) requestEditingEnd();
+  recent = host;
+}
+
 /** Focus is in a plain text field (search, page title, journal draft), not in the outliner. */
 function typingInOtherField(): boolean {
   if (typeof document === "undefined") return false;

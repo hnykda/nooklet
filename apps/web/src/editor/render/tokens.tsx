@@ -50,11 +50,10 @@ import {
   Show,
   Suspense,
 } from "solid-js";
-import { lookupAssetSize } from "../../data/asset-sizes.js";
 import { pageRoutePath, rawAnchorHref } from "../../routes/page-path.js";
-import { assetIdOf, assetUrl } from "./asset-url.js";
+import { assetUrl } from "./asset-url.js";
 import { canHighlight, highlightCode, highlightSync, languageClass } from "./highlight.js";
-import { ImageViewer } from "./ImageViewer.js";
+import { ImageView } from "./ImageView.js";
 import { loadMath, renderTexSync } from "./math.js";
 import { fenceRenderer, PluginFence } from "./PluginFence.js";
 import { safeHref } from "./safe-href.js";
@@ -83,6 +82,11 @@ export interface RenderCtx {
    * image viewer), so a block that is nothing but a wide picture had nowhere left to click to edit
    * it; the viewer offers "Edit block" through this. Absent = not editable here. */
   onEditBlock?: (offset: number) => void;
+  /** B-789: replace `source` — the whole block's text — with a new version, as one undoable edit
+   * through the tree's normal write path. An image's resize handle and ⋯ menu write its size and
+   * alignment through this (ADR 034). Absent = not editable here (a locked page, a reference
+   * snippet, an embedded row: anywhere `source` is not the block this would write). */
+  onRewrite?: (content: string) => void;
   /** Depth-limited recursive rendering for blockRef/embed (rendering contract: "depth-limited to
    * 2"); defaults to 0 and increments on recursion — callers normally never set this. */
   refDepth?: number;
@@ -302,7 +306,13 @@ function RefPreview(props: { content: string; ctx: RenderCtx; depth: number }) {
     <InlineTokens
       tokens={tokens()}
       // `onEditBlock` offsets are into the HOST block's source, not this one's.
-      ctx={{ ...props.ctx, source: props.content, refDepth: props.depth, onEditBlock: undefined }}
+      ctx={{
+        ...props.ctx,
+        source: props.content,
+        refDepth: props.depth,
+        onEditBlock: undefined,
+        onRewrite: undefined,
+      }}
     />
   );
 }
@@ -465,15 +475,7 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
               </a>
             );
           case "image":
-            return (
-              <ImageView
-                src={tok.src}
-                alt={tok.alt}
-                from={tok.start}
-                to={tok.end}
-                onEditBlock={ctx.onEditBlock}
-              />
-            );
+            return <ImageView tok={tok} ctx={ctx} />;
           case "strong":
             return (
               <strong data-from={tok.start} data-to={tok.end}>
@@ -533,91 +535,6 @@ function InlineTokenView(props: { tok: Tok; ctx: RenderCtx }) {
 }
 
 /** A run of inline tokens sharing one `RenderCtx.source`. */
-/**
- * An image, with its box reserved before it loads when the asset's size is known (B-703).
- *
- * `loading="lazy"` leaves an image 0×0 until it is scrolled near, so every row below it jumped by
- * the picture's height when it arrived. With the size known the box is drawn at once: the width
- * B-682's rules would give the loaded picture — its own width, scaled down (never up) to the
- * block's width and to 70vh of height — and the height from the aspect ratio. Written as an inline
- * `width` because the stylesheet's `width: auto` would win over a `width` attribute, and `auto` on
- * an image with no bytes yet is 0. The attributes are there too, for anything reading the markup.
- */
-function ImageView(props: {
-  src: string;
-  alt: string;
-  from: number;
-  to: number;
-  onEditBlock?: (offset: number) => void;
-}) {
-  const size = createMemo(() => {
-    const id = assetIdOf(props.src);
-    return id === undefined ? undefined : lookupAssetSize(id);
-  });
-  const style = () => {
-    const s = size();
-    if (!s) return undefined;
-    return `width: min(100%, ${s.width}px, calc(70vh * ${s.width} / ${s.height})); aspect-ratio: ${s.width} / ${s.height}`;
-  };
-  // B-736: a click on the picture opens it (copy, download) instead of entering the editor, which
-  // swapped the picture for its markdown source. Modified clicks are left to the block row, which
-  // owns Shift (shelf) and Cmd/Ctrl (select); a picture inside a link stays the link.
-  const [open, setOpen] = createSignal(false);
-  const opensViewer = (e: MouseEvent | KeyboardEvent, el: HTMLElement): boolean =>
-    !(e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) && el.closest("a") === null;
-  return (
-    <>
-      {/* The picture IS the control that opens it. Wrapped in a <button> instead, its percentage
-          width would resolve against a shrink-to-fit box and break B-682/B-703's sizing. */}
-      {/* biome-ignore lint/a11y/useSemanticElements: see above. */}
-      <img
-        class="vr-image"
-        alt={props.alt}
-        src={assetUrl(props.src)}
-        loading="lazy"
-        width={size()?.width}
-        height={size()?.height}
-        style={style()}
-        data-from={props.from}
-        data-to={props.to}
-        // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: see the comment above <img>.
-        role="button"
-        tabIndex={0}
-        aria-label={props.alt ? `Open image: ${props.alt}` : "Open image"}
-        aria-haspopup="dialog"
-        onClick={(e) => {
-          if (!opensViewer(e, e.currentTarget)) return;
-          stop(e);
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if ((e.key !== "Enter" && e.key !== " ") || !opensViewer(e, e.currentTarget)) return;
-          // The row's own Enter means "edit this block".
-          e.preventDefault();
-          e.stopPropagation();
-          setOpen(true);
-        }}
-      />
-      <Show when={open()}>
-        <ImageViewer
-          url={assetUrl(props.src)}
-          src={props.src}
-          alt={props.alt}
-          onClose={() => setOpen(false)}
-          onEditBlock={
-            props.onEditBlock
-              ? () => {
-                  setOpen(false);
-                  props.onEditBlock?.(props.to);
-                }
-              : undefined
-          }
-        />
-      </Show>
-    </>
-  );
-}
-
 export function InlineTokens(props: { tokens: Tok[]; ctx: RenderCtx }) {
   return <For each={props.tokens}>{(tok) => <InlineTokenView tok={tok} ctx={props.ctx} />}</For>;
 }
