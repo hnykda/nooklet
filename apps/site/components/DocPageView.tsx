@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { RenderedPage } from "@/lib/render";
 import { type DocPage, pageUrl, REPO_URL } from "@/lib/source";
-import { ANIMATIONS } from "./sync/registry";
+import { SidebarDisclosure } from "./SidebarDisclosure";
+import { findAnimation } from "./sync/registry";
 import { Toc } from "./Toc";
 
 export interface NavGroup {
@@ -13,8 +14,7 @@ export interface NavGroup {
 function Sidebar({ groups, current }: { groups: NavGroup[]; current: DocPage | null }) {
   return (
     <aside className="docs-sidebar" aria-label="Documentation">
-      <details open>
-        <summary>All pages</summary>
+      <SidebarDisclosure>
         {groups.map((g) => (
           <nav key={g.title} className="sidebar-group" aria-label={g.title}>
             <h2>{g.title}</h2>
@@ -25,7 +25,9 @@ function Sidebar({ groups, current }: { groups: NavGroup[]; current: DocPage | n
                     href={pageUrl(p)}
                     aria-current={current && pageUrl(current) === pageUrl(p) ? "page" : undefined}
                   >
-                    {g.numbered ? <span className="sidebar-num">{String(p.order).padStart(3, "0")}</span> : null}
+                    {g.numbered ? (
+                      <span className="sidebar-num">{String(p.order).padStart(3, "0")}</span>
+                    ) : null}
                     {p.title}
                   </Link>
                 </li>
@@ -33,7 +35,7 @@ function Sidebar({ groups, current }: { groups: NavGroup[]; current: DocPage | n
             </ul>
           </nav>
         ))}
-      </details>
+      </SidebarDisclosure>
     </aside>
   );
 }
@@ -91,13 +93,16 @@ export function DocArticle({
               <div key={i} className="prose-chunk" dangerouslySetInnerHTML={{ __html: seg.html }} />
             );
           }
-          const Anim = ANIMATIONS[seg.anim.id];
+          const Anim = findAnimation(seg.anim);
           // biome-ignore lint/suspicious/noArrayIndexKey: segments are static build output
           if (Anim) return <Anim key={i} />;
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: segments are static build output
             <figure key={i} className="anim-pending">
-              <figcaption>Animation not drawn yet: {seg.anim.caption}</figcaption>
+              <figcaption>
+                <strong>{seg.anim.title}</strong>
+                {seg.anim.summary ? <p>{seg.anim.summary}</p> : null}
+              </figcaption>
             </figure>
           );
         })}

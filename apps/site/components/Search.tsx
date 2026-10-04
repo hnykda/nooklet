@@ -2,7 +2,15 @@
 
 import MiniSearch, { type SearchResult } from "minisearch";
 import { useRouter } from "next/navigation";
-import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { SEARCH_INDEX_URL, SEARCH_OPTIONS, type SearchDoc } from "@/lib/search-options";
 
 type Hit = SearchResult & Partial<SearchDoc>;
@@ -34,7 +42,10 @@ function snippet(text: string, terms: string[]): ReactNode[] {
     if (i !== -1 && (at === -1 || i < at)) at = i;
   }
   const start = at > 60 ? text.lastIndexOf(" ", at - 50) + 1 : 0;
-  const slice = (start > 0 ? "…" : "") + text.slice(start, start + 170) + (text.length > start + 170 ? "…" : "");
+  const slice =
+    (start > 0 ? "…" : "") +
+    text.slice(start, start + 170) +
+    (text.length > start + 170 ? "…" : "");
   const escaped = terms.filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (!escaped.length) return [slice];
   const re = new RegExp(`(${escaped.join("|")})`, "gi");
@@ -170,8 +181,20 @@ export function Search() {
       >
         <div className="search-input-row">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
-            <path d="m15.5 15.5 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <circle
+              cx="10.5"
+              cy="10.5"
+              r="6.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            />
+            <path
+              d="m15.5 15.5 5 5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
           </svg>
           <input
             ref={inputRef}
@@ -193,38 +216,38 @@ export function Search() {
             <kbd>Esc</kbd>
           </button>
         </div>
-        {/* biome-ignore lint/a11y/useSemanticElements: an ARIA listbox of links, the combobox pattern */}
-        <ul id={listId} role="listbox" className="search-results" aria-label="Results">
+        <div id={listId} role="listbox" className="search-results" aria-label="Results">
           {hits.map((h, i) => (
-            <li
+            // Keyboard use goes through the combobox input (arrows and Enter), per the ARIA
+            // combobox pattern, so an option only needs pointer handlers of its own.
+            // biome-ignore lint/a11y/useKeyWithClickEvents: keys are handled by the combobox input
+            <div
               key={h.id}
               id={`${listId}-${i}`}
               role="option"
+              tabIndex={-1}
               aria-selected={i === active}
+              className="search-result"
               onMouseMove={() => setActive(i)}
+              onClick={() => go(h)}
             >
-              <a
-                href={h.url}
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.preventDefault();
-                  go(h);
-                }}
-              >
-                <div className="r-title">
-                  {h.heading || h.page}
-                  {h.heading ? <span className="r-page"> in {h.page}</span> : null}
-                </div>
-                <div className="r-snippet">{snippet(h.text ?? "", h.terms)}</div>
-              </a>
-            </li>
+              <div className="r-title">
+                {h.heading || h.page}
+                {h.heading ? <span className="r-page"> in {h.page}</span> : null}
+              </div>
+              <div className="r-snippet">{snippet(h.text ?? "", h.terms)}</div>
+            </div>
           ))}
-        </ul>
+        </div>
         {query.trim() && status === "ready" && hits.length === 0 ? (
-          <p className="search-empty">No matches for “{query.trim()}”. Try a single word, like “sync”.</p>
+          <p className="search-empty">
+            No matches for “{query.trim()}”. Try a single word, like “sync”.
+          </p>
         ) : null}
         {status === "error" ? (
-          <p className="search-empty">The search index did not load. Reload the page to try again.</p>
+          <p className="search-empty">
+            The search index did not load. Reload the page to try again.
+          </p>
         ) : null}
         <div className="search-foot" aria-hidden="true">
           <span>

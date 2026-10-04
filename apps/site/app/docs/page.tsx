@@ -17,8 +17,8 @@ export default function DocsIndex() {
       <header className="doc-header">
         <h1>Docs</h1>
         <p className="lede">
-          Start with the first page and read down, or jump to the part you need. Press <kbd>/</kbd> to
-          search.
+          Start with the first page and read down, or jump to the part you need. Press <kbd>/</kbd>{" "}
+          to search.
         </p>
       </header>
       <ol className="doc-index">

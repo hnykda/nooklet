@@ -24,7 +24,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       canonical: pageUrl(page),
       types: { "text/markdown": `${pageUrl(page)}.md` },
     },
-    openGraph: { title: page.title, description: page.description, url: pageUrl(page), type: "article" },
+    openGraph: {
+      title: page.title,
+      description: page.description,
+      url: pageUrl(page),
+      type: "article",
+      images: ["/og.png"],
+    },
   };
 }
 

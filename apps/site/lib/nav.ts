@@ -4,7 +4,8 @@ import { allPages, type Collection, type DocPage } from "./source.ts";
 export function navGroups(): NavGroup[] {
   const { docs, decisions } = allPages();
   const groups: NavGroup[] = [{ title: "Guide", pages: docs }];
-  if (decisions.length) groups.push({ title: "Design decisions", pages: decisions, numbered: true });
+  if (decisions.length)
+    groups.push({ title: "Design decisions", pages: decisions, numbered: true });
   return groups;
 }
 

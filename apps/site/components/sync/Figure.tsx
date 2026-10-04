@@ -114,9 +114,21 @@ export function FigureFrame({
           </div>
         </div>
         <div className="figure__controls">
-          <button type="button" className="icon-button" onClick={prev} aria-label="Previous step" disabled={step === 0}>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={prev}
+            aria-label="Previous step"
+            disabled={step === 0}
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path
+                d="M15 5 8 12l7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
           <button
@@ -145,7 +157,13 @@ export function FigureFrame({
             disabled={step === steps.length - 1}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path
+                d="m9 5 7 7-7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
         </div>

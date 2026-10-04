@@ -6,9 +6,13 @@ import { FigureFrame, type Step, useStepper } from "./Figure";
 
 const STEPS: readonly Step[] = [
   { caption: "Both devices start from the same block.", hold: 2000 },
-  { caption: "Offline, the laptop adds words at the end and the phone adds one in the middle.", hold: 3000 },
   {
-    caption: "The edits touch different words, so nooklet merges them against the starting text. You get both.",
+    caption: "Offline, the laptop adds words at the end and the phone adds one in the middle.",
+    hold: 3000,
+  },
+  {
+    caption:
+      "The edits touch different words, so nooklet merges them against the starting text. You get both.",
     hold: 3800,
   },
   { caption: "Another time, both devices change the same words.", hold: 3000 },

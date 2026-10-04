@@ -29,9 +29,11 @@ export interface TocItem {
 }
 
 export interface AnimationRef {
-  /** One of the ids in `components/sync/registry.ts`, or an id the site does not draw yet. */
+  /** Optional explicit id (see `components/sync/registry.tsx`). The guide's specs use titles. */
   id: string;
-  caption: string;
+  title: string;
+  /** The spec's `end_state`, used as a text description when the site has no drawing. */
+  summary: string;
 }
 
 export type Segment = { kind: "html"; html: string } | { kind: "animation"; anim: AnimationRef };
@@ -51,7 +53,11 @@ export interface RenderedPage {
 
 // The code colours are CSS variables, so the palette in globals.css (and its dark twin) decides
 // them. Two fixed shiki themes would each carry their own idea of blue and fight the page.
-const theme = createCssVariablesTheme({ name: "nooklet", variablePrefix: "--code-", fontStyle: true });
+const theme = createCssVariablesTheme({
+  name: "nooklet",
+  variablePrefix: "--code-",
+  fontStyle: true,
+});
 
 const LANGS = [
   "sh",
@@ -80,6 +86,11 @@ function getHighlighter(): Promise<Highlighter> {
   return highlighter;
 }
 
+/** Highlights one snippet for the landing page, with the same theme as the docs. */
+export async function highlight(code: string, lang: (typeof LANGS)[number]): Promise<string> {
+  return (await getHighlighter()).codeToHtml(code.trim(), { lang, theme: "nooklet" });
+}
+
 const ANIM_MARK = "nooklet-animation";
 
 function parseSpec(value: string): AnimationRef {
@@ -94,12 +105,18 @@ function parseSpec(value: string): AnimationRef {
     for (const k of keys) {
       const v = rec[k];
       if (typeof v === "string" && v.trim()) return v.trim();
+      // The specs are YAML-shaped prose, and a step line with a colon in it ("HLC 10:00:05",
+      // "scheduled:: …") makes the whole block invalid YAML. Top-level `key: value` lines are
+      // still unambiguous, so read those directly when the parse fails.
+      const line = new RegExp(`^${k}:[ \\t]*(.+)$`, "m").exec(value);
+      if (line?.[1]?.trim()) return line[1].trim();
     }
     return "";
   };
   return {
     id: str("id", "name", "animation", "component"),
-    caption: str("caption", "alt", "title", "description", "summary") || value.trim(),
+    title: str("title", "caption", "alt"),
+    summary: str("end_state", "description", "summary"),
   };
 }
 
@@ -130,7 +147,10 @@ function rehypeStructure(toc: TocItem[], sections: SearchSection[]) {
     sections.push(current);
     for (const node of tree.children) {
       if (node.type !== "element") continue;
-      if ((node.tagName === "h2" || node.tagName === "h3") && typeof node.properties.id === "string") {
+      if (
+        (node.tagName === "h2" || node.tagName === "h3") &&
+        typeof node.properties.id === "string"
+      ) {
         const id = node.properties.id;
         const text = hastToString(node).trim();
         toc.push({ id, text, depth: node.tagName === "h2" ? 2 : 3 });
@@ -139,7 +159,11 @@ function rehypeStructure(toc: TocItem[], sections: SearchSection[]) {
         const anchor: Element = {
           type: "element",
           tagName: "a",
-          properties: { className: ["heading-anchor"], href: `#${id}`, ariaLabel: `Link to “${text}”` },
+          properties: {
+            className: ["heading-anchor"],
+            href: `#${id}`,
+            ariaLabel: `Link to “${text}”`,
+          },
           children: [{ type: "text", value: "#" }],
         };
         node.children.push(anchor);

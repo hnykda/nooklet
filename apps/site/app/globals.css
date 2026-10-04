@@ -54,6 +54,7 @@
   --bullet: 7px;
   --measure: 38rem;
   --radius: 10px;
+  --hero-pad: 3rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -415,7 +416,7 @@ kbd {
   content: "";
   position: absolute;
   left: calc(var(--thread-x) - 0.5px);
-  top: 4.4rem;
+  top: calc(var(--hero-pad) + var(--step-4) * 0.38 + 8px);
   bottom: 0;
   width: 1px;
   background: linear-gradient(var(--thread) 85%, transparent);
@@ -464,12 +465,12 @@ kbd {
 /* hero */
 
 .hero {
-  padding: 3rem 0 1rem;
+  padding: var(--hero-pad) 0 1rem;
 }
 
 @media (min-width: 900px) {
-  .hero {
-    padding-top: 5.5rem;
+  :root {
+    --hero-pad: 5.5rem;
   }
 }
 
@@ -480,7 +481,7 @@ kbd {
   font-weight: 650;
   letter-spacing: -0.03em;
   line-height: 1.04;
-  max-width: 16ch;
+  max-width: 21ch;
 }
 
 .hero h1::before {
@@ -589,7 +590,7 @@ kbd {
   color: var(--ink-faint);
 }
 
-.theme-img--dark {
+.shot__frame .theme-img--dark {
   display: none;
 }
 
@@ -614,6 +615,7 @@ kbd {
 
 .features {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2rem 3rem;
 }
 
@@ -686,6 +688,7 @@ kbd {
 
 .two-col {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2rem 3rem;
   align-items: start;
 }
@@ -709,6 +712,15 @@ kbd {
 .prose-list .node::before {
   background: var(--ink-faint);
   box-shadow: none;
+}
+
+.section-more {
+  margin-top: 1.5rem;
+  font-family: var(--font-sans);
+}
+
+.cta-row--flush {
+  padding-left: 0;
 }
 
 .closing {
@@ -761,6 +773,9 @@ pre.shiki code {
 
 .figure__stage {
   position: relative;
+  /* The figures lay out by the space they get, not the viewport: the same figure is a row on the
+     wide landing page and a column inside the narrower docs column. */
+  container: stage / inline-size;
   padding: 1.25rem;
   border: 1px solid var(--rule);
   border-radius: 14px;
@@ -816,6 +831,7 @@ pre.shiki code {
 
 .docs-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   max-width: 76rem;
   margin: 0 auto;
   padding: 0 var(--gutter);
@@ -871,6 +887,14 @@ pre.shiki code {
   .docs-sidebar summary {
     display: none;
   }
+  .docs-sidebar details::details-content {
+    content-visibility: visible;
+    block-size: auto;
+  }
+}
+
+.docs-sidebar details[open] summary {
+  margin-bottom: 0.8rem;
 }
 
 .sidebar-group + .sidebar-group {
@@ -1035,6 +1059,12 @@ pre.shiki code {
 }
 
 .prose {
+  max-width: 50rem;
+}
+
+/* Text keeps a reading measure; figures may use the whole column. */
+.prose-chunk > *,
+.prose .anim-pending {
   max-width: var(--measure);
 }
 
@@ -1275,15 +1305,15 @@ pre.shiki code {
   overflow-y: auto;
 }
 
-.search-results a {
+.search-result {
   display: block;
+  cursor: pointer;
   padding: 0.6rem 0.75rem;
   border-radius: 8px;
   color: var(--ink);
-  text-decoration: none;
 }
 
-.search-results li[aria-selected="true"] a {
+.search-result[aria-selected="true"] {
   background: var(--paper-sunk);
 }
 

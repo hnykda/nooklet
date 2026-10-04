@@ -2,60 +2,125 @@
 
 import "./sync.css";
 import { FigureFrame, type Step, useStepper } from "./Figure";
-import { Device, type Line, type LogEntry, Server, Wire } from "./parts";
+import { Device, Glyph, type Line, type LogEntry, Server, Wire } from "./parts";
 
+// Drawn from the "One op travels from device to server to another device" animation-spec in
+// docs/guide/how-it-works.md. Keep the two in step if either changes.
 const STEPS: readonly Step[] = [
-  { caption: "The laptop and the phone show the same list.", hold: 2200 },
   {
-    caption: "You type on the laptop. The new text and its op are saved together, on the laptop.",
+    caption: "You type “Call the plumber” into a new block on the phone. It shows up at once.",
+    hold: 2400,
+  },
+  {
+    caption:
+      "In one transaction, the phone writes the op to its own SQLite and puts a copy in its outbox.",
     hold: 2800,
   },
-  { caption: "The laptop pushes the op to your server.", hold: 1500 },
-  { caption: "The server checks it and appends it to the log as number 42.", hold: 2400 },
-  { caption: "The server pokes the phone. The phone asks for everything after 41.", hold: 1500 },
-  { caption: "The phone applies the op. Both devices show the same list again.", hold: 3600 },
+  { caption: "A moment later the phone sends the outbox: POST /sync/push.", hold: 1700 },
+  {
+    caption: "The server checks that the tree stays valid, stores the op, and logs it as seq 128.",
+    hold: 2600,
+  },
+  { caption: "The server acknowledges. The phone’s outbox empties.", hold: 1900 },
+  { caption: "The server pokes the laptop over its WebSocket.", hold: 1700 },
+  {
+    caption: "The laptop asks for what it lacks: GET /sync/pull?since=127. Seq 128 comes back.",
+    hold: 2000,
+  },
+  {
+    caption: "“Call the plumber” appears on the laptop. Both devices’ cursors read 128.",
+    hold: 4000,
+  },
 ];
 
-const before = "Call the plumber";
-const after = (
-  <>
-    Call the plumber <ins>on Monday</ins>
-  </>
-);
+const OP = "block.create, HLC 14:02:11.120-0000-phone";
 
-function lines(edited: boolean, fresh: boolean): Line[] {
-  return [
+function lines(has: boolean, fresh: boolean): Line[] {
+  const out: Line[] = [
     { id: "h", text: "Saturday" },
     { id: "a", text: "Return library books", depth: 1 },
-    { id: "b", text: edited ? after : before, depth: 1, fresh },
-    { id: "c", text: "Water the basil", depth: 1 },
   ];
+  if (has) out.push({ id: "b", text: <ins>Call the plumber</ins>, depth: 1, fresh });
+  return out;
+}
+
+function Db({ count, fresh }: { count: number; fresh?: boolean }) {
+  return (
+    <span className="db" data-fresh={!!fresh}>
+      <Glyph kind="db" />
+      SQLite, cursor {count}
+    </span>
+  );
 }
 
 const BASE_LOG: LogEntry[] = [
-  { seq: 40, kind: "block.create", from: "phone" },
-  { seq: 41, kind: "block.place", from: "phone" },
+  { seq: 126, kind: "block.text", from: "laptop" },
+  { seq: 127, kind: "block.place", from: "laptop" },
 ];
+
+const NOTES: Record<number, string> = {
+  2: "← POST /sync/push",
+  3: "✓ tree valid",
+  4: "→ ack to phone",
+  5: "→ poke to laptop",
+  6: "← GET /sync/pull?since=127",
+};
 
 export function OpJourney() {
   const stepper = useStepper(STEPS);
   const s = stepper.step;
   const log: LogEntry[] =
-    s >= 3 ? [...BASE_LOG, { seq: 42, kind: "block.text", from: "laptop", fresh: s === 3 }] : BASE_LOG;
+    s >= 3
+      ? [...BASE_LOG, { seq: 128, kind: "block.create", from: "phone", fresh: s === 3 }]
+      : BASE_LOG;
 
   return (
     <FigureFrame
       name="sync-op"
-      label="Animation: one edit travels from the laptop through the server to the phone"
+      label="Animation: one op travels from the phone through the server to the laptop"
       steps={STEPS}
       stepper={stepper}
     >
       <div className="sync-grid">
-        <Device who="laptop" lines={lines(s >= 1, s === 1)} online outbox={s >= 1 && s < 3 ? 1 : 0} />
-        <Wire side="left" online stepKey={s} ops={s === 2 ? [{ from: "laptop", dir: "in" }] : []} />
-        <Server log={log} />
-        <Wire side="right" online stepKey={s} ops={s === 4 ? [{ from: "laptop", dir: "out" }] : []} />
-        <Device who="phone" lines={lines(s >= 5, s === 5)} online outbox={0} />
+        <Device
+          who="phone"
+          lines={lines(true, s === 0)}
+          online
+          outbox={s >= 1 && s < 4 ? [{ key: "op", label: OP }] : []}
+          footer={<Db count={s >= 4 ? 128 : 127} fresh={s === 1} />}
+        />
+        <Wire
+          side="left"
+          online
+          stepKey={s}
+          ops={
+            s === 2
+              ? [{ from: "phone", dir: "in" }]
+              : s === 4
+                ? [{ from: "server", dir: "out" }]
+                : []
+          }
+        />
+        <Server log={log} note={NOTES[s]} />
+        <Wire
+          side="right"
+          online
+          stepKey={s}
+          ops={
+            s === 5
+              ? [{ from: "server", dir: "out" }]
+              : s === 6
+                ? [{ from: "phone", dir: "out" }]
+                : []
+          }
+        />
+        <Device
+          who="laptop"
+          lines={lines(s >= 7, s === 7)}
+          online
+          outbox={[]}
+          footer={<Db count={s >= 6 ? 128 : 127} fresh={s === 6} />}
+        />
       </div>
     </FigureFrame>
   );

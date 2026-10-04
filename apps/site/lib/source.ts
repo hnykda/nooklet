@@ -2,8 +2,8 @@
  * Reads the documentation the site publishes, straight from the repository at build time.
  *
  * `docs/guide/*.md` is the single source for the user guide; the site never keeps its own copy.
- * Until that folder exists, the site falls back to `apps/site/fixtures/guide` so it can be built
- * and tested on its own. `docs/adr/*.md` is published as "Design decisions".
+ * A build fails if that folder is missing or empty. `docs/adr/*.md` is published as "Design
+ * decisions".
  *
  * This module runs in two places: inside `next build`, and as plain Node type-stripped TypeScript
  * from `scripts/emit-raw.ts`. So it imports only `node:` built-ins and `yaml`, and uses
@@ -40,18 +40,20 @@ export function repoRoot(): string {
   for (;;) {
     if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
     const up = dirname(dir);
-    if (up === dir) throw new Error("site: could not find the repository root (pnpm-workspace.yaml)");
+    if (up === dir)
+      throw new Error("site: could not find the repository root (pnpm-workspace.yaml)");
     dir = up;
   }
 }
 
-export function guideDir(): { dir: string; usingFixtures: boolean } {
-  const root = repoRoot();
-  const real = join(root, "docs", "guide");
-  if (existsSync(real) && readdirSync(real).some((f) => f.endsWith(".md"))) {
-    return { dir: real, usingFixtures: false };
+export function guideDir(): string {
+  const dir = join(repoRoot(), "docs", "guide");
+  if (!existsSync(dir) || !readdirSync(dir).some((f) => f.endsWith(".md"))) {
+    throw new Error(
+      `site: no guide pages in ${dir}; the site renders docs/guide and has no fallback`,
+    );
   }
-  return { dir: join(root, "apps", "site", "fixtures", "guide"), usingFixtures: true };
+  return dir;
 }
 
 const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
@@ -90,13 +92,17 @@ function firstParagraph(body: string): string {
 }
 
 function readGuide(): DocPage[] {
-  const { dir } = guideDir();
+  const dir = guideDir();
   const root = repoRoot();
   const pages = readdirSync(dir)
     .filter((f) => f.endsWith(".md") && f.toLowerCase() !== "readme.md")
     .map((file): DocPage => {
-      const { data, body } = splitFrontMatter(readFileSync(join(dir, file), "utf8"));
-      const title = typeof data.title === "string" ? data.title : slugFromFile(file);
+      const { data, body: withH1 } = splitFrontMatter(readFileSync(join(dir, file), "utf8"));
+      const h1 = /^\s*#\s+(.+)\n/.exec(withH1);
+      const title = typeof data.title === "string" ? data.title : (h1?.[1] ?? slugFromFile(file));
+      // Guide files open with "# Title" so they read well on GitHub; the page header already
+      // shows the title, so a leading H1 is dropped rather than rendered twice.
+      const body = h1 ? withH1.slice(h1[0].length) : withH1;
       return {
         collection: "docs",
         slug: slugFromFile(file),
@@ -188,7 +194,10 @@ export function rawMarkdown(p: DocPage): string {
     const r = resolveLink(href, p);
     return `${open}${r.startsWith("/") ? SITE_URL + r : r}${close}`;
   });
-  const head = p.collection === "decisions" ? `# ADR ${String(p.order).padStart(3, "0")}: ${p.title}` : `# ${p.title}`;
+  const head =
+    p.collection === "decisions"
+      ? `# ADR ${String(p.order).padStart(3, "0")}: ${p.title}`
+      : `# ${p.title}`;
   const summary = p.description ? `\n\n> ${p.description}` : "";
   return `${head}${summary}\n\nSource: ${SITE_URL}${pageUrl(p)}\n\n${body.trim()}\n`;
 }

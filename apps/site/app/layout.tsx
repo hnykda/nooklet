@@ -33,6 +33,14 @@ export const metadata: Metadata = {
     title: "nooklet: a local-first outliner",
     description,
     url: SITE_URL,
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "nooklet: your notes, in bullets, on your own machines.",
+      },
+    ],
   },
   twitter: { card: "summary_large_image" },
 };
@@ -50,7 +58,11 @@ const themeScript = `try{var t=localStorage.getItem("nooklet-site-theme");if(t==
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${familjen.variable} ${literata.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${familjen.variable} ${literata.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a constant string, see themeScript */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
