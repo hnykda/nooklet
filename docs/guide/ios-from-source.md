@@ -66,8 +66,18 @@ If the phone is missing from the list, unlock it, check the cable, and look in
 2. In the project navigator on the left, click the blue **App** project at the top. Under
    *TARGETS*, select **App**, then open the **Signing & Capabilities** tab.
 3. Tick **Automatically manage signing**.
-4. Set **Team** to your account. A free account appears as *Your Name (Personal Team)*. The
-   project as checked out names another developer's team; replace it with yours.
+4. Set your signing team. The checked-out project names no team; it reads one from
+   `apps/web/ios/signing.local.xcconfig`, a gitignored file you create once:
+
+   ```sh
+   echo 'DEVELOPMENT_TEAM = <your 10-character team id>' > apps/web/ios/signing.local.xcconfig
+   ```
+
+   Find your team id in Xcode → Settings → Accounts → your account → the team's details, or pick
+   **Team** in the Signing & Capabilities tab once (a free account appears as *Your Name
+   (Personal Team)*) and copy the id Xcode writes into `project.pbxproj` into that file, then
+   `git checkout apps/web/ios/App/App.xcodeproj/project.pbxproj`. The repo's leak check refuses a
+   commit that puts a team id in the project file.
 5. Change **Bundle Identifier** from `sh.nooklet.app` to something unique to you, such as
    `com.<yourname>.nooklet`. Apple allows each identifier to only one team, so the default is taken.
 
