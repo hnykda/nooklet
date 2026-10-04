@@ -33,7 +33,8 @@ writer now.
 | Slug | Task | Ports |
 |---|---|---|
 | desktop-graphs | Proposal 005 (accepted): one shell-owned graph list, one add form verified from Rust, tokens in Keychain, no restarts, launcher only "Connecting…", ADR 032. Progress: `docs/progress/desktop-graphs.md` (in its worktree). Bug numbers from B-780. | 6480-6484 |
-| e2e-flaky | Load flakes + real races it found (reload writer lock, mermaid offline under `/g/`, B-98 scroll); merge its branch, renumber its B-760.. entries if they collide | — |
+| phone-capture | Proposal 006 Phase 1 (accepted): `nooklet://capture` pre-fill, quick actions (iOS+Android), iOS App Intent "Add to nooklet" with a native queue drained on launch/resume (Action Button), Android share target; ADR 033. Simulator iPhone 17e only. Bug numbers from B-800. | 6490 |
+| e2e-flaky | **merged + pushed** (`0ca331e9`): B-760..B-765; full e2e 855/0 with retries off | — |
 
 Merged and pushed tonight: graph-menu (B-704/708/709/712), phone-input (B-661/662/664/699/705/706), image viewer (B-736, B-744), search prefixes (B-735), Mac autocorrect (B-742), dark caret (B-745), popup scroll (B-746). Open: B-737 (guessable public asset ids; owner to decide the scheme), B-738 slow images.
 
