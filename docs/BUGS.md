@@ -1087,6 +1087,15 @@ A data guard landed (`updateGraph` refuses a `baseUrl` for a `detachedFrom` entr
 
 Its token is `write`; import is `admin` (ADR 029/031). The phone is told to import from the desktop app.
 
+### B-734 · Under `pnpm desktop` (dev build), Switch Server… exits the app instead of restarting it
+**Status:** open · **Severity:** medium (the only working desktop path to a remote server is unusable in dev) · **Found:** 2026-10-04, owner · **Test:** none yet
+
+`restart_app` / `on_menu` call `app.request_restart()`; under `tauri dev` a restart ends the dev
+process and nothing relaunches it, so the picker never appears and the in-app add form is blocked by
+B-704. Workaround used: edit `desktop.json` (add the remote entry, set `active_graph_id`) and run
+`pnpm desktop` again. Fix: in dev, show the picker in place (navigate the window to the bundled
+launcher with forcePicker) instead of restarting, or detect `tauri dev` and print how to relaunch.
+
 ## Fixed
 
 ### B-733 · `leak-check --staged` skips staged files with non-ASCII names but reports clean
