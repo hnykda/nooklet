@@ -1004,6 +1004,20 @@ the no-pipe form.
 
 An image is `loading="lazy"` with no width/height, so it is 0×0 until scrolled near. Reserving space needs the dimensions, which `asset.upload` does not record.
 
+### B-704 · In the desktop app, adding a remote server graph from the in-app switcher fails with "Load failed"
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner adding the production server (`https://<tailnet host>/g/alpha`) from the desktop app · **Test:** none yet
+
+"Could not reach https://<tailnet host>/g/alpha: Load failed" (`data/connect-graph.ts`). The page in
+the desktop window is served by another server (the bundled sidecar or a test server on
+`127.0.0.1:<port>`), so the connect check is a cross-origin request; the server's CORS allowlist
+admits only the app-shell origins (`capacitor://localhost`, `https://localhost`), so the preflight
+gets 401 and WebKit reports "Load failed". Verified with curl: preflight from `capacitor://localhost`
+→ 204 with ACAO; from `http://127.0.0.1:6200` / `tauri://localhost` → 401. Workaround: the native
+menu's Switch Server… → Add a server (navigates the window to the server; same-origin). Fix: in the
+desktop shell, the switcher's "add a server graph" should hand the URL to the shell (like B-643's
+`nooklet-desktop.invalid` request) instead of fetching cross-origin; on plain web it should say
+plainly that a different server must be opened in its own tab.
+
 ## Fixed
 
 ### B-701 · A long `$$…$$` display formula widened the page at phone width
