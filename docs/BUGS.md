@@ -1096,6 +1096,26 @@ B-704. Workaround used: edit `desktop.json` (add the remote entry, set `active_g
 `pnpm desktop` again. Fix: in dev, show the picker in place (navigate the window to the bundled
 launcher with forcePicker) instead of restarting, or detect `tauri dev` and print how to relaunch.
 
+### B-735 · Keyword search matches whole words only: `rationalit` does not find `rationality`
+**Status:** open · **Severity:** high · **Found:** 2026-10-04, owner on the production graph · **Test:** none yet
+
+`toFtsQuery` (`packages/core/src/fts-query.ts`) emits each bare word as an exact FTS5 token
+(`"rationalit"`), so a partly typed word finds nothing, and an inflected Czech word only finds
+the same form. Prefix matching existed but only with an explicit trailing `*`, which no one types.
+Same grammar on the server (`search` op) and the client replica (`local-search.ts`), so both
+miss. Fix: every bare positive word is a prefix term; quoted phrases and `-exclusions` stay exact.
+Infix matching (`ationali`) is out of scope here: the server has `block_tri`/`page_tri` trigram
+tables but the client replica does not (index cost, `tools/probes/client-fts-cost.mjs`).
+
+### B-736 · Clicking an image only opens the block editor; no way to view, copy or download it
+**Status:** open · **Severity:** medium · **Found:** 2026-10-04, owner on desktop with an imported graph · **Test:** none yet
+
+Clicking a rendered `![…](assets/….png)` switches the block to its raw markdown, so the image
+disappears and there is nothing to act on. Expected (Logseq does this): clicking the image itself
+opens it (a lightbox / full view) with Copy image and Download/Save, while clicking the
+rest of the block still edits. Must work in the browser, the desktop shell (WKWebView: a download
+needs the shell, not `<a download>`) and on the phone (long-press / share sheet).
+
 ## Fixed
 
 ### B-733 · `leak-check --staged` skips staged files with non-ASCII names but reports clean
