@@ -51,6 +51,11 @@ export interface WorkerInitOptions {
   /** B-612: also report what the un-namespaced replica holds (`InitResult.unnamespacedReplica`).
    * Only meaningful with a `graphEntryId` (otherwise that replica is the one being opened). */
   inspectUnnamespaced?: boolean;
+  /** How long a server graph's worker waits for the writer lock before settling for a follower
+   * (`db.worker.ts#becomeLeader`). 0 (the default) for a tab that never held it — a genuine second
+   * tab follows at once; set by `client.ts` when this tab's previous page load held it, whose worker
+   * may still be letting go (`./leader-tab.ts`). Local-only graphs always wait. */
+  leaderLockWaitMs?: number;
 }
 
 export interface InitResult {

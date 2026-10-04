@@ -75,11 +75,8 @@ function tryBecomeLeader(graphEntryId: string | undefined): Promise<boolean> {
  */
 const LOCAL_ONLY_LOCK_WAIT_MS = 3_000;
 
-async function becomeLeader(
-  graphEntryId: string | undefined,
-  localOnly: boolean,
-): Promise<boolean> {
-  const deadline = Date.now() + (localOnly ? LOCAL_ONLY_LOCK_WAIT_MS : 0);
+async function becomeLeader(graphEntryId: string | undefined, waitMs: number): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
   for (;;) {
     if (await tryBecomeLeader(graphEntryId)) return true;
     if (Date.now() >= deadline) return false;
@@ -118,7 +115,14 @@ interface OpenedDb {
 }
 
 async function openDb(opts: WorkerInitOptions): Promise<OpenedDb> {
-  const leader = await becomeLeader(opts.graphEntryId, opts.syncBaseUrl === undefined);
+  // A server graph waits only when this tab held the lock in its previous page load (a reload or a
+  // full navigation, whose worker may still be letting go): starting as a follower there gave the
+  // page an in-memory replica, so what it pulled was not on the device after the next load — a
+  // page seen online "did not exist" offline (`mermaid-lazy-cache.spec.ts`,
+  // `sync-connection-states.spec.ts` in full e2e runs).
+  const waitMs =
+    opts.syncBaseUrl === undefined ? LOCAL_ONLY_LOCK_WAIT_MS : (opts.leaderLockWaitMs ?? 0);
+  const leader = await becomeLeader(opts.graphEntryId, waitMs);
   // Same reasoning as `leaderLockName` above: `undefined` keeps `openSqliteWasmDriver`'s own
   // unnamespaced default filename, exactly pre-ADR-025 behavior, for every caller that doesn't
   // pass a `graphEntryId`.
