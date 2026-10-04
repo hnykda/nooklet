@@ -47,7 +47,7 @@ Principles (each one is a lesson from a competitor's failure, see `research/02-c
 | API and MCP | One operation registry that mounts as HTTP endpoints (with OpenAPI), MCP tools (Streamable HTTP + a stdio bridge), and a typed client; scoped tokens; audit trail of agent writes |
 | Embeddings | Any Ollama embedding model (bge-m3 default: multilingual, covers Czech); server-side index kept fresh incrementally; model switch re-indexes |
 | Plugins | One package format with an optional server half and client half; commands, slash commands, hooks, block renderers, panels, routes, MCP tools, providers |
-| Import/export | Import from Logseq file graphs, the classic markdown-native format (ADR 012; all name encodings); continuous markdown mirror export; one-shot export |
+| Import/export | Import from Logseq file graphs (ADR 012; all name encodings) and Logseq DB-version graphs (ADR 030: mirror + `db.sqlite` for images, refs, dates, favourites); continuous markdown mirror export; one-shot export |
 | Mobile | Installable PWA that behaves natively (keyboard toolbar, gestures, quick capture); Capacitor shell for app stores in v1.x |
 | Media | Images and files pasted/uploaded/captured on mobile are stored by the server under `assets/` and referenced as normal markdown images |
 
@@ -176,14 +176,13 @@ watches `pages/`, and the `chokidar` dependency nobody imported is gone. The mir
 only; edits go through the app or the API. A watcher with content-hash echo suppression is the
 design if it is ever wanted; it is not a milestone.
 
-Import targets the Logseq file graph specifically (ADR 012), not the newer Logseq DB version's
-one-way markdown export: tabs or spaces, `id::`/`collapsed::`, pre-block page properties, YAML
+Import reads both the Logseq file graph (ADR 012) and the DB version (ADR 030: its Markdown
+Mirror for pages, `db.sqlite` for what the mirror drops). File-graph handling: tabs or spaces, `id::`/`collapsed::`, pre-block page properties, YAML
 front matter, triple-lowbar and legacy file names, `title::` override, journals by file name,
 `config.edn`, `NOW`/`LATER` kept as markers of their own (they are the owner's workflow, see
 §Usage above — not mapped to `TODO`/`DOING`), numbered blocks, dangling block refs repaired,
-duplicate ids repaired. The parser is generically liberal enough that it also happens to round-trip
-the DB mirror's export format losslessly, but the importer's directory/config handling, tests, and
-maintenance commitment are scoped to the file graph only.
+duplicate ids repaired. The DB path repairs the mirror's losses by entity identity (asset blocks, raw `[[uuid]]` refs,
+`* Prop::` list items, SCHEDULED/DEADLINE, favourites); see `docs/guide/importing-from-logseq.md`.
 
 ## 6. Sync (ADR 003)
 

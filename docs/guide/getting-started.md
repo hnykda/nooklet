@@ -67,13 +67,15 @@ graph is `graphs/default/graph.sqlite` inside it, with the markdown mirror next 
 and `journals/`. On first start the server prints a **root token**; save it. You need it to create
 graphs or list them from another device. `pnpm nooklet token root` prints it again.
 
-To bring a Logseq file graph:
+To bring a Logseq graph, either a classic file graph or a DB-version graph's folder (the one with
+`db.sqlite`):
 
 ```sh
 pnpm nooklet import ~/notes/my-logseq-graph
 ```
 
 Importing before the first `serve` works too. Running it again skips pages that already exist.
+[Importing from Logseq](importing-from-logseq.md) covers which folder to pick and what carries over.
 
 ## Recommended: a server on your tailnet
 

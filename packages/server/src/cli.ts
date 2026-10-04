@@ -3,7 +3,8 @@
  * `nooklet` CLI: the one entry point that wires the pieces of this package together.
  *
  *   nooklet serve   [--data <dir>] [--port <n>]     run the HTTP API + MCP endpoint
- *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq file-graph import (ADR 012)
+ *   nooklet import  <logseq-graph-dir> [--data <dir>]  one-shot Logseq import: a file graph's
+ *                                                     folder, or a DB-version graph's root
  *   nooklet export  [--data <dir>]                  write the markdown mirror (ADR 002)
  *   nooklet mcp --stdio [--token <t>] [--data <dir>] MCP over stdio, for Claude Desktop (ADR 008)
  *   nooklet pair    --link <public url> [--scope read|write] [--no-sync] [--minutes <n>]
@@ -92,7 +93,7 @@ import {
   openGraphForCommand,
 } from "./graphs/registry.js";
 import { guardUpgradeSockets } from "./http/upgrade-guard.js";
-import { importLogseqGraph } from "./importer/logseq.js";
+import { detectLogseqGraph, importLogseqGraph } from "./importer/logseq.js";
 import { startStdioBridge } from "./mcp/stdio.js";
 import { exportAll } from "./mirror/export.js";
 import { startLiveMirror } from "./mirror/live.js";
@@ -231,6 +232,8 @@ const USAGE = `nooklet — a local-first outliner server
                                          Default: on for a loopback bind, off with a non-loopback
                                          --host (--loopback-token turns it back on)
   nooklet import <logseq-graph-dir> [--data <dir>]
+                                         a file graph's folder (pages/, journals/), or a
+                                         DB-version graph's root (db.sqlite + mirror/markdown/)
   nooklet export [--data <dir>]
   nooklet mcp --stdio [--token <token>] [--data <dir>]
   nooklet graph create <id> [--label <label>] [--data <dir>]
@@ -377,6 +380,12 @@ async function main(): Promise<void> {
     case "import": {
       const graphDir = args._[1];
       if (!graphDir) die("import needs a Logseq graph directory");
+      const layout = detectLogseqGraph(resolve(graphDir));
+      process.stderr.write(
+        layout.kind === "db"
+          ? `nooklet: a Logseq DB-version graph: pages from ${layout.markdownDir}, images, favourites and dates from ${layout.sqliteFile} (read from a copy)\n`
+          : `nooklet: a Logseq file graph at ${layout.root}\n`,
+      );
       const { ctx, config } = open(args, { migrate: true });
       const stats = await importLogseqGraph(ctx, resolve(graphDir), { dataDir: config.dataDir });
       process.stdout.write(`${JSON.stringify(stats, null, 2)}\n`);
