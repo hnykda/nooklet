@@ -1,6 +1,7 @@
 # Progress: desktop B-786 (delete a This-Mac graph) and B-787 (list a server's graphs)
 
-Branch: this worktree's branch, based on `main` at `81d8a618`. Not merged, not pushed.
+Branch: this worktree's branch, based on `main` at `ab5de34e` (main has since moved to `81d8a618`,
+a BUGS.md-only reshuffle; the merge may need a hand in BUGS.md). Not merged, not pushed.
 Background: ADR 032 (amended 2026-10-05 for these two), `docs/progress/desktop-graphs.md`, B-712
 (removal dialog), B-713 (retire).
 
@@ -111,4 +112,4 @@ B-787:
 
 ## How to resume
 
-Read this file, then `git log 81d8a618..HEAD`, then continue with the first unchecked item.
+Read this file, then `git log ab5de34e..HEAD`, then continue with the first unchecked item.
