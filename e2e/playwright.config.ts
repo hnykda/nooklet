@@ -65,11 +65,13 @@ export default defineConfig({
     // And the image viewer (B-736): the click that opens it, and a download, in the Mac app's engine.
     // And the zoom root as the fixed top of a zoomed view (B-788): found on the phone.
     // And the image resize handle and ⋯ menu (B-789): a drag and a download in that engine too.
+    // And resized pictures and the service worker keeping them (B-738): the Mac app's engine is
+    // where repeat loads were slow.
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
       testMatch:
-        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link|row-paint-after-enter|phone-ui|phone-images|image-layout|graph-remove|phone-input|phone-fields|image-viewer|zoom-root|image-resize)\.spec\.ts/,
+        /(storage|webkit-refresh-focus|focus-log|edited-row-move-caret|ref-label-flash|caret-after-link|row-paint-after-enter|phone-ui|phone-images|image-layout|graph-remove|phone-input|phone-fields|image-viewer|zoom-root|image-resize|image-variants)\.spec\.ts/,
     },
   ],
 });
