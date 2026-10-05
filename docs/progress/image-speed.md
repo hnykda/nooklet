@@ -1,6 +1,6 @@
 # image-speed — B-738: images load slowly, even the second time (2026-10-05)
 
-Branch: the agent's own worktree branch off `81d8a618`. Not merged, not pushed. e2e port 6540.
+Branch: the agent's own worktree branch off `ab5de34e`. Not merged, not pushed. e2e port 6540.
 New bug numbers from B-900 (used: B-900, an e2e flake).
 
 ## Status
@@ -109,5 +109,5 @@ a 3000×2000 PNG to 960 px in 315 ms, then 4 ms from disk; in the container imag
 
 ## How to resume
 
-Read this file and ADR 035, then `git log --oneline 81d8a618..`. The probe needs
+Read this file and ADR 035, then `git log --oneline ab5de34e..`. The probe needs
 `pnpm --filter @nooklet/web build` first; `ENGINES=wkwebview` runs only the WKWebView half.
