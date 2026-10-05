@@ -16,7 +16,8 @@ Background: ADR 032 (amended 2026-10-05 for these two), `docs/progress/desktop-g
       form's "Show graphs on this server (root token)"; `deleteMac` / `listServerGraphs` flags.
 - [x] Tests: cargo, web unit, e2e (`desktop-graphs.spec.ts`, 12 passed on port 6530).
 - [x] Docs: BUGS (B-786, B-787 fixed; B-880 logged), ADR 032 amendment, getting-started, features.
-- [ ] Commit, then full verification (below).
+- [x] Committed `56e86713`; full verification below.
+- [ ] The owner's check in the real app (below). Nothing else in flight.
 
 ## Decisions
 
@@ -55,13 +56,58 @@ Background: ADR 032 (amended 2026-10-05 for these two), `docs/progress/desktop-g
 - `the_real_trash_takes_a_folder` (ignored test): passed; a probe folder left its temp dir for the
   Trash (the Trash itself is not listable from this sandbox).
 
-## Verification (exact)
+## Verification (exact, on `56e86713`)
 
-(filled in after the runs)
+- `cargo test` (src-tauri): **46 passed, 0 failed, 3 ignored** (the real keychain; the real Trash
+  and the real-server deletion, both run by hand above and passing).
+- `pnpm -r test`: core 523, plugin-api 17, desktop (node) 4 passed; server **1 failed / 951** in
+  the first run (`cli-graph-retire.test.ts` "refuses retire/replace while a serve holds the data
+  dir…", untouched code, under the full parallel run's load), then 4/4 alone and **952/952** on a
+  re-run of the server suite; web **1840 passed** (run on its own, since `pnpm -r` stopped at the
+  server failure).
+- `pnpm e2e` (full, port 6530): **886 passed, 1 failed, 6 skipped** (26.5 min). The failure is
+  `[webkit] focus-log.spec.ts:36`, already listed as pre-existing and flaky in BUGS.md (e2e-flaky
+  notes); `focus-log.spec.ts` re-run alone: 6/6 passed. Main had 884 passed; this adds 3 e2e tests.
+- New tests fail without the fix: with `DesktopGraphMenu.tsx` and `DesktopAddGraph.tsx` reverted
+  to main, the 4 positive B-786/B-787 component tests fail (the "not offered" ones pass either way,
+  as they should).
+- `pnpm -r typecheck` clean; `pnpm exec biome check .`: no diagnostics in any changed file (31
+  warnings elsewhere, pre-existing); `node tools/leak-check.mjs --tree` clean.
+- `pnpm desktop:build --bundles app`: built and bundled `nooklet.app` (not installed, not
+  launched); the binary carries `deleteMac:true`, the bundled web client `delete-mac-graph`.
+- NOT verified: anything in a real WKWebView window (the owner's check below).
 
-## Owner's check in the real app
+## Owner's check in the real app (not done by any agent: no GUI run)
 
-(filled in at the end)
+Build: `pnpm desktop:build --bundles app`, then run
+`apps/desktop/src-tauri/target/release/bundle/macos/nooklet.app`.
+
+B-786:
+1. **Add a graph → Create on this Mac**, name it "Delete Me". It opens. Open **This Mac** from the
+   graph menu.
+2. In the graph menu, **On this Mac**: "This Mac" has no trash icon; "Delete Me" has one. Click it.
+   The dialog says it is the only copy and that the folder goes to the Trash; **Move to Trash**
+   stays disabled until you type `delete`.
+3. Type `delete`, press **Move to Trash**. Expect: the row disappears, "“Delete Me” is in the
+   Trash." under the list, and in Finder's Trash a folder `delete-me-<date>T<time>Z` containing
+   `graph.sqlite`. `~/.nooklet/default/graphs/` no longer has `delete-me`; `graphs-retired/`
+   doesn't either.
+4. The open graph's row never has a trash icon, and once This Mac is the only graph on this Mac,
+   no row under On this Mac has one.
+5. Open a server graph: no trash icons on This Mac's rows there (deletion is offered only from a
+   graph on this Mac).
+6. Optional: drag the folder back from the Trash into `~/.nooklet/default/graphs/`, rename it
+   `delete-me`, reopen the graph menu (or relaunch): it is listed again and opens with its notes.
+
+B-787:
+7. **Add a graph → Connect to a server**: your server's address (bare, no `/g/…`) and its root
+   token (`nooklet token root` on the server's machine). Press **Show graphs on this server (root
+   token)**. Expect the server's graphs, the ones already added marked "already on this Mac".
+8. Pick one: the address fills in with `/g/<id>`, the token field empties, and a note asks for a
+   device token. Paste a device token for that graph and **Connect**: it opens.
+9. Keychain Access → `com.nooklet.desktop`: only the device token's item (account = the graph's
+   address); `desktop.json` has no `nkroot_`.
+10. A wrong root token: "That root token was rejected…" on the form.
 
 ## How to resume
 
