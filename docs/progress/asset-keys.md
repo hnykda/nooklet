@@ -9,7 +9,7 @@ else is a 404. Block content keeps `assets/<id>.<ext>`.
 
 ## Status
 
-Code, tests and docs done; full verification in flight (see "Verification").
+Done: code, tests, docs and full verification (see "Verification"). Not merged, not pushed.
 
 - [x] B-737/B-659 marked in progress.
 - [x] Settled how the client learns a key (evidence below): ADR 036.
@@ -23,7 +23,7 @@ Code, tests and docs done; full verification in flight (see "Verification").
 - [x] docs commit: ADR 036, BUGS (B-737/B-659 fixed, B-940), security guide + inventory,
       mcp-tools, sql-schema, OPERATIONS §8, self-hosting, PLAN M13, ADR 035 note; backup test
       covers `url_key`; probe `tools/probes/asset-keys/migrate-v8.ts`.
-- [ ] Full verification (typecheck, biome, unit, FULL e2e, verify, leak-check, gitleaks docker).
+- [x] Full verification (typecheck, biome, unit, FULL e2e, verify, leak-check, gitleaks docker).
 
 ## How to resume
 
@@ -78,4 +78,16 @@ served 301: { bare404: 301, wrong404: 301, keyed200: 301, sameBytes: 301, varian
 
 ## Verification
 
-(filled in as each runs)
+All on this branch's HEAD, 2026-10-05:
+
+- `pnpm -r typecheck`: clean.
+- `pnpm exec biome check --write .`: no errors (pre-existing warnings only, none in changed files).
+- `pnpm -r test`: core 523, plugin-api 17, server 981, web 1878 — all passed (3399).
+- `NOOKLET_E2E_PORT=6550 pnpm e2e` (full): 911 passed, 0 failed, 6 skipped, 27.2 min
+  (main was 910; +1 is the new `assets.spec.ts` B-737 test).
+- `pnpm nooklet verify --data <probe scratch>/data` (the migrated v8 copy): OK.
+- `node tools/leak-check.mjs --tree`: clean.
+- gitleaks v8.28.0 (Docker) over a clean `git archive` of HEAD: no leaks found.
+
+Not verified: the real phone (Capacitor) and the real Mac app (WKWebView) against a keyed server;
+only Playwright's Chromium/WebKit and phone emulation ran.
