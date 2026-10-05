@@ -14,55 +14,6 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
-### B-802 · In the iOS app the capture screen's Save button is under the keyboard
-**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
-**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1
-
-Open the capture screen in the iOS app: the text field takes focus, the keyboard comes up, and
-"Save to journal" (and the no-graph notice below the field) sit behind it. "Confirm with one tap"
-became "dismiss the keyboard, then tap". Cause: the app sets `KeyboardResize.None` and owns layout
-through the `--kb` variable, but only `AppShell` started the keyboard watcher that writes it, and
-`/capture` is deliberately mounted outside `AppShell`; `capture.css` never used `--kb` either.
-
-**Fix:** Save, Cancel and the no-graph notice sit above the field, where the keyboard never
-reaches. Also: `CaptureView` starts the keyboard watcher while mounted and the shell pads by
-`--kb`, and the textarea no longer insists on 40vh. The `--kb` part alone did NOT fix it on the
-Simulator: the field takes focus on mount, so `keyboardWillShow` fires before the watcher's
-(async) listener exists; moving the buttons is what made Save visible.
-**Test:** `apps/web/src/views/CaptureView.test.tsx` ("starts the keyboard watcher …") and the
-Simulator screenshots in `tools/probes/phone-capture/` (Save visible above the keyboard).
-
-### B-801 · Queued captures never drain in the iOS app: the plugin lookup never resolves
-**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
-**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1, before it shipped
-
-A capture queued by the "Add to nooklet" intent stayed in `Application Support/captures/` across
-launches and resumes; the console showed no `NookletCapture list` call at all, though the plugin
-answered when called directly. `capture/native-queue.ts` resolved a promise WITH the
-`registerPlugin()` proxy. Capacitor's plugin proxy answers every property with a native-method
-wrapper, `then` included, so promise resolution treated the proxy as a thenable, called its
-`then`, and waited forever. The unit tests used a fake queue and could not see it.
-
-**Fix:** resolve a plain `{ plugin }` box, never the proxy itself. **Test:**
-`apps/web/src/capture/native-queue.test.ts` (a proxy shaped like Capacitor's; hangs on the old
-code), and the Simulator run in `tools/probes/phone-capture/sim-run.sh`.
-
-### B-800 · A second deep-link subscriber never sees the link that launched the app
-**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
-**Found:** while building proposal 006 Phase 1, before it shipped
-
-`platform/capacitor.ts`'s `deepLinks.onOpen` ran its own `App.getLaunchUrl()` and
-`claimLaunchUrl()` (B-603's reload guard) for every subscriber. The guard is one hash in
-`sessionStorage`, so the first subscriber to claim a cold-start link marked it handled and every
-later subscriber was told it was already delivered. With one subscriber (`PairingLinkPrompt`) that
-was invisible; the capture work adds a second (`AppLinkHandler`), and a cold start from a Home
-Screen quick action or a `nooklet://capture` link would have reached only the pairing prompt, which
-ignores it, so nothing opened.
-
-**Fix:** one native `appUrlOpen` listener and one launch-URL claim per page, fanned out to every
-subscriber. **Test:** `apps/web/src/platform/deep-links-multicast.test.ts` (fails on the old code:
-2 of 3; passes now).
-
 ### B-42 · Typing into the `[[` popup keeps dropping editor focus
 **Status:** open · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
 [[new/page` → then context window open → but when I keep typing then the edit focus keeps
@@ -288,7 +239,7 @@ Fix direction (not done, outside this branch's scope): poll the read, and use `h
 2026-10-04: `page-icons.spec.ts` "…clearing the field removes the icon" now clears through the emoji picker's Remove button (same server-poll assertions).
 
 ### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
+**Status:** open, same bug as B-820 (tracked there) · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
 m10/editor-keys (`/template`: pre-existing; `/mermaid`: reachable since the B-344 fix, `246d61e`) ·
 **Test:** —
 
@@ -999,18 +950,6 @@ with `unzip`. Fixed by reading; no Windows machine.
 
 Only `pairing.redeem` is rate-limited, per peer address; behind such a proxy every client shares one. Acceptable (pairing is rare and owner-initiated).
 
-### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
-**Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
-
-The DB-version mirror writes some journal days twice: a one-line stub under `pages/` and the real
-day under `journals/`. The importer scans `pages/` first and kept the first file per normalized
-name, skipping the rest with a warning, so 3 real journal days (12 blocks) were dropped while the
-stub survived. Fix: `importer/logseq.ts#resolveFileEntries` merges same-name files — the journal
-file's identity wins, page properties keep the first value per key, and both files' blocks are kept
-(journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
-19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
-stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
-
 ### B-718 · self-hosting.md still says to restart the server after revoking a token
 **Status:** open · **Severity:** low (docs) · **Found:** 2026-10-04, ws-hardening · **Test:** none
 
@@ -1168,6 +1107,67 @@ same hole for an image's resize and closed it with `noteUndoTarget(editorHost)` 
 the same line in `onToggleMarker` (and probably `onToggleCollapse`) is the likely fix.
 
 ## Fixed
+
+### B-802 · In the iOS app the capture screen's Save button is under the keyboard
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1
+
+Open the capture screen in the iOS app: the text field takes focus, the keyboard comes up, and
+"Save to journal" (and the no-graph notice below the field) sit behind it. "Confirm with one tap"
+became "dismiss the keyboard, then tap". Cause: the app sets `KeyboardResize.None` and owns layout
+through the `--kb` variable, but only `AppShell` started the keyboard watcher that writes it, and
+`/capture` is deliberately mounted outside `AppShell`; `capture.css` never used `--kb` either.
+
+**Fix:** Save, Cancel and the no-graph notice sit above the field, where the keyboard never
+reaches. Also: `CaptureView` starts the keyboard watcher while mounted and the shell pads by
+`--kb`, and the textarea no longer insists on 40vh. The `--kb` part alone did NOT fix it on the
+Simulator: the field takes focus on mount, so `keyboardWillShow` fires before the watcher's
+(async) listener exists; moving the buttons is what made Save visible.
+**Test:** `apps/web/src/views/CaptureView.test.tsx` ("starts the keyboard watcher …") and the
+Simulator screenshots in `tools/probes/phone-capture/` (Save visible above the keyboard).
+
+### B-801 · Queued captures never drain in the iOS app: the plugin lookup never resolves
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** on the iOS Simulator (iPhone 17e) while verifying Phase 1, before it shipped
+
+A capture queued by the "Add to nooklet" intent stayed in `Application Support/captures/` across
+launches and resumes; the console showed no `NookletCapture list` call at all, though the plugin
+answered when called directly. `capture/native-queue.ts` resolved a promise WITH the
+`registerPlugin()` proxy. Capacitor's plugin proxy answers every property with a native-method
+wrapper, `then` included, so promise resolution treated the proxy as a thenable, called its
+`then`, and waited forever. The unit tests used a fake queue and could not see it.
+
+**Fix:** resolve a plain `{ plugin }` box, never the proxy itself. **Test:**
+`apps/web/src/capture/native-queue.test.ts` (a proxy shaped like Capacitor's; hangs on the old
+code), and the Simulator run in `tools/probes/phone-capture/sim-run.sh`.
+
+### B-800 · A second deep-link subscriber never sees the link that launched the app
+**Status:** fixed (phone-capture branch, 2026-10-04) · **Severity:** high for proposal 006 ·
+**Found:** while building proposal 006 Phase 1, before it shipped
+
+`platform/capacitor.ts`'s `deepLinks.onOpen` ran its own `App.getLaunchUrl()` and
+`claimLaunchUrl()` (B-603's reload guard) for every subscriber. The guard is one hash in
+`sessionStorage`, so the first subscriber to claim a cold-start link marked it handled and every
+later subscriber was told it was already delivered. With one subscriber (`PairingLinkPrompt`) that
+was invisible; the capture work adds a second (`AppLinkHandler`), and a cold start from a Home
+Screen quick action or a `nooklet://capture` link would have reached only the pairing prompt, which
+ignores it, so nothing opened.
+
+**Fix:** one native `appUrlOpen` listener and one launch-URL claim per page, fanned out to every
+subscriber. **Test:** `apps/web/src/platform/deep-links-multicast.test.ts` (fails on the old code:
+2 of 3; passes now).
+
+### B-711 · The Logseq importer silently dropped a journal day when a page file of the same name existed
+**Status:** fixed (2026-10-04, coordinator) · **Severity:** high (silent data loss on import) · **Found:** 2026-10-04, importing the owner's real Logseq DB-version graph (its markdown mirror) · **Test:** `packages/server/src/importer/logseq.test.ts` "a page and a journal file that name the same day" (red on the old importer)
+
+The DB-version mirror writes some journal days twice: a one-line stub under `pages/` and the real
+day under `journals/`. The importer scans `pages/` first and kept the first file per normalized
+name, skipping the rest with a warning, so 3 real journal days (12 blocks) were dropped while the
+stub survived. Fix: `importer/logseq.ts#resolveFileEntries` merges same-name files — the journal
+file's identity wins, page properties keep the first value per key, and both files' blocks are kept
+(journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
+19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
+stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
 
 ### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
 **Status:** fixed (image-sizing branch) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** `e2e/tests/image-resize.spec.ts` (Chromium + WebKit), `phone-images.spec.ts` "B-789: a chosen size…", `apps/web/src/editor/render/image-box.test.tsx`, `packages/core/src/image-meta.test.ts`, corpus case 51, `logseq.test.ts` "B-789 / ADR 034", `logseq-db-import.test.ts`, Rust `b789_reveal_asset_is_read_strictly_and_finds_only_that_graphs_file`
