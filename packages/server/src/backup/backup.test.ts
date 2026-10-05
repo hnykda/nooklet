@@ -126,7 +126,7 @@ describe("createBackup / restoreBackup", () => {
       actor: "test",
     });
     const before = dumpAll(ctx.driver);
-    expect((before.assets[0] as { url_key: string }).url_key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect((before.assets?.[0] as { url_key: string }).url_key).toMatch(/^[A-Za-z0-9_-]{22}$/);
 
     const backup = await createBackup(ctx.driver, { dataDir });
     expect(existsSync(backup.path)).toBe(true);
