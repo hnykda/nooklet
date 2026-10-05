@@ -139,7 +139,9 @@ cursor with fresh ids, and expands tokens such as `<% today %>`.
   directory `~/.nooklet/default` (or `$NOOKLET_DATA`), and keeps one list of graphs: those on this
   Mac and those on servers (device tokens in the macOS Keychain). The graph menu (or menu bar →
   Graphs…) switches between them without a restart; **Add a graph** creates one on this Mac or
-  connects to one on a server, checking the token before it is saved.
+  connects to one on a server, checking the token before it is saved, and can list a server's
+  graphs with its root token. A graph on this Mac can be deleted (typed confirmation); its folder
+  goes to the macOS Trash.
 - **iOS app.** A Capacitor shell around the same client. It can run "Just this device" with no
   server, or sync with one. You build and sign it yourself in Xcode today. **Partial:** tested on
   the iOS Simulator and one physical iPhone; phone layout issues are being fixed.

@@ -52,6 +52,7 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 mod connect;
 mod graph_list;
+mod mac_delete;
 mod token_store;
 
 use graph_list::{list_local_graphs, slug_for_label, DesktopConfig, GraphKey, PageGraph};
@@ -396,11 +397,19 @@ fn write_config(app: &tauri::AppHandle, config: &DesktopConfig) -> Result<(), St
 /// Makes a graph on This Mac with the bundled server's own CLI (`nooklet graph create`, the same
 /// thing `POST /graphs` does). The running server opens it lazily, on its first request.
 fn create_local_graph(resource_dir: &Path, data_dir: &Path, id: &str, label: &str) -> Result<(), String> {
-    let sidecar = resource_dir.join("sidecar");
     std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
+    run_graph_cli(resource_dir, data_dir, &["create", id, "--label", label], "graph create failed").map(drop)
+}
+
+/// `nooklet graph <args> --data <data_dir>` with the bundled server's own CLI. Its stdout when it
+/// worked, else the last line it wrote to stderr (the CLI's own reason).
+fn run_graph_cli(resource_dir: &Path, data_dir: &Path, args: &[&str], fallback: &str) -> Result<String, String> {
+    let sidecar = resource_dir.join("sidecar");
     let output = Command::new(sidecar.join(format!("node{EXE}")))
         .arg(sidecar.join("server.mjs"))
-        .args(["graph", "create", id, "--label", label, "--data"])
+        .arg("graph")
+        .args(args)
+        .arg("--data")
         .arg(data_dir)
         .env("NOOKLET_SQLITE_VEC_PATH", sidecar.join(format!("vec0.{VEC_EXT}")))
         .env("ESBUILD_BINARY_PATH", sidecar.join(format!("esbuild{EXE}")))
@@ -409,11 +418,26 @@ fn create_local_graph(resource_dir: &Path, data_dir: &Path, id: &str, label: &st
         .output()
         .map_err(|e| format!("could not run the bundled server: {e}"))?;
     if output.status.success() {
-        Ok(())
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("graph create failed").to_string())
+        Err(stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or(fallback).to_string())
     }
+}
+
+/// B-786: retires a This-Mac graph when no server is running to do it (`mac_delete.rs`): the CLI's
+/// `graph retire`, which itself refuses while a server holds the data folder (`serve.pid`). Returns
+/// the retired folder's name, read from the CLI's own "nooklet graph unretire <name>" line.
+fn retire_with_cli(resource_dir: &Path, data_dir: &Path, id: &str) -> Result<String, String> {
+    let out = run_graph_cli(resource_dir, data_dir, &["retire", id], "graph retire failed")?;
+    retired_name_from_cli(&out)
+        .ok_or_else(|| "The graph was retired, but nooklet could not tell where to. Look in graphs-retired/ in nooklet's data folder.".into())
+}
+
+/// The CLI's words, as printed on 2026-10-05: `retired "x": moved to …/graphs-retired/x-<time>` and
+/// `Nothing was deleted. To bring it back: nooklet graph unretire x-<time> (add --as …)`.
+fn retired_name_from_cli(stdout: &str) -> Option<String> {
+    stdout.split_whitespace().skip_while(|w| *w != "unretire").nth(1).map(str::to_string)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -431,7 +455,10 @@ fn create_local_graph(resource_dir: &Path, data_dir: &Path, id: &str, label: &st
 /// embedded page cannot make requests. Any page the main frame shows can, which is the same
 /// exposure ADR 028 accepted: it can make an empty graph on This Mac, add a server it chooses
 /// (with a token it chooses), rename a graph, or remove a server graph from the list (that graph's
-/// data stays on its server; its unsynced changes stay in this Mac's copy until it is added again).
+/// data stays on its server; its unsynced changes stay in this Mac's copy until it is added again),
+/// or list a server's graphs with a root token it already has. Deleting a This-Mac graph (B-786) is
+/// narrower: only the bundled server's own page may ask (`delete_mac_graph`), never the open graph,
+/// `default` or the last one, and the folder goes to the Trash.
 #[derive(Debug, PartialEq)]
 enum ShellRequest {
     NewLocalGraph { req: String, label: String },
@@ -443,6 +470,13 @@ enum ShellRequest {
     /// the file is looked up in that graph's own `assets/` (`find_asset_file`), so the page names
     /// nothing on disk.
     RevealAsset { req: String, graph: String, asset: String },
+    /// B-786: delete a graph on This Mac (`mac_delete.rs`). Its own kind, not `remove` with a `mac:`
+    /// key, so a page and a shell from different versions can never turn "forget a server" into
+    /// "delete a folder". `graph` is the id of a `mac:` key; every other check is the shell's.
+    DeleteMacGraph { req: String, graph: String },
+    /// B-787: list the graphs on the server at `address`, with its root token. The token is used for
+    /// that one request (`connect::list_server_graphs`) and never stored.
+    ListServerGraphs { req: String, address: String, root_token: String },
 }
 
 #[derive(Debug, PartialEq)]
@@ -458,7 +492,9 @@ impl ShellRequest {
             | ShellRequest::ConnectServer { req, .. }
             | ShellRequest::Rename { req, .. }
             | ShellRequest::Remove { req, .. }
-            | ShellRequest::RevealAsset { req, .. } => req,
+            | ShellRequest::RevealAsset { req, .. }
+            | ShellRequest::DeleteMacGraph { req, .. }
+            | ShellRequest::ListServerGraphs { req, .. } => req,
         }
     }
 }
@@ -507,6 +543,17 @@ fn parse_shell_request(url: &tauri::Url, key: &str) -> Option<ShellRequest> {
             };
             let asset = param("asset").filter(|a| is_asset_id(a))?;
             Some(ShellRequest::RevealAsset { req, graph, asset })
+        }
+        "/delete-mac-graph" => {
+            let GraphKey::Mac(graph) = GraphKey::parse(&param("graph")?)? else {
+                return None;
+            };
+            Some(ShellRequest::DeleteMacGraph { req, graph })
+        }
+        "/list-server-graphs" => {
+            let address = param("address").filter(|a| a.len() <= MAX_URL_CHARS)?;
+            let root_token = param("token").filter(|t| connect::token_is_plausible(t))?;
+            Some(ShellRequest::ListServerGraphs { req, address, root_token })
         }
         _ => None,
     }
@@ -644,7 +691,10 @@ struct ScopedToken<'a> {
 ///
 /// `graphs` is the menu's list (`PageGraph`), `connect` the launcher's target, `key` the request
 /// key (`ShellRequest`), `downloads: true` that `<a download>` is saved (B-736), `reveal: true` that
-/// this shell answers `reveal-asset` (B-789: an older one never would).
+/// this shell answers `reveal-asset` (B-789: an older one never would), and `deleteMac` /
+/// `listServerGraphs` that it answers `delete-mac-graph` (B-786) and `list-server-graphs` (B-787). A
+/// server graph's page comes from that server and may be newer than this shell; without the flag it
+/// would send a request nothing answers.
 fn shell_script(port: u16, key: &str, graphs: &[PageGraph], connect: Option<&ConnectTarget>, token: Option<&ScopedToken>) -> String {
     let scoped = token.and_then(|t| {
         let url = tauri::Url::parse(t.address).ok()?;
@@ -656,7 +706,7 @@ fn shell_script(port: u16, key: &str, graphs: &[PageGraph], connect: Option<&Con
     });
     let json = |v: serde_json::Value| serde_json::to_string(&v).unwrap_or_else(|_| "null".into());
     format!(
-        "(function(){{var t={scoped};var here=t!==null&&location.origin===t.origin&&(location.pathname===t.path||location.pathname.indexOf(t.path+\"/\")===0);Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{os},port:{port},downloads:true,reveal:true,key:{key},graphs:Object.freeze({graphs}),connect:{connect},graphToken:here?t.token:null}})}});}})();",
+        "(function(){{var t={scoped};var here=t!==null&&location.origin===t.origin&&(location.pathname===t.path||location.pathname.indexOf(t.path+\"/\")===0);Object.defineProperty(window,\"__NOOKLET_DESKTOP__\",{{value:Object.freeze({{platform:{os},port:{port},downloads:true,reveal:true,deleteMac:true,listServerGraphs:true,key:{key},graphs:Object.freeze({graphs}),connect:{connect},graphToken:here?t.token:null}})}});}})();",
         scoped = json(scoped.unwrap_or(serde_json::Value::Null)),
         os = json(serde_json::Value::from(std::env::consts::OS)),
         key = json(serde_json::Value::from(key)),
@@ -911,6 +961,24 @@ fn handle_shell_request(app: &tauri::AppHandle, request: ShellRequest) {
             reply(app, &req, result, None);
             return;
         }
+        ShellRequest::ListServerGraphs { address, root_token, .. } => {
+            // The root token lives only in this stack frame: not in desktop.json, not in the
+            // keychain, not in a log line (no error below quotes it).
+            let listed = connect::list_server_graphs(&*shell.http, &address, &root_token);
+            drop(root_token);
+            reply_listing(app, &req, listed);
+            return;
+        }
+        ShellRequest::DeleteMacGraph { graph, .. } => {
+            let result = delete_mac_graph(app, &graph);
+            if let Err(err) = &result {
+                eprintln!("nooklet: {err}");
+            }
+            let config = read_config(app);
+            let rows = config.page_graphs(&list_local_graphs(&shell.data_dir), port());
+            reply(app, &req, result, Some(rows));
+            return;
+        }
         ShellRequest::Remove { graph, .. } => {
             let _guard = shell.lock.lock().unwrap();
             let mut config = read_config(app);
@@ -950,6 +1018,58 @@ fn connect_server(
     let label = connect::verify_token(http, &address, &token, named_no_graph)?;
     tokens.set(&address, &token)?;
     Ok((address, label))
+}
+
+/// B-786: deletes This-Mac graph `id` (`mac_delete.rs`): checked, retired by whichever of the
+/// running server or the CLI holds the data folder, then moved to the Trash; its display name is
+/// dropped from `desktop.json`.
+///
+/// Only a page of the bundled server itself may ask (the window is on `http://127.0.0.1:<port>`):
+/// that is the client this app ships. A server graph's page is whatever that server serves, and the
+/// typed "delete" confirmation is the page's; a page that skipped it could otherwise put a This-Mac
+/// graph in the Trash. The page offers deletion only there (`DesktopGraphMenu.tsx`).
+fn delete_mac_graph(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
+    let shell = app.state::<Shell>();
+    let _guard = shell.lock.lock().unwrap();
+    let mut config = read_config(app);
+    let here = current_window(app).and_then(|w| w.url().ok());
+    if here.as_ref().map(|u| u.origin().ascii_serialization()) != Some(format!("http://127.0.0.1:{}", port())) {
+        return Err("Open a graph on this Mac to delete one of its graphs.".into());
+    }
+    let showing = here.and_then(|u| config.graph_of_url(&u, port()));
+    let local = list_local_graphs(&shell.data_dir);
+    let retire = |id: &str| {
+        if nooklet_is_listening() {
+            mac_delete::retire_on_server(&*shell.http, port(), &shell.data_dir, id)
+        } else {
+            retire_with_cli(&shell.resource_dir, &shell.data_dir, id)
+        }
+    };
+    let result = mac_delete::delete_mac_graph(&shell.data_dir, id, showing.as_ref(), &local, retire, mac_delete::move_to_trash);
+    // Once retired the graph is out of `graphs/` whether or not the Trash took it: forget its name.
+    if !shell.data_dir.join("graphs").join(id).exists() {
+        config.mac_labels.remove(id);
+        if config.open == Some(graph_list::OpenGraph::Mac { id: id.to_string() }) {
+            config.open = None;
+        }
+        if let Err(err) = write_config(app, &config) {
+            eprintln!("nooklet: {err}");
+        }
+        shell.list_version.fetch_add(1, Ordering::SeqCst);
+    }
+    result
+}
+
+/// B-787: answers `list-server-graphs` with the graphs the server hosts.
+fn reply_listing(app: &tauri::AppHandle, req: &str, listed: Result<Vec<connect::ListedGraph>, String>) {
+    if let Some(window) = current_window(app) {
+        let (ok, error, graphs) = match listed {
+            Ok(graphs) => (true, None, Some(graphs)),
+            Err(err) => (false, Some(err), None),
+        };
+        let detail = serde_json::json!({ "req": req, "ok": ok, "error": error, "serverGraphs": graphs });
+        let _ = window.eval(format!("window.dispatchEvent(new CustomEvent(\"nooklet:desktop-reply\",{{detail:{detail}}}))"));
+    }
 }
 
 /// Takes a server graph off the list and forgets its token. Not the graph on screen (the menu
@@ -1484,6 +1604,80 @@ mod tests {
     }
 
     #[test]
+    fn b786_b787_the_new_requests_are_read_strictly() {
+        assert_eq!(
+            request(&format!("/delete-mac-graph?key={KEY}&req=a&graph=mac%3Agarden")),
+            Some(ShellRequest::DeleteMacGraph { req: "a".into(), graph: "garden".into() })
+        );
+        let root = format!("nkroot_{}", "ab".repeat(24));
+        assert_eq!(
+            request(&format!("/list-server-graphs?key={KEY}&req=a&address=https%3A%2F%2Fh.example&token={root}")),
+            Some(ShellRequest::ListServerGraphs { req: "a".into(), address: "https://h.example".into(), root_token: root.clone() })
+        );
+        for bad in [
+            // Deleting is for This Mac's graphs only, by a valid id; `remove` never deletes.
+            format!("/delete-mac-graph?key={KEY}&req=a&graph=server%3As1"),
+            format!("/delete-mac-graph?key={KEY}&req=a&graph=mac%3A..%2Fdefault"),
+            format!("/delete-mac-graph?key={KEY}&req=a&graph=mac%3A"),
+            format!("/delete-mac-graph?key={KEY}&req=a&graph=garden"),
+            format!("/delete-mac-graph?key={KEY}&req=a"),
+            format!("/delete-mac-graph?req=a&graph=mac%3Agarden"),
+            format!("/list-server-graphs?key={KEY}&req=a&address=https%3A%2F%2Fh.example"),
+            format!("/list-server-graphs?key={KEY}&req=a&address=https%3A%2F%2Fh.example&token=bad%0Atoken"),
+            format!("/list-server-graphs?key={KEY}&req=a&token={root}"),
+        ] {
+            assert_eq!(request(&bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn b786_the_clis_retired_name_is_read_from_its_words() {
+        let out = "retired \"garden\": moved to /data/graphs-retired/garden-20261005T084756Z\nNothing was deleted. To bring it back: nooklet graph unretire garden-20261005T084756Z (add --as <id> to restore it under another id).\n";
+        assert_eq!(retired_name_from_cli(out).as_deref(), Some("garden-20261005T084756Z"));
+        assert_eq!(retired_name_from_cli("something else"), None);
+    }
+
+    /// B-787: listing with a root token stores it nowhere. The listing is given the store, the HTTP
+    /// double and a fresh config folder the way the shell has them, and afterwards neither the
+    /// keychain stand-in nor any file holds the token.
+    #[test]
+    fn b787_the_root_token_is_never_written_to_disk_or_the_keychain() {
+        struct Lists(Mutex<Vec<Option<String>>>);
+        impl connect::Http for Lists {
+            fn post_json(&self, _: &str, _: Option<&str>, _: &str) -> Result<(u16, String), String> {
+                unreachable!("listing never POSTs")
+            }
+            fn call(&self, _: &str, _: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+                self.0.lock().unwrap().push(bearer.map(str::to_string));
+                Ok((200, r#"{"graphs":[{"id":"work","label":"Work"}]}"#.into()))
+            }
+        }
+        let root = format!("nkroot_{}", "cd".repeat(24));
+        let tokens = MemoryStore::default();
+        let http = Lists(Mutex::default());
+        let request = request(&format!(
+            "/list-server-graphs?key={KEY}&req=a&address=https%3A%2F%2Fnotes.example.com&token={root}"
+        ))
+        .unwrap();
+        let ShellRequest::ListServerGraphs { address, root_token, .. } = request else { panic!() };
+        // `handle_shell_request`'s branch: the listing, then the reply. No TokenStore, no config
+        // write is reachable from it (`connect::list_server_graphs` takes neither).
+        let listed = connect::list_server_graphs(&http, &address, &root_token).unwrap();
+        assert_eq!(listed[0].address, "https://notes.example.com/g/work");
+        assert_eq!(*http.0.lock().unwrap(), vec![Some(root.clone())], "sent once, as the bearer");
+        assert_eq!(tokens.get("https://notes.example.com/g/work"), Ok(None));
+        assert_eq!(tokens.get("https://notes.example.com/g/default"), Ok(None));
+        // The reply carries the graphs, never the token.
+        let detail = serde_json::json!({ "serverGraphs": listed }).to_string();
+        assert!(!detail.contains(&root), "{detail}");
+        // Connecting afterwards with the root token itself is refused before the keychain is
+        // touched: the server rejects it as a device token, and nothing is stored on a refusal.
+        let server = FakeServer { accepts: Some("nk_the_device_token"), ..Default::default() };
+        assert!(connect_server(&tokens, &server, "https://notes.example.com/g/work", Credential::Token(root.clone())).is_err());
+        assert_eq!(tokens.get("https://notes.example.com/g/work"), Ok(None));
+    }
+
+    #[test]
     fn b789_reveal_asset_is_read_strictly_and_finds_only_that_graphs_file() {
         assert_eq!(
             request(&format!("/reveal-asset?key={KEY}&req=a&graph=mac%3Adefault&asset=1k7f3q9xz2havc")),
@@ -1675,6 +1869,7 @@ mod tests {
         assert!(script.contains(&format!("key:\"{KEY}\"")), "{script}");
         assert!(script.contains("downloads:true"), "{script}");
         assert!(script.contains("reveal:true"), "{script}");
+        assert!(script.contains("deleteMac:true,listServerGraphs:true"), "{script}");
         assert!(script.contains(r#""connect":"#) || script.contains(r#"connect:{"url":"http://127.0.0.1:6100/g/default","place":"mac","label":"This Mac"}"#), "{script}");
         assert!(script.contains(r#"\"Mac\""#), "labels are JSON-escaped: {script}");
         let harness = format!(

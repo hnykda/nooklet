@@ -67,9 +67,10 @@ async function injectShell(
   port: number,
   graphs: Graph[],
   graphToken: string | null = null,
+  flags: { deleteMac?: boolean; listServerGraphs?: boolean } = {},
 ): Promise<void> {
   await page.addInitScript(
-    ([p, g, t]) => {
+    ([p, g, t, f]) => {
       Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
         value: Object.freeze({
           platform: "macos",
@@ -78,10 +79,11 @@ async function injectShell(
           key: "window-key",
           graphs: g,
           graphToken: t,
+          ...f,
         }),
       });
     },
-    [port, graphs, graphToken] as const,
+    [port, graphs, graphToken, flags] as const,
   );
 }
 
@@ -344,6 +346,119 @@ test.describe("desktop app", () => {
     const list = page.getByRole("list", { name: "On this Mac" });
     await expect(list.locator("[aria-current='true']")).toContainText(label);
     await expect(page.getByRole("list", { name: /On servers/ })).toHaveCount(0);
+  });
+
+  test("B-786: a graph on This Mac is deleted only with 'delete' typed, and only from the bundled server's own page", async ({
+    page,
+    baseURL,
+  }) => {
+    const base = baseURL as string;
+    const port = Number(new URL(base).port);
+    const id = `trash-${Date.now().toString(36)}`;
+    await createGraph(base, id, "Garden Shed");
+    const graphs = [mac(port, "default", "This Mac"), mac(port, id, "Garden Shed")];
+    await injectShell(page, port, graphs, null, { deleteMac: true });
+    const requests = await catchShellRequests(page);
+    await page.goto("/g/default/journals");
+    await openGraphMenu(page);
+    const menu = page.getByRole("dialog", { name: "Graphs" });
+    // Not This Mac's main graph, which is also the open one.
+    await expect(menu.getByRole("button", { name: "Delete This Mac" })).toHaveCount(0);
+    await menu.getByRole("button", { name: "Delete Garden Shed" }).click();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toContainText("only copy");
+    await expect(dialog).toContainText("moved to the Trash, not erased");
+    const go = dialog.getByRole("button", { name: "Move to Trash" });
+    await expect(go).toBeDisabled();
+    await dialog.getByRole("textbox").fill("delete");
+    await go.click();
+    await expect.poll(() => requests.map((u) => u.pathname)).toEqual(["/delete-mac-graph"]);
+    const request = requests[0] as URL;
+    expect(request.searchParams.get("graph")).toBe(`mac:${id}`);
+    expect(request.searchParams.get("key")).toBe("window-key");
+    await reply(page, request, { ok: true, graphs: [graphs[0]] });
+    await expect(menu.getByRole("status")).toHaveText("“Garden Shed” is in the Trash.");
+    await expect(
+      menu.getByRole("list", { name: "On this Mac" }).locator(".graph-switcher-label"),
+    ).toHaveText(["This Mac"]);
+  });
+
+  test("B-786: a server graph's page offers no deletion of This Mac's graphs", async ({
+    page,
+    baseURL,
+  }) => {
+    const base = baseURL as string;
+    const id = `srvdel-${Date.now().toString(36)}`;
+    const token = await createGraph(base, id, "Remote Graph");
+    // The shell's own server is elsewhere (6100): to this page, this server is a remote one.
+    await injectShell(
+      page,
+      6100,
+      [
+        mac(6100, "default", "This Mac"),
+        mac(6100, "garden", "Garden"),
+        server("s1", "Remote Graph", `${base}/g/${id}`),
+      ],
+      token,
+      { deleteMac: true },
+    );
+    await asRemoteServer(page);
+    await page.goto(`/g/${id}/journals`);
+    await expect(page.locator(".app-sync-indicator")).toHaveAttribute("data-state", "synced", {
+      timeout: 20_000,
+    });
+    await openGraphMenu(page);
+    const menu = page.getByRole("dialog", { name: "Graphs" });
+    await expect(menu.getByRole("button", { name: /^Garden/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /^Delete / })).toHaveCount(0);
+  });
+
+  test("B-787: Show graphs on this server (root token) asks the shell, and picking one asks for its device token", async ({
+    page,
+    baseURL,
+  }) => {
+    const base = baseURL as string;
+    const port = Number(new URL(base).port);
+    await injectShell(page, port, [mac(port, "default", "This Mac")], null, {
+      listServerGraphs: true,
+    });
+    const requests = await catchShellRequests(page);
+    const pageAskedGraphs: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/graphs") pageAskedGraphs.push(r.url());
+    });
+    const elsewhere = "https://notes.example.com";
+    await page.goto("/g/default/journals");
+    await openGraphMenu(page);
+    await page.getByRole("button", { name: "Add a graph" }).click();
+    const connect = page.getByRole("region", { name: "Connect to a server" });
+    await connect.getByLabel("Server address").fill(elsewhere);
+    const root = `nkroot_${"ef".repeat(24)}`;
+    await connect.getByLabel("Device token or pairing link").fill(root);
+    await connect.getByRole("button", { name: "Show graphs on this server (root token)" }).click();
+    await expect.poll(() => requests.map((u) => u.pathname)).toEqual(["/list-server-graphs"]);
+    const request = requests[0] as URL;
+    expect(request.searchParams.get("address")).toBe(elsewhere);
+    expect(request.searchParams.get("token")).toBe(root);
+    await reply(page, request, {
+      ok: true,
+      serverGraphs: [
+        { id: "default", label: "Home", address: `${elsewhere}/g/default` },
+        { id: "work", label: "Work", address: `${elsewhere}/g/work` },
+      ],
+    });
+    const list = connect.getByRole("list", { name: "Graphs on this server" });
+    await expect(list.locator(".graph-switcher-label")).toHaveText(["Home", "Work"]);
+    await list.getByRole("button", { name: /^Work/ }).click();
+    await expect(connect.getByLabel("Server address")).toHaveValue(`${elsewhere}/g/work`);
+    await expect(connect.getByLabel("Device token or pairing link")).toHaveValue("");
+    await expect(connect.getByRole("status")).toContainText("nooklet token create --graph work");
+    // The page never made the listing itself (cross-origin, B-704), and kept no root token.
+    expect(pageAskedGraphs).toEqual([]);
+    const stored = await page.evaluate(() =>
+      JSON.stringify({ ...localStorage, ...sessionStorage }),
+    );
+    expect(stored).not.toContain(root);
   });
 
   test("B-783: the mismatch screen offers only Re-sync from the server and Open another graph", async ({

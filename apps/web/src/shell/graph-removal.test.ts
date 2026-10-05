@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { removalDialog } from "./graph-removal.js";
+import { macDeletionDialog, removalDialog } from "./graph-removal.js";
+
+describe("B-786: deleting a graph on This Mac (desktop)", () => {
+  it("the only copy, typed 'delete', and the Trash named as where it goes and how it comes back", () => {
+    const d = macDeletionDialog({ name: "Garden", id: "garden" });
+    expect(d.typeToConfirm).toBe("delete");
+    expect(d.destructive).toBe(true);
+    expect(d.warning).toContain("only copy of “Garden”");
+    const text = d.message.join(" ");
+    expect(text).toContain("moved to the Trash, not erased");
+    expect(text).toContain("graphs/garden");
+    expect(text).toContain("rename it garden");
+    expect(d.confirmLabel).toBe("Move to Trash");
+  });
+});
 
 describe("B-712: removing a graph from this device", () => {
   it("a local-only graph: the only copy, permanent, typed 'delete', export said plainly", () => {

@@ -10,8 +10,12 @@
  *
  * - Picking a graph navigates the window to its address; the shell routes it (a This-Mac graph
  *   opens in this window, a server graph in a new one that carries its token). No restart (B-785).
- * - Rename and remove are shell requests; the shell answers with the list as it now is. Only a
- *   server graph can be removed (This Mac's are folders on disk), and never the one open.
+ * - Rename and remove are shell requests; the shell answers with the list as it now is. A server
+ *   graph is removed (forgotten; the server keeps it), never the one open.
+ * - A graph on This Mac is DELETED (B-786): its folder is the graph, so the B-712 dialog asks for
+ *   `delete` typed, and the shell retires it on its server and moves the folder to the Trash. Not
+ *   offered for the open graph, `default` (This Mac's main graph) or the last one, and only on the
+ *   bundled server's own page — the shell refuses all of those itself too (`main.rs`).
  * - "Add a graph" is `DesktopAddGraph`.
  * - The native menu's Graphs… opens this (`graph-menu-request.ts`).
  */
@@ -41,8 +45,14 @@ import {
   shellRequest,
 } from "../platform/desktop-shell.js";
 import { DesktopAddGraph } from "./DesktopAddGraph.js";
-import { groupDesktopGraphs, hostOf, serverGraphPath } from "./desktop-graphs.js";
+import {
+  canDeleteMacGraph,
+  groupDesktopGraphs,
+  hostOf,
+  serverGraphPath,
+} from "./desktop-graphs.js";
 import { graphMenuRequests, takeGraphMenuRequest } from "./graph-menu-request.js";
+import { macDeletionDialog } from "./graph-removal.js";
 import { placeUnder } from "./place-under.js";
 import "./graph-switcher.css";
 import "./desktop-graphs.css";
@@ -54,6 +64,7 @@ export function DesktopGraphMenu(props: { shell: DesktopShell }): JSX.Element {
   const [renaming, setRenaming] = createSignal<string | undefined>();
   const [renameDraft, setRenameDraft] = createSignal("");
   const [error, setError] = createSignal<string | undefined>();
+  const [notice, setNotice] = createSignal<string | undefined>();
   const [placement, setPlacement] = createSignal<ReturnType<typeof placeUnder> | undefined>();
 
   const current = createMemo(() => currentDesktopGraph(graphs()));
@@ -76,6 +87,7 @@ export function DesktopGraphMenu(props: { shell: DesktopShell }): JSX.Element {
     setAdding(false);
     setRenaming(undefined);
     setError(undefined);
+    setNotice(undefined);
     place();
     setOpen(true);
   }
@@ -145,6 +157,24 @@ export function DesktopGraphMenu(props: { shell: DesktopShell }): JSX.Element {
     if (!reply.ok) setError(reply.error ?? "nooklet could not remove that graph.");
   }
 
+  async function deleteMac(graph: DesktopGraph): Promise<void> {
+    if (!(await confirmDialog(macDeletionDialog({ name: graph.label, id: graph.id })))) return;
+    setError(undefined);
+    setNotice(undefined);
+    const reply = await shellRequest(props.shell, { kind: "delete-mac-graph", graph: graph.key });
+    if (reply.graphs) setGraphs(reply.graphs);
+    if (reply.ok) setNotice(`“${graph.label}” is in the Trash.`);
+    else setError(reply.error ?? "nooklet could not delete that graph.");
+  }
+
+  const deletable = (graph: DesktopGraph): boolean =>
+    canDeleteMacGraph(graph, {
+      shellCanDelete: props.shell.deleteMac,
+      onBundledServer: onBundledServer(props.shell),
+      currentKey: current()?.key,
+      macCount: grouped().mac.length,
+    });
+
   const row = (graph: DesktopGraph, under: string): JSX.Element => {
     const isCurrent = (): boolean => graph.key === current()?.key;
     return (
@@ -201,6 +231,17 @@ export function DesktopGraphMenu(props: { shell: DesktopShell }): JSX.Element {
               aria-label={`Remove ${graph.label}`}
               title="Remove from this Mac"
               onClick={() => void remove(graph)}
+            >
+              <Trash2 size={13} />
+            </button>
+          </Show>
+          <Show when={deletable(graph)}>
+            <button
+              type="button"
+              class="graph-switcher-icon-action"
+              aria-label={`Delete ${graph.label}`}
+              title="Delete from this Mac (moves it to the Trash)"
+              onClick={() => void deleteMac(graph)}
             >
               <Trash2 size={13} />
             </button>
@@ -287,11 +328,17 @@ export function DesktopGraphMenu(props: { shell: DesktopShell }): JSX.Element {
                 {error()}
               </p>
             </Show>
+            <Show when={notice()}>
+              <p class="graph-switcher-hint" role="status">
+                {notice()}
+              </p>
+            </Show>
             <button
               type="button"
               class="graph-switcher-add"
               onClick={() => {
                 setError(undefined);
+                setNotice(undefined);
                 setAdding(true);
               }}
             >

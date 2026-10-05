@@ -9,7 +9,10 @@
 //!   web client's `connectToGraph` (`apps/web/src/data/connect-graph.ts`) uses, and the graph's own
 //!   label from its answer;
 //! - `POST <graph>/api/v1/pairing.redeem` with `{code, label}` and no token (ADR 029), to trade a
-//!   one-time pairing code for this Mac's own token first.
+//!   one-time pairing code for this Mac's own token first;
+//! - `GET <server>/graphs` with the server's ROOT token (B-787): the listing the web client's
+//!   `listServerGraphs` makes, so the person picks a graph rather than typing its `/g/<id>`. The
+//!   root token is used for that one request and never kept: nothing here takes a `TokenStore`.
 //!
 //! The error words match the web client's for the same cases, so the form reads the same whether
 //! the page or the shell checked.
@@ -22,6 +25,13 @@ pub trait Http {
     /// POST `body` (JSON) to `url`. `Ok((status, body))` for any HTTP answer, `Err(reason)` when
     /// there was none (refused, DNS, TLS, timeout).
     fn post_json(&self, url: &str, bearer: Option<&str>, body: &str) -> Result<(u16, String), String>;
+
+    /// A request without a body (`GET`, `DELETE`), with the same contract as `post_json`. A default
+    /// so the test doubles that only ever see POSTs need not spell it out.
+    fn call(&self, method: &str, url: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+        let _ = (url, bearer);
+        Err(format!("{method} is not supported here"))
+    }
 }
 
 pub struct Ureq {
@@ -42,18 +52,34 @@ impl Ureq {
     }
 }
 
+/// Status and body of an answer; for a redirect, its target instead of its body, which says nothing.
+fn read_answer(mut response: ureq::http::Response<ureq::Body>) -> (u16, String) {
+    let status = response.status().as_u16();
+    let location = response.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string);
+    let text = response.body_mut().with_config().limit(1024 * 1024).read_to_string().unwrap_or_default();
+    (status, location.filter(|_| (300..400).contains(&status)).unwrap_or(text))
+}
+
 impl Http for Ureq {
     fn post_json(&self, url: &str, bearer: Option<&str>, body: &str) -> Result<(u16, String), String> {
         let mut request = self.agent.post(url).header("content-type", "application/json").header("accept", "application/json");
         if let Some(token) = bearer {
             request = request.header("authorization", &format!("Bearer {token}"));
         }
-        let mut response = request.send(body).map_err(|e| e.to_string())?;
-        let status = response.status().as_u16();
-        let location = response.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string);
-        let text = response.body_mut().with_config().limit(1024 * 1024).read_to_string().unwrap_or_default();
-        // A redirect's body says nothing; its target is what the person needs to see.
-        Ok((status, location.filter(|_| (300..400).contains(&status)).unwrap_or(text)))
+        request.send(body).map(read_answer).map_err(|e| e.to_string())
+    }
+
+    fn call(&self, method: &str, url: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+        let request = match method {
+            "GET" => self.agent.get(url),
+            "DELETE" => self.agent.delete(url),
+            other => return Err(format!("{other} is not supported here")),
+        };
+        let mut request = request.header("accept", "application/json");
+        if let Some(token) = bearer {
+            request = request.header("authorization", &format!("Bearer {token}"));
+        }
+        request.call().map(read_answer).map_err(|e| e.to_string())
     }
 }
 
@@ -146,6 +172,71 @@ pub fn redeem_code(http: &dyn Http, address: &str, code: &str, device: &str) -> 
     }
 }
 
+/// One graph a server hosts, as the add form offers it (B-787).
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct ListedGraph {
+    pub id: String,
+    pub label: String,
+    /// The address to add it by: `<server>/g/<id>`.
+    pub address: String,
+}
+
+/// The server a graph address belongs to: the address without its trailing `/g/<id>` (a reverse
+/// proxy's own path, if any, is kept). `connect-graph.ts#serverRootOf`, the same rule.
+pub fn server_root(address: &str) -> String {
+    let trimmed = address.trim_end_matches('/');
+    match trimmed.rsplit_once("/g/") {
+        Some((root, id)) if crate::graph_list::is_valid_graph_id(id) => root.to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
+const NOT_A_LIST: &str = "The server's answer was not a list of graphs.";
+
+/// B-787: the graphs the server at `raw_address` hosts, listed with its root token
+/// (`GET <server>/graphs`, root-token gated, ADR 025). The token is sent once and dropped: this
+/// takes no `TokenStore`, writes nothing, and no error it returns quotes the token.
+///
+/// A root token cannot open a graph, and the server has no op that turns it into a device token
+/// for an EXISTING graph: `POST /graphs` mints one only for a graph it creates, and
+/// `pairing.create` needs that graph's admin token, not the root token. So the person picks a graph
+/// here and then gives that graph's device token or pairing link, as on the phone and in a browser.
+pub fn list_server_graphs(http: &dyn Http, raw_address: &str, root_token: &str) -> Result<Vec<ListedGraph>, String> {
+    let address = crate::graph_list::normalize_server_address(raw_address)?;
+    let root = server_root(&address);
+    let (status, body) = http
+        .call("GET", &format!("{root}/graphs"), Some(root_token))
+        .map_err(|e| format!("Couldn't reach {}: {e}", host_of(&address)))?;
+    match status {
+        200..=299 => {
+            let parsed: serde_json::Value = serde_json::from_str(&body).map_err(|_| NOT_A_LIST.to_string())?;
+            let list = parsed.get("graphs").and_then(|g| g.as_array()).ok_or(NOT_A_LIST)?;
+            Ok(list
+                .iter()
+                .filter_map(|g| {
+                    let id = g.get("id")?.as_str()?;
+                    if !crate::graph_list::is_valid_graph_id(id) {
+                        return None;
+                    }
+                    let label = g
+                        .get("label")
+                        .and_then(|l| l.as_str())
+                        .map(crate::graph_list::clean_label)
+                        .filter(|l| !l.is_empty())
+                        .unwrap_or_else(|| id.to_string());
+                    Some(ListedGraph { id: id.to_string(), label, address: format!("{root}/g/{id}") })
+                })
+                .collect())
+        }
+        401 | 403 => Err(
+            "That root token was rejected. Listing a server's graphs needs its root token (nkroot_…, shown by `nooklet token root` on the server's machine); a device token can only open the graph it was made for."
+                .into(),
+        ),
+        404 => Err("That server has no list of graphs. Check the address: it should be a nooklet server.".into()),
+        _ => Err(describe_status(status, &body)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +259,11 @@ mod tests {
     impl Http for Canned {
         fn post_json(&self, url: &str, bearer: Option<&str>, body: &str) -> Result<(u16, String), String> {
             self.asked.lock().unwrap().push((url.into(), bearer.map(str::to_string), body.into()));
+            self.answers.lock().unwrap().remove(0)
+        }
+
+        fn call(&self, method: &str, url: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+            self.asked.lock().unwrap().push((url.into(), bearer.map(str::to_string), method.into()));
             self.answers.lock().unwrap().remove(0)
         }
     }
@@ -293,5 +389,72 @@ mod tests {
         let address = format!("http://{}/g/work", free.local_addr().unwrap());
         drop(free);
         assert!(verify_token(&Ureq::new(), &address, "nk_abc12345", false).unwrap_err().starts_with("Couldn't reach 127.0.0.1:"));
+    }
+
+    // Assembled, so the source holds no token-shaped literal (tools/leak-check.mjs).
+    const ROOT: &str = concat!("nkroot_", "0123456789abcdef0123456789abcdef", "0123456789abcdef");
+
+    #[test]
+    fn b787_a_servers_graphs_are_listed_with_its_root_token() {
+        let http = Canned::new(vec![Ok((
+            200,
+            r#"{"graphs":[{"id":"default","label":"Home"},{"id":"work","label":""},{"id":"../x","label":"bad"},{"label":"no id"}]}"#.into(),
+        ))]);
+        let listed = list_server_graphs(&http, "https://notes.example.com/g/work/", ROOT).unwrap();
+        assert_eq!(
+            listed,
+            vec![
+                ListedGraph { id: "default".into(), label: "Home".into(), address: "https://notes.example.com/g/default".into() },
+                ListedGraph { id: "work".into(), label: "work".into(), address: "https://notes.example.com/g/work".into() },
+            ]
+        );
+        let asked = http.asked.lock().unwrap();
+        assert_eq!(asked[0], ("https://notes.example.com/graphs".into(), Some(ROOT.into()), "GET".into()));
+        drop(asked);
+
+        // A proxy path is kept; a bare address lists the same server.
+        assert_eq!(server_root("https://h.example/notes/g/work"), "https://h.example/notes");
+        assert_eq!(server_root("https://h.example/g/default"), "https://h.example");
+        let http = Canned::new(vec![Ok((200, r#"{"graphs":[]}"#.into()))]);
+        assert_eq!(list_server_graphs(&http, "https://notes.example.com", ROOT), Ok(vec![]));
+        assert_eq!(http.asked.lock().unwrap()[0].0, "https://notes.example.com/graphs");
+    }
+
+    #[test]
+    fn b787_listing_failures_are_worded_and_never_quote_the_root_token() {
+        for (answer, expected) in [
+            (Ok((401, String::new())), "root token was rejected"),
+            (Ok((403, String::new())), "root token was rejected"),
+            (Ok((404, String::new())), "no list of graphs"),
+            (Ok((200, "<html>".into())), "not a list of graphs"),
+            (Ok((502, String::new())), "Server returned 502"),
+            (Ok((301, "https://other.example/graphs".into())), "redirects to https://other.example/graphs"),
+            (Err("Connection refused".to_string()), "Couldn't reach notes.example.com: Connection refused"),
+        ] {
+            let http = Canned::new(vec![answer]);
+            let err = list_server_graphs(&http, "https://notes.example.com/g/work", ROOT).unwrap_err();
+            assert!(err.contains(expected), "{err} should contain {expected}");
+            assert!(!err.contains("nkroot_0123"), "{err}");
+        }
+        // A bad address is named before anything is sent.
+        let http = Canned::new(vec![]);
+        assert!(list_server_graphs(&http, "notes.example.com", ROOT).unwrap_err().contains("http://"));
+        assert!(http.asked.lock().unwrap().is_empty());
+    }
+
+    /// The real client's GET, against a real socket: the root token goes in the header, and only there.
+    #[test]
+    fn b787_a_real_socket_get() {
+        let (address, server) = one_shot_server(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 38\r\nconnection: close\r\n\r\n{\"graphs\":[{\"id\":\"work\",\"label\":\"W\"}]}",
+        );
+        let listed = list_server_graphs(&Ureq::new(), &address, ROOT).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].address.ends_with("/g/work"));
+        let head = server.join().unwrap();
+        let lower = head.to_ascii_lowercase();
+        assert!(lower.starts_with("get /graphs http/1.1"), "{head}");
+        assert_eq!(head.matches(ROOT).count(), 1, "once, in the Authorization header: {head}");
+        assert!(lower.contains(&format!("authorization: bearer {ROOT}")), "{head}");
     }
 }

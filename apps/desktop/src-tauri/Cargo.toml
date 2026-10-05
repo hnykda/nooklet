@@ -17,6 +17,8 @@ serde_json = "1"
 ureq = "3"
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 getrandom = "0.3"
+# B-786: a deleted This-Mac graph goes to the Trash (NSFileManager on macOS), not `rm -rf`.
+trash = { version = "5", default-features = false }
 
 [profile.release]
 codegen-units = 1

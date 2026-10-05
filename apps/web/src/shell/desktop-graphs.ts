@@ -122,3 +122,28 @@ export function readAddress(raw: string): { address: string } | { error: string 
   }
   return { address: parsed.url };
 }
+
+/**
+ * B-786: whether the menu offers "Delete" on a graph. Only This Mac's graphs (a server graph is
+ * removed, not deleted), never `default` (This Mac's main graph: the CLI, MCP and the launcher open
+ * it), never the open one, never the last one on this Mac, and only on the bundled server's own
+ * page with a shell that answers the request. The shell checks all of it again (`main.rs`).
+ */
+export function canDeleteMacGraph(
+  graph: DesktopGraph,
+  f: {
+    shellCanDelete: boolean;
+    onBundledServer: boolean;
+    currentKey: string | undefined;
+    macCount: number;
+  },
+): boolean {
+  return (
+    f.shellCanDelete &&
+    f.onBundledServer &&
+    graph.place === "mac" &&
+    graph.id !== "default" &&
+    graph.key !== f.currentKey &&
+    f.macCount > 1
+  );
+}

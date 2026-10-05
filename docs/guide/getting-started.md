@@ -265,8 +265,20 @@ to see them all and switch; switching never restarts the app.
     Settings → Devices → Add a device on another device. Press **Connect**. The app checks the
     token with the server, and if the server is unreachable or refuses it, says so on the same
     form. The token is kept in the macOS Keychain, not in a file.
+
+    Not sure of the graph's address? Put the server's address and its **root token**
+    (`nooklet token root` on the server's machine) in the form and press **Show graphs on this
+    server (root token)**. Pick a graph from the list: its address fills in and the root token is
+    cleared. It is used for that one listing and never saved. Then give that graph's own device
+    token or a pairing link, because a root token cannot open a graph.
 - Rename a graph or remove a server graph from the list with the icons on its row. Removing one
   forgets its address and token on this Mac; the server keeps the graph.
+- **Delete** a graph on this Mac with the trash icon on its row. Its folder is the only copy, so
+  you type `delete` to confirm. The app has its server let go of the graph, then moves the folder
+  to the macOS Trash as `<graph>-<date and time>`. To get it back, drag it from the Trash into
+  `~/.nooklet/default/graphs/` and rename it to the graph's id. The app doesn't offer this for the
+  open graph, for **This Mac** (the `default` graph, which the command line and the MCP endpoint
+  use), or for the last graph on this Mac. It is offered only while a graph on this Mac is open.
 - If an update from an older version finds a server graph whose token is not in the Keychain yet,
   opening it shows the same form with the address filled in. The first time macOS may ask whether
   nooklet may use its Keychain item; choose **Always Allow**.
