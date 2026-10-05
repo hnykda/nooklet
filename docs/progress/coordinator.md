@@ -28,6 +28,17 @@ the home server allows). Merged, not rebased; the releases agent's tag-build ste
 sensitivity, not worth another rewrite). Always `git fetch` before pushing: main has more than one
 writer now.
 
+## In flight — 2026-10-05
+
+| Slug | Task | Ports / bug numbers |
+|---|---|---|
+| editor-night-bugs | B-841 click-edit undo, B-820/B-383 template on zoom root, B-821 zoom root as title | 6520 / B-860+ |
+| desktop-night-bugs | B-786 delete a This-Mac graph (to Trash, typed confirm), B-787 root-token server listing in the add form | 6530 / B-880+ |
+| image-speed | B-738: why repeat loads are slow (probe first), resized variants `/assets/:id?w=`, lazy loading; ADR 035 | 6540 / B-900+ |
+| app-group-probe | Proposal 006 Phase 2 gate: does a free Personal Team allow an app + extension App Group? Probe on the owner's iPhone (approved) | — / B-920+ |
+
+Not started, needs the owner: B-737/B-659 asset auth scheme.
+
 ## In flight — 2026-10-04 night
 
 Full e2e on `0d9c683f`: 884 passed, 0 failed, 6 skipped (retries off). Desktop app with ADR 032 + Show in Finder built but NOT installed (owner's app running); owner click-through pending.
