@@ -52,7 +52,7 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   {
     method: "GET",
     path: "/assets/:id",
-    why: "<img src> cannot carry a bearer header; ids are unguessable, served with CSP sandbox",
+    why: "<img src> cannot carry a bearer header; each asset has its own 128-bit secret key and is served only when ?k= matches it (constant-time; 404 otherwise, as for an unknown id; B-737, ADR 036), with CSP sandbox",
   },
   {
     method: "GET",

@@ -60,6 +60,8 @@ const CORE_TOOL_NAMES = [
   // ADR 013 (M1.5).
   "batch_undo",
   "asset_upload",
+  // B-737: an agent reading assets/<id>.png in a block needs the keyed URL to fetch it.
+  "asset_info",
   // M3/ADR 010 embeddings.
   "related_find",
   // Backend health, so a client (or an agent deciding whether semantic search is worth trying)
@@ -100,8 +102,6 @@ const HTTP_ONLY_OP_NAMES = [
   "embeddings.status",
   "embeddings.configure",
   "embeddings.reindex",
-  // B-703: image sizes for the renderer's layout; an agent gets them from `asset.upload`.
-  "asset.sizes",
   // The one tokenless op: its caller is a device with no credential, never an MCP client.
   "pairing.redeem",
   // ADR 031: the in-app Logseq import. An agent has `nooklet import`; base64-ing a whole graph

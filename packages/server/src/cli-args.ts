@@ -108,6 +108,9 @@ export const GRAPH_SUBCOMMAND_FLAGS = {
 /** Every flag any `graph` subcommand reads; what `cli-flag-audit.test.ts` checks the case against. */
 export const GRAPH_FLAGS = [...new Set(Object.values(GRAPH_SUBCOMMAND_FLAGS).flat())] as const;
 
+/** `nooklet asset rotate-key <id> | --all` (B-737, ADR 036). */
+export const ASSET_FLAGS = [...GRAPH_COMMAND_FLAGS, "all"] as const;
+
 /** `nooklet pair` (B-655). */
 export const PAIR_FLAGS = [...GRAPH_COMMAND_FLAGS, "link", "scope", "sync", "minutes"] as const;
 

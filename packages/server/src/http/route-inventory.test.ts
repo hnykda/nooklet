@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { describe, expect, it } from "vitest";
+import type { ServerContext } from "../apply-ops.js";
+import { createToken } from "../auth/tokens.js";
 import { createMultiGraphApp } from "../graphs/mount.js";
 import { pluginDirsFor } from "../graphs/plugin-dirs.js";
 import { GraphRegistry } from "../graphs/registry.js";
@@ -29,7 +31,7 @@ import {
 
 const ROOT_TOKEN = "test-root-token";
 
-async function makeServer(): Promise<{ outer: Hono; graph: Hono }> {
+async function makeServer(): Promise<{ outer: Hono; graph: Hono; ctx: ServerContext }> {
   const dataDir = mkdtempSync(join(tmpdir(), "nooklet-inventory-"));
   const webDir = mkdtempSync(join(tmpdir(), "nooklet-inventory-web-"));
   writeFileSync(join(webDir, "index.html"), "<html><head></head><body>shell</body></html>");
@@ -51,7 +53,7 @@ async function makeServer(): Promise<{ outer: Hono; graph: Hono }> {
   await registry.create("default");
   const handle = await registry.resolve("default");
   if (!handle) throw new Error("no default graph");
-  return { outer, graph: handle.app };
+  return { outer, graph: handle.app, ctx: handle.ctx };
 }
 
 /** Registered `(method, path)` pairs, minus the global `*` middleware (guards, CORS, headers),
@@ -120,6 +122,28 @@ describe("route inventory: deny by default (docs/spec/security-inventory.md)", (
         `${p.method} ${p.path}`,
       ).toBe(true);
     }
+  });
+
+  it("B-737: /assets/:id, the one public route that serves graph data, serves it only with the asset's key", async () => {
+    // It is on the allowlist because an <img> cannot send a token; what stands in for the token
+    // is the key, so the probe above (which skips listed routes) is not enough here.
+    expect(PUBLIC_ROUTES.find((p) => p.path === "/assets/:id")?.why).toMatch(/128-bit secret key/);
+    const { graph, ctx } = await makeServer();
+    const token = createToken(ctx.driver, { label: "inventory", scope: "write" }).token;
+    const up = await graph.request("/api/v1/asset.upload", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ filename: "a.txt", mime_type: "text/plain", data_base64: "aGk=" }),
+    });
+    const { id, url } = (await up.json()) as { id: string; url: string };
+    const get = (path: string) => graph.request(path, { headers: { host: "localhost" } });
+    expect((await get(`/assets/${id}.txt`)).status).toBe(404);
+    expect((await get(`/assets/${id}.txt?k=wrong`)).status).toBe(404);
+    expect((await get(url)).status).toBe(200);
   });
 
   it("a WebSocket route is public only as a handshake; a plain GET needs a token", async () => {

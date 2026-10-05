@@ -1,12 +1,20 @@
 /**
- * `GET /assets/:id` — serves an uploaded asset's raw bytes with its recorded mime type
+ * `GET /assets/:id?k=<key>` — serves an uploaded asset's raw bytes with its recorded mime type
  * (`asset.upload`, `../ops/asset-upload.ts`; ADR 013).
  *
- * Unauthenticated by design: an `<img src="assets/<id>.<ext>">` in rendered Markdown has no way to
- * attach a bearer token. `id` is matched against the `asset` table before any filesystem access,
- * so this never serves an arbitrary path. Ids are 14-char time-ordered strings with 25 random bits
- * (ADR 004) — not a secret, but not enumerable in practice either, which is the right trade for a
- * server that is loopback-only by default and behind a tailnet otherwise.
+ * No bearer token: an `<img src>` in rendered Markdown has no way to attach one. What protects it
+ * instead is the asset's own secret, `?k=` (B-737, ADR 036, `../assets/keys.ts`): 128 random bits
+ * per asset, compared in constant time. It used to rest on the id alone, and ids are not secret —
+ * 25 random bits per millisecond, consecutive within one, so a bulk import's ids could be walked
+ * from any one known URL. A missing or wrong key answers exactly what an unknown id answers, a 404
+ * with the same body, so a guess does not even learn that the id exists. `id` is matched against
+ * the `asset` table before any filesystem access, so this never serves an arbitrary path.
+ *
+ * The key is in the query, so it is in any log that records query strings: nooklet's server keeps
+ * no access log, and a reverse proxy in front of it should not keep query strings for this path
+ * (`docs/guide/security.md`). `Referrer-Policy: no-referrer` (`./guards.ts`) keeps it out of the
+ * `Referer` a page would otherwise send. `Cache-Control: private`, so a shared cache between
+ * here and the device does not keep a copy that outlives a rotated key.
  *
  * Two headers make an upload harmless even when its bytes are hostile. `X-Content-Type-Options:
  * nosniff` stops a browser second-guessing the recorded type. `Content-Security-Policy: sandbox`
@@ -17,9 +25,8 @@
  * CSP `sandbox` does not apply to it.
  *
  * `?w=<width>` asks for a resized picture (ADR 035, `../assets/variants.ts`): one of a fixed set of
- * widths, as WebP, made on first request and cached on disk. Under the same route and the same
- * (absence of) auth as the original on purpose: whatever B-737 settles for asset URLs then covers
- * both. When no variant can or need be made the original's bytes answer, so a `?w=` URL always
+ * widths, as WebP, made on first request and cached on disk. Under the same route and the same key
+ * as the original on purpose: a variant is the same resource at another size. When no variant can or need be made the original's bytes answer, so a `?w=` URL always
  * shows the picture. Same headers either way; a variant is as immutable as its original.
  */
 
@@ -29,6 +36,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
+import { assetKeyMatches } from "../assets/keys.js";
 import { parseVariantParam, variantFile } from "../assets/variants.js";
 import type { ServerConfig } from "../ops/registry.js";
 
@@ -38,7 +46,12 @@ interface AssetRow {
   byte_size: number;
   width: number | null;
   deleted_at: number | null;
+  url_key: string;
 }
+
+/** One body for "no such asset", "no key" and "wrong key" alike: B-737's 404 must not tell a
+ * guess apart from an id that exists. */
+const NOT_FOUND = { error: { code: "not_found", message: "no such asset" } } as const;
 
 export function mountAssetRoutes(app: Hono, serverCtx: ServerContext, config: ServerConfig): void {
   app.get("/assets/:id", async (c) => {
@@ -48,12 +61,13 @@ export function mountAssetRoutes(app: Hono, serverCtx: ServerContext, config: Se
       return c.json({ error: { code: "bad_request", message: want.message } }, 400);
     }
     const row = serverCtx.driver.get<AssetRow>(
-      "SELECT ext, mime_type, byte_size, width, deleted_at FROM asset WHERE id = ?",
+      "SELECT ext, mime_type, byte_size, width, deleted_at, url_key FROM asset WHERE id = ?",
       [id],
     );
-    if (!row || row.deleted_at !== null) {
-      return c.json({ error: { code: "not_found", message: `no asset with id ${id}` } }, 404);
-    }
+    // The key is checked whether or not the row exists (`assetKeyMatches` compares either way),
+    // and before anything else about the row is looked at.
+    const keyOk = assetKeyMatches(c.req.query("k"), row?.url_key ?? null);
+    if (!row || !keyOk || row.deleted_at !== null) return c.json(NOT_FOUND, 404);
     let path = join(config.dataDir, "assets", `${id}.${row.ext}`);
     let contentType = row.mime_type;
     if (want.kind === "variant" && existsSync(path)) {
@@ -86,7 +100,7 @@ export function mountAssetRoutes(app: Hono, serverCtx: ServerContext, config: Se
       headers: {
         "content-type": contentType,
         "content-length": String(size),
-        "cache-control": "public, max-age=31536000, immutable",
+        "cache-control": "private, max-age=31536000, immutable",
         "x-content-type-options": "nosniff",
         "content-security-policy": "sandbox",
       },

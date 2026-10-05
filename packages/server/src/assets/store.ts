@@ -22,6 +22,7 @@ import {
 import { join } from "node:path";
 import { newId, type SqlDriver } from "@nooklet/core";
 import { type ImageSize, imageSize } from "./image-size.js";
+import { newAssetKey } from "./keys.js";
 
 export const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 
@@ -88,6 +89,8 @@ export interface StoredAsset {
   byteSize: number;
   /** True when identical bytes were already stored and that record was returned instead. */
   deduped: boolean;
+  /** The secret the asset's URL carries (`./keys.ts`, B-737). */
+  key: string;
   /** Pixel size as displayed, for PNG/JPEG/GIF/WebP (`./image-size.ts`, B-703); else `null`. */
   width: number | null;
   height: number | null;
@@ -101,6 +104,7 @@ interface ExistingAssetRow {
   byte_size: number;
   width: number | null;
   height: number | null;
+  url_key: string;
 }
 
 /** Write `bytes` as a new asset (or find the identical one already stored). Throws on an empty
@@ -120,7 +124,7 @@ export function storeAssetBytes(
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const size = imageSize(bytes);
   const existing = driver.get<ExistingAssetRow>(
-    "SELECT id, ext, mime_type, byte_size, file_name, width, height FROM asset WHERE sha256 = ? AND deleted_at IS NULL",
+    "SELECT id, ext, mime_type, byte_size, file_name, width, height, url_key FROM asset WHERE sha256 = ? AND deleted_at IS NULL",
     [sha256],
   );
   if (existing) {
@@ -146,6 +150,7 @@ export function storeAssetBytes(
       mimeType: existing.mime_type,
       byteSize: existing.byte_size,
       deduped: true,
+      key: existing.url_key,
       ...backfillFromBytes(driver, existing, size),
     };
   }
@@ -162,9 +167,10 @@ export function storeAssetBytes(
   renameSync(tmpPath, finalPath);
 
   const now = Date.now();
+  const key = newAssetKey();
   driver.run(
-    `INSERT INTO asset(id, graph_id, file_name, ext, mime_type, byte_size, sha256, width, height, created_at)
-     VALUES (?, 'default', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO asset(id, graph_id, file_name, ext, mime_type, byte_size, sha256, width, height, created_at, url_key)
+     VALUES (?, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.fileName,
@@ -175,6 +181,7 @@ export function storeAssetBytes(
       size?.width ?? null,
       size?.height ?? null,
       now,
+      key,
     ],
   );
 
@@ -205,6 +212,7 @@ export function storeAssetBytes(
     mimeType: input.mimeType,
     byteSize: bytes.length,
     deduped: false,
+    key,
     width: size?.width ?? null,
     height: size?.height ?? null,
   };
@@ -257,32 +265,36 @@ export function readImageSizeFromFile(path: string, ext: string): ImageSize | nu
   }
 }
 
-export interface AssetSizeRow {
+export interface AssetInfoRow {
   id: string;
+  ext: string;
+  /** The secret its URL carries (`./keys.ts`, B-737). */
+  key: string;
   width: number | null;
   height: number | null;
 }
 
 /**
- * The recorded sizes of `ids`, filling in any that are missing from the files on disk (B-703).
+ * What a client needs to show assets `ids` (`asset.info`): each one's URL key and, for a picture,
+ * its pixel size. Unknown or deleted ids are left out.
  *
- * The backfill for assets stored before sizes were recorded — the owner's imported Logseq assets
- * among them — happens here, on first read, rather than in a schema migration: a migration runs
- * at startup, before the server answers anything, and would open every asset file of every graph
- * (thousands, some on slow disks) to fill rows most of which nobody will look at soon. Here the
- * cost is one header read per asset, the first time a client shows it, and then never again. A
- * file that has no size we can read (an SVG, a PDF, a damaged image) stays `null` and is simply
- * re-tried on its next read; only image extensions are opened at all.
+ * Fills in the size of any picture stored before sizes were recorded (B-703) from the file on
+ * disk, here, on first read, rather than in a schema migration: a migration runs at startup,
+ * before the server answers anything, and would open every asset file of every graph (thousands,
+ * some on slow disks) to fill rows most of which nobody will look at soon. Here the cost is one
+ * header read per asset, the first time a client shows it, and then never again. A file that has
+ * no size we can read (an SVG, a PDF, a damaged image) stays `null` and is simply re-tried on its
+ * next read; only image extensions are opened at all.
  */
-export function assetSizes(
+export function assetInfo(
   driver: SqlDriver,
   dataDir: string,
   ids: readonly string[],
-): AssetSizeRow[] {
-  const out: AssetSizeRow[] = [];
+): AssetInfoRow[] {
+  const out: AssetInfoRow[] = [];
   for (const id of ids) {
-    const row = driver.get<AssetSizeRow & { ext: string }>(
-      "SELECT id, ext, width, height FROM asset WHERE id = ? AND deleted_at IS NULL",
+    const row = driver.get<Omit<AssetInfoRow, "key"> & { url_key: string }>(
+      "SELECT id, ext, width, height, url_key FROM asset WHERE id = ? AND deleted_at IS NULL",
       [id],
     );
     if (!row) continue;
@@ -298,7 +310,7 @@ export function assetSizes(
         row.height = size.height;
       }
     }
-    out.push({ id: row.id, width: row.width, height: row.height });
+    out.push({ id: row.id, ext: row.ext, key: row.url_key, width: row.width, height: row.height });
   }
   return out;
 }

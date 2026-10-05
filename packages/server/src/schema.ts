@@ -18,6 +18,7 @@ import {
   rebuildPageTags,
   reresolveIndexTargets,
 } from "@nooklet/core";
+import { ASSET_KEY_LENGTH, newAssetKey } from "./assets/keys.js";
 
 /** Shared by the fresh schema and migration 8, so the two cannot drift. */
 const PAIRING_CODE_TABLE = `CREATE TABLE pairing_code (
@@ -235,7 +236,8 @@ export const SERVER_SCHEMA_STATEMENTS: readonly string[] = [
     width      INTEGER,
     height     INTEGER,
     created_at INTEGER NOT NULL,
-    deleted_at INTEGER
+    deleted_at INTEGER,
+    url_key    TEXT NOT NULL
   )`,
   `CREATE UNIQUE INDEX asset_sha256 ON asset(sha256) WHERE deleted_at IS NULL`,
 
@@ -409,9 +411,33 @@ export const MIGRATIONS: readonly Migration[] = [
       driver.exec(PAIRING_CODE_TABLE.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"));
     },
   },
+  {
+    version: 9,
+    description: "add asset.url_key (B-737, ADR 036: a 128-bit key in every asset URL)",
+    up: (driver) => {
+      // `NOT NULL` needs a default on ADD COLUMN; `''` is never a valid key
+      // (`./assets/keys.ts#assetKeyMatches` refuses it), and every existing row gets a real one
+      // right below, in this same transaction. A fresh database's column has no default, so an
+      // INSERT that forgets the key fails there instead of storing an asset nobody can fetch.
+      const hasColumn = driver
+        .all<{ name: string }>("PRAGMA table_info(asset)")
+        .some((c) => c.name === "url_key");
+      if (!hasColumn) {
+        driver.exec("ALTER TABLE asset ADD COLUMN url_key TEXT NOT NULL DEFAULT ''");
+      }
+      // Deleted rows too: `deleted_at` is not forever (an identical upload finds only live rows,
+      // but nothing should ever hold a row with no key).
+      for (const row of driver.all<{ id: string }>(
+        "SELECT id FROM asset WHERE length(url_key) < ?",
+        [ASSET_KEY_LENGTH],
+      )) {
+        driver.run("UPDATE asset SET url_key = ? WHERE id = ?", [newAssetKey(), row.id]);
+      }
+    },
+  },
 ];
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /** Create the full server schema (core tables + this file's) on an empty database. */
 export function initFullSchema(driver: SqlDriver): void {

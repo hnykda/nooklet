@@ -17,12 +17,8 @@
  */
 
 import { z } from "zod";
-import {
-  assetMarkdownPath,
-  assetSizes,
-  MAX_ASSET_BYTES,
-  storeAssetBytes,
-} from "../assets/store.js";
+import { assetUrlPath } from "../assets/keys.js";
+import { assetInfo, assetMarkdownPath, MAX_ASSET_BYTES, storeAssetBytes } from "../assets/store.js";
 import { defineOp, OpError } from "./registry.js";
 
 /** 25 MB decoded, per the task's size cap recommendation. */
@@ -48,7 +44,9 @@ export const assetUpload = defineOp({
     "existing asset (deduped: true) instead of creating a duplicate. 25 MB decoded size limit. " +
     "Assets are not part of the op log (ADR 003) so batch_undo cannot reverse an upload, but the " +
     "upload is still recorded in the audit trail visible via changes_since. Fetch the raw bytes " +
-    "later with GET <url>.",
+    "later with GET <url> (graph-relative; it carries the asset's secret key, so it needs no " +
+    "token — share it only where the file may go). The markdown keeps the plain " +
+    "assets/<id>.<ext> path; asset_info turns such a path's id back into a fetchable url.",
   input: z
     .object({
       filename: z
@@ -72,7 +70,14 @@ export const assetUpload = defineOp({
     .strict(),
   output: z.object({
     id: z.string().describe("14-char asset id"),
-    url: z.string().describe("Server path to fetch the raw bytes, e.g. /assets/1k7f3q9xz2hav4.png"),
+    url: z
+      .string()
+      .describe(
+        "Graph-relative URL that fetches the raw bytes without a token, e.g. " +
+          "/assets/1k7f3q9xz2hav4.png?k=<key>. The k parameter is the asset's secret key " +
+          "(B-737): without it, or with a wrong one, the server answers 404",
+      ),
+    key: z.string().describe("The asset's secret URL key (the k in url)"),
     markdown: z
       .string()
       .describe(
@@ -129,7 +134,8 @@ export const assetUpload = defineOp({
     });
     return {
       id: stored.id,
-      url: `/assets/${stored.id}.${stored.ext}`,
+      url: assetUrlPath(stored),
+      key: stored.key,
       markdown: `![${input.alt ?? ""}](${assetMarkdownPath(stored)})`,
       mime_type: stored.mimeType,
       byte_size: stored.byteSize,
@@ -140,30 +146,37 @@ export const assetUpload = defineOp({
   },
 });
 
-/** Ids per `asset.sizes` call: a page of images, with room to spare. */
-const MAX_SIZE_IDS = 500;
+/** Ids per `asset.info` call: a page of images, with room to spare. */
+const MAX_INFO_IDS = 500;
 
 /**
- * `asset.sizes` (B-703): the recorded pixel sizes of image assets, so the client can give an image
- * its box before the lazily loaded bytes arrive and the rows below it do not jump when they do.
- * Fills in, from the file, the size of any asset stored before sizes were recorded
- * (`../assets/store.ts#assetSizes` says why on read rather than in a migration).
+ * `asset.info` (B-737, ADR 036; was B-703's `asset.sizes`): what it takes to SHOW assets whose ids
+ * a block names (`assets/<id>.<ext>`) — the URL with its secret key, and a picture's pixel size so
+ * the client can give it its box before the lazily loaded bytes arrive.
  *
- * HTTP-only: it exists for the renderer. An agent embedding an image gets the size back from
- * `asset.upload`, and has no layout to keep still.
+ * One op for both because the client needs both for the same images at the same moment: the web
+ * client asks once per tick for every picture on screen and keeps the answers
+ * (`apps/web/src/data/asset-info.ts`). Read scope: a token that can read the blocks can already
+ * see every asset path in them, so the key tells it nothing it could not get from `asset.upload`'s
+ * dedup or the UI. Exposed to MCP: an agent reading a block's `assets/<id>.png` has no other way
+ * to a URL it can fetch.
+ *
+ * Fills in, from the file, the size of any asset stored before sizes were recorded
+ * (`../assets/store.ts#assetInfo` says why on read rather than in a migration).
  */
-export const assetSizesOp = defineOp({
-  name: "asset.sizes",
-  summary: "Pixel sizes of image assets",
+export const assetInfoOp = defineOp({
+  name: "asset.info",
+  summary: "Fetchable URLs (and pixel sizes) of assets",
   description:
-    "Returns the pixel width and height recorded for each asset id given (PNG, JPEG, GIF, WebP; " +
-    "null for anything else). Unknown or deleted ids are left out. Used by the web client to " +
-    "reserve an image's space before it loads.",
+    "For each asset id given (the <id> in a block's assets/<id>.<ext>), returns a graph-relative " +
+    "url that fetches the file without a token (it carries the asset's secret key k; without it " +
+    "the server answers 404), the key itself, and the pixel width and height for PNG, JPEG, GIF " +
+    "and WebP (null for anything else). Unknown or deleted ids are left out.",
   input: z
     .object({
       ids: z
         .array(z.string().min(1).max(64))
-        .max(MAX_SIZE_IDS)
+        .max(MAX_INFO_IDS)
         .describe("Asset ids, as in assets/<id>.<ext>"),
     })
     .strict(),
@@ -171,6 +184,8 @@ export const assetSizesOp = defineOp({
     assets: z.array(
       z.object({
         id: z.string(),
+        url: z.string().describe("e.g. /assets/1k7f3q9xz2hav4.png?k=<key>, graph-relative"),
+        key: z.string().describe("The asset's secret URL key (the k in url)"),
         width: z.number().int().nullable(),
         height: z.number().int().nullable(),
       }),
@@ -183,8 +198,17 @@ export const assetSizesOp = defineOp({
     openWorldHint: false,
   },
   scopes: ["read"],
-  expose: { mcp: false },
+  render: (out) =>
+    out.assets.length === 0
+      ? "no such assets"
+      : out.assets.map((a) => `${a.id}: ${a.url}`).join("\n"),
   handler: (input, ctx) => ({
-    assets: assetSizes(ctx.db, ctx.config.dataDir, [...new Set(input.ids)]),
+    assets: assetInfo(ctx.db, ctx.config.dataDir, [...new Set(input.ids)]).map((a) => ({
+      id: a.id,
+      url: assetUrlPath(a),
+      key: a.key,
+      width: a.width,
+      height: a.height,
+    })),
   }),
 });

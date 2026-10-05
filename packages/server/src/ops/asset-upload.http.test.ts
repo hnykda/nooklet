@@ -2,6 +2,7 @@ import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { rotateAssetKeys } from "../assets/keys.js";
 import { makeTestServer, post, type TestServer } from "../test-helpers.js";
 
 let s: TestServer;
@@ -29,7 +30,9 @@ describe("asset.upload", () => {
     expect(status).toBe(200);
     expect(json.deduped).toBe(false);
     expect(json.mime_type).toBe("image/png");
-    expect(json.url).toBe(`/assets/${json.id}.png`);
+    // B-737: the URL carries the asset's own key; the markdown does not.
+    expect(json.key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(json.url).toBe(`/assets/${json.id}.png?k=${json.key}`);
     expect(json.markdown).toBe(`![a pixel](assets/${json.id}.png)`);
     expect(json.byte_size).toBeGreaterThan(0);
 
@@ -67,6 +70,7 @@ describe("asset.upload", () => {
     expect(second.status).toBe(200);
     expect(second.json.id).toBe(first.json.id);
     expect(second.json.deduped).toBe(true);
+    expect(second.json.url).toBe(first.json.url); // the same key, not a new one per upload
 
     const count = s.serverCtx.driver.get<{ n: number }>("SELECT count(*) AS n FROM asset");
     expect(count?.n).toBe(1);
@@ -123,6 +127,103 @@ describe("GET /assets/:id", () => {
     expect(res.status).toBe(404);
   });
 
+  describe("B-737: only with the asset's key", () => {
+    const pixel = () =>
+      post(s.app, "/api/v1/asset.upload", s.writeToken, {
+        filename: "pixel.png",
+        mime_type: "image/png",
+        data_base64: PNG_1PX_BASE64,
+      });
+    /** What every refused request must answer, byte for byte: nothing that tells an id that
+     * exists from one that does not. */
+    async function refusal(path: string): Promise<{ status: number; body: string }> {
+      const res = await s.app.request(path);
+      return { status: res.status, body: await res.text() };
+    }
+
+    it("no key, an empty key, a wrong key, another asset's key: 404, the same as an unknown id", async () => {
+      const a = (await pixel()).json;
+      const b = (
+        await post(s.app, "/api/v1/asset.upload", s.writeToken, {
+          filename: "b.txt",
+          mime_type: "text/plain",
+          data_base64: Buffer.from("other").toString("base64"),
+        })
+      ).json;
+      const unknown = await refusal(`/assets/1k7f3q9xz2hav4.png?k=${a.key}`);
+      expect(unknown.status).toBe(404);
+      const flipped = `${a.key.slice(0, -1)}${a.key.endsWith("A") ? "B" : "A"}`;
+      for (const path of [
+        `/assets/${a.id}.png`,
+        `/assets/${a.id}`,
+        `/assets/${a.id}.png?k=`,
+        `/assets/${a.id}.png?k=${flipped}`,
+        `/assets/${a.id}.png?k=${a.key}x`,
+        `/assets/${a.id}.png?k=${a.key.slice(0, 10)}`,
+        `/assets/${a.id}.png?k=${b.key}`,
+        `/assets/${a.id}.png?key=${a.key}`,
+        `/assets/${a.id}.png?w=480`,
+        `/assets/${a.id}.png?w=480&k=${b.key}`,
+      ]) {
+        expect(await refusal(path), path).toEqual(unknown);
+      }
+      // HEAD too: it is the same route.
+      expect((await s.app.request(`/assets/${a.id}.png`, { method: "HEAD" })).status).toBe(404);
+    });
+
+    it("the right key serves it, with or without the extension, and as a variant", async () => {
+      const a = (await pixel()).json;
+      expect((await s.app.request(`/assets/${a.id}.png?k=${a.key}`)).status).toBe(200);
+      expect((await s.app.request(`/assets/${a.id}?k=${a.key}`)).status).toBe(200);
+      const variant = await s.app.request(`/assets/${a.id}.png?k=${a.key}&w=480`);
+      expect(variant.status).toBe(200);
+      const swapped = await s.app.request(`/assets/${a.id}.png?w=480&k=${a.key}`);
+      expect(swapped.status).toBe(200);
+    });
+
+    it("needs no bearer token with the key, and a bearer token does not stand in for it", async () => {
+      const a = (await pixel()).json;
+      const withToken = await s.app.request(`/assets/${a.id}.png`, {
+        headers: { authorization: `Bearer ${s.writeToken}` },
+      });
+      expect(withToken.status).toBe(404);
+    });
+
+    it("is private to the device: no shared cache keeps it past a rotated key", async () => {
+      const a = (await pixel()).json;
+      const res = await s.app.request(a.url as string);
+      expect(res.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
+    });
+
+    it("every asset gets its own 128-bit key, even ones stored in the same millisecond", async () => {
+      const keys = new Set<string>();
+      for (let i = 0; i < 20; i++) {
+        const up = await post(s.app, "/api/v1/asset.upload", s.writeToken, {
+          filename: `f${i}.txt`,
+          mime_type: "text/plain",
+          data_base64: Buffer.from(`file ${i}`).toString("base64"),
+        });
+        keys.add(up.json.key as string);
+        // 22 base64url characters = 132 bits of text for 128 bits of randomness.
+        expect(Buffer.from(up.json.key as string, "base64url")).toHaveLength(16);
+      }
+      expect(keys.size).toBe(20);
+    });
+
+    it("rotating a key retires the old URL and asset.info hands out the new one", async () => {
+      const a = (await pixel()).json;
+      expect(rotateAssetKeys(s.serverCtx.driver, a.id)).toBe(1);
+      expect((await s.app.request(a.url as string)).status).toBe(404);
+      const { json } = await post(s.app, "/api/v1/asset.info", s.writeToken, { ids: [a.id] });
+      expect(json.assets[0].key).not.toBe(a.key);
+      expect((await s.app.request(json.assets[0].url)).status).toBe(200);
+      // --all: every live asset, and an unknown id changes nothing.
+      expect(rotateAssetKeys(s.serverCtx.driver, "zzzzzzzzzzzzzz")).toBe(0);
+      expect(rotateAssetKeys(s.serverCtx.driver)).toBe(1);
+      expect((await s.app.request(json.assets[0].url)).status).toBe(404);
+    });
+  });
+
   it("serves hostile content as an inert document: nosniff + CSP sandbox (B-61)", async () => {
     // An uploaded HTML file (or a scripted SVG) opened in a tab must not run in the app's origin,
     // where it could read localStorage — the device token included.
@@ -163,7 +264,7 @@ describe("B-703: image sizes", () => {
       data_base64,
     });
 
-  it("asset.upload records and returns the size; asset.sizes reads it back", async () => {
+  it("asset.upload records and returns the size; asset.info reads it back with the key", async () => {
     const up = await upload(solidPng(120, 45, [10, 20, 30]).toString("base64"));
     expect(up.json).toMatchObject({ width: 120, height: 45 });
     const pdf = await post(s.app, "/api/v1/asset.upload", s.writeToken, {
@@ -173,13 +274,13 @@ describe("B-703: image sizes", () => {
     });
     expect(pdf.json).toMatchObject({ width: null, height: null });
 
-    const { status, json } = await post(s.app, "/api/v1/asset.sizes", s.writeToken, {
+    const { status, json } = await post(s.app, "/api/v1/asset.info", s.readToken, {
       ids: [up.json.id, pdf.json.id, "zzzzzzzzzzzzzz"],
     });
     expect(status).toBe(200);
     expect(json.assets).toEqual([
-      { id: up.json.id, width: 120, height: 45 },
-      { id: pdf.json.id, width: null, height: null },
+      { id: up.json.id, url: up.json.url, key: up.json.key, width: 120, height: 45 },
+      { id: pdf.json.id, url: pdf.json.url, key: pdf.json.key, width: null, height: null },
     ]);
   });
 
@@ -188,8 +289,8 @@ describe("B-703: image sizes", () => {
     s.serverCtx.driver.run("UPDATE asset SET width = NULL, height = NULL WHERE id = ?", [
       up.json.id,
     ]);
-    const { json } = await post(s.app, "/api/v1/asset.sizes", s.writeToken, { ids: [up.json.id] });
-    expect(json.assets).toEqual([{ id: up.json.id, width: 1, height: 1 }]);
+    const { json } = await post(s.app, "/api/v1/asset.info", s.writeToken, { ids: [up.json.id] });
+    expect(json.assets).toMatchObject([{ id: up.json.id, width: 1, height: 1 }]);
     const row = s.serverCtx.driver.get<{ width: number; height: number }>(
       "SELECT width, height FROM asset WHERE id = ?",
       [up.json.id],
@@ -206,8 +307,8 @@ describe("B-703: image sizes", () => {
     expect(again.json).toMatchObject({ deduped: true, width: 1, height: 1 });
   });
 
-  it("asset.sizes needs a token, like every /api/v1 route", async () => {
-    const res = await s.app.request("/api/v1/asset.sizes", {
+  it("asset.info needs a token, like every /api/v1 route", async () => {
+    const res = await s.app.request("/api/v1/asset.info", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ids: [] }),

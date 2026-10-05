@@ -26,6 +26,8 @@
  *                   removal of assets nothing references any more (M7, ./gc.ts)
  *   nooklet verify  [--data <dir>]  rebuild()-vs-live-state parity check (ADR 003, ./verify.ts);
  *                   also runs automatically at "nooklet serve" startup when NODE_ENV != production
+ *   nooklet asset   rotate-key <asset-id> | --all [--data <dir>]  a new URL key for one asset or
+ *                   all of them, so links handed out before stop working (B-737, ADR 036)
  *   nooklet repair  org-dates [--apply] [--data <dir>]  turn org `SCHEDULED:`/`DEADLINE:` lines an
  *                   old import left in block text into real dates, one undoable batch
  *                   (./repair-org-dates.ts); a dry run that writes nothing unless --apply
@@ -45,6 +47,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { renderUnicodeCompact } from "uqr";
 import type { ServerContext } from "./apply-ops.js";
+import { rotateAssetKeys } from "./assets/keys.js";
 import { createPairingCode } from "./auth/pairing-codes.js";
 import {
   graphAddress,
@@ -57,6 +60,7 @@ import { createToken, revokeToken } from "./auth/tokens.js";
 import { createBackup, restoreBackup } from "./backup/index.js";
 import {
   type Args,
+  ASSET_FLAGS,
   booleanFlag,
   CliArgError,
   checkFlags,
@@ -295,6 +299,9 @@ const USAGE = `nooklet — a local-first outliner server
   nooklet restore <archive> [--graph <id>] [--data <dir>] [--force]
   nooklet gc [--graph <id>] [--dry-run] [--no-backup] [--asset-grace <days>] [--data <dir>]
   nooklet verify [--graph <id>] [--data <dir>]
+  nooklet asset rotate-key <asset-id> | --all [--graph <id>] [--data <dir>]
+                      give an asset (or every asset) a new URL key: links handed out before stop
+                      working (shared by mistake, or seen by a device whose token was revoked)
   nooklet repair org-dates [--graph <id>] [--apply] [--data <dir>]   dry run unless --apply
   nooklet --version | -V
 
@@ -1034,6 +1041,30 @@ async function main(): Promise<void> {
       const report = verifyRebuildParity(ctx.driver, { scratchPath });
       process.stdout.write(`${formatVerifyReport(report)}\n`);
       if (!report.ok) process.exit(1);
+      return;
+    }
+
+    case "asset": {
+      // B-737, ADR 036. Checked before the database is opened, like gc: a typo must not rotate.
+      const sub = args._[1];
+      const assetId = args._[2];
+      const all = cliArg(() => {
+        checkFlags(args, ASSET_FLAGS);
+        return booleanFlag(args, "all", false);
+      });
+      if (sub !== "rotate-key")
+        die(`unknown asset subcommand "${sub ?? ""}" (expected rotate-key)`);
+      if (all === (assetId !== undefined)) {
+        die("asset rotate-key takes exactly one of: an asset id, or --all");
+      }
+      const { ctx } = open(args);
+      const changed = rotateAssetKeys(ctx.driver, all ? undefined : assetId);
+      if (!all && changed === 0) die(`no live asset with id "${assetId}"`);
+      process.stdout.write(
+        `rotated the URL key of ${changed} asset(s); links handed out before now answer 404.\n` +
+          "  Open apps re-learn the new key the next time a picture fails to load; a device keeps\n" +
+          "  any copy it already cached.\n",
+      );
       return;
     }
 

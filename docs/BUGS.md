@@ -873,7 +873,7 @@ No tap and no releases exist; bare `/mcp` answers 307. Fixed in the README rewri
 Both describe the pre-ADR-025 layout or older flows.
 
 ### B-659 · `/assets/<id>` needs no token
-**Status:** open · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
+**Status:** in progress, with B-737 (its later, measured duplicate) · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
 
 Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
 
@@ -997,7 +997,7 @@ B-704. Workaround used: edit `desktop.json` (add the remote entry, set `active_g
 launcher with forcePicker) instead of restarting, or detect `tauri dev` and print how to relaunch.
 
 ### B-737 · Tokenless `GET /assets/:id` relies on ids being unguessable, but asset ids are 45 time bits + 25 random bits, sequential within a millisecond
-**Status:** open · **Severity:** high (security) · **Found:** 2026-10-04, checking image load time on the production server · **Test:** none yet
+**Status:** in progress (asset-keys agent, option A: a 128-bit key per asset in its URL; `docs/progress/asset-keys.md`) · **Severity:** high (security) · **Found:** 2026-10-04, checking image load time on the production server · **Test:** none yet
 
 `PUBLIC_ROUTES` (`packages/server/src/http/guards.ts`) lets `/assets/:id` through without a token
 because `<img src>` cannot carry a bearer header, on the stated grounds that "ids are unguessable".

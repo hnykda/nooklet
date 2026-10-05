@@ -98,6 +98,56 @@ describe("openDb", () => {
     );
   });
 
+  it("B-737: migration 9 gives every existing asset its own URL key", () => {
+    const path = tmpDbPath();
+    // A version-8 database: today's schema with the asset table as it was before url_key.
+    const v8Statements = SERVER_SCHEMA_STATEMENTS.map((stmt) =>
+      stmt.startsWith("CREATE TABLE asset (")
+        ? stmt.replace(/,\s*url_key\s+TEXT NOT NULL/, "")
+        : stmt,
+    );
+    expect(v8Statements.join("\n")).not.toContain("url_key");
+    {
+      const raw = openNodeSqlite(path, { allowExtension: true });
+      const driver = createNodeSqliteDriver(raw);
+      driver.exec("PRAGMA user_version = 8");
+      for (const stmt of CORE_SCHEMA_STATEMENTS) driver.exec(stmt);
+      for (const stmt of v8Statements) driver.exec(stmt);
+      // A bulk import's worth, ids consecutive the way newId() makes them within a millisecond,
+      // plus one deleted row.
+      for (let i = 0; i < 50; i++) {
+        driver.run(
+          `INSERT INTO asset(id, file_name, ext, mime_type, byte_size, sha256, created_at, deleted_at)
+           VALUES (?, ?, 'png', 'image/png', 1, ?, 1, ?)`,
+          [`1k7f3q9xz2ha${String(i).padStart(2, "0")}`, `p${i}.png`, `sha${i}`, i === 7 ? 2 : null],
+        );
+      }
+    }
+    const driver = openDb({ path });
+    expect(driver.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      SCHEMA_VERSION,
+    );
+    const rows = driver.all<{ id: string; url_key: string }>("SELECT id, url_key FROM asset");
+    expect(rows).toHaveLength(50);
+    for (const r of rows) expect(r.url_key, r.id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(new Set(rows.map((r) => r.url_key)).size).toBe(50);
+    expect(
+      driver.get<{ description: string }>(
+        "SELECT description FROM schema_migration WHERE version = 9",
+      )?.description,
+    ).toMatch(/url_key/);
+  });
+
+  it("a fresh database refuses an asset row without a key (no default to fall back on)", () => {
+    const driver = openDb({ path: tmpDbPath() });
+    expect(() =>
+      driver.run(
+        `INSERT INTO asset(id, file_name, ext, mime_type, byte_size, sha256, created_at)
+         VALUES ('a1', 'a.png', 'png', 'image/png', 1, 'x', 1)`,
+      ),
+    ).toThrow(/NOT NULL/);
+  });
+
   it("refuses a database from a newer, unsupported schema version", () => {
     const path = tmpDbPath();
     {
