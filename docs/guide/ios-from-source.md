@@ -131,6 +131,9 @@ membership makes the signature last a year.
 After the first install you can rebuild without the cable: in **Window → Devices and Simulators**,
 select the phone and tick **Connect via network**. The phone and the Mac must share a network.
 
+Renewing needs your Apple account to still be signed in to Xcode (**Xcode → Settings →
+Accounts**). If it is not, a build stops with "No Accounts" even though the old profile is on disk.
+
 ### Without opening Xcode
 
 Once the phone has been paired and is reachable over the network, the whole update runs from a
