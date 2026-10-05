@@ -1117,6 +1117,15 @@ workflow, so no image was built and nothing deployed, without any alert.
 
 ## Fixed
 
+### B-922 · `image-layout.spec.ts` B-703 test failed in a full run: the image was already loaded before the held-back response
+**Status:** fixed 2026-10-05 (test) · **Severity:** low (test) · **Found:** 2026-10-05, coordinator full e2e on `16c07ae6` · **Test:** the spec itself, `--repeat-each 5` plus a full run
+
+The test holds `/assets/*` back with `page.route` to measure the layout before the picture loads.
+`page.route` does not intercept a request the service worker answers, and since B-738 the worker
+caches `/assets/` images, so in a full run the picture could arrive un-held (`complete === true`).
+Fix: the spec blocks service workers (`test.use({ serviceWorkers: "block" })`); it tests layout
+reservation, not caching, which `image-variants.spec.ts` covers.
+
 ### B-821 · Zoomed in, the zoom root looks like any other row, not like the view's title
 **Status:** fixed 2026-10-05 (`9b1b1425`) · **Severity:** low (UX) · **Found:** 2026-10-04, agent · **Test:** `e2e/tests/zoom-root.spec.ts` "B-821: …" (4) and `phone-zoom-root.spec.ts` "B-821: phone, …" (1), each in Chromium and WebKit. Without the CSS, "drawn at title size…" and the phone test fail (4 of 10 runs); "a heading zoom root…" fails without its heading rule; "clicking the zoom root edits it in place…" and "arrow keys walk a wrapped zoom root…" pass either way — they pin that the larger text left the caret, the click mapping and visual-line moves intact
 

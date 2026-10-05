@@ -11,6 +11,12 @@ import { expect, type Page, test } from "@playwright/test";
 import { api, openPage, runName } from "../helpers/index.js";
 import { solidPng } from "../helpers/png.js";
 
+// The image response is held back with `page.route`, which does not see a request the service
+// worker answers. Since B-738 the worker caches `/assets/` images, so with it active the picture
+// could arrive un-held and the "not loaded yet" precondition failed in full runs (B-922). This spec
+// is about layout reservation, not caching: no service worker.
+test.use({ serviceWorkers: "block" });
+
 async function upload(page: Page, name: string, width: number, height: number) {
   return api<{ markdown: string; width: number; height: number }>(page, "asset.upload", {
     filename: `${name}.png`,
