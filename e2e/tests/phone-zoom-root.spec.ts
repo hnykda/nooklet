@@ -10,7 +10,16 @@
  */
 
 import { devices, expect, type Page, test } from "@playwright/test";
-import { editor, openPage, readBlocks, rowDepths, rowTexts, runName } from "../helpers/index.js";
+import {
+  caret,
+  editor,
+  openPage,
+  readBlocks,
+  rowDepths,
+  rowTexts,
+  runName,
+} from "../helpers/index.js";
+import { charBox, fontSize } from "../helpers/text-geometry.js";
 
 test.use({ ...devices["iPhone 13"] });
 
@@ -87,4 +96,31 @@ test("B-788: phone, the toolbar's outdent cannot take a child out of the zoomed 
       ["child", 1],
       ["after", 0],
     ]);
+});
+
+test("B-821: phone, the zoom root is the view's title, and a tap at its end puts the caret there", async ({
+  page,
+}) => {
+  const text = "Plan the garden beds";
+  const name = unique("Phone Zoom Root Title");
+  const outliner = await openPage(page, name, `- before\n- ${text}\n  - kid\n- after`);
+  const body = await fontSize(outliner.locator(".vr-row").first().locator(".vr-block-view"));
+  await outliner.locator(".vr-row").nth(1).getByRole("button", { name: "Zoom into block" }).tap();
+  await expect(page.locator(".vr-zoom-trail")).toBeVisible();
+  const zoomed = page.locator(".vr-outliner").first();
+  const root = zoomed.locator(".vr-row").first();
+  expect(await fontSize(root.locator(".vr-block-view"))).toBeGreaterThanOrEqual(body * 1.2);
+  expect(await fontSize(zoomed.locator(".vr-row").nth(1).locator(".vr-block-view"))).toBe(body);
+
+  // A tap just past the last character: caret at the end, and the text did not move.
+  const drawn = await charBox(root, -1);
+  await page.touchscreen.tap(drawn.right + 3, (drawn.top + drawn.bottom) / 2);
+  await expect(editor(page)).toBeFocused();
+  await expect.poll(() => caret(page)).toEqual({ anchor: text.length, head: text.length });
+  const editing = await charBox(root, -1);
+  expect(Math.abs(editing.left - drawn.left)).toBeLessThan(1.5);
+  expect(Math.abs(editing.top - drawn.top)).toBeLessThan(1.5);
+  await page.keyboard.type(" now");
+  await expect(editor(page)).toHaveText(`${text} now`);
+  await expect.poll(async () => (await readBlocks(page, name))[1]?.content).toBe(`${text} now`);
 });

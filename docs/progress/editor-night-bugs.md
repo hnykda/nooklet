@@ -63,7 +63,17 @@ Own worktree, based on `81d8a618`. E2E port 6520. New bug numbers start at B-860
 - Found and logged, not fixed: **B-860** (Tasks view tick not undoable), **B-861** (emptying a
   bullet and inserting a template at once leaves the server's bullet empty; the e2e waits around it).
 
+- `11e29851` — the commit above.
+- B-821 (CSS only): `.vr-row-zoom-root { font-size: var(--text-xl) }` plus three fix-ups (marker
+  font size inherits, priority chip margin, headings at the title size in the root). Decided
+  against bold: it would hide the block's own `**bold**`. e2e: `zoom-root.spec.ts` "B-821" ×4 and
+  `phone-zoom-root.spec.ts` "B-821" ×1, Chromium + WebKit, 10/10 pass; with `editor.css` at HEAD
+  4 of 10 fail (title size, phone); the caret/click/arrow tests pass either way (guards).
+  Throwaway probes (not committed): screenshots of task / heading / wrapped / property / image
+  roots, desktop and iPhone 13, rendered and editing — no shift between the two; image box 300×120
+  before and after zooming. Found in passing: **B-862** (zoom trail shows raw markdown).
+- New e2e helper `e2e/helpers/text-geometry.ts` (character boxes, font size, line height).
+
 ## Next steps
 
-1. B-821: CSS on `.vr-row-zoom-root`; caret checks in Chromium + WebKit, desktop + phone.
-2. Full checks (typecheck, biome, unit, FULL e2e on 6520, leak-check), BUGS hashes.
+1. Full checks (typecheck, biome, unit, FULL e2e on 6520, leak-check), BUGS hashes.

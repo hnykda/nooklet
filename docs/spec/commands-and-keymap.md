@@ -391,7 +391,8 @@ direct children** is a no-op (also per block in `block.outdentSelected`); `block
 and `block.cutSelection` never delete the zoom root (selected blocks under it still go); a
 multi-line `edit.paste` on the zoom root inserts the pasted blocks as its first children and never
 replaces it. The zoom root is always rendered expanded, whatever its `collapsed` flag, has no
-collapse arrow, and `block.collapse` on it is a no-op. A command that creates blocks *after* the
+collapse arrow, and `block.collapse` on it is a no-op; it is drawn as the view's title, at
+`--text-xl` (B-821). A command that creates blocks *after* the
 block being edited does the same on the zoom root (B-820, B-383): `block.insertTemplate` puts the
 template's top-level blocks in as the root's first children (above its existing ones), and into an
 EMPTY root the first template node fills the root and the rest follow that node's children under

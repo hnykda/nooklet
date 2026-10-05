@@ -1129,14 +1129,25 @@ not committed). Likely the emptying edit, still in the write debounce or unanswe
 batch's `block.text`; not diagnosed. `zoom-root.spec.ts`'s empty-root test waits for the server to
 have `""` first so it tests B-820 only.
 
+### B-862 · The zoom trail shows the zoomed block's raw markdown
+**Status:** open · **Severity:** low (UX) · **Found:** 2026-10-05, agent, looking at B-821 screenshots · **Test:** none yet
+
+Zoomed into `## Garden heading`, the breadcrumb's last step reads `## Garden heading`; zoomed into a
+block with a picture it reads `a picture ![](assets/….png)`. The trail
+(`editor/BlockTree.tsx#zoomTrail`) shows the block's first line as written; the references panel's
+breadcrumb strips a heading's `#`s (`views/referenceNesting.ts#breadcrumbLabel`, B-552) but the zoom
+trail does not use it. Seen in Chromium screenshots of seeded pages.
+
 ### B-787 · Desktop: "Show graphs on this server (root token)" is not offered in the add form
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** none yet
 
 The phone/browser form can list a server's graphs with its root token. From the desktop page that
 call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
 
+## Fixed
+
 ### B-821 · Zoomed in, the zoom root looks like any other row, not like the view's title
-**Status:** open (follow-up to B-788) · **Severity:** low (UX) · **Found:** 2026-10-04, agent · **Test:** none
+**Status:** fixed 2026-10-05 (editor-night-bugs branch) · **Severity:** low (UX) · **Found:** 2026-10-04, agent · **Test:** `e2e/tests/zoom-root.spec.ts` "B-821: …" (4) and `phone-zoom-root.spec.ts` "B-821: phone, …" (1), each in Chromium and WebKit. Without the CSS, "drawn at title size…" and the phone test fail (4 of 10 runs); "a heading zoom root…" fails without its heading rule; "clicking the zoom root edits it in place…" and "arrow keys walk a wrapped zoom root…" pass either way — they pin that the larger text left the caret, the click mapping and visual-line moves intact
 
 Logseq draws the zoomed-into block larger, as the title of the view. nooklet now treats the root as
 the fixed top (B-788; the row has a `vr-row-zoom-root` class and no collapse arrow) but draws it at
@@ -1144,7 +1155,20 @@ body size. Left out of B-788 on purpose: a larger font on the row that hosts the
 caret geometry, heading blocks (`# …` already have their own sizes), task markers and images in
 the root, which is a design pass rather than two CSS lines.
 
-## Fixed
+**Fix** (CSS only, `editor/editor.css`): `.vr-row-zoom-root` sets `font-size: var(--text-xl)`
+(20px; 18px on a phone, the view-title token) on the whole row, nothing else. Everything sized in
+`em` follows together: the rendered text and the CM6 editor that replaces it (`font: inherit`),
+`--vr-row-lead` (a `calc(1em …)` resolved where it is used, so the bullet lane and the marker's line
+box grow and stay centred on the first line), the marker icon. Fixed up by hand: the marker's own px
+font size (inherits in the root), the priority chip's top margin, and headings — `em` sizes that
+would compound to 1.45 × the title, drawn at the title size in the root (as the editor draws them,
+so a click does not resize the text). Property lines and date chips keep their px sizes. Images are
+px/% boxes, unchanged (checked by a throwaway probe: 300×120 before and after zooming). Weight stays
+normal so the block's own `**bold**` still shows. Verified: Chromium and WebKit, desktop and iPhone 13
+emulation — the text does not move when the row is clicked (first and last character within 1.5px),
+a click/tap past the end puts the caret at the end, a click on the left quarter of a middle character
+puts it before that character, ArrowDown walks each visual line of a wrapped title and then into the
+first child, ArrowUp from it lands on the title's last line.
 
 ### B-841 · A task marker clicked with nothing edited cannot be undone with Cmd/Ctrl+Z
 **Status:** fixed 2026-10-05 (editor-night-bugs branch) · **Severity:** low · **Found:** 2026-10-04, while building B-789 · **Test:** `e2e/tests/click-undo.spec.ts` (3: marker, collapse arrow, swipe-to-indent; all 3 fail without the fix); `app/editor-host.test.ts` "a write from a click on a tree's rows becomes the undo target (B-789, B-841)" (2, pin the `noteUndoTarget` seam, which already existed)

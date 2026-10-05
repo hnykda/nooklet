@@ -904,6 +904,37 @@ h6.vr-heading {
   margin: var(--space-lg) 0;
 }
 
+/* B-821: zoomed in, the zoom root is the view's title (Logseq draws the zoomed block larger too).
+   Only `font-size` changes, on the whole row, so everything sized in `em` follows together: the
+   rendered text and the CM6 editor that replaces it (`font: inherit`), `--vr-row-lead` (a
+   `calc(1em …)` resolved where it is used — so the bullet lane, the empty-row height and the
+   marker's line box grow with the text and the bullet stays centred on the first line), the
+   marker icon (`1.1em`). Line height is the row's usual ratio, so the caret is the text's height.
+   Weight stays normal: a bold title would hide the block's own `**bold**`.
+
+   What does not follow by itself, fixed below: the marker's own `font-size` (a px token), the
+   priority chip's top margin (centred for a 15px line), the property lines and date chips (stay
+   metadata-sized — they have their own px tokens already), and headings, which are `em` and would
+   compound to 1.45 × the title size: in the root a `# heading` IS the title, so it is drawn at the
+   title size, as the editor draws it, and the text does not jump when the row is clicked. */
+.vr-row-zoom-root {
+  font-size: var(--text-xl);
+  /* Images, fences and tables are sized in px or their own em: unaffected or slightly larger
+     text, never a different box. */
+}
+.vr-row-zoom-root .vr-marker {
+  font-size: inherit;
+}
+.vr-row-zoom-root .vr-priority {
+  /* Centre the chip on the title's first line instead of a body one: half the extra line height.
+     Not `--vr-row-lead`, which here would resolve against the chip's own 11px `em`. */
+  margin-top: calc(var(--space-xs) + (var(--text-xl) - var(--text-md)) * var(--leading-normal) / 2);
+}
+.vr-row-zoom-root .vr-heading {
+  font-size: 1em;
+  line-height: var(--leading-normal);
+}
+
 /* Zoom breadcrumb: page / ancestors / current block. Rendered only while zoomed — see
    `BlockTree.tsx`'s `zoomTrail`. Zooming without it just showed a shorter outline with no
    indication you were no longer looking at the whole page. */

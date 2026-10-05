@@ -5,11 +5,16 @@
  *
  * Every assertion that something stayed put reads the SERVER's tree (`readBlocks`) as well as the
  * rows: before the fix, the new block was written fine — just outside the view.
+ *
+ * Also: `/template` and `/mermaid` on the root (B-820, B-383) and the root drawn as the view's title
+ * without moving the caret (B-821).
  */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   api,
+  caret,
+  editingRowIndex,
   editor,
   openPage,
   readBlocks,
@@ -17,6 +22,7 @@ import {
   rowTexts,
   runName,
 } from "../helpers/index.js";
+import { centreY, charBox, fontSize, lineHeight } from "../helpers/text-geometry.js";
 
 /** `base` made unique per project, repeat and retry: both engines run this file against one
  * server, and a page the other engine already typed into would start with its keystrokes. */
@@ -271,4 +277,130 @@ test("B-383: /mermaid on a zoom root with text puts the diagram in its first chi
     .poll(async () => (await readBlocks(page, name))[2]?.content.trimEnd(), { timeout: 15_000 })
     .toBe("```mermaid\ngraph TD\n  A --> B --> C\n```");
   expect((await readBlocks(page, name))[1]?.content.trimEnd()).toBe("root");
+});
+
+// B-821: the zoom root is the view's title — drawn larger, and still edited exactly where it is
+// drawn. A larger font on the row that hosts the editor is what could go wrong: the caret, the
+// bullet and marker beside the first line, the text jumping when the row is clicked.
+
+test("B-821: the zoom root is drawn at title size, with its bullet and marker on its first line", async ({
+  page,
+}) => {
+  const name = unique("Zoom Root Title");
+  const outliner = await openPage(page, name, "- body row\n- TODO garden plan\n  - kid\n- after");
+  const body = await fontSize(outliner.locator(".vr-row").first().locator(".vr-block-view"));
+  const zoomed = await zoomInto(page, outliner, 1);
+  const root = zoomed.locator(".vr-row").first();
+  const kid = zoomed.locator(".vr-row").nth(1);
+  await expect(root).toHaveClass(/vr-row-zoom-root/);
+
+  // Larger than the body; its children are body size.
+  const title = await fontSize(root.locator(".vr-block-view"));
+  expect(title).toBeGreaterThanOrEqual(body * 1.2);
+  expect(await fontSize(kid.locator(".vr-block-view"))).toBe(body);
+
+  // Bullet and marker are centred on the title's first line (within 2px), as on a body row.
+  const first = await charBox(root, 0);
+  const lineMid = (first.top + first.bottom) / 2;
+  expect(Math.abs((await centreY(root.locator(".vr-bullet-dot"))) - lineMid)).toBeLessThan(2);
+  expect(Math.abs((await centreY(root.locator(".vr-marker svg"))) - lineMid)).toBeLessThan(2);
+  // The marker grew with the text.
+  const rootIcon = (await root.locator(".vr-marker svg").boundingBox())?.height ?? 0;
+  expect(rootIcon).toBeGreaterThan(body * 1.1 * 1.15);
+});
+
+test("B-821: a heading zoom root is drawn at the title size, as the editor draws it", async ({
+  page,
+}) => {
+  const name = unique("Zoom Root Title Heading");
+  const outliner = await openPage(page, name, "- before\n- ## Garden heading\n  - kid\n- after");
+  const zoomed = await zoomInto(page, outliner, 1);
+  const root = zoomed.locator(".vr-row").first();
+  // Not 1.25 × the title: in the root the heading IS the title.
+  const title = await fontSize(root);
+  expect(await fontSize(root.locator("h2.vr-heading"))).toBe(title);
+  const drawn = await charBox(root, 0);
+  await root.locator(".vr-block-view").click();
+  await expect(editor(page)).toBeFocused();
+  // The editor shows `## ` before the text; the first letter of the title keeps its size.
+  const edited = await charBox(root, 3);
+  expect(Math.abs(edited.height - drawn.height)).toBeLessThan(1.5);
+});
+
+test("B-821: clicking the zoom root edits it in place: the text does not move, the caret lands where clicked", async ({
+  page,
+}) => {
+  const text = "Plan the garden beds for spring";
+  const name = unique("Zoom Root Title Caret");
+  const outliner = await openPage(page, name, `- before\n- ${text}\n  - kid\n- after`);
+  const zoomed = await zoomInto(page, outliner, 1);
+  const root = zoomed.locator(".vr-row").first();
+
+  // Click just past the last character: the caret is at the end, and typing appends.
+  const drawnFirst = await charBox(root, 0);
+  const drawnLast = await charBox(root, -1);
+  await page.mouse.click(drawnLast.right + 3, (drawnLast.top + drawnLast.bottom) / 2);
+  await expect(editor(page)).toBeFocused();
+  await expect.poll(() => caret(page)).toEqual({ anchor: text.length, head: text.length });
+  // The editor draws the text exactly where the rendered view did (no jump on click).
+  const editFirst = await charBox(root, 0);
+  const editLast = await charBox(root, -1);
+  for (const [a, b] of [
+    [drawnFirst, editFirst],
+    [drawnLast, editLast],
+  ] as const) {
+    expect(Math.abs(a.left - b.left)).toBeLessThan(1.5);
+    expect(Math.abs(a.top - b.top)).toBeLessThan(1.5);
+    expect(Math.abs(a.height - b.height)).toBeLessThan(1.5);
+  }
+  await page.keyboard.type("!");
+  await expect(editor(page)).toHaveText(`${text}!`);
+
+  // A click on the left part of a character in the middle puts the caret before it.
+  const at = text.indexOf("garden");
+  const g = await charBox(root, at);
+  await page.mouse.click(g.left + (g.right - g.left) * 0.25, (g.top + g.bottom) / 2);
+  await expect.poll(() => caret(page)).toEqual({ anchor: at, head: at });
+  await page.keyboard.type("X");
+  await expect(editor(page)).toHaveText(`Plan the Xgarden beds for spring!`);
+});
+
+test("B-821: arrow keys walk a wrapped zoom root line by line, then into its first child", async ({
+  page,
+}) => {
+  const text =
+    "A rather long zoom root whose text wraps onto several lines of the view, so that the caret " +
+    "has to move between visual lines of the larger title text when the arrow keys are pressed";
+  const name = unique("Zoom Root Title Arrows");
+  const outliner = await openPage(page, name, `- before\n- ${text}\n  - kid\n- after`);
+  const zoomed = await zoomInto(page, outliner, 1);
+  const root = zoomed.locator(".vr-row").first();
+  await editRow(page, zoomed, 0);
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ControlOrMeta+Home");
+
+  // How many visual lines the title takes, from where its first and last characters are.
+  const first = await charBox(root, 0);
+  const last = await charBox(root, -1);
+  const lead = await lineHeight(root.locator(".cm-line").first());
+  const lines = Math.round((last.top - first.top) / lead) + 1;
+  expect(lines).toBeGreaterThanOrEqual(2);
+
+  let previous = 0;
+  for (let i = 1; i < lines; i++) {
+    await page.keyboard.press("ArrowDown");
+    // Still in the title, one visual line further down.
+    expect(await editingRowIndex(page, zoomed)).toBe(0);
+    const head = (await caret(page)).head;
+    expect(head).toBeGreaterThan(previous);
+    previous = head;
+  }
+  // Off the last line: into the first child.
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => editingRowIndex(page, zoomed)).toBe(1);
+  await expect(editor(page)).toHaveText("kid");
+  // And back up: onto the title's LAST line.
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(() => editingRowIndex(page, zoomed)).toBe(0);
+  expect((await caret(page)).head).toBeGreaterThan(text.length - 60);
 });
