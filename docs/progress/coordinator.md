@@ -28,16 +28,21 @@ the home server allows). Merged, not rebased; the releases agent's tag-build ste
 sensitivity, not worth another rewrite). Always `git fetch` before pushing: main has more than one
 writer now.
 
-## In flight — 2026-10-05
+## State — 2026-10-05 midday
 
-| Slug | Task | Ports / bug numbers |
-|---|---|---|
-| editor-night-bugs | B-841 click-edit undo, B-820/B-383 template on zoom root, B-821 zoom root as title | 6520 / B-860+ |
-| desktop-night-bugs | B-786 delete a This-Mac graph (to Trash, typed confirm), B-787 root-token server listing in the add form | 6530 / B-880+ |
-| image-speed | B-738: why repeat loads are slow (probe first), resized variants `/assets/:id?w=`, lazy loading; ADR 035 | 6540 / B-900+ |
-| app-group-probe | Proposal 006 Phase 2 gate: does a free Personal Team allow an app + extension App Group? Probe on the owner's iPhone (approved) | — / B-920+ |
+All 2026-10-05 agents merged and pushed: B-841/B-820/B-383/B-821 (editor), B-786/B-787 (desktop),
+B-738 (image speed: SW cache + `?w=` WebP variants via sharp, ADR 035), App Group probe (works on
+the free team; `docs/research/16`). Full e2e on `7669247e`: 910 passed, 0 failed, 6 skipped;
+production runs `sha-7669247e` (checked, not assumed — see B-921: CI's gitleaks had silently
+blocked 13 deploys).
 
-Not started, needs the owner: B-737/B-659 asset auth scheme.
+**After every push, check the running image** (`kubectl --context <home-cluster> -n apps get deploy nooklet
+-o jsonpath='{..image}'`) and the Woodpecker pipeline status; a failed `leak-guard` kills the image
+build without an alert.
+
+Waiting on the owner: Mac app install + click-through (quit nooklet first); Phase 2 go/no-go
+(share sheet first); B-737 asset auth scheme. Open from this round: B-860, B-861, B-862, B-880,
+B-900/B-863 (WebKit focus-log flake), B-921's gap (local leak check without gitleaks).
 
 ## In flight — 2026-10-04 night
 
