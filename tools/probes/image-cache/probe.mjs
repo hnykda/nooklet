@@ -316,8 +316,9 @@ await op("page.create", {
   name: "Photos",
   markdown: ["- [[Elsewhere]]", ...uploads.map((u) => `- ${u.markdown}`)].join("\n"),
 });
-const assetPath = uploads[0].markdown.match(/\((assets\/[^)]+)\)/)[1];
-controlExtra = `/g/default/${assetPath}`;
+// The upload's own URL, which carries the asset's key since B-737 (ADR 036); the bare
+// `assets/<id>.<ext>` path from the markdown now answers 404.
+controlExtra = `/g/default${uploads[0].url}`;
 
 // ---- the measurement ---------------------------------------------------------------------------
 async function allDecoded(page) {
@@ -348,9 +349,7 @@ const results = {};
 /** The real WKWebView (`./wkwebview.swift`), steps driven there, requests counted here. */
 async function wkwebview(mode, store, rows) {
   const origin = mode.includes("capacitor") ? `https://127.0.0.1:${TLS_PORT}` : base;
-  const urls = uploads.map(
-    (u) => `${origin}/g/default/${u.markdown.match(/\((assets\/[^)]+)\)/)[1]}`,
-  );
+  const urls = uploads.map((u) => `${origin}/g/default${u.url}`); // keyed (B-737)
   const child = spawn(wkBin, [mode, base, store, ...urls], {
     stdio: ["ignore", "pipe", "inherit"],
   });
