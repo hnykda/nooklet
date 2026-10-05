@@ -1,0 +1,4 @@
+// The signing team lives in a gitignored file next to run.sh (`DEVELOPMENT_TEAM = <team id>`), the
+// same pattern as apps/web/ios/debug.xcconfig. Optional include: a build without it still works
+// with DEVELOPMENT_TEAM on the xcodebuild command line.
+#include? "../signing.local.xcconfig"

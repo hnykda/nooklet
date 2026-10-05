@@ -38,8 +38,9 @@ Personal Team the owner uses:
 
 - every extension is another App ID, and a free account may register only a handful per week
   (Apple: 10 App IDs per 7 days); all expire with the app every 7 days;
-- whether a Personal Team can use **App Groups** at all is unclear. This repo has no evidence
-  either way; a probe settles it (below). If it cannot, a Share Extension can still work by
+- whether a Personal Team can use **App Groups** at all is unclear. Apple's capability table says
+  no; free-account sideloading tools say yes. The probe that settles it is built but not yet run
+  (`docs/research/16-personal-team-app-groups.md`). If it cannot, a Share Extension can still work by
   posting straight to the server with its own token (online only), but not offline.
 
 Android has none of this: a share target is an intent filter on the main activity, and the shared
@@ -94,9 +95,17 @@ the app) and E/F.
 
 ## Still unverified
 
-- Whether a free Personal Team can use App Groups (probe: a minimal app + extension sharing one
-  file, installed on the owner's phone).
+- Whether a free Personal Team can use App Groups. **Probe built, not yet run on the phone**
+  (`tools/probes/app-group-probe/`, `docs/research/16-personal-team-app-groups.md`): on
+  2026-10-05 Xcode had no Apple account signed in, so signing stopped with "No Accounts" before
+  anything was registered. Apple's capability table says the free tier does *not* get App Groups;
+  AltSign-based sideloading tools say it does. Next step: the owner signs in to Xcode
+  (Settings → Accounts), then `run.sh build` / `install`, then one share from Safari.
 - Whether an App Intent defined in a Capacitor app target can write to the queue while the web view
   is not running (expected yes: it is plain Swift in the app process).
-- The exact App ID limit for free accounts today (commonly cited as 10 per 7 days; not checked
-  against current Apple documentation).
+
+Settled: the free-account limits. Apple's
+[Developer account overview](https://developer.apple.com/support/compare-memberships/) says a
+Personal Team can register up to 10 App IDs (expiring after 7 days), up to 3 devices, and install
+up to **3 apps per device**, with 7-day profiles. The 3-app cap is new to this proposal: nooklet
+plus any probe use 2 of the 3.

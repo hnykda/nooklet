@@ -1,0 +1,4 @@
+# Holds DEVELOPMENT_TEAM; never commit it (public repo, see CLAUDE.md "Public repo hygiene").
+signing.local.xcconfig
+build/
+xcuserdata/
