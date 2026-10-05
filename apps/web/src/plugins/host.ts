@@ -68,6 +68,7 @@ export interface ClientPluginHostDeps {
   blockAfterOps: (
     blockId: string,
     content: string,
+    placement: "after" | "firstChildren",
   ) => Promise<{ ops: Op[]; block: Block } | undefined>;
   /** Writes a batch no editor would take (the block's page is not open). */
   applyOps: (ops: Op[]) => Promise<unknown>;
@@ -169,7 +170,10 @@ export function createClientPluginHost(deps: ClientPluginHostDeps): ClientPlugin
       // Needed so `/mermaid` can put its fence in a block of its own: a fence renders only as the
       // first line of a block, and inserted after existing text it never did (B-344).
       async insertBlockAfter(id, content) {
-        const built = await deps.blockAfterOps(id, content);
+        // "After" the zoom root of a zoomed view is outside it: the block would be written and never
+        // shown (`/mermaid` there, B-383). Its first child is where Enter on it puts one (R27.1).
+        const placement = deps.editor.zoomRoot() === id ? "firstChildren" : "after";
+        const built = await deps.blockAfterOps(id, content, placement);
         if (!built) throw new Error(`editor.insertBlockAfter(): no block with id "${id}"`);
         // Through the editor that shows `id`, so one Cmd/Ctrl+Z takes the new block back (B-108).
         if (!deps.editor.commitOps({ ops: built.ops, anchorId: id })) {

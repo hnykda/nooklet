@@ -51,6 +51,8 @@ export interface EditorApi {
    * offset into `text` (default: just after it). */
   insertText(text: string, opts?: { cursor?: number }): Promise<void>;
   replaceBlock(id: BlockId, content: string): Promise<void>;
+  /** A new block after `id` (its next sibling). When `id` is the zoom root of the view the block
+   * becomes its first child instead: the root's siblings are outside the view (R27.1). */
   insertBlockAfter(id: BlockId, content: string): Promise<Block>;
   focusBlock(id: BlockId, opts?: { at?: "start" | "end" | number }): void;
   openPage(ref: PageId | { name: string }, opts?: { sidebar?: boolean }): Promise<void>;

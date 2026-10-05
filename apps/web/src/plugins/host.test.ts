@@ -207,6 +207,30 @@ describe("editor.insertBlockAfter / focusBlock / currentBlock (B-344)", () => {
     expect(t.applied.map((ops) => ops.map((o) => o.entity))).toEqual([["new00000000001"]]);
   });
 
+  it("B-383: on the zoom root of the view the new block is its first child, elsewhere a sibling", async () => {
+    const asked: Array<[string, string]> = [];
+    const t = setup({
+      async blockAfterOps(blockId, content, placement) {
+        asked.push([blockId, placement]);
+        return setup().deps.blockAfterOps(blockId, content, placement);
+      },
+    });
+    await createClientPluginHost(t.deps).start([
+      plugin("writer", async (ctx) => {
+        await ctx.editor.insertBlockAfter("b1", "not zoomed");
+        t.editor.zoomRootId = "b1";
+        await ctx.editor.insertBlockAfter("b1", "on the zoom root");
+        t.editor.zoomRootId = "other";
+        await ctx.editor.insertBlockAfter("b1", "zoomed, but not on the root");
+      }),
+    ]);
+    expect(asked).toEqual([
+      ["b1", "after"],
+      ["b1", "firstChildren"],
+      ["b1", "after"],
+    ]);
+  });
+
   it("rejects an id with no block, naming it", async () => {
     const t = setup();
     const host = createClientPluginHost(t.deps);

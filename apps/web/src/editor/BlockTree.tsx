@@ -667,6 +667,9 @@ export function BlockTree(props: {
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingCaret: CaretSpec = { at: "end" };
 
+  /** How many steps `commit` has recorded; `byPointer` compares it to see whether a write landed. */
+  let commits = 0;
+
   function commit(
     ops: Op[],
     treeBefore: EditorTree,
@@ -676,6 +679,7 @@ export function BlockTree(props: {
     blockId: BlockId | null = null,
   ): void {
     if (ops.length === 0) return;
+    commits++;
     unseenCreations.note(ops);
     textVersions.noteWrites(ops);
     supersedeUnansweredText(ops);
@@ -1390,6 +1394,7 @@ export function BlockTree(props: {
       const node = findTreeNode(data?.blocks ?? [], id);
       return toCoreBlock(block, props.pageId, surface.content(), node);
     },
+    zoomRoot: () => untrack(effectiveRoot) ?? null,
   });
   // Mounted, not only focused: a date picked from a chip is written with nothing here edited or
   // selected, and still belongs in this tree's undo history (B-142). Released in the cleanup below.
@@ -1610,11 +1615,25 @@ export function BlockTree(props: {
     else if (cmd === "edit.redo") doRedo();
   }
 
+  /**
+   * B-841: a write from a click or gesture on a rendered row — a task marker, the collapse arrow,
+   * a swipe, a long-press drag, an image's handle — made with nothing in this tree necessarily
+   * edited or selected. The step lands in THIS tree's history, so Cmd/Ctrl+Z must come here next
+   * (`noteUndoTarget`). Without it a marker clicked on a page where nothing had been edited could
+   * not be undone: `historyEditorHost` knew no tree, or another one. Only when something was
+   * written: a refused write (zoom root, locked page) must not end another tree's session.
+   */
+  function byPointer(write: () => void): void {
+    const before = commits;
+    write();
+    if (commits !== before) noteUndoTarget(editorHost);
+  }
+
   function onToggleCollapse(id: BlockId): void {
     const clock = clockSig();
     const block = editorTree().byId.get(id);
     if (!clock || !block) return;
-    commitOne(setCollapsed(id, !block.collapsed, clock));
+    byPointer(() => commitOne(setCollapsed(id, !block.collapsed, clock)));
   }
 
   /** B-789: a rendered row rewrote its own text (an image's size or alignment, ADR 034): one
@@ -1627,8 +1646,7 @@ export function BlockTree(props: {
     const clock = clockSig();
     const block = editorTree().byId.get(id);
     if (!clock || !block || block.content === content) return;
-    commitStep([setBlockText(id, content, clock)]);
-    noteUndoTarget(editorHost);
+    byPointer(() => commitStep([setBlockText(id, content, clock)]));
   }
 
   function onToggleMarker(id: BlockId): void {
@@ -1639,7 +1657,7 @@ export function BlockTree(props: {
     const clock = clockSig();
     const block = editorTree().byId.get(id);
     if (!clock || !block) return;
-    commitStep(toggleDone(block, clock, Date.now(), taskWorkflow()));
+    byPointer(() => commitStep(toggleDone(block, clock, Date.now(), taskWorkflow())));
   }
 
   /** Shift+click, from a row or from a `[[page]]` link inside one (`BlockRowView.tsx` explains why
@@ -1820,9 +1838,9 @@ export function BlockTree(props: {
                         }}
                         onNavigate={props.onNavigate}
                         onShelfOpen={onShelfOpen}
-                        onSwipeIndent={() => doIndent(id)}
-                        onSwipeOutdent={() => doOutdent(id)}
-                        onDragStep={(direction) => doMoveStep(id, direction)}
+                        onSwipeIndent={() => byPointer(() => doIndent(id))}
+                        onSwipeOutdent={() => byPointer(() => doOutdent(id))}
+                        onDragStep={(direction) => byPointer(() => doMoveStep(id, direction))}
                         remoteChange={
                           remoteOffer()?.id === id
                             ? {

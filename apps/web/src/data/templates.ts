@@ -201,8 +201,16 @@ export async function nextSiblingOrder(place: PlaceRow): Promise<string | null> 
   return rows[0]?.order_key ?? null;
 }
 
+/**
+ * Where blocks created beside the block being edited go. `"after"`: its next siblings, the usual
+ * case. `"firstChildren"`: its first children, above any it has — for the zoom root of a zoomed
+ * view, whose siblings are outside the view (R27.1, B-820), the same place Enter and a paste on it
+ * put new blocks.
+ */
+export type InsertPlacement = "after" | "firstChildren";
+
 /** The order key of `parentId`'s first child on `pageId`, or `null` if it has none. */
-async function firstChildOrder(pageId: string, parentId: string): Promise<string | null> {
+export async function firstChildOrder(pageId: string, parentId: string): Promise<string | null> {
   const rows = await queryAs<{ order_key: string }>(
     `SELECT order_key FROM block
      WHERE page_id = ? AND parent_id = ? AND deleted_at IS NULL
@@ -213,27 +221,37 @@ async function firstChildOrder(pageId: string, parentId: string): Promise<string
 }
 
 /**
- * The ops that insert a copy of template `templateId` as the next sibling(s) of `blockId`, and the
- * first created top-level block's id (to put the caret in); `undefined` if either block is gone.
+ * The ops that insert a copy of template `templateId` as the next sibling(s) of `blockId` — or, with
+ * `placement` `"firstChildren"`, as its first children (a zoom root, B-820) — and the first created
+ * top-level block's id (to put the caret in); `undefined` if either block is gone.
  * Minted but NOT applied: the caller commits them through the editor, so the insertion is one
  * step of its undo history (B-108), or applies them itself when no editor shows `blockId`.
  */
 export async function templateAfterOps(
   templateId: string,
   blockId: string,
+  placement: InsertPlacement = "after",
 ): Promise<{ ops: Op[]; firstId: string } | undefined> {
   const [node, place] = await Promise.all([loadTemplate(templateId), placeOf(blockId)]);
   if (!node || !place) return undefined;
   const roots = templateRoots(node);
   if (roots.length === 0) return undefined;
-  const upper = await nextSiblingOrder(place);
+  const target =
+    placement === "firstChildren"
+      ? {
+          pageId: place.page_id,
+          parentId: blockId,
+          lower: null,
+          upper: await firstChildOrder(place.page_id, blockId),
+        }
+      : {
+          pageId: place.page_id,
+          parentId: place.parent_id,
+          lower: place.order_key,
+          upper: await nextSiblingOrder(place),
+        };
   const clock = await getOpClock(countTemplateNodes(roots));
-  const { ops, roots: created } = templateNodesOps(
-    roots,
-    { pageId: place.page_id, parentId: place.parent_id, lower: place.order_key, upper },
-    expansionNow(),
-    minterFor(clock),
-  );
+  const { ops, roots: created } = templateNodesOps(roots, target, expansionNow(), minterFor(clock));
   const firstId = created[0]?.id;
   return firstId ? { ops, firstId } : undefined;
 }
@@ -242,7 +260,9 @@ export async function templateAfterOps(
  * The ops that put template `templateId` INTO `blockId`, an empty bullet the person is editing:
  * the first inserted node's expanded text, marker, priority, collapsed state and properties are
  * written onto that block, its children are created beneath it, and any further top-level nodes
- * follow as siblings. `undefined` if either block is gone. Minted but NOT applied, as above.
+ * follow as siblings — or, with `placement` `"firstChildren"` (an empty zoom root, B-820), as more
+ * children of it, after the first node's, since its siblings are outside the view.
+ * `undefined` if either block is gone. Minted but NOT applied, as above.
  *
  * The text is a `block.text` op in the same batch. It used to be written apart, through
  * `EditorHost.replaceRange`, because an op written beside the editor's open buffer is flushed
@@ -252,6 +272,7 @@ export async function templateAfterOps(
 export async function templateIntoBlockOps(
   templateId: string,
   blockId: string,
+  placement: InsertPlacement = "after",
 ): Promise<{ ops: Op[] } | undefined> {
   const [node, place] = await Promise.all([loadTemplate(templateId), placeOf(blockId)]);
   if (!node || !place) return undefined;
@@ -271,6 +292,10 @@ export async function templateIntoBlockOps(
     1 + fieldOps + countTemplateNodes(first.children) + countTemplateNodes(rest),
   );
   const mint = minterFor(clock);
+  // On a zoom root the rest join the first node's children, in template order, above the root's
+  // existing children; everywhere else they follow the block as siblings.
+  const underBlock = placement === "firstChildren" ? [...first.children, ...rest] : first.children;
+  const besideBlock = placement === "firstChildren" ? [] : rest;
 
   const ops: Op[] = [];
   if (first.marker)
@@ -282,7 +307,7 @@ export async function templateIntoBlockOps(
   for (const [key, value] of props) ops.push(mint(blockId, { kind: "block.prop", key, value }));
   ops.push(
     ...templateNodesOps(
-      first.children,
+      underBlock,
       { pageId: place.page_id, parentId: blockId, lower: null, upper: childUpper },
       expansion,
       mint,
@@ -290,7 +315,7 @@ export async function templateIntoBlockOps(
   );
   ops.push(
     ...templateNodesOps(
-      rest,
+      besideBlock,
       {
         pageId: place.page_id,
         parentId: place.parent_id,

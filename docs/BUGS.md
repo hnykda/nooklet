@@ -287,26 +287,6 @@ Fix direction (not done, outside this branch's scope): poll the read, and use `h
 
 2026-10-04: `page-icons.spec.ts` "…clearing the field removes the icon" now clears through the emoji picker's Remove button (same server-poll assertions).
 
-### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
-**Status:** open · **Severity:** low · **Found:** 2026-09-13, adversarial verification of
-m10/editor-keys (`/template`: pre-existing; `/mermaid`: reachable since the B-344 fix, `246d61e`) ·
-**Test:** —
-
-Page `- zoom root` / `  - zoom child` / `- outside`, opened at `?block=<zoom root>`, click the root
-row, End, type ` /merm`, Enter: the starter is stored as a new top-level block between `zoom root`
-and `outside` — the next sibling of the zoom root, which is not rendered in the zoomed view. On
-screen only the slash text disappears; the focus request for the new block is dropped by
-`BlockTree` (in the tree but not on screen), the caret stays in the root, and a key typed next goes
-there (`zoom root Z`). `/template` with text in the zoom root does the same (stored
-`["tpl root ", "tpl child", "EKV Checklist", "step one", "tpl outside"]`, rows still
-`["tpl root ", "tpl child"]`): both place "after a bullet with text" with
-`data/templates.ts#nextSiblingOrder`. Before `246d61e` `/mermaid` put the fence inline in the root
-(visible, never rendered — B-344). Options: insert as the zoom root's first child when the anchor is
-the tree's root, or navigate out of the zoom. Probe: `e2e/tests/zz-ekv-probe.spec.ts` P10/P10b/P11
-(throwaway, not committed).
-
----
-
 ### B-451 · `review-reactivity.spec.ts`'s two "Retry recovers" tests time out: the Retry button detaches before the click
 
 **Status:** open (cause not traced) · **Severity:** low (test; the view itself ends up loaded) ·
@@ -1129,22 +1109,31 @@ The desktop graph menu (ADR 032) removes only server graphs. A This-Mac graph is
 `~/.nooklet/default/graphs/<id>/`; getting rid of one means `nooklet graph retire` or deleting the
 folder by hand. Needs a decision on what "remove" should do to data on this Mac (retire? trash?).
 
+### B-860 · A task ticked in the Tasks view cannot be undone with Cmd/Ctrl+Z
+**Status:** open · **Severity:** low · **Found:** 2026-10-05, agent, auditing click writes for B-841 · **Test:** none yet
+
+The Tasks view's checkbox (`views/TasksView.tsx#onToggle`) writes `toggleDone`'s ops with
+`applyOps`, through no outliner tree, so the step is in no undo history: Cmd/Ctrl+Z after ticking a
+task there does nothing (or undoes the last edit in whatever tree was edited before). Found by
+reading, not reproduced in a browser. B-841's fix covers clicks on an outliner's own rows only.
+
+### B-861 · Emptying a bullet and inserting a template right away keeps the bullet empty on the server
+**Status:** open · **Severity:** medium (the screen and the graph disagree) · **Found:** 2026-10-05, agent, writing the B-820 e2e · **Test:** none yet
+
+Click a bullet with text, Cmd/Ctrl+A, Backspace, then at once `/template` and pick one whose first
+block has text (`template-including-parent:: false`, children `alpha` / `alpha kid`, `beta`). The
+screen shows `alpha` in the bullet; the server (`page.read`) has `""` there, while the template's
+other blocks are stored. Erasing with Backspaces does the same; waiting ~1.5 s after emptying before
+`/template` stores `alpha`. Not zoom-related (reproduced on a plain page, Chromium, throwaway probe
+not committed). Likely the emptying edit, still in the write debounce or unanswered, wins over the
+batch's `block.text`; not diagnosed. `zoom-root.spec.ts`'s empty-root test waits for the server to
+have `""` first so it tests B-820 only.
+
 ### B-787 · Desktop: "Show graphs on this server (root token)" is not offered in the add form
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** none yet
 
 The phone/browser form can list a server's graphs with its root token. From the desktop page that
 call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
-
-### B-820 · Zoomed in, `/template` on the zoom root inserts the template outside the view
-**Status:** open · **Severity:** medium (looks like lost typing, as B-788) · **Found:** 2026-10-04, agent, while auditing B-788 · **Test:** none yet
-
-Zoomed into a block with text, `/template` on that block inserts the template as its following
-sibling(s) (`data/templates.ts#templateAfterOps`), which is outside the zoomed view, so nothing
-appears. Into an EMPTY zoom root the first template node goes into the root, but any further
-top-level nodes are its siblings and vanish the same way. Found by reading the code, not
-reproduced in a browser. The template command (`commands/registrations/templates.ts`) does not know
-the zoom root (its context has `zoomed`, not which block); the fix is to pass it through and insert
-as the root's first children, like B-788's paste.
 
 ### B-821 · Zoomed in, the zoom root looks like any other row, not like the view's title
 **Status:** open (follow-up to B-788) · **Severity:** low (UX) · **Found:** 2026-10-04, agent · **Test:** none
@@ -1155,8 +1144,10 @@ body size. Left out of B-788 on purpose: a larger font on the row that hosts the
 caret geometry, heading blocks (`# …` already have their own sizes), task markers and images in
 the root, which is a design pass rather than two CSS lines.
 
+## Fixed
+
 ### B-841 · A task marker clicked with nothing edited cannot be undone with Cmd/Ctrl+Z
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, while building B-789 · **Test:** none yet
+**Status:** fixed 2026-10-05 (editor-night-bugs branch) · **Severity:** low · **Found:** 2026-10-04, while building B-789 · **Test:** `e2e/tests/click-undo.spec.ts` (3: marker, collapse arrow, swipe-to-indent; all 3 fail without the fix); `app/editor-host.test.ts` "a write from a click on a tree's rows becomes the undo target (B-789, B-841)" (2, pin the `noteUndoTarget` seam, which already existed)
 
 On a page where no block has been edited or selected yet, click a `TODO` marker (it becomes
 `DONE`), then press Cmd/Ctrl+Z: nothing happens; the step sits in the tree's history and no key
@@ -1167,7 +1158,62 @@ reaches it. Reproduced in Chromium e2e (a throwaway probe: seed `- TODO water th
 same hole for an image's resize and closed it with `noteUndoTarget(editorHost)` after the commit;
 the same line in `onToggleMarker` (and probably `onToggleCollapse`) is the likely fix.
 
-## Fixed
+**Fix:** every write a tree makes from a click or gesture on its rows goes through
+`BlockTree#byPointer`, which calls `noteUndoTarget(editorHost)` when the write actually landed (a
+counter in `commit`; a refused write — zoom root, locked page — ends nobody's session). Audit
+(`docs/progress/editor-night-bugs.md`): the task marker and the collapse arrow had the gap, and so
+did the touch gestures — swipe to indent/outdent and the long-press drag reorder, which run with
+nothing edited; the image handle (B-789) now uses the same helper; date chips already went through
+`commitThroughEditor` (B-142). The inline `[ ]` checkbox is disabled, the priority badge and the
+properties under a row write nothing on click. The Tasks view's checkbox writes with no tree and
+no history at all: B-860.
+
+### B-820 · Zoomed in, `/template` on the zoom root inserts the template outside the view
+**Status:** fixed 2026-10-05 (editor-night-bugs branch) · **Severity:** medium (looks like lost typing, as B-788) · **Found:** 2026-10-04, agent, while auditing B-788 · **Test:** `e2e/tests/zoom-root.spec.ts` "B-820: /template on a zoom root with text…", "B-820: /template into an empty zoom root…" (Chromium + WebKit; all 4 fail without the fix); `commands/registrations/templates.test.ts` "B-820: …" (2)
+
+Zoomed into a block with text, `/template` on that block inserts the template as its following
+sibling(s) (`data/templates.ts#templateAfterOps`), which is outside the zoomed view, so nothing
+appears. Into an EMPTY zoom root the first template node goes into the root, but any further
+top-level nodes are its siblings and vanish the same way. Found by reading the code, not
+reproduced in a browser. The template command (`commands/registrations/templates.ts`) does not know
+the zoom root (its context has `zoomed`, not which block); the fix is to pass it through and insert
+as the root's first children, like B-788's paste.
+
+Reproduced in Chromium and WebKit before the fix (the e2e above): with text, the template was
+stored after the root and the view showed only the removed slash text; into an empty root, the
+template's second top-level block went beside the root.
+
+**Fix:** `EditorHost.zoomRoot()` (the focused tree's `effectiveRoot`) tells a command which block is
+the fixed top. `block.insertTemplate` on that block passes `placement: "firstChildren"` to
+`data/templates.ts`: with text, the template's top-level blocks become the root's first children
+(above its existing ones, caret to the first); into an empty root, the first node fills the root as
+before and the rest follow its children under the root. Spec R27.1 extended. Same seam for
+`/mermaid`: B-383.
+
+### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
+**Status:** fixed 2026-10-05 (editor-night-bugs branch; `/template` is B-820) · **Severity:** low ·
+**Found:** 2026-09-13, adversarial verification of m10/editor-keys (`/template`: pre-existing;
+`/mermaid`: reachable since the B-344 fix, `246d61e`) · **Test:** `e2e/tests/zoom-root.spec.ts`
+"B-383: /mermaid on a zoom root with text…" (Chromium + WebKit; both fail without the fix);
+`plugins/host.test.ts` "B-383: on the zoom root of the view the new block is its first child…"
+
+Page `- zoom root` / `  - zoom child` / `- outside`, opened at `?block=<zoom root>`, click the root
+row, End, type ` /merm`, Enter: the starter is stored as a new top-level block between `zoom root`
+and `outside` — the next sibling of the zoom root, which is not rendered in the zoomed view. On
+screen only the slash text disappears; the focus request for the new block is dropped by
+`BlockTree` (in the tree but not on screen), the caret stays in the root, and a key typed next goes
+there (`zoom root Z`). `/template` with text in the zoom root does the same (stored
+`["tpl root ", "tpl child", "EKV Checklist", "step one", "tpl outside"]`, rows still
+`["tpl root ", "tpl child"]`): both place "after a bullet with text" with
+`data/templates.ts#nextSiblingOrder`. Before `246d61e` `/mermaid` put the fence inline in the root
+(visible, never rendered — B-344). Options: insert as the zoom root's first child when the anchor is
+the tree's root, or navigate out of the zoom. Probe: `e2e/tests/zz-ekv-probe.spec.ts` P10/P10b/P11
+(throwaway, not committed).
+
+**Fix:** the client plugin host's `editor.insertBlockAfter(id, …)` asks `EditorHost.zoomRoot()`;
+when `id` is the zoom root, `data/plugin-writes.ts#blockAfterOps` creates the root's first child
+instead of its next sibling (R27.1). `/mermaid`'s starter shows under the root and takes the caret.
+Documented on `EditorApi.insertBlockAfter`.
 
 ### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
 **Status:** fixed (image-sizing branch) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** `e2e/tests/image-resize.spec.ts` (Chromium + WebKit), `phone-images.spec.ts` "B-789: a chosen size…", `apps/web/src/editor/render/image-box.test.tsx`, `packages/core/src/image-meta.test.ts`, corpus case 51, `logseq.test.ts` "B-789 / ADR 034", `logseq-db-import.test.ts`, Rust `b789_reveal_asset_is_read_strictly_and_finds_only_that_graphs_file`

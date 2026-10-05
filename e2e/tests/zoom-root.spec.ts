@@ -8,7 +8,15 @@
  */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { editor, openPage, readBlocks, rowDepths, rowTexts, runName } from "../helpers/index.js";
+import {
+  api,
+  editor,
+  openPage,
+  readBlocks,
+  rowDepths,
+  rowTexts,
+  runName,
+} from "../helpers/index.js";
 
 /** `base` made unique per project, repeat and retry: both engines run this file against one
  * server, and a page the other engine already typed into would start with its keystrokes. */
@@ -122,4 +130,145 @@ test("B-788: no key moves anything out of the zoomed view", async ({ page }) => 
   // Give any write a moment to land before reading the server: these keys must write nothing.
   await page.waitForTimeout(700);
   expect((await readBlocks(page, name)).map((b) => [b.content, b.depth])).toEqual(unchanged);
+});
+
+// B-820 / B-383: slash commands that CREATE blocks. Each would have put them after the zoom root,
+// outside the view. The template's own top level is two blocks (`template-including-parent::
+// false`), so the empty-root case has a "rest" that used to become the root's siblings.
+const TEMPLATE = "zoomtpl";
+const LIBRARY_MD = `- Zoom library
+  template:: ${TEMPLATE}
+  template-including-parent:: false
+  - alpha
+    - alpha kid
+  - beta`;
+
+/** Type `/template`, take the slash menu's Template row, filter the picker, pick with Enter. */
+async function pickTemplate(page: Page): Promise<void> {
+  await page.keyboard.type("/template");
+  const menu = page.locator(".cmd-popup").first();
+  await expect(menu).toBeVisible();
+  await menu
+    .locator('[role="option"]')
+    .filter({ hasText: /^Template$/ })
+    .click();
+  const picker = page.locator(".tpl-picker");
+  await expect(picker).toBeVisible();
+  await page.keyboard.type(TEMPLATE);
+  await expect(picker.locator('[role="option"]')).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(picker).toHaveCount(0);
+}
+
+/** Seeds the template library for one test and removes it after: `templates.spec.ts` asserts the
+ * exact list of templates on the shared server. */
+async function withLibrary(page: Page, body: () => Promise<void>): Promise<void> {
+  const library = unique("Zoom Template Library");
+  await openPage(page, library, LIBRARY_MD);
+  try {
+    await body();
+  } finally {
+    await api(page, "page.delete", { page: library });
+  }
+}
+
+const stored = async (page: Page, name: string) =>
+  (await readBlocks(page, name)).map((b) => [b.content.trimEnd(), b.depth]);
+
+test("B-820: /template on a zoom root with text puts the template under it, in view", async ({
+  page,
+}) => {
+  await withLibrary(page, async () => {
+    const name = unique("Zoom Root Template");
+    const outliner = await openPage(page, name, "- before\n- root\n  - kid\n- after");
+    const zoomed = await zoomInto(page, outliner, 1);
+    await editRow(page, zoomed, 0);
+    await page.keyboard.press("End");
+    await page.keyboard.type(" ");
+    await pickTemplate(page);
+
+    await expect
+      .poll(() => rowTexts(page, zoomed))
+      .toEqual(["root ", "alpha", "alpha kid", "beta", "kid"]);
+    expect(await rowDepths(page, zoomed)).toEqual([0, 1, 2, 1, 1]);
+    // The caret went to the first new block, which is on screen.
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.type(" typed");
+    await expect(editor(page)).toHaveText("alpha typed");
+    await expect
+      .poll(() => stored(page, name))
+      .toEqual([
+        ["before", 0],
+        ["root", 0],
+        ["alpha typed", 1],
+        ["alpha kid", 2],
+        ["beta", 1],
+        ["kid", 1],
+        ["after", 0],
+      ]);
+  });
+});
+
+test("B-820: /template into an empty zoom root keeps every top-level block of it in view", async ({
+  page,
+}) => {
+  await withLibrary(page, async () => {
+    const name = unique("Zoom Root Template Empty");
+    const outliner = await openPage(page, name, "- before\n- placeholder\n  - kid\n- after");
+    const zoomed = await zoomInto(page, outliner, 1);
+    await editRow(page, zoomed, 0);
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("Backspace");
+    await expect(editor(page)).toHaveText("");
+    // Let the emptied text reach the server first: inserted while that edit is still in flight,
+    // the template's first line shows but the server keeps "" (B-861, a separate bug).
+    await expect.poll(async () => (await readBlocks(page, name))[1]?.content).toBe("");
+    await pickTemplate(page);
+
+    await expect.poll(() => rowTexts(page, zoomed)).toEqual(["alpha", "alpha kid", "beta", "kid"]);
+    expect(await rowDepths(page, zoomed)).toEqual([0, 1, 1, 1]);
+    await expect
+      .poll(() => stored(page, name))
+      .toEqual([
+        ["before", 0],
+        ["alpha", 0],
+        ["alpha kid", 1],
+        ["beta", 1],
+        ["kid", 1],
+        ["after", 0],
+      ]);
+  });
+});
+
+test("B-383: /mermaid on a zoom root with text puts the diagram in its first child, in view", async ({
+  page,
+}) => {
+  const STARTER = "```mermaid\ngraph TD\n  A --> B\n```";
+  const name = unique("Zoom Root Mermaid");
+  const outliner = await openPage(page, name, "- before\n- root\n  - kid\n- after");
+  const zoomed = await zoomInto(page, outliner, 1);
+  await editRow(page, zoomed, 0);
+  await page.keyboard.press("End");
+  await page.keyboard.type(" /merm");
+  const popup = page.locator(".cmd-popup");
+  await expect(popup.locator(".cmd-row--active")).toHaveText("Mermaid diagram");
+  await page.keyboard.press("Enter");
+  await expect(popup).toHaveCount(0);
+
+  await expect
+    .poll(() => stored(page, name), { timeout: 15_000 })
+    .toEqual([
+      ["before", 0],
+      ["root", 0],
+      [STARTER, 1],
+      ["kid", 1],
+      ["after", 0],
+    ]);
+  // In view, and the caret is in it (inside the fence, B-185): the next key goes there.
+  await expect.poll(async () => await zoomed.locator(".vr-row").count()).toBe(3);
+  await page.keyboard.type(" --> C");
+  await expect
+    .poll(async () => (await readBlocks(page, name))[2]?.content.trimEnd(), { timeout: 15_000 })
+    .toBe("```mermaid\ngraph TD\n  A --> B --> C\n```");
+  expect((await readBlocks(page, name))[1]?.content.trimEnd()).toBe("root");
 });

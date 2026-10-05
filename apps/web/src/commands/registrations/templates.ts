@@ -12,6 +12,9 @@
  * - the bullet has text — the template is inserted as the following sibling(s) and the caret
  *   moves to the first new block.
  *
+ * On the zoom root of a zoomed view, "following siblings" become its first children: its siblings
+ * are not in the view (R27.1, B-820).
+ *
  * Either way the ops are one batch committed through the editor (`EditorHost.commitOps`), so the
  * whole insertion is one Cmd/Ctrl+Z (B-108). Only when no editor shows the block any more (the
  * person left the page while the template was being read) are they applied directly.
@@ -23,6 +26,7 @@ import { type Op, splitBlockText } from "@nooklet/core";
 import { applyOps } from "../../data/store.js";
 import {
   findTemplateByName,
+  type InsertPlacement,
   listTemplates,
   type TemplateSummary,
   templateAfterOps,
@@ -40,10 +44,12 @@ export interface TemplateCommandDeps {
     templateAfterOps: (
       templateId: string,
       blockId: string,
+      placement: InsertPlacement,
     ) => Promise<{ ops: Op[]; firstId: string } | undefined>;
     templateIntoBlockOps: (
       templateId: string,
       blockId: string,
+      placement: InsertPlacement,
     ) => Promise<{ ops: Op[] } | undefined>;
     /** The fallback write, for a batch no editor would take. */
     applyOps: (ops: Op[]) => Promise<unknown>;
@@ -92,10 +98,14 @@ export function createTemplateCommands(deps: TemplateCommandDeps): Command[] {
     // The editor keeps focus while the picker is open, so the live selection is the truth; the
     // one captured when the command started is the fallback for a host that lost it meanwhile.
     const at = editor.getSelection() ?? opened;
+    // The zoom root of a zoomed view is its fixed top: anything inserted "after" it would land
+    // outside the view and look lost (R27.1, B-820). There the template goes in as its first
+    // children, where Enter on it puts a new block.
+    const placement: InsertPlacement = editor.zoomRoot() === at.blockId ? "firstChildren" : "after";
     // "Empty" is about the block's text, not its editing buffer: an empty numbered item's buffer is
     // `\nlist:: number`, which read as non-empty and sent the template in after it (B-154).
     if (splitBlockText(at.content).content.trim() === "") {
-      const built = await data.templateIntoBlockOps(template.id, at.blockId);
+      const built = await data.templateIntoBlockOps(template.id, at.blockId, placement);
       if (!built) return;
       // The caret ends the inserted text only if it is still in that bullet: focus that moved on
       // while the template was being read stays where the person put it.
@@ -108,7 +118,7 @@ export function createTemplateCommands(deps: TemplateCommandDeps): Command[] {
       if (!editor.commitOps(batch)) await data.applyOps(built.ops);
       return;
     }
-    const built = await data.templateAfterOps(template.id, at.blockId);
+    const built = await data.templateAfterOps(template.id, at.blockId, placement);
     if (!built) return;
     const batch = {
       ops: built.ops,

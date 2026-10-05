@@ -110,6 +110,12 @@ export interface EditorHost {
    * and properties; `null` when nothing is edited. The client plugin host's `editor.currentBlock()`
    * — `/mermaid` asks it whether the block already has text (B-344). */
   currentBlock(): Block | null;
+
+  /** The block the focused view is zoomed into, or `null` when it shows the whole page (or nothing
+   * is focused). A command that creates blocks next to the one being edited asks this: on the zoom
+   * root they go in as its FIRST children instead of after it, where the view would not show them
+   * (R27.1, B-820). */
+  zoomRoot(): string | null;
 }
 
 /** A working fake for this package's own tests: an in-memory single-block "document" that
@@ -122,6 +128,8 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
   /** What `commitOps` answers; `true` by default (an editor shows the anchor). */
   acceptCommits: boolean;
   linkAtCaret: LinkAtCaret | null;
+  /** What `zoomRoot()` answers; `null` (not zoomed) by default. */
+  zoomRootId: string | null;
 } {
   let state: EditorSelection | null =
     initial === undefined
@@ -136,6 +144,7 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
   const committed: OpBatch[] = [];
   let acceptCommits = true;
   let linkAtCaret: LinkAtCaret | null = null;
+  let zoomRootId: string | null = null;
 
   return {
     get state() {
@@ -155,6 +164,12 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
     },
     set acceptCommits(next) {
       acceptCommits = next;
+    },
+    get zoomRootId() {
+      return zoomRootId;
+    },
+    set zoomRootId(next) {
+      zoomRootId = next;
     },
     structuralCalls,
     committed,
@@ -198,6 +213,9 @@ export function createFakeEditorHost(initial?: Partial<EditorSelection>): Editor
         createdAt: 0,
         updatedAt: 0,
       };
+    },
+    zoomRoot() {
+      return zoomRootId;
     },
   };
 }
