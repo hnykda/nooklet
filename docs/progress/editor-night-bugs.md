@@ -74,6 +74,20 @@ Own worktree, based on `81d8a618`. E2E port 6520. New bug numbers start at B-860
   before and after zooming. Found in passing: **B-862** (zoom trail shows raw markdown).
 - New e2e helper `e2e/helpers/text-geometry.ts` (character boxes, font size, line height).
 
+- `9b1b1425` — B-821.
+- Checks on `9b1b1425`: `pnpm -r typecheck` clean; `biome check .` no errors (31 warnings, none in
+  files touched here); `pnpm -r test` core 523, plugin-api 17, server 952, web 1835, all pass;
+  `leak-check --tree` clean.
+- FULL `pnpm e2e` (port 6520): **902 passed, 1 failed, 6 skipped** (26.2 min). The failure:
+  WebKit `focus-log.spec.ts:36` (no "LOST editor focus" line in the log yet). Another agent's full
+  run on its own worktree failed on the same test the same morning. Passes alone (3/3) and in a
+  WebKit-only run of the whole project (88 passed, 0 failed). Logged as B-863 (with the sibling test
+  not being re-run safe). Not touched by these changes, as far as I can tell (it clicks into a
+  block, types, opens Diagnostics). (A first full run's log was overwritten by another agent writing
+  the same scratch file name and is not counted.)
+- `pnpm nooklet verify` not run: no op kinds, sync or schema touched (only existing
+  `block.create`/`block.text`/`block.prop` ops, placed elsewhere).
+
 ## Next steps
 
-1. Full checks (typecheck, biome, unit, FULL e2e on 6520, leak-check), BUGS hashes.
+None. Open follow-ups logged: B-860, B-861, B-862, B-863.

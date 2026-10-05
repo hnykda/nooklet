@@ -1138,6 +1138,17 @@ block with a picture it reads `a picture ![](assets/….png)`. The trail
 breadcrumb strips a heading's `#`s (`views/referenceNesting.ts#breadcrumbLabel`, B-552) but the zoom
 trail does not use it. Seen in Chromium screenshots of seeded pages.
 
+### B-863 · `focus-log.spec.ts` fails in WebKit in a full e2e run: the log has no `LOST editor focus` line
+**Status:** open · **Severity:** low (test) · **Found:** 2026-10-05, editor-night-bugs full e2e run (port 6520), and the same failure in another agent's full run on its own worktree the same morning · **Test:** the spec itself
+
+"records the editor's focus, the refresh after a write and the stack that ended editing" fails at
+`expect(log).toMatch(/LOST editor focus → /)`: the log has the editor detach (on the pointerdown that
+opens Diagnostics) but no "LOST editor focus" entry yet. Passes alone (3 of 3 with
+`--repeat-each 3`) and in a WebKit-only run of the whole project (88 passed). Probably the entry is
+written after the log is read; not traced. Separately, "recording changes nothing about editing"
+times out on its 2nd and 3rd `--repeat-each` iteration: it uses fixed page names, so it is not
+re-run safe (as B-292, B-356).
+
 ### B-787 · Desktop: "Show graphs on this server (root token)" is not offered in the add form
 **Status:** open · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** none yet
 
@@ -1147,7 +1158,7 @@ call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell
 ## Fixed
 
 ### B-821 · Zoomed in, the zoom root looks like any other row, not like the view's title
-**Status:** fixed 2026-10-05 (editor-night-bugs branch) · **Severity:** low (UX) · **Found:** 2026-10-04, agent · **Test:** `e2e/tests/zoom-root.spec.ts` "B-821: …" (4) and `phone-zoom-root.spec.ts` "B-821: phone, …" (1), each in Chromium and WebKit. Without the CSS, "drawn at title size…" and the phone test fail (4 of 10 runs); "a heading zoom root…" fails without its heading rule; "clicking the zoom root edits it in place…" and "arrow keys walk a wrapped zoom root…" pass either way — they pin that the larger text left the caret, the click mapping and visual-line moves intact
+**Status:** fixed 2026-10-05 (`9b1b1425`) · **Severity:** low (UX) · **Found:** 2026-10-04, agent · **Test:** `e2e/tests/zoom-root.spec.ts` "B-821: …" (4) and `phone-zoom-root.spec.ts` "B-821: phone, …" (1), each in Chromium and WebKit. Without the CSS, "drawn at title size…" and the phone test fail (4 of 10 runs); "a heading zoom root…" fails without its heading rule; "clicking the zoom root edits it in place…" and "arrow keys walk a wrapped zoom root…" pass either way — they pin that the larger text left the caret, the click mapping and visual-line moves intact
 
 Logseq draws the zoomed-into block larger, as the title of the view. nooklet now treats the root as
 the fixed top (B-788; the row has a `vr-row-zoom-root` class and no collapse arrow) but draws it at
@@ -1171,7 +1182,7 @@ puts it before that character, ArrowDown walks each visual line of a wrapped tit
 first child, ArrowUp from it lands on the title's last line.
 
 ### B-841 · A task marker clicked with nothing edited cannot be undone with Cmd/Ctrl+Z
-**Status:** fixed 2026-10-05 (editor-night-bugs branch) · **Severity:** low · **Found:** 2026-10-04, while building B-789 · **Test:** `e2e/tests/click-undo.spec.ts` (3: marker, collapse arrow, swipe-to-indent; all 3 fail without the fix); `app/editor-host.test.ts` "a write from a click on a tree's rows becomes the undo target (B-789, B-841)" (2, pin the `noteUndoTarget` seam, which already existed)
+**Status:** fixed 2026-10-05 (`11e29851`) · **Severity:** low · **Found:** 2026-10-04, while building B-789 · **Test:** `e2e/tests/click-undo.spec.ts` (3: marker, collapse arrow, swipe-to-indent; all 3 fail without the fix); `app/editor-host.test.ts` "a write from a click on a tree's rows becomes the undo target (B-789, B-841)" (2, pin the `noteUndoTarget` seam, which already existed)
 
 On a page where no block has been edited or selected yet, click a `TODO` marker (it becomes
 `DONE`), then press Cmd/Ctrl+Z: nothing happens; the step sits in the tree's history and no key
@@ -1193,7 +1204,7 @@ properties under a row write nothing on click. The Tasks view's checkbox writes 
 no history at all: B-860.
 
 ### B-820 · Zoomed in, `/template` on the zoom root inserts the template outside the view
-**Status:** fixed 2026-10-05 (editor-night-bugs branch) · **Severity:** medium (looks like lost typing, as B-788) · **Found:** 2026-10-04, agent, while auditing B-788 · **Test:** `e2e/tests/zoom-root.spec.ts` "B-820: /template on a zoom root with text…", "B-820: /template into an empty zoom root…" (Chromium + WebKit; all 4 fail without the fix); `commands/registrations/templates.test.ts` "B-820: …" (2)
+**Status:** fixed 2026-10-05 (`11e29851`) · **Severity:** medium (looks like lost typing, as B-788) · **Found:** 2026-10-04, agent, while auditing B-788 · **Test:** `e2e/tests/zoom-root.spec.ts` "B-820: /template on a zoom root with text…", "B-820: /template into an empty zoom root…" (Chromium + WebKit; all 4 fail without the fix); `commands/registrations/templates.test.ts` "B-820: …" (2)
 
 Zoomed into a block with text, `/template` on that block inserts the template as its following
 sibling(s) (`data/templates.ts#templateAfterOps`), which is outside the zoomed view, so nothing
@@ -1215,7 +1226,7 @@ before and the rest follow its children under the root. Spec R27.1 extended. Sam
 `/mermaid`: B-383.
 
 ### B-383 · `/mermaid` (and `/template`) on a zoom root puts the new block outside the zoomed view
-**Status:** fixed 2026-10-05 (editor-night-bugs branch; `/template` is B-820) · **Severity:** low ·
+**Status:** fixed 2026-10-05 (`11e29851`; `/template` is B-820) · **Severity:** low ·
 **Found:** 2026-09-13, adversarial verification of m10/editor-keys (`/template`: pre-existing;
 `/mermaid`: reachable since the B-344 fix, `246d61e`) · **Test:** `e2e/tests/zoom-root.spec.ts`
 "B-383: /mermaid on a zoom root with text…" (Chromium + WebKit; both fail without the fix);
