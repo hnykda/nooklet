@@ -42,6 +42,11 @@ export interface DesktopShell {
   downloads: boolean;
   /** B-789: the shell answers `reveal-asset` ("Show in Finder" on an image). */
   reveal: boolean;
+  /** B-786: the shell answers `delete-mac-graph`. A server graph's page may be newer than the
+   * shell; without the flag it would ask something nothing answers. */
+  deleteMac: boolean;
+  /** B-787: the shell answers `list-server-graphs`. */
+  listServerGraphs: boolean;
   /** Signs every request; only this window's main-frame documents have it. */
   key: string;
   /** Every graph this Mac knows: This Mac's own, then servers', as the shell lists them. */
@@ -77,7 +82,14 @@ export type ShellRequest =
   | { kind: "remove"; graph: string }
   /** B-789: select an asset's file in Finder. `graph` is a `mac:` key, `asset` the asset's id; the
    * shell finds the file itself, in that graph's own folder. */
-  | { kind: "reveal-asset"; graph: string; asset: string };
+  | { kind: "reveal-asset"; graph: string; asset: string }
+  /** B-786: move a This-Mac graph's folder to the Trash (`main.rs#delete_mac_graph`). `graph` is a
+   * `mac:` key. The shell refuses the open graph, `default` and the last one, and takes the request
+   * only from the bundled server's own page. */
+  | { kind: "delete-mac-graph"; graph: string }
+  /** B-787: the graphs on the server at `address`, listed with its ROOT token, which the shell uses
+   * for that one request and never stores. */
+  | { kind: "list-server-graphs"; address: string; token: string };
 
 export function shellRequestUrl(request: ShellRequest, key: string, req: string): string {
   const params = new URLSearchParams({ key, req });
@@ -94,8 +106,29 @@ export const DESKTOP_REPLY_EVENT = "nooklet:desktop-reply";
 export interface ShellReply {
   ok: boolean;
   error?: string;
-  /** The list as it now is, after a rename or a removal. */
+  /** The list as it now is, after a rename, a removal or a deletion. */
   graphs?: DesktopGraph[];
+  /** B-787: what `list-server-graphs` found. */
+  serverGraphs?: ListedServerGraph[];
+}
+
+/** One graph a server hosts (`connect.rs#ListedGraph`). */
+export interface ListedServerGraph {
+  id: string;
+  label: string;
+  /** `<server>/g/<id>`: the address to add it by. */
+  address: string;
+}
+
+function readListed(raw: unknown[]): ListedServerGraph[] {
+  return raw.flatMap((g) => {
+    if (typeof g !== "object" || g === null) return [];
+    const { id, label, address } = g as Record<string, unknown>;
+    if (typeof id !== "string" || typeof label !== "string" || typeof address !== "string") {
+      return [];
+    }
+    return [{ id, label, address }];
+  });
 }
 
 let nextReq = 0;
@@ -120,6 +153,9 @@ export function shellRequest(
         ok: detail.ok === true,
         error: typeof detail.error === "string" ? detail.error : undefined,
         graphs: Array.isArray(detail.graphs) ? readGraphs(detail.graphs) : undefined,
+        serverGraphs: Array.isArray(detail.serverGraphs)
+          ? readListed(detail.serverGraphs)
+          : undefined,
       });
     };
     win.addEventListener(DESKTOP_REPLY_EVENT, onReply);
@@ -181,16 +217,25 @@ function readGraphs(raw: unknown[]): DesktopGraph[] {
 export function desktopShell(win: Window | undefined = globalThis.window): DesktopShell | null {
   const raw = (win as ShellWindow | undefined)?.__NOOKLET_DESKTOP__;
   if (typeof raw !== "object" || raw === null) return null;
-  const { platform, port, downloads, reveal, key, graphs, graphToken } = raw as Record<
-    string,
-    unknown
-  >;
+  const {
+    platform,
+    port,
+    downloads,
+    reveal,
+    deleteMac,
+    listServerGraphs,
+    key,
+    graphs,
+    graphToken,
+  } = raw as Record<string, unknown>;
   if (typeof platform !== "string" || typeof port !== "number") return null;
   return {
     platform,
     port,
     downloads: downloads === true,
     reveal: reveal === true,
+    deleteMac: deleteMac === true,
+    listServerGraphs: listServerGraphs === true,
     key: typeof key === "string" ? key : "",
     graphs: Array.isArray(graphs) ? readGraphs(graphs) : [],
     graphToken: typeof graphToken === "string" && graphToken ? graphToken : null,

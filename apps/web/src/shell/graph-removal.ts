@@ -12,8 +12,10 @@
  *   device knows it has nothing unsynced; typed when it has some (and says how many) or cannot
  *   tell (`data/pending-memo.ts`).
  *
- * The desktop app's menu has its own, simpler removal (`DesktopGraphMenu.tsx`): there only a server
- * graph can be removed, and its replica stays on the Mac.
+ * The desktop app's menu has its own (`DesktopGraphMenu.tsx`): a server graph is removed with a
+ * plain confirm (its replica stays on the Mac), and a graph on This Mac is DELETED with
+ * `macDeletionDialog` below (B-786): its folder is the graph, so `delete` is typed, and the dialog
+ * says the folder goes to the Trash, from where it can be dragged back.
  *
  * Pure, so every wording is unit-tested; `GraphSwitcher.tsx` shows it with `app/confirm-dialog`.
  */
@@ -67,5 +69,25 @@ export function removalDialog(f: RemovalFacts): ConfirmOptions {
     confirmLabel: "Remove",
     destructive: true,
     typeToConfirm: lost ? REMOVE_CONFIRM_WORD : undefined,
+  };
+}
+
+/**
+ * B-786: deleting a graph on This Mac (desktop). There is no server copy: the folder in nooklet's
+ * data folder is the graph. The shell moves it to the Trash rather than erasing it, so the dialog
+ * says both: it is the only copy, and how to get it back while the Trash still has it.
+ */
+export function macDeletionDialog(f: { name: string; id: string }): ConfirmOptions {
+  const quoted = `“${f.name}”`;
+  return {
+    title: `Delete ${quoted} from this Mac?`,
+    warning: `This Mac holds the only copy of ${quoted}. No server or other device has it.`,
+    message: [
+      `Its folder (graphs/${f.id} in nooklet's data folder) is moved to the Trash, not erased, as ${f.id}-<date and time>. Until you empty the Trash you can get it back: drag that folder into nooklet's graphs folder and rename it ${f.id}.`,
+      "nooklet's command line, agents and the MCP endpoint lose it too.",
+    ],
+    confirmLabel: "Move to Trash",
+    destructive: true,
+    typeToConfirm: REMOVE_CONFIRM_WORD,
   };
 }

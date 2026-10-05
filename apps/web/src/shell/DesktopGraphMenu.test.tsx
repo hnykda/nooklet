@@ -48,8 +48,12 @@ const TOKEN = `nk_${"ab".repeat(24)}`;
 
 let assign: ReturnType<typeof vi.fn>;
 
-/** The page is at `href`, inside a shell that lists `graphs`. */
-function inShell(href: string, graphs: DesktopGraph[]): void {
+/** The page is at `href`, inside a shell that lists `graphs` (with what it answers, `flags`). */
+function inShell(
+  href: string,
+  graphs: DesktopGraph[],
+  flags: { deleteMac?: boolean; listServerGraphs?: boolean } = {},
+): void {
   const url = new URL(href);
   assign = vi.fn();
   Object.defineProperty(window, "location", {
@@ -67,7 +71,14 @@ function inShell(href: string, graphs: DesktopGraph[]): void {
   });
   Object.defineProperty(window, "__NOOKLET_DESKTOP__", {
     configurable: true,
-    value: Object.freeze({ platform: "macos", port: 6100, key: "k", graphs, graphToken: null }),
+    value: Object.freeze({
+      platform: "macos",
+      port: 6100,
+      key: "k",
+      graphs,
+      graphToken: null,
+      ...flags,
+    }),
   });
 }
 
@@ -77,7 +88,12 @@ function lastRequest(): URL {
   return new URL(String(call?.[0]));
 }
 
-function replyToLast(detail: { ok: boolean; error?: string; graphs?: DesktopGraph[] }): void {
+function replyToLast(detail: {
+  ok: boolean;
+  error?: string;
+  graphs?: DesktopGraph[];
+  serverGraphs?: { id: string; label: string; address: string }[];
+}): void {
   const req = lastRequest().searchParams.get("req");
   window.dispatchEvent(new CustomEvent(DESKTOP_REPLY_EVENT, { detail: { req, ...detail } }));
 }
@@ -167,6 +183,76 @@ describe("the desktop graph menu (B-781: one list, the shell's)", () => {
     );
   });
 
+  it("B-786: a This-Mac graph is deleted only after 'delete' is typed, through the shell, and the menu says it is in the Trash", async () => {
+    inShell("http://127.0.0.1:6100/g/default", [MAC, OTTER, WORK], { deleteMac: true });
+    render(() => <GraphSwitcher />);
+    const menu = openMenu();
+    // Not the open graph (This Mac, which is also `default`), not a server graph.
+    expect(menu.queryByRole("button", { name: "Delete This Mac" })).toBeNull();
+    expect(menu.queryByRole("button", { name: "Delete Work" })).toBeNull();
+    fireEvent.click(menu.getByRole("button", { name: "Delete Quiet Otter" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("only copy");
+    expect(dialog.textContent).toContain("Trash");
+    const go = within(dialog).getByRole("button", { name: "Move to Trash" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    fireEvent.click(go);
+    expect(assign).not.toHaveBeenCalled();
+    fireEvent.input(within(dialog).getByRole("textbox"), { target: { value: "delete" } });
+    expect(go.disabled).toBe(false);
+    fireEvent.click(go);
+    await waitFor(() => expect(lastRequest().pathname).toBe("/delete-mac-graph"));
+    expect(lastRequest().searchParams.get("graph")).toBe("mac:quiet-otter");
+    replyToLast({ ok: true, graphs: [MAC, WORK] });
+    await waitFor(() => expect(menu.queryByRole("button", { name: /^Quiet Otter/ })).toBeNull());
+    expect(menu.getByRole("status").textContent).toBe("“Quiet Otter” is in the Trash.");
+  });
+
+  it("B-786: Cancel deletes nothing, and the shell's refusal is shown", async () => {
+    inShell("http://127.0.0.1:6100/g/default", [MAC, OTTER], { deleteMac: true });
+    render(() => <GraphSwitcher />);
+    const menu = openMenu();
+    fireEvent.click(menu.getByRole("button", { name: "Delete Quiet Otter" }));
+    let dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(assign).not.toHaveBeenCalled();
+    fireEvent.click(menu.getByRole("button", { name: "Delete Quiet Otter" }));
+    dialog = await screen.findByRole("alertdialog");
+    fireEvent.input(within(dialog).getByRole("textbox"), { target: { value: "delete" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move to Trash" }));
+    await waitFor(() => expect(lastRequest().pathname).toBe("/delete-mac-graph"));
+    replyToLast({
+      ok: false,
+      error: "This graph is open. Open another graph first.",
+      graphs: [MAC, OTTER],
+    });
+    await waitFor(() => expect(menu.getByRole("alert").textContent).toContain("is open"));
+    expect(menu.getByRole("button", { name: /^Quiet Otter/ })).toBeTruthy();
+  });
+
+  it("B-786: not offered for the open graph, the last one, on a server's page, or by an older shell", () => {
+    // The open graph.
+    inShell("http://127.0.0.1:6100/g/quiet-otter", [MAC, OTTER], { deleteMac: true });
+    render(() => <GraphSwitcher />);
+    expect(openMenu().queryByRole("button", { name: /^Delete / })).toBeNull();
+    cleanup();
+    // The last graph on this Mac (the page is some other graph).
+    inShell("http://127.0.0.1:6100/g/x", [OTTER, WORK], { deleteMac: true });
+    render(() => <GraphSwitcher />);
+    expect(openMenu().queryByRole("button", { name: /^Delete / })).toBeNull();
+    cleanup();
+    // A server's page: whatever that server serves must not delete folders on this Mac.
+    inShell("https://notes.example.com/g/work", [MAC, OTTER, WORK], { deleteMac: true });
+    render(() => <GraphSwitcher />);
+    expect(openMenu().queryByRole("button", { name: /^Delete / })).toBeNull();
+    cleanup();
+    // A shell that does not answer the request.
+    inShell("http://127.0.0.1:6100/g/default", [MAC, OTTER, WORK]);
+    render(() => <GraphSwitcher />);
+    expect(openMenu().queryByRole("button", { name: /^Delete / })).toBeNull();
+  });
+
   it("Graphs… in the native menu opens it, even when the sidebar mounts it afterwards", () => {
     inShell("http://127.0.0.1:6100/g/default", [MAC]);
     requestGraphMenu();
@@ -178,8 +264,8 @@ describe("the desktop graph menu (B-781: one list, the shell's)", () => {
 });
 
 describe("the desktop add form (B-782: one form, errors on it)", () => {
-  function openAdd(): ReturnType<typeof within> {
-    inShell("http://127.0.0.1:6100/g/default", [MAC, WORK]);
+  function openAdd(flags: { listServerGraphs?: boolean } = {}): ReturnType<typeof within> {
+    inShell("http://127.0.0.1:6100/g/default", [MAC, WORK], flags);
     render(() => <GraphSwitcher />);
     const menu = openMenu();
     fireEvent.click(menu.getByRole("button", { name: "Add a graph" }));
@@ -277,5 +363,87 @@ describe("the desktop add form (B-782: one form, errors on it)", () => {
     expect(sent.searchParams.get("code")).toBe(code);
     expect(sent.searchParams.get("device")).toBe("Studio");
     expect(sent.searchParams.get("token")).toBeNull();
+  });
+
+  const ROOT = `nkroot_${"cd".repeat(24)}`;
+
+  it("B-787: with a root token, the shell lists the server's graphs; picking one fills the address and drops the root token", async () => {
+    const server = connectSection(openAdd({ listServerGraphs: true }));
+    fireEvent.input(server.getByLabelText("Server address"), {
+      target: { value: "https://notes.example.com" },
+    });
+    fireEvent.input(server.getByLabelText("Device token or pairing link"), {
+      target: { value: ` ${ROOT}. ` },
+    });
+    fireEvent.click(
+      server.getByRole("button", { name: "Show graphs on this server (root token)" }),
+    );
+    const sent = lastRequest();
+    expect(sent.origin).toBe("http://nooklet-desktop.invalid");
+    expect(sent.pathname).toBe("/list-server-graphs");
+    expect(sent.searchParams.get("address")).toBe("https://notes.example.com");
+    expect(sent.searchParams.get("token")).toBe(ROOT);
+    expect(server.getByRole("button", { name: "Listing…" })).toBeTruthy();
+    // The page itself never contacts the server (cross-origin, B-704).
+    expect(fetchMock).not.toHaveBeenCalled();
+    replyToLast({
+      ok: true,
+      serverGraphs: [
+        { id: "work", label: "Work", address: "https://notes.example.com/g/work" },
+        { id: "garden", label: "Garden", address: "https://notes.example.com/g/garden" },
+      ],
+    });
+    const list = within(await server.findByRole("list", { name: "Graphs on this server" }));
+    expect(list.getByRole("button", { name: /^Work/ }).textContent).toContain(
+      "already on this Mac",
+    );
+    fireEvent.click(list.getByRole("button", { name: /^Garden/ }));
+    expect((server.getByLabelText("Server address") as HTMLInputElement).value).toBe(
+      "https://notes.example.com/g/garden",
+    );
+    // The root token is gone from the form: it cannot open a graph, and it is never kept.
+    expect((server.getByLabelText("Device token or pairing link") as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(server.getByRole("status").textContent).toContain("nooklet token create --graph garden");
+    expect(server.queryByRole("list", { name: "Graphs on this server" })).toBeNull();
+    expect(JSON.stringify({ ...localStorage })).not.toContain(ROOT);
+    // Connecting then sends the picked graph's DEVICE token, as any connect.
+    fireEvent.input(server.getByLabelText("Device token or pairing link"), {
+      target: { value: TOKEN },
+    });
+    fireEvent.click(server.getByRole("button", { name: "Connect" }));
+    expect(lastRequest().pathname).toBe("/connect-server");
+    expect(lastRequest().searchParams.get("address")).toBe("https://notes.example.com/g/garden");
+    expect(lastRequest().searchParams.get("token")).toBe(TOKEN);
+  });
+
+  it("B-787: a device token in the field is named before anything is sent; a refusal comes back to the form", async () => {
+    const server = connectSection(openAdd({ listServerGraphs: true }));
+    fireEvent.input(server.getByLabelText("Server address"), {
+      target: { value: "https://notes.example.com" },
+    });
+    fireEvent.input(server.getByLabelText("Device token or pairing link"), {
+      target: { value: TOKEN },
+    });
+    fireEvent.click(
+      server.getByRole("button", { name: "Show graphs on this server (root token)" }),
+    );
+    expect(server.getByRole("alert").textContent).toContain("That's a device token");
+    expect(assign).not.toHaveBeenCalled();
+    fireEvent.input(server.getByLabelText("Device token or pairing link"), {
+      target: { value: ROOT },
+    });
+    fireEvent.click(
+      server.getByRole("button", { name: "Show graphs on this server (root token)" }),
+    );
+    replyToLast({ ok: false, error: "That root token was rejected." });
+    await waitFor(() => expect(server.getByRole("alert").textContent).toContain("rejected"));
+    expect(server.queryByRole("list", { name: "Graphs on this server" })).toBeNull();
+  });
+
+  it("B-787: not offered by a shell that does not answer it", () => {
+    const server = connectSection(openAdd());
+    expect(server.queryByRole("button", { name: /Show graphs on this server/ })).toBeNull();
   });
 });

@@ -185,6 +185,8 @@ describe("Show in Finder (desktop, This Mac only)", () => {
     port: 6100,
     downloads: true,
     reveal: true,
+    deleteMac: false,
+    listServerGraphs: false,
     key: "k",
     graphs,
     graphToken: null,

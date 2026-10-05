@@ -53,6 +53,8 @@ describe("desktopShell", () => {
       port: 6420,
       downloads: false,
       reveal: false,
+      deleteMac: false,
+      listServerGraphs: false,
       key: "",
       graphs: [],
       graphToken: null,
@@ -74,6 +76,21 @@ describe("desktopShell", () => {
       shellRequestUrl({ kind: "reveal-asset", graph: "mac:default", asset: "abc1" }, "k", "r"),
     ).toBe(
       "http://nooklet-desktop.invalid/reveal-asset?key=k&req=r&graph=mac%3Adefault&asset=abc1",
+    );
+  });
+
+  it("B-786/B-787: knows whether the shell deletes This-Mac graphs and lists servers (an older one does neither)", () => {
+    injectShell(Object.freeze({ platform: "macos", port: 6420, reveal: true }));
+    expect(desktopShell(window)?.deleteMac).toBe(false);
+    expect(desktopShell(window)?.listServerGraphs).toBe(false);
+    delete (window as ShellWindow).__NOOKLET_DESKTOP__;
+    injectShell(
+      Object.freeze({ platform: "macos", port: 6420, deleteMac: true, listServerGraphs: true }),
+    );
+    expect(desktopShell(window)?.deleteMac).toBe(true);
+    expect(desktopShell(window)?.listServerGraphs).toBe(true);
+    expect(shellRequestUrl({ kind: "delete-mac-graph", graph: "mac:garden" }, "k", "r")).toBe(
+      "http://nooklet-desktop.invalid/delete-mac-graph?key=k&req=r&graph=mac%3Agarden",
     );
   });
 
@@ -144,6 +161,8 @@ describe("shellRequest (ADR 032)", () => {
       port: 6100,
       downloads: true,
       reveal: true,
+      deleteMac: true,
+      listServerGraphs: true,
       key: "k",
       graphs: [],
       graphToken: null,
@@ -165,6 +184,41 @@ describe("shellRequest (ADR 032)", () => {
       error: undefined,
       graphs: [{ ...WORK, label: "Job" }],
     });
+  });
+});
+
+describe("list-server-graphs (B-787)", () => {
+  it("sends the root token to the shell only, and reads the graphs it answers with", async () => {
+    const assign = vi.fn();
+    const win = Object.assign(new EventTarget(), { location: { assign } }) as unknown as Window;
+    const shell = {
+      platform: "macos",
+      port: 6100,
+      downloads: true,
+      reveal: true,
+      deleteMac: true,
+      listServerGraphs: true,
+      key: "k",
+      graphs: [],
+      graphToken: null,
+    };
+    const root = `nkroot_${"ab".repeat(24)}`;
+    const pending = shellRequest(
+      shell,
+      { kind: "list-server-graphs", address: "https://notes.example.com", token: root },
+      win,
+    );
+    const sent = new URL(String(assign.mock.calls[0]?.[0]));
+    expect(sent.origin).toBe("http://nooklet-desktop.invalid");
+    expect(sent.pathname).toBe("/list-server-graphs");
+    expect(sent.searchParams.get("token")).toBe(root);
+    const work = { id: "work", label: "Work", address: "https://notes.example.com/g/work" };
+    win.dispatchEvent(
+      new CustomEvent(DESKTOP_REPLY_EVENT, {
+        detail: { req: sent.searchParams.get("req"), ok: true, serverGraphs: [work, { id: 1 }] },
+      }),
+    );
+    await expect(pending).resolves.toEqual({ ok: true, serverGraphs: [work] });
   });
 });
 

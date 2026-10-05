@@ -1061,18 +1061,15 @@ depends on what ran before it. The cause has not been investigated. In those sam
 re-run) and `autocomplete-inside-link.spec.ts:85` (B-382) failed once on main. Both look like
 flakes and are noted here rather than logged separately.
 
-### B-786 · Desktop: a graph on This Mac cannot be removed or deleted from the app
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** none yet
+### B-880 · Desktop: deleting a This-Mac graph leaves its replica in the webview's storage
+**Status:** open · **Severity:** low · **Found:** 2026-10-05, desktop-night-bugs agent (while fixing B-786) · **Test:** none yet
 
-The desktop graph menu (ADR 032) removes only server graphs. A This-Mac graph is a folder under
-`~/.nooklet/default/graphs/<id>/`; getting rid of one means `nooklet graph retire` or deleting the
-folder by hand. Needs a decision on what "remove" should do to data on this Mac (retire? trash?).
-
-### B-787 · Desktop: "Show graphs on this server (root token)" is not offered in the add form
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** none yet
-
-The phone/browser form can list a server's graphs with its root token. From the desktop page that
-call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
+B-786 moves the graph's folder to the Trash, but the window's own copy of it stays: the OPFS
+replica file and the `nooklet.graphs` localStorage entry for `http://127.0.0.1:<port>/g/<id>` in the
+bundled server's origin. Nothing shows them on desktop (the menu reads the shell's list), so they
+only take space; a new graph later given the same id would meet the old entry and show the
+mismatch screen once ("Re-sync from the server" clears it). Fix: after a deletion succeeds, the
+page (which is on that origin) drops the entry and its replica, as the phone's removal does.
 
 ### B-820 · Zoomed in, `/template` on the zoom root inserts the template outside the view
 **Status:** open · **Severity:** medium (looks like lost typing, as B-788) · **Found:** 2026-10-04, agent, while auditing B-788 · **Test:** none yet
@@ -1182,6 +1179,37 @@ file's identity wins, page properties keep the first value per key, and both fil
 (journal first); the warning now says "merged". Re-import of the real graph: 864/864 journals,
 19,993 blocks (from 19,981), 0 skipped, verify OK. Also: production `alpha` had been imported from a
 stale file-based copy (CLAUDE.md now says where the real graph's export comes from).
+### B-786 · Desktop: a graph on This Mac cannot be removed or deleted from the app
+**Status:** fixed 2026-10-05 (desktop-night-bugs) · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** Rust `mac_delete::tests::b786_*` (4: open/default/last refused, a refusal touches nothing, retire-then-Trash order and a Trash failure, symlinks and paths outside `graphs/`) + `retired_names_match_the_servers` + `main.rs` `b786_b787_the_new_requests_are_read_strictly`, `b786_the_clis_retired_name_is_read_from_its_words`; ignored, run by hand: `b786_against_a_real_server`, `the_real_trash_takes_a_folder`; web `DesktopGraphMenu.test.tsx` "B-786" (3), `desktop-graphs.test.ts` `canDeleteMacGraph`, `graph-removal.test.ts` "B-786"; e2e `desktop-graphs.spec.ts` "B-786" (2)
+
+The desktop graph menu (ADR 032) removes only server graphs. A This-Mac graph is a folder under
+`~/.nooklet/default/graphs/<id>/`; getting rid of one means `nooklet graph retire` or deleting the
+folder by hand. Needs a decision on what "remove" should do to data on this Mac (retire? trash?).
+
+**Fixed.** A trash icon on a This-Mac graph's row opens the B-712 dialog: the only copy, typed
+`delete`, "Move to Trash". The shell (`mac_delete.rs`, new request `delete-mac-graph`) refuses the
+open graph, `default`, the last graph on this Mac, an invalid id, a symlinked folder or one outside
+`graphs/`, and any request not made from the bundled server's own page. It then has the server let
+go through B-713's retire (`DELETE /graphs/<id>` with the data folder's root token over loopback;
+`nooklet graph retire` when no server runs) and moves the retired folder to the macOS Trash
+(`trash` crate, `NSFileManager`). A server on the port that refuses that root token is serving
+another data folder, and nothing is touched. Decision and rejected options: ADR 032 amendment
+(2026-10-05). Follow-up: B-880 (the webview's replica of the deleted graph stays).
+
+### B-787 · Desktop: "Show graphs on this server (root token)" is not offered in the add form
+**Status:** fixed 2026-10-05 (desktop-night-bugs) · **Severity:** low · **Found:** 2026-10-04, desktop-graphs agent (proposal 005) · **Test:** Rust `connect::tests::b787_*` (3, one against a real socket), `main.rs` `b787_the_root_token_is_never_written_to_disk_or_the_keychain`, `b786_b787_the_new_requests_are_read_strictly`; web `DesktopGraphMenu.test.tsx` "B-787" (3), `desktop-shell.test.ts` "B-787"; e2e `desktop-graphs.spec.ts` "B-787"
+
+The phone/browser form can list a server's graphs with its root token. From the desktop page that
+call is cross-origin, so the desktop add form (ADR 032) leaves it out; the shell could make it.
+
+**Fixed.** The add form has "Show graphs on this server (root token)" again: the shell makes the
+web client's `GET <server>/graphs` from Rust (`connect.rs#list_server_graphs`, request
+`list-server-graphs`) and the form lists the graphs; picking one fills its address and clears the
+root token. The token is used for that one request: that path takes no keychain and writes no
+file, and no error quotes it. The server has no op that turns a root token into a device token for
+an existing graph (`POST /graphs` mints one only for a graph it creates; `pairing.create` needs that
+graph's admin token; graph routes never accept the root token), so the form then asks for the
+picked graph's device token or pairing link, as on the phone. Recorded in ADR 032's amendment.
 
 ### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
 **Status:** fixed (image-sizing branch) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** `e2e/tests/image-resize.spec.ts` (Chromium + WebKit), `phone-images.spec.ts` "B-789: a chosen size…", `apps/web/src/editor/render/image-box.test.tsx`, `packages/core/src/image-meta.test.ts`, corpus case 51, `logseq.test.ts` "B-789 / ADR 034", `logseq-db-import.test.ts`, Rust `b789_reveal_asset_is_read_strictly_and_finds_only_that_graphs_file`

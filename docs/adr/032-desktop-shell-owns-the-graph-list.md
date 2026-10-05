@@ -103,9 +103,64 @@ start its bundled server.
   Not measured (proposal 005's "Still unverified" stands).
 - **"Show graphs on this server (root token)"** is not offered on desktop (it would be another
   cross-origin call the shell would have to make with a root token); the phone and a browser tab
-  keep it.
+  keep it. *Superseded by the amendment below (B-787).*
 - **Unverified in a real window** (the owner's check, listed in the progress file): that WKWebView
   delivers each navigation to `on_navigation`, the window swap, the keychain prompt, and the menu
   item. `cargo test` covers the list, migration, verification against a local HTTP listener,
   request parsing, which navigation needs a new window, and — run in Node — which documents see the
   token; Chromium e2e covers the page side with the shell emulated.
+
+## Amendment (2026-10-05, B-786, B-787): deleting a graph on This Mac; listing a server's graphs
+
+Work record: `docs/progress/desktop-night-bugs.md`.
+
+**Deleting a This-Mac graph (B-786).** A sixth request, `delete-mac-graph` (its own kind, not
+`remove` with a `mac:` key, so a page and a shell of different versions can never turn "forget a
+server" into "delete a folder"). On This Mac the folder is the graph, so:
+
+1. The page asks only after the B-712 dialog's typed `delete` (`graph-removal.ts#macDeletionDialog`).
+2. The shell refuses, before touching anything (`mac_delete.rs#check_deletable`): the graph open in
+   the window; `default` (This Mac's main graph: the CLI, the MCP endpoint, the launcher's "Open a
+   graph on this Mac" and the server's bare-address redirect all open it, and `graph retire` asks
+   `--force` for it); the last graph on this Mac; and any request whose window is not on the
+   bundled server's own origin. The typed confirmation is the page's, and a server graph's page is
+   whatever that server serves, so only the client this app ships may ask.
+3. The folder is checked (`graph_folder`): a real directory directly in `graphs/`, not a symlink,
+   inside `graphs/` once resolved. The page names a graph by id only.
+4. **The server lets go first, through B-713's retire.** The bundled server holds a graph's SQLite
+   file, mirror, indexer and sockets once anything asked for it (ADR 025's lazy registry); moving
+   the folder under it would leave it writing to the moved file. So the shell calls
+   `DELETE http://127.0.0.1:<port>/graphs/<id>` with `<data>/root.token` (the same data folder the
+   sidecar serves), which closes everything and moves the folder to `graphs-retired/<id>-<time>/`.
+   With nothing listening, `nooklet graph retire <id>` (the bundled CLI) does the same move and
+   itself refuses while `serve.pid` names a live server. A server on the port that refuses that
+   root token, or does not know the graph, is serving another data folder: nothing is touched.
+5. **Then the Trash** (`trash` crate, `NSFileManager trashItemAtURL`), not `rm -rf`. If the Trash
+   refuses, the graph stays in `graphs-retired/` and the error says where.
+
+Rejected: `rm -rf` (not recoverable); leaving it in `graphs-retired/` only (recoverable, but a
+person deleting a graph expects to find it in the Trash and to get the space back by emptying it);
+moving `graphs/<id>` to the Trash directly (the running server would keep the moved database open);
+Finder's AppleScript `delete` (the `trash` crate's default: offers "Put Back" but asks for an
+Automation permission). Costs: Finder may not offer "Put Back" for an `NSFileManager` trash, so
+restoring is dragging the folder back and renaming it; the webview's replica of the deleted graph
+(OPFS file, localStorage entry) stays in the bundled server's origin storage (B-880).
+
+**Listing a server's graphs (B-787).** A seventh request, `list-server-graphs` with an address and
+a root token. The shell makes the web client's `GET <server>/graphs` from Rust
+(`connect.rs#list_server_graphs`) and answers with `{id, label, address}` rows; the page offers
+them and fills the address of the one picked. The root token is used for that one request: nothing
+on that path takes the keychain or writes a file, no error quotes it, and the form clears it once a
+graph is picked.
+
+The server has no op that turns a root token into a device token for an EXISTING graph:
+`POST /graphs` mints an admin token only for a graph it creates, `pairing.create` needs that graph's
+admin token, and the graph app's bearer check (`auth/tokens.ts#bearerAuth`) reads only the graph's
+own token table, never the root token. So the desktop form, like the phone's and the browser's,
+then asks for the picked graph's device token or a pairing link. Adding a root-gated "mint a device
+token for graph X" endpoint would remove that step, but it would make the root token a key to every
+graph's data rather than to the list, which ADR 025 kept it from being; not done.
+
+Both requests are announced by flags in the script (`deleteMac`, `listServerGraphs`, as `reveal`):
+a server graph's page comes from that server and may be newer than the shell, and without the flag
+it would send a request nothing answers.

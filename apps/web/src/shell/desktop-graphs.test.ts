@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DesktopGraph } from "../platform/desktop-shell.js";
 import {
+  canDeleteMacGraph,
   groupDesktopGraphs,
   readAddress,
   readCredential,
@@ -13,6 +14,31 @@ const CODE = "nkp_abcdefghijklmnopqrstuv";
 function graph(key: string, place: "mac" | "server", address: string): DesktopGraph {
   return { key, place, id: key.split(":")[1] ?? key, label: key, address };
 }
+
+describe("canDeleteMacGraph (B-786)", () => {
+  const garden = graph("mac:garden", "mac", "http://127.0.0.1:6100/g/garden");
+  const ok = {
+    shellCanDelete: true,
+    onBundledServer: true,
+    currentKey: "mac:default",
+    macCount: 2,
+  };
+  it("a This-Mac graph that is not open, not default and not the last, from the bundled server's page", () => {
+    expect(canDeleteMacGraph(garden, ok)).toBe(true);
+  });
+  it("never the open one, default, the last one, a server graph, from a server's page, or with an older shell", () => {
+    expect(canDeleteMacGraph(garden, { ...ok, currentKey: "mac:garden" })).toBe(false);
+    expect(
+      canDeleteMacGraph(graph("mac:default", "mac", "http://127.0.0.1:6100/g/default"), ok),
+    ).toBe(false);
+    expect(canDeleteMacGraph(garden, { ...ok, macCount: 1 })).toBe(false);
+    expect(canDeleteMacGraph(graph("server:s1", "server", "https://notes.example.com"), ok)).toBe(
+      false,
+    );
+    expect(canDeleteMacGraph(garden, { ...ok, onBundledServer: false })).toBe(false);
+    expect(canDeleteMacGraph(garden, { ...ok, shellCanDelete: false })).toBe(false);
+  });
+});
 
 describe("groupDesktopGraphs (proposal 005)", () => {
   it("keeps This Mac's graphs in the shell's order and groups servers by host", () => {
