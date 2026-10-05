@@ -37,6 +37,7 @@ import { type FileHandle, mkdtemp, open, rename, rm } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SqlDriver } from "@nooklet/core";
+import { THUMBS_DIR } from "../assets/variants.js";
 import { SCHEMA_VERSION } from "../schema.js";
 import {
   DEFAULT_GZIP_LEVEL,
@@ -83,7 +84,7 @@ export function defaultBackupPath(dataDir: string, now: Date = new Date()): stri
 
 /** Every regular file under `dir`, as POSIX-style paths relative to `dir` (stable order). Empty
  * array if `dir` doesn't exist. */
-function walkFiles(dir: string): string[] {
+function walkFiles(dir: string, skipTopDir?: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
   const stack: string[] = [dir];
@@ -91,6 +92,7 @@ function walkFiles(dir: string): string[] {
     const cur = stack.pop() as string;
     for (const entry of readdirSync(cur, { withFileTypes: true })) {
       const full = join(cur, entry.name);
+      if (entry.isDirectory() && cur === dir && entry.name === skipTopDir) continue;
       if (entry.isDirectory()) stack.push(full);
       else if (entry.isFile()) out.push(relative(dir, full).split(sep).join("/"));
     }
@@ -214,7 +216,8 @@ export async function createBackup(
       // First, always: restore validates the manifest before extracting anything big.
       { path: "manifest.json", data: Buffer.from(JSON.stringify(manifest, null, 2)) },
       { path: "graph.sqlite", file: snapshotPath, size: statSync(snapshotPath).size },
-      ...walkFiles(assetsDir).map((rel) => {
+      // Not the resized copies (`assets/.thumbs/`, ADR 035): a cache, made again on demand.
+      ...walkFiles(assetsDir, THUMBS_DIR).map((rel) => {
         const file = join(assetsDir, rel);
         return { path: `assets/${rel}`, file, size: statSync(file).size, level: gzipLevelFor(rel) };
       }),
@@ -254,7 +257,7 @@ export interface RestoreResult {
 /** True if `dataDir` already looks like it holds a graph (a database file, or any asset). */
 function hasExistingData(dataDir: string): boolean {
   if (existsSync(dbPath(dataDir))) return true;
-  return walkFiles(join(dataDir, "assets")).length > 0;
+  return walkFiles(join(dataDir, "assets"), THUMBS_DIR).length > 0;
 }
 
 /** Reject an archive-entry path that would escape `dataDir` once joined — defense in depth for a

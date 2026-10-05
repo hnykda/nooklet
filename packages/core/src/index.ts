@@ -1,3 +1,4 @@
+export * from "./asset-variants.js";
 export * from "./block-text.js";
 export * from "./blocks.js";
 export * from "./fts-query.js";

@@ -50,6 +50,13 @@ if [ "$(uname -s)" = "Darwin" ] && [ -n "${APPLE_CERTIFICATE:-}" ]; then
       --entitlements apps/desktop/src-tauri/sidecar.entitlements \
       --sign "$APPLE_SIGNING_IDENTITY" "$f"
   done
+  # sharp's addon and libvips (ADR 035, build-sidecar.mjs step 3b): Mach-O libraries the signed
+  # Node loads, so they need the same identity (library validation) and notarization needs them
+  # signed at all. Libraries take no entitlements.
+  find apps/desktop/sidecar/lib -type f \( -name '*.node' -o -name '*.dylib' \) -print0 |
+    while IFS= read -r -d '' f; do
+      codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$f"
+    done
   # Tauri would import APPLE_CERTIFICATE into a keychain of its own; it is already in ours.
   unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
   echo "signing: on (identity from APPLE_SIGNING_IDENTITY)"

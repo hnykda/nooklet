@@ -63,6 +63,7 @@ import { join } from "node:path";
 import type { LoggedOp, Op, OpPayload, SqlDriver } from "@nooklet/core";
 import { planOpLogGc } from "@nooklet/core";
 import type { ServerContext } from "./apply-ops.js";
+import { removeVariants } from "./assets/variants.js";
 import { createBackup, fileSizeOf, graphDbPath } from "./backup/index.js";
 
 export interface GcBlockingDevice {
@@ -325,6 +326,8 @@ function removeOrphanAssets(
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
+    // Its resized copies (ADR 035) too: a cache of a picture that no longer exists.
+    removeVariants(dataDir, a.id);
   }
   return { removed: orphans.length, reclaimedBytes };
 }

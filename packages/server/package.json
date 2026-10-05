@@ -23,6 +23,7 @@
     "@nooklet/plugin-api": "workspace:*",
     "esbuild": "^0.28.2",
     "hono": "^4.13.7",
+    "sharp": "^0.35.5",
     "sqlite-vec": "^0.1.9",
     "transit-js": "0.8.874",
     "uqr": "0.1.3",
