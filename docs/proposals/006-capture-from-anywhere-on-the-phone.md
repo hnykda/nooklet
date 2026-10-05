@@ -95,12 +95,11 @@ the app) and E/F.
 
 ## Still unverified
 
-- Whether a free Personal Team can use App Groups. **Probe built, not yet run on the phone**
-  (`tools/probes/app-group-probe/`, `docs/research/16-personal-team-app-groups.md`): on
-  2026-10-05 Xcode had no Apple account signed in, so signing stopped with "No Accounts" before
-  anything was registered. Apple's capability table says the free tier does *not* get App Groups;
-  AltSign-based sideloading tools say it does. Next step: the owner signs in to Xcode
-  (Settings → Accounts), then `run.sh build` / `install`, then one share from Safari.
+- ~~Whether a free Personal Team can use App Groups~~ — **settled 2026-10-05: yes.** An app and a
+  share extension signed by Xcode's automatic provisioning with the owner's free team shared
+  `group.sh.nooklet.probe` on the owner's iPhone; the extension's file was read by the app
+  (`docs/research/16-personal-team-app-groups.md` §3). Phase 2 is technically possible on the free
+  account, within its limits (10 App IDs per 7 days, 3 apps per phone).
 - Whether an App Intent defined in a Capacitor app target can write to the queue while the web view
   is not running (expected yes: it is plain Swift in the app process).
 

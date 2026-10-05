@@ -90,6 +90,29 @@ on 2026-10-11 the main app's profile expires, and renewing it (`docs/guide/ios-f
 no App ID registered, no profile created (still exactly one profile on disk, the main app's),
 nothing installed on the phone.
 
+### 2026-10-05 later, after the owner signed in to Xcode — **works**
+
+- `run.sh build`: `** BUILD SUCCEEDED **`. Automatic provisioning registered both App IDs and
+  created development profiles that include the group. Checked on the built products:
+  `codesign -d --entitlements :-` on the app and on `AppGroupProbeShare.appex` both list
+  `com.apple.security.application-groups = [group.sh.nooklet.probe]`, and each
+  `embedded.mobileprovision` (`security cms -D`) lists the same group.
+- Installed on the owner's iPhone 15 Pro (iOS 26) with `devicectl device install app`; launched with
+  `--console`: `PROBE containerURL=non-nil`, `PROBE app write ok: app-….txt`, and the app read its
+  own files back.
+- The owner shared a Safari page to "App Group Probe". Relaunching the app printed
+  `PROBE file share-2026-10-05T08:58:26Z.txt: written by the share extension …; shared types:
+  ["public.url"]` and `files from the share extension: 1`: **the extension wrote into the group
+  container and the app read it.**
+- Note: `devicectl device info files --domain-type appGroupDataContainer` listed only `Library/…`,
+  not the `.txt` files at the container root, so use the app's own console output, not that
+  listing, as the evidence.
+- The probe app was uninstalled afterwards (`run.sh remove`).
+
+**Conclusion:** a free Personal Team *can* use an App Group shared between an app and a share
+extension, signed by Xcode's automatic provisioning. Apple's capability table (section 1) is wrong
+or out of date on this point.
+
 ## 4. How to finish it
 
 Owner, once, on the Mac: **Xcode → Settings → Accounts → + → Apple Account**, sign in with the
@@ -133,9 +156,8 @@ the group container goes when no installed app uses the group.
 
 ## 5. Still unverified
 
-- **The question itself**: whether Xcode's automatic provisioning grants `group.sh.nooklet.probe`
-  to a Personal Team, and whether an extension signed that way sees the container. Blocked on the
-  Xcode sign-in above.
+- ~~The question itself~~: **settled 2026-10-05, it works** (section 3).
+- Whether the group survives the weekly re-sign unchanged (the 7-day profile renewal); expected yes.
 - Whether, if Xcode refuses, the group could be registered some other way (AltSign-style direct
   calls to the developer services API). Not worth pursuing for nooklet: a build the owner cannot
   reproduce from Xcode is not a build we can ship instructions for.
