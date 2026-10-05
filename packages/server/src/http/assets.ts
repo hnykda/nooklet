@@ -15,34 +15,57 @@
  * origin — where it would otherwise read `localStorage`, the device token included. Neither header
  * affects the normal case: an `<img>`, `<video>` or `<audio>` subresource is not a document, and
  * CSP `sandbox` does not apply to it.
+ *
+ * `?w=<width>` asks for a resized picture (ADR 035, `../assets/variants.ts`): one of a fixed set of
+ * widths, as WebP, made on first request and cached on disk. Under the same route and the same
+ * (absence of) auth as the original on purpose: whatever B-737 settles for asset URLs then covers
+ * both. When no variant can or need be made the original's bytes answer, so a `?w=` URL always
+ * shows the picture. Same headers either way; a variant is as immutable as its original.
  */
 
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { Hono } from "hono";
 import type { ServerContext } from "../apply-ops.js";
+import { parseVariantParam, variantFile } from "../assets/variants.js";
 import type { ServerConfig } from "../ops/registry.js";
 
 interface AssetRow {
   ext: string;
   mime_type: string;
   byte_size: number;
+  width: number | null;
   deleted_at: number | null;
 }
 
 export function mountAssetRoutes(app: Hono, serverCtx: ServerContext, config: ServerConfig): void {
   app.get("/assets/:id", async (c) => {
     const id = c.req.param("id").replace(/\.[a-zA-Z0-9]+$/, ""); // tolerate ".../:id.ext" too
+    const want = parseVariantParam(c.req.queries("w"));
+    if (want.kind === "bad") {
+      return c.json({ error: { code: "bad_request", message: want.message } }, 400);
+    }
     const row = serverCtx.driver.get<AssetRow>(
-      "SELECT ext, mime_type, byte_size, deleted_at FROM asset WHERE id = ?",
+      "SELECT ext, mime_type, byte_size, width, deleted_at FROM asset WHERE id = ?",
       [id],
     );
     if (!row || row.deleted_at !== null) {
       return c.json({ error: { code: "not_found", message: `no asset with id ${id}` } }, 404);
     }
-    const path = join(config.dataDir, "assets", `${id}.${row.ext}`);
+    let path = join(config.dataDir, "assets", `${id}.${row.ext}`);
+    let contentType = row.mime_type;
+    if (want.kind === "variant" && existsSync(path)) {
+      const variant = await variantFile(
+        { dataDir: config.dataDir, id, ext: row.ext, naturalWidth: row.width },
+        want.width,
+      );
+      if (variant) {
+        path = variant;
+        contentType = "image/webp";
+      }
+    }
     let size: number;
     try {
       size = (await stat(path)).size;
@@ -61,7 +84,7 @@ export function mountAssetRoutes(app: Hono, serverCtx: ServerContext, config: Se
     // every other request on the server for its duration.
     return new Response(Readable.toWeb(createReadStream(path)) as ReadableStream, {
       headers: {
-        "content-type": row.mime_type,
+        "content-type": contentType,
         "content-length": String(size),
         "cache-control": "public, max-age=31536000, immutable",
         "x-content-type-options": "nosniff",

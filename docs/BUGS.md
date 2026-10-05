@@ -660,6 +660,13 @@ rules (`api|sync` NetworkOnly, `/assets/` CacheFirst) are untouched and still ne
 `/assets/` one still needs the authenticated-response question answered before it is switched to a
 function.
 
+**2026-10-05 (image-speed, B-738):** the `/assets/` rule is now two function matchers (pictures
+only, same origin; `asset-variants` and `asset-originals`, ADR 035), and it was not an offline
+nicety: in WKWebView a request the worker does not answer skips the HTTP cache, so every picture
+was downloaded again on every showing. The authenticated-response question: assets are tokenless
+today (B-737); a cached picture stays on the device that showed it. Only the `api|sync`
+NetworkOnly RegExp is left, still dead and harmless.
+
 ### B-404 · One ChangeEvent naming four tables refetches a History page four times
 **Status:** open · **Severity:** low · **Found:** 2026-09-13, m10/tests-desktop (probing B-403) ·
 **Test:** none
@@ -1027,16 +1034,14 @@ keeps its `assets/<id>.<ext>` form, so the mapping happens in `assetUrl()` / the
 
 When this is fixed, the image viewer's Download/Copy (`apps/web/src/editor/render/image-actions.ts`, B-736) also fetches assets with no credential and must follow the same scheme.
 
-### B-738 · Images load slowly, even the second time the same image is shown
-**Status:** open · **Severity:** low · **Found:** 2026-10-04, owner ("probably OK") · **Test:** none yet
+### B-900 · e2e: `focus-log.spec.ts:36` (WebKit) failed once in a full run, passes alone
+**Status:** open · **Severity:** low (test flake) · **Found:** 2026-10-05, image-speed agent, full `pnpm e2e` on port 6540 · **Test:** `e2e/tests/focus-log.spec.ts` "records the editor's focus…" (WebKit)
 
-Imported photos are stored and served at full size (the largest images on the production graph are 2.7 to 4 MB),
-and there are no thumbnails, so each one is several MB to download. Measured from the Mac over a
-direct tailnet path: about 1.6 MB/s (a 67 MB asset in 41 s). `/assets/:id` already sends
-`cache-control: public, max-age=31536000, immutable`, so a slow *second* load means the
-webview is not reusing its HTTP cache. That is unverified: check the Tauri/WKWebView and Capacitor caches, and
-whether the URL changes between renders. Possible fixes: server-side resized variants
-(`/assets/:id?w=…`) and `loading="lazy"`/`decoding="async"`.
+The one failure in a full run of 893 (886 passed, 6 skipped) on the B-738 branch. Re-run alone on
+a fresh server: 3 passed, four times. The spec has no pictures and touches nothing B-738 changed.
+Its `--repeat-each` failures are already known (fixed page names, noted under e2e-flaky in Fixed);
+this was a first run, so it is something else. Not investigated; the failing run's output was
+overwritten before it was read.
 
 ### B-740 · No whole-graph export or backup in the client
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, graph-menu agent (B-712) · **Test:** none yet
@@ -1210,6 +1215,37 @@ file, and no error quotes it. The server has no op that turns a root token into 
 an existing graph (`POST /graphs` mints one only for a graph it creates; `pairing.create` needs that
 graph's admin token; graph routes never accept the root token), so the form then asks for the
 picked graph's device token or pairing link, as on the phone. Recorded in ADR 032's amendment.
+### B-738 · Images load slowly, even the second time the same image is shown
+**Status:** fixed (image-speed branch) · **Severity:** low · **Found:** 2026-10-04, owner ("probably OK") · **Test:** `e2e/tests/image-variants.spec.ts` (Chromium + WebKit: the `<img>` asks for a variant; a picture shown once comes from the service worker), `packages/server/src/http/asset-variants.http.test.ts`, `gc.test.ts` "B-738 / ADR 035", `apps/web/src/editor/render/image-variant.test.tsx`; probe `tools/probes/image-cache/probe.mjs` (counts at the server, Chromium, WebKit and a real WKWebView)
+
+Imported photos are stored and served at full size (the largest images on the production graph are 2.7 to 4 MB),
+and there are no thumbnails, so each one is several MB to download. Measured from the Mac over a
+direct tailnet path: about 1.6 MB/s (a 67 MB asset in 41 s). `/assets/:id` already sends
+`cache-control: public, max-age=31536000, immutable`, so a slow *second* load means the
+webview is not reusing its HTTP cache. That is unverified: check the Tauri/WKWebView and Capacitor caches, and
+whether the URL changes between renders. Possible fixes: server-side resized variants
+(`/assets/:id?w=…`) and `loading="lazy"`/`decoding="async"`.
+
+**2026-10-05, cause found** (`tools/probes/image-cache/`, `docs/progress/image-speed.md`): in a
+real WKWebView with a persistent data store, a page controlled by the app's service worker
+downloads every picture again on EVERY showing (in-app Back, reload, second window, relaunch: 3 of
+3 pictures, 10.5 MB, ~7 s at 1.6 MB/s each time). With only the service worker API removed, every
+repeat is 0 requests. The worker's `/assets/` rule never matches (B-401), so its fetch handler lets
+the request fall through, and WebKit's fall-through does not use the HTTP cache. The URL is stable
+and the headers are cacheable (a control page in the same WKWebView caches the same URL). Chromium
+caches fine (0 repeat requests), which is why only the Mac app showed it. Capacitor pages have no
+service worker; that shape was not measured (the macOS harness could not load an `<img>` from a
+scheme-handler page at all).
+
+**Fix** (ADR 035): (1) the service worker's `/assets/` rule is a function matcher for same-origin
+image requests, CacheFirst, so a picture shown once is answered by the worker, in WKWebView too;
+(2) `GET /assets/:id?w=480|960|1600` answers a resized WebP made by sharp on first request and
+kept in `assets/.thumbs/`, any other `w` a 400, the original when there is nothing to resize; (3)
+the note's `<img>` asks for the variant its drawn width × `devicePixelRatio` needs (the viewer,
+Download and Copy keep the original), with `decoding="async"` beside the existing
+`loading="lazy"`. Measured, three 12 MP photo-shaped JPEGs at 1.6 MB/s: WKWebView first visit
+12.15 MB / 8.0 s → 0.38 MB / 0.8 s, every later showing 12.15 MB / ~8 s → 0 requests. The phone
+(Capacitor) shape was not measured (ADR 035, "Not verified").
 
 ### B-789 · Images: no way to resize, align, or get at the file the way Logseq offers
 **Status:** fixed (image-sizing branch) · **Severity:** medium (UX) · **Found:** 2026-10-04, owner · **Test:** `e2e/tests/image-resize.spec.ts` (Chromium + WebKit), `phone-images.spec.ts` "B-789: a chosen size…", `apps/web/src/editor/render/image-box.test.tsx`, `packages/core/src/image-meta.test.ts`, corpus case 51, `logseq.test.ts` "B-789 / ADR 034", `logseq-db-import.test.ts`, Rust `b789_reveal_asset_is_read_strictly_and_finds_only_that_graphs_file`

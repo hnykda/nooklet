@@ -67,7 +67,14 @@ for (const viewport of [
     const belowBefore = await topOf(page, "below the picture");
 
     release();
-    await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(1200);
+    // Loaded. A resized copy (B-738, ADR 035) at most as wide as the original; the box is sized
+    // from the original's recorded size either way, which is what this test is about.
+    await expect
+      .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    expect(await img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeLessThanOrEqual(
+      1200,
+    );
     const loaded = await img.boundingBox();
     expect(await topOf(page, "below the picture")).toBeCloseTo(belowBefore, 0);
     expect(loaded?.width).toBeCloseTo(reserved?.width ?? -1, 0);

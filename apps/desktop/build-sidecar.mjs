@@ -39,6 +39,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -136,8 +137,9 @@ await esbuild.build({
   target: "node24",
   outfile: join(outDir, "server.mjs"),
   // `sqlite-vec`'s JS is dropped entirely: the dylib path comes from the environment instead, so
-  // nothing needs to resolve the package at runtime.
-  external: ["sqlite-vec"],
+  // nothing needs to resolve the package at runtime. `sharp` is loaded from `lib/node_modules/`
+  // (step 3b) by path, through `NOOKLET_SHARP_PATH`, which the banner sets.
+  external: ["sqlite-vec", "sharp"],
   logLevel: "warning",
   // The bundle is ESM but some dependencies still reach for `require`; give them a real one. And
   // the built-in plugins are in `plugins/` beside this file, the modules a user's plugin imports
@@ -148,6 +150,7 @@ await esbuild.build({
       "import{fileURLToPath as __nooklet_fp}from'node:url';",
       "process.env.NOOKLET_BUNDLED_PLUGINS_DIR??=__nooklet_fp(new URL('./plugins',import.meta.url));",
       "process.env.NOOKLET_HOST_MODULES_DIR??=__nooklet_fp(new URL('./host-modules',import.meta.url));",
+      "process.env.NOOKLET_SHARP_PATH??=__nooklet_fp(new URL('./lib/node_modules/sharp/dist/index.mjs',import.meta.url));",
     ].join(""),
   },
 });
@@ -168,6 +171,84 @@ const vecPath = require("sqlite-vec").getLoadablePath();
 const vecOut = join(outDir, `vec0.${PLATFORM.vecExt}`);
 cpSync(vecPath, vecOut);
 console.log(`vec0.${PLATFORM.vecExt.padEnd(12)}${mib(vecOut)}`);
+
+// 3b. sharp (libvips), for resized pictures (`GET /assets/:id?w=`, ADR 035). Its JS cannot be
+// bundled: it `require`s its native addon from a per-platform package (`@img/sharp-<platform>`),
+// whose `.node` finds libvips in the sibling `@img/sharp-libvips-<platform>/lib` through an rpath.
+// So the packages are copied as they are, flat, into `lib/node_modules/` — a `node_modules` so that
+// sharp's own `require`s resolve among them — and `server.mjs` imports sharp's entry by path
+// (`NOOKLET_SHARP_PATH`, set by the banner). Only the platform packages pnpm installed here are
+// found, which on the release runners and in the container build is this platform's.
+// Without them the server still runs and serves every picture at full size (`assets/variants.ts`).
+{
+  // A package's directory from its entry: not every package exports `./package.json` (sharp does
+  // not), so walk up from whatever it does export to the directory whose manifest has its name.
+  const packageDir = (req, name) => {
+    let dir;
+    // `@img/*` export `./package` (no `.json`) and no main at all.
+    for (const manifest of [`${name}/package.json`, `${name}/package`]) {
+      try {
+        return dirname(req.resolve(manifest));
+      } catch {}
+    }
+    dir = dirname(req.resolve(name));
+    while (dirname(dir) !== dir) {
+      const manifest = join(dir, "package.json");
+      if (existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).name === name) {
+        return dir;
+      }
+      dir = dirname(dir);
+    }
+    throw new Error(`no package directory for ${name}`);
+  };
+  const sharpDir = packageDir(require, "sharp");
+  const fromSharp = createRequire(join(sharpDir, "package.json"));
+  const sharpPkg = JSON.parse(readFileSync(join(sharpDir, "package.json"), "utf8"));
+  const libDir = join(outDir, "lib", "node_modules");
+  const copied = [];
+  const copyPackage = (name, dir) => {
+    // Not sharp's C++ sources or its build-from-source script: the prebuilt binary is the point.
+    cpSync(dir, join(libDir, name), {
+      recursive: true,
+      dereference: true,
+      filter: (src) => !/[\\/]sharp[\\/](src|install)$/.test(src),
+    });
+    copied.push(name);
+  };
+  copyPackage("sharp", sharpDir);
+  for (const name of Object.keys(sharpPkg.dependencies ?? {})) {
+    copyPackage(name, packageDir(fromSharp, name));
+  }
+  for (const name of Object.keys(sharpPkg.optionalDependencies ?? {})) {
+    let dir;
+    try {
+      dir = packageDir(fromSharp, name);
+    } catch {
+      continue; // another platform's: not installed here
+    }
+    copyPackage(name, dir);
+  }
+  if (
+    !copied.some((n) => n.startsWith("@img/sharp-libvips-")) ||
+    !copied.some((n) => /^@img\/sharp-(?!libvips-)/.test(n))
+  ) {
+    throw new Error(
+      `no @img/sharp-libvips-* package for ${process.platform}-${process.arch} next to sharp — resized pictures would be off`,
+    );
+  }
+  // The proof it loads from where it was put, with no repo `node_modules` in reach.
+  const check = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `const s = (await import(${JSON.stringify(pathToFileURL(join(libDir, "sharp", "dist", "index.mjs")).href)})).default; console.log(s.versions.vips)`,
+    ],
+    { cwd: outDir, encoding: "utf8" },
+  );
+  if (check.status !== 0) throw new Error(`the copied sharp does not load:\n${check.stderr}`);
+  console.log(`lib/node_modules/  sharp (libvips ${check.stdout.trim()}): ${copied.join(", ")}`);
+}
 
 // 4. esbuild's per-platform binary, for runtime plugin bundling.
 // Located by walking the store rather than `require.resolve`: pnpm isolates the per-platform

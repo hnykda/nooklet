@@ -1,12 +1,13 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { SqlDriver } from "@nooklet/core";
 import { applyOps, initSchema, newId, rebuild } from "@nooklet/core";
 import { createNodeSqliteDriver, openNodeSqlite } from "@nooklet/core/node-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "./apply-ops.js";
 import { assetMarkdownPath, storeAssetBytes } from "./assets/store.js";
+import { THUMBS_DIR, variantPath } from "./assets/variants.js";
 import { createToken } from "./auth/tokens.js";
 import { graphDbPath, restoreBackup } from "./backup/index.js";
 import { openDb } from "./db.js";
@@ -456,6 +457,34 @@ describe("runGc — assets", () => {
     try {
       await restoreBackup(report.backupPath as string, { dataDir: restoreDir });
       expect(existsSync(join(restoreDir, "assets", `${orphan.id}.${orphan.ext}`))).toBe(true);
+    } finally {
+      rmSync(restoreDir, { recursive: true, force: true });
+    }
+  });
+
+  it("B-738 / ADR 035: removes an orphan's resized copies too, and the backup holds none", async () => {
+    const page = createPage("Thumbs");
+    const kept = storeAsset("kept.png", 400);
+    createBlock(page, `![](${kept.path})`);
+    const orphan = storeAsset("orphan.png", 400);
+    for (const id of [kept.id, orphan.id]) {
+      mkdirSync(dirname(variantPath(dataDir, id, 480)), { recursive: true });
+      writeFileSync(variantPath(dataDir, id, 480), "webp");
+      writeFileSync(variantPath(dataDir, id, 1600), "webp");
+    }
+
+    const report = await runGc(ctx, { dataDir });
+    expect(report.assets.removed).toBe(1);
+    expect(readdirSync(join(dataDir, "assets", THUMBS_DIR)).sort()).toEqual([
+      `${kept.id}-1600.webp`,
+      `${kept.id}-480.webp`,
+    ]);
+
+    const restoreDir = mkdtempSync(join(tmpdir(), "nooklet-gc-restore-"));
+    try {
+      await restoreBackup(report.backupPath as string, { dataDir: restoreDir });
+      expect(existsSync(join(restoreDir, "assets", `${orphan.id}.${orphan.ext}`))).toBe(true);
+      expect(existsSync(join(restoreDir, "assets", THUMBS_DIR))).toBe(false);
     } finally {
       rmSync(restoreDir, { recursive: true, force: true });
     }

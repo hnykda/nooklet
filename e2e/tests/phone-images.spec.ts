@@ -226,7 +226,10 @@ test("phone overflow sweep: nothing in a block widens the page past the screen",
   // is 0×0, which `scrollIntoViewIfNeeded` does not move to, so its row is scrolled to instead.
   const img = page.locator("img.vr-image");
   await img.evaluate((el) => el.closest(".vr-row")?.scrollIntoView());
-  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(2000);
+  // Loaded: a resized copy (B-738, ADR 035), so narrower than the 2000-px original.
+  await expect
+    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
   expect(await overflowingElements(page)).toEqual([]);
   await expectWithinScreen(page);
   const scroll = await page.evaluate(() => {

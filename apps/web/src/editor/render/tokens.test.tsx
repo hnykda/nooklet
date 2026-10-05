@@ -208,13 +208,16 @@ describe("BlockContentView — inline tokens (markdown-grammar.md §4 rendering 
     expect(a?.textContent).toBe("https://example.com/a");
   });
 
-  it("image -> img.vr-image with alt/src, lazy loading", () => {
+  it("image -> img.vr-image with alt/src, lazy loading", async () => {
     const { container } = renderContent("![a diagram](assets/1.png)");
     const img = container.querySelector("img.vr-image") as HTMLImageElement;
     expect(img.alt).toBe("a diagram");
+    // The src is set once the column is measured, a microtask after mount (B-738).
+    await new Promise((r) => setTimeout(r, 0));
     // The stored path is relative; the rendered one is rooted at the server's /assets route, so
-    // the picture loads from /page/Some Page as well as from / (B-51).
-    expect(img.getAttribute("src")).toBe("/assets/1.png");
+    // the picture loads from /page/Some Page as well as from / (B-51). At a resized width
+    // (`?w=`, ADR 035; which one is `image-variant.test.tsx`'s business).
+    expect(img.getAttribute("src")).toMatch(/^\/assets\/1\.png\?w=\d+$/);
     expect(img.getAttribute("loading")).toBe("lazy");
   });
 

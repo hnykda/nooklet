@@ -61,6 +61,7 @@ import {
   revealLabel,
   revealTarget,
 } from "./image-actions.js";
+import { displayCssWidth, variantRank, variantSrc, variantWidthFor } from "./image-variant.js";
 import type { RenderCtx } from "./tokens.js";
 
 type ImageTok = Extract<InlineToken, { kind: "image" }>;
@@ -71,6 +72,25 @@ export const MIN_IMAGE_WIDTH = 48;
 /** Below this the ⋯ would cover the middle of the picture — where a click opens it — so it sits
  * just outside, against the picture's right edge. */
 const NARROW_IMAGE = 120;
+
+/** The nearest ancestor of `el` with a width of its own: a picture inside an inline span (text
+ * around it, a link) has an inline parent, whose `clientWidth` is 0. */
+function columnOf(el: HTMLElement): HTMLElement | null {
+  let p = el.parentElement;
+  while (p && p.clientWidth === 0) p = p.parentElement;
+  return p;
+}
+
+/** What the column offers `el` in CSS px, for choosing a variant. Not laid out at all (detached,
+ * or a test's DOM): the window's width, which can only overestimate. */
+function measureColumn(el: HTMLElement): number {
+  const p = columnOf(el);
+  if (!p) return window.innerWidth;
+  const cs = getComputedStyle(p);
+  const pad = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0);
+  const w = p.clientWidth - pad;
+  return w > 0 ? w : window.innerWidth;
+}
 
 /** The width the content column offers `box` (its parent's content box). */
 function columnWidth(box: HTMLElement): number {
@@ -111,6 +131,47 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
   const imgStyle = () => {
     const s = size();
     return s ? `aspect-ratio: ${s.width} / ${s.height}` : undefined;
+  };
+
+  // ---- which copy to draw (B-738, ADR 035) ------------------------------------------------
+  // A resized variant as wide as the picture is drawn, in device pixels: a 3-4 MB photo shown 700
+  // px wide costs ~100-300 kB. The column is measured once the box is in the page (a microtask
+  // after the ref), and the `<img>` has no `src` until then, so the picture is never first asked
+  // for at a guessed width and then again. `loading="lazy"` means nothing is fetched before
+  // layout anyway. The viewer, Download, Copy and Open in new tab keep the original (`url()`).
+  const [column, setColumn] = createSignal<number | undefined>(undefined);
+  let columnObserver: ResizeObserver | undefined;
+  onCleanup(() => columnObserver?.disconnect());
+  function watchColumn(el: HTMLElement): void {
+    setColumn(measureColumn(el));
+    const target = columnOf(el);
+    if (!target || typeof ResizeObserver === "undefined") return;
+    columnObserver = new ResizeObserver(() => setColumn(measureColumn(el)));
+    columnObserver.observe(target);
+  }
+  // Only ever grows: a wider window or a bigger drag asks for a larger copy, but a narrower one
+  // keeps the copy already on screen rather than downloading a smaller one of the same picture.
+  // The picture's size arriving late only narrows what is needed, so it never changes the URL.
+  const variant = createMemo<number | undefined | null>((prev) => {
+    const col = column();
+    if (col === undefined) return prev;
+    const next = variantWidthFor(
+      displayCssWidth({
+        column: col,
+        chosen: width(),
+        natural: size(),
+        viewportHeight: window.innerHeight,
+      }),
+      window.devicePixelRatio,
+    );
+    if (prev === null) return next;
+    return variantRank(next) > variantRank(prev) ? next : prev;
+  }, null);
+  const shownSrc = () => {
+    // A picture from the web has no variants: nothing to measure for.
+    if (assetIdOf(props.tok.src) === undefined) return url();
+    const v = variant();
+    return v === null ? undefined : variantSrc(props.tok.src, v);
   };
 
   // A pointer that can hover gets the controls; a phone gets the tap (see the header).
@@ -264,7 +325,10 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
       <span
         ref={(el) => {
           box = el;
-          queueMicrotask(() => setInLink(el.closest("a") !== null));
+          queueMicrotask(() => {
+            setInLink(el.closest("a") !== null);
+            watchColumn(el);
+          });
         }}
         class="vr-image-box"
         classList={{
@@ -285,8 +349,9 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
         <img
           class="vr-image"
           alt={props.tok.alt}
-          src={url()}
+          src={shownSrc()}
           loading="lazy"
+          decoding="async"
           width={size()?.width}
           height={size()?.height}
           style={imgStyle()}
