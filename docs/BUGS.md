@@ -1100,6 +1100,21 @@ times out on its 2nd and 3rd `--repeat-each` iteration: it uses fixed page names
 re-run safe (as B-292, B-356).
 
 
+### B-921 · CI's leak guard failed on a fake test token for 13 pipelines, so nothing deployed; the local check said clean
+**Status:** fixed 2026-10-05 (the token); open (the gap) · **Severity:** high (production silently stopped updating) · **Found:** 2026-10-05, coordinator: production was still on `sha-4cedfd59` after a day of pushes · **Test:** a clean `git archive` of HEAD scanned with `zricethezav/gitleaks:v8.28.0 dir --config .gitleaks.toml` reports no leaks
+
+Woodpecker pipelines 17–29 failed in `leak-guard` (gitleaks `generic-api-key`) on
+`apps/desktop/src-tauri/src/connect.rs`'s test `a_pairing_code_is_traded_for_a_token`, whose
+canned answer is a made-up `nk_0123456789abcdef`. A failing `leak-guard` kills the `images`
+workflow, so no image was built and nothing deployed, without any alert.
+- **Fixed:** the line carries `leak-check: allow gitleaks:allow`.
+- **The gap, open:** `tools/leak-check.mjs` runs gitleaks only when it is installed, and it is not
+  installed on the owner's Mac, so the pre-commit hook and `--tree` said "clean" for a tree CI
+  rejects. Options: have leak-check.mjs fall back to the gitleaks Docker image (as
+  `tools/ci/leak-guard.sh`'s header shows) or fail loudly when neither is available; `brew install
+  gitleaks` locally. Also: nothing tells anyone that a push did not deploy; the coordinator should
+  check the running image after every push.
+
 ## Fixed
 
 ### B-821 · Zoomed in, the zoom root looks like any other row, not like the view's title

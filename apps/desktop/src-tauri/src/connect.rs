@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn a_pairing_code_is_traded_for_a_token() {
-        let http = Canned::new(vec![Ok((200, r#"{"token":"nk_0123456789abcdef"}"#.into()))]);
+        let http = Canned::new(vec![Ok((200, r#"{"token":"nk_0123456789abcdef"}"#.into()))]); // a made-up token; leak-check: allow gitleaks:allow
         assert_eq!(redeem_code(&http, ADDR, "nkp_abcdefghijklmnopqrstuv", "Mac"), Ok("nk_0123456789abcdef".into()));
         let asked = http.asked.lock().unwrap();
         assert_eq!(asked[0].0, "https://notes.example.com/g/work/api/v1/pairing.redeem");
