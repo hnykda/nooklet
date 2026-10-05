@@ -113,12 +113,42 @@ export default defineConfig({
             },
           },
           { urlPattern: /^(\/g\/[^/]+)?\/(api|sync)\//, handler: "NetworkOnly" },
+          // The graph's pictures (`GET /assets/:id`, ADR 013/035), kept by the worker itself. This
+          // is B-738's fix, not an offline nicety: in WKWebView (the Mac app) a request the worker
+          // does NOT answer goes to the network WITHOUT the HTTP cache, so while this rule was a
+          // RegExp that never matched (B-401) every picture was downloaded again on every showing
+          // — Back, reload, a second window, a relaunch (`tools/probes/image-cache/`). Chromium
+          // used its HTTP cache either way.
+          //
+          // A function, like the rule above. Pictures only (`destination === "image"`): a video
+          // or audio asset is fetched with Range requests, which a CacheFirst would answer with
+          // the whole body; and Download's `fetch()` has no destination and goes to the network.
+          // Same origin only: the asset is the server's own, and no opaque response is stored.
+          // Only 200s are stored (workbox's default without a `cacheWillUpdate` plugin), so a
+          // missing asset is asked again next time. Resized variants (`?w=`) are small and many,
+          // originals (the viewer) few and large, so each has its own bound.
           {
-            urlPattern: /^(\/g\/[^/]+)?\/assets\//,
+            urlPattern: ({ url, request, sameOrigin }) =>
+              sameOrigin &&
+              request.destination === "image" &&
+              url.searchParams.has("w") &&
+              /^(\/g\/[^/]+)?\/assets\//.test(url.pathname),
             handler: "CacheFirst",
             options: {
-              cacheName: "assets",
-              expiration: { maxEntries: 500, maxAgeSeconds: 30 * 86400 },
+              cacheName: "asset-variants",
+              expiration: { maxEntries: 1000, maxAgeSeconds: 90 * 86400, purgeOnQuotaError: true },
+            },
+          },
+          {
+            urlPattern: ({ url, request, sameOrigin }) =>
+              sameOrigin &&
+              request.destination === "image" &&
+              !url.searchParams.has("w") &&
+              /^(\/g\/[^/]+)?\/assets\//.test(url.pathname),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "asset-originals",
+              expiration: { maxEntries: 60, maxAgeSeconds: 30 * 86400, purgeOnQuotaError: true },
             },
           },
         ],
