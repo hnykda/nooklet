@@ -2,6 +2,7 @@
 import { classifyBlockContent, tokenizeContent } from "@nooklet/core";
 import { cleanup, render } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { rememberAsset } from "../../data/asset-info.js";
 import { BlockContentView, type RenderCtx } from "./tokens.js";
 
 afterEach(cleanup);
@@ -209,6 +210,7 @@ describe("BlockContentView — inline tokens (markdown-grammar.md §4 rendering 
   });
 
   it("image -> img.vr-image with alt/src, lazy loading", async () => {
+    rememberAsset("1", "fake-key-1", null, null); // as asset.upload/asset.info would (B-737)
     const { container } = renderContent("![a diagram](assets/1.png)");
     const img = container.querySelector("img.vr-image") as HTMLImageElement;
     expect(img.alt).toBe("a diagram");
@@ -216,8 +218,8 @@ describe("BlockContentView — inline tokens (markdown-grammar.md §4 rendering 
     await new Promise((r) => setTimeout(r, 0));
     // The stored path is relative; the rendered one is rooted at the server's /assets route, so
     // the picture loads from /page/Some Page as well as from / (B-51). At a resized width
-    // (`?w=`, ADR 035; which one is `image-variant.test.tsx`'s business).
-    expect(img.getAttribute("src")).toMatch(/^\/assets\/1\.png\?w=\d+$/);
+    // (`?w=`, ADR 035; which one is `image-variant.test.tsx`'s business), with the asset's key.
+    expect(img.getAttribute("src")).toMatch(/^\/assets\/1\.png\?k=fake-key-1&w=\d+$/);
     expect(img.getAttribute("loading")).toBe("lazy");
   });
 
@@ -228,9 +230,10 @@ describe("BlockContentView — inline tokens (markdown-grammar.md §4 rendering 
   });
 
   it("a link to an asset (a PDF, say) is rooted the same way", () => {
+    rememberAsset("r", "fake-key-r", null, null);
     const { container } = renderContent("[the report](../assets/r.pdf)");
     const a = container.querySelector("a.vr-link") as HTMLAnchorElement;
-    expect(a.getAttribute("href")).toBe("/assets/r.pdf");
+    expect(a.getAttribute("href")).toBe("/assets/r.pdf?k=fake-key-r");
   });
 
   it("strong/em/strike/highlight/code render their native/marked elements", () => {

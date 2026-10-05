@@ -12,6 +12,7 @@
  *     lives in `uploadImageAsset` below, kept tiny and isolated so the tree-building logic above
  *     stays testable without a network mock.
  */
+
 import {
   makeOp,
   newId,
@@ -22,6 +23,7 @@ import {
   parseOutline,
 } from "@nooklet/core";
 import { callOp } from "../data/api-client.js";
+import { rememberAsset } from "../data/asset-info.js";
 import { getBlock, nextSiblingOrder } from "./tree.js";
 import type { BlockId, CaretSpec, Clock, EditorTree } from "./types.js";
 
@@ -169,11 +171,17 @@ export async function uploadImageAsset(file: File): Promise<AssetUploadResponse>
     mime_type: string;
     byte_size: number;
     deduped: boolean;
+    key: string;
+    width: number | null;
+    height: number | null;
   }>("asset.upload", {
     filename: file.name || "pasted-image",
     mime_type: file.type || "application/octet-stream",
     data_base64: dataBase64,
   });
+  // The answer carries the asset's URL key (B-737): remember it, so the picture this paste is about
+  // to insert renders without another round trip to learn it.
+  rememberAsset(json.id, json.key, json.width, json.height);
   return {
     id: json.id,
     url: json.url,

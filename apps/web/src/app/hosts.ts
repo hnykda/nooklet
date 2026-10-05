@@ -21,7 +21,7 @@ import type { BlockPropsWrite, BlockTaskSnapshot, Store } from "../commands/type
 import { applyOps, getOpClock, resolveBlockPageName } from "../data/store.js";
 import { forceSync, queryAs } from "../db/client.js";
 import { requestEditingEnd } from "../editor/focus-request.js";
-import { assetUrl } from "../editor/render/asset-url.js";
+import { assetUrl, resolveAssetUrl } from "../editor/render/asset-url.js";
 import { isSafeHref } from "../editor/render/safe-href.js";
 import type { Clock } from "../editor/types.js";
 import { flashRemoteTouch } from "../live/flash-bus.js";
@@ -296,7 +296,16 @@ export function createNavigationHost(deps: NavDeps): NavigationHost {
         // current `/page/...` URL and opens the SPA fallback instead of the file (B-137, B-51).
         // Same scheme guard as the rendered link (B-268): the URL is content, and may be `javascript:`.
         const url = assetUrl(link.href);
-        if (isSafeHref(url)) window.open(url, "_blank", "noopener");
+        if (url !== undefined) {
+          if (isSafeHref(url)) window.open(url, "_blank", "noopener");
+          return;
+        }
+        // An asset whose key this device has not learned yet (B-737): wait for it. A browser may
+        // then block the window as not opened from the keypress; the rendered link has its key by
+        // the time it is clicked, since rendering asked for it.
+        void resolveAssetUrl(link.href).then((u) => {
+          if (u !== undefined && isSafeHref(u)) window.open(u, "_blank", "noopener");
+        });
         return;
       }
       if ((link.type === "page" || link.type === "tag") && link.name) {

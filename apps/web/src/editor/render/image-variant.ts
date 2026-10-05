@@ -63,10 +63,12 @@ export function variantWidthFor(cssWidth: number, devicePixelRatio: number): num
  * original's bytes): its size can arrive after the picture started loading, and switching URLs
  * then would download it twice.
  */
-export function variantSrc(src: string, width: number | undefined): string {
+export function variantSrc(src: string, width: number | undefined): string | undefined {
   const url = assetUrl(src);
-  if (width === undefined || assetIdOf(src) === undefined) return url;
-  return `${url}?w=${width}`;
+  // `undefined`: the asset's key is not known yet (`assetUrl`), so there is nothing to ask for.
+  if (url === undefined || width === undefined || assetIdOf(src) === undefined) return url;
+  // After the key (`?k=…`, B-737), or first when the asset is unknown and has none.
+  return `${url}${url.includes("?") ? "&" : "?"}w=${width}`;
 }
 
 /** The order variants are preferred in when a choice can only grow (`ImageView`): a larger width,

@@ -37,7 +37,8 @@ export function isSafeHref(href: string): boolean {
 }
 
 /** `href` itself when it is safe, otherwise `undefined` — which Solid renders as no `href` at all,
- * leaving the label as inert text. */
-export function safeHref(href: string): string | undefined {
-  return isSafeHref(href) ? href : undefined;
+ * leaving the label as inert text. `undefined` in (an asset link whose key is not known yet,
+ * `./asset-url.ts`) is `undefined` out. */
+export function safeHref(href: string | undefined): string | undefined {
+  return href !== undefined && isSafeHref(href) ? href : undefined;
 }

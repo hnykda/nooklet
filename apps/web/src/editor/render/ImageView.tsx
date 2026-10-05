@@ -49,7 +49,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 import { Portal } from "solid-js/web";
 import { detectPlatformFromEnvironment } from "../../commands/keymap/platform.js";
 import { claimPopupKeys } from "../../commands/popup-keys.js";
-import { lookupAssetSize } from "../../data/asset-sizes.js";
+import { assetLoadFailed, lookupAssetSize } from "../../data/asset-info.js";
 import { assetIdOf, assetUrl } from "./asset-url.js";
 import { ImageViewer } from "./ImageViewer.js";
 import {
@@ -106,6 +106,7 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
     const id = assetIdOf(props.tok.src);
     return id === undefined ? undefined : lookupAssetSize(id);
   });
+  // The original's keyed URL (B-737), or `undefined` while the key is not known yet.
   const url = () => assetUrl(props.tok.src);
   const align = (): ImageAlign => props.tok.meta?.align ?? "left";
   // The width on screen while a drag is under way; the block's own width otherwise.
@@ -313,9 +314,12 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
   }
   // Not `async` up to the action: Copy must reach the clipboard in the click's own tick (WebKit's
   // user-gesture rule, `./image-actions.ts#copyImage`).
-  function act(action: () => Promise<ActionResult>): void {
+  function act(action: (url: string) => Promise<ActionResult>): void {
     closeMenu(true);
-    void action().then(toast);
+    const u = url();
+    // Only before the asset's key has arrived (B-737) — the picture is not on screen yet either.
+    if (u === undefined) toast({ ok: false, message: "The picture hasn't loaded yet. Try again." });
+    else void action(u).then(toast);
   }
 
   const handleSide = () => (align() === "right" ? "left" : "right");
@@ -362,6 +366,11 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
           tabIndex={0}
           aria-label={props.tok.alt ? `Open image: ${props.tok.alt}` : "Open image"}
           aria-haspopup="dialog"
+          // A keyed picture that does not load may have a rotated key (B-737): ask once more.
+          onError={() => {
+            const id = assetIdOf(props.tok.src);
+            if (id !== undefined) assetLoadFailed(id);
+          }}
           onClick={(e) => {
             if (!opensViewer(e, e.currentTarget)) return;
             e.preventDefault();
@@ -446,7 +455,7 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
                 role="menuitem"
                 class="vr-image-menu-item"
                 ref={(el) => queueMicrotask(() => el.focus())}
-                onClick={() => act(() => copyImage(url()))}
+                onClick={() => act((u) => copyImage(u))}
               >
                 <Copy size={15} /> Copy image
               </button>
@@ -454,7 +463,7 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
                 type="button"
                 role="menuitem"
                 class="vr-image-menu-item"
-                onClick={() => act(() => downloadImage(url(), props.tok.src, props.tok.alt, host))}
+                onClick={() => act((u) => downloadImage(u, props.tok.src, props.tok.alt, host))}
               >
                 <Download size={15} /> {host === "phone" ? "Save / Share…" : "Download"}
               </button>
@@ -477,7 +486,8 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
                   class="vr-image-menu-item"
                   onClick={() => {
                     closeMenu(true);
-                    window.open(url(), "_blank", "noopener");
+                    const u = url();
+                    if (u !== undefined) window.open(u, "_blank", "noopener");
                   }}
                 >
                   <ExternalLink size={15} /> Open in new tab
@@ -543,21 +553,23 @@ export function ImageView(props: { tok: ImageTok; ctx: RenderCtx }) {
           </div>
         </Portal>
       </Show>
-      <Show when={open()}>
-        <ImageViewer
-          url={url()}
-          src={props.tok.src}
-          alt={props.tok.alt}
-          onClose={() => setOpen(false)}
-          onEditBlock={
-            props.ctx.onEditBlock
-              ? () => {
-                  setOpen(false);
-                  props.ctx.onEditBlock?.(props.tok.end);
-                }
-              : undefined
-          }
-        />
+      <Show when={open() ? url() : undefined}>
+        {(u) => (
+          <ImageViewer
+            url={u()}
+            src={props.tok.src}
+            alt={props.tok.alt}
+            onClose={() => setOpen(false)}
+            onEditBlock={
+              props.ctx.onEditBlock
+                ? () => {
+                    setOpen(false);
+                    props.ctx.onEditBlock?.(props.tok.end);
+                  }
+                : undefined
+            }
+          />
+        )}
       </Show>
     </>
   );

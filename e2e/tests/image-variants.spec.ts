@@ -85,7 +85,9 @@ test("B-738: the picture in a note is a resized copy, not the original", async (
   await img.click();
   const big = page.locator("img.image-viewer-img");
   await expect(big).toHaveJSProperty("naturalWidth", 2400);
-  expect(new URL(await big.evaluate((el) => (el as HTMLImageElement).currentSrc)).search).toBe("");
+  // The original: the asset's key (B-737) and nothing else.
+  const original = new URL(await big.evaluate((el) => (el as HTMLImageElement).currentSrc));
+  expect([...original.searchParams.keys()]).toEqual(["k"]);
 });
 
 test("B-738: a picture shown once comes from the service worker after that, offline too", async ({
@@ -111,7 +113,8 @@ test("B-738: a picture shown once comes from the service worker after that, offl
     .locator(".vr-outliner img.vr-image")
     .first()
     .evaluate((el) => (el as HTMLImageElement).currentSrc);
-  expect(src).toContain("?w=");
+  expect(new URL(src).searchParams.has("w")).toBe(true);
+  expect(new URL(src).searchParams.has("k")).toBe(true); // B-737: the cache key includes the key
   // The worker kept it.
   await expect
     .poll(() =>

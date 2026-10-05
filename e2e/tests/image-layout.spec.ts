@@ -58,7 +58,7 @@ for (const viewport of [
 
     // Bounded, not required: a build that never asks must fail on the movement below, not here.
     const sized = page
-      .waitForResponse((r) => r.url().includes("/api/v1/asset.sizes"), { timeout: 5000 })
+      .waitForResponse((r) => r.url().includes("/api/v1/asset.info"), { timeout: 5000 })
       .catch(() => undefined);
     await openPage(page, name, `- above the picture\n- ${up.markdown}\n- below the picture`);
     const img = page.locator("img.vr-image").first();

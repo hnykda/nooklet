@@ -24,6 +24,7 @@ vi.stubGlobal("window", { open });
 
 import type { Op } from "@nooklet/core";
 import type { OpBatch } from "../commands/hosts/editor-host.js";
+import { rememberAsset } from "../data/asset-info.js";
 import { editingEndRequest } from "../editor/focus-request.js";
 import { createNavigationHost, createStore } from "./hosts.js";
 
@@ -38,7 +39,10 @@ function host() {
 }
 
 describe("nav.followLink for URL links", () => {
-  beforeEach(() => open.mockReset());
+  beforeEach(() => {
+    open.mockReset();
+    rememberAsset("spec", "fake-key", null, null); // as asset.info would have answered (B-737)
+  });
 
   it.each([
     ["assets/spec.pdf"],
@@ -47,7 +51,11 @@ describe("nav.followLink for URL links", () => {
     ["/assets/spec.pdf"],
   ])("opens the asset %s from the API origin", (href) => {
     host().followLink({ type: "url", href });
-    expect(open).toHaveBeenCalledWith("http://api.test:6100/assets/spec.pdf", "_blank", "noopener");
+    expect(open).toHaveBeenCalledWith(
+      "http://api.test:6100/assets/spec.pdf?k=fake-key",
+      "_blank",
+      "noopener",
+    );
   });
 
   it("opens an ordinary web link as written", () => {

@@ -15,6 +15,7 @@ vi.mock("../../platform/index.js", () => ({
 }));
 
 const { BlockRowView } = await import("../BlockRowView.js");
+const { rememberAsset, resetAssetInfoForTest } = await import("../../data/asset-info.js");
 const { displayCssWidth, variantSrc, variantWidthFor } = await import("./image-variant.js");
 
 describe("variantWidthFor: the smallest variant with a device pixel per pixel shown", () => {
@@ -65,11 +66,18 @@ describe("displayCssWidth: the width the box draws the picture at", () => {
 });
 
 describe("variantSrc", () => {
-  it("adds ?w= to the graph's own assets only", () => {
-    expect(variantSrc("assets/abc.png", 960)).toBe("/assets/abc.png?w=960");
-    expect(variantSrc("../assets/abc.jpg", 480)).toBe("/assets/abc.jpg?w=480");
-    expect(variantSrc("assets/abc.png", undefined)).toBe("/assets/abc.png");
+  it("adds w after the asset's key (B-737), to the graph's own assets only", () => {
+    resetAssetInfoForTest();
+    rememberAsset("abc", "fake-key", null, null);
+    expect(variantSrc("assets/abc.png", 960)).toBe("/assets/abc.png?k=fake-key&w=960");
+    expect(variantSrc("../assets/abc.jpg", 480)).toBe("/assets/abc.jpg?k=fake-key&w=480");
+    expect(variantSrc("assets/abc.png", undefined)).toBe("/assets/abc.png?k=fake-key");
     expect(variantSrc("https://example.com/x.png", 960)).toBe("https://example.com/x.png");
+  });
+
+  it("nothing while the key is not known yet", () => {
+    resetAssetInfoForTest();
+    expect(variantSrc("assets/notyetknown.png", 960)).toBeUndefined();
   });
 });
 
@@ -123,7 +131,11 @@ function screenOf(width: number, height: number, dpr: number): void {
   Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: dpr });
 }
 
-beforeEach(() => screenOf(700, 900, 1));
+beforeEach(() => {
+  screenOf(700, 900, 1);
+  resetAssetInfoForTest();
+  rememberAsset("aaaaaaaaaaaaaa", "fake-key-a", null, null);
+});
 afterEach(() => {
   cleanup();
   screenOf(saved.w, saved.h, saved.dpr);
@@ -135,7 +147,7 @@ describe("the <img> in a note", () => {
     const { container } = renderRow(`![shed](${IMG})`);
     await flush();
     const img = container.querySelector("img.vr-image") as HTMLImageElement;
-    expect(img.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png?w=1600");
+    expect(img.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png?k=fake-key-a&w=1600");
     expect(img.getAttribute("loading")).toBe("lazy");
     expect(img.getAttribute("decoding")).toBe("async");
   });
@@ -151,7 +163,7 @@ describe("the <img> in a note", () => {
     const { container } = renderRow(`![shed](${IMG}){:width 200}`);
     await flush();
     const img = container.querySelector("img.vr-image") as HTMLImageElement;
-    expect(img.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png?w=480");
+    expect(img.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png?k=fake-key-a&w=480");
   });
 
   it("more device pixels than the largest variant has: the original", async () => {
@@ -159,7 +171,7 @@ describe("the <img> in a note", () => {
     const { container } = renderRow(`![shed](${IMG})`);
     await flush();
     const img = container.querySelector("img.vr-image") as HTMLImageElement;
-    expect(img.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png");
+    expect(img.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png?k=fake-key-a");
   });
 
   it("an image from the web is left exactly as written", async () => {
@@ -173,9 +185,9 @@ describe("the <img> in a note", () => {
     const { container } = renderRow(`![shed](${IMG})`);
     await flush();
     const img = container.querySelector("img.vr-image") as HTMLImageElement;
-    expect(img.getAttribute("src")).toContain("?w=");
+    expect(img.getAttribute("src")).toContain("&w=");
     fireEvent.click(img);
     const big = document.querySelector("img.image-viewer-img") as HTMLImageElement;
-    expect(big.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png");
+    expect(big.getAttribute("src")).toBe("/assets/aaaaaaaaaaaaaa.png?k=fake-key-a");
   });
 });

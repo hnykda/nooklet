@@ -5,9 +5,9 @@
  * "Save" is three different things depending on where the client runs, and the obvious single
  * answer (`<a download href=blob:…>`) works in only one of them:
  *
- * - a browser: fetch the bytes, `<a download>` a blob URL. Asset URLs need no credential (`GET
- *   /assets/:id` is public by design, `packages/server/src/http/assets.ts`), so a plain fetch
- *   works; the blob is what makes `download` honoured even if the API origin differs from the
+ * - a browser: fetch the bytes, `<a download>` a blob URL. Asset URLs need no bearer token: the
+ *   URL every action here is handed carries the asset's own key (`?k=`, B-737, ADR 036;
+ *   `./asset-url.ts`), the same URL the picture was drawn from, so a plain fetch works; the blob is what makes `download` honoured even if the API origin differs from the
  *   page's (Chromium ignores `download` on a cross-origin href and navigates instead).
  * - the desktop app (WKWebView): wry CANCELS every download unless the shell set a download
  *   handler (`wry` `navigation_policy`: `shouldPerformDownload` → `Cancel` without one), so

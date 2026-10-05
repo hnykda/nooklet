@@ -9,6 +9,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
+import { solidPng } from "../helpers/png.js";
 
 // A 1x1 transparent PNG (67 bytes). Anything that decodes is enough; naturalWidth tells the story.
 const PNG_1X1 =
@@ -64,4 +65,56 @@ test("an uploaded image renders on the page route, not only at the root", async 
   await api(page, "page.append", { page: "today", markdown: `- also ${up.markdown}` });
   await page.reload();
   await expectImageLoaded(page, "a dot");
+});
+
+test("B-737: the picture's URL carries the asset's key; the same URL without it is a 404", async ({
+  page,
+}, info) => {
+  await page.goto("/journals");
+  const up = (await api(page, "asset.upload", {
+    filename: "keyed.png",
+    mime_type: "image/png",
+    // Its own bytes per run, so this is not another test's asset (uploads are content-addressed).
+    data_base64: solidPng(3, 2, [17, 37 + info.retry, 200]).toString("base64"),
+    alt: "a keyed dot",
+  })) as { id: string; markdown: string; url: string; key: string };
+  // Block content keeps the plain path; only the URL has the key.
+  expect(up.markdown).not.toContain("k=");
+  expect(up.url).toBe(`/assets/${up.id}.png?k=${up.key}`);
+
+  await api(page, "page.create", { name: "Assets Keyed", if_exists: "return" });
+  await api(page, "page.append", { page: "Assets Keyed", markdown: `- ${up.markdown}` });
+  await page.goto("/page/Assets%20Keyed");
+  await expectImageLoaded(page, "a keyed dot");
+
+  const src = await page
+    .locator('img.vr-image[alt="a keyed dot"]')
+    .first()
+    .evaluate((el) => (el as HTMLImageElement).currentSrc);
+  const shown = new URL(src);
+  expect(shown.searchParams.get("k")).toBe(up.key);
+
+  // From outside the app: no token, no cookie, just the URL.
+  const outsider = page.context().request;
+  expect((await outsider.get(shown.href)).status()).toBe(200);
+  const bare = new URL(shown.href);
+  bare.searchParams.delete("k");
+  expect((await outsider.get(bare.href)).status()).toBe(404);
+  const wrong = new URL(shown.href);
+  wrong.searchParams.set("k", "A".repeat(22));
+  expect((await outsider.get(wrong.href)).status()).toBe(404);
+  const original = new URL(shown.href);
+  original.searchParams.delete("w");
+  expect((await outsider.get(original.href)).status()).toBe(200);
+  original.searchParams.delete("k");
+  expect((await outsider.get(original.href)).status()).toBe(404);
+
+  // A reload: the key comes from this device's own copy, not another round trip.
+  const asked: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/v1/asset.info")) asked.push(r.url());
+  });
+  await page.reload();
+  await expectImageLoaded(page, "a keyed dot");
+  expect(asked).toEqual([]);
 });
