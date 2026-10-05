@@ -14,6 +14,20 @@ Status: `open` · `fixed` · `wontfix` · `needs-repro`
 
 ## Open
 
+### B-920 · Building the iOS app for a new bundle id, or renewing its 7-day profile, fails with "No Accounts"
+**Status:** open (environment, needs the owner) · **Severity:** medium (the phone app stops
+opening when its profile expires, 2026-10-11) · **Found:** 2026-10-05, running the App Group
+probe (`docs/research/16-personal-team-app-groups.md`)
+
+`xcodebuild -allowProvisioningUpdates` for any bundle id without a cached profile fails with
+`error: No Accounts: Add a new account in Accounts settings.` followed by `No profiles for '<id>'
+were found`. Building from the Xcode GUI gives the same errors. Xcode has no Apple account signed
+in on this Mac (`DVTDeveloperAccountManagerAppleIDLists` is empty), though one was on 2026-10-04
+when the `sh.nooklet.app` profile was made. The main app still builds only because that profile is
+cached; once it expires, `docs/guide/ios-from-source.md` "Without opening Xcode" cannot renew it.
+Fix is the owner signing in (Xcode → Settings → Accounts). The guide could also say that the
+terminal path needs the account signed in to Xcode. No test: this is machine state.
+
 ### B-42 · Typing into the `[[` popup keeps dropping editor focus
 **Status:** open · **Severity:** high · **Reported:** 2026-09-12 (user: "When I type `testing
 [[new/page` → then context window open → but when I keep typing then the edit focus keeps
