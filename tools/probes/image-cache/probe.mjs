@@ -4,21 +4,27 @@
  *
  * A real `nooklet serve` (this checkout's server, this checkout's production web build) on a
  * scratch data dir, behind a small counting proxy that also throttles responses to the measured
- * tailnet rate (~1.6 MB/s, B-738). Three generated noise images of ~3.5 MB each (noise so PNG
- * cannot compress them: the size of the owner's photos without using any of them). For each
- * engine (Playwright's Chromium and WebKit) it counts, AT THE SERVER, the requests for each picture:
+ * tailnet rate (~1.6 MB/s, B-738), one link shared by all responses. Three generated 12 MP
+ * photo-shaped JPEGs of ~4 MB each (the size and pixel count of the owner's photos without using
+ * any of them; `SIDE=1100` uses the first runs' 3.5 MB noise PNGs instead). For each engine it
+ * counts, AT THE SERVER, the requests and bytes for the pictures:
  *
  *   1. first visit of a page with the three pictures,
  *   2. in-app navigation to another page and Back (the SPA keeps the document),
  *   3. reload,
  *   4. the same page in a second tab of the same browser profile,
- *   5. cross-origin, the Capacitor shape: the page on 127.0.0.1, the picture on `localhost` —
- *      added, removed, added again, then the page reloaded and added again.
+ *   5. cross-origin: the page on 127.0.0.1, the original picture on `localhost` — added, removed,
+ *      added again, then the page reloaded and added again,
  *
- * and how long each step took until every picture had decoded. Prints a table; asserts nothing.
+ * and how long each step took until every picture had decoded. Engines: Playwright's Chromium and
+ * WebKit, and on macOS a real WKWebView with a persistent data store (`./wkwebview.swift`: the Mac
+ * app's engine; also with the service worker API removed, a control page of pictures with
+ * different cache headers, and a `capacitor://` page). Prints tables; asserts nothing.
  *
  *   pnpm --filter @nooklet/web build            # the probe serves whatever dist/ holds
- *   node tools/probes/image-cache/probe.mjs     # PORT=6560 RATE=1600000 to change
+ *   node tools/probes/image-cache/probe.mjs     # PORT=6560 RATE=1600000 ENGINES=chromium,webkit,wkwebview
+ *
+ * Results 2026-10-05 (before = `a3d91046`, after = the B-738 fix): docs/progress/image-speed.md.
  *
  * Server-side counting is the ground truth: Playwright's own request events fire for memory-cache
  * hits too in some engines, and `page.route` (which would let us count in the browser) turns
@@ -30,6 +36,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -262,15 +269,44 @@ async function op(name, body) {
   return res.json();
 }
 
+/**
+ * A phone-photo-shaped JPEG: 4032×3024 (12 MP), smooth gradients plus grain, ~3.5 MB — the size
+ * AND the pixel count of the owner's photos, which is what a resized variant saves on. Made with
+ * the server's own `sharp` (ADR 035).
+ */
+async function photoJpeg(seed) {
+  const sharp = (await import(require.resolve("sharp"))).default;
+  const W = 4032;
+  const H = 3024;
+  const raw = Buffer.alloc(W * H * 3);
+  const noise = randomBytes(W * H);
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 3;
+      const n = (noise[y * W + x] - 128) / 6;
+      raw[i] = Math.max(0, Math.min(255, (x / W) * 255 + n));
+      raw[i + 1] = Math.max(0, Math.min(255, (y / H) * 255 + n + seed * 40));
+      raw[i + 2] = Math.max(
+        0,
+        Math.min(255, 128 + 100 * Math.sin(x / 150) * Math.cos(y / 170) + n),
+      );
+    }
+  return sharp(raw, { raw: { width: W, height: H, channels: 3 } })
+    .jpeg({ quality: 88 })
+    .toBuffer();
+}
+const require = createRequire(join(repoRoot, "packages", "server", "package.json"));
+
 const uploads = [];
 for (let i = 0; i < 3; i++) {
-  const side = Number(process.env.SIDE ?? 1100);
-  const png = noisePng(side, side - 50 + i * 10);
+  // SIDE=<n>: the noise PNGs of the first runs (n×n, incompressible) instead of photos.
+  const side = process.env.SIDE ? Number(process.env.SIDE) : undefined;
+  const bytes = side ? noisePng(side, side - 50 + i * 10) : await photoJpeg(i);
   uploads.push(
     await op("asset.upload", {
-      filename: `noise-${i}.png`,
-      mime_type: "image/png",
-      data_base64: png.toString("base64"),
+      filename: side ? `noise-${i}.png` : `photo-${i}.jpg`,
+      mime_type: side ? "image/png" : "image/jpeg",
+      data_base64: bytes.toString("base64"),
     }),
   );
 }
@@ -303,7 +339,7 @@ async function step(label, rows, fn) {
   rows.push({
     step: label,
     requests: after.n - before.n,
-    MB: ((after.bytes - before.bytes) / 1e6).toFixed(1),
+    MB: ((after.bytes - before.bytes) / 1e6).toFixed(2),
     ms: Date.now() - t0,
   });
 }
@@ -330,7 +366,7 @@ async function wkwebview(mode, store, rows) {
       rows.push({
         step: label,
         requests: after.n - before.n,
-        MB: ((after.bytes - before.bytes) / 1e6).toFixed(1),
+        MB: ((after.bytes - before.bytes) / 1e6).toFixed(2),
         ms,
         "control pictures fetched": controlsBetween(before, after),
       });

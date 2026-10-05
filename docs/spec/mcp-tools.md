@@ -1608,7 +1608,9 @@ export const assetUpload = defineOp({
 **HTTP**: `POST /api/v1/asset.upload`. Also mounts `GET /assets/:id` — outside `/api/v1`,
 unauthenticated (nooklet binds `127.0.0.1` only, §3.9; an `<img src>` tag has no way to attach a
 bearer token anyway), serving the raw bytes with the `asset` row's recorded `mime_type`. Not an op
-in its own right — listed here because `asset_upload.url` points at it.
+in its own right — listed here because `asset_upload.url` points at it. `?w=<480|960|1600>`
+(ADR 035) answers the picture resized to that width as `image/webp`, or the original's bytes when
+it is not a still JPEG/PNG/WebP or is no wider than `w`; any other `w` is a 400 `bad_request`.
 
 **`asset.sizes`** (B-703, HTTP-only, `read`): `{ ids: string[] }` (≤ 500) →
 `{ assets: [{ id, width, height }] }`, the recorded pixel sizes, unknown/deleted ids left out. The
