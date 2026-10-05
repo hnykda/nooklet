@@ -1099,6 +1099,17 @@ webview is not reusing its HTTP cache. That is unverified: check the Tauri/WKWeb
 whether the URL changes between renders. Possible fixes: server-side resized variants
 (`/assets/:id?w=…`) and `loading="lazy"`/`decoding="async"`.
 
+**2026-10-05, cause found** (`tools/probes/image-cache/`, `docs/progress/image-speed.md`): in a
+real WKWebView with a persistent data store, a page controlled by the app's service worker
+downloads every picture again on EVERY showing (in-app Back, reload, second window, relaunch: 3 of
+3 pictures, 10.5 MB, ~7 s at 1.6 MB/s each time). With only the service worker API removed, every
+repeat is 0 requests. The worker's `/assets/` rule never matches (B-401), so its fetch handler lets
+the request fall through, and WebKit's fall-through does not use the HTTP cache. The URL is stable
+and the headers are cacheable (a control page in the same WKWebView caches the same URL). Chromium
+caches fine (0 repeat requests), which is why only the Mac app showed it. Capacitor pages have no
+service worker; that shape was not measured (the macOS harness could not load an `<img>` from a
+scheme-handler page at all).
+
 ### B-740 · No whole-graph export or backup in the client
 **Status:** open · **Severity:** medium · **Found:** 2026-10-04, graph-menu agent (B-712) · **Test:** none yet
 
