@@ -34,13 +34,15 @@ function setup(opts: {
     findTemplateByName: vi.fn(async (name: string) =>
       [daily, meeting].find((t) => t.name.toLowerCase() === name.toLowerCase()),
     ),
-    templateAfterOps: vi.fn(async (_templateId: string, _blockId: string) => ({
+    templateAfterOps: vi.fn(async (_templateId: string, _blockId: string, _placement: string) => ({
       ops: afterOps,
       firstId: "new-root",
     })),
-    templateIntoBlockOps: vi.fn(async (_templateId: string, _blockId: string) => ({
-      ops: intoOps,
-    })),
+    templateIntoBlockOps: vi.fn(
+      async (_templateId: string, _blockId: string, _placement: string) => ({
+        ops: intoOps,
+      }),
+    ),
     applyOps: vi.fn(async (_ops: Op[]) => undefined),
   };
   const pick = opts.pick ?? vi.fn(async (list: TemplateSummary[]) => list[0]);
@@ -78,7 +80,7 @@ describe("block.insertTemplate", () => {
     const { editor, data, run, focusBlock, intoOps } = setup({ content: "" });
     await run();
     expect(data.listTemplates).toHaveBeenCalledTimes(1);
-    expect(data.templateIntoBlockOps).toHaveBeenCalledWith("tpl-daily", "b1");
+    expect(data.templateIntoBlockOps).toHaveBeenCalledWith("tpl-daily", "b1", "after");
     expect(data.templateAfterOps).not.toHaveBeenCalled();
     // Committed by the editor — so it is one undo step — and never written around it.
     expect(editor.committed).toEqual([
@@ -93,7 +95,7 @@ describe("block.insertTemplate", () => {
   it("after a bullet with text: one batch through the editor, caret to the first new block (B-108)", async () => {
     const { editor, data, run, focusBlock, afterOps } = setup({ content: "already here" });
     await run();
-    expect(data.templateAfterOps).toHaveBeenCalledWith("tpl-daily", "b1");
+    expect(data.templateAfterOps).toHaveBeenCalledWith("tpl-daily", "b1", "after");
     expect(data.templateIntoBlockOps).not.toHaveBeenCalled();
     expect(editor.committed).toEqual([
       { ops: afterOps, anchorId: "b1", focus: { blockId: "new-root", caret: "end" } },
@@ -101,6 +103,34 @@ describe("block.insertTemplate", () => {
     expect(data.applyOps).not.toHaveBeenCalled();
     expect(editor.state?.content).toBe("already here");
     expect(focusBlock).not.toHaveBeenCalled();
+  });
+
+  it("B-820: on the zoom root of a zoomed view, the template goes in as its first children", async () => {
+    // With text: not after the root (outside the view) but under it, caret to the first new block.
+    const withText = setup({ content: "zoomed into this" });
+    withText.editor.zoomRootId = "b1";
+    await withText.run();
+    expect(withText.data.templateAfterOps).toHaveBeenCalledWith("tpl-daily", "b1", "firstChildren");
+    expect(withText.editor.committed).toEqual([
+      { ops: withText.afterOps, anchorId: "b1", focus: { blockId: "new-root", caret: "end" } },
+    ]);
+
+    // Empty: into the root, and the template's further top-level blocks under it too.
+    const empty = setup({ content: "" });
+    empty.editor.zoomRootId = "b1";
+    await empty.run();
+    expect(empty.data.templateIntoBlockOps).toHaveBeenCalledWith(
+      "tpl-daily",
+      "b1",
+      "firstChildren",
+    );
+  });
+
+  it("B-820: zoomed, a bullet below the zoom root still takes the template after it", async () => {
+    const { editor, data, run } = setup({ content: "a child of the root" });
+    editor.zoomRootId = "root";
+    await run();
+    expect(data.templateAfterOps).toHaveBeenCalledWith("tpl-daily", "b1", "after");
   });
 
   it("applies the ops itself when no editor takes the batch, and still moves the caret", async () => {
@@ -120,7 +150,7 @@ describe("block.insertTemplate", () => {
     // The editor host's content is the editing text: an empty numbered item reads `\nlist:: number`.
     const { data, run } = setup({ content: "\nlist:: number" });
     await run();
-    expect(data.templateIntoBlockOps).toHaveBeenCalledWith("tpl-daily", "b1");
+    expect(data.templateIntoBlockOps).toHaveBeenCalledWith("tpl-daily", "b1", "after");
     expect(data.templateAfterOps).not.toHaveBeenCalled();
   });
 
@@ -135,9 +165,9 @@ describe("block.insertTemplate", () => {
     const { data, run } = setup({ content: "x", pick });
     await run("MEETING");
     expect(pick).not.toHaveBeenCalled();
-    expect(data.templateAfterOps).toHaveBeenCalledWith("tpl-meeting", "b1");
+    expect(data.templateAfterOps).toHaveBeenCalledWith("tpl-meeting", "b1", "after");
     await run({ name: "daily" });
-    expect(data.templateAfterOps).toHaveBeenLastCalledWith("tpl-daily", "b1");
+    expect(data.templateAfterOps).toHaveBeenLastCalledWith("tpl-daily", "b1", "after");
   });
 
   it("does nothing for an unknown name or a cancelled picker", async () => {

@@ -150,6 +150,7 @@ const NOOP_HOST: EditorHost = {
   commitOps: () => false,
   getLinkAtCaret: () => null,
   currentBlock: () => null,
+  zoomRoot: () => null,
 };
 
 /** The `EditorHost` the command system should use right now. Never null, so callers need no
@@ -180,6 +181,7 @@ export const liveEditorHost: EditorHost = {
   commitOps: (batch) => commitThroughEditor(batch),
   getLinkAtCaret: () => activeEditorHost().getLinkAtCaret(),
   currentBlock: () => activeEditorHost().currentBlock(),
+  zoomRoot: () => activeEditorHost().zoomRoot(),
 };
 
 /** A live host view over one editor surface. `BlockTree` builds this once and registers it. */
@@ -197,6 +199,8 @@ export interface EditorHostBacking {
   linkAtCaret(): LinkAtCaret | null;
   /** `EditorHost.currentBlock`. */
   currentBlock(): Block | null;
+  /** `EditorHost.zoomRoot`: the tree's zoom root, or `null`. */
+  zoomRoot(): string | null;
 }
 
 export function createEditorHost(backing: EditorHostBacking): EditorHost {
@@ -248,6 +252,10 @@ export function createEditorHost(backing: EditorHostBacking): EditorHost {
 
     currentBlock() {
       return backing.currentBlock();
+    },
+
+    zoomRoot() {
+      return backing.zoomRoot();
     },
   };
 }

@@ -8,6 +8,7 @@ import {
   type EditorHostBacking,
   historyEditorHost,
   liveEditorHost,
+  noteUndoTarget,
   registerEditorHost,
   releaseEditorHost,
   setActiveEditorHost,
@@ -39,6 +40,7 @@ function backing(content = "hello world", anchor = 0, head = 0) {
     },
     linkAtCaret: () => ({ type: "page", name: "Target" }),
     currentBlock: () => null,
+    zoomRoot: () => null,
   };
   return { state, b };
 }
@@ -248,5 +250,56 @@ describe("a command's op batch reaches a tree that shows its block, focused or n
     // Released: an unmounted tree never takes a write.
     expect(liveEditorHost.commitOps(batch)).toBe(false);
     expect(only.state.batches).toHaveLength(1);
+  });
+});
+
+describe("a write from a click on a tree's rows becomes the undo target (B-789, B-841)", () => {
+  it("with nothing focused, Cmd/Ctrl+Z goes to the tree that noted the step", () => {
+    const first = backing();
+    const second = backing();
+    const a = createEditorHost(first.b);
+    const b = createEditorHost(second.b);
+    registerEditorHost(a);
+    registerEditorHost(b);
+    // `a` was edited last; then a marker on `b`'s page is clicked with nothing there edited.
+    setActiveEditorHost(a);
+    setActiveEditorHost(null);
+    noteUndoTarget(b);
+    expect(historyEditorHost()).toBe(b);
+    releaseEditorHost(a);
+    releaseEditorHost(b);
+  });
+
+  it("a session standing in another tree is ended, so the undo goes where the step went", () => {
+    const edited = backing();
+    const clicked = backing();
+    const a = createEditorHost(edited.b);
+    const b = createEditorHost(clicked.b);
+    setActiveEditorHost(a);
+    const ticks = editingEndRequest();
+    noteUndoTarget(b);
+    expect(editingEndRequest()).toBe(ticks + 1);
+    setActiveEditorHost(null);
+    expect(historyEditorHost()).toBe(b);
+    // The edited tree noting its own step ends nothing.
+    setActiveEditorHost(b);
+    noteUndoTarget(b);
+    expect(editingEndRequest()).toBe(ticks + 1);
+    setActiveEditorHost(null);
+    releaseEditorHost(a);
+    releaseEditorHost(b);
+  });
+});
+
+describe("zoomRoot (B-820)", () => {
+  it("is the active tree's zoom root, and null with nothing focused", () => {
+    const { b } = backing();
+    const host = createEditorHost({ ...b, zoomRoot: () => "root1" });
+    expect(liveEditorHost.zoomRoot()).toBeNull();
+    setActiveEditorHost(host);
+    expect(liveEditorHost.zoomRoot()).toBe("root1");
+    setActiveEditorHost(null);
+    expect(liveEditorHost.zoomRoot()).toBeNull();
+    releaseEditorHost(host);
   });
 });
