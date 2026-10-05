@@ -481,7 +481,8 @@ async function importAssets(
   let imported = 0;
   if (!existsSync(dir)) return { paths, imported };
   // Symlinks are never followed, here or per entry below (B-127). An imported asset is served
-  // WITHOUT authentication at /assets/:id and syncs to every device, so a link in a graph someone
+  // without a token at /assets/:id (to anyone with its keyed URL, ADR 036) and shown on every
+  // device, so a link in a graph someone
   // else made — `assets/pic.png -> ~/.ssh/id_ed25519` — would publish whatever it points at. The
   // old `statSync(path).isFile()` followed links, and threw ENOENT out of the whole import on a
   // dangling one. Dirent types come from lstat, so they describe the link, not its target.

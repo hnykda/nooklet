@@ -40,7 +40,8 @@ a desktop browser never showed it.
 
 3. **Under the same route, the same auth.** B-737 (asset URLs need no token) is undecided; a
    variant is the same resource at another size, so whatever scheme B-737 settles on covers both
-   without a second decision.
+   without a second decision. (Settled 2026-10-05 by ADR 036: a variant needs the asset's key,
+   `?k=…&w=…`.)
 
 4. **The client asks for the width it draws** (`apps/web/src/editor/render/image-variant.ts`,
    `ImageView.tsx`): the CSS width the box gives the picture (the column, a chosen `{:width N}`

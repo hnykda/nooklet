@@ -16,6 +16,7 @@ import type { SqlDriver } from "@nooklet/core";
 import { newId } from "@nooklet/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServerContext, type ServerContext, serverApplyOps } from "../apply-ops.js";
+import { storeAssetBytes } from "../assets/store.js";
 import { openDb } from "../db.js";
 import { SCHEMA_VERSION } from "../schema.js";
 import {
@@ -115,7 +116,17 @@ function seedGraph(): void {
 describe("createBackup / restoreBackup", () => {
   it("round-trips: a restored database has identical state to the source", async () => {
     seedGraph();
+    // An asset row too, so its URL key (B-737) is part of what must come back unchanged: a
+    // restored graph whose keys changed would break every link handed out before.
+    storeAssetBytes(ctx.driver, dataDir, {
+      bytes: Buffer.from("a picture"),
+      fileName: "p.png",
+      mimeType: "image/png",
+      origin: "user",
+      actor: "test",
+    });
     const before = dumpAll(ctx.driver);
+    expect((before.assets[0] as { url_key: string }).url_key).toMatch(/^[A-Za-z0-9_-]{22}$/);
 
     const backup = await createBackup(ctx.driver, { dataDir });
     expect(existsSync(backup.path)).toBe(true);
@@ -310,6 +321,11 @@ describe("streaming backup/restore: compatibility and failure modes", () => {
       "hello from an old archive\n",
     );
     expect(readFileSync(join(target, "assets", "fixtureasset01.png"))).toHaveLength(1500);
+    // An archive from before B-737 opens at the current schema (migration 9 included). Its
+    // asset files have no rows to key; `../db.test.ts` and `tools/probes/asset-keys/` cover rows.
+    expect(restored.driver.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      SCHEMA_VERSION,
+    );
   });
 
   it("a new archive restores with the old reader: readTarGz + write every entry, as c9d993b did", async () => {

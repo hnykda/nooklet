@@ -406,6 +406,18 @@ opposed to a plain API/MCP token for an agent that only calls `/api/v1/*` or `/m
 Revoking a token used by a *device* also frees its `acked_seq` from ever blocking `nooklet gc`
 again (§6) — a gone-for-good device shouldn't hold the op log hostage forever.
 
+**Asset links outlive tokens.** `GET /assets/<id>.<ext>?k=<key>` needs no token; the per-asset key
+in the URL is what protects it (B-737, ADR 036). A revoked device keeps the URLs it has seen, and a
+link someone shared keeps working, until the key changes:
+
+```sh
+nooklet asset rotate-key <asset-id>   # one asset (a link that was shared)
+nooklet asset rotate-key --all        # every asset (after revoking a device you don't trust)
+```
+
+Safe while `serve` runs. Old URLs answer 404 from then on; the apps notice a picture that no
+longer loads and fetch its new key. Copies a device already cached stay on that device.
+
 ## 9. Pointing an agent at it
 
 See the README's "Connecting an agent" section for the exact config JSON. Summary:

@@ -8,7 +8,7 @@
  *
  * A width rather than `srcset`/`sizes`: `sizes` would have to restate in a media-query string what
  * the box's style already decides (`min(100%, Npx)` of a column whose width only layout knows), and
- * with the picture's own size unknown — the first time it is shown, before `asset.sizes` answers —
+ * with the picture's own size unknown — the first time it is shown, before `asset.info` answers —
  * a `w` descriptor would also set its displayed size. Measuring the column once it is laid out and
  * asking for one URL keeps the picture's size the box's business, as B-703/B-789 made it.
  */
@@ -27,7 +27,7 @@ export interface DisplayFacts {
   column: number;
   /** A width the person chose (`{:width N}`, B-789), in CSS px. */
   chosen?: number;
-  /** The picture's own size, when known (`asset.sizes`, B-703). */
+  /** The picture's own size, when known (`asset.info`, B-703). */
   natural?: { width: number; height: number };
   /** `innerHeight`: an unchosen picture is capped at 70vh tall (`editor.css`, B-703's box). */
   viewportHeight: number;

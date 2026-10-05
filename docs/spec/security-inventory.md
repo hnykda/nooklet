@@ -64,7 +64,7 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
 | GET | `/healthz` | none | `{"name":"nooklet","status":"ok"}` | liveness probe |
 | GET | `/api/session` | none | graph instance id, suggested journal format and task workflow; `token: null` unless the peer is loopback, the request is same-origin (no foreign `Origin`, B-691), **and** the auto-token is on | how a client with no token learns which graph it is talking to |
 | GET | `/openapi.json` | none | the full op list and schemas (no data) | API description for agents |
-| GET | `/assets/:id` | none (capability URL) | the asset bytes if the id exists, or with `?w=480/960/1600` a resized WebP of it (ADR 035, same auth); served with `CSP: sandbox` + `nosniff` | `<img src>` cannot carry a bearer header (B-659, see below) |
+| GET | `/assets/:id` | the asset's own key, `?k=` (capability URL, ADR 036) | the asset bytes if the id exists AND `k` matches its 128-bit `url_key` (constant-time), or with `?w=480/960/1600` a resized WebP of it (ADR 035, same key); otherwise 404, identical for unknown id / no key / wrong key; served with `CSP: sandbox` + `nosniff` + `Cache-Control: private` | `<img src>` cannot carry a bearer header (B-737, see below) |
 | GET | `/plugins/:id/:file` | none | a content-hashed client plugin bundle | loaded by `import()`, build output |
 | POST | `/api/v1/pairing.redeem` | none (a one-time pairing code in the body) | 401 for an unknown, expired, used or cancelled code (one answer for all); 400 for a malformed one; 429 + `Retry-After` past 10 attempts/min per TCP peer or 60/min in total | a new device has no token yet. Codes: 128 random bits, sha256-stored, single use (claimed atomically with the token mint), 10 min default, grant at most `write`. Two locks: the op's `auth: "none"` and this list. HTTP only, never MCP |
 | GET (WS) | `/sync/live` | `can_sync` token in the first message | nothing until `hello`; then `{type:"poke",seq}`. Closed 4408 without a valid hello in 10 s (limits below) | browsers cannot set headers on a WS handshake. A plain GET without `Upgrade` needs a token |
@@ -99,11 +99,13 @@ After that, routes still run their own, narrower checks: per-op scopes (`read`/`
   minute per peer and 60 in total, a handful live at once: about 2^-120 per attempt.
 - Which graph ids exist (404 vs 401 on `/g/<id>/...`), and the default graph's instance id and
   journal/task-workflow settings (`/api/session`).
-- An asset, if they already know or guess its id. Ids are 14 characters: 45 bits of millisecond
-  time plus 25 random bits (`packages/core/src/ids.ts`). Guessing one needs the upload time to the
-  millisecond window and ~2^24 tries per millisecond, which is impractical without a rate limit
-  and much harder with one. But **an asset URL is a bearer capability that a revoked token does
-  not revoke**: a former device that saw the id keeps access. See the hardening backlog.
+- An asset, only with its whole URL (B-737, ADR 036). The id is not enough: ids are 45 bits of
+  millisecond time plus 25 random bits (`packages/core/src/ids.ts`), consecutive within a
+  millisecond, so one known id led to its bulk-imported neighbours. Each asset now also has
+  `url_key`, 128 bits from the CSPRNG, required as `?k=` and compared in constant time; a guess
+  without it learns nothing, not even whether the id exists (one 404 body for all three cases).
+  **A keyed URL is still a bearer capability that revoking a token does not revoke**: a former
+  device keeps the URLs it saw until `nooklet asset rotate-key --all` (or `<asset-id>`).
 
 ## The in-app Logseq import (ADR 031)
 
@@ -129,7 +131,7 @@ ordinary `/api/v1/` ops, `admin` only, HTTP only (never MCP). A paired phone (`w
 - **What it adds to `admin`**: creating a graph on this server, which before needed the root token
   (`POST /graphs`). The new graph comes with an `admin` + sync token for the caller, as `POST
   /graphs` does. It cannot list, read or replace other graphs.
-- Imported assets are served at `/assets/:id` like uploaded ones (capability URLs, below).
+- Imported assets are served at `/assets/:id` like uploaded ones (keyed capability URLs, above).
 
 ## Tokens
 

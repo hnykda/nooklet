@@ -872,13 +872,6 @@ No tap and no releases exist; bare `/mcp` answers 307. Fixed in the README rewri
 
 Both describe the pre-ADR-025 layout or older flows.
 
-### B-659 · `/assets/<id>` needs no token
-**Status:** in progress, with B-737 (its later, measured duplicate) · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** none
-
-Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
-
-2026-10-04: entropy measured (25 random bits + ms time) — not practically guessable blind; the real gap is that a revoked device keeps every asset URL it has seen. Recommendation H5: short-lived signed URLs.
-
 ### B-663 · `tasks.spec.ts` Mod+Enter tests are order-dependent since empty graphs default to `now`
 **Status:** open · **Severity:** low (test) · **Found:** 2026-10-04, phone-ui agent · **Test:** none
 
@@ -996,24 +989,6 @@ B-704. Workaround used: edit `desktop.json` (add the remote entry, set `active_g
 `pnpm desktop` again. Fix: in dev, show the picker in place (navigate the window to the bundled
 launcher with forcePicker) instead of restarting, or detect `tauri dev` and print how to relaunch.
 
-### B-737 · Tokenless `GET /assets/:id` relies on ids being unguessable, but asset ids are 45 time bits + 25 random bits, sequential within a millisecond
-**Status:** in progress (asset-keys agent, option A: a 128-bit key per asset in its URL; `docs/progress/asset-keys.md`) · **Severity:** high (security) · **Found:** 2026-10-04, checking image load time on the production server · **Test:** none yet
-
-`PUBLIC_ROUTES` (`packages/server/src/http/guards.ts`) lets `/assets/:id` through without a token
-because `<img src>` cannot carry a bearer header, on the stated grounds that "ids are unguessable".
-They are not: assets use `newId()` (`packages/core/src/ids.ts`, ADR 004), whose only randomness is
-25 bits, re-rolled per millisecond and **incremented by one** for every further id inside the same
-millisecond. A bulk import creates many assets per millisecond, so one known asset URL leads
-straight to its neighbours, and the time part narrows any search to an import window. Verified:
-a production asset answered 200 to a request with no token. Exposure is limited by where the server is reachable
-(tailnet-only for the owner), but the default must be safe without that.
-Fix options: (a) a separate 128-bit random asset key in the URL (capability URL done properly),
-(b) an HttpOnly same-site cookie set from the bearer token so `<img>` is authenticated,
-(c) short-lived signed URLs. Whichever: the content stays `sandbox`-CSP; existing block content
-keeps its `assets/<id>.<ext>` form, so the mapping happens in `assetUrl()` / the server.
-
-When this is fixed, the image viewer's Download/Copy (`apps/web/src/editor/render/image-actions.ts`, B-736) also fetches assets with no credential and must follow the same scheme.
-
 ### B-900 · e2e: `focus-log.spec.ts:36` (WebKit) failed once in a full run, passes alone
 **Status:** open · **Severity:** low (test flake) · **Found:** 2026-10-05, image-speed agent, full `pnpm e2e` on port 6540 · **Test:** `e2e/tests/focus-log.spec.ts` "records the editor's focus…" (WebKit)
 
@@ -1116,6 +1091,58 @@ workflow, so no image was built and nothing deployed, without any alert.
   check the running image after every push.
 
 ## Fixed
+
+### B-737 · Tokenless `GET /assets/:id` relies on ids being unguessable, but asset ids are 45 time bits + 25 random bits, sequential within a millisecond
+**Status:** fixed 2026-10-05 (`a31e8a85` server, `d6f8c750` client; option A, ADR 036) · **Severity:** high (security) · **Found:** 2026-10-04, checking image load time on the production server · **Test:** `packages/server/src/ops/asset-upload.http.test.ts` "B-737: only with the asset's key" (6), `assets/keys.test.ts` (constant-time compare), `db.test.ts` "B-737: migration 9 gives every existing asset its own URL key", `http/route-inventory.test.ts` "B-737: /assets/:id … serves it only with the asset's key", `http/asset-variants.http.test.ts` "B-737: a variant needs the asset's key too…", `cli-asset-keys.test.ts`; client `apps/web/src/editor/render/asset-url.test.tsx`; e2e `assets.spec.ts` "B-737: the picture's URL carries the asset's key; the same URL without it is a 404", `image-variants.spec.ts` (keyed URL cached, shown offline)
+
+`PUBLIC_ROUTES` (`packages/server/src/http/guards.ts`) lets `/assets/:id` through without a token
+because `<img src>` cannot carry a bearer header, on the stated grounds that "ids are unguessable".
+They are not: assets use `newId()` (`packages/core/src/ids.ts`, ADR 004), whose only randomness is
+25 bits, re-rolled per millisecond and **incremented by one** for every further id inside the same
+millisecond. A bulk import creates many assets per millisecond, so one known asset URL leads
+straight to its neighbours, and the time part narrows any search to an import window. Verified:
+a production asset answered 200 to a request with no token. Exposure is limited by where the server is reachable
+(tailnet-only for the owner), but the default must be safe without that.
+Fix options: (a) a separate 128-bit random asset key in the URL (capability URL done properly),
+(b) an HttpOnly same-site cookie set from the bearer token so `<img>` is authenticated,
+(c) short-lived signed URLs. Whichever: the content stays `sandbox`-CSP; existing block content
+keeps its `assets/<id>.<ext>` form, so the mapping happens in `assetUrl()` / the server.
+
+When this is fixed, the image viewer's Download/Copy (`apps/web/src/editor/render/image-actions.ts`, B-736) also fetches assets with no credential and must follow the same scheme.
+
+**Fixed** (option A, the owner's choice; ADR 036, `docs/progress/asset-keys.md`). Every asset has
+`url_key`, 128 bits from the CSPRNG (schema 9; the migration keys every existing row). `GET
+/assets/<id>.<ext>?k=<key>[&w=…]` serves only when `k` matches, compared in constant time; no key,
+a wrong key and an unknown id get one identical 404. Block content is unchanged
+(`assets/<id>.<ext>`). The client learns keys from `asset.info` (which replaced `asset.sizes`: the
+same one batched request per tick now brings key and size) or from `asset.upload`'s answer, keeps
+them in `localStorage`, and renders no `src` until a key is known. `nooklet asset rotate-key
+<id> | --all` replaces keys; a client whose picture fails to load asks once for a new key.
+`asset_upload` returns the keyed URL, and `asset_info` is an MCP tool. Measured on a generated
+301-picture import (`tools/probes/asset-keys/migrate-v8.ts`): 298 ids shared their millisecond
+with another; after migrating a version-8 copy, 301/301 keys distinct, 301/301 bare and wrong-key
+requests 404, 301/301 keyed requests 200 with the exact bytes.
+**Consequence: installed apps running older code show no pictures until updated** (their unkeyed
+URLs 404); no compatibility path on purpose.
+
+### B-659 · `/assets/<id>` needs no token
+**Status:** fixed 2026-10-05, as B-737 (its later, measured duplicate; ADR 036) · **Severity:** medium (security, public tier) · **Found:** 2026-10-04, public-docs agent (writing docs/guide against the code) · **Test:** see B-737
+
+Open by design; with no rate limit, a public server's asset links can be brute-forced in principle (id entropy to be checked). Flagged to the security review.
+
+2026-10-04: entropy measured (25 random bits + ms time) — not practically guessable blind; the real gap is that a revoked device keeps every asset URL it has seen. Recommendation H5: short-lived signed URLs.
+
+2026-10-05: fixed by B-737's per-asset URL key. The revoked-device gap is now closable with
+`nooklet asset rotate-key --all`; a device keeps what it already cached.
+
+### B-940 · One long asset file name in a block cost every picture on screen its reserved size
+**Status:** fixed 2026-10-05 (`d6f8c750`, with B-737) · **Severity:** low · **Found:** 2026-10-05, asset-keys agent, reading `asset-sizes.ts` · **Test:** `apps/web/src/editor/render/asset-url.test.tsx` "a Logseq file name that is no asset id is not asked about…"
+
+The client asked `asset.sizes` about every `assets/<name>` path on screen, whatever `<name>` was, in
+one batch. The op takes ids of at most 64 characters, so one link to `assets/<a name over 64
+characters>.png` (a Logseq link the import could not map) made the whole batch a 400, and no
+picture in it got its box (B-703) or, after B-737, its key. Now only names that can be asset ids
+(`[a-z0-9]{1,64}`) are asked about; anything else is "no such asset" without a request.
 
 ### B-922 · `image-layout.spec.ts` B-703 test failed in a full run: the image was already loaded before the held-back response
 **Status:** fixed 2026-10-05 (test) · **Severity:** low (test) · **Found:** 2026-10-05, coordinator full e2e on `16c07ae6` · **Test:** the spec itself, `--repeat-each 5` plus a full run

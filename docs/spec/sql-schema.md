@@ -899,9 +899,12 @@ CREATE TABLE asset (
   sha256     TEXT NOT NULL,
   width      INTEGER,  -- B-703: displayed pixel size (EXIF orientation applied) for PNG/JPEG/GIF/WebP;
   height     INTEGER,  -- NULL for other types, and for rows stored before sizes were recorded until
-                       -- the first `asset.sizes` read fills them from the file (no migration)
+                       -- the first `asset.info` read fills them from the file (no migration)
   created_at INTEGER NOT NULL,
-  deleted_at INTEGER
+  deleted_at INTEGER,
+  url_key    TEXT NOT NULL  -- B-737, ADR 036: 128 random bits as 22 base64url chars; GET
+                            -- /assets/:id serves only with ?k=<url_key>. Migration 9 adds it as
+                            -- NOT NULL DEFAULT '' and keys every row; '' never matches.
 );
 CREATE UNIQUE INDEX asset_sha256 ON asset(sha256) WHERE deleted_at IS NULL;
 

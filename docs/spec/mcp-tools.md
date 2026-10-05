@@ -478,6 +478,7 @@ export class OpError extends Error {
 | 33 | `pairing.create` / `pairing_create` | A | admin | deferred | A one-time code a new device trades for its own token (B-655) |
 | 34 | `token.list` / `token_list` | R I | admin | deferred | This graph's device and agent tokens: label, scope, dates; never the token (B-655) |
 | 35 | `token.revoke` / `token_revoke` | D I | admin | requiresUserInteraction | Revoke a token and close its open sockets (B-655, B-676) |
+| 36 | `asset.info` / `asset_info` | R I | read | deferred | Fetchable keyed URLs (and pixel sizes) of the assets a block names (B-737, ADR 036) |
 
 R = readOnlyHint, A = additive (destructiveHint:false), D = destructiveHint:true, I =
 idempotentHint:true. `openWorldHint:false` on every tool (omitted from the column). Rows 17-18
@@ -1594,7 +1595,8 @@ export const assetUpload = defineOp({
   }).strict(),
   output: z.object({
     id: z.string().describe('14-char asset id'),
-    url: z.string().describe('Server path to fetch the raw bytes, e.g. /assets/1k7f3q9xz2hav4.png'),
+    url: z.string().describe('Graph-relative URL that fetches the bytes without a token, e.g. /assets/1k7f3q9xz2hav4.png?k=<key>'), // B-737
+    key: z.string().describe("The asset's secret URL key (the k in url)"), // B-737, ADR 036
     markdown: z.string().describe('Ready-to-paste markdown image/link - paste this directly into a block_update/page_append/block_insert content field'),
     mime_type: z.string(), byte_size: z.number().int(),
     deduped: z.boolean().describe('true when identical bytes were already uploaded; this returned that existing asset'),
@@ -1605,19 +1607,23 @@ export const assetUpload = defineOp({
 });
 ```
 
-**HTTP**: `POST /api/v1/asset.upload`. Also mounts `GET /assets/:id` — outside `/api/v1`,
-unauthenticated (nooklet binds `127.0.0.1` only, §3.9; an `<img src>` tag has no way to attach a
-bearer token anyway), serving the raw bytes with the `asset` row's recorded `mime_type`. Not an op
-in its own right — listed here because `asset_upload.url` points at it. `?w=<480|960|1600>`
+**HTTP**: `POST /api/v1/asset.upload`. Also mounts `GET /assets/:id` — outside `/api/v1`, with
+no bearer token (an `<img src>` tag has no way to attach one), serving the raw bytes with the
+`asset` row's recorded `mime_type` **only when `?k=` is the asset's 128-bit `url_key`** (B-737,
+ADR 036; constant-time compare). No key, a wrong key and an unknown id all answer the same 404.
+Not an op in its own right — listed here because `asset_upload.url` points at it. The `markdown`
+keeps the plain `assets/<id>.<ext>` path: block text never carries a key. `?w=<480|960|1600>`
 (ADR 035) answers the picture resized to that width as `image/webp`, or the original's bytes when
 it is not a still JPEG/PNG/WebP or is no wider than `w`; any other `w` is a 400 `bad_request`.
 
-**`asset.sizes`** (B-703, HTTP-only, `read`): `{ ids: string[] }` (≤ 500) →
-`{ assets: [{ id, width, height }] }`, the recorded pixel sizes, unknown/deleted ids left out. The
-web client calls it to reserve an image's box before the lazy-loaded bytes arrive. Assets stored
-before sizes were recorded get theirs read from the file on the first call that asks
-(`packages/server/src/assets/store.ts#assetSizes`). Not an MCP tool: an agent has no layout to keep
-still, and gets the size from `asset_upload`.
+**`asset.info` / `asset_info`** (B-737, ADR 036; replaced B-703's HTTP-only `asset.sizes`;
+`read`): `{ ids: string[] }` (≤ 500) → `{ assets: [{ id, url, key, width, height }] }`: each
+asset's keyed URL and key, and its recorded pixel size (null for anything but PNG/JPEG/GIF/WebP);
+unknown/deleted ids left out. The web client calls it, batched per tick, for every asset on screen
+whose key it has not kept yet, and reserves an image's box from the size before the lazily loaded
+bytes arrive (B-703). Assets stored before sizes were recorded get theirs read from the file on the
+first call that asks (`packages/server/src/assets/store.ts#assetInfo`). An MCP tool, so an agent
+that reads `assets/<id>.png` in a block can fetch it; the text result is one `id: url` per line.
 
 **Example**
 
@@ -1628,7 +1634,7 @@ still, and gets the size from `asset_upload`.
 ```json
 // response
 {
-  "id": "1k7f3qj2p8xzr6", "url": "/assets/1k7f3qj2p8xzr6.png",
+  "id": "1k7f3qj2p8xzr6", "url": "/assets/1k7f3qj2p8xzr6.png?k=<22-char key>", "key": "<22-char key>",
   "markdown": "![architecture diagram](assets/1k7f3qj2p8xzr6.png)",
   "mime_type": "image/png", "byte_size": 8422, "deduped": false
 }

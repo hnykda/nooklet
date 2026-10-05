@@ -86,8 +86,10 @@ traffic never reach the server.
 > - **WebSockets, per client IP.** nooklet caps sockets per token and in total, so one client
 >   without a token can still hold up to 500 open for 10 seconds at a time and fill the total.
 >   Limit connections per IP at the proxy.
-> - **Attachments.** `/assets/<id>` needs no token. An id holds 25 random bits plus its upload
->   time, which is impractical to guess, but a revoked device keeps the URLs it has seen.
+> - **Attachments.** `/assets/<id>` needs no token, only the asset's own secret key in the URL
+>   (`?k=`). A device whose token you revoke keeps the URLs it has seen, and any link someone
+>   shared keeps working, until you run `nooklet asset rotate-key --all` (or `<asset-id>`).
+>   Have the proxy leave query strings out of its access log, or the keys are in it.
 > - **Public without a token.** Health checks, the op list (`/openapi.json`) and which graph ids
 >   exist.
 
@@ -191,11 +193,30 @@ The server mints one web-client token per process and retires the previous one a
 - The web client's static files, and `GET /g/<id>/openapi.json`.
 - `GET /g/<id>/api/session`: returns a token only under the loopback rule above; otherwise
   `token: null` with a reason.
-- `GET /g/<id>/assets/<id>`: uploaded files. An `<img>` tag cannot send a bearer token, so assets
-  are served without one. Asset ids are 14 characters: a millisecond timestamp plus 25 random bits.
-  They are hard to guess but not secret, and anyone who sees a link can fetch the file. Assets are
-  served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`, so an
-  uploaded HTML or SVG file opened in a tab cannot run script in the app's origin.
+- `GET /g/<id>/assets/<id>.<ext>?k=<key>`: uploaded files. An `<img>` tag cannot send a bearer
+  token, so an asset URL carries a secret of its own instead: every asset has a random 128-bit key,
+  and the server answers only when `k` matches it. Without the key, or with a wrong one, the answer
+  is 404, the same as for an id that does not exist. The id alone is not enough: ids are a
+  millisecond timestamp plus 25 random bits, and ids made in the same millisecond (a bulk import)
+  are consecutive.
+
+  So an asset URL works like a capability link. Anyone who has the whole URL can fetch the file,
+  without a token, until the key changes. The apps learn keys over the authenticated API
+  (`asset.info`) and keep them on the device; block text stores only `assets/<id>.<ext>`, so the
+  Markdown mirror and exported files never contain a key.
+
+  - **Revoking.** `nooklet asset rotate-key <asset-id>` gives one asset a new key, and `--all`
+    gives every asset one (for example after revoking a device token). Old URLs then answer 404.
+    The apps fetch the new key the next time a picture fails to load. A device keeps any copy
+    it has already cached.
+  - **Logs.** The key is in the query string. nooklet keeps no access log. A reverse proxy in
+    front of it should not log query strings for `/assets/`. `Referrer-Policy: no-referrer` keeps
+    the key out of `Referer` headers.
+  - **Caching.** Responses are `Cache-Control: private`, so no shared cache keeps a copy after a
+    key changes. Devices cache by the full URL, key included.
+
+  Assets are served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`,
+  so an uploaded HTML or SVG file opened in a tab cannot run script in the app's origin.
 
 ## What the server trusts
 

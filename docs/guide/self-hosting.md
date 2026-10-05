@@ -148,7 +148,7 @@ dedicated security review yet.** Treat it as your own risk until that review lan
 
 > **Security review (2026-10-04).** Public exposure behind a TLS proxy is reasonable for one owner
 > with a few devices **if every item below holds**. It is not yet suitable for several users or a
-> high-profile host. What is missing is rate limiting inside nooklet and revocable asset URLs. Tailnet-only stays the recommendation. Details are in
+> high-profile host. What is missing is rate limiting inside nooklet. Tailnet-only stays the recommendation. Details are in
 > `docs/progress/security-review.md`, and the route-by-route list is in
 > `docs/spec/security-inventory.md`.
 >
@@ -169,8 +169,10 @@ dedicated security review yet.** Treat it as your own risk until that review lan
 >   client without a token can still take every free slot for 10 seconds at a time.
 > - **After revoking a device's token, restart the server** if that device may still be connected.
 >   Revocation stops its HTTP requests at once, but not a WebSocket it already has open.
-> - **Assume a revoked device can still read the attachments (`/assets/<id>`) it has seen.** An
->   asset URL is a capability. It needs no token.
+> - **Assume a revoked device can still read the attachments it has seen.** An asset URL carries
+>   the asset's own secret key (`/assets/<id>.<ext>?k=…`) and needs no token. Run `nooklet asset
+>   rotate-key --all` after revoking a device you no longer trust, and keep query strings out of
+>   the proxy's access log.
 > - **Keep the startup log private.** The root token is printed once on first start, and container
 >   logs keep it.
 > - **Only install server plugins you have read.** They run with the server's full rights.
@@ -429,7 +431,10 @@ Settings → Search & embeddings. The setting is stored per graph, not in flags 
 - **"Device clock is wrong."** A device's clock runs more than 60 s ahead of the server. Fix it; the
   push succeeds on retry.
 - **A lost device.** `nooklet token revoke <id>`. A revoked token cannot sync, and stops holding back
-  `gc`.
+  `gc`. To also cut off the attachment links it has seen, `nooklet asset rotate-key --all`.
+- **A shared attachment link.** Every asset URL carries the asset's key, so a link sent to someone
+  works for them without a token. `nooklet asset rotate-key <asset-id>` gives that one asset a new
+  key: the old link answers 404, and your apps fetch the new key on their own.
 - **Rotating a token.** Create a new one, switch the device or agent to it, confirm it works, revoke
   the old one.
 - **`nooklet verify`** after anything unusual. It names the exact table, row and column if live
